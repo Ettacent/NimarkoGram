@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="NM_Menu_TelegramPlus">Zamonaviy xabarlar menyusi</string>
+    <string name="NM_Menu_TelegramPlus_Desc">Guruhlangan amallar, prujinali animatsiyalar va moslashuvchan effektlarga ega ixcham Liquid Glass menyusi. Ixcham tartib mavjud bo‘lib qoladi.</string>
+    <!-- NimarkoGram plugin strings ported from exteraGram (values-uz) -->
+    <string name="Links">Havolalar</string>
+    <string name="Preferences">exteraGram parametrlari</string>
+    <string name="RestartRequired">Kuchga kirishi uchun ilovani qayta ishga tushiring.</string>
+</resources>

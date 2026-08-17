@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="NM_Menu_TelegramPlus">Müasir mesaj menyusu</string>
+    <string name="NM_Menu_TelegramPlus_Desc">Qruplaşdırılmış əməliyyatlar, yay animasiyaları və interaktiv effektlərlə yığcam Liquid Glass menyusu. Yığcam düzən əlçatan olaraq qalır.</string>
+    <!-- NimarkoGram plugin strings ported from exteraGram (values-az) -->
+    <string name="Links">Bağlantılar</string>
+    <string name="Preferences">exteraGram tənzimləmələri</string>
+    <string name="RestartRequired">Effektiv olmaq üçün Tətbiqi yenidən başladın.</string>
+</resources>

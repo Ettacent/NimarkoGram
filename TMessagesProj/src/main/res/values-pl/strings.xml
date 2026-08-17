@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="NM_Menu_TelegramPlus">Nowoczesne menu wiadomości</string>
+    <string name="NM_Menu_TelegramPlus_Desc">Kompaktowe menu z efektem Liquid Glass, pogrupowanymi działaniami, animacjami sprężynowymi i dynamiczną reakcją. Układ kompaktowy pozostaje dostępny.</string>
+    <!-- NimarkoGram plugin strings ported from exteraGram (values-pl) -->
+    <string name="EnableAfterInstallation">Włącz po instalacji</string>
+    <string name="EnablePluginsEngine">Włącz silnik wtyczek</string>
+    <string name="EnterValue">Wprowadź wartość</string>
+    <string name="InstallPlugin">Zainstaluj</string>
+    <string name="Links">Linki</string>
+    <string name="PluginDelete">Usuń wtyczkę</string>
+    <string name="PluginDeleteInfo">Czy na pewno chcesz usunąć **%1$s**?</string>
+    <string name="PluginDisableError">Nie udało się wyłączyć **%1$s**.</string>
+    <string name="PluginEnableError">Nie udało się włączyć **%1$s**.</string>
+    <string name="PluginEngineNotEnabled">Włącz **silnik wtyczek**, aby otworzyć ustawienia **%1$s**.</string>
+    <string name="PluginHasNoSettings">**%1$s** nie ma żadnych ustawień.</string>
+    <string name="PluginInstallError">Nie udało się zainstalować **%1$s**.</string>
+    <string name="PluginInstalled">**%1$s** zostało pomyślnie zainstalowane.</string>
+    <string name="PluginInstalledButFailedToEnable">**%1$s** zainstalowano, ale podczas włączania wystąpił błąd.</string>
+    <string name="PluginIsNotResponding">Wtyczka nie odpowiada.</string>
+    <string name="PluginIsNotRespondingAlert">Wtyczka %1$s nie odpowiada</string>
+    <string name="PluginNoAuthor">Nieznany autor</string>
+    <string name="PluginNoDescription">Brak opisu.</string>
+    <string name="PluginNotEnabled">Aby zainstalować **%1$s**, włącz **silnik wtyczek**.</string>
+    <string name="PluginNotFound">Nie znaleziono **%1$s**.</string>
+    <string name="PluginUpdated">**%1$s** zostało pomyślnie zaktualizowane.</string>
+    <string name="PluginVersion">Wersja</string>
+    <string name="Plugins">Wtyczki</string>
+    <string name="PluginsCompactView">Wtyczki Widok kompaktowy</string>
+    <string name="PluginsDisableArt">Tryb zgodności</string>
+    <string name="PluginsDisableArtInfo">Zapobiega błędom wstrzykiwania wtyczek poprzez wyłączenie usługi ART Profile Saver.</string>
+    <string name="PluginsDocumentation">Dokumentacja</string>
+    <string name="PluginsEngine">Silnik wtyczek</string>
+    <string name="PluginsInfo">Wtyczki znajdziesz na @exteraPlugins.</string>
+    <string name="PluginsNotFound">Nie znaleziono wtyczek.</string>
+    <string name="PluginsSafeMode">Tryb awaryjny</string>
+    <string name="PluginsSafeModeInfo">Silnik wtyczek został wyłączony z powodu awarii. Wyłączenie trybu bezpiecznego może prowadzić do nieprzewidywalnych konsekwencji.</string>
+    <string name="PluginsTrusted">Zaufane wtyczki</string>
+    <string name="Preferences">Ustawienia exteraGram</string>
+    <string name="ResetPluginSettings">Ustawienia **%1$s** zostały zresetowane.</string>
+    <string name="ResetPluginSettingsInfo">Czy na pewno chcesz przywrócić domyślne ustawienia dla **%1$s**?</string>
+    <string name="RestartRequired">Uruchom ponownie aplikację, aby zmiany zaczęły obowiązywać.</string>
+    <string name="UpdatePlugin">Aktualizuj</string>
+<string name="ForkedByNimarko">Fork autorstwa Nimarko</string><string name="PluginIncompatible">Niezgodny plugin</string><string name="PluginIncompatibleInfo">Ten plugin wymaga nowszej wersji aplikacji.</string><string name="PluginsDevMode">Tryb dewelopera</string><string name="PluginsDevServerLaunched">Serwer deweloperski uruchomiony.</string><string name="PluginsDevServerStopped">Serwer deweloperski zatrzymany.</string><string name="PluginsDisableAll">Wyłącz wszystkie</string><string name="PluginsDisableAllConfirm">Wyłączyć wszystkie aktywne pluginy?</string><string name="PluginsDisabledN">Wyłączono %1$d pluginów.</string><string name="PluginsPoweredBy">Oparte na <![CDATA[<a href="https://github.com/exteraSquad/exteraGram">exteraGram</a>]]> engine pluginów.</string><string name="PluginsPySdkAutoUpdate">Automatyczna aktualizacja SDK</string><string name="PluginsPySdkCheckUpdates">Sprawdź aktualizacje SDK</string><string name="PluginsPySdkEnableBetaVersion">Użyj SDK beta</string><string name="PluginsPySdkHeader">SDK Python</string><string name="PluginsPySdkOffline">Aktualizacje online wyłączone w NimarkoGram.</string><string name="PluginsRestartEngine">Uruchom ponownie engine</string><string name="PluginsRestartingEngine">Ponowne uruchamianie engine pluginów…</string><string name="PluginsRowSubtitle">Skrypty Python rozszerzające aplikację</string><string name="PluginsSafeModeInfo2">Wszystkie pluginy zostały wyłączone. Włączaj je pojedynczo, aby znaleźć źródło problemu.</string><string name="PluginsSafeModeOff">Tryb awaryjny wyłączony.</string><string name="PluginsSafeModeOn">Tryb awaryjny włączony. Pluginy nie będą ładowane automatycznie.</string></resources>

@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="NM_Menu_TelegramPlus">Menu pesan modern</string>
+    <string name="NM_Menu_TelegramPlus_Desc">Menu ringkas dengan efek Liquid Glass, tindakan yang dikelompokkan, animasi pegas, dan efek responsif. Tata letak ringkas tetap tersedia.</string>
+    <!-- NimarkoGram plugin engine strings -->
+    <string name="Plugins">Plugin</string>
+    <string name="PluginsEngine">Aktifkan mesin plugin</string>
+    <string name="PluginsInfo">Mesin plugin memungkinkan memuat skrip Python yang memperluas aplikasi.</string>
+    <string name="PluginsCompactView">Tampilan ringkas</string>
+    <string name="PluginsDisableArt">Nonaktifkan optimasi startup</string>
+    <string name="PluginsDisableArtInfo">Lewati kompilasi AOT Python saat startup. Boot lebih cepat, tapi plugin sedikit lebih lambat.</string>
+    <string name="PluginsSafeMode">Mode aman</string>
+    <string name="PluginsSafeModeInfo">Mesin plugin berjalan dalam mode aman setelah crash.</string>
+    <string name="PluginsSafeModeInfo2">Semua plugin dinonaktifkan. Aktifkan satu per satu untuk menemukan plugin bermasalah.</string>
+    <string name="PluginsDocumentation">Dokumentasi</string>
+    <string name="PluginsTrusted">Plugin tepercaya</string>
+    <string name="ForkedByNimarko">Difork oleh Nimarko</string>
+    <string name="PluginsPoweredBy">Didukung oleh <![CDATA[<a href="https://github.com/exteraSquad/exteraGram">exteraGram</a>]]>.</string>
+    <string name="PluginsNotFound">Belum ada plugin terpasang.</string>
+    <string name="PluginNoDescription">Tanpa deskripsi</string>
+    <string name="PluginNoAuthor">Penulis tidak dikenal</string>
+    <string name="PluginVersion">Versi</string>
+    <string name="InstallPlugin">Pasang</string>
+    <string name="UpdatePlugin">Perbarui</string>
+    <string name="EnableAfterInstallation">Aktifkan setelah pemasangan</string>
+    <string name="PluginIncompatible">Plugin tidak kompatibel</string>
+    <string name="PluginIncompatibleInfo">Plugin ini membutuhkan versi aplikasi yang lebih baru.</string>
+    <string name="RestartRequired">Perlu mulai ulang</string>
+    <string name="LinkCopied">Tautan disalin ke clipboard</string>
+    <string name="PluginInstalled">Plugin terpasang</string>
+    <string name="PluginUpdated">Plugin diperbarui</string>
+    <string name="PluginInstallError">Gagal memasang plugin</string>
+<string name="PluginsRowSubtitle">Python scripts that extend the app</string><string name="PluginsDevMode">Developer mode</string><string name="PluginsDevServerLaunched">Dev server is running.</string><string name="PluginsDevServerStopped">Dev server is stopped.</string><string name="PluginsDisableAll">Disable all plugins</string><string name="PluginsDisableAllConfirm">Turn off every enabled plugin?</string><string name="PluginsDisabledN">%1$d plugins disabled.</string><string name="PluginsRestartEngine">Restart engine</string><string name="PluginsRestartingEngine">Restarting plugin engine…</string><string name="PluginsPySdkAutoUpdate">Auto-update SDK</string><string name="PluginsPySdkCheckUpdates">Check for SDK updates</string><string name="PluginsPySdkEnableBetaVersion">Use beta SDK</string><string name="PluginsPySdkHeader">Python SDK</string><string name="PluginsPySdkOffline">Online updates disabled in NimarkoGram.</string><string name="PluginsSafeModeOff">Safe mode disabled.</string><string name="PluginsSafeModeOn">Safe mode enabled. Plugins won’t auto-load.</string><string name="PluginIsNotRespondingAlert">Plugin "%s" is not responding</string><string name="EnablePluginsEngine">Enable plugin engine</string><string name="PluginDelete">Delete plugin</string><string name="PluginDeleteInfo">Are you sure you want to delete %s?</string><string name="PluginDisableError">Failed to disable plugin: %s</string><string name="PluginEnableError">Failed to enable plugin: %s</string><string name="PluginEngineNotEnabled">Plugin engine is disabled. Enable it to use %s.</string><string name="PluginHasNoSettings">%s has no settings.</string><string name="PluginInstalledButFailedToEnable">Installed, but failed to enable plugin.</string><string name="PluginNotEnabled">Plugin %s is not enabled.</string><string name="PluginNotFound">Plugin %s not found.</string></resources>

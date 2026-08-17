@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="NM_Menu_TelegramPlus">Moderne meldingsmeny</string>
+    <string name="NM_Menu_TelegramPlus_Desc">En kompakt Liquid Glass-meny med grupperte handlinger, fjæranimasjoner og responsive effekter. Kompakt oppsett er fortsatt tilgjengelig.</string>
+    <!-- NimarkoGram plugin strings ported from exteraGram (values-nb) -->
+    <string name="EnableAfterInstallation">Aktiver etter installasjon</string>
+    <string name="EnablePluginsEngine">Aktiver plugin-motor</string>
+    <string name="EnterValue">Skriv inn en verdi</string>
+    <string name="InstallPlugin">Installer</string>
+    <string name="Links">Lenker</string>
+    <string name="PluginDelete">Slett plugin</string>
+    <string name="PluginDeleteInfo">Er du sikker på at du vil slette **%1$s**?</string>
+    <string name="PluginDisableError">Kunne ikke deaktivere **%1$s**.</string>
+    <string name="PluginEnableError">Kunne ikke aktivere **%1$s**.</string>
+    <string name="PluginEngineNotEnabled">Aktiver **Plugin motoren** for å åpne innstillingene til **%1$s**.</string>
+    <string name="PluginHasNoSettings">**%1$s** har ingen innstillinger.</string>
+    <string name="PluginInstallError">Kunne ikke installere **%1$s**.</string>
+    <string name="PluginInstalled">**%1$s** installert.</string>
+    <string name="PluginInstalledButFailedToEnable">**%1$s** installert, men det oppsto en feil under aktivering.</string>
+    <string name="PluginIsNotResponding">Plugin-modulen svarer ikke.</string>
+    <string name="PluginIsNotRespondingAlert">%1$s svarer ikke</string>
+    <string name="PluginNoAuthor">Ukjent forfatter</string>
+    <string name="PluginNoDescription">Ingen beskrivelse gitt.</string>
+    <string name="PluginNotEnabled">Aktiver **Plugin Engine** for å installere **%1$s**.</string>
+    <string name="PluginNotFound">**%1$s** ikke funnet.</string>
+    <string name="PluginUpdated">**%1$s** oppdatert.</string>
+    <string name="PluginVersion">Versjon</string>
+    <string name="Plugins">Programtillegg</string>
+    <string name="PluginsCompactView">Kompakt visning av plugin-moduler</string>
+    <string name="PluginsDisableArt">Kompatibilitetsmodus</string>
+    <string name="PluginsDisableArtInfo">Forhindrer feil med plugin-hook ved å deaktivere ART Profile Saver.</string>
+    <string name="PluginsDocumentation">Dokumentasjon</string>
+    <string name="PluginsEngine">Plugin-motor</string>
+    <string name="PluginsInfo">Du finner programtillegg i @exteraPlugins.</string>
+    <string name="PluginsNotFound">Ingen programtillegg funnet.</string>
+    <string name="PluginsSafeMode">Sikkermodus</string>
+    <string name="PluginsSafeModeInfo">Plugin-motoren er deaktivert på grunn av et krasj. Deaktivering av sikkermodus kan føre til uforutsigbare konsekvenser.</string>
+    <string name="PluginsTrusted">Pålitelige programtillegg</string>
+    <string name="Preferences">exteraGram Innstillinger</string>
+    <string name="ResetPluginSettings">Innstillingene for **%1$s** er tilbakestilt.</string>
+    <string name="ResetPluginSettingsInfo">Er du sikker på at du vil tilbakestille innstillingene **%1$s** til standard?</string>
+    <string name="RestartRequired">Start appen på nytt for at endringene skal tre i kraft.</string>
+    <string name="UpdatePlugin">Oppdater</string>
+</resources>

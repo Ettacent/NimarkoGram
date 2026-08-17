@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="NM_Menu_TelegramPlus">モダンメッセージメニュー</string>
+    <string name="NM_Menu_TelegramPlus_Desc">操作のグループ化、スプリングアニメーション、レスポンシブ効果を備えたコンパクトな Liquid Glass メニューです。コンパクトレイアウトも引き続き利用できます。</string>
+    <!-- NimarkoGram plugin strings ported from exteraGram (values-ja) -->
+    <string name="EnableAfterInstallation">インストール後に有効にする</string>
+    <string name="EnablePluginsEngine">プラグインエンジンを有効にする</string>
+    <string name="EnterValue">値を入力</string>
+    <string name="InstallPlugin">インストール</string>
+    <string name="Links">リンク</string>
+    <string name="PluginDelete">プラグインを削除</string>
+    <string name="PluginDeleteInfo">**%1$s** を削除してもよろしいですか？</string>
+    <string name="PluginDisableError">**%1$s** の無効化に失敗しました。</string>
+    <string name="PluginEnableError">**%1$s** の有効化に失敗しました。</string>
+    <string name="PluginEngineNotEnabled">**%1$s** の設定を開くには、**プラグインエンジン**を有効にしてください。</string>
+    <string name="PluginHasNoSettings">**%1$s** には設定がありません。</string>
+    <string name="PluginInstallError">**%1$s** のインストールに失敗しました。</string>
+    <string name="PluginInstalled">**%1$s** が正常にインストールされました。</string>
+    <string name="PluginInstalledButFailedToEnable">**%1$s** はインストールされましたが、有効化中にエラーが発生しました。</string>
+    <string name="PluginNoAuthor">不明な作成者</string>
+    <string name="PluginNoDescription">説明がありません。</string>
+    <string name="PluginNotEnabled">**%1$s** をインストールするには、**プラグインエンジン**を有効にしてください。</string>
+    <string name="PluginNotFound">**%1$s** が見つかりません。</string>
+    <string name="PluginUpdated">**%1$s** が正常に更新されました。</string>
+    <string name="PluginVersion">バージョン</string>
+    <string name="Plugins">プラグイン</string>
+    <string name="PluginsCompactView">プラグインのコンパクトビュー</string>
+    <string name="PluginsDocumentation">ドキュメント</string>
+    <string name="PluginsEngine">プラグインエンジン</string>
+    <string name="PluginsInfo">プラグインは @exteraPlugins で見つけることができます。</string>
+    <string name="PluginsNotFound">プラグインが見つかりません。</string>
+    <string name="PluginsSafeMode">セーフモード</string>
+    <string name="PluginsSafeModeInfo">クラッシュのため、プラグインエンジンは無効になっています。セーフモードを無効にすると、予期しない結果につながる可能性があります。</string>
+    <string name="PluginsTrusted">信頼できるプラグイン</string>
+    <string name="Preferences">exteraGram 設定</string>
+    <string name="ResetPluginSettings">**%1$s** の設定がリセットされました。</string>
+    <string name="ResetPluginSettingsInfo">**%1$s** の設定をデフォルトにリセットしてもよろしいですか？</string>
+    <string name="RestartRequired">変更を有効にするには、アプリを再起動してください。</string>
+    <string name="UpdatePlugin">更新</string>
+<string name="PluginsRowSubtitle">Python scripts that extend the app</string><string name="PluginsDevMode">Developer mode</string><string name="PluginsDevServerLaunched">Dev server is running.</string><string name="PluginsDevServerStopped">Dev server is stopped.</string><string name="PluginsDisableAll">Disable all plugins</string><string name="PluginsDisableAllConfirm">Turn off every enabled plugin?</string><string name="PluginsDisabledN">%1$d plugins disabled.</string><string name="PluginsRestartEngine">Restart engine</string><string name="PluginsRestartingEngine">Restarting plugin engine…</string><string name="PluginsPySdkAutoUpdate">Auto-update SDK</string><string name="PluginsPySdkCheckUpdates">Check for SDK updates</string><string name="PluginsPySdkEnableBetaVersion">Use beta SDK</string><string name="PluginsPySdkHeader">Python SDK</string><string name="PluginsPySdkOffline">Online updates disabled in NimarkoGram.</string><string name="PluginsSafeModeOff">Safe mode disabled.</string><string name="PluginsSafeModeOn">Safe mode enabled. Plugins won’t auto-load.</string><string name="PluginIncompatible">Incompatible plugin</string><string name="PluginIncompatibleInfo">This plugin requires a newer version of the app.</string><string name="PluginIsNotRespondingAlert">Plugin "%s" is not responding</string><string name="PluginsSafeModeInfo2">All plugins are disabled. Re-enable them one by one to find the offender.</string><string name="ForkedByNimarko">Forked by Nimarko</string><string name="PluginsPoweredBy">Powered by <![CDATA[<a href="https://github.com/exteraSquad/exteraGram">exteraGram</a>]]> plugin engine.</string><string name="PluginsDisableArt">Disable startup optimisations</string><string name="PluginsDisableArtInfo">Skip Python AOT compilation on startup. Faster boot, but plugins run slightly slower.</string></resources>

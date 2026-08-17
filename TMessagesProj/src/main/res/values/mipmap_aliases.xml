@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- These launcher foregrounds were byte-for-byte copies in every density.
+         Keep their public resource names while storing one bitmap set. -->
+    <item name="icon_foreground_round" type="mipmap">@mipmap/icon_foreground</item>
+    <item name="icon_foreground_sa" type="mipmap">@mipmap/icon_foreground</item>
+</resources>

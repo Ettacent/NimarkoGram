@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="NM_Menu_TelegramPlus">Menu de messages moderne</string>
+    <string name="NM_Menu_TelegramPlus_Desc">Un menu compact avec effet Liquid Glass, actions groupées, animations à ressort et effets réactifs. La disposition compacte reste disponible.</string>
+    <!-- NimarkoGram plugin engine strings -->
+    <string name="Plugins">Extensions</string>
+    <string name="PluginsEngine">Activer le moteur d\'extensions</string>
+    <string name="PluginsInfo">Le moteur d\'extensions permet de charger des scripts Python qui étendent l\'app.</string>
+    <string name="PluginsCompactView">Vue compacte</string>
+    <string name="PluginsDisableArt">Désactiver les optimisations au démarrage</string>
+    <string name="PluginsDisableArtInfo">Ignore la compilation AOT de Python au démarrage. Démarrage plus rapide, extensions un peu plus lentes.</string>
+    <string name="PluginsSafeMode">Mode sans échec</string>
+    <string name="PluginsSafeModeInfo">Le moteur d\'extensions est en mode sans échec après un plantage.</string>
+    <string name="PluginsSafeModeInfo2">Toutes les extensions sont désactivées. Réactivez-les une par une pour identifier la fautive.</string>
+    <string name="PluginsDocumentation">Documentation</string>
+    <string name="PluginsTrusted">Extensions de confiance</string>
+    <string name="ForkedByNimarko">Forké par Nimarko</string>
+    <string name="PluginsPoweredBy">Propulsé par <![CDATA[<a href="https://github.com/exteraSquad/exteraGram">exteraGram</a>]]>.</string>
+    <string name="PluginsNotFound">Aucune extension installée pour le moment.</string>
+    <string name="PluginNoDescription">Aucune description</string>
+    <string name="PluginNoAuthor">Auteur inconnu</string>
+    <string name="PluginVersion">Version</string>
+    <string name="InstallPlugin">Installer</string>
+    <string name="UpdatePlugin">Mettre à jour</string>
+    <string name="EnableAfterInstallation">Activer après installation</string>
+    <string name="PluginIncompatible">Extension incompatible</string>
+    <string name="PluginIncompatibleInfo">Cette extension nécessite une version plus récente de l\'app.</string>
+    <string name="RestartRequired">Redémarrage requis</string>
+    <string name="LinkCopied">Lien copié dans le presse-papiers</string>
+    <string name="PluginInstalled">Extension installée</string>
+    <string name="PluginUpdated">Extension mise à jour</string>
+    <string name="PluginInstallError">Échec de l\'installation de l\'extension</string>
+<string name="EnablePluginsEngine">Activer le moteur de plugins</string><string name="PluginDelete">Supprimer le plugin</string><string name="PluginDeleteInfo">Êtes-vous sûr de vouloir supprimer %s ?</string><string name="PluginDisableError">Échec de la désactivation du plugin : %s</string><string name="PluginEnableError">Échec de l\'activation du plugin : %s</string><string name="PluginEngineNotEnabled">Le moteur de plugins est désactivé. Activez-le pour utiliser %s.</string><string name="PluginHasNoSettings">%s n\'a pas de paramètres.</string><string name="PluginInstalledButFailedToEnable">Installé, mais échec de l\'activation du plugin.</string><string name="PluginIsNotRespondingAlert">Le plugin "%s" ne répond pas</string><string name="PluginNotEnabled">Le plugin %s n\'est pas activé.</string><string name="PluginNotFound">Plugin %s introuvable.</string><string name="PluginsDevMode">Mode développeur</string><string name="PluginsDevServerLaunched">Serveur de développement lancé.</string><string name="PluginsDevServerStopped">Serveur de développement arrêté.</string><string name="PluginsDisableAll">Désactiver tous</string><string name="PluginsDisableAllConfirm">Désactiver tous les plugins activés ?</string><string name="PluginsDisabledN">%1$d plugins désactivés.</string><string name="PluginsPySdkAutoUpdate">Mise à jour automatique du SDK</string><string name="PluginsPySdkCheckUpdates">Vérifier les mises à jour du SDK</string><string name="PluginsPySdkEnableBetaVersion">Utiliser le SDK bêta</string><string name="PluginsPySdkHeader">SDK Python</string><string name="PluginsPySdkOffline">Mises à jour en ligne désactivées dans NimarkoGram.</string><string name="PluginsRestartEngine">Redémarrer le moteur</string><string name="PluginsRestartingEngine">Redémarrage du moteur de plugins…</string><string name="PluginsRowSubtitle">Scripts Python qui étendent l\'application</string><string name="PluginsSafeModeOff">Mode sans échec désactivé.</string><string name="PluginsSafeModeOn">Mode sans échec activé. Les plugins ne se chargeront pas automatiquement.</string></resources>

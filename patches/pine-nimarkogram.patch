@@ -1,0 +1,62 @@
+diff --git a/build.gradle b/build.gradle
+index bf6c5d8..79b10fe 100644
+--- a/build.gradle
++++ b/build.gradle
+@@ -41,7 +41,7 @@ ext {
+     compileSdk = 34
+     minSdk = 19
+     targetSdk = 34
+-    ndkVersion = "25.2.9519653"
++    ndkVersion = "26.3.11579264"
+     cmakeVersion = "3.22.1"
+     userOrg = 'canyie'
+     groupId = 'top.canyie.pine'
+diff --git a/core/src/main/cpp/CMakeLists.txt b/core/src/main/cpp/CMakeLists.txt
+index 7032ee3..c426485 100644
+--- a/core/src/main/cpp/CMakeLists.txt
++++ b/core/src/main/cpp/CMakeLists.txt
+@@ -4,7 +4,7 @@ set(CMAKE_CXX_STANDARD 17)
+ set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+ 
+ set(C_FLAGS "-Wall -Wextra -fvisibility=hidden -fvisibility-inlines-hidden -fno-exceptions -fno-rtti -flto=thin")
+-set(LINKER_FLAGS "-fuse-ld=lld -flto=thin -ffixed-x18 -Wl,--hash-style=both -Wl,--unresolved-symbols=ignore-all")
++set(LINKER_FLAGS "-fuse-ld=lld -flto=thin -ffixed-x18 -Wl,--hash-style=both -Wl,--unresolved-symbols=ignore-all -Wl,-z,max-page-size=16384 -Wl,-z,common-page-size=16384")
+ 
+ set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${C_FLAGS}")
+ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${C_FLAGS}")
+diff --git a/core/src/main/java/top/canyie/pine/Pine.java b/core/src/main/java/top/canyie/pine/Pine.java
+index 19be477..cf73ee2 100644
+--- a/core/src/main/java/top/canyie/pine/Pine.java
++++ b/core/src/main/java/top/canyie/pine/Pine.java
+@@ -708,6 +708,21 @@ public final class Pine {
+         }
+     }
+ 
++    private static Object defaultResultFor(Member target) {
++        if (target instanceof Method) {
++            Class<?> ret = ((Method) target).getReturnType();
++            if (ret == boolean.class) return Boolean.FALSE;
++            if (ret == int.class) return 0;
++            if (ret == long.class) return 0L;
++            if (ret == short.class) return (short) 0;
++            if (ret == byte.class) return (byte) 0;
++            if (ret == char.class) return (char) 0;
++            if (ret == float.class) return 0f;
++            if (ret == double.class) return 0d;
++        }
++        return null;
++    }
++
+     public static Object handleCall(HookRecord hookRecord, Object thisObject, Object[] args)
+             throws Throwable {
+         // WARNING: DO NOT print thisObject or args, else the toString() method will be called on it
+@@ -753,6 +768,9 @@ public final class Pine {
+                 callFrame.setResult(callFrame.invokeOriginalMethod());
+             } catch (InvocationTargetException e) {
+                 callFrame.setThrowable(e.getTargetException());
++            } catch (IllegalArgumentException e) {
++                Log.e(TAG, "Pine receiver/arg mis-read invoking original, skipping: " + hookRecord.target, e);
++                callFrame.setResult(defaultResultFor(hookRecord.target));
+             }
+         }
+ 

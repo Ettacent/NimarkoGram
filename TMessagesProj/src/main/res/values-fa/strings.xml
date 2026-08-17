@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="NM_Menu_TelegramPlus">منوی مدرن پیام‌ها</string>
+    <string name="NM_Menu_TelegramPlus_Desc">یک منوی جمع‌وجور با افکت Liquid Glass، کنش‌های گروه‌بندی‌شده، پویانمایی فنری و بازخورد پویا. چیدمان فشرده همچنان در دسترس است.</string>
+    <!-- NimarkoGram plugin engine strings -->
+    <string name="Plugins">افزونه‌ها</string>
+    <string name="PluginsEngine">فعال‌سازی موتور افزونه‌ها</string>
+    <string name="PluginsInfo">موتور افزونه‌ها به شما اجازه می‌دهد اسکریپت‌های Python که برنامه را گسترش می‌دهند بارگذاری کنید.</string>
+    <string name="PluginsCompactView">نمایش فشرده</string>
+    <string name="PluginsDisableArt">غیرفعال کردن بهینه‌سازی‌های راه‌اندازی</string>
+    <string name="PluginsDisableArtInfo">صرف‌نظر از کامپایل AOT پایتون در راه‌اندازی. بوت سریع‌تر، اما افزونه‌ها کمی کندتر اجرا می‌شوند.</string>
+    <string name="PluginsSafeMode">حالت ایمن</string>
+    <string name="PluginsSafeModeInfo">موتور افزونه‌ها پس از یک خرابی در حالت ایمن اجرا می‌شود.</string>
+    <string name="PluginsSafeModeInfo2">تمام افزونه‌ها غیرفعال هستند. آن‌ها را یکی‌یکی فعال کنید تا افزونه مشکل‌ساز را پیدا کنید.</string>
+    <string name="PluginsDocumentation">مستندات</string>
+    <string name="PluginsTrusted">افزونه‌های مورد اعتماد</string>
+    <string name="ForkedByNimarko">فورک‌شده توسط Nimarko</string>
+    <string name="PluginsPoweredBy">قدرت‌گرفته از <![CDATA[<a href="https://github.com/exteraSquad/exteraGram">exteraGram</a>]]>.</string>
+    <string name="PluginsNotFound">هنوز افزونه‌ای نصب نشده است.</string>
+    <string name="PluginNoDescription">بدون توضیح</string>
+    <string name="PluginNoAuthor">نویسنده ناشناس</string>
+    <string name="PluginVersion">نسخه</string>
+    <string name="InstallPlugin">نصب</string>
+    <string name="UpdatePlugin">به‌روزرسانی</string>
+    <string name="EnableAfterInstallation">فعال‌سازی پس از نصب</string>
+    <string name="PluginIncompatible">افزونه ناسازگار</string>
+    <string name="PluginIncompatibleInfo">این افزونه به نسخه‌ای جدیدتر از برنامه نیاز دارد.</string>
+    <string name="RestartRequired">راه‌اندازی مجدد لازم است</string>
+    <string name="LinkCopied">لینک به کلیپ‌بورد کپی شد</string>
+    <string name="PluginInstalled">افزونه نصب شد</string>
+    <string name="PluginUpdated">افزونه به‌روز شد</string>
+    <string name="PluginInstallError">نصب افزونه ناموفق بود</string>
+<string name="PluginsRowSubtitle">Python scripts that extend the app</string><string name="PluginsDevMode">Developer mode</string><string name="PluginsDevServerLaunched">Dev server is running.</string><string name="PluginsDevServerStopped">Dev server is stopped.</string><string name="PluginsDisableAll">Disable all plugins</string><string name="PluginsDisableAllConfirm">Turn off every enabled plugin?</string><string name="PluginsDisabledN">%1$d plugins disabled.</string><string name="PluginsRestartEngine">Restart engine</string><string name="PluginsRestartingEngine">Restarting plugin engine…</string><string name="PluginsPySdkAutoUpdate">Auto-update SDK</string><string name="PluginsPySdkCheckUpdates">Check for SDK updates</string><string name="PluginsPySdkEnableBetaVersion">Use beta SDK</string><string name="PluginsPySdkHeader">Python SDK</string><string name="PluginsPySdkOffline">Online updates disabled in NimarkoGram.</string><string name="PluginsSafeModeOff">Safe mode disabled.</string><string name="PluginsSafeModeOn">Safe mode enabled. Plugins won’t auto-load.</string><string name="PluginIsNotRespondingAlert">Plugin "%s" is not responding</string><string name="EnablePluginsEngine">Enable plugin engine</string><string name="PluginDelete">Delete plugin</string><string name="PluginDeleteInfo">Are you sure you want to delete %s?</string><string name="PluginDisableError">Failed to disable plugin: %s</string><string name="PluginEnableError">Failed to enable plugin: %s</string><string name="PluginEngineNotEnabled">Plugin engine is disabled. Enable it to use %s.</string><string name="PluginHasNoSettings">%s has no settings.</string><string name="PluginInstalledButFailedToEnable">Installed, but failed to enable plugin.</string><string name="PluginNotEnabled">Plugin %s is not enabled.</string><string name="PluginNotFound">Plugin %s not found.</string></resources>

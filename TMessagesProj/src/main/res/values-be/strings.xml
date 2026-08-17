@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="NM_Menu_TelegramPlus">Сучаснае меню паведамленняў</string>
+    <string name="NM_Menu_TelegramPlus_Desc">Кампактнае меню ў стылі Liquid Glass з групаваннем дзеянняў, спружыннымі анімацыямі і жывым водгукам. Кампактная кампаноўка застаецца даступнай.</string>
+    <!-- NimarkoGram plugin strings ported from exteraGram (values-be) -->
+    <string name="EnableAfterInstallation">Уключыць пасля ўстаноўкі</string>
+    <string name="EnablePluginsEngine">Уключыць рухавік плагінаў</string>
+    <string name="EnterValue">Увядзіце значэнне</string>
+    <string name="InstallPlugin">Устанавіць</string>
+    <string name="Links">Спасылкі</string>
+    <string name="PluginDelete">Выдаліць плагін</string>
+    <string name="PluginDeleteInfo">Вы ўпэўненыя, што хочаце выдаліць **%1$s**?</string>
+    <string name="PluginDisableError">Не атрымалася адключыць **%1$s**.</string>
+    <string name="PluginEnableError">Не атрымалася ўключыць **%1$s**.</string>
+    <string name="PluginEngineNotEnabled">Уключыце **рухавік убудоў**, каб адкрыць налады **%1$s**.</string>
+    <string name="PluginHasNoSettings">**%1$s** не мае налад.</string>
+    <string name="PluginInstallError">Не атрымалася ўсталяваць **%1$s**.</string>
+    <string name="PluginInstalled">**%1$s** устаноўлены паспяхова.</string>
+    <string name="PluginInstalledButFailedToEnable">**%1$s** усталяваны, але падчас уключэння адбылася памылка.</string>
+    <string name="PluginIsNotResponding">Плагін не адказвае.</string>
+    <string name="PluginIsNotRespondingAlert">%1$s не адказвае</string>
+    <string name="PluginNoAuthor">Невядомы аўтар</string>
+    <string name="PluginNoDescription">Няма апісання.</string>
+    <string name="PluginNotEnabled">Уключыце **сістэму плагінаў**, каб устанавіць **%1$s**.</string>
+    <string name="PluginNotFound">**%1$s** не знойдзены.</string>
+    <string name="PluginUpdated">**%1$s** паспяхова абноўлены.</string>
+    <string name="PluginVersion">Версія</string>
+    <string name="Plugins">Плагіны</string>
+    <string name="PluginsCompactView">Кампактны выгляд плагінаў</string>
+    <string name="PluginsDisableArt">Рэжым сумяшчальнасці</string>
+    <string name="PluginsDisableArtInfo">Адключае ART Profile Saver для прадухілення збояў хукаў плагінаў.</string>
+    <string name="PluginsDocumentation">Дакументацыя</string>
+    <string name="PluginsEngine">Рухавік плагінаў</string>
+    <string name="PluginsInfo">Вы можаце знайсці плагіны ў @exteraPlugins.</string>
+    <string name="PluginsNotFound">Плагіны не знойдзены.</string>
+    <string name="PluginsSafeMode">Бяспечны рэжым</string>
+    <string name="PluginsSafeModeInfo">Рухавік плагінаў адключаны з-за збою. Адключэнне бяспечнага рэжыму можа прывесці да непрадказальных наступстваў.</string>
+    <string name="PluginsTrusted">Надзейныя плагіны</string>
+    <string name="Preferences">Налады exteraGram</string>
+    <string name="ResetPluginSettings">Налады **%1$s** былі скінуты.</string>
+    <string name="ResetPluginSettingsInfo">Вы ўпэўнены, што жадаеце скінуць стандартныя налады **%1$s**?</string>
+    <string name="RestartRequired">Перазапусціце праграму, каб змены ўступілі ў сілу.</string>
+    <string name="UpdatePlugin">Абнавіць</string>
+</resources>

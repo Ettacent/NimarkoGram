@@ -1,0 +1,161 @@
+apply plugin: 'com.android.application'
+
+def nimarkoCompactStandalone = project.hasProperty('ngCompactStandalone')
+
+repositories {
+    mavenCentral()
+    google()
+}
+
+configurations {
+    compile.exclude module: 'support-v4'
+}
+
+configurations.all {
+    exclude group: 'com.google.firebase', module: 'firebase-core'
+    exclude group: 'androidx.recyclerview', module: 'recyclerview'
+}
+
+dependencies {
+    implementation project(':TMessagesProj')
+    implementation 'androidx.fragment:fragment:1.8.9'
+    implementation 'androidx.core:core:1.16.0'
+    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.5'
+    implementation files('../TMessagesProj/libs/libgsaverification-client.aar')
+}
+
+android {
+    compileSdkVersion 36
+    buildToolsVersion '36.0.0'
+    
+    ndkVersion "26.3.11579264"
+
+    defaultConfig.applicationId = APP_PACKAGE
+
+    sourceSets.main.jniLibs.srcDirs = ['../TMessagesProj/jni/']
+
+    lintOptions {
+        disable 'MissingTranslation'
+        disable 'ExtraTranslation'
+        disable 'BlockedPrivateApi'
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+
+        coreLibraryDesugaringEnabled true
+    }
+
+    signingConfigs {
+        release {
+            if (rootProject.ext.hasReleaseSigning) {
+                storeFile rootProject.file(rootProject.ext.releaseSigning.storeFile)
+                storePassword rootProject.ext.releaseSigning.storePassword
+                keyAlias rootProject.ext.releaseSigning.keyAlias
+                keyPassword rootProject.ext.releaseSigning.keyPassword
+            }
+            
+            enableV1Signing true
+            enableV2Signing true
+            enableV3Signing true
+            enableV4Signing false
+        }
+    }
+
+    buildTypes {
+        debug {
+            debuggable true
+            jniDebuggable true
+            signingConfig signingConfigs.debug
+            
+            minifyEnabled false
+            multiDexEnabled true
+            proguardFiles getDefaultProguardFile('proguard-android.txt'), '../TMessagesProj/proguard-rules.pro', '../TMessagesProj/proguard-rules-beta.pro'
+            ndk.debugSymbolLevel = 'FULL'
+        }
+        standalone {
+            debuggable false
+            jniDebuggable false
+            signingConfig signingConfigs.release
+            
+            minifyEnabled nimarkoCompactStandalone
+            shrinkResources nimarkoCompactStandalone
+            multiDexEnabled true
+            proguardFiles getDefaultProguardFile('proguard-android.txt'), '../TMessagesProj/proguard-rules.pro'
+            ndk.debugSymbolLevel = 'FULL'
+        }
+    }
+
+    defaultConfig.applicationId = 'app.nimarkogram.messenger'
+
+    sourceSets.debug {
+        manifest.srcFile '../TMessagesProj/config/release/AndroidManifest_standalone.xml'
+    }
+    sourceSets.standalone {
+        manifest.srcFile '../TMessagesProj/config/release/AndroidManifest_standalone.xml'
+    }
+
+    flavorDimensions "minApi"
+
+    productFlavors {
+        afat {
+            ndk {
+                
+                abiFilters "arm64-v8a", "armeabi-v7a"
+            }
+            ext {
+                abiVersionCode = 0
+            }
+            sourceSets.standalone {
+                manifest.srcFile '../TMessagesProj/config/release/AndroidManifest_standalone.xml'
+            }
+        }
+    }
+
+    defaultConfig.versionCode = Integer.parseInt(APP_VERSION_CODE)
+
+    applicationVariants.all { variant ->
+        variant.outputs.all { output ->
+            outputFileName = "app.apk"
+            output.versionCodeOverride = defaultConfig.versionCode * 10 + variant.productFlavors.get(0).abiVersionCode
+        }
+    }
+
+    variantFilter { variant ->
+        def names = variant.flavors*.name
+        if (variant.buildType.name != "release" && !names.contains("afat")) {
+            setIgnore(true)
+        }
+    }
+
+    defaultConfig {
+        minSdkVersion 24
+        targetSdkVersion 35
+        versionName APP_VERSION_NAME
+
+        multiDexEnabled true
+
+        vectorDrawables.generatedDensities = ['mdpi', 'hdpi', 'xhdpi', 'xxhdpi']
+
+        externalNativeBuild {
+            cmake {
+                version '3.22.1'
+                arguments '-DANDROID_STL=c++_static', '-DANDROID_PLATFORM=android-24' 
+            }
+        }
+    }
+
+    buildFeatures {
+        buildConfig = true
+    }
+    namespace 'org.telegram.messenger.web'
+
+    lintOptions {
+        checkReleaseBuilds false
+    }
+}
+
+if (file('google-services.json').isFile()) {
+    apply plugin: 'com.google.gms.google-services'
+}

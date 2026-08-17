@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="NM_Menu_TelegramPlus">Modern mesaj menüsü</string>
+    <string name="NM_Menu_TelegramPlus_Desc">Gruplandırılmış eylemler, yay animasyonları ve duyarlı efektler içeren kompakt bir Liquid Glass menüsü. Kompakt düzen kullanılabilir olmaya devam eder.</string>
+    <!-- NimarkoGram plugin strings ported from exteraGram (values-tr) -->
+    <string name="EnableAfterInstallation">Kurulumdan Sonra Etkinleştir</string>
+    <string name="EnablePluginsEngine">Eklenti Motorunu Etkinleştir</string>
+    <string name="EnterValue">Bir değer girin</string>
+    <string name="InstallPlugin">Yükle</string>
+    <string name="Links">Bağlantılar</string>
+    <string name="PluginDelete">Eklentiyi Sil</string>
+    <string name="PluginDeleteInfo">**%1$s** eklentisini silmek istediğinize emin misiniz?</string>
+    <string name="PluginDisableError">**%1$s** devre dışı bırakılamadı.</string>
+    <string name="PluginEnableError">**%1$s** etkinleştirilemedi.</string>
+    <string name="PluginEngineNotEnabled">**%1$s** ayarlarını açmak için **Eklenti Motorunu** etkinleştirin.</string>
+    <string name="PluginHasNoSettings">**%1$s** için herhangi bir ayar yok.</string>
+    <string name="PluginInstallError">**%1$s** yüklenemedi.</string>
+    <string name="PluginInstalled">**%1$s** başarıyla yüklendi.</string>
+    <string name="PluginInstalledButFailedToEnable">**%1$s** yüklendi, ancak etkinleştirilirken bir hata oluştu.</string>
+    <string name="PluginIsNotResponding">Eklenti yanıt vermiyor.</string>
+    <string name="PluginIsNotRespondingAlert">%1$s yanıt vermiyor</string>
+    <string name="PluginNoAuthor">Bilinmeyen Yazar</string>
+    <string name="PluginNoDescription">Açıklama sağlanmamış.</string>
+    <string name="PluginNotEnabled">**%1$s** eklentisini yüklemek için **Eklenti Motorunu** etkinleştirin.</string>
+    <string name="PluginNotFound">**%1$s** bulunamadı.</string>
+    <string name="PluginUpdated">**%1$s** başarıyla güncellendi.</string>
+    <string name="PluginVersion">Sürüm</string>
+    <string name="Plugins">Eklentiler</string>
+    <string name="PluginsCompactView">Eklentiler Kompakt Görünüm</string>
+    <string name="PluginsDisableArt">Uyumluluk Modu</string>
+    <string name="PluginsDisableArtInfo">ART Profile Saver\'ı devre dışı bırakarak eklenti kancası (hook) hatalarını önler.</string>
+    <string name="PluginsDocumentation">Dokümantasyon</string>
+    <string name="PluginsEngine">Eklenti Motoru</string>
+    <string name="PluginsInfo">Eklentileri @exteraPlugins adresinde bulabilirsiniz.</string>
+    <string name="PluginsNotFound">Eklenti bulunamadı.</string>
+    <string name="PluginsSafeMode">Güvenli Mod</string>
+    <string name="PluginsSafeModeInfo">Eklenti Motoru bir çökme nedeniyle devre dışı bırakıldı. Güvenli modun devre dışı bırakılması öngörülemeyen sonuçlara yol açabilir.</string>
+    <string name="PluginsTrusted">Güvenilir Eklentiler</string>
+    <string name="Preferences">exteraGram Ayarları</string>
+    <string name="ResetPluginSettings">**%1$s** ayarları sıfırlandı.</string>
+    <string name="ResetPluginSettingsInfo">**%1$s** ayarlarını varsayılana sıfırlamak istediğinize emin misiniz?</string>
+    <string name="RestartRequired">Değişikliklerin etkili olması için uygulamayı yeniden başlatın.</string>
+    <string name="UpdatePlugin">Güncelle</string>
+<string name="ForkedByNimarko">Nimarko tarafından çatallandı</string><string name="PluginIncompatible">Uyumsuz eklenti</string><string name="PluginIncompatibleInfo">Bu eklenti uygulamanın daha yeni bir sürümünü gerektiriyor.</string><string name="PluginsDevMode">Geliştirici modu</string><string name="PluginsDevServerLaunched">Geliştirme sunucusu başlatıldı.</string><string name="PluginsDevServerStopped">Geliştirme sunucusu durduruldu.</string><string name="PluginsDisableAll">Tümünü devre dışı bırak</string><string name="PluginsDisableAllConfirm">Tüm etkin eklentiler devre dışı bırakılsın mı?</string><string name="PluginsDisabledN">%1$d eklenti devre dışı bırakıldı.</string><string name="PluginsPoweredBy"><![CDATA[<a href="https://github.com/exteraSquad/exteraGram">exteraGram</a>]]> eklenti motoru tarafından sağlanmaktadır.</string><string name="PluginsPySdkAutoUpdate">SDK\'yı otomatik güncelle</string><string name="PluginsPySdkCheckUpdates">SDK güncellemelerini denetle</string><string name="PluginsPySdkEnableBetaVersion">Beta SDK kullan</string><string name="PluginsPySdkHeader">Python SDK</string><string name="PluginsPySdkOffline">NimarkoGram\'da çevrimiçi güncellemeler devre dışı.</string><string name="PluginsRestartEngine">Motoru yeniden başlat</string><string name="PluginsRestartingEngine">Eklenti motoru yeniden başlatılıyor…</string><string name="PluginsRowSubtitle">Uygulamayı genişleten Python betikleri</string><string name="PluginsSafeModeInfo2">Tüm eklentiler devre dışı bırakıldı. Sorun çıkaranı bulmak için tek tek tekrar etkinleştirin.</string><string name="PluginsSafeModeOff">Güvenli mod devre dışı.</string><string name="PluginsSafeModeOn">Güvenli mod etkin. Eklentiler otomatik yüklenmeyecek.</string></resources>

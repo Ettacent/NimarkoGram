@@ -1,0 +1,70 @@
+name: Bug report
+description: Report a reproducible NimarkoGram problem
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for helping improve NimarkoGram. Remove account identifiers and other private data from logs and screenshots.
+  - type: input
+    id: version
+    attributes:
+      label: NimarkoGram version
+      placeholder: 12.9.2 (build 75500)
+    validations:
+      required: true
+  - type: input
+    id: device
+    attributes:
+      label: Device and Android version
+      placeholder: Pixel 8, Android 16
+    validations:
+      required: true
+  - type: dropdown
+    id: plugins
+    attributes:
+      label: Plugin state
+      options:
+        - Plugins disabled
+        - Plugins enabled
+        - Not applicable
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open ...
+        2. Tap ...
+        3. Observe ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or screenshots
+      description: Attach sanitized diagnostics if they are available. Do not publish credentials, phone numbers, chat contents or user IDs.
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checklist
+      options:
+        - label: I reproduced the issue on the latest available build.
+          required: true
+        - label: I searched existing issues for a duplicate.
+          required: true

@@ -1,0 +1,323 @@
+/**
+ * This is the source code of Nimarko for Android.
+ * It is licensed under GNU GPL v. 2 or later.
+ * You should have received a copy of the license in this archive (see LICENSE).
+ * Please, be respectful and credit the original author if you use this code.
+ *
+ * Copyright github.com/arsLan4k1390, 2022-2026.
+ */
+
+package app.nimarkogram.messenger.camera;
+
+import static org.telegram.messenger.LocaleController.getString;
+
+import android.animation.Animator;
+import android.animation.AnimatorListenerAdapter;
+import android.animation.ValueAnimator;
+import android.annotation.SuppressLint;
+import android.content.Context;
+import android.content.res.Configuration;
+import android.graphics.Canvas;
+import android.graphics.Color;
+import android.graphics.Paint;
+import android.graphics.PorterDuff;
+import android.graphics.PorterDuffColorFilter;
+import android.graphics.Rect;
+import android.graphics.RectF;
+import android.graphics.drawable.Drawable;
+import android.graphics.drawable.GradientDrawable;
+import android.graphics.drawable.ShapeDrawable;
+import android.graphics.drawable.shapes.RoundRectShape;
+import android.os.Build;
+import android.view.Gravity;
+import android.view.HapticFeedbackConstants;
+import android.widget.FrameLayout;
+import android.widget.LinearLayout;
+
+import androidx.core.content.ContextCompat;
+import androidx.core.graphics.ColorUtils;
+
+import org.telegram.messenger.AndroidUtilities;
+import org.telegram.messenger.R;
+import org.telegram.ui.ActionBar.Theme;
+import org.telegram.ui.Components.Easings;
+import org.telegram.ui.Components.LayoutHelper;
+import org.telegram.ui.Components.NumberPicker;
+import org.telegram.ui.LaunchActivity;
+
+import app.nimarkogram.messenger.NimarkoConfig;
+
+public class CameraTypeSelector extends LinearLayout {
+
+    String[] strings = new String[]{
+            "Telegram",
+            "CameraX",
+            "Camera 2 (Telegram)",
+            "System",
+    };
+
+    int[] icons = new int[]{
+            R.drawable.camera_icon_telegram,
+            R.drawable.camera_icon_nimarkogram,
+            R.drawable.camera_icon_camerax,
+            R.drawable.camera_icon_system
+    };
+    int currentIcon = NimarkoConfig.cameraType;
+
+    private final NumberPicker numberPicker;
+    private final FrameLayout preview;
+
+    private final RectF rect = new RectF();
+    private final Paint outlinePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint pickerDividersPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+
+    private ValueAnimator animator;
+    private float progress;
+
+    public CameraTypeSelector(Context context) {
+        super(context);
+
+        pickerDividersPaint.setStyle(Paint.Style.STROKE);
+        pickerDividersPaint.setStrokeCap(Paint.Cap.ROUND);
+        pickerDividersPaint.setStrokeWidth(AndroidUtilities.dp(2));
+
+        outlinePaint.setStyle(Paint.Style.STROKE);
+        outlinePaint.setColor(ColorUtils.setAlphaComponent(Theme.getColor(Theme.key_switchTrack), 0x3F));
+
+        preview = new FrameLayout(context) {
+            @Override
+            @SuppressLint("DrawAllocation")
+            protected void onDraw(Canvas canvas) {
+                super.onDraw(canvas);
+                int color = Theme.getColor(Theme.key_switchTrack);
+                int r = Color.red(color);
+                int g = Color.green(color);
+                int b = Color.blue(color);
+
+                int left = getMeasuredWidth() / 2 - AndroidUtilities.dp(90);
+                int right = getMeasuredWidth() / 2 + AndroidUtilities.dp(90);
+                int top = AndroidUtilities.dp(18);
+                int bottom = getMeasuredHeight() - top;
+
+                outlinePaint.setStrokeWidth(Math.max(2, AndroidUtilities.dp(1)));
+
+                float stroke = outlinePaint.getStrokeWidth() / 2;
+
+                Rect rect1 = new Rect();
+                int rad = AndroidUtilities.dp(15);
+                ShapeDrawable phoneDrawable = new ShapeDrawable(new RoundRectShape(new float[]{rad, rad, rad, rad, 0, 0, 0, 0}, null, null));
+
+                rect.set(left, top, right, bottom);
+                rect.round(rect1);
+                phoneDrawable.setBounds(rect1);
+                phoneDrawable.getPaint().setColor(Color.argb(20, r, g, b));
+                phoneDrawable.draw(canvas);
+
+                rect.set(left + stroke, top + stroke, right - stroke, bottom - stroke);
+                rect.round(rect1);
+                phoneDrawable.setBounds(rect1);
+                phoneDrawable.getPaint().set(outlinePaint);
+                phoneDrawable.draw(canvas);
+
+                GradientDrawable gd = new GradientDrawable(
+                        GradientDrawable.Orientation.TOP_BOTTOM,
+                        new int[]{0x00, Theme.getColor(Theme.key_windowBackgroundWhite)}
+                );
+                gd.setCornerRadius(0f);
+                gd.setBounds((int) (left - stroke), (int) (3 * getMeasuredHeight() / 4 - stroke), (int) (right + stroke), (int) (bottom + stroke));
+                gd.draw(canvas);
+
+                Drawable d = ContextCompat.getDrawable(context, icons[currentIcon]);
+                int ICON_WIDTH = AndroidUtilities.dp(16 + 2 * progress);
+                int iconOffsetY = AndroidUtilities.dp(10);
+                d.setBounds(
+                        getMeasuredWidth() / 2 - ICON_WIDTH,
+                        getMeasuredHeight() / 2 + iconOffsetY,
+                        getMeasuredWidth() / 2 + ICON_WIDTH,
+                        getMeasuredHeight() / 2 + iconOffsetY + 2 * ICON_WIDTH
+                );
+                d.setColorFilter(new PorterDuffColorFilter(ColorUtils.setAlphaComponent(Theme.getColor(Theme.key_switchTrack), (int) (0x4F * progress)), PorterDuff.Mode.MULTIPLY));
+                d.draw(canvas);
+
+                gd.setOrientation(GradientDrawable.Orientation.TOP_BOTTOM);
+                gd.setColors(new int[]{0x00, Color.argb(30, r, g, b)});
+                gd.setCornerRadius(AndroidUtilities.dp(25));
+
+                Theme.dialogs_onlineCirclePaint.setColor(ColorUtils.setAlphaComponent(Theme.getColor(Theme.key_switchTrack), 0x3F));
+                outlinePaint.setStrokeWidth(Math.max(3, AndroidUtilities.dp(1.5f)));
+
+                CameraClusterDrawable cameraCluster = new CameraClusterDrawable();
+                cameraCluster.draw(
+                        canvas,
+                        left + AndroidUtilities.dp(16),
+                        top + AndroidUtilities.dp(16),
+                        color,
+                        Math.max(AndroidUtilities.dp(1.5f), 3)
+                );
+            }
+        };
+        preview.setWillNotDraw(false);
+        addView(preview, new LayoutParams(0, LayoutParams.MATCH_PARENT, 1.0f));
+
+        numberPicker = new NumberPicker(context, 13) {
+            @Override
+            protected void onDraw(Canvas canvas) {
+                super.onDraw(canvas);
+                float y = AndroidUtilities.dp(31);
+                pickerDividersPaint.setColor(Theme.getColor(Theme.key_radioBackgroundChecked));
+                canvas.drawLine(AndroidUtilities.dp(2), y, getMeasuredWidth() - AndroidUtilities.dp(2), y, pickerDividersPaint);
+
+                y = getMeasuredHeight() - AndroidUtilities.dp(31);
+                canvas.drawLine(AndroidUtilities.dp(2), y, getMeasuredWidth() - AndroidUtilities.dp(2), y, pickerDividersPaint);
+            }
+        };
+
+        numberPicker.setWrapSelectorWheel(true);
+        numberPicker.setMinValue(0);
+        numberPicker.setDrawDividers(false);
+        numberPicker.setMaxValue(strings.length - 1);
+        numberPicker.setFormatter(value -> strings[value]);
+        numberPicker.setOnValueChangedListener((picker, oldVal, newVal) -> {
+            onSelectedCamera(newVal);
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
+                    && context.getResources().getConfiguration().orientation == Configuration.ORIENTATION_PORTRAIT) {
+                LaunchActivity.makeRipple((preview.getLeft() | preview.getRight()) / 2f, AndroidUtilities.dp(230), 5);
+            }
+
+            updateIcon(true);
+            picker.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP, HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING);
+        });
+        int selectedButton = NimarkoConfig.cameraType;
+        numberPicker.setValue(selectedButton);
+        addView(numberPicker, LayoutHelper.createFrame(132, 102, Gravity.RIGHT, 0, 33, 21, 33));
+        updateIcon(false);
+    }
+
+    private static class CameraClusterDrawable {
+        private final Paint outlinePaint;
+        private final GradientDrawable fillDrawable;
+
+        private final int bigSize;
+        private final int bigRadius;
+        private final int bigSpacing;
+
+        private final int smallSize;
+        private final int smallRadius;
+
+        private final int flashRadius;
+
+        public CameraClusterDrawable() {
+            outlinePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+            outlinePaint.setStyle(Paint.Style.STROKE);
+
+            fillDrawable = new GradientDrawable();
+            fillDrawable.setShape(GradientDrawable.OVAL);
+
+            bigSize = AndroidUtilities.dp(28);
+            bigRadius = bigSize / 2;
+            bigSpacing = AndroidUtilities.dp(35);
+
+            smallSize = bigSize / 2;
+            smallRadius = smallSize / 2;
+
+            flashRadius = smallRadius / 2;
+        }
+
+        public void draw(Canvas canvas, int left, int top, int color, float strokeWidth) {
+            int r = Color.red(color);
+            int g = Color.green(color);
+            int b = Color.blue(color);
+
+            outlinePaint.setColor(ColorUtils.setAlphaComponent(color, 0x3F));
+            outlinePaint.setStrokeWidth(strokeWidth);
+
+            fillDrawable.setColor(Color.argb(30, r, g, b));
+
+            int bigX = left;
+            int smallX = bigX + bigSize + AndroidUtilities.dp(10);
+            int flashX = smallX + smallRadius;
+
+            float cy1 = top + bigRadius;
+            float cy2 = cy1 + bigSpacing;
+            float cy3 = cy2 + bigSpacing;
+
+            drawModule(canvas, bigX, cy1, bigSize, bigRadius);
+            drawModule(canvas, bigX, cy2, bigSize, bigRadius);
+            drawModule(canvas, bigX, cy3, bigSize, bigRadius);
+
+            drawModule(canvas, smallX, cy1, smallSize, smallRadius);
+            drawModule(canvas, smallX, cy2, smallSize, smallRadius);
+
+            float flashCy = (cy1 + cy2) / 2f;
+            canvas.drawCircle(flashX, flashCy, flashRadius, outlinePaint);
+        }
+
+        private void drawModule(Canvas canvas, int x, float cy, int size, int radius) {
+            fillDrawable.setBounds(
+                    x,
+                    (int) (cy - radius),
+                    x + size,
+                    (int) (cy + radius)
+            );
+            fillDrawable.draw(canvas);
+
+            canvas.drawCircle(
+                    x + radius,
+                    cy,
+                    radius,
+                    outlinePaint
+            );
+        }
+    }
+
+    protected void onSelectedCamera(int cameraSelected) {
+    }
+
+    public void updateIcon(boolean animate) {
+        if (animate) {
+            animator = ValueAnimator.ofFloat(1f, 0f).setDuration(100);
+            animator.setInterpolator(Easings.easeInOutQuad);
+            animator.addUpdateListener(animation -> {
+                progress = (Float) animation.getAnimatedValue();
+                preview.invalidate();
+            });
+            animator.addListener(new AnimatorListenerAdapter() {
+                @Override
+                public void onAnimationEnd(Animator animation) {
+                    super.onAnimationEnd(animation);
+                    currentIcon = NimarkoConfig.cameraType;
+                    animator.setFloatValues(0f, 1f);
+                    animator.removeAllListeners();
+                    animator.start();
+                }
+            });
+            animator.start();
+        } else {
+            progress = 1f;
+            preview.invalidate();
+        }
+    }
+
+    @Override
+    protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
+        super.onMeasure(MeasureSpec.makeMeasureSpec(MeasureSpec.getSize(widthMeasureSpec), MeasureSpec.EXACTLY), MeasureSpec.makeMeasureSpec(AndroidUtilities.dp(168), MeasureSpec.EXACTLY));
+    }
+
+    @Override
+    public boolean dispatchTouchEvent(android.view.MotionEvent ev) {
+        
+        if (ev.getActionMasked() == android.view.MotionEvent.ACTION_DOWN
+                && ev.getX() > numberPicker.getLeft() - AndroidUtilities.dp(24)) {
+            requestDisallowInterceptTouchEvent(true);
+        }
+        return super.dispatchTouchEvent(ev);
+    }
+
+    @Override
+    protected void onDraw(Canvas canvas) {
+        if (numberPicker.getValue() == 1) {
+            canvas.drawLine(AndroidUtilities.dp(8), getMeasuredHeight() - 1, getMeasuredWidth() - AndroidUtilities.dp(8), getMeasuredHeight() - 1, Theme.dividerPaint);
+        }
+    }
+}

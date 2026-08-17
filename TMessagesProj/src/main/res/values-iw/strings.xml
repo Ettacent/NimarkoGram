@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="NM_Menu_TelegramPlus">תפריט הודעות מודרני</string>
+    <string name="NM_Menu_TelegramPlus_Desc">תפריט קומפקטי עם אפקט Liquid Glass, פעולות מקובצות, אנימציות קפיץ ומשוב דינמי. הפריסה הקומפקטית נשארת זמינה.</string>
+    <!-- NimarkoGram plugin strings ported from exteraGram (values-iw) -->
+    <string name="EnableAfterInstallation">הפעל לאחר ההתקנה</string>
+    <string name="EnablePluginsEngine">הפעלת מנוע תוספים</string>
+    <string name="EnterValue">הזן ערך</string>
+    <string name="InstallPlugin">התקנה</string>
+    <string name="Links">קישורים</string>
+    <string name="PluginDelete">מחק תוסף</string>
+    <string name="PluginDeleteInfo">האם אתה בטוח שברצונך למחוק את **%1$s**?</string>
+    <string name="PluginDisableError">נכשל בהשבתת **%1$s**.</string>
+    <string name="PluginEnableError">נכשלה ההפעלה של **%1$s**.</string>
+    <string name="PluginEngineNotEnabled">הפעל את **מנוע התוספים** כדי לפתוח הגדרות של **%1$s**.</string>
+    <string name="PluginHasNoSettings">אין הגדרות ל-**%1$s**.</string>
+    <string name="PluginInstallError">התקנת **%1$s** נכשלה.</string>
+    <string name="PluginInstalled">**%1$s** הותקן בהצלחה.</string>
+    <string name="PluginInstalledButFailedToEnable">**%1$s** הותקן, אך אירעה שגיאה בעת ההפעלה.</string>
+    <string name="PluginNoAuthor">יוצר לא ידוע</string>
+    <string name="PluginNoDescription">לא סופק תיאור.</string>
+    <string name="PluginNotEnabled">הפעל את **מנוע התוספים** כדי להתקין את **%1$s**.</string>
+    <string name="PluginNotFound">**%1$s** לא נמצא.</string>
+    <string name="PluginUpdated">**%1$s** עודכן בהצלחה.</string>
+    <string name="PluginVersion">גרסה</string>
+    <string name="Plugins">תוספים</string>
+    <string name="PluginsCompactView">תצוגה קומפקטית של תוספים</string>
+    <string name="PluginsDocumentation">תיעוד</string>
+    <string name="PluginsEngine">מנוע תוספים</string>
+    <string name="PluginsInfo">ניתן למצוא תוספים ב- @exteraPlugins.</string>
+    <string name="PluginsNotFound">לא נמצאו תוספים.</string>
+    <string name="PluginsSafeMode">מצב בטוח</string>
+    <string name="PluginsSafeModeInfo">מנוע התוספים מושבת עקב קריסה. השבתת מצב בטוח עלולה להוביל לתוצאות בלתי צפויות.</string>
+    <string name="PluginsTrusted">תוספים בטוחים</string>
+    <string name="Preferences">העדפות exteraGram</string>
+    <string name="ResetPluginSettings">הגדרות ה- **%1$s** אופסו.</string>
+    <string name="ResetPluginSettingsInfo">האם אתה בטוח שברצונך לאפס את הגדרות **%1$s** לברירת המחדל?</string>
+    <string name="RestartRequired">הפעל מחדש את האפליקציה כדי שהשינויים ייכנסו לתוקף.</string>
+    <string name="UpdatePlugin">עדכן</string>
+</resources>

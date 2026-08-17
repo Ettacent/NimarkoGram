@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- NG: Android 12+ dark-mode splash with Monet (Material You) dynamic palette.
+         system_neutral1_900 = darkest neutral tinted by user's wallpaper, used
+         for the splash background. system_accent1_200 is the lighter accent
+         (visible against dark bg). Pre-Monet devices fall back to gray. -->
+    <style name="Theme.TMessages.Start" parent="Theme.AppCompat.DayNight">
+        <item name="android:windowActionBar">false</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:actionBarStyle">@style/ActionBar.Transparent.TMessages.Start</item>
+        <item name="android:colorBackground">@android:color/system_neutral1_900</item>
+        <item name="android:windowBackground">@android:color/system_neutral1_900</item>
+        <item name="android:windowContentOverlay">@null</item>
+        <item name="android:colorPrimaryDark">@android:color/system_accent1_300</item>
+        <item name="android:colorPrimary">@android:color/system_accent1_200</item>
+        <item name="android:navigationBarColor">#000000</item>
+        <item name="android:forceDarkAllowed">false</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/splash_plane_avd</item>
+        <item name="android:windowSplashScreenAnimationDuration">@integer/splash_screen_duration</item>
+        <item name="android:windowSplashScreenBackground">@android:color/system_neutral1_900</item>
+    </style>
+
+</resources>
