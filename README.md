@@ -34,8 +34,6 @@
 
 NimarkoGram extends [Telegram for Android](https://github.com/DrKLO/Telegram) while preserving the familiar Telegram experience. The project focuses on a flexible interface, improved camera and media workflows, privacy controls, network tools and a complete extensibility platform.
 
-The plugin runtime is part of this repository. Python plugins, method hooks, dependency management, DEX modules and compatibility bridges are available as source code rather than distributed as a closed component.
-
 ## Features
 
 - Extensive appearance controls, Monet colors, icon packs, tabs, chat headers and profile customization.
