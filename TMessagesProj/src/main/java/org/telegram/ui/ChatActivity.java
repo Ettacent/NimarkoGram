@@ -7057,15 +7057,17 @@ public class ChatActivity extends BaseFragment implements
                 }
                 if (dy != 0 && scrollingFloatingDate && !currentFloatingTopIsNotMessage) {
                     if (highlightMessageId != Integer.MAX_VALUE) {
-                        removeSelectedMessageHighlight();
-                        updateVisibleRows();
+                        if (removeSelectedMessageHighlight()) {
+                            updateVisibleRows(true);
+                        }
                     }
                     showFloatingDateView(true);
                 }
                 if (isAllChats() && dy != 0 && scrollingFloatingTopic && !currentFloatingTopIsNotMessage) {
                     if (highlightMessageId != Integer.MAX_VALUE) {
-                        removeSelectedMessageHighlight();
-                        updateVisibleRows();
+                        if (removeSelectedMessageHighlight()) {
+                            updateVisibleRows(true);
+                        }
                     }
                     showFloatingTopicView(true);
                 }
@@ -17238,15 +17240,15 @@ public class ChatActivity extends BaseFragment implements
             highlightPollOptionId = null;
             highlightMessageQuoteOffset = -1;
             showNoQuoteAlert = false;
-            updateVisibleRows();
+            updateVisibleRows(true);
             unselectRunnable = null;
         };
         AndroidUtilities.runOnUIThread(unselectRunnable, highlightMessageQuote != null ? 2500 : 1000);
     }
 
-    private void removeSelectedMessageHighlight() {
+    private boolean removeSelectedMessageHighlight() {
         if (highlightMessageQuote != null || highlightTaskId != null || highlightPollOptionId != null) {
-            return;
+            return false;
         }
         if (unselectRunnable != null) {
             AndroidUtilities.cancelRunOnUIThread(unselectRunnable);
@@ -17258,6 +17260,7 @@ public class ChatActivity extends BaseFragment implements
         highlightMessageQuote = null;
         highlightTaskId = null;
         highlightPollOptionId = null;
+        return true;
     }
 
     private AlertDialog progressDialog;
