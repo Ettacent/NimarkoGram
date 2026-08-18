@@ -2388,7 +2388,7 @@ public class StoryViewer implements NotificationCenter.NotificationCenterDelegat
             return;
         }
         try {
-            app.nimarkogram.messenger.banners.NimarkoBannerRenderer.getInstance().onOverlayOpen();
+            app.nimarkogram.messenger.banners.NimarkoBannerRenderer.getInstance().onOverlayOpen(this);
             bannerOverlayPaused = true;
         } catch (Throwable ignored) {
         }
@@ -2400,7 +2400,7 @@ public class StoryViewer implements NotificationCenter.NotificationCenterDelegat
         }
         bannerOverlayPaused = false;
         try {
-            app.nimarkogram.messenger.banners.NimarkoBannerRenderer.getInstance().onOverlayClose();
+            app.nimarkogram.messenger.banners.NimarkoBannerRenderer.getInstance().onOverlayClose(this);
         } catch (Throwable ignored) {
         }
     }

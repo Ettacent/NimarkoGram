@@ -28,8 +28,10 @@ import org.telegram.tgnet.TLRPC;
 import org.telegram.ui.Components.VideoPlayer;
 
 import java.io.File;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
@@ -156,6 +158,9 @@ public final class NimarkoBannerRenderer {
     private long viewedProfileId;
     
     private volatile boolean isProfileOpen, appPaused, overlayOpen, videoPausedByTab;
+    private static final Object LEGACY_OVERLAY_OWNER = new Object();
+    private final Object overlayOwnersLock = new Object();
+    private final Set<Object> overlayOwners = Collections.newSetFromMap(new IdentityHashMap<>());
     private boolean openAnimDone, showingPh;
     
     private volatile boolean collapseSettling;
@@ -426,20 +431,47 @@ public final class NimarkoBannerRenderer {
     }
 
     public void onOverlayOpen() {
-        if (overlayOpen) { return; }
-        overlayOpen = true;
+        onOverlayOpen(LEGACY_OVERLAY_OWNER);
+    }
+
+    public void onOverlayOpen(Object owner) {
+        Object key = owner != null ? owner : LEGACY_OVERLAY_OWNER;
+        synchronized (overlayOwnersLock) {
+            if (!overlayOwners.add(key)) {
+                return;
+            }
+            overlayOpen = true;
+        }
         stopBlur();
-        if (videoPlayer != null) { try { videoPlayer.pause(); } catch (Throwable ignored) {} }
+        VideoPlayer player = videoPlayer;
+        if (player != null) {
+            try {
+                if (vidReady) {
+                    captureFreezeFrame();
+                }
+                player.pause();
+            } catch (Throwable ignored) {}
+        }
     }
 
     public void onOverlayClose() {
-        if (!overlayOpen) { return; }
-        overlayOpen = false;
+        onOverlayClose(LEGACY_OVERLAY_OWNER);
+    }
+
+    public void onOverlayClose(Object owner) {
+        Object key = owner != null ? owner : LEGACY_OVERLAY_OWNER;
+        synchronized (overlayOwnersLock) {
+            if (!overlayOwners.remove(key)) {
+                return;
+            }
+            overlayOpen = !overlayOwners.isEmpty();
+            if (overlayOpen) {
+                return;
+            }
+        }
         boolean playGate = videoPlayer != null && vidReady && isProfileOpen && !appPaused && !videoPausedByTab;
         if (playGate) {
-            try { videoPlayer.play(); } catch (Throwable ignored) {}
-            startBlur();
-            invalidateTopView();
+            resumePlayerIfReady();
         }
     }
 

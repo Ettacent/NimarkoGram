@@ -14,10 +14,13 @@ import androidx.annotation.RequiresApi;
 import androidx.core.content.ContextCompat;
 import androidx.core.graphics.ColorUtils;
 
+import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.ApplicationLoader;
 import org.telegram.messenger.FileLog;
 import org.telegram.ui.ActionBar.Theme;
 
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -33,6 +36,9 @@ public class MonetHelper {
     );
     private static final int SUCCESS_LIGHT = 0xff188038;
     private static final int SUCCESS_DARK = 0xff81c995;
+    private static final Set<String> VALID_TOKENS = ConcurrentHashMap.newKeySet();
+    private static final ConcurrentHashMap<String, Integer> COLOR_CACHE = new ConcurrentHashMap<>();
+    private static final ConcurrentHashMap<String, Integer> AMOLED_COLOR_CACHE = new ConcurrentHashMap<>();
 
     @SuppressLint("NewApi")
     private static final SparseIntArray IDS = new SparseIntArray() {{
@@ -114,6 +120,10 @@ public class MonetHelper {
             return false;
         }
         rawColor = rawColor.trim();
+        if (VALID_TOKENS.contains(rawColor)) {
+            return true;
+        }
+        boolean valid = false;
         Matcher matcher = PALETTE_TOKEN.matcher(rawColor);
         if (matcher.matches()) {
             if ("n".equals(matcher.group(1)) && "3".equals(matcher.group(2))) {
@@ -121,30 +131,35 @@ public class MonetHelper {
             }
             if (matcher.group(4) != null) {
                 try {
-                    return Integer.parseInt(matcher.group(4)) <= 255;
+                    valid = Integer.parseInt(matcher.group(4)) <= 255;
                 } catch (NumberFormatException ignore) {
                     return false;
                 }
+            } else {
+                valid = true;
             }
-            return true;
-        }
-        matcher = ROLE_TOKEN.matcher(rawColor);
-        if (matcher.matches()) {
+        } else if ((matcher = ROLE_TOKEN.matcher(rawColor)).matches()) {
             if (matcher.group(3) != null) {
                 try {
-                    return Integer.parseInt(matcher.group(3)) <= 255;
+                    valid = Integer.parseInt(matcher.group(3)) <= 255;
                 } catch (NumberFormatException ignore) {
                     return false;
                 }
+            } else {
+                valid = true;
             }
-            return true;
+        } else {
+            valid = "monetRed".equals(rawColor)
+                    || "monetRedLight".equals(rawColor)
+                    || "monetRedDark".equals(rawColor)
+                    || "monetRedCall".equals(rawColor)
+                    || "monetGreen".equals(rawColor)
+                    || "monetGreenCall".equals(rawColor);
         }
-        return "monetRed".equals(rawColor)
-                || "monetRedLight".equals(rawColor)
-                || "monetRedDark".equals(rawColor)
-                || "monetRedCall".equals(rawColor)
-                || "monetGreen".equals(rawColor)
-                || "monetGreenCall".equals(rawColor);
+        if (valid) {
+            VALID_TOKENS.add(rawColor);
+        }
+        return valid;
     }
 
     public static int getColor(String rawColor, boolean amoled) {
@@ -152,6 +167,20 @@ public class MonetHelper {
             return 0;
         }
         rawColor = rawColor.trim();
+        ConcurrentHashMap<String, Integer> cache = amoled ? AMOLED_COLOR_CACHE : COLOR_CACHE;
+        Integer cached = cache.get(rawColor);
+        if (cached != null) {
+            return cached;
+        }
+        int resolved = resolveColor(rawColor, amoled);
+        if (ApplicationLoader.applicationContext != null && VALID_TOKENS.contains(rawColor)) {
+            Integer previous = cache.putIfAbsent(rawColor, resolved);
+            return previous != null ? previous : resolved;
+        }
+        return resolved;
+    }
+
+    private static int resolveColor(String rawColor, boolean amoled) {
         if (!isMonetColorToken(rawColor)) {
             return 0;
         }
@@ -398,6 +427,12 @@ public class MonetHelper {
     }
 
     private static class OverlayChangeReceiver extends BroadcastReceiver {
+        private final Runnable applyChangedPalette = () -> {
+            Theme.ThemeInfo activeTheme = Theme.getActiveTheme();
+            if (activeTheme != null && activeTheme.isMonet()) {
+                Theme.applyThemeInBackground(activeTheme, Theme.isCurrentThemeNight(), null);
+            }
+        };
 
         public void register(Context context) {
             IntentFilter packageFilter = new IntentFilter(ACTION_OVERLAY_CHANGED);
@@ -408,15 +443,17 @@ public class MonetHelper {
         }
 
         public void unregister(Context context) {
+            AndroidUtilities.cancelRunOnUIThread(applyChangedPalette);
             context.unregisterReceiver(this);
         }
 
         @Override
         public void onReceive(Context context, Intent intent) {
             if (ACTION_OVERLAY_CHANGED.equals(intent.getAction())) {
-                if (Theme.getActiveTheme().isMonet()) {
-                    Theme.applyTheme(Theme.getActiveTheme(), Theme.isCurrentThemeNight());
-                }
+                COLOR_CACHE.clear();
+                AMOLED_COLOR_CACHE.clear();
+                AndroidUtilities.cancelRunOnUIThread(applyChangedPalette);
+                AndroidUtilities.runOnUIThread(applyChangedPalette, 80);
             }
         }
     }

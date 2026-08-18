@@ -642,6 +642,7 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
     private ArrayList<ArrayList<ThemeDescription>> themeAnimatorDescriptions = new ArrayList<>();
     private ArrayList<ThemeDescription> presentingFragmentDescriptions;
     private ArrayList<ThemeDescription.ThemeDescriptionDelegate> themeAnimatorDelegate = new ArrayList<>();
+    private final ArrayList<Theme.Colorable> themeColorableViews = new ArrayList<>();
     private AnimatorSet themeAnimatorSet;
     AnimationNotificationsLocker notificationsLocker = new AnimationNotificationsLocker();
     private float themeAnimationValue;
@@ -3609,7 +3610,7 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
         if (delegate != null) {
             delegate.onThemeProgress(value);
         }
-        globallyUpdateColors(this);
+        updateThemeColorableViews();
     }
 
     @Keep
@@ -3719,6 +3720,7 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
                         fragment.setParentLayout(this);
                     }
                 }
+                rebuildThemeColorableViews();
                 if (settings.instant) {
                     setThemeAnimationValue(1.0f);
                     themeAnimatorDescriptions.clear();
@@ -3727,6 +3729,7 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
                     themeAnimatorDelegate.clear();
                     presentingFragmentDescriptions = null;
                     animationProgressListener = null;
+                    themeColorableViews.clear();
                     if (settings.afterAnimationRunnable != null) {
                         settings.afterAnimationRunnable.run();
                     }
@@ -3747,17 +3750,30 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
                 notificationsLocker.lock();
                 themeAnimatorSet = new AnimatorSet();
                 themeAnimatorSet.addListener(new AnimatorListenerAdapter() {
+                    private void updateDetachedThemeViews() {
+                        for (int i = 0, count = themeAnimatorDescriptions.size(); i < count; i++) {
+                            ArrayList<ThemeDescription> descriptions = themeAnimatorDescriptions.get(i);
+                            for (int j = 0, size = descriptions.size(); j < size; j++) {
+                                descriptions.get(j).updateCachedRecyclerViewsAfterAnimation();
+                            }
+                        }
+                    }
+
                     @Override
                     public void onAnimationEnd(Animator animation) {
                         notificationsLocker.unlock();
                         if (animation.equals(themeAnimatorSet)) {
+                            Theme.setAnimatingColor(false);
+                            updateDetachedThemeViews();
                             themeAnimatorDescriptions.clear();
                             animateStartColors.clear();
                             animateEndColors.clear();
                             themeAnimatorDelegate.clear();
-                            Theme.setAnimatingColor(false);
                             presentingFragmentDescriptions = null;
                             animationProgressListener = null;
+                            rebuildThemeColorableViews();
+                            updateThemeColorableViews();
+                            themeColorableViews.clear();
                             themeAnimatorSet = null;
                             if (settings.afterAnimationRunnable != null) {
                                 settings.afterAnimationRunnable.run();
@@ -3768,13 +3784,15 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
                     @Override
                     public void onAnimationCancel(Animator animation) {
                         if (animation.equals(themeAnimatorSet)) {
+                            Theme.setAnimatingColor(false);
+                            updateDetachedThemeViews();
                             themeAnimatorDescriptions.clear();
                             animateStartColors.clear();
                             animateEndColors.clear();
                             themeAnimatorDelegate.clear();
-                            Theme.setAnimatingColor(false);
                             presentingFragmentDescriptions = null;
                             animationProgressListener = null;
+                            themeColorableViews.clear();
                             themeAnimatorSet = null;
                             if (settings.afterAnimationRunnable != null) {
                                 settings.afterAnimationRunnable.run();
@@ -3795,27 +3813,33 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
                 settings.theme.setCurrentAccentId(settings.accentId);
                 Theme.saveThemeAccents(settings.theme, true, false, true, false);
             }
-            if (onDone == null) {
-                Theme.applyTheme(settings.theme, settings.nightTheme);
-                next.run();
-            } else {
-                Theme.applyThemeInBackground(settings.theme, settings.nightTheme, () -> AndroidUtilities.runOnUIThread(next));
-            }
+            Theme.applyThemeInBackground(settings.theme, settings.nightTheme, next);
         } else {
             next.run();
         }
     }
 
-    private void globallyUpdateColors(ViewGroup parent) {
+    private void rebuildThemeColorableViews() {
+        themeColorableViews.clear();
+        collectThemeColorableViews(this);
+    }
+
+    private void collectThemeColorableViews(ViewGroup parent) {
         if (parent == null) return;
         for (int i = 0; i < parent.getChildCount(); ++i) {
             final View child = parent.getChildAt(i);
             if (child instanceof Theme.Colorable) {
-                ((Theme.Colorable) child).updateColors();
+                themeColorableViews.add((Theme.Colorable) child);
             }
             if (child instanceof ViewGroup) {
-                globallyUpdateColors((ViewGroup) child);
+                collectThemeColorableViews((ViewGroup) child);
             }
+        }
+    }
+
+    private void updateThemeColorableViews() {
+        for (int i = 0, size = themeColorableViews.size(); i < size; i++) {
+            themeColorableViews.get(i).updateColors();
         }
     }
 

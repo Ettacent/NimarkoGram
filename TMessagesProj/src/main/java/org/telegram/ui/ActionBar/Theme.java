@@ -141,7 +141,6 @@ import java.lang.ref.WeakReference;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.nio.ByteBuffer;
-import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Calendar;
@@ -152,6 +151,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.atomic.AtomicInteger;
 
 public class Theme {
 
@@ -4466,6 +4466,8 @@ public class Theme {
     private static HashSet<Integer> themeAccentExclusionKeys = new HashSet<>();
     
     private static final HashSet<String> verifiedAssetFiles = new HashSet<>();
+    private static long installedApkTimestamp = Long.MIN_VALUE;
+    private static final AtomicInteger backgroundThemeApplyGeneration = new AtomicInteger();
     private static SparseIntArray currentColorsNoAccent;
     private static SparseIntArray currentColors;
     private static SparseIntArray animatingColors;
@@ -6542,7 +6544,8 @@ public class Theme {
     }
 
     public static void applyThemeInBackground(ThemeInfo themeInfo, boolean nightTheme, Runnable onDone) {
-        applyThemeInBackground(themeInfo, true, true, nightTheme, onDone);
+        int generation = backgroundThemeApplyGeneration.incrementAndGet();
+        applyThemeInBackground(themeInfo, true, true, nightTheme, onDone, generation);
     }
 
     public static void applyTheme(ThemeInfo themeInfo, boolean save, boolean nightTheme) {
@@ -6573,6 +6576,7 @@ public class Theme {
         if (themeInfo == null) {
             return;
         }
+        backgroundThemeApplyGeneration.incrementAndGet();
         ThemeEditorView editorView = ThemeEditorView.getInstance();
         if (editorView != null) {
             editorView.destroy();
@@ -6672,7 +6676,7 @@ public class Theme {
                     SharedPreferences preferences = MessagesController.getGlobalMainSettings();
                     SharedPreferences.Editor editor = preferences.edit();
                     editor.remove("theme");
-                    editor.commit();
+                    editor.apply();
                 }
                 currentColorsNoAccent.clear();
                 themedWallpaperFileOffset = 0;
@@ -6699,7 +6703,7 @@ public class Theme {
         }
     }
 
-    private static void applyThemeInBackground(ThemeInfo themeInfo, boolean save, boolean removeWallpaperOverride, final boolean nightTheme, Runnable onDone) {
+    private static void applyThemeInBackground(ThemeInfo themeInfo, boolean save, boolean removeWallpaperOverride, final boolean nightTheme, Runnable onDone, int generation) {
         if (themeInfo == null) {
             if (onDone != null) {
                 onDone.run();
@@ -6720,6 +6724,9 @@ public class Theme {
                 }
                 String[] wallpaperLink = new String[1];
                 Runnable next = () -> {
+                    if (generation != backgroundThemeApplyGeneration.get()) {
+                        return;
+                    }
                     try {
                         themedWallpaperFileOffset = currentColorsNoAccent.get(key_wallpaperFileOffset, -1);
                         if (!TextUtils.isEmpty(wallpaperLink[0])) {
@@ -6816,27 +6823,37 @@ public class Theme {
                     
                     final boolean monetAmoled = "Monet AMOLED".equals(themeInfo.name);
                     getThemeFileValuesInBackground(null, themeInfo.assetName, null, monetAmoled, colors -> {
-                        if (!isThemePaletteValid(themeInfo, colors)) {
-                            FileLog.e("Refusing to apply an empty or incomplete theme palette: " + themeInfo.getKey());
-                            if (onDone != null) {
-                                onDone.run();
+                        AndroidUtilities.runOnUIThread(() -> {
+                            if (generation != backgroundThemeApplyGeneration.get()) {
+                                return;
                             }
-                            return;
-                        }
-                        currentColorsNoAccent = colors;
-                        next.run();
+                            if (!isThemePaletteValid(themeInfo, colors)) {
+                                FileLog.e("Refusing to apply an empty or incomplete theme palette: " + themeInfo.getKey());
+                                if (onDone != null) {
+                                    onDone.run();
+                                }
+                                return;
+                            }
+                            currentColorsNoAccent = colors;
+                            next.run();
+                        });
                     });
                 } else {
                     getThemeFileValuesInBackground(new File(themeInfo.pathToFile), null, wallpaperLink, colors -> {
-                        if (!isThemePaletteValid(themeInfo, colors)) {
-                            FileLog.e("Refusing to apply an empty or incomplete theme palette: " + themeInfo.getKey());
-                            if (onDone != null) {
-                                onDone.run();
+                        AndroidUtilities.runOnUIThread(() -> {
+                            if (generation != backgroundThemeApplyGeneration.get()) {
+                                return;
                             }
-                            return;
-                        }
-                        currentColorsNoAccent = colors;
-                        next.run();
+                            if (!isThemePaletteValid(themeInfo, colors)) {
+                                FileLog.e("Refusing to apply an empty or incomplete theme palette: " + themeInfo.getKey());
+                                if (onDone != null) {
+                                    onDone.run();
+                                }
+                                return;
+                            }
+                            currentColorsNoAccent = colors;
+                            next.run();
+                        });
                     });
                 }
                 return;
@@ -7128,7 +7145,11 @@ public class Theme {
                 }
             }
             editor.putInt("accent_current_" + theme.assetName, theme.currentAccentId);
-            editor.commit();
+            if (indexOnly) {
+                editor.apply();
+            } else {
+                editor.commit();
+            }
         } else {
             if (theme.prevAccentId != -1) {
                 if (remove) {
@@ -8031,23 +8052,27 @@ public class Theme {
         saveOtherThemes(true);
     }
 
+    private static long getInstalledApkTimestamp() {
+        if (installedApkTimestamp != Long.MIN_VALUE) {
+            return installedApkTimestamp;
+        }
+        try {
+            String sourceDir = ApplicationLoader.applicationContext.getApplicationInfo().sourceDir;
+            installedApkTimestamp = sourceDir == null ? 0 : new File(sourceDir).lastModified();
+        } catch (Throwable ignore) {
+            installedApkTimestamp = 0;
+        }
+        return installedApkTimestamp;
+    }
+
     private static boolean assetMatchesCachedFile(String assetName, File file) {
         if (!file.exists()) {
             return false;
         }
-        try (InputStream assetStream = ApplicationLoader.applicationContext.getAssets().open(assetName);
-             FileInputStream fileStream = new FileInputStream(file)) {
-            MessageDigest assetDigest = MessageDigest.getInstance("SHA-256");
-            MessageDigest fileDigest = MessageDigest.getInstance("SHA-256");
-            byte[] buffer = new byte[8192];
-            int read;
-            while ((read = assetStream.read(buffer)) != -1) {
-                assetDigest.update(buffer, 0, read);
-            }
-            while ((read = fileStream.read(buffer)) != -1) {
-                fileDigest.update(buffer, 0, read);
-            }
-            return Arrays.equals(assetDigest.digest(), fileDigest.digest());
+        try (InputStream assetStream = ApplicationLoader.applicationContext.getAssets().open(assetName)) {
+            long apkTimestamp = getInstalledApkTimestamp();
+            return file.length() == assetStream.available()
+                    && (apkTimestamp <= 0 || file.lastModified() >= apkTimestamp);
         } catch (Exception e) {
             return false;
         }
@@ -8063,6 +8088,12 @@ public class Theme {
         if (!ready) {
             try (InputStream in = ApplicationLoader.applicationContext.getAssets().open(assetName)) {
                 ready = AndroidUtilities.copyFile(in, file);
+                if (ready) {
+                    long apkTimestamp = getInstalledApkTimestamp();
+                    if (apkTimestamp > 0 && file.lastModified() < apkTimestamp) {
+                        file.setLastModified(apkTimestamp);
+                    }
+                }
             } catch (Exception e) {
                 FileLog.e(e);
             }
@@ -8450,7 +8481,7 @@ public class Theme {
                                     if (resolved != 0 || param.endsWith("_0")) {
                                         value = resolved;
                                     }
-                                } else if (param.matches("-?\\d+")) {
+                                } else if (isDecimalInteger(param)) {
                                     try {
                                         value = Integer.parseInt(param);
                                     } catch (NumberFormatException ignore) {
@@ -8490,6 +8521,24 @@ public class Theme {
             }
         }
         return stringMap;
+    }
+
+    private static boolean isDecimalInteger(String value) {
+        int length = value.length();
+        if (length == 0) {
+            return false;
+        }
+        int index = value.charAt(0) == '-' ? 1 : 0;
+        if (index == length) {
+            return false;
+        }
+        while (index < length) {
+            char c = value.charAt(index++);
+            if (c < '0' || c > '9') {
+                return false;
+            }
+        }
+        return true;
     }
 
     public static void createCommonResources(Context context) {

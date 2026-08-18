@@ -8,6 +8,8 @@
 
 package org.telegram.ui;
 
+import app.nimarkogram.messenger.banners.NimarkoBannerRenderer;
+
 import static org.telegram.messenger.AndroidUtilities.dp;
 import static org.telegram.messenger.AndroidUtilities.lerp;
 import static org.telegram.messenger.LocaleController.formatString;
@@ -281,6 +283,29 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
     private boolean isVisible;
     private boolean collapsed;
     private boolean attachedToWindow;
+    private boolean bannerOverlayRegistered;
+
+    private void setBannerOverlayVisible(boolean visible) {
+        if (visible) {
+            if (bannerOverlayRegistered) {
+                return;
+            }
+            NimarkoBannerRenderer renderer = NimarkoBannerRenderer.peek();
+            if (renderer != null) {
+                renderer.onOverlayOpen(this);
+                bannerOverlayRegistered = true;
+            }
+        } else {
+            if (!bannerOverlayRegistered) {
+                return;
+            }
+            bannerOverlayRegistered = false;
+            NimarkoBannerRenderer renderer = NimarkoBannerRenderer.peek();
+            if (renderer != null) {
+                renderer.onOverlayClose(this);
+            }
+        }
+    }
 
     private int currentAccount;
     private int notificationsAccount = -1;
@@ -5727,6 +5752,9 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
             wm.updateViewLayout(windowView, windowLayoutParams);
         }
         isVisible = true;
+        if (sheet == null) {
+            setBannerOverlayVisible(true);
+        }
         animationInProgress = 1;
 
         if (openingAbove) {
@@ -6003,6 +6031,7 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
 
     private void onClosed() {
         isVisible = false;
+        setBannerOverlayVisible(false);
         for (int i = 0; i < pages.length; i++) {
             pages[i].cleanup();
         }
@@ -6118,6 +6147,7 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
     }
 
     public void destroyArticleViewer() {
+        setBannerOverlayVisible(false);
         unregisterNotificationObservers();
         if (loadingProgress != null) {
             Browser.Progress progress = loadingProgress;
@@ -15692,6 +15722,7 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
                 pages[1].resume();
             }
             activeSheets.add(ArticleViewer.this);
+            setBannerOverlayVisible(true);
         }
 
         private void dumpTree(StringBuilder sb, View v, int depth, int maxDepth) {
@@ -15749,6 +15780,7 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
         @Override
         public void release() {
             released = true;
+            setBannerOverlayVisible(false);
             if (pages[0] != null && pages[0].swipeBack) {
                 pages[0].swipeContainer.setSwipeOffsetY(-pages[0].swipeContainer.offsetY + pages[0].swipeContainer.topActionBarOffsetY);
                 pages[0].swipeBack = false;

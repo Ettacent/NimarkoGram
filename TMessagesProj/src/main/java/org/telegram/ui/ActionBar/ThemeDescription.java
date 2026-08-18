@@ -469,19 +469,8 @@ public class ThemeDescription {
         }
         if (listClasses != null) {
             if (viewToInvalidate instanceof RecyclerListView) {
-                RecyclerListView recyclerListView = (RecyclerListView) viewToInvalidate;
-                recyclerListView.getRecycledViewPool().clear();
-                int count = recyclerListView.getHiddenChildCount();
-                for (int a = 0; a < count; a++) {
-                    processViewColor(recyclerListView.getHiddenChildAt(a), color);
-                }
-                count = recyclerListView.getCachedChildCount();
-                for (int a = 0; a < count; a++) {
-                    processViewColor(recyclerListView.getCachedChildAt(a), color);
-                }
-                count = recyclerListView.getAttachedScrapChildCount();
-                for (int a = 0; a < count; a++) {
-                    processViewColor(recyclerListView.getAttachedScrapChildAt(a), color);
+                if (!Theme.isAnimatingColor()) {
+                    updateCachedRecyclerViews(color);
                 }
             }
             if (viewToInvalidate instanceof ViewGroup) {
@@ -498,6 +487,34 @@ public class ThemeDescription {
         }
         if (viewToInvalidate != null) {
             viewToInvalidate.invalidate();
+        }
+    }
+
+    public void updateCachedRecyclerViewsAfterAnimation() {
+        if (listClasses == null || !(viewToInvalidate instanceof RecyclerListView)) {
+            return;
+        }
+        int color = currentColor;
+        if (alphaOverride > 0) {
+            color = Color.argb(alphaOverride, Color.red(color), Color.green(color), Color.blue(color));
+        }
+        updateCachedRecyclerViews(color);
+    }
+
+    private void updateCachedRecyclerViews(int color) {
+        RecyclerListView recyclerListView = (RecyclerListView) viewToInvalidate;
+        recyclerListView.getRecycledViewPool().clear();
+        int count = recyclerListView.getHiddenChildCount();
+        for (int a = 0; a < count; a++) {
+            processViewColor(recyclerListView.getHiddenChildAt(a), color);
+        }
+        count = recyclerListView.getCachedChildCount();
+        for (int a = 0; a < count; a++) {
+            processViewColor(recyclerListView.getCachedChildAt(a), color);
+        }
+        count = recyclerListView.getAttachedScrapChildCount();
+        for (int a = 0; a < count; a++) {
+            processViewColor(recyclerListView.getAttachedScrapChildAt(a), color);
         }
     }
 

@@ -258,6 +258,7 @@ public class ThemeActivity extends BaseFragment implements NotificationCenter.No
     private final static int day_night_switch = 5;
 
     private RLottieDrawable sunDrawable;
+    private boolean firstResume = true;
 
     private boolean highlightSensitiveRow;
     public ThemeActivity highlightSensitiveRow() {
@@ -467,7 +468,7 @@ public class ThemeActivity extends BaseFragment implements NotificationCenter.No
             SharedPreferences preferences = MessagesController.getGlobalMainSettings();
             SharedPreferences.Editor editor = preferences.edit();
             editor.putInt("bubbleRadius", SharedConfig.bubbleRadius);
-            editor.commit();
+            editor.apply();
 
             RecyclerView.ViewHolder holder = listView.findViewHolderForAdapterPosition(textSizeRow);
             if (holder != null && holder.itemView instanceof TextSizeCell) {
@@ -506,7 +507,7 @@ public class ThemeActivity extends BaseFragment implements NotificationCenter.No
             }
             SharedPreferences.Editor editor = preferences.edit();
             editor.putInt("fons_size", SharedConfig.fontSize);
-            editor.commit();
+            editor.apply();
 
             Theme.createCommonMessageResources();
 
@@ -847,8 +848,8 @@ public class ThemeActivity extends BaseFragment implements NotificationCenter.No
         getNotificationCenter().addObserver(this, NotificationCenter.themeUploadError);
         getNotificationCenter().addObserver(this, NotificationCenter.webBrowserSettingsUpdate);
         if (currentType == THEME_TYPE_BASIC) {
-            Theme.loadRemoteThemes(currentAccount, true);
-            Theme.checkCurrentRemoteTheme(true);
+            Theme.loadRemoteThemes(currentAccount, false);
+            Theme.checkCurrentRemoteTheme(false);
         }
         return super.onFragmentCreate();
     }
@@ -1544,7 +1545,9 @@ public class ThemeActivity extends BaseFragment implements NotificationCenter.No
     @Override
     public void onResume() {
         super.onResume();
-        if (listAdapter != null) {
+        if (firstResume) {
+            firstResume = false;
+        } else if (listAdapter != null) {
             updateRows(true);
         }
     }

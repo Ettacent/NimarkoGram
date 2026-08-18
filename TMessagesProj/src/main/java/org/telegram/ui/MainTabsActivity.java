@@ -1201,7 +1201,9 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
                 updateLayout.updateAppUpdateViews(currentAccount, LaunchActivity.instance.getMainFragmentsStackSize() == 1);
             }
         } else if (id == NotificationCenter.needSetDayNightTheme) {
-            clearAllHiddenFragments();
+            if (parentLayout == null || parentLayout.getLastFragment() == this) {
+                clearAllHiddenFragments();
+            }
         } else if (id == NotificationCenter.callTabsVisibleToggled) {
             final boolean callTabsVisible = getUserConfig().showCallsTab;
             checkUi_callTabVisible(callTabsVisible, true);

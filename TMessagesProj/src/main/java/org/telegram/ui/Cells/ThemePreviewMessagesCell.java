@@ -190,7 +190,7 @@ public class ThemePreviewMessagesCell extends LinearLayout {
             }
             String greeting = "\uD83D\uDC4B";
             int index = message.message.indexOf(greeting);
-            if (index >= 0) {
+            if (index >= 0 && type != 0) {
                 TLRPC.TL_messageEntityCustomEmoji entity = new TLRPC.TL_messageEntityCustomEmoji();
                 entity.offset = index;
                 entity.length = greeting.length();
@@ -230,7 +230,7 @@ public class ThemePreviewMessagesCell extends LinearLayout {
             }
             String cool = "\uD83D\uDE0E";
             int index1 = message.message.indexOf(cool);
-            if (index1 >= 0) {
+            if (index1 >= 0 && type != 0) {
                 TLRPC.TL_messageEntityCustomEmoji entity = new TLRPC.TL_messageEntityCustomEmoji();
                 entity.offset = index1;
                 entity.length = cool.length();

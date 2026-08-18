@@ -26,6 +26,7 @@ import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.MediaDataController;
 import org.telegram.messenger.NotificationCenter;
 import org.telegram.messenger.R;
+import org.telegram.messenger.Utilities;
 import org.telegram.tgnet.TLRPC;
 import org.telegram.ui.ActionBar.BaseFragment;
 import org.telegram.ui.ActionBar.EmojiThemes;
@@ -133,7 +134,7 @@ public class DefaultThemesPreviewCell extends LinearLayout {
             if (info != null) {
                 SharedPreferences.Editor editor = ApplicationLoader.applicationContext.getSharedPreferences("themeconfig", Activity.MODE_PRIVATE).edit();
                 editor.putString(currentType == ThemeActivity.THEME_TYPE_NIGHT || info.isDark() ? "lastDarkTheme" : "lastDayTheme", info.getKey());
-                editor.commit();
+                editor.apply();
             }
 
             Theme.turnOffAutoNight(parentFragment);
@@ -299,10 +300,20 @@ public class DefaultThemesPreviewCell extends LinearLayout {
             if (currentType == ThemeActivity.THEME_TYPE_BASIC) {
 
                 EmojiThemes chatTheme = EmojiThemes.createPreviewCustom(parentFragment.getCurrentAccount());
-                chatTheme.loadPreviewColors(parentFragment.getCurrentAccount());
                 ChatThemeBottomSheet.ChatThemeItem item = new ChatThemeBottomSheet.ChatThemeItem(chatTheme);
                 item.themeIndex = !Theme.isCurrentThemeDay() ? 2 : 0;
-                themes.add(item);
+                Utilities.themeQueue.postRunnable(() -> {
+                    chatTheme.loadPreviewColors(parentFragment.getCurrentAccount());
+                    AndroidUtilities.runOnUIThread(() -> {
+                        if (adapter.items == null || adapter.items.contains(item)) {
+                            return;
+                        }
+                        ArrayList<ChatThemeBottomSheet.ChatThemeItem> updated = new ArrayList<>(adapter.items);
+                        updated.add(item);
+                        adapter.setItems(updated);
+                        updateDayNightMode();
+                    });
+                });
             }
 
             adapter.setItems(themes);
@@ -432,7 +443,7 @@ public class DefaultThemesPreviewCell extends LinearLayout {
         if (currentType != ThemeActivity.THEME_TYPE_OTHER) {
             SharedPreferences.Editor editor = ApplicationLoader.applicationContext.getSharedPreferences("themeconfig", Activity.MODE_PRIVATE).edit();
             editor.putString(currentType == ThemeActivity.THEME_TYPE_NIGHT || themeInfo.isDark() ? "lastDarkTheme" : "lastDayTheme", themeInfo.getKey());
-            editor.commit();
+            editor.apply();
         }
         if (currentType == ThemeActivity.THEME_TYPE_NIGHT) {
             if (themeInfo == Theme.getCurrentNightTheme()) {
