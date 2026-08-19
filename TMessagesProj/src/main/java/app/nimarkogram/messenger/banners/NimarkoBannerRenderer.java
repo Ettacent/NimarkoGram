@@ -353,6 +353,9 @@ public final class NimarkoBannerRenderer {
         viewedProfileId = dialogId;
         isProfileOpen = true;
         openAnimDone = false;
+        if (appPaused && !ApplicationLoader.mainInterfacePaused) {
+            appPaused = false;
+        }
         
         ctrl.ensureStarted();
         

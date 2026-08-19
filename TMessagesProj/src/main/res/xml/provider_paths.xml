@@ -1,12 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <paths>
     <external-path name="media" path="."/>
+    <external-cache-path name="quote_external_cache" path="quote_creator/"/>
+    <external-files-path name="quote_external_files" path="quote_creator/"/>
     <!-- Scoped entry for OTA update APKs (getExternalFilesDir/ota) so the install intent resolves
          through this precise root instead of the over-broad external-path/root-path ones. -->
     <external-files-path name="ota" path="ota/"/>
     <files-path name="logs" path="/logs/"/>
     <files-path name="cache" path="/cache/"/>
     <files-path name="temp" path="/temp/"/>
+    <cache-path name="quote_cache" path="quote_creator/"/>
     <files-path name="plugins" path="/plugins/"/>
     <root-path name="external_files" path="/storage/" />
 </paths>

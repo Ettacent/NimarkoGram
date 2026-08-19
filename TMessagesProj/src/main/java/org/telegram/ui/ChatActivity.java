@@ -3901,6 +3901,8 @@ public class ChatActivity extends BaseFragment implements
                         undoView.showWithAction(0, UndoView.ACTION_TEXT_COPIED, null);
                     }
                     clearSelectionMode();
+                } else if (id == app.nimarkogram.messenger.NimarkoMessageMenuInjector.OPTION_CREATE_QUOTE) {
+                    app.nimarkogram.messenger.quotes.NimarkoQuoteCreator.openSelection(ChatActivity.this);
                 } else if (id == delete) {
                     if (getParentActivity() == null) {
                         return;
@@ -10582,9 +10584,11 @@ public class ChatActivity extends BaseFragment implements
             actionModeViews.add(actionMode.addItemWithWidth(app.nimarkogram.messenger.utils.chats.NimarkoChatActivityHelper.OPTION_SELECT_BETWEEN, R.drawable.msg_select_between_solar, AndroidUtilities.dp(54), LocaleController.getString(R.string.Edit)));
             actionModeViews.add(actionMode.addItemWithWidth(star, R.drawable.msg_fave, AndroidUtilities.dp(54), LocaleController.getString(R.string.AddToFavorites)));
             actionModeViews.add(actionMode.addItemWithWidth(copy, R.drawable.msg_copy, AndroidUtilities.dp(54), LocaleController.getString(R.string.Copy)));
-            if (!isSavedMessages && getDialogId() != UserObject.VERIFY) {
-                actionModeViews.add(actionMode.addItemWithWidth(forward, R.drawable.msg_forward, dp(48), LocaleController.getString(R.string.Forward)));
-            }
+            actionModeViews.add(actionMode.addItemWithWidth(
+                    app.nimarkogram.messenger.NimarkoMessageMenuInjector.OPTION_CREATE_QUOTE,
+                    R.drawable.menu_select_quote,
+                    AndroidUtilities.dp(48),
+                    LocaleController.getString(R.string.NM_QC_Create)));
             actionModeViews.add(actionMode.addItemWithWidth(share, R.drawable.msg_shareout, dp(48), LocaleController.getString(R.string.ShareFile)));
             actionModeViews.add(actionMode.addItemWithWidth(delete, R.drawable.msg_delete, dp(48), LocaleController.getString(R.string.Delete)));
         } else {
@@ -10595,6 +10599,7 @@ public class ChatActivity extends BaseFragment implements
         }
         
         app.nimarkogram.messenger.utils.chats.NimarkoChatActivityHelper.updateMultipleSelection(actionMode, this);
+        app.nimarkogram.messenger.quotes.NimarkoQuoteCreator.updateActionModeVisibility(actionMode, this);
         actionMode.setItemVisibility(edit, canEditMessagesCount == 1 && selectedMessagesIds[0].size() + selectedMessagesIds[1].size() == 1 ? View.VISIBLE : View.GONE);
         actionMode.setItemVisibility(copy, !isPeerNoForwards() && selectedMessagesCanCopyIds[0].size() + selectedMessagesCanCopyIds[1].size() != 0 ? View.VISIBLE : View.GONE);
         actionMode.setItemVisibility(star, selectedMessagesCanStarIds[0].size() + selectedMessagesCanStarIds[1].size() != 0 ? View.VISIBLE : View.GONE);
@@ -19280,6 +19285,13 @@ public class ChatActivity extends BaseFragment implements
 
     @Override
     public void onRequestPermissionsResultFragment(int requestCode, String[] permissions, int[] grantResults) {
+        if (app.nimarkogram.messenger.quotes.NimarkoQuoteCreator.onRequestPermissionsResult(
+                this,
+                requestCode,
+                grantResults
+        )) {
+            return;
+        }
         if (chatActivityEnterView != null) {
             chatActivityEnterView.onRequestPermissionsResultFragment(requestCode, permissions, grantResults);
         }
@@ -19916,6 +19928,7 @@ public class ChatActivity extends BaseFragment implements
         }
         
         app.nimarkogram.messenger.utils.chats.NimarkoChatActivityHelper.updateMultipleSelection(actionBar.createActionMode(), this);
+        app.nimarkogram.messenger.quotes.NimarkoQuoteCreator.updateActionModeVisibility(actionBar.createActionMode(), this);
     }
 
     public void updateTitle(boolean animated) {
@@ -33495,6 +33508,7 @@ public class ChatActivity extends BaseFragment implements
         }
         
         app.nimarkogram.messenger.utils.chats.NimarkoChatActivityHelper.updateMultipleSelection(actionMode, this);
+        app.nimarkogram.messenger.quotes.NimarkoQuoteCreator.updateActionModeVisibility(actionMode, this);
         updateVisibleRows();
         if (chatActivityEnterView != null) {
             chatActivityEnterView.hideBotCommands();
@@ -34487,6 +34501,19 @@ public class ChatActivity extends BaseFragment implements
                             .getCustomChatID(getUserConfig().getClientUserId());
                     getSendMessagesHelper().sendMessage(toSave, targetId, false, false, true, 0, null, -1, 0);
                 }
+                break;
+            }
+            case app.nimarkogram.messenger.NimarkoMessageMenuInjector.OPTION_CREATE_QUOTE: {
+                final MessageObject quoteObject = selectedObject;
+                final MessageObject.GroupedMessages quoteGroup = selectedObjectGroup;
+                AndroidUtilities.runOnUIThread(
+                        () -> app.nimarkogram.messenger.quotes.NimarkoQuoteCreator.open(
+                                ChatActivity.this,
+                                quoteObject,
+                                quoteGroup
+                        ),
+                        90
+                );
                 break;
             }
             
@@ -47674,6 +47701,15 @@ public class ChatActivity extends BaseFragment implements
                 selectedObject, getValidGroupedMessage(selectedObject), noforwardsOrPaidMedia, allowEdit, items, options, icons);
 
         app.nimarkogram.messenger.NimarkoMessageMenuInjector.injectClearFromCache(selectedObject, currentAccount, items, options, icons);
+        app.nimarkogram.messenger.NimarkoMessageMenuInjector.injectCreateQuote(
+                this,
+                selectedObject,
+                selectedObjectGroup,
+                noforwardsOrPaidMedia,
+                items,
+                options,
+                icons
+        );
         app.nimarkogram.messenger.NimarkoMessageMenuInjector.injectJSON(items, options, icons);
         
         app.nimarkogram.messenger.NimarkoMessageMenuInjector.injectDetails(items, options, icons);

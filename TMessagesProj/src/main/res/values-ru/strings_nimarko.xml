@@ -297,4 +297,11 @@
     <string name="NM_ProxyVpnPromo_Desc">VPN и готовые ключи VLESS/Hysteria2 для обхода блокировок.</string>
     <string name="NM_IOSStyleComposer">Ввод в стиле iOS</string>
     <string name="NM_IOSStyleComposer_Desc">Раздельные блоки скрепки, текста и отправки. Отключите, чтобы вернуть классическое поле со скрепкой справа внутри.</string>
+    <string name="NM_QC_Create">Создать цитату</string>
+    <string name="NM_QC_Preview">Предпросмотр цитаты</string>
+    <string name="NM_QC_SendHere">Отправить сюда</string>
+    <string name="NM_QC_SelectLimit">Выберите не более %1$d сообщений</string>
+    <string name="NM_QC_Protected">Это сообщение нельзя экспортировать</string>
+    <string name="NM_QC_Failed">Не удалось создать изображение цитаты</string>
+    <string name="NM_QC_Saved">Изображение цитаты сохранено</string>
 </resources>

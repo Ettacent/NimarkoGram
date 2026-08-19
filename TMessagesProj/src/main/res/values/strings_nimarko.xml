@@ -300,4 +300,11 @@
     <string name="NM_ProxyVpnPromo_Desc">A VPN and ready-to-use VLESS/Hysteria2 keys to bypass blocks.</string>
     <string name="NM_IOSStyleComposer">iOS-style message input</string>
     <string name="NM_IOSStyleComposer_Desc">Separate attachment, text and send controls. Turn off to restore the classic field with the paperclip inside on the right.</string>
+    <string name="NM_QC_Create">Create quote</string>
+    <string name="NM_QC_Preview">Quote preview</string>
+    <string name="NM_QC_SendHere">Send here</string>
+    <string name="NM_QC_SelectLimit">Select up to %1$d messages</string>
+    <string name="NM_QC_Protected">This message cannot be exported</string>
+    <string name="NM_QC_Failed">Couldn’t create the quote image</string>
+    <string name="NM_QC_Saved">Quote image saved</string>
 </resources>

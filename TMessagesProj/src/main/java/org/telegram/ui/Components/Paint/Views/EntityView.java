@@ -168,7 +168,7 @@ public class EntityView extends FrameLayout {
 
     @Override
     public boolean onInterceptTouchEvent(MotionEvent ev) {
-        return delegate.allowInteraction(this);
+        return delegate != null && delegate.allowInteraction(this);
     }
 
     private boolean onTouchMove(float x1, float y1, boolean multitouch, float x2, float y2) {
@@ -246,10 +246,10 @@ public class EntityView extends FrameLayout {
     }
 
     private void onTouchUp(boolean canceled) {
-        if (announcedDrag) {
+        if (announcedDrag && delegate != null) {
             delegate.onEntityDragEnd(announcedTrash);
-            announcedDrag = false;
         }
+        announcedDrag = false;
         announcedMultitouchDrag = false;
         if (!canceled && !recognizedLongPress && !hasPanned && !hasTransformed && !announcedSelection && delegate != null) {
             delegate.onEntitySelected(this);
@@ -327,7 +327,7 @@ public class EntityView extends FrameLayout {
 
     @Override
     public boolean onTouchEvent(MotionEvent event) {
-        if (!delegate.allowInteraction(this)) {
+        if (delegate == null || !delegate.allowInteraction(this)) {
             return false;
         }
 
@@ -865,6 +865,7 @@ public class EntityView extends FrameLayout {
 
         @Override
         public boolean onTouchEvent(MotionEvent event) {
+            if (delegate == null) return false;
             int action = event.getActionMasked();
             boolean handled = false;
 
@@ -937,6 +938,8 @@ public class EntityView extends FrameLayout {
                             }
                             hasTransformed = true;
                             AndroidUtilities.cancelRunOnUIThread(longPressRunnable);
+
+                            if (delegate == null) return false;
 
                             int[] pos = delegate.getCenterLocation(EntityView.this);
                             float pd = MathUtils.distance(pos[0], pos[1], previousLocationX, previousLocationY);

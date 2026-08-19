@@ -23,11 +23,29 @@ public final class NimarkoMessageMenuInjector {
     public static final int OPTION_FORWARD_WO_AUTHOR = 203;
     public static final int OPTION_VIEW_HISTORY = 204;
     public static final int OPTION_SAVE_MESSAGE_CHAT = 205;
+    public static final int OPTION_CREATE_QUOTE = 207;
      
     @Deprecated
     public static final int OPTION_DETAILS_JSON = 206;
 
     private NimarkoMessageMenuInjector() {}
+
+    public static void injectCreateQuote(
+        ChatActivity chatActivity,
+        MessageObject selectedObject,
+        MessageObject.GroupedMessages selectedObjectGroup,
+        boolean noforwardsOrPaidMedia,
+        ArrayList<CharSequence> items,
+        ArrayList<Integer> options,
+        ArrayList<Integer> icons
+    ) {
+        if (noforwardsOrPaidMedia) return;
+        if (!app.nimarkogram.messenger.quotes.NimarkoQuoteCreator.canCreate(chatActivity, selectedObject, selectedObjectGroup)) return;
+
+        items.add(LocaleController.getString(R.string.NM_QC_Create));
+        options.add(OPTION_CREATE_QUOTE);
+        icons.add(R.drawable.menu_select_quote);
+    }
 
     public static void injectCopyPhoto(
         ArrayList<CharSequence> items,

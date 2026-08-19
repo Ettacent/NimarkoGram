@@ -132,6 +132,10 @@ public class ProxyListActivity extends BaseFragment implements NotificationCente
                 rowsUpdatePendingNotify = false;
                 return;
             }
+            if (listView != null
+                    && listView.getScrollState() != RecyclerView.SCROLL_STATE_IDLE) {
+                return;
+            }
             if (listView != null && listView.isComputingLayout()) {
                 postPendingRowsUpdate();
                 return;
@@ -442,6 +446,14 @@ public class ProxyListActivity extends BaseFragment implements NotificationCente
         listView.setLayoutManager(layoutManager = new LinearLayoutManager(context, LinearLayoutManager.VERTICAL, false));
         frameLayout.addView(listView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT, Gravity.TOP | Gravity.LEFT));
         listView.setAdapter(listAdapter);
+        listView.addOnScrollListener(new RecyclerView.OnScrollListener() {
+            @Override
+            public void onScrollStateChanged(@NonNull RecyclerView recyclerView, int newState) {
+                if (newState == RecyclerView.SCROLL_STATE_IDLE && rowsUpdatePending) {
+                    postPendingRowsUpdate();
+                }
+            }
+        });
         listView.setOnItemClickListener((view, position) -> {
             if (position == nimarkoVpnRow) {
                 org.telegram.messenger.browser.Browser.openUrl(getParentActivity(), "https://t.me/NimarkoVPN_Bot");
@@ -717,6 +729,10 @@ public class ProxyListActivity extends BaseFragment implements NotificationCente
         if (fragmentDestroyed || rowsUpdatePosted) {
             return;
         }
+        if (listView != null
+                && listView.getScrollState() != RecyclerView.SCROLL_STATE_IDLE) {
+            return;
+        }
         rowsUpdatePosted = true;
         AndroidUtilities.runOnUIThread(rowsUpdateRunnable);
     }
@@ -725,7 +741,9 @@ public class ProxyListActivity extends BaseFragment implements NotificationCente
         if (fragmentDestroyed) {
             return;
         }
-        if (rowsUpdateInProgress || (listView != null && listView.isComputingLayout())) {
+        if (rowsUpdateInProgress
+                || (listView != null && (listView.isComputingLayout()
+                || listView.getScrollState() != RecyclerView.SCROLL_STATE_IDLE))) {
             requestRowsUpdate(notify);
             return;
         }

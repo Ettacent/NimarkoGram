@@ -290,4 +290,11 @@
     <string name="NM_ProxyVpnPromo_Desc">VPN 與即用型 VLESS/Hysteria2 金鑰，突破封鎖。</string>
     <string name="NM_IOSStyleComposer">iOS 風格訊息輸入列</string>
     <string name="NM_IOSStyleComposer_Desc">將附件、文字與傳送控制項分開顯示。關閉後恢復經典輸入列，迴紋針位於列內右側。</string>
+    <string name="NM_QC_Create">產生引用圖片</string>
+    <string name="NM_QC_Preview">引用圖片預覽</string>
+    <string name="NM_QC_SendHere">傳送到目前聊天</string>
+    <string name="NM_QC_SelectLimit">最多選擇 %1$d 則訊息</string>
+    <string name="NM_QC_Protected">此訊息無法匯出</string>
+    <string name="NM_QC_Failed">無法產生引用圖片</string>
+    <string name="NM_QC_Saved">引用圖片已儲存</string>
 </resources>

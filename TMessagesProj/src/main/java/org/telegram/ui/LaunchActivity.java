@@ -7193,10 +7193,7 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
         NotificationCenter.getGlobalInstance().postNotificationName(NotificationCenter.startAllHeavyOperations, 4096);
         MediaController.getInstance().setFeedbackView(feedbackView = actionBarLayout.getView(), true);
         ApplicationLoader.mainInterfacePaused = false;
-        
-        if (app.nimarkogram.messenger.banners.NimarkoBannerConfig.enabled) {
             try { app.nimarkogram.messenger.banners.NimarkoBannerRenderer.getInstance().onAppResume(); } catch (Throwable ignore) {}
-        }
         
         try { app.nimarkogram.messenger.wsbypass.NimarkoWsBypassController.getInstance().onAppResume(); } catch (Throwable ignore) {}
         MessagesController.getInstance(currentAccount).sortDialogsAfterResume();
