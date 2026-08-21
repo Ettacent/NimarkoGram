@@ -8,8 +8,10 @@ import android.graphics.drawable.Drawable;
 import android.net.Uri;
 import android.text.SpannableStringBuilder;
 import android.text.Spanned;
+import android.text.SpannedString;
 import android.text.TextUtils;
 import android.text.style.ClickableSpan;
+import android.util.LruCache;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewOutlineProvider;
@@ -19,6 +21,7 @@ import android.widget.LinearLayout;
 import androidx.annotation.NonNull;
 import androidx.core.widget.NestedScrollView;
 
+import java.lang.ref.WeakReference;
 import java.util.Locale;
 import java.util.regex.Matcher;
 
@@ -33,6 +36,7 @@ import org.telegram.messenger.FileLog;
 import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.NotificationCenter;
 import org.telegram.messenger.R;
+import org.telegram.messenger.Utilities;
 import org.telegram.messenger.browser.Browser;
 import org.telegram.ui.ActionBar.BaseFragment;
 import org.telegram.ui.ActionBar.BottomSheet;
@@ -53,6 +57,7 @@ public class NimarkoUpdaterSheet extends BottomSheet implements NimarkoUpdater.D
 
     private static final String STICKER_PACK = "PixelAnimeGirls";
     private static final int STICKER_NUM = 11;
+    private static final LruCache<ChangelogCacheKey, CharSequence> CHANGELOG_CACHE = new LruCache<>(4);
 
     private BaseFragment fragment;
     private Theme.ResourcesProvider resourcesProvider;
@@ -148,7 +153,9 @@ public class NimarkoUpdaterSheet extends BottomSheet implements NimarkoUpdater.D
             changelogView.setGravity((LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT) | Gravity.TOP);
             changelogView.setMovementMethod(new AndroidUtilities.LinkMovementMethodMy());
             changelogView.setPadding(AndroidUtilities.dp(21), 0, AndroidUtilities.dp(21), AndroidUtilities.dp(16));
-            changelogView.setText(formatChangelog(context, resourcesProvider, update.changelog));
+            String markdown = normalizeMarkdown(update.changelog);
+            CharSequence formatted = CHANGELOG_CACHE.get(new ChangelogCacheKey(markdown, ChangelogStyle.from(resourcesProvider)));
+            changelogView.setText(formatted != null ? formatted : markdown);
             contentLayout.addView(changelogView, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
         }
 
@@ -200,7 +207,7 @@ public class NimarkoUpdaterSheet extends BottomSheet implements NimarkoUpdater.D
                 NimarkoUpdateConfig.setUpdateScheduleTimestamp(System.currentTimeMillis());
                 dismiss();
             });
-            footerLayout.addView(scheduleButton, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 48, 16, 0, 16, 12));
+            footerLayout.addView(scheduleButton, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 48, 16, 8, 16, 12));
         } else {
             TextCell checkOnLaunch = new TextCell(context, 23, false, true, resourcesProvider);
             checkOnLaunch.setBackground(createRowPressedBackground(resourcesProvider));
@@ -250,33 +257,29 @@ public class NimarkoUpdaterSheet extends BottomSheet implements NimarkoUpdater.D
         });
     }
 
-    private static CharSequence formatChangelog(
-            Context context,
-            Theme.ResourcesProvider resourcesProvider,
-            String source) {
-        String markdown = source == null ? "" : source.replace("\r\n", "\n").replace('\r', '\n').trim();
+    private static CharSequence formatChangelog(Context context, ChangelogStyle style, String markdown) {
+        ChangelogCacheKey key = new ChangelogCacheKey(markdown, style);
+        CharSequence cached = CHANGELOG_CACHE.get(key);
+        if (cached != null) return cached;
         try {
-            int textColor = Theme.getColor(Theme.key_windowBackgroundWhiteBlackText, resourcesProvider);
-            int linkColor = Theme.getColor(Theme.key_windowBackgroundWhiteLinkText, resourcesProvider);
-            int dividerColor = Theme.getColor(Theme.key_divider, resourcesProvider);
             Markwon markwon = Markwon.builder(context)
                     .usePlugin(StrikethroughPlugin.create())
                     .usePlugin(new AbstractMarkwonPlugin() {
                         @Override
                         public void configureTheme(@NonNull MarkwonTheme.Builder builder) {
                             builder
-                                    .linkColor(linkColor)
+                                    .linkColor(style.linkColor)
                                     .isLinkUnderlined(false)
                                     .blockMargin(AndroidUtilities.dp(16))
                                     .blockQuoteWidth(AndroidUtilities.dp(3))
-                                    .blockQuoteColor(Theme.multAlpha(linkColor, 0.72f))
-                                    .listItemColor(linkColor)
+                                    .blockQuoteColor(Theme.multAlpha(style.linkColor, 0.72f))
+                                    .listItemColor(style.linkColor)
                                     .bulletListItemStrokeWidth(AndroidUtilities.dp(1))
                                     .bulletWidth(AndroidUtilities.dp(6))
-                                    .codeTextColor(textColor)
-                                    .codeBlockTextColor(textColor)
-                                    .codeBackgroundColor(Theme.multAlpha(textColor, 0.08f))
-                                    .codeBlockBackgroundColor(Theme.multAlpha(textColor, 0.08f))
+                                    .codeTextColor(style.textColor)
+                                    .codeBlockTextColor(style.textColor)
+                                    .codeBackgroundColor(Theme.multAlpha(style.textColor, 0.08f))
+                                    .codeBlockBackgroundColor(Theme.multAlpha(style.textColor, 0.08f))
                                     .codeBlockMargin(AndroidUtilities.dp(12))
                                     .codeTypeface(AndroidUtilities.getTypeface(AndroidUtilities.TYPEFACE_ROBOTO_MONO))
                                     .codeBlockTypeface(AndroidUtilities.getTypeface(AndroidUtilities.TYPEFACE_ROBOTO_MONO))
@@ -284,9 +287,9 @@ public class NimarkoUpdaterSheet extends BottomSheet implements NimarkoUpdater.D
                                     .codeBlockTextSize(AndroidUtilities.dp(14))
                                     .headingTypeface(AndroidUtilities.bold())
                                     .headingTextSizeMultipliers(new float[]{1.30f, 1.24f, 1.18f, 1.12f, 1.06f, 1.0f})
-                                    .headingBreakColor(dividerColor)
+                                    .headingBreakColor(style.dividerColor)
                                     .headingBreakHeight(0)
-                                    .thematicBreakColor(dividerColor)
+                                    .thematicBreakColor(style.dividerColor)
                                     .thematicBreakHeight(AndroidUtilities.dp(1));
                         }
 
@@ -303,12 +306,79 @@ public class NimarkoUpdaterSheet extends BottomSheet implements NimarkoUpdater.D
                     .build();
             SpannableStringBuilder result = new SpannableStringBuilder(markwon.toMarkdown(markdown));
             addBareLinks(result);
-            return result;
+            CharSequence formatted = new SpannedString(result);
+            CHANGELOG_CACHE.put(key, formatted);
+            return formatted;
         } catch (Throwable e) {
             FileLog.e(e);
             SpannableStringBuilder result = new SpannableStringBuilder(markdown);
             addBareLinks(result);
-            return result;
+            CharSequence formatted = new SpannedString(result);
+            CHANGELOG_CACHE.put(key, formatted);
+            return formatted;
+        }
+    }
+
+    private static String normalizeMarkdown(String source) {
+        return source == null ? "" : source.replace("\r\n", "\n").replace('\r', '\n').trim();
+    }
+
+    private static final class ChangelogStyle {
+        final int textColor;
+        final int linkColor;
+        final int dividerColor;
+
+        ChangelogStyle(int textColor, int linkColor, int dividerColor) {
+            this.textColor = textColor;
+            this.linkColor = linkColor;
+            this.dividerColor = dividerColor;
+        }
+
+        static ChangelogStyle from(Theme.ResourcesProvider resourcesProvider) {
+            return new ChangelogStyle(
+                    Theme.getColor(Theme.key_windowBackgroundWhiteBlackText, resourcesProvider),
+                    Theme.getColor(Theme.key_windowBackgroundWhiteLinkText, resourcesProvider),
+                    Theme.getColor(Theme.key_divider, resourcesProvider));
+        }
+
+        @Override
+        public boolean equals(Object object) {
+            if (this == object) return true;
+            if (!(object instanceof ChangelogStyle)) return false;
+            ChangelogStyle other = (ChangelogStyle) object;
+            return textColor == other.textColor
+                    && linkColor == other.linkColor
+                    && dividerColor == other.dividerColor;
+        }
+
+        @Override
+        public int hashCode() {
+            int result = textColor;
+            result = 31 * result + linkColor;
+            return 31 * result + dividerColor;
+        }
+    }
+
+    private static final class ChangelogCacheKey {
+        final String markdown;
+        final ChangelogStyle style;
+
+        ChangelogCacheKey(String markdown, ChangelogStyle style) {
+            this.markdown = markdown;
+            this.style = style;
+        }
+
+        @Override
+        public boolean equals(Object object) {
+            if (this == object) return true;
+            if (!(object instanceof ChangelogCacheKey)) return false;
+            ChangelogCacheKey other = (ChangelogCacheKey) object;
+            return markdown.equals(other.markdown) && style.equals(other.style);
+        }
+
+        @Override
+        public int hashCode() {
+            return 31 * markdown.hashCode() + style.hashCode();
         }
     }
 
@@ -357,7 +427,7 @@ public class NimarkoUpdaterSheet extends BottomSheet implements NimarkoUpdater.D
 
         UpdateContentScrollView(Context context, boolean updateAvailable) {
             super(context);
-            int reservedHeight = AndroidUtilities.dp(updateAvailable ? 168 : 116);
+            int reservedHeight = AndroidUtilities.dp(updateAvailable ? 176 : 116);
             maxHeight = Math.min(
                     AndroidUtilities.dp(640),
                     Math.max(AndroidUtilities.dp(120), AndroidUtilities.displaySize.y - reservedHeight));
@@ -419,6 +489,38 @@ public class NimarkoUpdaterSheet extends BottomSheet implements NimarkoUpdater.D
         if (fragment == null || fragment.getParentActivity() == null || fragment.getContext() == null) {
             return;
         }
+        if (available && update != null && !TextUtils.isEmpty(update.changelog)) {
+            showWhenChangelogReady(fragment, update);
+            return;
+        }
+        showPreparedAlert(fragment, available, update);
+    }
+
+    private static void showWhenChangelogReady(BaseFragment fragment, NimarkoUpdater.Update update) {
+        String markdown = normalizeMarkdown(update.changelog);
+        ChangelogStyle style = ChangelogStyle.from(fragment.getResourceProvider());
+        ChangelogCacheKey key = new ChangelogCacheKey(markdown, style);
+        if (CHANGELOG_CACHE.get(key) != null) {
+            showPreparedAlert(fragment, true, update);
+            return;
+        }
+        WeakReference<BaseFragment> fragmentRef = new WeakReference<>(fragment);
+        Context context = fragment.getContext();
+        Context appContext = context.getApplicationContext() != null ? context.getApplicationContext() : context;
+        Utilities.globalQueue.postRunnable(() -> {
+            formatChangelog(appContext, style, markdown);
+            AndroidUtilities.runOnUIThread(() -> {
+                BaseFragment current = fragmentRef.get();
+                if (current == null || current.isFinished
+                        || current.getParentActivity() == null || current.getContext() == null) {
+                    return;
+                }
+                showWhenChangelogReady(current, update);
+            });
+        });
+    }
+
+    private static void showPreparedAlert(BaseFragment fragment, boolean available, NimarkoUpdater.Update update) {
         NimarkoUpdaterSheet alert = new NimarkoUpdaterSheet(fragment.getContext(), fragment.getResourceProvider(), available, update);
         alert.setFragmentParams(fragment);
         fragment.showDialog(alert);
