@@ -658,6 +658,7 @@ public class SharedDocumentCell extends FrameLayout implements DownloadControlle
         }
     }
 
+
     @Override
     public void onFailedDownload(String name, boolean canceled) {
         updateFileExistIcon(true);
@@ -732,10 +733,10 @@ public class SharedDocumentCell extends FrameLayout implements DownloadControlle
 
         if (showReorderIcon || showReorderIconProgress != 0) {
             if (showReorderIcon && showReorderIconProgress != 1f) {
-                showReorderIconProgress += 16 / 150f;
+                showReorderIconProgress += AndroidUtilities.screenRefreshTime / 150f;
                 invalidate();
             } else if (!showReorderIcon && showReorderIconProgress != 0) {
-                showReorderIconProgress -= 16 / 150f;
+                showReorderIconProgress -= AndroidUtilities.screenRefreshTime / 150f;
                 invalidate();
             }
             showReorderIconProgress = Utilities.clamp(showReorderIconProgress, 1f, 0);

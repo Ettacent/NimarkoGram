@@ -177,7 +177,6 @@ public class SelfStoryViewsPage extends FrameLayout implements NotificationCente
     public SelfStoryViewsPage(StoryViewer storyViewer, @NonNull Context context, FiltersState sharedFilterState, Consumer<SelfStoryViewsPage> onSharedStateChanged) {
         super(context);
         this.sharedFilterState = sharedFilterState;
-        
         this.onSharedStateChanged = onSharedStateChanged;
         this.resourcesProvider = storyViewer.resourcesProvider;
         this.storyViewer = storyViewer;
@@ -199,6 +198,7 @@ public class SelfStoryViewsPage extends FrameLayout implements NotificationCente
                 measuerdHeight = MeasureSpec.getSize(heightSpec);
                 super.onMeasure(widthSpec, heightSpec);
             }
+
 
         };
         recyclerListView.setClipToPadding(false);
@@ -359,7 +359,6 @@ public class SelfStoryViewsPage extends FrameLayout implements NotificationCente
                                     .show();
                             cell.animateAlpha(isStoryShownToUser(viewUser) ? 1 : 0.5f, true);
                         }).makeMultiline(false).cutTextInFancyHalf()
-
                         .addIf(!isContact && !isBlocked && !isSelf, R.drawable.msg_user_remove, LocaleController.getString(R.string.BlockUser), true, () -> {
                             messagesController.blockPeer(user.id);
                             BulletinFactory.of(SelfStoryViewsPage.this, resourcesProvider).createBanBulletin(true).show();
@@ -460,7 +459,6 @@ public class SelfStoryViewsPage extends FrameLayout implements NotificationCente
                     }
                     state.searchQuery = query;
                     reload();
-                    
                 };
                 if (!TextUtils.isEmpty(text)) {
                     AndroidUtilities.runOnUIThread(searchRunnable, 300);
@@ -479,6 +477,7 @@ public class SelfStoryViewsPage extends FrameLayout implements NotificationCente
 
         addView(topViewsContainer);
     }
+
 
     @Override
     protected void dispatchDraw(Canvas canvas) {
@@ -724,7 +723,6 @@ public class SelfStoryViewsPage extends FrameLayout implements NotificationCente
     }
 
     public void onDataRecieved(ViewsModel model) {
-      
             int oldCount = listAdapter.getItemCount();
             if (TextUtils.isEmpty(state.searchQuery) && !state.contactsOnly) {
                 updateViewsVisibility();
@@ -733,7 +731,6 @@ public class SelfStoryViewsPage extends FrameLayout implements NotificationCente
             recyclerItemsEnterAnimator.showItemsAnimated(oldCount - 1);
             checkLoadMore();
             appendNewRepostsToList(model);
-     
     }
 
     public boolean scrollToRepostCell(long dialogId, int storyId) {
@@ -791,7 +788,6 @@ public class SelfStoryViewsPage extends FrameLayout implements NotificationCente
     public void setListBottomPadding(float bottomPadding) {
         final int paddingTop = (int) bottomPadding;
         if (paddingTop != recyclerListView.getPaddingTop()) {
-            
             recyclerListView.setPadding(0, paddingTop, 0, 0);
         }
     }
@@ -828,7 +824,6 @@ public class SelfStoryViewsPage extends FrameLayout implements NotificationCente
     }
 
     protected void updateSharedState() {
-
     }
 
     public void setShadowDrawable(Drawable shadowDrawable) {
@@ -1269,7 +1264,6 @@ public class SelfStoryViewsPage extends FrameLayout implements NotificationCente
                             reactions.clear();
                             originalViews.clear();
                         }
-
                             reactions.addAll(res.reactions);
 
                         if (!res.reactions.isEmpty()) {

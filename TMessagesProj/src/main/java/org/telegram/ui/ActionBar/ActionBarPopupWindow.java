@@ -80,13 +80,11 @@ public class ActionBarPopupWindow extends PopupWindow {
             f = PopupWindow.class.getDeclaredField("mOnScrollChangedListener");
             f.setAccessible(true);
         } catch (NoSuchFieldException e) {
-             
         }
         superListenerField = f;
     }
 
     private static final ViewTreeObserver.OnScrollChangedListener NOP = () -> {
-         
     };
 
     private ViewTreeObserver.OnScrollChangedListener mSuperScrollListener;
@@ -173,6 +171,7 @@ public class ActionBarPopupWindow extends PopupWindow {
                 backgroundDrawable.getPadding(bgPaddings);
                 setBackgroundColor(getThemedColor(Theme.key_actionBarDefaultSubmenuBackground));
             }
+
 
             setWillNotDraw(false);
 
@@ -837,7 +836,6 @@ public class ActionBarPopupWindow extends PopupWindow {
         if (contentView instanceof ActionBarPopupWindowLayout && ((ActionBarPopupWindowLayout) contentView).getSwipeBack() != null) {
             setTouchInterceptor((v, e) -> {
                 if (e.getAction() == MotionEvent.ACTION_DOWN) {
-                    
                     AndroidUtilities.rectTmp.set(0, 0, contentView.getMeasuredWidth(), contentView.getMeasuredHeight());
                     AndroidUtilities.rectTmp.offset(contentView.getX(), contentView.getY());
                     if (!AndroidUtilities.rectTmp.contains(e.getX(), e.getY())) {

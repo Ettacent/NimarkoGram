@@ -29,6 +29,7 @@ import android.graphics.Shader;
 import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.Drawable;
 import android.os.Build;
+import android.os.SystemClock;
 import android.os.Bundle;
 import android.os.VibrationEffect;
 import android.os.Vibrator;
@@ -360,6 +361,7 @@ public class ContentPreviewViewer {
     private boolean menuVisible;
     private View popupLayout;
     private float blurProgress;
+    private long lastBlurUpdateTime;
     private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private UnlockPremiumView unlockPremiumView;
     private ReactionsContainerLayout reactionsLayout;
@@ -479,6 +481,7 @@ public class ContentPreviewViewer {
             }
             closeOnDismiss = true;
 
+
             if (delegate != null) {
                 ItemOptions io = delegate.getCustomItemOptions(containerView, containerView);
                 if (io != null) {
@@ -514,6 +517,7 @@ public class ContentPreviewViewer {
                     int top = lastInsets.top;
                     int size = Math.min(containerView.getWidth(), containerView.getHeight() - insets) - AndroidUtilities.dp(40f);
 
+
                     int y = (int) (moveY + Math.max(size / 2 + top + (stickerEmojiLayout != null ? AndroidUtilities.dp(40) : 0), (containerView.getHeight() - insets - keyboardHeight) / 2) + size / 2);
                     y += AndroidUtilities.dp(24) - moveY;
                     popupWindow.showAtLocation(containerView, 0, (int) ((containerView.getMeasuredWidth() - previewMenu.getMeasuredWidth()) / 2f), y);
@@ -543,6 +547,7 @@ public class ContentPreviewViewer {
                     return;
                 }
             }
+
 
             int flags = 0;
             if (currentContentType == CONTENT_TYPE_CUSTOM_STIKER || canShowFullVotersList()) {
@@ -669,13 +674,13 @@ public class ContentPreviewViewer {
                 previewMenu.addViewToSwipeBack(linearLayout);
                 backContainer.setOnClickListener(view -> previewMenu.getSwipeBack().closeForeground());
 
+
                 int insets = lastInsets.bottom + lastInsets.top;
                 int top = lastInsets.top;
                 int size = (int) (Math.min(containerView.getWidth(), containerView.getHeight() - insets) / 1.8f);
                 int y = (int) (moveY + Math.max(size / 2 + top, (containerView.getHeight() - insets - keyboardHeight) / 2) + size / 2);
                 y += AndroidUtilities.dp(24 + 60);
                 containerView.addView(previewMenu, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, Gravity.CENTER_HORIZONTAL | Gravity.TOP, 0, (float) (y / AndroidUtilities.density), 0, 0));
-
                 popupLayout = previewMenu;
                 popupLayout.setTranslationY(-dp(12));
                 popupLayout.setAlpha(0f);
@@ -692,7 +697,6 @@ public class ContentPreviewViewer {
                     showUnlockPremiumView();
                     menuVisible = true;
                     containerView.invalidate();
-                    
                     if (!app.nimarkogram.messenger.NimarkoConfig.disableVibration) {
                         try {
                             containerView.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
@@ -747,7 +751,7 @@ public class ContentPreviewViewer {
                 if (currentStickerSet != null && currentDocument != null) {
                     final MediaDataController mediaDataController = MediaDataController.getInstance(currentAccount);
                     TLRPC.TL_messages_stickerSet stickerSet = mediaDataController.getStickerSet(currentStickerSet, true);
-                    if (stickerSet != null &&  !StickersAlert.DISABLE_STICKER_EDITOR) {
+                    if (stickerSet != null && !StickersAlert.DISABLE_STICKER_EDITOR) {
                         if (delegate != null && delegate.canEditSticker() && !stickerSet.set.emojis && !stickerSet.set.masks) {
                             items.add(LocaleController.getString(R.string.EditSticker));
                             icons.add(R.drawable.msg_edit);
@@ -1120,6 +1124,7 @@ public class ContentPreviewViewer {
                 int insets = lastInsets.bottom + lastInsets.top;
                 int top = lastInsets.top;
                 int size = Math.min(containerView.getWidth(), containerView.getHeight() - insets) - AndroidUtilities.dp(40f);
+
 
                 int y = (int) (moveY + Math.max(size / 2 + top + (stickerEmojiLayout != null ? AndroidUtilities.dp(40) : 0), (containerView.getHeight() - insets - keyboardHeight) / 2) + size / 2);
                 y += AndroidUtilities.dp(24) - moveY;
@@ -1569,7 +1574,6 @@ public class ContentPreviewViewer {
                     listView.requestDisallowInterceptTouchEvent(true);
                     openPreviewRunnable = null;
                     setParentActivity(AndroidUtilities.findActivity(listView.getContext()));
-                    
                     clearsInputField = false;
                     if (currentPreviewCell instanceof StickerEmojiCell) {
                         StickerEmojiCell stickerEmojiCell = (StickerEmojiCell) currentPreviewCell;
@@ -1915,6 +1919,7 @@ public class ContentPreviewViewer {
             WindowManager wm = (WindowManager) parentActivity.getSystemService(Context.WINDOW_SERVICE);
             wm.addView(windowView, windowLayoutParams);
 
+
             isVisible = true;
             showProgress = 0.0f;
             lastTouchY = -10000;
@@ -2022,14 +2027,18 @@ public class ContentPreviewViewer {
         }
 
         if (blurrBitmap != null) {
+            long now = SystemClock.uptimeMillis();
+            long elapsed = lastBlurUpdateTime == 0 ? 16L : now - lastBlurUpdateTime;
+            float blurDt = elapsed <= 0L || elapsed > 64L ? 16f : elapsed;
+            lastBlurUpdateTime = now;
             if (menuVisible && blurProgress != 1f) {
-                blurProgress += 16 / 120f;
+                blurProgress += blurDt / 120f;
                 if (blurProgress > 1f) {
                     blurProgress = 1f;
                 }
                 containerView.invalidate();
             } else if (!menuVisible && blurProgress != 0f) {
-                blurProgress -= 16 / 120f;
+                blurProgress -= blurDt / 120f;
                 if (blurProgress < 0f) {
                     blurProgress = 0f;
                 }

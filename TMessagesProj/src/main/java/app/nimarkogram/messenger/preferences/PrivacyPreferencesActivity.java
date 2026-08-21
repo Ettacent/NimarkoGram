@@ -9,22 +9,21 @@ import android.view.View;
 import androidx.biometric.BiometricPrompt;
 
 import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
 
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.FileLog;
 import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.NotificationCenter;
 import org.telegram.messenger.R;
+import org.telegram.ui.ActionBar.AlertDialog;
 import org.telegram.ui.Components.BulletinFactory;
 import org.telegram.ui.Components.UItem;
 import org.telegram.ui.Components.UniversalAdapter;
 
 import app.nimarkogram.messenger.NimarkoConfig;
 import app.nimarkogram.messenger.preferences.helpers.PopupHelper;
-import app.nimarkogram.messenger.preferences.helpers.SettingsHelper;
 import app.nimarkogram.messenger.security.NimarkoBiometricPrompt;
+import app.nimarkogram.messenger.utils.chats.NimarkoChatMenuInjector;
 
 public class PrivacyPreferencesActivity extends BasePreferencesActivity {
     private static final int ID_HIDE_PROXY = 1;
@@ -32,13 +31,15 @@ public class PrivacyPreferencesActivity extends BasePreferencesActivity {
 
     private static final int ID_HIDE_ARCHIVED_STORIES = 3;
     private static final int ID_HIDE_ARCHIVE_LIST = 4;
-    private static final int ID_ASK_BIO_CHAT = 5;
+    private static final int ID_PROTECT_SELECTED_CHATS = 5;
     private static final int ID_LOCKED_CHATS = 6;
     private static final int ID_REQUIRE_BIO_DELETE = 7;
     private static final int ID_ALLOW_SYSTEM_PASSCODE = 8;
     private static final int ID_TEST_FINGERPRINT = 9;
-    
     private static final int ID_LOCKED_CHATS_TTL = 11;
+    private static final int ID_PROTECT_SECRET_CHATS = 12;
+    private static final int ID_PROTECT_ARCHIVE = 13;
+    private static final int ID_OPEN_ARCHIVE = 14;
 
     @Override
     public String getTitle() {
@@ -47,7 +48,6 @@ public class PrivacyPreferencesActivity extends BasePreferencesActivity {
 
     @Override
     public void fillItems(ArrayList<UItem> items, UniversalAdapter adapter) {
-        
         items.add(UItem.asHeader(LocaleController.getString(R.string.NM_PR_Header_Privacy)));
         items.add(UItem.asCheck(ID_HIDE_PROXY, LocaleController.getString(R.string.NM_PR_HideProxy))
                 .setChecked(NimarkoConfig.hideProxySponsor));
@@ -59,54 +59,53 @@ public class PrivacyPreferencesActivity extends BasePreferencesActivity {
         items.add(UItem.asShadow(null));
 
         items.add(UItem.asHeader(LocaleController.getString(R.string.FilterChats)));
-        
         items.add(UItem.asButtonCheck(ID_HIDE_ARCHIVED_STORIES,
                         LocaleController.getString(R.string.NM_PR_HideArchivedStories),
                         LocaleController.getString(R.string.NM_PR_HideArchivedStories_Desc))
                 .setChecked(NimarkoConfig.hideArchivedStories));
-        
         items.add(UItem.asButtonCheck(ID_HIDE_ARCHIVE_LIST,
                         LocaleController.getString(R.string.NM_PR_HideArchiveList),
                         LocaleController.getString(R.string.NM_PR_HideArchiveList_Desc))
                 .setChecked(NimarkoConfig.hideArchiveFromChatsList));
-        
-        boolean bioStateActive = NimarkoConfig.askBiometricsToOpenChat
-                || NimarkoConfig.askBiometricsToOpenEncrypted
-                || NimarkoConfig.askBiometricsToOpenArchive
-                || NimarkoConfig.askPasscodeBeforeDelete
-                || app.nimarkogram.messenger.utils.LockedChats.count(currentAccount) > 0;
-        if (NimarkoBiometricPrompt.hasBiometricEnrolled() || bioStateActive) {
-            
-            items.add(UItem.asButton(ID_ASK_BIO_CHAT, R.drawable.msg_pin_code,
-                    LocaleController.getString(R.string.NM_PR_AskBioOpenChats)));
-            items.add(UItem.asShadow(LocaleController.getString(R.string.NM_PR_AskBioOpenChats_Desc)));
-            if (NimarkoConfig.askBiometricsToOpenChat) {
-                int count = app.nimarkogram.messenger.utils.LockedChats.count(currentAccount);
-                items.add(UItem.asButton(ID_LOCKED_CHATS,
-                        R.drawable.msg_discussion,
-                        LocaleController.getString(R.string.NM_PR_LockedChats),
-                        String.valueOf(count)));
-                items.add(UItem.asButton(ID_LOCKED_CHATS_TTL,
-                        R.drawable.msg_recent,
-                        LocaleController.getString(R.string.NM_PR_LockedChatsTtl),
-                        getLockedChatsTtlValueText()));
-            }
-            
-            items.add(UItem.asButtonCheck(ID_REQUIRE_BIO_DELETE,
-                            LocaleController.getString(R.string.NM_PR_RequireBiometricsToDelete),
-                            LocaleController.getString(R.string.NM_PR_RequireBiometricsToDelete_Desc))
-                    .setChecked(NimarkoConfig.askPasscodeBeforeDelete));
-            
-            items.add(UItem.asButtonCheck(ID_ALLOW_SYSTEM_PASSCODE,
-                            LocaleController.getString(R.string.NM_PR_AllowSystemPasscode),
-                            LocaleController.getString(R.string.NM_PR_AllowSystemPasscode_Desc))
-                    .setChecked(NimarkoConfig.allowSystemPasscode));
+        if (NimarkoConfig.hideArchiveFromChatsList) {
+            items.add(UItem.asButton(ID_OPEN_ARCHIVE, R.drawable.msg_archive,
+                    LocaleController.getString(R.string.NM_PR_OpenArchive)));
         }
+        items.add(UItem.asShadow(null));
+
+        items.add(UItem.asHeader(LocaleController.getString(R.string.NM_PR_Header_ChatProtection)));
+        items.add(UItem.asButtonCheck(ID_PROTECT_SELECTED_CHATS,
+                        LocaleController.getString(R.string.NM_PR_AskBioOpenChats),
+                        LocaleController.getString(R.string.NM_PR_AskBioOpenChats_Desc))
+                .setChecked(NimarkoConfig.askBiometricsToOpenChat));
+        if (NimarkoConfig.askBiometricsToOpenChat) {
+            int count = app.nimarkogram.messenger.utils.LockedChats.count(currentAccount);
+            items.add(UItem.asButton(ID_LOCKED_CHATS, R.drawable.msg_discussion,
+                    LocaleController.getString(R.string.NM_PR_LockedChats), String.valueOf(count)));
+            items.add(UItem.asButton(ID_LOCKED_CHATS_TTL, R.drawable.msg_recent,
+                    LocaleController.getString(R.string.NM_PR_LockedChatsTtl),
+                    getLockedChatsTtlValueText()));
+        }
+        items.add(UItem.asButtonCheck(ID_PROTECT_SECRET_CHATS,
+                        LocaleController.getString(R.string.NM_PR_AskBioOpenEncrypted),
+                        LocaleController.getString(R.string.NM_PR_AskBioOpenEncrypted_Desc))
+                .setChecked(NimarkoConfig.askBiometricsToOpenEncrypted));
+        items.add(UItem.asButtonCheck(ID_PROTECT_ARCHIVE,
+                        LocaleController.getString(R.string.NM_PR_AskBioOpenArchive),
+                        LocaleController.getString(R.string.NM_PR_AskBioOpenArchive_Desc))
+                .setChecked(NimarkoConfig.askBiometricsToOpenArchive));
+        items.add(UItem.asButtonCheck(ID_REQUIRE_BIO_DELETE,
+                        LocaleController.getString(R.string.NM_PR_RequireBiometricsToDelete),
+                        LocaleController.getString(R.string.NM_PR_RequireBiometricsToDelete_Desc))
+                .setChecked(NimarkoConfig.askPasscodeBeforeDelete));
+        items.add(UItem.asButtonCheck(ID_ALLOW_SYSTEM_PASSCODE,
+                        LocaleController.getString(R.string.NM_PR_AllowSystemPasscode),
+                        LocaleController.getString(R.string.NM_PR_AllowSystemPasscode_Desc))
+                .setChecked(NimarkoConfig.allowSystemPasscode));
 
         items.add(UItem.asButton(ID_TEST_FINGERPRINT, R.drawable.fingerprint,
                 LocaleController.getString(R.string.NM_PR_TestFingerprint)));
         items.add(UItem.asShadow(LocaleController.getString(R.string.NM_PR_TestFingerprint_Desc)));
-        
         items.add(UItem.asShadow(null));
     }
 
@@ -116,10 +115,13 @@ public class PrivacyPreferencesActivity extends BasePreferencesActivity {
         if (id == ID_HIDE_PROXY) {
             NimarkoConfig.toggleHideProxySponsor();
             applyCheck(item, view, NimarkoConfig.hideProxySponsor);
-            
             getMessagesController().checkPromoInfo(true);
         } else if (id == ID_DELETE_ACCOUNT) {
-            runAfterAuthentication(() -> DeleteAccountDialog.showDeleteAccountDialog(this));
+            if (NimarkoConfig.askPasscodeBeforeDelete) {
+                runAfterAuthentication(() -> DeleteAccountDialog.showDeleteAccountDialog(this));
+            } else {
+                DeleteAccountDialog.showDeleteAccountDialog(this);
+            }
         } else if (id == ID_HIDE_ARCHIVED_STORIES) {
             NimarkoConfig.toggleHideArchivedStories();
             applyCheck(item, view, NimarkoConfig.hideArchivedStories);
@@ -127,35 +129,97 @@ public class PrivacyPreferencesActivity extends BasePreferencesActivity {
         } else if (id == ID_HIDE_ARCHIVE_LIST) {
             NimarkoConfig.toggleHideArchiveFromChatsList();
             applyCheck(item, view, NimarkoConfig.hideArchiveFromChatsList);
-            
             getNotificationCenter().postNotificationName(NotificationCenter.dialogsNeedReload);
-        } else if (id == ID_ASK_BIO_CHAT) {
-            runAfterAuthentication(this::showPasscodeItemsSelector);
+            refreshItems();
+        } else if (id == ID_OPEN_ARCHIVE) {
+            NimarkoChatMenuInjector.openArchivedChats(this);
+        } else if (id == ID_PROTECT_SELECTED_CHATS) {
+            changeProtectedSetting(NimarkoConfig.askBiometricsToOpenChat, () -> {
+                NimarkoConfig.toggleAskBiometricsToOpenChat();
+                applyCheck(item, view, NimarkoConfig.askBiometricsToOpenChat);
+                refreshItems();
+            });
+        } else if (id == ID_PROTECT_SECRET_CHATS) {
+            changeProtectedSetting(NimarkoConfig.askBiometricsToOpenEncrypted, () -> {
+                NimarkoConfig.toggleAskBiometricsToOpenEncrypted();
+                applyCheck(item, view, NimarkoConfig.askBiometricsToOpenEncrypted);
+            });
+        } else if (id == ID_PROTECT_ARCHIVE) {
+            changeProtectedSetting(NimarkoConfig.askBiometricsToOpenArchive, () -> {
+                NimarkoConfig.toggleAskBiometricsToOpenArchive();
+                applyCheck(item, view, NimarkoConfig.askBiometricsToOpenArchive);
+            });
         } else if (id == ID_LOCKED_CHATS) {
             runAfterAuthentication(() -> presentFragment(new LockedChatsPreferencesActivity()));
         } else if (id == ID_LOCKED_CHATS_TTL) {
             runAfterAuthentication(() -> showLockedChatsTtlPicker(view));
         } else if (id == ID_REQUIRE_BIO_DELETE) {
-            runAfterAuthentication(() -> {
+            changeProtectedSetting(NimarkoConfig.askPasscodeBeforeDelete, () -> {
                 NimarkoConfig.toggleAskPasscodeBeforeDelete();
                 applyCheck(item, view, NimarkoConfig.askPasscodeBeforeDelete);
             });
         } else if (id == ID_ALLOW_SYSTEM_PASSCODE) {
-            runAfterAuthentication(() -> {
+            Runnable toggle = () -> {
                 NimarkoConfig.toggleAllowSystemPasscode();
                 applyCheck(item, view, NimarkoConfig.allowSystemPasscode);
-            });
+            };
+            if (NimarkoConfig.allowSystemPasscode && !NimarkoBiometricPrompt.canAuthenticate(true)) {
+                confirmProtectionReset(toggle);
+            } else {
+                runAfterAuthentication(true, toggle);
+            }
         } else if (id == ID_TEST_FINGERPRINT) {
             testFingerprint();
         }
     }
 
     private void runAfterAuthentication(Runnable action) {
+        runAfterAuthentication(NimarkoConfig.allowSystemPasscode, action);
+    }
+
+    private void runAfterAuthentication(boolean allowSystem, Runnable action) {
         if (getParentActivity() == null) {
             showAuthenticationRequired();
             return;
         }
-        NimarkoBiometricPrompt.prompt(getParentActivity(), action, this::showAuthenticationRequired);
+        if (!NimarkoBiometricPrompt.canAuthenticate(allowSystem)) {
+            showAuthenticationRequired();
+            return;
+        }
+        NimarkoBiometricPrompt.prompt(getParentActivity(), currentAccount, allowSystem,
+                action, this::showAuthenticationRequired);
+    }
+
+    private void changeProtectedSetting(boolean currentlyEnabled, Runnable action) {
+        boolean allowSystem = NimarkoConfig.allowSystemPasscode;
+        if (currentlyEnabled && !NimarkoBiometricPrompt.canAuthenticate(allowSystem)
+                && NimarkoBiometricPrompt.canAuthenticate(true)) {
+            allowSystem = true;
+        }
+        if (currentlyEnabled && !NimarkoBiometricPrompt.canAuthenticate(allowSystem)) {
+            confirmProtectionReset(action);
+            return;
+        }
+        runAfterAuthentication(allowSystem, action);
+    }
+
+    private void confirmProtectionReset(Runnable action) {
+        if (getParentActivity() == null) {
+            showAuthenticationRequired();
+            return;
+        }
+        new AlertDialog.Builder(getParentActivity())
+                .setTitle(LocaleController.getString(R.string.NM_PR_AuthenticationUnavailable))
+                .setMessage(LocaleController.getString(R.string.NM_PR_AuthenticationUnavailable_Desc))
+                .setPositiveButton(LocaleController.getString(R.string.Disable), (dialog, which) -> action.run())
+                .setNegativeButton(LocaleController.getString(R.string.Cancel), null)
+                .show();
+    }
+
+    private void refreshItems() {
+        if (listView != null && listView.adapter != null) {
+            listView.adapter.update(true);
+        }
     }
 
     private void showAuthenticationRequired() {
@@ -180,7 +244,6 @@ public class PrivacyPreferencesActivity extends BasePreferencesActivity {
 
             @Override
             public void onFailed() {
-                
             }
 
             @Override
@@ -220,40 +283,8 @@ public class PrivacyPreferencesActivity extends BasePreferencesActivity {
         }
     }
 
-    private void showPasscodeItemsSelector() {
-        if (getParentActivity() == null) return;
-
-        List<String> labels = Arrays.asList(
-                LocaleController.getString(R.string.FilterChats),
-                LocaleController.getString(R.string.SecretChat),
-                LocaleController.getString(R.string.ArchivedChats)
-        );
-        List<Boolean> checks = Arrays.asList(
-                NimarkoConfig.askBiometricsToOpenChat,
-                NimarkoConfig.askBiometricsToOpenEncrypted,
-                NimarkoConfig.askBiometricsToOpenArchive
-        );
-        List<Runnable> listeners = Arrays.asList(
-                () -> {
-                    NimarkoConfig.toggleAskBiometricsToOpenChat();
-                    if (listView != null && listView.adapter != null) listView.adapter.update(true);
-                },
-                NimarkoConfig::toggleAskBiometricsToOpenEncrypted,
-                NimarkoConfig::toggleAskBiometricsToOpenArchive
-        );
-
-        PopupHelper.showSwitchAlert(
-                LocaleController.getString(R.string.SelectChats),
-                this,
-                labels,
-                checks,
-                listeners
-        );
-    }
-
     private void applyCheck(UItem item, View view, boolean value) {
         item.checked = value;
-        
         updateCheckState(view, value);
     }
 
@@ -295,7 +326,6 @@ public class PrivacyPreferencesActivity extends BasePreferencesActivity {
                 getContext(),
                 i -> {
                     NimarkoConfig.setLockedChatsBiometricTtl(values.get(i));
-                    
                     if (listView != null && listView.adapter != null) {
                         listView.adapter.update(true);
                     }

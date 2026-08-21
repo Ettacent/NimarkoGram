@@ -515,6 +515,7 @@ public class ProfileGalleryView extends CircularViewPager implements Notificatio
             }
         }
 
+
         if (action == MotionEvent.ACTION_DOWN) {
             isScrollingListView = true;
             isSwipingViewPager = true;

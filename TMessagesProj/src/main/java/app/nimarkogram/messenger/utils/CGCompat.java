@@ -1,7 +1,3 @@
-/*
- * Derived from Cherrygram. Copyright github.com/arsLan4k1390, 2022-2026.
- * Licensed under GNU GPL v2 or later.
- */
 package app.nimarkogram.messenger.utils;
 
 import android.app.Activity;
@@ -16,12 +12,11 @@ public final class CGCompat {
     private CGCompat() {}
 
     public static void runOrAskBiometricsBeforeDelete(Activity activity, Runnable action) {
-        runOrAsk(activity, NimarkoConfig.askBiometricsBeforeDelete, action);
+        runOrAsk(activity, NimarkoConfig.askPasscodeBeforeDelete, action);
     }
 
     public static void runOrAskBeforeDestructive(Activity activity, Runnable action) {
-        boolean wantPrompt = NimarkoConfig.askBiometricsBeforeDelete || NimarkoConfig.askPasscodeBeforeDelete;
-        runOrAsk(activity, wantPrompt, action);
+        runOrAsk(activity, NimarkoConfig.askPasscodeBeforeDelete, action);
     }
 
     private static void runOrAsk(Activity activity, boolean wantPrompt, Runnable action) {

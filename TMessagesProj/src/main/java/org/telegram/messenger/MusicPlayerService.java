@@ -97,6 +97,7 @@ public class MusicPlayerService extends Service implements NotificationCenter.No
         for (int a = 0; a < UserConfig.MAX_ACCOUNT_COUNT; a++) {
             NotificationCenter.getInstance(a).addObserver(this, NotificationCenter.messagePlayingDidSeek);
             NotificationCenter.getInstance(a).addObserver(this, NotificationCenter.messagePlayingPlayStateChanged);
+            NotificationCenter.getInstance(a).addObserver(this, NotificationCenter.messagePlayingMetadataChanged);
             NotificationCenter.getInstance(a).addObserver(this, NotificationCenter.httpFileDidLoad);
             NotificationCenter.getInstance(a).addObserver(this, NotificationCenter.fileLoaded);
         }
@@ -222,7 +223,6 @@ public class MusicPlayerService extends Service implements NotificationCenter.No
 
                 @Override
                 public void onStop() {
-                    
                 }
             });
             mediaSession.setActive(true);
@@ -287,6 +287,7 @@ public class MusicPlayerService extends Service implements NotificationCenter.No
         }
         return null;
     }
+
 
     private Bitmap getAvatarBitmap(TLObject userOrChat, boolean big, boolean tryLoad) {
         int size = big ? 600 : 100;
@@ -433,7 +434,6 @@ public class MusicPlayerService extends Service implements NotificationCenter.No
             boolean isPlaying = !MediaController.getInstance().isMessagePaused();
 
             PendingIntent pendingPrev = PendingIntent.getBroadcast(getApplicationContext(), 0, new Intent(NOTIFY_PREVIOUS).setComponent(new ComponentName(this, MusicPlayerReceiver.class)), fixIntentFlags(PendingIntent.FLAG_MUTABLE | PendingIntent.FLAG_CANCEL_CURRENT));
-            
             PendingIntent pendingStop = PendingIntent.getService(getApplicationContext(), 0, new Intent(this, getClass()).setAction(getPackageName() + ".STOP_PLAYER"), fixIntentFlags(PendingIntent.FLAG_MUTABLE | PendingIntent.FLAG_CANCEL_CURRENT));
             PendingIntent pendingPlaypause = PendingIntent.getBroadcast(getApplicationContext(), 0, new Intent(isPlaying ? NOTIFY_PAUSE : NOTIFY_PLAY).setComponent(new ComponentName(this, MusicPlayerReceiver.class)), fixIntentFlags(PendingIntent.FLAG_MUTABLE | PendingIntent.FLAG_CANCEL_CURRENT));
             PendingIntent pendingNext = PendingIntent.getBroadcast(getApplicationContext(), 0, new Intent(NOTIFY_NEXT).setComponent(new ComponentName(this, MusicPlayerReceiver.class)), fixIntentFlags(PendingIntent.FLAG_MUTABLE | PendingIntent.FLAG_CANCEL_CURRENT));
@@ -830,7 +830,6 @@ public class MusicPlayerService extends Service implements NotificationCenter.No
             mediaSession.release();
             mediaSession = null;
         }
-        
         try {
             if (imageReceiver != null) {
                 imageReceiver.setDelegate(null);
@@ -841,6 +840,7 @@ public class MusicPlayerService extends Service implements NotificationCenter.No
         for (int a = 0; a < UserConfig.MAX_ACCOUNT_COUNT; a++) {
             NotificationCenter.getInstance(a).removeObserver(this, NotificationCenter.messagePlayingDidSeek);
             NotificationCenter.getInstance(a).removeObserver(this, NotificationCenter.messagePlayingPlayStateChanged);
+            NotificationCenter.getInstance(a).removeObserver(this, NotificationCenter.messagePlayingMetadataChanged);
             NotificationCenter.getInstance(a).removeObserver(this, NotificationCenter.httpFileDidLoad);
             NotificationCenter.getInstance(a).removeObserver(this, NotificationCenter.fileLoaded);
         }
@@ -854,6 +854,14 @@ public class MusicPlayerService extends Service implements NotificationCenter.No
                 createNotification(messageObject, false);
             } else {
                 stopSelf();
+            }
+        } else if (id == NotificationCenter.messagePlayingMetadataChanged) {
+            MessageObject messageObject = MediaController.getInstance().getPlayingMessageObject();
+            MessageObject metadataObject = args.length > 0 && args[0] instanceof MessageObject
+                    ? (MessageObject) args[0]
+                    : null;
+            if (isSamePlayingMessage(messageObject, metadataObject, account)) {
+                createNotification(messageObject, false);
             }
         } else if (id == NotificationCenter.messagePlayingDidSeek) {
             MessageObject messageObject = MediaController.getInstance().getPlayingMessageObject();
@@ -880,5 +888,14 @@ public class MusicPlayerService extends Service implements NotificationCenter.No
                 createNotification(messageObject, false);
             }
         }
+    }
+
+    private static boolean isSamePlayingMessage(MessageObject playing, MessageObject metadataObject, int account) {
+        return playing != null
+                && metadataObject != null
+                && playing.currentAccount == account
+                && metadataObject.currentAccount == account
+                && playing.getId() == metadataObject.getId()
+                && playing.getDialogId() == metadataObject.getDialogId();
     }
 }

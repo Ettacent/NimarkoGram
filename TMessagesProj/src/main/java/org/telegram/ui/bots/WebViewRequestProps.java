@@ -1,5 +1,6 @@
 package org.telegram.ui.bots;
 
+
 import android.net.Uri;
 import android.text.TextUtils;
 
@@ -31,6 +32,7 @@ public class WebViewRequestProps {
 
     public TLObject response;
     public long responseTime;
+
 
     public static WebViewRequestProps of(
         int currentAccount,

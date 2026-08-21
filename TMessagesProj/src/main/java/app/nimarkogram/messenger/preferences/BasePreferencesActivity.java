@@ -43,7 +43,6 @@ public abstract class BasePreferencesActivity extends BaseFragment {
     @Override
     public View createView(Context context) {
         initializeOptionStrings();
-        
         this.actionBar.setBackButtonDrawable(new BackDrawable(false));
         this.actionBar.setAllowOverlayTitle(false);
         this.actionBar.setTitle(getTitle());
@@ -66,14 +65,12 @@ public abstract class BasePreferencesActivity extends BaseFragment {
                 (UItem item, View v, Integer pos, Float fx, Float fy) -> self.onClick(item, v, pos, fx, fy),
                 (UItem item, View v, Integer pos, Float fx, Float fy) -> self.onLongClick(item, v, pos, fx, fy));
         this.listView = universalRecyclerView;
-        
         universalRecyclerView.setSections(true);
         this.listView.adapter.setApplyBackground(false);
         this.actionBar.setAdaptiveBackground(this.listView);
         this.layoutManager = universalRecyclerView.layoutManager;
         frameLayout.addView(this.listView, LayoutHelper.createFrame(-1, -1.0f));
         this.fragmentView = frameLayout;
-        
         ViewCompat.setOnApplyWindowInsetsListener(frameLayout, this::onInsetsInternal);
         ViewCompat.requestApplyInsets(frameLayout);
         return frameLayout;
@@ -94,7 +91,6 @@ public abstract class BasePreferencesActivity extends BaseFragment {
 
     @Override
     public boolean drawEdgeNavigationBar() {
-        
         return false;
     }
 

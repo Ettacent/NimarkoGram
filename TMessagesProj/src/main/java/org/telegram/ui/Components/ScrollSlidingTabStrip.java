@@ -1046,35 +1046,55 @@ public class ScrollSlidingTabStrip extends HorizontalScrollView {
 
     boolean scrollRight;
     long scrollStartTime;
+    long scrollLastFrameTime;
+    float scrollRemainder;
     Runnable scrollRunnable = new Runnable() {
         @Override
         public void run() {
-            long currentTime = System.currentTimeMillis() - scrollStartTime;
-            int dx;
-            if (currentTime < 3000) {
-                dx = Math.max(1, AndroidUtilities.dp(1)) * (scrollRight ? 1 : -1);
-            } else if (currentTime < 5000) {
-                dx = Math.max(1, AndroidUtilities.dp(2)) * (scrollRight ? 1 : -1);
-            } else {
-                dx = Math.max(1, AndroidUtilities.dp(4)) * (scrollRight ? 1 : -1);
+            if (scrollStartTime <= 0) {
+                return;
             }
 
-            scrollBy(dx, 0);
-            AndroidUtilities.runOnUIThread(scrollRunnable);
+            long now = SystemClock.uptimeMillis();
+            long currentTime = now - scrollStartTime;
+            float step;
+            if (currentTime < 3000) {
+                step = Math.max(1, AndroidUtilities.dp(1));
+            } else if (currentTime < 5000) {
+                step = Math.max(1, AndroidUtilities.dp(2));
+            } else {
+                step = Math.max(1, AndroidUtilities.dp(4));
+            }
+
+            long frameTime = Math.min(32, Math.max(1, now - scrollLastFrameTime));
+            scrollLastFrameTime = now;
+            scrollRemainder += step * frameTime / 16f * (scrollRight ? 1 : -1);
+            int dx = (int) scrollRemainder;
+            if (dx != 0) {
+                scrollRemainder -= dx;
+                scrollBy(dx, 0);
+            }
+            postOnAnimation(scrollRunnable);
         }
     };
 
     private void startScroll(boolean scrollRight) {
+        if (this.scrollRight != scrollRight) {
+            scrollRemainder = 0;
+        }
         this.scrollRight = scrollRight;
         if (scrollStartTime <= 0) {
-            scrollStartTime = System.currentTimeMillis();
+            scrollStartTime = scrollLastFrameTime = SystemClock.uptimeMillis();
+            scrollRemainder = 0;
+            postOnAnimation(scrollRunnable);
         }
-        AndroidUtilities.runOnUIThread(scrollRunnable, 16);
     }
 
     private void stopScroll() {
         scrollStartTime = -1;
-        AndroidUtilities.cancelRunOnUIThread(scrollRunnable);
+        scrollLastFrameTime = 0;
+        scrollRemainder = 0;
+        removeCallbacks(scrollRunnable);
     }
 
     boolean isDragging() {

@@ -128,7 +128,6 @@ import java.util.regex.Pattern;
 import me.vkryl.core.BitwiseUtils;
 
 import app.nimarkogram.messenger.chats.filters.MessagesFilterHelper;
-
 public class MessageObject {
     private static final int MESSAGE_ID_RESERVED_BITS_MASK = 0x70000000;
     private static final int MESSAGE_ID_EPHEMERAL_BITS_MASK = 0x60000000;
@@ -1982,7 +1981,6 @@ public class MessageObject {
             } else {
                 paint = Theme.chat_msgTextPaint;
             }
-            
             try {
                 app.nimarkogram.messenger.utils.NimarkoLocalEmoji.parseCustomEmojis(
                         messageText, getEntities(), getId());
@@ -3842,7 +3840,6 @@ public class MessageObject {
 
     @Deprecated
     public void generateSuggestionApprovalMessageText() {
-         
     }
 
     public void generatePaymentSentMessageText(TLRPC.User fromUser, boolean me) {
@@ -4018,6 +4015,7 @@ public class MessageObject {
         }
         return false;
     }
+
 
     public static void updatePollResults(TLRPC.TL_messageMediaPoll media, TLRPC.PollResults results) {
         if (media == null || results == null) {
@@ -4292,8 +4290,7 @@ public class MessageObject {
         TLRPC.MessageMedia media = getMedia(messageOwner);
         if (media instanceof TLRPC.TL_messageMediaPoll) {
             return ((TLRPC.TL_messageMediaPoll) media).poll.id;
-        }  
-
+        }
         return 0;
     }
 
@@ -4529,7 +4526,9 @@ public class MessageObject {
             inlineKeyboardSource = builder.build();
         }
 
+
         final BotInlineKeyboard.Source inlineKeyboard = inlineKeyboardSource;
+
 
         if (inlineKeyboard != null && !hasExtendedMedia() || messageOwner.reactions != null && !messageOwner.reactions.results.isEmpty()) {
             Theme.createCommonMessageResources();
@@ -5017,7 +5016,6 @@ public class MessageObject {
                             stars += (int) action.upgrade_stars;
                         }
                     }
-
                     final boolean isForChannel = action.peer != null && DialogObject.getPeerDialogId(action.peer) < 0;
                     TLRPC.User user = getUser(users, sUsers, messageOwner.peer_id.user_id);
                     TLObject obj = fromObject;
@@ -5710,7 +5708,6 @@ public class MessageObject {
                         final SpannableStringBuilder ssb = new SpannableStringBuilder(title);
                         final TLRPC.Document document = TlUtils.getGiftDocument(((TLRPC.TL_chatThemeUniqueGift) actionTheme).gift);
                         if (document != null) {
-                            
                         }
                         emoticon = ssb;
                     }
@@ -5934,7 +5931,6 @@ public class MessageObject {
                 messageText = formatRichMessage(messageOwner.rich_message, isOutOwner());
                 messageText = AndroidUtilities.replaceNewLines(messageText);
             } else if (!isMediaEmpty() && !isSponsored()) {
-
                 if (getMedia(messageOwner) instanceof TLRPC.TL_messageMediaGiveaway) {
                     boolean isChannel;
                     if (messageOwner.fwd_from != null && messageOwner.fwd_from.from_id instanceof TLRPC.TL_peerChannel) {
@@ -6478,7 +6474,6 @@ public class MessageObject {
         } else if (media instanceof TLRPC.TL_messageMediaGeoLive) {
             return getString(R.string.AttachLiveLocation);
         } else if (media instanceof TLRPC.TL_messageMediaContact) {
-
             return getString(R.string.AttachContact);
         } else if (media instanceof TLRPC.TL_messageMediaGame) {
             return messageOwner.message;
@@ -6595,7 +6590,6 @@ public class MessageObject {
                 type = TYPE_TEXT;
             } else if (messageOwner.rich_message != null) {
                 type = TYPE_ARTICLE;
-
             } else if (emojiAnimatedSticker != null || emojiAnimatedStickerId != null) {
                 if (isSticker()) {
                     type = TYPE_STICKER;
@@ -6793,7 +6787,6 @@ public class MessageObject {
             } else {
                 paint = Theme.chat_msgTextPaint;
             }
-            
             try {
                 app.nimarkogram.messenger.utils.NimarkoLocalEmoji.parseCustomEmojis(
                         messageText, getEntities(), getId());
@@ -6924,11 +6917,9 @@ public class MessageObject {
         if (document != null && "video/mp4".equals(document.mime_type)) {
             int width = 0;
             int height = 0;
-            
             for (int a = 0; a < document.attributes.size(); a++) {
                 TLRPC.DocumentAttribute attribute = document.attributes.get(a);
                 if (attribute instanceof TLRPC.TL_documentAttributeAnimated) {
-                    
                 } else if (attribute instanceof TLRPC.TL_documentAttributeVideo) {
                     width = attribute.w;
                     height = attribute.h;
@@ -7876,7 +7867,6 @@ public class MessageObject {
     }
 
     public static void addPhoneLinks(CharSequence messageText) {
-
     }
 
     public void resetPlayingProgress() {
@@ -7902,14 +7892,12 @@ public class MessageObject {
             return addEntitiesToText(text, entities, isOutOwner(), true, photoViewer, useManualParse);
         } else {
             ArrayList<TLRPC.MessageEntity> entities = getEntities();
-            
             entities = MessagesFilterHelper.INSTANCE.addSpoilerEntities(this, text, entities);
             return addEntitiesToText(text, entities, isOutOwner(), true, photoViewer, useManualParse);
         }
     }
 
     public void replaceEmojiToLottieFrame(CharSequence text, int[] emojiOnly) {
-        
         if (!(text instanceof Spannable) || app.nimarkogram.messenger.NimarkoConfig.systemEmoji) {
             return;
         }
@@ -8338,7 +8326,6 @@ public class MessageObject {
         if (getDialogId() == UserObject.VERIFY) {
             return false;
         }
-        
         TLRPC.Message mo = messageOwner;
         if (mo != null && mo.from_id != null) {
             if (type == TYPE_STICKER || type == TYPE_ANIMATED_STICKER || type == TYPE_EMOJIS) {
@@ -8519,10 +8506,8 @@ public class MessageObject {
     public boolean updateSideMenuEnabled(boolean enabled) {
         if (sideMenuEnabled == enabled) return false;
         final boolean wasEnabled = sideMenuEnabled;
-
             sideMenuEnabled = enabled;
             generateLayout(null);
-
         return true;
     }
 
@@ -8603,8 +8588,7 @@ public class MessageObject {
     public static StaticLayout makeStaticLayout(CharSequence text_, TextPaint paint, int width, float lineSpacingMult, float lineSpacingAdd, boolean dontIncludePad, Layout.Alignment alignment) {
         if (width <= 0) width = 1;
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-            final CharSequence text =  
- text_;
+            final CharSequence text =  text_;
 
             StaticLayout.Builder builder =
                     StaticLayout.Builder.obtain(text, 0, text.length(), paint, width)
@@ -8673,7 +8657,6 @@ public class MessageObject {
         if (type != TYPE_TEXT && type != TYPE_EMOJIS && type != TYPE_STORY_MENTION || messageOwner.peer_id == null || TextUtils.isEmpty(messageText) && !isBotPendingDraft) {
             return;
         }
-        
         try {
             app.nimarkogram.messenger.utils.NimarkoLocalEmoji.parseCustomEmojis(
                     messageText, getEntities(), getId());
@@ -9512,6 +9495,8 @@ public class MessageObject {
                             hasNonRTL = true;
                         }
 
+
+
                         textRealMaxWidth = Math.max(textRealMaxWidth, lineWidth);
                         textRealMaxWidthWithLeft = Math.max(textRealMaxWidthWithLeft, lineWidth + lineLeft);
                         linesMaxWidth = Math.max(linesMaxWidth, (int) Math.ceil(lineWidth));
@@ -9580,7 +9565,7 @@ public class MessageObject {
             }
         }
         TLRPC.Chat chat = messageOwner.peer_id != null && messageOwner.peer_id.channel_id != 0 ? getChat(null, null, messageOwner.peer_id.channel_id) : null;
-        if (!messageOwner.out || !(messageOwner.from_id instanceof TLRPC.TL_peerUser) && (!(messageOwner.from_id instanceof TLRPC.TL_peerChannel) || ChatObject.isChannelAndNotMegaGroup(chat))   || messageOwner.post) {
+        if (!messageOwner.out || !(messageOwner.from_id instanceof TLRPC.TL_peerUser) && (!(messageOwner.from_id instanceof TLRPC.TL_peerChannel) || ChatObject.isChannelAndNotMegaGroup(chat))  || messageOwner.post) {
             return isOutOwnerCached = false;
         }
         if (messageOwner.fwd_from == null) {
@@ -9964,7 +9949,6 @@ public class MessageObject {
         if (getMedia(message) instanceof TLRPC.TL_messageMediaPaidMedia) {
             return true;
         }
-
         if (message instanceof TLRPC.TL_message_secret) {
             return (getMedia(message) instanceof TLRPC.TL_messageMediaPhoto || isVideoMessage(message)) && message.ttl > 0 && message.ttl <= 60;
         } else {
@@ -10080,7 +10064,6 @@ public class MessageObject {
             if (configurationToken.equals(after)) {
                 verdict = publishMessageBlockedVerdict(after, blocked);
             } else {
-                
                 return MessagesFilterHelper.INSTANCE.shouldBlockMessage(this);
             }
         }
@@ -10757,6 +10740,7 @@ public class MessageObject {
         return fallback;
     }
 
+
     public static ArrayList<String> findStickerEmoticons(TLRPC.Document document, Integer currentAccountForFull) {
         if (document == null) {
             return null;
@@ -10858,6 +10842,7 @@ public class MessageObject {
         }
         return false;
     }
+
 
     public static boolean isPremiumEmojiPack(TLRPC.StickerSetCovered covered) {
         if (covered != null && covered.set != null && !covered.set.emojis) {
@@ -11685,7 +11670,6 @@ public class MessageObject {
         if (message.out && chat != null && chat.megagroup && (chat.creator || chat.admin_rights != null && chat.admin_rights.pin_messages || chat.default_banned_rights != null && !chat.default_banned_rights.pin_messages)) {
             return true;
         }
-        
         return false;
     }
 
@@ -12525,6 +12509,7 @@ public class MessageObject {
             }
             messageOwner.reactions.recent_reactions.add(0, action);
 
+
             if (visibleReaction.emojicon != null) {
                 action.reaction = new TLRPC.TL_reactionEmoji();
                 ((TLRPC.TL_reactionEmoji) action.reaction).emoticon = visibleReaction.emojicon;
@@ -12641,7 +12626,6 @@ public class MessageObject {
             if (a == 0) {
                 span.translate(0, AndroidUtilities.dp(1));
             }
-
             ((SpannableStringBuilder) userSpan[a]).setSpan(span, 0, 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
         }
         return userSpan[a];
@@ -12819,6 +12803,7 @@ public class MessageObject {
         );
     }
 
+
     public static class TextRange {
         public int start, end;
 
@@ -12974,7 +12959,6 @@ public class MessageObject {
         if (id != 0) {
             messageOwner.flags |= 1073741824;
             messageOwner.quick_reply_shortcut_id = id;
-
             TLRPC.TL_inputQuickReplyShortcutId shortcut = new TLRPC.TL_inputQuickReplyShortcutId();
             shortcut.shortcut_id = id;
             messageOwner.quick_reply_shortcut = shortcut;
@@ -13075,11 +13059,9 @@ public class MessageObject {
         TLRPC.TL_factCheck factCheck = getFactCheck();
         if (factCheck == null || factCheck.text == null)
             return factCheckText = null;
-
             SpannableStringBuilder stringBuilder = new SpannableStringBuilder(factCheck.text.text);
             addEntitiesToText(stringBuilder, factCheck.text.entities, isOutOwner(), false, false, false);
             factCheckText = stringBuilder;
-
         return factCheckText;
     }
 
@@ -13195,7 +13177,6 @@ public class MessageObject {
 
     public Float cachedSavedTimestamp;
     public float getVideoSavedProgress() {
-
         if (cachedSavedTimestamp != null) return PhotoViewer.getSavedProgressFast(this);
         return cachedSavedTimestamp = PhotoViewer.getSavedProgress(this);
     }
@@ -13531,6 +13512,7 @@ public class MessageObject {
         } else if ((oldMedia == null) != (newMedia == null)) {
             flags |= SUGGESTION_FLAG_EDIT_MEDIA;
         }
+
 
         return flags;
     }

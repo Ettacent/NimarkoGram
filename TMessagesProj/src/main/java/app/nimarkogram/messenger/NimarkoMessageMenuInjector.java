@@ -24,7 +24,6 @@ public final class NimarkoMessageMenuInjector {
     public static final int OPTION_VIEW_HISTORY = 204;
     public static final int OPTION_SAVE_MESSAGE_CHAT = 205;
     public static final int OPTION_CREATE_QUOTE = 207;
-     
     @Deprecated
     public static final int OPTION_DETAILS_JSON = 206;
 
@@ -41,6 +40,7 @@ public final class NimarkoMessageMenuInjector {
     ) {
         if (noforwardsOrPaidMedia) return;
         if (!app.nimarkogram.messenger.quotes.NimarkoQuoteCreator.canCreate(chatActivity, selectedObject, selectedObjectGroup)) return;
+
 
         items.add(LocaleController.getString(R.string.NM_QC_Create));
         options.add(OPTION_CREATE_QUOTE);
@@ -81,7 +81,6 @@ public final class NimarkoMessageMenuInjector {
     }
 
     private static boolean hasCachedFile(MessageObject m, int currentAccount) {
-        
         final boolean hasMedia = m.getDocument() != null
                 || m.type == MessageObject.TYPE_PHOTO
                 || m.type == MessageObject.TYPE_VIDEO
@@ -154,9 +153,7 @@ public final class NimarkoMessageMenuInjector {
         if (chatMode != 0) return;
         if (currentChat.broadcast) return;
         if (threadMessageObjects != null && message != null && threadMessageObjects.contains(message)) return;
-        
         if (message != null && message.isOutOwner()) return;
-        
         if (message != null && (message.messageOwner == null
             || message.messageOwner.action != null
             || message.isSponsored()
@@ -210,7 +207,6 @@ public final class NimarkoMessageMenuInjector {
         ArrayList<Integer> options,
         ArrayList<Integer> icons
     ) {
-        
         if (NimarkoConfig.showJSON && !NimarkoConfig.showDetails) {
             items.add("JSON");
             options.add(app.nimarkogram.messenger.utils.chats.NimarkoChatActivityHelper.OPTION_DETAILS);
@@ -242,6 +238,7 @@ public final class NimarkoMessageMenuInjector {
         }
     }
 
+
     public static void injectForwardWoCaption(
         MessageObject selectedObject,
         MessageObject.GroupedMessages selectedObjectGroup,
@@ -266,7 +263,6 @@ public final class NimarkoMessageMenuInjector {
                 || selectedObject.type == MessageObject.TYPE_GIFT_STARS) return;
         if (selectedObject.isWallpaperAction()) return;
         if (selectedObject.isExpiredStory()) return;
-        
         if (!hasAnyCaption(selectedObject, selectedObjectGroup)) return;
 
         items.add(LocaleController.getString(R.string.NM_MI_ForwardWoCaption));
@@ -307,7 +303,6 @@ public final class NimarkoMessageMenuInjector {
     ) {
         if (!NimarkoConfig.showGetCustomReactions) return;
         if (selectedObject == null) return;
-        
         if (selectedObject.messageOwner == null || selectedObject.messageOwner.reactions == null
                 || selectedObject.messageOwner.reactions.results == null) return;
         boolean hasCustom = false;
@@ -350,7 +345,6 @@ public final class NimarkoMessageMenuInjector {
         ArrayList<Integer> icons
     ) {
         if (options == null || items == null || icons == null) return;
-        
         java.util.ArrayList<Integer> toRemove = new java.util.ArrayList<>();
         for (int i = 0; i < options.size(); i++) {
             Integer opt = options.get(i);
@@ -376,7 +370,6 @@ public final class NimarkoMessageMenuInjector {
             }
             if (remove) toRemove.add(i);
         }
-        
         for (int i = toRemove.size() - 1; i >= 0; i--) {
             int idx = toRemove.get(i);
             if (idx < options.size()) options.remove(idx);

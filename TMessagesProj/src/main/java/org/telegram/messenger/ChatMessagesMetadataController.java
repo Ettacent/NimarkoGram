@@ -15,6 +15,14 @@ public class ChatMessagesMetadataController {
     private final ArrayList<MessageObject> extendedMediaToCheck = new ArrayList<>(10);
     private final ArrayList<MessageObject> storiesToCheck = new ArrayList<>(10);
 
+    private ChatActivity.ChatActivityAdapter lastCheckedAdapter;
+    private int lastCheckedFrom = -1;
+    private int lastCheckedTo = -1;
+    private int lastCheckedMessagesCount = -1;
+    private int lastCheckedFirstId;
+    private int lastCheckedLastId;
+    private long lastCheckedTime;
+
     ArrayList<Integer> reactionsRequests = new ArrayList<>();
     ArrayList<Integer> extendedMediaRequests = new ArrayList<>();
 
@@ -34,6 +42,24 @@ public class ChatMessagesMetadataController {
             if (to > messages.size()) {
                 to = messages.size();
             }
+            int firstId = from < to ? messages.get(from).getId() : 0;
+            int lastId = from < to ? messages.get(to - 1).getId() : 0;
+            boolean sameWindow = lastCheckedAdapter == chatAdapter
+                    && lastCheckedFrom == from
+                    && lastCheckedTo == to
+                    && lastCheckedMessagesCount == messages.size()
+                    && lastCheckedFirstId == firstId
+                    && lastCheckedLastId == lastId;
+            if (sameWindow && currentTime >= lastCheckedTime && currentTime - lastCheckedTime < 1000L) {
+                return;
+            }
+            lastCheckedAdapter = chatAdapter;
+            lastCheckedFrom = from;
+            lastCheckedTo = to;
+            lastCheckedMessagesCount = messages.size();
+            lastCheckedFirstId = firstId;
+            lastCheckedLastId = lastId;
+            lastCheckedTime = currentTime;
             reactionsToCheck.clear();
             extendedMediaToCheck.clear();
             storiesToCheck.clear();

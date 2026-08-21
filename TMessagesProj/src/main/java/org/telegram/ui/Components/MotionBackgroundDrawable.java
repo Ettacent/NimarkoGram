@@ -348,9 +348,14 @@ public class MotionBackgroundDrawable extends Drawable {
         }
         if (postInvalidateParent) {
             NotificationCenter.getGlobalInstance().postNotificationName(NotificationCenter.invalidateMotionBackground);
-            updateAnimation();
-            AndroidUtilities.cancelRunOnUIThread(updateAnimationRunnable);
-            AndroidUtilities.runOnUIThread(updateAnimationRunnable, 16);
+            View view = parentView == null ? null : parentView.get();
+            if (view != null) {
+                view.removeCallbacks(updateAnimationRunnable);
+                view.postOnAnimation(updateAnimationRunnable);
+            } else {
+                AndroidUtilities.cancelRunOnUIThread(updateAnimationRunnable);
+                AndroidUtilities.runOnUIThread(updateAnimationRunnable, 16);
+            }
         }
     }
 
@@ -649,15 +654,13 @@ public class MotionBackgroundDrawable extends Drawable {
     }
 
     public void updateAnimation() {
-        long newTime = SystemClock.elapsedRealtime();
-        long dt = newTime - lastUpdateTime;
-        if (dt > 20) {
-            dt = 17;
-        }
+        long newTime = SystemClock.uptimeMillis();
+        long elapsed = lastUpdateTime == 0 ? 16 : newTime - lastUpdateTime;
         lastUpdateTime = newTime;
-        if (dt <= 1) {
+        if (elapsed <= 1) {
             return;
         }
+        long dt = Math.min(64, elapsed);
 
         if (isIndeterminateAnimation && posAnimationProgress == 1.0f) {
             posAnimationProgress = 0f;

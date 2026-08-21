@@ -275,9 +275,11 @@ public class ChatPullingDownDrawable implements NotificationCenter.NotificationC
             layout1Width = Math.min(layout1Width, lastWidth - AndroidUtilities.dp(60));
             layout1 = new StaticLayout(str1, textPaint2, layout1Width, Layout.Alignment.ALIGN_CENTER, 1.0f, 0.0f, false);
 
+
             layout2Width = (int) textPaint2.measureText(str2);
             layout2Width = Math.min(layout2Width, lastWidth - AndroidUtilities.dp(60));
             layout2 = new StaticLayout(str2, textPaint2, layout2Width, Layout.Alignment.ALIGN_CENTER, 1.0f, 0.0f, false);
+
 
             float cx = lastWidth / 2f;
             float cy = AndroidUtilities.dp(12) + circleRadius;
@@ -326,7 +328,6 @@ public class ChatPullingDownDrawable implements NotificationCenter.NotificationC
         if ((progress >= 1f && lastProgress < 1f) || (progress < 1f && lastProgress == 1f)) {
             long time = System.currentTimeMillis();
             if (time - lastHapticTime > 100) {
-                
                 if (!app.nimarkogram.messenger.NimarkoConfig.disableVibration) {
                     try {
                         parent.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP, HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING);
@@ -353,6 +354,7 @@ public class ChatPullingDownDrawable implements NotificationCenter.NotificationC
         if (emptyStub) {
             offset -= bounceOffset;
         }
+
 
         float widthRadius = Math.max(0, Math.min(circleRadius, offset / 2f - AndroidUtilities.dp(16) * progress - AndroidUtilities.dp(4)));
         float widthRadius2 = Math.max(0, Math.min(circleRadius * progress, offset / 2f - AndroidUtilities.dp(8) * progress));
@@ -454,7 +456,7 @@ public class ChatPullingDownDrawable implements NotificationCenter.NotificationC
             return;
         }
         if (checkProgress < 1f) {
-            checkProgress += 16 / 220f;
+            checkProgress += AndroidUtilities.screenRefreshTime / 220f;
             if (checkProgress > 1f) {
                 checkProgress = 1f;
             }
@@ -643,6 +645,7 @@ public class ChatPullingDownDrawable implements NotificationCenter.NotificationC
         }
     }
 
+
     public static TLRPC.Dialog getNextUnreadDialog(long currentDialogId, int folderId, int filterId) {
         return getNextUnreadDialog(currentDialogId, folderId, filterId, true, null);
     }
@@ -741,7 +744,7 @@ public class ChatPullingDownDrawable implements NotificationCenter.NotificationC
         int oldAlphaText = textPaint2.getAlpha();
 
         composeBackgroundPaint.setAlpha((int) (oldAlpha * progressToBottomPanel));
-        
+
         if (layout1 != null && swipeToReleaseProgress < 1f) {
             textPaint2.setAlpha((int) (oldAlphaText * (1f - swipeToReleaseProgress) * progressToBottomPanel));
             float y = top + (bottom - top - layout1.getHeight()) / 2f - AndroidUtilities.dp(10) * swipeToReleaseProgress;

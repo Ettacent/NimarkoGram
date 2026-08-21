@@ -384,18 +384,13 @@ public class NotificationCenter {
     public static final int pluginSettingsRegistered = totalEvents++;
     public static final int pluginSettingsUnregistered = totalEvents++;
     public static final int pluginIsNotResponding = totalEvents++;
-    
     public static final int nmUpdateBubbleShape = totalEvents++;
-    
     public static final int nmUpdateOnlineIndicator = totalEvents++;
-    
     public static final int infoCardsLayoutChanged = totalEvents++;
-    
     public static final int infoCardsSettingsChanged = totalEvents++;
-    
     public static final int infoCardsColorModeChanged = totalEvents++;
-    
     public static final int infoCardsActiveCardChanged = totalEvents++;
+    public static final int messagePlayingMetadataChanged = totalEvents++;
 
     public static boolean alreadyLogged;
 
@@ -556,6 +551,9 @@ public class NotificationCenter {
     }
 
     public void runDelayedNotifications() {
+        if (isAnimationInProgress()) {
+            return;
+        }
         if (!delayedPosts.isEmpty()) {
             delayedPostsTmp.clear();
             delayedPostsTmp.addAll(delayedPosts);
@@ -595,7 +593,26 @@ public class NotificationCenter {
     }
 
     public void postNotificationName(final int id, Object... args) {
-        boolean allowDuringAnimation = id == startAllHeavyOperations || id == stopAllHeavyOperations || id == didReplacedPhotoInMemCache || id == closeChats || id == invalidateMotionBackground || id == needCheckSystemBarColors || id == messageReceivedByServer2;
+        boolean readInterfaceUpdate = false;
+        if (id == updateInterfaces
+                && (isAnimationInProgress() || BuildVars.DEBUG_VERSION)
+                && args.length > 0
+                && args[0] instanceof Integer) {
+            int mask = (Integer) args[0];
+            int readMask = mask & MessagesController.UPDATE_MASK_READ_DIALOG_MESSAGE;
+            int deferredMask = mask & ~MessagesController.UPDATE_MASK_READ_DIALOG_MESSAGE;
+            if (readMask != 0 && deferredMask != 0) {
+                Object[] readArgs = args.clone();
+                readArgs[0] = readMask;
+                postNotificationNameInternal(id, true, readArgs);
+
+                args = args.clone();
+                args[0] = deferredMask;
+            } else {
+                readInterfaceUpdate = readMask != 0;
+            }
+        }
+        boolean allowDuringAnimation = readInterfaceUpdate || id == startAllHeavyOperations || id == stopAllHeavyOperations || id == didReplacedPhotoInMemCache || id == closeChats || id == invalidateMotionBackground || id == needCheckSystemBarColors || id == messageReceivedByServer2;
         ArrayList<Integer> expiredIndices = null;
         if (!allowDuringAnimation && allowedNotifications.size() > 0) {
             int size = allowedNotifications.size();
@@ -630,7 +647,7 @@ public class NotificationCenter {
             Integer flags = (Integer) args[0];
             currentHeavyOperationFlags |= flags;
         }
-        if (shouldDebounce(id, args) && BuildVars.DEBUG_VERSION) {
+        if (!readInterfaceUpdate && shouldDebounce(id, args) && BuildVars.DEBUG_VERSION) {
             postNotificationDebounced(id, args);
         } else {
             postNotificationNameInternal(id, allowDuringAnimation, args);
@@ -648,7 +665,6 @@ public class NotificationCenter {
     private void postNotificationDebounced(int id, Object[] args) {
         int hash = id + (Arrays.hashCode(args) << 16);
         if (alreadyPostedRunnubles.indexOfKey(hash) >= 0) {
-            
             return;
         }
         final Runnable runnable = () -> {
@@ -764,6 +780,7 @@ public class NotificationCenter {
         return new ObserversGroup(this, delegate);
     }
 
+
     public void addObserver(NotificationCenterDelegate observer, int id) {
         if (BuildVars.DEBUG_VERSION) {
             if (Thread.currentThread() != ApplicationLoader.applicationHandler.getLooper().getThread()) {
@@ -796,7 +813,6 @@ public class NotificationCenter {
     }
 
     private ArrayList<NotificationCenterDelegate> createArrayForId(int id) {
-        
         if (id == didReplacedPhotoInMemCache || id == stopAllHeavyOperations || id == startAllHeavyOperations) {
             return new UniqArrayList<>();
         }
@@ -975,6 +991,7 @@ public class NotificationCenter {
         }
     }
 
+
     public int getObserversSize() {
         int totalSize = 0;
         for (int i = 0; i < observers.size(); i++) {
@@ -997,7 +1014,6 @@ public class NotificationCenter {
     }
 
     public static void diffObserverDumps(SparseArray<Integer> before, SparseArray<Integer> after) {
-        
         for (int i = 0; i < before.size(); i++) {
             int key = before.keyAt(i);
             int sizeBefore = before.valueAt(i);
@@ -1008,7 +1024,6 @@ public class NotificationCenter {
                 Log.i("ObserverDiff", "key=" + key + " CHANGED: " + sizeBefore + " -> " + sizeAfter);
             }
         }
-        
         for (int i = 0; i < after.size(); i++) {
             int key = after.keyAt(i);
             if (before.get(key, -1) == -1) {

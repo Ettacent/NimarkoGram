@@ -45,7 +45,7 @@ public class UploadingDotsSpannable extends ReplacementSpan {
                 waitForNextAnimation = false;
             }
         } else {
-            swapProgress += 16 / 300f;
+            swapProgress += AndroidUtilities.screenRefreshTime / 300f;
             if (swapProgress > 1) {
                 swapProgress = 0;
                 swapPosition1--;

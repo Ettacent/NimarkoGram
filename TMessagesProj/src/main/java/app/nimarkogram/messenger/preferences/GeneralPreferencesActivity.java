@@ -1,14 +1,3 @@
-/**
- * This file is part of NimarkoGram for Android.
- * It is licensed under GNU GPL v. 2 or later.
- * You should have received a copy of the license in this archive (see LICENSE).
- *
- * NimarkoGram modifications:
- * Copyright Ettacent, 2026.
- *
- * Portions derived from Cherrygram:
- * Copyright github.com/arsLan4k1390, 2022-2026.
- */
 
 package app.nimarkogram.messenger.preferences;
 
@@ -262,7 +251,6 @@ public class GeneralPreferencesActivity extends NimarkoUniversalPreferencesActiv
         } else if (item.id == notificationReactionsRow) {
             NimarkoConfig.toggleNotificationReactions();
             SettingsHelper.updateCheckState(view, NimarkoConfig.notificationReactions);
-            
             listView.adapter.update(true);
         } else if (item.id == notificationReactionEmojiRow) {
             showNotificationReactionDialog(view);
@@ -440,7 +428,6 @@ public class GeneralPreferencesActivity extends NimarkoUniversalPreferencesActiv
                     return;
                 }
                 if (!org.telegram.messenger.UserConfig.getInstance(currentAccount).isPremium()) {
-                    
                     if (popup[0] != null) {
                         selectReactionDialog = null;
                         popup[0].dismiss();

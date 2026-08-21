@@ -20,7 +20,6 @@ import java.util.concurrent.locks.ReentrantLock;
 
 public final class NimarkoConfig {
     public static final String APP_NAME = "NimarkoGram";
-    
     public static final String VERSION_NAME = org.telegram.messenger.BuildVars.BUILD_VERSION_STRING;
     public static final int VERSION_CODE = 1;
 
@@ -205,6 +204,7 @@ public final class NimarkoConfig {
         getEditor().putBoolean("pluginsPySdkBetaVersions", v).apply();
     }
 
+
     public static boolean hideProxySponsor = getPreferences().getBoolean("hideProxySponsor", true);
     public static void toggleHideProxySponsor() {
         hideProxySponsor = !hideProxySponsor;
@@ -217,16 +217,53 @@ public final class NimarkoConfig {
         getEditor().putBoolean("silenceNonContacts", silenceNonContacts).apply();
     }
 
-    public static boolean askBiometricsBeforeDelete = getPreferences().getBoolean("askBiometricsBeforeDelete", false);
+    private static boolean loadDeleteAuthenticationSetting() {
+        SharedPreferences preferences = getPreferences();
+        boolean hasCanonical = preferences.contains("askPasscodeBeforeDelete");
+        boolean enabled = hasCanonical
+                ? preferences.getBoolean("askPasscodeBeforeDelete", false)
+                : preferences.getBoolean("askBiometricsBeforeDelete", false);
+        if (!hasCanonical
+                || preferences.getBoolean("askBiometricsBeforeDelete", !enabled) != enabled) {
+            getEditor()
+                    .putBoolean("askPasscodeBeforeDelete", enabled)
+                    .putBoolean("askBiometricsBeforeDelete", enabled)
+                    .apply();
+        }
+        return enabled;
+    }
+
+    public static boolean askPasscodeBeforeDelete = loadDeleteAuthenticationSetting();
+    @Deprecated
+    public static boolean askBiometricsBeforeDelete = askPasscodeBeforeDelete;
+
+    public static void setAskPasscodeBeforeDelete(boolean enabled) {
+        askPasscodeBeforeDelete = enabled;
+        askBiometricsBeforeDelete = enabled;
+        getEditor()
+                .putBoolean("askPasscodeBeforeDelete", enabled)
+                .putBoolean("askBiometricsBeforeDelete", enabled)
+                .apply();
+        onPrivacyProtectionChanged();
+    }
+
+    public static void toggleAskPasscodeBeforeDelete() {
+        setAskPasscodeBeforeDelete(!askPasscodeBeforeDelete);
+    }
+
+    @Deprecated
     public static void toggleAskBiometricsBeforeDelete() {
-        askBiometricsBeforeDelete = !askBiometricsBeforeDelete;
-        getEditor().putBoolean("askBiometricsBeforeDelete", askBiometricsBeforeDelete).apply();
+        toggleAskPasscodeBeforeDelete();
     }
 
     public static boolean askBiometricsToOpenChat = getPreferences().getBoolean("askBiometricsToOpenChat", false);
+    public static void setAskBiometricsToOpenChat(boolean enabled) {
+        askBiometricsToOpenChat = enabled;
+        getEditor().putBoolean("askBiometricsToOpenChat", enabled).apply();
+        onPrivacyProtectionChanged();
+    }
     public static void toggleAskBiometricsToOpenChat() {
-        askBiometricsToOpenChat = !askBiometricsToOpenChat;
-        getEditor().putBoolean("askBiometricsToOpenChat", askBiometricsToOpenChat).apply();
+        setAskBiometricsToOpenChat(!askBiometricsToOpenChat);
     }
 
     public static boolean chatShortcutJumpToBegin = getPreferences().getBoolean("chatShortcutJumpToBegin", true);
@@ -240,15 +277,26 @@ public final class NimarkoConfig {
         getEditor().putBoolean("chatShortcutSavedMessages", chatShortcutSavedMessages).apply();
     }
 
+
     public static final int LOCKED_CHATS_TTL_ALWAYS = 0;
     public static final int LOCKED_CHATS_TTL_1_MIN = 60;
     public static final int LOCKED_CHATS_TTL_5_MIN = 300;
     public static final int LOCKED_CHATS_TTL_15_MIN = 900;
     public static final int LOCKED_CHATS_TTL_UNTIL_RESTART = -1;
-    public static int lockedChatsBiometricTtlSec = getPreferences().getInt("lockedChatsBiometricTtlSec", LOCKED_CHATS_TTL_5_MIN);
+    private static int normalizeLockedChatsTtl(int seconds) {
+        return seconds == LOCKED_CHATS_TTL_ALWAYS
+                || seconds == LOCKED_CHATS_TTL_1_MIN
+                || seconds == LOCKED_CHATS_TTL_5_MIN
+                || seconds == LOCKED_CHATS_TTL_15_MIN
+                || seconds == LOCKED_CHATS_TTL_UNTIL_RESTART
+                ? seconds : LOCKED_CHATS_TTL_5_MIN;
+    }
+    public static int lockedChatsBiometricTtlSec = normalizeLockedChatsTtl(
+            getIntSafe("lockedChatsBiometricTtlSec", LOCKED_CHATS_TTL_5_MIN));
     public static void setLockedChatsBiometricTtl(int seconds) {
-        lockedChatsBiometricTtlSec = seconds;
-        getEditor().putInt("lockedChatsBiometricTtlSec", seconds).apply();
+        lockedChatsBiometricTtlSec = normalizeLockedChatsTtl(seconds);
+        getEditor().putInt("lockedChatsBiometricTtlSec", lockedChatsBiometricTtlSec).apply();
+        onPrivacyProtectionChanged();
     }
 
     public static boolean glareOnElements = getPreferences().getBoolean("glareOnElements", true);
@@ -297,19 +345,16 @@ public final class NimarkoConfig {
         nimarkoMediaAuto = !nimarkoMediaAuto;
         getEditor().putBoolean("nimarkoMediaAuto", nimarkoMediaAuto).apply();
     }
-     
     public static int nimarkoMediaYtFmt = getPreferences().getInt("nimarkoMediaYtFmt", 0);
     public static void setNimarkoMediaYtFmt(int v) {
         nimarkoMediaYtFmt = v;
         getEditor().putInt("nimarkoMediaYtFmt", v).apply();
     }
-     
     public static boolean nimarkoMediaYtAsk = getPreferences().getBoolean("nimarkoMediaYtAsk", true);
     public static void toggleNimarkoMediaYtAsk() {
         nimarkoMediaYtAsk = !nimarkoMediaYtAsk;
         getEditor().putBoolean("nimarkoMediaYtAsk", nimarkoMediaYtAsk).apply();
     }
-     
     public static String getVoipRelayTokenForUid(long uid) {
         String key = "voipRelayAuthToken_" + uid;
         String token = getPreferences().getString(key, "");
@@ -373,6 +418,7 @@ public final class NimarkoConfig {
         getEditor().putBoolean("showDetails", showDetails).apply();
     }
 
+
     public static boolean centerTitle = getPreferences().getBoolean("centerTitle", true);
     public static void toggleCenterTitle() { centerTitle = !centerTitle; getEditor().putBoolean("centerTitle", centerTitle).apply(); }
 
@@ -392,7 +438,6 @@ public final class NimarkoConfig {
     public static final int SWITCH_STYLE_ONEUI = 1;
     public static final int SWITCH_STYLE_MD3 = 2;
     public static int switchStyle = nmMigrateSwitchStyle();
-     
     private static int nmMigrateSwitchStyle() {
         try {
             SharedPreferences prefs = getPreferences();
@@ -402,7 +447,6 @@ public final class NimarkoConfig {
                         .remove("oneUI_SwitchStyle").apply();
                 return mapped;
             } else if (prefs.contains("oneUI_SwitchStyle")) {
-                
                 getEditor().remove("oneUI_SwitchStyle").apply();
             }
         } catch (Throwable ignored) {}
@@ -419,7 +463,6 @@ public final class NimarkoConfig {
 
     public static final int ICON_REPLACE_NONE = 0;
     public static final int ICON_REPLACE_SOLAR = 1;
-    
     public static final int ICON_REPLACE_MD3 = 2;           
     public static final int ICON_REPLACE_LIQUID_GLASS = 3;  
     public static final int ICON_REPLACE_PLUMPY = 4;        
@@ -459,6 +502,7 @@ public final class NimarkoConfig {
 
     public static boolean foldersAtBottom = getPreferences().getBoolean("foldersAtBottom", false);
     public static void toggleFoldersAtBottom() { foldersAtBottom = !foldersAtBottom; getEditor().putBoolean("foldersAtBottom", foldersAtBottom).apply(); }
+
 
     public static final int FOLDER_BADGE_NUMBER = 0;
     public static final int FOLDER_BADGE_DOT    = 1;
@@ -614,7 +658,6 @@ public final class NimarkoConfig {
     public static final int VIBRATE_WAVE = 2;
     public static final int VIBRATE_KEYBOARD = 3;
     public static final int VIBRATE_LONG = 4;
-    
     public static final int VIBRATION_DISABLE = VIBRATE_DISABLE;
     public static final int VIBRATION_CLICK = VIBRATE_CLICK;
     public static final int VIBRATION_WAVE_FORM = VIBRATE_WAVE;
@@ -637,7 +680,6 @@ public final class NimarkoConfig {
 
     public static boolean customChatForSavedMessages = getPreferences().getBoolean("customChatForSavedMessages", false);
     public static void toggleCustomChatForSavedMessages() { customChatForSavedMessages = !customChatForSavedMessages; getEditor().putBoolean("customChatForSavedMessages", customChatForSavedMessages).apply(); }
-     
     public static long customSavedMessagesDialogId = getPreferences().getLong("customSavedMessagesDialogId", 0L);
     public static void setCustomSavedMessagesDialogId(long v) {
         setCustomSavedMessagesDialogId(org.telegram.messenger.UserConfig.selectedAccount, v);
@@ -651,7 +693,6 @@ public final class NimarkoConfig {
         if (getPreferences().contains(key)) {
             return getPreferences().getLong(key, 0L);
         }
-        
         if (account == org.telegram.messenger.UserConfig.selectedAccount
                 && getPreferences().contains("customSavedMessagesDialogId")) {
             long legacy = getPreferences().getLong("customSavedMessagesDialogId", 0L);
@@ -660,7 +701,6 @@ public final class NimarkoConfig {
         }
         return 0L;
     }
-     
     public static long getEffectiveSavedMessagesDialogId(long selfId) {
         return getEffectiveSavedMessagesDialogId(org.telegram.messenger.UserConfig.selectedAccount, selfId);
     }
@@ -699,7 +739,6 @@ public final class NimarkoConfig {
     public static final int NOTIF_SOUND_DISABLE = 0;
     public static final int NOTIF_SOUND_DEFAULT = 1;
     public static final int NOTIF_SOUND_IOS = 2;
-    
     public static int notificationSound = getPreferences().getInt("notificationSound", NOTIF_SOUND_DEFAULT);
     public static void setNotificationSound(int v) { notificationSound = v; getEditor().putInt("notificationSound", v).apply(); }
 
@@ -750,9 +789,7 @@ public final class NimarkoConfig {
     public static final int CAMERA_X = 1;
     public static final int CAMERA_2 = 2;
     public static final int CAMERA_SYSTEM = 3;
-    
     public static final int SYSTEM_CAMERA = CAMERA_SYSTEM;
-    
     public static final int CAMERA_1 = TELEGRAM_CAMERA;
     public static int cameraType = initCameraType();
     public static void setCameraType(int v) { cameraType = v; getEditor().putInt("cameraType", v).apply(); }
@@ -806,7 +843,6 @@ public final class NimarkoConfig {
     public static final int CameraXFpsRange25to30 = 1;
     public static final int CameraXFpsRange30to30 = 2;
     public static final int CameraXFpsRange30to60 = 3;
-    
     public static final int CameraXFpsRange60to60 = 4;
 
     private static int normalizeCameraXFpsRange(int value) {
@@ -871,10 +907,8 @@ public final class NimarkoConfig {
 
     public static boolean rearCam = getPreferences().getBoolean("rearCam", false);
     public static void toggleRearCam() { rearCam = !rearCam; getEditor().putBoolean("rearCam", rearCam).apply(); }
-     
     public static int videoMessagesCamera = getIntSafe("videoMessagesCamera", rearCam ? 1 : 0);
     public static void setVideoMessagesCamera(int v) { videoMessagesCamera = v; getEditor().putInt("videoMessagesCamera", v).apply(); }
-     
     public static boolean pendingRoundFront = true;
 
     public static boolean startFromUltraWideCam = getPreferences().getBoolean("startFromUltraWideCam", true);
@@ -906,12 +940,10 @@ public final class NimarkoConfig {
 
     public static final int SPRING_SPRING = 0;
     public static final int SPRING_CLASSIC = 1;
-    
     public static final int ANIMATION_SPRING = SPRING_SPRING;
     public static final int ANIMATION_CLASSIC = SPRING_CLASSIC;
     public static int springAnimation = getIntSafe("springAnimation", SPRING_SPRING);
     public static void setSpringAnimation(int v) { springAnimation = v; getEditor().putInt("springAnimation", v).apply(); }
-     
     public static boolean isSpringAnimationEnabled() { return springAnimation == SPRING_SPRING; }
 
     public static boolean actionbarCrossfade = getPreferences().getBoolean("actionbarCrossfade", false);
@@ -923,7 +955,6 @@ public final class NimarkoConfig {
     public static final int TABLET_AUTO = 0;
     public static final int TABLET_ENABLE = 1;
     public static final int TABLET_DISABLE = 2;
-    
     public static final int TABLET_MODE_ENABLE = TABLET_ENABLE;
     public static final int TABLET_MODE_DISABLE = TABLET_DISABLE;
     public static final int TABLET_MODE_AUTO = TABLET_AUTO;
@@ -933,13 +964,13 @@ public final class NimarkoConfig {
     public static boolean residentNotification = getPreferences().getBoolean("residentNotification", false);
     public static void toggleResidentNotification() { residentNotification = !residentNotification; getEditor().putBoolean("residentNotification", residentNotification).apply(); }
 
+
     public static boolean slowNetworkMode = getPreferences().getBoolean("slowNetworkMode", false);
     public static void toggleSlowNetworkMode() { slowNetworkMode = !slowNetworkMode; getEditor().putBoolean("slowNetworkMode", slowNetworkMode).apply(); }
 
     public static final int DL_BOOST_NONE = DownloadSpeedPolicy.BOOST_NONE;
     public static final int DL_BOOST_AVERAGE = DownloadSpeedPolicy.BOOST_AVERAGE;
     public static final int DL_BOOST_EXTREME = DownloadSpeedPolicy.BOOST_EXTREME;
-    
     public static final int BOOST_NONE = DL_BOOST_NONE;
     public static final int BOOST_AVERAGE = DL_BOOST_AVERAGE;
     public static final int BOOST_EXTREME = DL_BOOST_EXTREME;
@@ -954,22 +985,43 @@ public final class NimarkoConfig {
     public static void toggleUploadSpeedBoost() { uploadSpeedBoost = !uploadSpeedBoost; getEditor().putBoolean("uploadSpeedBoost", uploadSpeedBoost).apply(); }
 
     public static boolean allowSystemPasscode = getPreferences().getBoolean("allowSystemPasscode", false);
-    public static void toggleAllowSystemPasscode() { allowSystemPasscode = !allowSystemPasscode; getEditor().putBoolean("allowSystemPasscode", allowSystemPasscode).apply(); }
+    public static void setAllowSystemPasscode(boolean enabled) {
+        allowSystemPasscode = enabled;
+        getEditor().putBoolean("allowSystemPasscode", enabled).apply();
+        onPrivacyProtectionChanged();
+    }
+    public static void toggleAllowSystemPasscode() { setAllowSystemPasscode(!allowSystemPasscode); }
 
     public static boolean askBiometricsToOpenArchive = getPreferences().getBoolean("askBiometricsToOpenArchive", false);
-    public static void toggleAskBiometricsToOpenArchive() { askBiometricsToOpenArchive = !askBiometricsToOpenArchive; getEditor().putBoolean("askBiometricsToOpenArchive", askBiometricsToOpenArchive).apply(); }
+    public static void setAskBiometricsToOpenArchive(boolean enabled) {
+        askBiometricsToOpenArchive = enabled;
+        getEditor().putBoolean("askBiometricsToOpenArchive", enabled).apply();
+        onPrivacyProtectionChanged();
+    }
+    public static void toggleAskBiometricsToOpenArchive() { setAskBiometricsToOpenArchive(!askBiometricsToOpenArchive); }
 
     public static boolean askBiometricsToOpenEncrypted = getPreferences().getBoolean("askBiometricsToOpenEncrypted", false);
-    public static void toggleAskBiometricsToOpenEncrypted() { askBiometricsToOpenEncrypted = !askBiometricsToOpenEncrypted; getEditor().putBoolean("askBiometricsToOpenEncrypted", askBiometricsToOpenEncrypted).apply(); }
-
-    public static boolean askPasscodeBeforeDelete = getPreferences().getBoolean("askPasscodeBeforeDelete", false);
-    public static void toggleAskPasscodeBeforeDelete() { askPasscodeBeforeDelete = !askPasscodeBeforeDelete; getEditor().putBoolean("askPasscodeBeforeDelete", askPasscodeBeforeDelete).apply(); }
+    public static void setAskBiometricsToOpenEncrypted(boolean enabled) {
+        askBiometricsToOpenEncrypted = enabled;
+        getEditor().putBoolean("askBiometricsToOpenEncrypted", enabled).apply();
+        onPrivacyProtectionChanged();
+    }
+    public static void toggleAskBiometricsToOpenEncrypted() { setAskBiometricsToOpenEncrypted(!askBiometricsToOpenEncrypted); }
 
     public static boolean hideArchiveFromChatsList = getPreferences().getBoolean("hideArchiveFromChatsList", false);
     public static void toggleHideArchiveFromChatsList() { hideArchiveFromChatsList = !hideArchiveFromChatsList; getEditor().putBoolean("hideArchiveFromChatsList", hideArchiveFromChatsList).apply(); }
 
     public static boolean hideArchivedStories = getPreferences().getBoolean("hideArchivedStories", false);
     public static void toggleHideArchivedStories() { hideArchivedStories = !hideArchivedStories; getEditor().putBoolean("hideArchivedStories", hideArchivedStories).apply(); }
+
+    private static void onPrivacyProtectionChanged() {
+        try {
+            app.nimarkogram.messenger.security.NimarkoBiometricPrompt.clearVerified();
+            org.telegram.messenger.AndroidUtilities.runOnUIThread(
+                    org.telegram.ui.LaunchActivity::invalidateNimarkoSecureFlag);
+        } catch (Throwable ignored) {
+        }
+    }
 
     public static boolean deleteForAll = getPreferences().getBoolean("deleteForAll", false);
     public static void toggleDeleteForAll() { deleteForAll = !deleteForAll; getEditor().putBoolean("deleteForAll", deleteForAll).apply(); }
@@ -981,7 +1033,6 @@ public final class NimarkoConfig {
     public static final int DTAP_EDIT = 4;
     public static final int DTAP_TRANSLATE = 5;
     public static final int DTAP_EDIT_OR_REACTION = 6; 
-    
     public static final int DOUBLE_TAP_ACTION_NONE = DTAP_NONE;
     public static final int DOUBLE_TAP_ACTION_REACTION = DTAP_REACTION;
     public static final int DOUBLE_TAP_ACTION_REPLY = DTAP_REPLY;
@@ -990,7 +1041,6 @@ public final class NimarkoConfig {
     public static final int DOUBLE_TAP_ACTION_TRANSLATE = DTAP_TRANSLATE;
     public static final int DOUBLE_TAP_ACTION_EDIT_OR_REACTION = DTAP_EDIT_OR_REACTION;
     public static int doubleTapAction = getPreferences().getInt("doubleTapAction", DTAP_REACTION);
-    
     public static int doubletapaction = doubleTapAction;
     public static void setDoubleTapAction(int v) {
         doubleTapAction = v;
@@ -1002,13 +1052,11 @@ public final class NimarkoConfig {
     public static final int SLIDE_SAVE = 1;
     public static final int SLIDE_TRANSLATE = 2;
     public static final int SLIDE_DIRECT_SHARE = 3;
-    
     public static final int MESSAGE_SLIDE_ACTION_REPLY = SLIDE_REPLY;
     public static final int MESSAGE_SLIDE_ACTION_SAVE = SLIDE_SAVE;
     public static final int MESSAGE_SLIDE_ACTION_TRANSLATE = SLIDE_TRANSLATE;
     public static final int MESSAGE_SLIDE_ACTION_DIRECT_SHARE = SLIDE_DIRECT_SHARE;
     public static int messageSlideAction = getPreferences().getInt("messageSlideAction", SLIDE_REPLY);
-    
     public static int messageslideaction = messageSlideAction;
     public static void setMessageSlideAction(int v) {
         messageSlideAction = v;
@@ -1051,7 +1099,6 @@ public final class NimarkoConfig {
     public static final int ACTIONS_LEFT_SAVE_MESSAGE = 1;
     public static final int ACTIONS_LEFT_DIRECT_SHARE = 2;
     public static final int ACTIONS_LEFT_FORWARD_WO_AUTHORSHIP = 3;
-    
     public static final int ACTIONS_LEFT_FORWARD_WO_CAPTION = 4;
     public static int actionsBarLeftButton = getIntSafe("actionsBarLeftButton", ACTIONS_LEFT_REPLY);
     public static void setActionsBarLeftButton(int v) { actionsBarLeftButton = v; getEditor().putInt("actionsBarLeftButton", v).apply(); }
@@ -1059,7 +1106,6 @@ public final class NimarkoConfig {
     public static final int TRX_TELEGRAM = 0;
     public static final int TRX_GOOGLE = 1;
     public static final int TRX_SYSTEM = 2;
-    
     public static final int TRANSCRIPTION_PROVIDER_TELEGRAM = TRX_TELEGRAM;
     public static int voiceTranscriptionProvider = getPreferences().getInt("voiceTranscriptionProvider", TRX_TELEGRAM);
     public static void setVoiceTranscriptionProvider(int v) { voiceTranscriptionProvider = v; getEditor().putInt("voiceTranscriptionProvider", v).apply(); }
@@ -1207,7 +1253,6 @@ public final class NimarkoConfig {
     }
 
     public static final Set<Long> chatCompactOverrideOn = new CompactOverrideView(true);
-     
     public static final Set<Long> chatCompactOverrideOff = new CompactOverrideView(false);
 
     private static void putLongSet(SharedPreferences.Editor editor, String key, Set<Long> set) {
@@ -1303,6 +1348,7 @@ public final class NimarkoConfig {
     public static boolean showJSON = getPreferences().getBoolean("showJSON", false);
     public static void toggleShowJSON() { showJSON = !showJSON; getEditor().putBoolean("showJSON", showJSON).apply(); }
 
+
     public static boolean showForwardWoCaption = getPreferences().getBoolean("showForwardWoCaption", false);
     public static void toggleShowForwardWoCaption() { showForwardWoCaption = !showForwardWoCaption; getEditor().putBoolean("showForwardWoCaption", showForwardWoCaption).apply(); }
 
@@ -1311,6 +1357,7 @@ public final class NimarkoConfig {
 
     public static boolean showGetCustomReactions = getPreferences().getBoolean("showGetCustomReactions", false);
     public static void toggleShowGetCustomReactions() { showGetCustomReactions = !showGetCustomReactions; getEditor().putBoolean("showGetCustomReactions", showGetCustomReactions).apply(); }
+
 
     public static boolean forwardAuthorship = getPreferences().getBoolean("forwardAuthorship", true);
     public static void toggleForwardAuthorship() { forwardAuthorship = !forwardAuthorship; getEditor().putBoolean("forwardAuthorship", forwardAuthorship).apply(); }
@@ -1333,10 +1380,12 @@ public final class NimarkoConfig {
     public static void setNoCaptions(boolean v) { noCaptions = v; getEditor().putBoolean("noCaptions", v).apply(); }
 
     public static boolean allowSafeStars = getPreferences().getBoolean("allowSafeStars", false);
-    
+
     public static boolean sleepTimer = getPreferences().getBoolean("sleepTimer", false);
     public static void toggleSleepTimer() { sleepTimer = !sleepTimer; getEditor().putBoolean("sleepTimer", sleepTimer).apply(); }
     public static void setSleepTimer(boolean v) { sleepTimer = v; getEditor().putBoolean("sleepTimer", v).apply(); }
+
+
 
     public static boolean nimarkoTextAnim = getPreferences().getBoolean("nimarkoTextAnim", true);
     public static void toggleNimarkoTextAnim() {
@@ -1428,11 +1477,7 @@ public final class NimarkoConfig {
     public static boolean jacksonJSON_Provider = getPreferences().getBoolean("jacksonJSON_Provider",
             android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O);
     public static void toggleJacksonJSON_Provider() { jacksonJSON_Provider = !jacksonJSON_Provider; getEditor().putBoolean("jacksonJSON_Provider", jacksonJSON_Provider).apply(); }
-     
     public static void setJacksonJSON_Provider(boolean value) { jacksonJSON_Provider = value; getEditor().putBoolean("jacksonJSON_Provider", value).apply(); }
-
-    public static boolean playGIFsAsVideos = getPreferences().getBoolean("playGIFsAsVideos", true);
-    public static void togglePlayGIFsAsVideos() { playGIFsAsVideos = !playGIFsAsVideos; getEditor().putBoolean("playGIFsAsVideos", playGIFsAsVideos).apply(); }
 
     public static boolean hideVideoTimestamp = getPreferences().getBoolean("hideVideoTimestamp", true);
     public static void toggleHideVideoTimestamp() { hideVideoTimestamp = !hideVideoTimestamp; getEditor().putBoolean("hideVideoTimestamp", hideVideoTimestamp).apply(); }
@@ -1458,6 +1503,7 @@ public final class NimarkoConfig {
     public static boolean discussInsteadOfMute = getPreferences().getBoolean("discussInsteadOfMute", true);
     public static void toggleDiscussInsteadOfMute() { discussInsteadOfMute = !discussInsteadOfMute; getEditor().putBoolean("discussInsteadOfMute", discussInsteadOfMute).apply(); }
 
+
     public static boolean showSearchInTabs = getPreferences().getBoolean("showSearchInTabs", false);
     public static void toggleShowSearchInTabs() { showSearchInTabs = !showSearchInTabs; getEditor().putBoolean("showSearchInTabs", showSearchInTabs).apply(); }
 
@@ -1466,17 +1512,14 @@ public final class NimarkoConfig {
     public static final int ROUND_HD = 2;
     public static final int ROUND_FHD = 3;
     public static final int ROUND_STD = 4; 
-    
     public static int videoMessagesResolution = getIntSafe("videoMessagesResolution", ROUND_STD);
     public static void setVideoMessagesResolution(int v) { videoMessagesResolution = v; getEditor().putInt("videoMessagesResolution", v).apply(); }
-     
     public static int getVideoMessagesResolutionPx(int defaultPx) {
         switch (videoMessagesResolution) {
             case ROUND_AUTO: return 384;  
             case ROUND_SD: return 240;
             case ROUND_STD: return 384;   
             case ROUND_FHD: return 720;   
-            
             case ROUND_HD:
             default: return 512;
         }
@@ -1486,7 +1529,6 @@ public final class NimarkoConfig {
     public static int videoMessagesAudioBitrateKbps = getIntSafe("videoMessagesAudioBitrateKbps", 64);
     public static void setVideoMessagesBitrateKbps(int v) { videoMessagesBitrateKbps = v; getEditor().putInt("videoMessagesBitrateKbps", v).apply(); }
     public static void setVideoMessagesAudioBitrateKbps(int v) { videoMessagesAudioBitrateKbps = v; getEditor().putInt("videoMessagesAudioBitrateKbps", v).apply(); }
-    
     static {
         try {
             if (!getPreferences().getBoolean("ngRoundDefaultsClamped", false)) {
@@ -1504,7 +1546,6 @@ public final class NimarkoConfig {
 
     public static int videoMessagesHintCount = getPreferences().getInt("videoMessagesHintCount", 0);
     public static void setVideoMessagesHintCount(int v) { videoMessagesHintCount = v; getEditor().putInt("videoMessagesHintCount", v).apply(); }
-     
     public static void decrementVideoMessagesHintCount() {
         if (videoMessagesHintCount > 0) {
             videoMessagesHintCount--;
@@ -1654,6 +1695,7 @@ public final class NimarkoConfig {
         notifyMessageFiltersChanged();
         return true;
     }
+
 
     public static volatile boolean msgFiltersUseRegex = getPreferences().getBoolean("msgFiltersUseRegex", false);
     public static void setMsgFiltersUseRegex(boolean v) { msgFiltersUseRegex = v; getEditor().putBoolean("msgFiltersUseRegex", v).apply(); notifyMessageFiltersChanged(); }
@@ -1832,7 +1874,6 @@ public final class NimarkoConfig {
     public static int     getMsgFiltersLogic()                { return msgFiltersLogic; }
 
     public static boolean hideBubbleTail = getPreferences().getBoolean("hideBubbleTail", false);
-    
     public static int bubbleShapeGeneration = 0;
     public static void toggleHideBubbleTail() {
         hideBubbleTail = !hideBubbleTail;
@@ -1891,6 +1932,7 @@ public final class NimarkoConfig {
         return getAvatarCorners(forum && !forumAvatarsLikeChats ? size * 0.65f : size);
     }
 
+
     public static boolean forceBlur = getPreferences().getBoolean("forceBlur", false);
     public static void toggleForceBlur() {
         forceBlur = !forceBlur;
@@ -1928,7 +1970,6 @@ public final class NimarkoConfig {
         customTitleText = text == null ? "" : text;
         getEditor().putBoolean("customTitleEnabled", customTitleEnabled)
                 .putString("customTitleText", customTitleText).apply();
-        
         org.telegram.messenger.AndroidUtilities.runOnUIThread(() ->
                 org.telegram.messenger.NotificationCenter.getGlobalInstance()
                         .postNotificationName(org.telegram.messenger.NotificationCenter.customTitleUpdated));

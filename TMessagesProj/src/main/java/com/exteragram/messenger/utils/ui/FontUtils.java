@@ -88,7 +88,6 @@ public abstract class FontUtils {
     }
 
     private static File findSystemEmojiFontPath() {
-        
         String[] fallbacks = {
                 "/system/fonts/SamsungColorEmoji.ttf",
                 "/system/fonts/NotoColorEmoji.ttf",

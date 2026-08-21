@@ -8,6 +8,7 @@ import android.graphics.Paint;
 import android.graphics.PorterDuff;
 import android.graphics.PorterDuffXfermode;
 import android.graphics.Shader;
+import android.os.SystemClock;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.View;
@@ -73,6 +74,7 @@ public class SharedMediaFastScrollTooltip extends FrameLayout {
         float progress = 1f;
         float fromProgress = 0;
         float toProgress;
+        long lastFrameTime;
 
 
         @Override
@@ -108,7 +110,10 @@ public class SharedMediaFastScrollTooltip extends FrameLayout {
             AndroidUtilities.rectTmp.set(cx - AndroidUtilities.dp(8), cy - AndroidUtilities.dp(3), cx + AndroidUtilities.dp(8), cy + AndroidUtilities.dp(3));
             canvas.drawRoundRect(AndroidUtilities.rectTmp, AndroidUtilities.dp(3), AndroidUtilities.dp(3), paint2);
 
-            this.progress += 16 / 1000f;
+            long now = SystemClock.uptimeMillis();
+            float dt = lastFrameTime == 0 ? 16f : Math.max(0f, Math.min(64f, now - lastFrameTime));
+            lastFrameTime = now;
+            this.progress += dt / 1000f;
             if (this.progress > 1f) {
                 fromProgress = toProgress;
                 toProgress = Math.abs(random.nextInt() % 1001) / 1000f;

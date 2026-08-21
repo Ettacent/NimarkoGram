@@ -362,7 +362,7 @@ public class ChatAttachAlertBotWebViewLayout extends ChatAttachAlert.AttachAlert
     }
 
     public boolean canExpandByRequest() {
-        return   !swipeContainer.isSwipeInProgress();
+        return  !swipeContainer.isSwipeInProgress();
     }
 
     public void setMeasureOffsetY(int measureOffsetY) {
@@ -1355,7 +1355,6 @@ public class ChatAttachAlertBotWebViewLayout extends ChatAttachAlert.AttachAlert
         }
 
         public interface Delegate {
-             
             void onDismiss(boolean byTap);
         }
     }

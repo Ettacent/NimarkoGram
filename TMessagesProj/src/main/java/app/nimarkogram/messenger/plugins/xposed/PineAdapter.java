@@ -39,7 +39,6 @@ public final class PineAdapter extends MethodHook {
 
     private final XC_MethodHook xcHook;
     private final Member member;
-    
     private final Class<?>[] paramTypes;
     private static final Object INVALID_RESULT = new Object();
 
@@ -97,7 +96,6 @@ public final class PineAdapter extends MethodHook {
     }
 
     private final ArrayDeque<AdapterParam> params = new ArrayDeque<>(4);
-    
     private final ThreadLocal<AdapterParam> activeParam = new ThreadLocal<>();
 
     public PineAdapter(Member member, XC_MethodHook xcHook) {
@@ -117,7 +115,6 @@ public final class PineAdapter extends MethodHook {
         p.args = cf.args;
         p.captureInvocation(cf);
         p.setUserData(null);
-        
         try { p.setResult(null); } catch (Throwable ignored) {}
         try { p.setThrowable(null); } catch (Throwable ignored) {}
         p.returnEarly = false;
@@ -143,7 +140,6 @@ public final class PineAdapter extends MethodHook {
     }
 
     private void release(AdapterParam p) {
-        
         p.thisObject = null;
         p.args = null;
         p.method = null;
@@ -279,12 +275,18 @@ public final class PineAdapter extends MethodHook {
             FileLog.e("nimarko: Pine supplied a null CallFrame for " + member);
             return;
         }
+        if (cf.thisObject instanceof PluginHookBypassTarget
+                && ((PluginHookBypassTarget) cf.thisObject).shouldBypassPluginHooks()) {
+            AdapterParam skipped = claim(cf);
+            skipped.skipAfterCallback = true;
+            pushActive(skipped);
+            return;
+        }
         if (receiverMismatched(cf)) {
             FileLog.w("nimarko: Pine type-mismatch on " + member
                     + " — receiver " + receiverName(cf)
                     + " is not a " + member.getDeclaringClass().getName()
                     + "; skipping invocation to avoid Pine crash");
-            
             AdapterParam skipped = claim(cf);
             skipped.skipAfterCallback = true;
             pushActive(skipped);
@@ -305,7 +307,6 @@ public final class PineAdapter extends MethodHook {
                 param.setResult(null);
                 param.returnEarly = false;
             }
-            
             if (!callbackFailed) {
                 cf.thisObject = param.thisObject;
                 cf.args = param.args;
@@ -331,7 +332,6 @@ public final class PineAdapter extends MethodHook {
                     cf.setResult(result);
                 }
             } else if (argsTypeMismatched(cf)) {
-                
                 FileLog.w("nimarko: Pine arg type-mismatch on " + member
                         + " from a plugin hook — restoring original arguments");
                 param.restoreInvocation(cf);
@@ -359,7 +359,6 @@ public final class PineAdapter extends MethodHook {
             return;
         }
         if (receiverMismatched(cf)) {
-            
             if (param != null) release(param);
             return;
         }
@@ -368,7 +367,6 @@ public final class PineAdapter extends MethodHook {
             param = claim(cf);
         }
         try {
-            
             param.thisObject = cf.thisObject;
             param.args = cf.args;
             param.captureInvocation(cf);
@@ -378,7 +376,6 @@ public final class PineAdapter extends MethodHook {
                 param.setThrowable(cf.getThrowable());
             } else {
                 param.setResult(cf.getResult());
-                
                 param.returnEarly = false;
             }
             boolean callbackFailed = false;
@@ -398,7 +395,6 @@ public final class PineAdapter extends MethodHook {
                 }
             }
             if (!callbackFailed) {
-                
                 cf.thisObject = param.thisObject;
                 cf.args = param.args;
                 if (receiverMismatched(cf) || argsTypeMismatched(cf)) {
@@ -428,6 +424,5 @@ public final class PineAdapter extends MethodHook {
 
     @Deprecated
     public static void precompileHotPath() {
-        
     }
 }

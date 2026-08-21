@@ -612,7 +612,6 @@ public class ChatActionCell extends BaseCell implements DownloadController.FileD
 
         botButtons.clear();
         botInlineButtons = null;
-         
         accessibilityText = null;
         boolean messageIdChanged = currentMessageObject == null || currentMessageObject.stableId != messageObject.stableId;
         if (currentMessageObject != null) {
@@ -1098,6 +1097,25 @@ public class ChatActionCell extends BaseCell implements DownloadController.FileD
 
     public ImageReceiver getPhotoImage() {
         return imageReceiver;
+    }
+
+    public boolean hasPendingStaticPreviewMedia() {
+        if (imageReceiver == null) return false;
+        boolean hasTarget = imageReceiver.getImageKey() != null
+                || imageReceiver.getMediaKey() != null
+                || imageReceiver.getThumbKey() != null
+                || imageReceiver.getImageLocation() != null
+                || imageReceiver.getMediaLocation() != null
+                || imageReceiver.getThumbLocation() != null;
+        return (imageReceiver.hasPendingImageRequest() || hasTarget)
+                && imageReceiver.getBitmap() == null
+                && !imageReceiver.hasNotThumbOrOnlyStaticThumb();
+    }
+
+    public void prepareStaticPreviewMediaForBitmap() {
+        if (imageReceiver != null && imageReceiver.getDrawable() != null) {
+            imageReceiver.setCurrentAlpha(1f);
+        }
     }
 
     public void setVisiblePart(float visibleTop, int parentH) {
@@ -1586,7 +1604,6 @@ public class ChatActionCell extends BaseCell implements DownloadController.FileD
         } else if (currentMessageObject.messageOwner.action instanceof TLRPC.TL_messageActionStarGift) {
             final TLRPC.TL_messageActionStarGift action = (TLRPC.TL_messageActionStarGift) currentMessageObject.messageOwner.action;
             if (action.forceIn) return;
-
             new StarGiftSheet(getContext(), currentAccount, currentMessageObject.getDialogId(), themeDelegate)
                 .set(currentMessageObject)
                 .show();
@@ -1648,7 +1665,6 @@ public class ChatActionCell extends BaseCell implements DownloadController.FileD
                 }
             } else if (url.startsWith("game")) {
                 delegate.didPressReplyMessage(this, currentMessageObject.getReplyMsgId());
-                 
             } else if (url.startsWith("http")) {
                 Browser.openUrl(getContext(), url);
             } else {
@@ -1773,6 +1789,7 @@ public class ChatActionCell extends BaseCell implements DownloadController.FileD
             SpoilerEffect.addSpoilers(this, textLayout, textX, textX + textWidth, (Spannable) text, spoilersPool, spoilers, null);
         }
     }
+
 
     @Override
     protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
@@ -2808,7 +2825,6 @@ public class ChatActionCell extends BaseCell implements DownloadController.FileD
                 long dialogId = messageObject.messageOwner.media.user_id;
                 avatarStoryParams.storyId = messageObject.messageOwner.media.id;
                 StoriesUtilities.drawAvatarWithStory(dialogId, canvas, imageReceiver, avatarStoryParams);
-             
             } else {
                 imageReceiver.draw(canvas);
             }
@@ -2816,6 +2832,7 @@ public class ChatActionCell extends BaseCell implements DownloadController.FileD
                 DrawableUtils.drawCommunityCardDrawable(canvas, Theme.dialogs_communityCardsDrawable,
                         imageReceiver.getImageX() + dp(26), imageReceiver.getImageY() + dp(26), dp(52));
             }
+
 
             radialProgress.setProgressRect(
                     imageReceiver.getImageX(),
@@ -3027,6 +3044,7 @@ public class ChatActionCell extends BaseCell implements DownloadController.FileD
                         SpoilerEffect.layoutDrawMaybe(settingWallpaperProgressTextLayout, canvas);
                         canvas.restore();
 
+
                         giftTextPaint.setColor(oldColor);
                         giftTextPaint.linkColor = oldColor;
                     } else {
@@ -3144,9 +3162,9 @@ public class ChatActionCell extends BaseCell implements DownloadController.FileD
             }
 
             if (messageObject.settingAvatar && progressToProgress != 1f) {
-                progressToProgress += 16 / 150f;
+                progressToProgress += AndroidUtilities.screenRefreshTime / 150f;
             } else if (!messageObject.settingAvatar && progressToProgress != 0) {
-                progressToProgress -= 16 / 150f;
+                progressToProgress -= AndroidUtilities.screenRefreshTime / 150f;
             }
             progressToProgress = Utilities.clamp(progressToProgress, 1f, 0f);
             if (progressToProgress != 0) {
@@ -3585,6 +3603,7 @@ public class ChatActionCell extends BaseCell implements DownloadController.FileD
             float left = x1 + (buttonWidth + dp(4)) * a;
             float right = left + buttonWidth;
 
+
             rect.set(left, y, right, y + button.height);
             canvas.save();
             if (s != 1) {
@@ -3637,6 +3656,7 @@ public class ChatActionCell extends BaseCell implements DownloadController.FileD
             canvas.restore();
         }
     }
+
 
     private final int[] pressedState = new int[]{android.R.attr.state_enabled, android.R.attr.state_pressed};
     private int pressedBotButton;

@@ -197,7 +197,6 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
     private boolean bothCameras;
     private Camera2Session[] camera2Sessions = new Camera2Session[2];
     private Camera2Session camera2SessionCurrent;
-    
     private int nmCamera2SwitchGeneration;
     private volatile boolean nmCamera2SwitchPending;
     private boolean needDrawFlickerStub;
@@ -222,14 +221,12 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         if (!useCameraX || session == null) return;
         int index = videoMessagesHelper.getSessionIndex(session);
         if (index < 0 || index >= previewSize.length) return;
-        
         previewSize[index] = new Size(Math.max(1, width), Math.max(1, height));
         CameraGLThread thread = cameraThread;
         if (thread != null) {
             boolean currentSession = session == videoMessagesHelper.getCurrentSession();
             if (currentSession && cameraXSingleSwitchAwaitingBind
                     && session.isFrontFacing() == isFrontface) {
-                
                 pendingCameraXSingleSession = session;
                 if (app.nimarkogram.messenger.NimarkoCameraLog.DEBUG) {
                     app.nimarkogram.messenger.NimarkoCameraLog.log(
@@ -247,10 +244,8 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             }
             if (currentSession) {
                 thread.setCurrentSession(session);
-                
                 updateFlash();
             }
-            
             thread.refreshPreviewGeometry();
         }
     }
@@ -264,7 +259,6 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         nmCameraXActiveFrameObserved = false;
         nmCameraXFrameMask = 0;
         cameraReady = false;
-        
         cameraXInitialWideWaitActive = (!isFrontface || dual)
                 && app.nimarkogram.messenger.NimarkoConfig.startFromUltraWideCam;
         cameraXInitialWideWaitStartedMs = cameraXInitialWideWaitActive
@@ -297,7 +291,6 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             if (app.nimarkogram.messenger.NimarkoCameraLog.DEBUG) app.nimarkogram.messenger.NimarkoCameraLog.log(
                     "InstantRound CX watchdog: no active frame mask=" + nmCameraXFrameMask
                             + " surfaceIndex=" + surfaceIndex);
-            
             if (!videoMessagesHelper.retryCameraXDual(this)) {
                 videoMessagesHelper.fallbackCameraXDualToSingle(this);
             }
@@ -442,20 +435,17 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
     private volatile boolean cameraXSingleSwitchAwaitingBind;
     private volatile app.nimarkogram.messenger.camera.NimarkoCameraXSurfaceSession
             pendingCameraXSingleSession;
-    
     private boolean pendingCameraXSwitchAfterDualCollapse;
     private ValueAnimator dualCameraSwitchAnimator;
     private ValueAnimator cameraXVideoBlurAnimator;
     private Runnable cameraXVideoBlurTimeout;
     private volatile boolean cameraXVideoTransitionActive;
-    
     private volatile float cameraXSingleSwitchBlur;
     private volatile float cameraXSingleSwitchProgress;
     private volatile boolean cameraXSingleSwitchNewFrame;
     private boolean cameraXSingleSwitchFinishing;
     private long cameraXSingleSwitchWaitStartedMs;
     private boolean cameraXSingleSwitchZoomWaitLogged;
-    
     private final Object cameraXInitialWideWaitLock = new Object();
     private volatile boolean cameraXInitialWideWaitActive;
     private volatile long cameraXInitialWideWaitStartedMs;
@@ -465,7 +455,6 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
     private Runnable cameraXInitialWideTimeoutRunnable;
     private int cameraXInitialWideWaitGeneration;
     private boolean cameraXInitialWideWaitLogged;
-    
     private volatile int cameraXSingleSwitchSnapshot;
     private volatile int cameraXSingleSwitchSnapshotWidth;
     private volatile int cameraXSingleSwitchSnapshotHeight;
@@ -510,6 +499,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
 
     private SlideControlView evControlView;
     private Runnable evControlHideRunnable;
+
 
     @SuppressLint("ClickableViewAccessibility")
     public InstantCameraView(Context context, Delegate delegate, Theme.ResourcesProvider resourcesProvider, boolean isNewDesign) {
@@ -584,6 +574,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         });
         nmShowEvControl();
 
+
         buttonsLayout = new LinearLayout(context);
         buttonsLayout.setPadding(dp(6), dp(6), dp(6), dp(6));
 
@@ -622,7 +613,6 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             if (bothCameras && useCameraX
                     && (!concurrentReady
                     || (nmCameraXFrameMask & (1 << (1 - surfaceIndex))) == 0)) {
-                
                 pendingCameraXSwitchAfterDualCollapse =
                         !pendingCameraXSwitchAfterDualCollapse;
                 if (app.nimarkogram.messenger.NimarkoCameraLog.DEBUG) app.nimarkogram.messenger.NimarkoCameraLog.log(
@@ -636,13 +626,11 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                 switchCameraDrawable.start();
             }
             if (bothCameras && useCameraX) {
-                
                 flipAnimationInProgress = true;
                 switchCamera();
                 return;
             }
             if (useCameraX && !bothCameras) {
-                
                 flipAnimationInProgress = true;
                 cameraXSingleSwitchAwaitingBind = true;
                 cameraXSingleSwitchWaitStartedMs = SystemClock.elapsedRealtime();
@@ -711,7 +699,6 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         flashButton.setOnClickListener(v -> {
             flashing = !flashing;
             updateFlash();
-            
             app.nimarkogram.messenger.NimarkoConfig.decrementVideoMessagesHintCount();
         });
         updateFlash();
@@ -788,7 +775,6 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             }
         } else {
             if (cameraSession != null) {
-
                 cameraSession.setTorchEnabled(rearTorchOn, rearTorchIntensity);
             }
         }
@@ -953,7 +939,6 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                 CameraController.getInstance().close(cameraSession, !async ? new CountDownLatch(1) : null, null);
             }
         }
-        
         if (evControlHideRunnable != null) {
             AndroidUtilities.cancelRunOnUIThread(evControlHideRunnable);
             evControlHideRunnable = null;
@@ -1127,7 +1112,6 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             if (!useCameraX && !useCamera2) {
                 isFrontface = true;
             }
-            
             isFrontface = app.nimarkogram.messenger.NimarkoConfig.pendingRoundFront;
             updateFlash();
             recordedTime = 0;
@@ -1171,7 +1155,6 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         }
 
         if (useCameraX) {
-            
             surfaceIndex = 0;
             nmCameraXActiveFrameObserved = false;
             nmCameraXFrameMask = 0;
@@ -1199,13 +1182,11 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                 }
                 updateFlash();
                 camera2SessionCurrent = camera2Sessions[isFrontface ? 0 : 1];
-                
                 surfaceIndex = isFrontface ? 0 : 1;
                 if (camera2SessionCurrent != null && camera2Sessions[isFrontface ? 1 : 0] == null) {
                     bothCameras = false;
                 }
                 if (camera2SessionCurrent == null) {
-                    
                     for (int a = 0; a < camera2Sessions.length; ++a) {
                         if (camera2Sessions[a] != null) {
                             try { camera2Sessions[a].destroy(true); } catch (Throwable ignore) {}
@@ -1225,7 +1206,6 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                 session.whenError(err -> nmHandleRoundCamError(
                         nmSlot, session, err == null ? -1 : err));
                 previewSize[0] = new Size(session.getPreviewWidth(), session.getPreviewHeight());
-                
                 nmArmRoundFrameWatchdog();
             }
         }
@@ -1297,7 +1277,6 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                         CameraController.getInstance().close(cameraSession, null, null);
                     }
                 }
-                
                 return !cameraXCloseOwnedByThread;
             }
 
@@ -1438,7 +1417,6 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                 videoEditedInfo.startTime = -1;
                 videoEditedInfo.endTime = -1;
             }
-            
             videoEditedInfo.roundVideo = true;
             if (videoEditedInfo.needConvert()) {
                 file = null;
@@ -1597,12 +1575,10 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
     }
 
     private static int nmRoundCaptureHeight(int roundVideoSize) {
-        
         return Math.min(1200, Math.max(roundVideoSize, 2 * roundVideoSize));
     }
 
     private Camera2Session nmCreateRoundSession(boolean front) {
-        
         final MessagesController mc = MessagesController.getInstance(UserConfig.selectedAccount);
         mc.roundVideoSize = app.nimarkogram.messenger.NimarkoConfig.getVideoMessagesResolutionPx(512);
         final int size = mc.roundVideoSize;
@@ -1610,7 +1586,6 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         final boolean preferLogical = !app.nimarkogram.messenger.NimarkoConfig.roundCamLogicalDisabled && !nmRoundLogicalSlowThisSession;
         Camera2Session s = Camera2Session.create(front, size, size, preferLogical, capH, true);   
         if (s == null && preferLogical) {
-            
             app.nimarkogram.messenger.NimarkoConfig.setRoundCamLogicalDisabled(true);
             s = Camera2Session.create(front, size, size, false, capH, true);   
         }
@@ -1629,7 +1604,6 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         Camera2Session s = expectedSession;
         final boolean wasLogical = s != null && s.isLogical();
         if (wasLogical && !app.nimarkogram.messenger.NimarkoConfig.roundCamLogicalDisabled) {
-            
             final boolean structural =
                     errorCode == android.hardware.camera2.CameraDevice.StateCallback.ERROR_MAX_CAMERAS_IN_USE
                     || errorCode == -1;
@@ -1652,13 +1626,10 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
     private int nmCameraXDualWatchdogGeneration;
     private volatile boolean nmCameraXActiveFrameObserved;
     private volatile int nmCameraXFrameMask;
-    
     private static final long NM_ROUND_FRAME_TIMEOUT_MS = 2500;
     private static final long NM_CAMERAX_DUAL_FRAME_TIMEOUT_MS = 3500;
     private static final long NM_CAMERAX_INITIAL_WIDE_TIMEOUT_MS = 1450;
-    
     private static final long NM_CAMERAX_DUAL_INITIAL_WIDE_TIMEOUT_MS = 2200;
-    
     private static final long NM_CAMERAX_SINGLE_BLUR_IN_MS = 100;
     private static final long NM_CAMERAX_SINGLE_REVEAL_MS = 180;
 
@@ -1670,14 +1641,12 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         }
         nmRoundFrameWatchdog = () -> {
             nmRoundFrameWatchdog = null;
-            
             if (cancelled || cameraReady || bothCameras
                     || camera2SessionCurrent != watched
                     || camera2SessionCurrent == null || !camera2SessionCurrent.isLogical()
                     || app.nimarkogram.messenger.NimarkoConfig.roundCamLogicalDisabled || nmRoundLogicalSlowThisSession) {
                 return;
             }
-            
             nmRoundLogicalSlowThisSession = true;   
             nmReopenSinglePhysical();
         };
@@ -1732,7 +1701,6 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                         }
                         cameraXInitialWideTimeoutRunnable = null;
                         cameraXInitialWideWaitActive = false;
-                        
                         cameraXInitialWideTimeoutRenderPending = !isFrontface;
                         shouldRender = cameraXInitialWideTimeoutRenderPending;
                     }
@@ -1745,7 +1713,6 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                     }
                     CameraGLThread thread = cameraThread;
                     if (shouldRender && thread != null) {
-                        
                         thread.requestRender(false, false);
                     }
                 }
@@ -1787,7 +1754,6 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                     "InstantRound CX first frame index=" + index + " mask="
                             + nmCameraXFrameMask + " active=" + surfaceIndex);
         }
-        
         if (bothCameras) {
             if ((nmCameraXFrameMask & 0b11) != 0b11) return;
         } else if (index != surfaceIndex) {
@@ -1806,7 +1772,6 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         long waitMs = SystemClock.elapsedRealtime()
                 - cameraXInitialWideWaitStartedMs;
         if (lensReady && !cameraXInitialWideConfirmedFrame) {
-            
             cameraXInitialWideConfirmedFrame = true;
             if (app.nimarkogram.messenger.NimarkoCameraLog.DEBUG) {
                 app.nimarkogram.messenger.NimarkoCameraLog.log(
@@ -1870,7 +1835,6 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                     || camera2SessionCurrent != watched) {
                 return;
             }
-            
             nmReopenSinglePhysical();
         };
         AndroidUtilities.runOnUIThread(nmCamera2SwitchFrameWatchdog, 4000L);
@@ -1957,7 +1921,6 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         camera2SessionCurrent = (keep >= 0 && keep < camera2Sessions.length) ? camera2Sessions[keep] : null;
         isFrontface = (keep == 0);
         if (cameraThread != null) {
-            
             cameraThread.setSurfaceIndex(keep);
             if (camera2SessionCurrent != null) {
                 cameraThread.setCurrentSession(camera2SessionCurrent);   
@@ -1965,7 +1928,6 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             }
         }
         updateFlash();
-        
         if (errorCode == android.hardware.camera2.CameraDevice.StateCallback.ERROR_MAX_CAMERAS_IN_USE) {
             DualCameraView.disableRoundDual();
         }
@@ -1984,7 +1946,6 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         if (useCameraX && bothCameras
                 && (!videoMessagesHelper.isConcurrentDualReady()
                 || (nmCameraXFrameMask & (1 << (1 - surfaceIndex))) == 0)) {
-            
             flipAnimationInProgress = false;
             if (app.nimarkogram.messenger.NimarkoCameraLog.DEBUG) app.nimarkogram.messenger.NimarkoCameraLog.log(
                     "InstantRound switch blocked: concurrent pair/frame not ready");
@@ -1992,7 +1953,6 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         }
         isFrontface = !isFrontface;
         if (useCameraX) {
-            
             videoMessagesHelper.switchCameraX(this);
             app.nimarkogram.messenger.camera.NimarkoCameraXSurfaceSession current =
                     videoMessagesHelper.getCurrentSession();
@@ -2003,7 +1963,6 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                 }
             }
             updateFlash();
-            
             if (!bothCameras) {
                 cameraReady = false;
             }
@@ -2173,7 +2132,6 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         cameraXVideoTransitionActive = true;
         cameraXSingleSwitchProgress = 0f;
         cameraXSingleSwitchNewFrame = false;
-        
         cameraXVideoBlurAnimator = ValueAnimator.ofFloat(0f, 0.82f);
         cameraXVideoBlurAnimator.setDuration(NM_CAMERAX_SINGLE_BLUR_IN_MS);
         cameraXVideoBlurAnimator.setInterpolator(CubicBezierInterpolator.EASE_OUT);
@@ -2202,7 +2160,6 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                                 + " waitMs=" + (SystemClock.elapsedRealtime()
                                 - cameraXSingleSwitchWaitStartedMs));
             }
-            
             clearCameraXVideoTransition();
             cameraXSingleSwitchAwaitingBind = false;
             pendingCameraXSingleSession = null;
@@ -2309,7 +2266,6 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             if (app.nimarkogram.messenger.NimarkoCameraLog.DEBUG) app.nimarkogram.messenger.NimarkoCameraLog.log(
                     "InstantRound executing queued switch after dual collapse"
                             + " front=" + isFrontface + " surface=" + surfaceIndex);
-            
             AndroidUtilities.runOnUIThread(
                     () -> switchCameraButton.performClick());
         }
@@ -2397,7 +2353,6 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         boolean allowBigSizeCamera = allowBigSizeCamera();
         int maxVideoSize = allowBigSizeCamera ? 1440 : 1200;
         if (Build.MANUFACTURER.equalsIgnoreCase("Samsung")) {
-            
             maxVideoSize = 1200;
         }
         for (int i = 0; i < previewSizes.size(); i++) {
@@ -2495,10 +2450,8 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                         return;
                     }
                     if (!bothCameras && index == 0) {
-                        
                         videoMessagesHelper.createCameraX(this, surfaceTexture);
                     } else if (bothCameras && index == 1) {
-                        
                         videoMessagesHelper.createCameraX(this,
                                 expectedThread.cameraSurface[0],
                                 expectedThread.cameraSurface[1]);
@@ -2511,7 +2464,6 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                     }
                 } else {
                     if (index == 1) return;
-                    
                     final Camera2Session session = camera2SessionCurrent;
                     if (session == null) {
                         return;
@@ -2698,7 +2650,6 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         private int snapshotAlphaHandle;
         private int snapshotTexelSizeHandle;
         private int snapshotSwitchBlurHandle;
-        
         private int retiredCameraXSingleSwitchSnapshot;
 
         private boolean recording;
@@ -3089,7 +3040,6 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                     GLES20.glDeleteTextures(1, cameraTexture, 1);
                     cameraTexture[1] = Integer.MIN_VALUE;
                 }
-                
                 if (snapshotProgram != 0) {
                     GLES20.glDeleteProgram(snapshotProgram);
                     snapshotProgram = 0;
@@ -3204,7 +3154,6 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                         (app.nimarkogram.messenger.camera.NimarkoCameraXSurfaceSession) session);
                 if (index >= 0) return index;
             } else if (session instanceof Camera2Session) {
-                
                 if (!bothCameras) {
                     return surfaceIndex;
                 }
@@ -3237,7 +3186,6 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             if (session instanceof app.nimarkogram.messenger.camera.NimarkoCameraXSurfaceSession) {
                 app.nimarkogram.messenger.camera.NimarkoCameraXSurfaceSession cameraXSession =
                         (app.nimarkogram.messenger.camera.NimarkoCameraXSurfaceSession) session;
-                
                 if (cameraXSession.isMirrored() && !cameraXSession.hasCameraTransform()) {
                     android.opengl.Matrix.multiplyMM(nmCameraXTransformScratch, 0,
                             nmCameraXMirrorMatrix, 0, matrix, 0);
@@ -3264,7 +3212,6 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                     dualVideoMVPMatrix[dualSwitchTo], 0, 16);
             dualVideoSwitchFrom = dualSwitchFrom;
             dualVideoSwitchTo = dualSwitchTo;
-            
             dualVideoSwitchProgress = dualSwitchProgress;
             dualVideoSwitching = true;
         }
@@ -3390,7 +3337,6 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                     GLES20.glDeleteTextures(1, texture, 0);
                 }
                 if (!success) {
-                    
                     if (retiredCameraXSingleSwitchSnapshot != 0
                             && retiredCameraXSingleSwitchSnapshot != previousSnapshot) {
                         GLES20.glDeleteTextures(1,
@@ -3471,7 +3417,6 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                     long lensWaitMs = SystemClock.elapsedRealtime()
                             - cameraXSingleSwitchWaitStartedMs;
                     boolean lensReady = pending.isInitialLensReady();
-                    
                     if (!lensReady && lensWaitMs < 1450L) {
                         if (!cameraXSingleSwitchZoomWaitLogged) {
                             cameraXSingleSwitchZoomWaitLogged = true;
@@ -3495,7 +3440,6 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                         pendingCameraXSingleSession = null;
                         updateSessionMatrix(pending, 0);
                         currentSession = pending;
-                        
                         rebuildTextureBuffer(0);
                         copyActiveMatrices(0);
                         cameraXSingleSwitchAwaitingBind = false;
@@ -3520,7 +3464,6 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                     || surfaceIndex == 1 && updateTexImage2;
             if (bothCameras && !activeCameraFrame && !dualSurfaceSwitching
                     && !initialWideTimeoutRender) {
-                
                 return;
             }
 
@@ -3559,7 +3502,6 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                 videoEncoder.frameAvailable(cameraSurface[surfaceIndex], bothCameras ? surfaceIndex : cameraId, System.nanoTime());
             } else if (videoEncoder != null && recording && useCameraX && !bothCameras
                     && cameraXVideoTransitionActive) {
-                
                 videoEncoder.transitionFrameAvailable(cameraId, System.nanoTime());
             }
 
@@ -3576,10 +3518,8 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT);
             if (useCameraX && !bothCameras && cameraXVideoTransitionActive
                     && cameraXSingleSwitchSnapshot != 0) {
-                
                 drawCameraXSnapshot(1f, cameraXSingleSwitchBlur);
                 if (cameraXSingleSwitchNewFrame) {
-                    
                     GLES20.glUseProgram(drawProgram);
                     GLES20.glActiveTexture(GLES20.GL_TEXTURE0);
                     GLES20.glVertexAttribPointer(positionHandle, 3, GLES20.GL_FLOAT,
@@ -3592,12 +3532,10 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                 }
             } else if (dualSurfaceSwitching && dualSwitchFrom >= 0 && dualSwitchTo >= 0
                     && cameraFrameAvailable[dualSwitchTo]) {
-                
                 drawScreenCamera(dualSwitchFrom, 1f);
                 drawScreenCamera(dualSwitchTo, dualSwitchProgress);
             } else if ((useCameraX || useCamera2) && !bothCameras && oldCameraTexture[0] != 0
                     && oldTextureTextureBuffer != null && cameraTextureAlpha < 1f) {
-                
                 GLES20.glVertexAttribPointer(textureHandle, 2, GLES20.GL_FLOAT,
                         false, 8, oldTextureTextureBuffer);
                 GLES20.glUniformMatrix4fv(textureMatrixHandle, 1, false,
@@ -3692,7 +3630,6 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                     break;
                 }
                 case DO_REINIT_MESSAGE: {
-                    
                     surfaceIndex = 0;
                     dualSurfaceSwitching = false;
                     dualVideoSwitching = false;
@@ -3704,7 +3641,6 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                     }
 
                     if (cameraSurface[0] != null) {
-                        
                         System.arraycopy(mSTMatrix, 0, moldSTMatrix, 0, 16);
                         System.arraycopy(mSTMatrix, 0, oldScreenSTMatrix, 0, 16);
                         System.arraycopy(mMVPMatrix, 0, oldScreenMVPMatrix, 0, 16);
@@ -3762,7 +3698,6 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                     break;
                 }
                 case DO_SET_SURFACE_INDEX: {
-                    
                     surfaceIndex = inputMessage.arg1;
                     dualSurfaceSwitching = false;
                     dualVideoSwitching = false;
@@ -3780,7 +3715,6 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                     dualSwitchProgress = 0f;
                     dualSwitchTargetSession = inputMessage.obj;
                     updateSessionMatrix(dualSwitchTargetSession, dualSwitchTo);
-                    
                     surfaceIndex = dualSwitchTo;
                     currentSession = dualSwitchTargetSession;
                     copyActiveMatrices(surfaceIndex);
@@ -3880,7 +3814,6 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                 }
             };
             if (useCameraX) {
-                
                 videoMessagesHelper.destroyCameraX(
                         InstantCameraView.this, enqueueShutdown);
             } else {
@@ -4286,7 +4219,6 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             }
 
             started = true;
-            
             MessagesController mc = MessagesController.getInstance(currentAccount);
             mc.roundVideoSize = app.nimarkogram.messenger.NimarkoConfig.getVideoMessagesResolutionPx(512);
             mc.roundVideoBitrate = app.nimarkogram.messenger.NimarkoConfig.videoMessagesBitrateKbps;
@@ -4301,7 +4233,6 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             videoWidth = resolution;
             videoHeight = resolution;
             videoBitrate = bitrate;
-            
             frameRate = useCameraX
                     && app.nimarkogram.messenger.NimarkoConfig.cameraXFpsRange
                     == app.nimarkogram.messenger.NimarkoConfig.CameraXFpsRange30to60
@@ -4320,7 +4251,6 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                     try {
                         sync.wait();
                     } catch (InterruptedException ie) {
-                        
                     }
                 }
             }
@@ -4393,7 +4323,6 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                 zeroTimeStamps = 0;
             }
             long now = System.nanoTime();
-            
             lastFrameSubmissionRealtimeNanos = now;
             prevTimestamp = timestamp;
             handler.sendMessage(handler.obtainMessage(MSG_VIDEOFRAME_AVAILABLE,
@@ -4405,7 +4334,6 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             synchronized (sync) {
                 if (!ready || handler == null) return;
             }
-            
             long now = System.nanoTime();
             if (now - lastFrameSubmissionRealtimeNanos < 28_000_000L) return;
             lastFrameSubmissionRealtimeNanos = now;
@@ -4616,7 +4544,6 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             }
             if (cameraChanged || lastTimestamp == -1) {
                 if (currentTimestamp != 0 && !firstVideoFrameSincePause) {
-                    
                     long dtTimestamps = (timestampNanos - lastTimestamp);
                     long dtReal = System.nanoTime() - lastCommittedFrameRealtimeNanos;
                     if (dtTimestamps < 0 || Math.abs(dtReal - dtTimestamps) > 100_000_000) {
@@ -4884,7 +4811,6 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             } catch (Exception e) {
                 FileLog.e(e);
             }
-
             if (mediaMuxer != null) {
                 if (WRITE_TO_FILE_IN_BACKGROUND) {
                     CountDownLatch countDownLatch = new CountDownLatch(1);
@@ -4909,7 +4835,6 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                     }
                 }
             }
-
             AndroidUtilities.runOnUIThread(() -> {
                 videoEditedInfo = new VideoEditedInfo();
                 videoEditedInfo.roundVideo = true;
@@ -5354,7 +5279,6 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             format.setInteger(
                     MediaFormat.KEY_I_FRAME_INTERVAL, IFRAME_INTERVAL);
             if (highProfile) {
-                
                 format.setInteger(
                         MediaFormat.KEY_PROFILE,
                         MediaCodecInfo.CodecProfileLevel.AVCProfileHigh);
@@ -5401,7 +5325,6 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                         || videoCapabilities.areSizeAndRateSupported(
                                 videoWidth, videoHeight, frameRate);
             } catch (Throwable error) {
-                
                 FileLog.e("InstantCamera: unable to query AVC frame-rate support", error);
                 return true;
             }
@@ -5763,7 +5686,6 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
 
             ByteBuffer[] encoderOutputBuffers = null;
             while (true) {
-                
                 long dequeueTimeoutUs = endOfStream || frameRate <= DEFAULT_FRAME_RATE
                         ? 10000L : 0L;
                 int encoderStatus = videoEncoder.dequeueOutputBuffer(
@@ -5938,6 +5860,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             }
         }
 
+
         @Override
         protected void finalize() throws Throwable {
             if (fileWriteQueue != null) {
@@ -5983,7 +5906,6 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                     "   gl_FragColor = vec4(color * alpha, alpha);\n" +
                     "}\n";
         }
-        
         return "#extension GL_OES_EGL_image_external : require\n" +
                 "precision highp float;\n" +
                 "varying vec2 vTextureCoord;\n" + 
@@ -6148,7 +6070,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         protected void dispatchDraw(Canvas canvas) {
             super.dispatchDraw(canvas);
             if (imageProgress != 1f) {
-                imageProgress += 16 / 250.0f;
+                imageProgress += AndroidUtilities.screenRefreshTime / 250.0f;
                 if (imageProgress > 1f) {
                     imageProgress = 1f;
                 }
@@ -6169,6 +6091,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             }
         }
     }
+
 
     @Override
     public boolean onTouchEvent(MotionEvent ev) {
@@ -6200,7 +6123,6 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                 muteAnimation.setInterpolator(new DecelerateInterpolator());
                 muteAnimation.start();
             } else {
-                
             }
         }
 
@@ -6216,14 +6138,12 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                 pointerId1 = ev.getPointerId(0);
                 pointerId2 = ev.getPointerId(1);
                 isInPinchToZoomTouchMode = true;
-                
                 singleZoomMaybe = false;
                 singleZoomActive = false;
             }
             if (ev.getActionMasked() == MotionEvent.ACTION_DOWN) {
                 AndroidUtilities.rectTmp.set(cameraContainer.getX(), cameraContainer.getY(), cameraContainer.getX() + cameraContainer.getMeasuredWidth(), cameraContainer.getY() + cameraContainer.getMeasuredHeight());
                 maybePinchToZoomTouchMode = AndroidUtilities.rectTmp.contains(ev.getX(), ev.getY());
-                
                 if (maybePinchToZoomTouchMode && recording && finishZoomTransition == null) {
                     singleZoomMaybe = true;
                     singleZoomActive = false;
@@ -6280,7 +6200,6 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                 isInPinchToZoomTouchMode = false;
                 finishZoom();
             }
-            
             singleZoomMaybe = false;
             singleZoomActive = false;
         }
@@ -6331,7 +6250,6 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             float current = videoMessagesHelper.getZoomRatio();
             float min = videoMessagesHelper.getMinZoomRatio();
             float max = videoMessagesHelper.getMaxZoomRatio();
-            
             float target = Math.max(min, Math.min(max, current));
             videoMessagesHelper.setZoomRatio(target);
             cameraXPinchStartRatio = target;

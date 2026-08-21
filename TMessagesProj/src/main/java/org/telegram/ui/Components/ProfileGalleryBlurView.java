@@ -20,6 +20,7 @@ import android.graphics.RenderEffect;
 import android.graphics.RenderNode;
 import android.graphics.Shader;
 import android.os.Build;
+import android.os.SystemClock;
 import android.view.View;
 
 import androidx.annotation.RequiresApi;
@@ -61,6 +62,7 @@ public class ProfileGalleryBlurView extends View {
 
     private boolean sizeChanged = false;
     private boolean needNewFrame = false;
+    private long lastCaptureTime;
 
     private ProfileActionsView actionsView;
     private ProfileSuggestionView suggestionView;
@@ -92,8 +94,10 @@ public class ProfileGalleryBlurView extends View {
             currentPosition = position;
             offset = positionOffsetPixels;
 
-            if (oldPosition != currentPosition || oldOffset != offset) {
+            if (oldPosition != currentPosition) {
                 updateContent();
+            } else if (oldOffset != offset) {
+                postInvalidateOnAnimation();
             }
         }
 
@@ -313,7 +317,7 @@ public class ProfileGalleryBlurView extends View {
         if (view == null || view.isZooming()) return false;
 
         int viewportWidth = view.getMeasuredWidth();
-        
+
         int w = (int) (viewportWidth / 6.0f);
         int h = (int) (size / 6.0f);
         if (w <= 0 || h <= 0) {
@@ -401,6 +405,7 @@ public class ProfileGalleryBlurView extends View {
             return;
         }
 
+
         LinearGradient alphaGradient = new LinearGradient(
                 0, 0, 0, size / 6f,
                 new int[]{Color.TRANSPARENT, Color.WHITE},
@@ -458,7 +463,15 @@ public class ProfileGalleryBlurView extends View {
 
         boolean shouldCapture = needNewFrame || sizeChanged || loopInvalidate ||
                 (paints[0].getShader() == null && paints[1].getShader() == null && !isBluring);
+        if (shouldCapture && loopInvalidate && !needNewFrame && !sizeChanged) {
+            long now = SystemClock.uptimeMillis();
+            if (lastCaptureTime != 0 && now - lastCaptureTime < 32L) {
+                postInvalidateOnAnimation();
+                shouldCapture = false;
+            }
+        }
         if (shouldCapture) {
+            lastCaptureTime = SystemClock.uptimeMillis();
             boolean newFrame = captureNextFrame();
 
             if (!isBluring && newFrame) {
@@ -548,9 +561,8 @@ public class ProfileGalleryBlurView extends View {
             AndroidUtilities.multiplyBrightnessColorMatrix(colorMatrix, .5f);
 
             actionsBlurNode.setRenderEffect(
-
                 RenderEffect.createColorFilterEffect(new ColorMatrixColorFilter(colorMatrix))
-             );
+            );
         }
         shouldBlurActions = true;
     }

@@ -399,7 +399,6 @@ public class ImageLoader {
                 String location = cacheImage.imageLocation.path;
                 URL downloadUrl = new URL(location.replace("athumb://", "https://"));
                 httpConnection = (HttpURLConnection) downloadUrl.openConnection();
-                
                 httpConnection.setConnectTimeout(5000);
                 httpConnection.setReadTimeout(5000);
                 httpConnection.connect();
@@ -873,6 +872,23 @@ public class ImageLoader {
                 }
             }
 
+            try {
+                runInternal();
+            } catch (Throwable error) {
+                FileLog.e(error);
+                if (error instanceof OutOfMemoryError) {
+                    imageLoadQueue.postRunnable(() -> finishFailedImageLoad(cacheImage, false));
+                } else {
+                    onPostExecute(null);
+                }
+            } finally {
+                synchronized (sync) {
+                    runningThread = null;
+                }
+            }
+        }
+
+        private void runInternal() {
             if (cacheImage.imageLocation.photoSize instanceof TLRPC.TL_photoStrippedSize) {
                 TLRPC.TL_photoStrippedSize photoSize = (TLRPC.TL_photoStrippedSize) cacheImage.imageLocation.photoSize;
                 Bitmap bitmap = getStrippedPhotoBitmap(photoSize.bytes, "b");
@@ -1688,6 +1704,10 @@ public class ImageLoader {
         }
 
         private void onPostExecute(final Drawable drawable) {
+            if (drawable == null) {
+                imageLoadQueue.postRunnable(() -> handleCacheOutFailure(cacheImage));
+                return;
+            }
             AndroidUtilities.runOnUIThread(() -> {
                 Drawable toSet = null;
                 String decrementKey = null;
@@ -1744,7 +1764,9 @@ public class ImageLoader {
                 }
                 final Drawable toSetFinal = toSet;
                 final String decrementKetFinal = decrementKey;
-                imageLoadQueue.postRunnable(() -> cacheImage.setImageAndClear(toSetFinal, decrementKetFinal), cacheImage.priority);
+                imageLoadQueue.postRunnable(() -> {
+                    cacheImage.setImageAndClear(toSetFinal, decrementKetFinal);
+                }, cacheImage.priority);
             });
         }
 
@@ -1756,7 +1778,6 @@ public class ImageLoader {
                         runningThread.interrupt();
                     }
                 } catch (Exception e) {
-                    
                 }
             }
         }
@@ -1826,7 +1847,7 @@ public class ImageLoader {
 
     private class CacheImage {
 
-        public int priority = 1;
+        public volatile int priority = FileLoader.PRIORITY_LOW;
         public Runnable runningTask;
         public boolean isPFrame;
         protected String key;
@@ -1856,11 +1877,13 @@ public class ImageLoader {
         protected ArrayList<String> keys = new ArrayList<>();
         protected ArrayList<String> filters = new ArrayList<>();
         protected ArrayList<Integer> types = new ArrayList<>();
+        private int decodeRetryCount;
 
         public void addImageReceiver(ImageReceiver imageReceiver, String key, String filter, int type, int guid) {
             int index = imageReceiverArray.indexOf(imageReceiver);
             if (index >= 0 && Objects.equals(imageReceiverArray.get(index).getImageKey(), key)) {
                 imageReceiverGuidsArray.set(index, guid);
+                updatePriority();
                 return;
             }
             imageReceiverArray.add(imageReceiver);
@@ -1869,6 +1892,7 @@ public class ImageLoader {
             filters.add(filter);
             types.add(type);
             imageLoadingByTag.put(imageReceiver.getTag(type), this);
+            updatePriority();
         }
 
         public void replaceImageReceiver(ImageReceiver imageReceiver, String key, String filter, int type, int guid) {
@@ -1877,10 +1901,11 @@ public class ImageLoader {
                 return;
             }
             if (types.get(index) != type) {
-                index = imageReceiverArray.subList(index + 1, imageReceiverArray.size()).indexOf(imageReceiver);
-                if (index == -1) {
+                int nextIndex = imageReceiverArray.subList(index + 1, imageReceiverArray.size()).indexOf(imageReceiver);
+                if (nextIndex == -1) {
                     return;
                 }
+                index += nextIndex + 1;
             }
             imageReceiverGuidsArray.set(index, guid);
             keys.set(index, key);
@@ -1906,7 +1931,10 @@ public class ImageLoader {
                     filters.remove(a);
                     currentMediaType = types.remove(a);
                     if (obj != null) {
-                        imageLoadingByTag.remove(obj.getTag(currentMediaType));
+                        int tag = obj.getTag(currentMediaType);
+                        if (imageLoadingByTag.get(tag) == this) {
+                            imageLoadingByTag.remove(tag);
+                        }
                     }
                     a--;
                 }
@@ -1946,19 +1974,40 @@ public class ImageLoader {
                     artworkTask = null;
                 }
                 if (url != null) {
-                    imageLoadingByUrl.remove(url);
+                    if (imageLoadingByUrl.get(url) == this) {
+                        imageLoadingByUrl.remove(url);
+                    }
                 }
                 if (url != null) {
-                    imageLoadingByUrlPframe.remove(url);
+                    if (imageLoadingByUrlPframe.get(url) == this) {
+                        imageLoadingByUrlPframe.remove(url);
+                    }
                 }
                 if (key != null) {
-                    imageLoadingByKeys.remove(key);
-                    imageLoadingKeys.remove(cutFilter(key));
+                    if (imageLoadingByKeys.remove(key, this)) {
+                        imageLoadingKeys.remove(cutFilter(key));
+                    }
                 }
+            } else {
+                updatePriority();
             }
         }
 
-        void changePriority(int newFileLoaderPriority) {
+        private void updatePriority() {
+            int newFileLoaderPriority = FileLoader.PRIORITY_LOW;
+            for (int i = 0, size = imageReceiverArray.size(); i < size; i++) {
+                ImageReceiver receiver = imageReceiverArray.get(i);
+                if (receiver != null) {
+                    newFileLoaderPriority = Math.max(newFileLoaderPriority, receiver.getFileLoadingPriority());
+                }
+            }
+            if (priority == newFileLoaderPriority) {
+                return;
+            }
+            priority = newFileLoaderPriority;
+            if (cacheTask != null && type != ImageReceiver.TYPE_THUMB && runningTask != null) {
+                runningTask = cacheOutQueue.changePriority(runningTask, newFileLoaderPriority);
+            }
             if (imageLocation != null) {
                 TLRPC.Document document = null;
                 SecureDocument secureDocument = null;
@@ -1983,54 +2032,131 @@ public class ImageLoader {
             if (image != null) {
                 final ArrayList<ImageReceiver> finalImageReceiverArray = new ArrayList<>(imageReceiverArray);
                 final ArrayList<Integer> finalImageReceiverGuidsArray = new ArrayList<>(imageReceiverGuidsArray);
-                AndroidUtilities.runOnUIThread(() -> {
-                    if (image instanceof AnimatedFileDrawable && !((AnimatedFileDrawable) image).isWebmSticker) {
-                        boolean imageSet = false;
-                        AnimatedFileDrawable fileDrawable = (AnimatedFileDrawable) image;
-                        for (int a = 0; a < finalImageReceiverArray.size(); a++) {
-                            ImageReceiver imgView = finalImageReceiverArray.get(a);
-                            AnimatedFileDrawable toSet = (a == 0 ? fileDrawable : fileDrawable.makeCopy());
-                            if (imgView.setImageBitmapByKey(toSet, key, type, false, finalImageReceiverGuidsArray.get(a))) {
-                                if (toSet == fileDrawable) {
-                                    imageSet = true;
-                                }
-                            } else {
-                                if (toSet != fileDrawable) {
+                if (finalImageReceiverArray.isEmpty()) {
+                    AndroidUtilities.runOnUIThread(() -> {
+                        if (image instanceof AnimatedFileDrawable && !((AnimatedFileDrawable) image).isWebmSticker) {
+                            ((AnimatedFileDrawable) image).recycle();
+                        }
+                        if (decrementKey != null) {
+                            decrementUseCount(decrementKey);
+                        }
+                    });
+                } else {
+                    AndroidUtilities.runOnUIThread(() -> {
+                        if (image instanceof AnimatedFileDrawable && !((AnimatedFileDrawable) image).isWebmSticker) {
+                            boolean imageSet = false;
+                            AnimatedFileDrawable fileDrawable = (AnimatedFileDrawable) image;
+                            for (int a = 0; a < finalImageReceiverArray.size(); a++) {
+                                ImageReceiver imgView = finalImageReceiverArray.get(a);
+                                AnimatedFileDrawable toSet = (a == 0 ? fileDrawable : fileDrawable.makeCopy());
+                                if (imgView.setImageBitmapByKey(toSet, key, type, false, finalImageReceiverGuidsArray.get(a))) {
+                                    if (toSet == fileDrawable) {
+                                        imageSet = true;
+                                    }
+                                } else if (toSet != fileDrawable) {
                                     toSet.recycle();
                                 }
                             }
+                            if (!imageSet) {
+                                fileDrawable.recycle();
+                            }
+                        } else {
+                            for (int a = 0; a < finalImageReceiverArray.size(); a++) {
+                                ImageReceiver imgView = finalImageReceiverArray.get(a);
+                                imgView.setImageBitmapByKey(image, key, types.get(a), false, finalImageReceiverGuidsArray.get(a));
+                            }
                         }
-                        if (!imageSet) {
-                            fileDrawable.recycle();
+                        if (decrementKey != null) {
+                            decrementUseCount(decrementKey);
                         }
-                    } else {
-                        for (int a = 0; a < finalImageReceiverArray.size(); a++) {
-                            ImageReceiver imgView = finalImageReceiverArray.get(a);
-                            imgView.setImageBitmapByKey(image, key, types.get(a), false, finalImageReceiverGuidsArray.get(a));
-                        }
-                    }
-                    if (decrementKey != null) {
-                        decrementUseCount(decrementKey);
-                    }
-                });
+                    });
+                }
             }
             for (int a = 0; a < imageReceiverArray.size(); a++) {
                 ImageReceiver imageReceiver = imageReceiverArray.get(a);
-                imageLoadingByTag.remove(imageReceiver.getTag(type));
+                int receiverType = a < types.size() ? types.get(a) : type;
+                int tag = imageReceiver.getTag(receiverType);
+                if (imageLoadingByTag.get(tag) == this) {
+                    imageLoadingByTag.remove(tag);
+                }
             }
             imageReceiverArray.clear();
             imageReceiverGuidsArray.clear();
             if (url != null) {
-                imageLoadingByUrl.remove(url);
+                if (imageLoadingByUrl.get(url) == this) {
+                    imageLoadingByUrl.remove(url);
+                }
             }
             if (url != null) {
-                imageLoadingByUrlPframe.remove(url);
+                if (imageLoadingByUrlPframe.get(url) == this) {
+                    imageLoadingByUrlPframe.remove(url);
+                }
             }
             if (key != null) {
-                imageLoadingByKeys.remove(key);
-                imageLoadingKeys.remove(cutFilter(key));
+                if (imageLoadingByKeys.remove(key, this)) {
+                    imageLoadingKeys.remove(cutFilter(key));
+                }
             }
         }
+    }
+
+    private boolean isCurrentCacheImage(CacheImage image) {
+        return image != null && (image.key != null && imageLoadingByKeys.get(image.key) == image
+                || image.url != null && imageLoadingByUrl.get(image.url) == image);
+    }
+
+    private boolean isStickerCacheImage(CacheImage image) {
+        if (image == null) {
+            return false;
+        }
+        TLRPC.Document document = image.imageLocation != null ? image.imageLocation.document : null;
+        if (document == null && image.parentObject instanceof MessageObject) {
+            document = ((MessageObject) image.parentObject).getDocument();
+        }
+        return document != null && (MessageObject.isStickerDocument(document)
+                || MessageObject.isAnimatedStickerDocument(document, true)
+                || MessageObject.isVideoSticker(document));
+    }
+
+    private void handleCacheOutFailure(CacheImage image) {
+        if (!isCurrentCacheImage(image)) {
+            return;
+        }
+        if (isStickerCacheImage(image) && image.decodeRetryCount++ == 0 && !image.imageReceiverArray.isEmpty()) {
+            CacheOutTask retryTask = new CacheOutTask(image);
+            image.cacheTask = retryTask;
+            if (image.type == ImageReceiver.TYPE_THUMB) {
+                cacheThumbOutQueue.postRunnable(retryTask);
+            } else {
+                image.runningTask = cacheOutQueue.postRunnable(retryTask, Math.max(FileLoader.PRIORITY_NORMAL, image.priority));
+            }
+            return;
+        }
+        finishFailedImageLoad(image, true);
+    }
+
+    private void finishFailedImageLoad(CacheImage image, boolean allowStickerRetry) {
+        if (!isCurrentCacheImage(image)) {
+            return;
+        }
+        boolean retry = allowStickerRetry && isStickerCacheImage(image);
+        ArrayList<ImageReceiver> receivers = retry ? new ArrayList<>(image.imageReceiverArray) : null;
+        ArrayList<Integer> guids = retry ? new ArrayList<>(image.imageReceiverGuidsArray) : null;
+        ArrayList<String> keys = retry ? new ArrayList<>(image.keys) : null;
+        ArrayList<Integer> types = retry ? new ArrayList<>(image.types) : null;
+        image.setImageAndClear(null, null);
+        if (!retry || receivers == null) {
+            return;
+        }
+        AndroidUtilities.runOnUIThread(() -> {
+            int count = Math.min(Math.min(receivers.size(), guids.size()), Math.min(keys.size(), types.size()));
+            for (int i = 0; i < count; i++) {
+                ImageReceiver receiver = receivers.get(i);
+                if (receiver != null) {
+                    receiver.retryImageLoad(keys.get(i), types.get(i), guids.get(i));
+                }
+            }
+        });
     }
 
     private static volatile ImageLoader Instance = null;
@@ -2283,7 +2409,7 @@ public class ImageLoader {
                                 if (task.cacheImage.type == ImageReceiver.TYPE_THUMB) {
                                     cacheThumbOutQueue.postRunnable(task);
                                 } else {
-                                    cacheOutQueue.postRunnable(task, task.cacheImage.priority);
+                                    task.cacheImage.runningTask = cacheOutQueue.postRunnable(task, task.cacheImage.priority);
                                 }
                             }
                         });
@@ -2356,6 +2482,7 @@ public class ImageLoader {
             final SparseArray<File> paths = createMediaPaths();
             AndroidUtilities.runOnUIThread(() -> {
                 FileLoader.setMediaDirs(paths);
+                app.nimarkogram.messenger.gifts.NimarkoDeletedGiftsManager.onMediaDirectoriesChanged();
                 if (after != null) {
                     after.run();
                 }
@@ -2796,7 +2923,6 @@ public class ImageLoader {
         if (imageReceiver == null) {
             return;
         }
-        int newPriority = imageReceiver.getFileLoadingPriority();
         imageLoadQueue.postRunnable(() -> {
             for (int a = 0; a < 3; a++) {
                 int type;
@@ -2811,7 +2937,7 @@ public class ImageLoader {
                 if (TAG != 0) {
                     CacheImage ei = imageLoadingByTag.get(TAG);
                     if (ei != null) {
-                        ei.changePriority(newPriority);
+                        ei.updatePriority();
                     }
                 }
             }
@@ -3113,7 +3239,7 @@ public class ImageLoader {
                 if (thumb != 2) {
                     boolean isEncrypted = imageLocation.isEncrypted();
                     CacheImage img = new CacheImage();
-                    img.priority = imageReceiver.getFileLoadingPriority() == FileLoader.PRIORITY_LOW ? 0 : 1;
+                    img.priority = imageReceiver.getFileLoadingPriority();
                     if (!currentKeyQuality) {
                         if (imageLocation.imageType == FileLoader.IMAGE_TYPE_ANIMATION || MessageObject.isGifDocument(imageLocation.webFile) || MessageObject.isGifDocument(imageLocation.document) || MessageObject.isRoundVideoDocument(imageLocation.document) || MessageObject.isVideoSticker(imageLocation.document)) {
                             img.imageType = FileLoader.IMAGE_TYPE_ANIMATION;
@@ -3612,6 +3738,7 @@ public class ImageLoader {
             mediaKey = imageReceiver.getUniqKeyPrefix() + mediaKey;
         }
 
+
         if (imageLocation != null && imageLocation.path != null) {
             createLoadOperationForImageReceiver(imageReceiver, thumbKey, thumbUrl, thumbExt, thumbLocation, thumbFilter, 0, 1, ImageReceiver.TYPE_THUMB, thumbSet ? 2 : 1, guid);
             createLoadOperationForImageReceiver(imageReceiver, imageKey, imageUrl, imageExt, imageLocation, imageFilter, imageReceiver.getSize(), 1, ImageReceiver.TYPE_IMAGE, 0, guid);
@@ -3759,7 +3886,7 @@ public class ImageLoader {
                 if (task.cacheImage.type == ImageReceiver.TYPE_THUMB) {
                     cacheThumbOutQueue.postRunnable(task);
                 } else {
-                    cacheOutQueue.postRunnable(task, task.cacheImage.priority);
+                    task.cacheImage.runningTask = cacheOutQueue.postRunnable(task, task.cacheImage.priority);
                 }
             }
         });
@@ -3772,7 +3899,7 @@ public class ImageLoader {
         imageLoadQueue.postRunnable(() -> {
             CacheImage img = imageLoadingByUrl.get(location);
             if (img != null) {
-                img.setImageAndClear(null, null);
+                finishFailedImageLoad(img, canceled != -1);
             }
         });
     }
@@ -4188,14 +4315,12 @@ public class ImageLoader {
             fileDir = location.volume_id != Integer.MIN_VALUE ? FileLoader.getDirectory(FileLoader.MEDIA_DIR_IMAGE) : FileLoader.getDirectory(FileLoader.MEDIA_DIR_CACHE);
         }
         final File cacheFile = new File(fileDir, fileName);
-        
         FileOutputStream stream = new FileOutputStream(cacheFile);
         scaledBitmap.compress(compressFormat, quality, stream);
         if (!cache) {
             photoSize.size = (int) stream.getChannel().size();
         }
         stream.close();
-        
         if (cache) {
             ByteArrayOutputStream stream2 = new ByteArrayOutputStream();
             scaledBitmap.compress(compressFormat, quality, stream2);
@@ -4387,6 +4512,7 @@ public class ImageLoader {
             }
         }
     }
+
 
     public static void saveMessageThumbs(TLRPC.Message message, TLRPC.MessageMedia media) {
         if (message == null || media == null) {

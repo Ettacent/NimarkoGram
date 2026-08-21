@@ -1,4 +1,3 @@
- 
 package app.nimarkogram.messenger.utils.ui
 
 import android.content.Context
@@ -25,29 +24,56 @@ object MainTabsManager {
         var enabled: Boolean
     )
 
+    private data class TabsSnapshot(
+        val order: String?,
+        val tabs: List<Tab>,
+        val enabledTabs: List<Tab>,
+        val positions: Map<TabType, Int>
+    )
+
+    @Volatile
+    private var tabsSnapshot: TabsSnapshot? = null
+
+    private fun getSnapshot(): TabsSnapshot {
+        val order = NimarkoConfig.mainTabsOrder
+        tabsSnapshot?.let { if (it.order == order) return it }
+        return synchronized(this) {
+            tabsSnapshot?.let { if (it.order == order) return@synchronized it }
+            val tabs = loadTabs(order)
+            val enabled = tabs.filter { it.enabled }.let { result ->
+                if (result.any { it.type == TabType.CHATS }) {
+                    result
+                } else {
+                    listOf(Tab(TabType.CHATS, true)) + result
+                }
+            }
+            val pagerTabs = enabled.filterNot { it.type == TabType.SEARCH }
+            TabsSnapshot(
+                order,
+                tabs,
+                enabled,
+                pagerTabs.mapIndexed { index, tab -> tab.type to index }.toMap()
+            ).also { tabsSnapshot = it }
+        }
+    }
+
     @JvmOverloads
     fun getEnabledTabs(includeSearch: Boolean = false): List<Tab> {
-        val enabled = loadTabs().filter { it.enabled }
+        val enabled = getSnapshot().enabledTabs
         val result = if (includeSearch) {
             enabled
         } else {
             enabled.filterNot { it.type == TabType.SEARCH }
         }
-        
-        return if (result.any { it.type == TabType.CHATS }) {
-            result
-        } else {
-            listOf(Tab(TabType.CHATS, true)) + result
-        }
+        return result.map { it.copy() }
     }
 
     fun getAllTabs(): List<Tab> {
-        return loadTabs()
+        return getSnapshot().tabs.map { it.copy() }
     }
 
-    private fun loadTabs(): MutableList<Tab> {
+    private fun loadTabs(value: String?): List<Tab> {
         val allPossibleTypes = TabType.entries.toMutableList()
-        val value = NimarkoConfig.mainTabsOrder
 
         val result = mutableListOf<Tab>()
 
@@ -140,13 +166,7 @@ object MainTabsManager {
     }
 
     fun getPosition(type: TabType): Int {
-        val tabs = getEnabledTabs()
-        for (i in tabs.indices) {
-            if (tabs[i].type == type) {
-                return i
-            }
-        }
-        return -1
+        return getSnapshot().positions[type] ?: -1
     }
 
     fun hasTab(type: TabType): Boolean {
@@ -167,6 +187,7 @@ object MainTabsManager {
             "$prefix${tab.type.name}"
         }
         NimarkoConfig.setMainTabsOrder(order.joinToString(","))
+        tabsSnapshot = null
     }
 
 }

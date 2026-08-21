@@ -1,5 +1,6 @@
 package org.telegram.ui.Stories;
 
+import android.os.SystemClock;
 import android.view.View;
 
 import org.telegram.messenger.AndroidUtilities;
@@ -19,6 +20,7 @@ import org.telegram.ui.Cells.UserCell;
 import org.telegram.ui.Components.RecyclerListView;
 
 import java.util.ArrayList;
+import java.util.WeakHashMap;
 
 public class UserListPoller {
 
@@ -39,7 +41,10 @@ public class UserListPoller {
 
     LongSparseLongArray userPollLastTime = new LongSparseLongArray();
     ArrayList<Long> dialogIds = new ArrayList<>();
+    ArrayList<Long> visibleDialogIds = new ArrayList<>();
     ArrayList<Long> collectedDialogIds = new ArrayList<>();
+    WeakHashMap<RecyclerListView, Long> lastListSignatures = new WeakHashMap<>();
+    WeakHashMap<RecyclerListView, Long> lastListCheckTimes = new WeakHashMap<>();
 
     ArrayList<Integer> runningRequests = new ArrayList<>();
 
@@ -96,7 +101,10 @@ public class UserListPoller {
 
     public void checkList(RecyclerListView recyclerListView) {
         long currentTime = System.currentTimeMillis();
+        long currentCheckTime = SystemClock.elapsedRealtime();
         dialogIds.clear();
+        visibleDialogIds.clear();
+        long signature = recyclerListView.getChildCount();
         for (int i = 0; i < recyclerListView.getChildCount(); i++) {
             View child = recyclerListView.getChildAt(i);
             long dialogId = 0;
@@ -106,6 +114,22 @@ public class UserListPoller {
                 dialogId = ((UserCell) child).getDialogId();
             }
 
+            if (dialogId != 0) {
+                visibleDialogIds.add(dialogId);
+                signature = signature * 31L + dialogId;
+            }
+        }
+        Long previousSignature = lastListSignatures.get(recyclerListView);
+        Long previousCheckTime = lastListCheckTimes.get(recyclerListView);
+        if (previousSignature != null && previousSignature == signature
+                && previousCheckTime != null && currentCheckTime - previousCheckTime < 1000L) {
+            return;
+        }
+        lastListSignatures.put(recyclerListView, signature);
+        lastListCheckTimes.put(recyclerListView, currentCheckTime);
+
+        for (int i = 0; i < visibleDialogIds.size(); i++) {
+            long dialogId = visibleDialogIds.get(i);
             if (dialogId > 0) {
                 TLRPC.User user = MessagesController.getInstance(currentAccount).getUser(dialogId);
                 if (user != null && !user.bot && !user.self && !user.contact && user.status != null && !(user.status instanceof TLRPC.TL_userStatusEmpty)) {
@@ -115,7 +139,7 @@ public class UserListPoller {
                         dialogIds.add(dialogId);
                     }
                 }
-            } else {
+            } else if (dialogId < 0) {
                 TLRPC.Chat chat = MessagesController.getInstance(currentAccount).getChat(-dialogId);
                 if (ChatObject.isChannel(chat) && !ChatObject.isMonoForum(chat)) {
                     long lastPollTime = userPollLastTime.get(dialogId, 0);

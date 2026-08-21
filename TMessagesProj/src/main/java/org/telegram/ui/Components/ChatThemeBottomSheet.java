@@ -2,6 +2,7 @@ package org.telegram.ui.Components;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
 
+
 import android.animation.Animator;
 import android.animation.AnimatorListenerAdapter;
 import android.animation.ValueAnimator;
@@ -127,6 +128,7 @@ public class ChatThemeBottomSheet extends BottomSheet implements NotificationCen
     private FrameLayout chatAttachButton;
     private AnimatedTextView chatAttachButtonText;
     private boolean themesLoading;
+
 
     public ChatThemeBottomSheet(final ChatActivity chatActivity, ChatActivity.ThemeDelegate themeDelegate) {
         super(chatActivity.getParentActivity(), true, themeDelegate);
@@ -564,6 +566,7 @@ public class ChatThemeBottomSheet extends BottomSheet implements NotificationCen
             loadNext();
         }
 
+
         if (chatActivity.getCurrentUser() != null && SharedConfig.dayNightThemeSwitchHintCount > 0 && !chatActivity.getCurrentUser().self) {
             SharedConfig.updateDayNightThemeSwitchHintCount(SharedConfig.dayNightThemeSwitchHintCount - 1);
             hintView = new HintView(getContext(), 9, chatActivity.getResourceProvider());
@@ -716,7 +719,9 @@ public class ChatThemeBottomSheet extends BottomSheet implements NotificationCen
         }
         FrameLayout decorView1 = (FrameLayout) chatActivity.getParentActivity().getWindow().getDecorView();
         FrameLayout decorView2 = (FrameLayout) getWindow().getDecorView();
-        Bitmap bitmap = Bitmap.createBitmap(decorView2.getWidth(), decorView2.getHeight(), Bitmap.Config.ARGB_8888);
+        int width = decorView2.getWidth();
+        int height = decorView2.getHeight();
+        Bitmap bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
         Canvas bitmapCanvas = new Canvas(bitmap);
         darkThemeView.setAlpha(0f);
         decorView1.draw(bitmapCanvas);
@@ -770,7 +775,6 @@ public class ChatThemeBottomSheet extends BottomSheet implements NotificationCen
                 changeDayNightView.invalidate();
                 if (!changedNavigationBarColor && changeDayNightViewProgress > .5f) {
                     changedNavigationBarColor = true;
-                  
                 }
             }
         });
@@ -850,6 +854,7 @@ public class ChatThemeBottomSheet extends BottomSheet implements NotificationCen
         if (!dataLoaded) {
             selectedItem = noThemeItem;
         }
+
 
         boolean hasCurrentItem = false;
         ThemeKey currentThemeKey = currentTheme != null ? currentTheme.getThemeKey() : null;
@@ -1400,6 +1405,7 @@ public class ChatThemeBottomSheet extends BottomSheet implements NotificationCen
         chatAttachAlert.show();
     }
 
+
     private void openGalleryForBackground() {
         chatAttachAlert = new ChatAttachAlert(chatActivity.getParentActivity(), chatActivity, false, false, false, chatActivity.getResourceProvider());
         chatAttachAlert.drawNavigationBar = true;
@@ -1506,7 +1512,6 @@ public class ChatThemeBottomSheet extends BottomSheet implements NotificationCen
                 chatAttachButtonText.setText(LocaleController.getString(R.string.SetColorAsBackground));
                 chatAttachAlert.showLayout(chatAttachAlert.getPhotoLayout());
             }
-
         });
         chatAttachAlert.sizeNotifierFrameLayout.addView(chatAttachButton, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, Gravity.BOTTOM));
     }

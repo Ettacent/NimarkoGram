@@ -82,9 +82,7 @@ import org.telegram.ui.Components.BulletinFactory;
 import org.telegram.ui.LaunchActivity;
 
 public class PythonPluginsEngine implements PluginsController.PluginsEngine {
-     
     private static final Object PYTHON_START_LOCK = new Object();
-     
     private static final Object PINE_INIT_LOCK = new Object();
     private static final Pattern SAFE_MODE_METADATA_PATTERN = Pattern.compile(
             "(?ms)^\\s*__(version|min_version|id|icon|name|description|author|requirements)__\\s*=\\s*(?:[rRuUbBfF]{0,2})?(\"\"\"|'''|\"|')(.*?)\\2");
@@ -129,19 +127,14 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
     private static final java.util.Set<String>
             RECOVERY_BLOCKED_PLUGIN_IDS =
                     ConcurrentHashMap.newKeySet();
-     
     private static final java.util.Set<String>
             ABANDONED_RUNTIME_PLUGIN_IDS =
                     ConcurrentHashMap.newKeySet();
-     
     private static final AtomicBoolean PYTHON_RUNTIME_ABANDONED =
             new AtomicBoolean();
     private static final long PINE_INIT_TIMEOUT_MS = 10_000L;
-     
     private static final long PLUGIN_LOAD_TIMEOUT_MS = 30_000L;
-     
     private static final long PLUGIN_UNLOAD_TIMEOUT_MS = 5_000L;
-     
     private static final long PLUGIN_RETIREMENT_TIMEOUT_MS = 10_000L;
     private static final ScheduledExecutorService
             LIFECYCLE_DEADLINE_EXECUTOR =
@@ -177,13 +170,9 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
     private final java.util.Set<AuthorizedCandidate>
             activeAuthorizedCandidates =
                     ConcurrentHashMap.newKeySet();
-     
     private final Object settingsReloadLock = new Object();
-     
     private volatile ExecutorService pluginInitExecutor = newInitExecutor();
-     
     private static boolean pineInitAttemptRunning;
-     
     private final ConcurrentHashMap<String, LifecycleOperation> lifecycleOperations =
             new ConcurrentHashMap<>();
 
@@ -193,7 +182,6 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
     }
 
     private static final class LifecycleOperation {
-         
         final Object monitor = new Object();
         final String pluginId;
         final PyObject instance;
@@ -206,11 +194,8 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
         final AtomicBoolean retirementDeadlineScheduled =
                 new AtomicBoolean();
         final AtomicBoolean retirementExpired = new AtomicBoolean();
-         
         boolean deferredAdmissionClosed;
-         
         final AtomicInteger callState = new AtomicInteger();
-         
         final ArrayList<Runnable> deferredActions = new ArrayList<>();
         volatile LifecyclePhase phase;
         volatile boolean actuallyReturned;
@@ -279,7 +264,6 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
 
         @Override
         public boolean transfer(Utilities.Callback<String> callback) {
-            
             if (callback == null
                     || Looper.myLooper() != Looper.getMainLooper()
                     || getPluginsController()
@@ -560,7 +544,6 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
         File[] markers = directory.listFiles((dir, name) ->
                 PLUGIN_UPDATE_MARKER_PATTERN.matcher(name).matches());
         if (markers == null) markers = new File[0];
-        
         Arrays.sort(markers,
                 java.util.Comparator.comparingLong(File::lastModified)
                         .reversed()
@@ -581,7 +564,6 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
             String pluginId = matcher.group(1);
             RECOVERY_BLOCKED_PLUGIN_IDS.add(pluginId);
             if (pluginDeleteMarker(directory, pluginId).exists()) {
-                
                 continue;
             }
             try {
@@ -660,7 +642,6 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
                 } else if (transactional
                         && !UPDATE_STATE_ROLLED_BACK.equals(
                                 markerData.state)) {
-                    
                     FileLog.e("Dependency rollback snapshot is missing for "
                             + pluginId + "; plugin remains blocked");
                     continue;
@@ -715,7 +696,6 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
                 if (transactional) {
                     if (UPDATE_STATE_PREPARED.equals(
                             markerData.state)) {
-                        
                         if ((journalExists
                                 && !PipController.getInstance()
                                         .hasOuterArtifactTransaction(
@@ -784,7 +764,6 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
                     recovered = !destination.exists()
                             || destination.delete();
                 } else {
-                    
                     recovered = matchesSourceChecksum(
                             destination,
                             markerData.sourceSha256);
@@ -799,7 +778,6 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
                 clearUncommittedPluginWatermark(controller, pluginId);
 
                 if (!transactional) {
-                    
                     FileLog.w("Legacy plugin update marker has no dependency "
                             + "snapshot for " + pluginId);
                 } else {
@@ -817,7 +795,6 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
                             markerData.sourceSha256,
                             true);
                     if (!Python.isStarted()) {
-                        
                         FileLog.d("Plugin dependency path recovery deferred "
                                 + "until Python starts for " + pluginId);
                         continue;
@@ -885,7 +862,6 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
             sourceSha256 = reader.readLine();
             trailingData = reader.readLine();
         }
-        
         if (cleanupMode == null || cleanupMode.isEmpty()) {
             cleanupMode = UPDATE_CLEANUP_PRUNE;
         }
@@ -1402,7 +1378,6 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
                 return !getPluginsController().isPluginEnableRequested(pluginId, generation);
             }
             @Override public void onProgress(String text) {
-                
             }
         };
     }
@@ -1442,7 +1417,6 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
                     lifecycleOperations.remove(pluginId, operation);
                     continue;
                 }
-                
                 if (operation.timedOut.get()
                         || operation.retirementExpired.get()
                         || operation.deferredAdmissionClosed) {
@@ -1671,7 +1645,6 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
             if (operation.settled.get()) {
                 return;
             }
-            
             operation.deferredAdmissionClosed = true;
             operation.timedOut.set(true);
         }
@@ -1684,7 +1657,6 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
                 + " cancelledBeforeStart=" + cancelledBeforeStart
                 + " returned=" + operation.actuallyReturned);
         if (future != null) {
-            
             future.cancel(true);
         }
         abandonStuckInitExecutor(executor);
@@ -1734,7 +1706,6 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
                     "Physical runtime retirement exceeded "
                             + PLUGIN_RETIREMENT_TIMEOUT_MS + "ms");
         }
-        
         operation.unloadStarted.compareAndSet(false, true);
         PYTHON_RUNTIME_ABANDONED.set(true);
         ABANDONED_RUNTIME_PLUGIN_IDS.add(operation.pluginId);
@@ -1751,7 +1722,6 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
                 + " active="
                 + getPluginsController().isPluginRuntimeExecuting(
                         operation.runtimeToken));
-        
         getPluginsController().completePluginToggleForAbandonedRuntime(
                 operation.pluginId,
                 lifecycleTimeoutMessage(operation.pluginId));
@@ -1961,7 +1931,6 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
                 return;
             }
             try {
-                
                 try {
                     org.lsposed.hiddenapibypass.HiddenApiBypass.addHiddenApiExemptions("L");
                 } catch (Throwable bypassError) {
@@ -1972,11 +1941,9 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
                         FileLog.w("nimarko: Pine unavailable; Python starts with method hooks disabled");
                     }
                 } catch (Throwable pineError) {
-                    
                     FileLog.e("nimarko: optional Pine initialization failed; continuing without hooks", pineError);
                 }
                 final Python candidate;
-                
                 synchronized (Python.class) {
                     if (!Python.isStarted()) {
                         Python.start(new AndroidPlatform(ApplicationLoader.applicationContext));
@@ -1986,7 +1953,6 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
                 try {
                     candidate.getModule("plugin_compat").callAttr("install");
                 } catch (Throwable compatibilityError) {
-                    
                     FileLog.e("Failed to initialize plugin compatibility layer",
                             compatibilityError);
                 }
@@ -1994,7 +1960,6 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
                 if (base == null) {
                     throw new IllegalStateException("BasePlugin was not initialized");
                 }
-                
                 this.basePluginClass = base;
                 this.python = candidate;
             } catch (Exception e) {
@@ -2010,23 +1975,19 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
 
     @Override
     public boolean isEngineAvailable() {
-        
         return !PYTHON_RUNTIME_ABANDONED.get()
                 && this.python != null && Python.isStarted();
     }
 
     @Override
     public void init(Runnable runnable) {
-        
         if (!Utilities.pluginsQueue.isAlive()) {
             Utilities.pluginsQueue = new org.telegram.messenger.DispatchQueue("pluginsQueue");
         }
         Utilities.pluginsQueue.postRunnable(() -> {
             try {
                 cleanupOrphanedHostInstallStages();
-                
                 recoverInterruptedPluginUpdates(getPluginsController());
-                
                 registerPluginsMetadataOnly(
                         PYTHON_RUNTIME_ABANDONED.get()
                                 || NimarkoConfig.pluginsSafeMode);
@@ -2040,10 +2001,8 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
                     }
                     return;
                 }
-                
                 if (NimarkoConfig.pluginsSafeMode) {
                     FileLog.d("nimarko: safe mode active, skipping Python engine init");
-                    
                     if (runnable != null) {
                         AndroidUtilities.runOnUIThread(runnable);
                     }
@@ -2058,7 +2017,6 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
                     }
                     return;
                 }
-                
                 recoverInterruptedPluginUpdates(getPluginsController());
                 if (!NimarkoConfig.pluginsSafeMode) {
                     try {
@@ -2100,7 +2058,6 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
         if (PYTHON_RUNTIME_ABANDONED.get()) {
             return;
         }
-        
         final Python current = getPython();
         if (current == null) {
             return;
@@ -2219,7 +2176,6 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
         }
         stopDevServer();
         revokeAllInstallCandidates();
-        
         if (this.python == null) {
             if (runnable != null) {
                 runnable.run();
@@ -2289,7 +2245,6 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
                 } else {
                     plugin.setError(null);
                 }
-                
                 plugin.setEnabled(false);
                 controller.plugins.put(pid, plugin);
                 boolean restoreEnabled = !forceDisabled
@@ -2388,7 +2343,6 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
             }
             try {
                 try {
-                    
                     PipController.getInstance()
                             .bootstrapRuntimeForPluginStartup();
                 } catch (RuntimeException bootstrapFailure) {
@@ -2408,7 +2362,6 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
                          pyObject.callAttr("append", getPluginsController().pluginsDir.getAbsolutePath());
                          pluginsPathAdded = true;
                     }
-                    
                     module.callAttr("setswitchinterval", 0.01d);
                     if (NimarkoConfig.pluginsSafeMode) {
                         getPluginsController().notifyPluginsChanged();
@@ -2433,7 +2386,6 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
                         }
                         return;
                     }
-                     
                     Map<String, File> startupFiles = new LinkedHashMap<>();
                     Map<String, Plugin> startupPlugins =
                             new LinkedHashMap<>();
@@ -2645,7 +2597,6 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
                             getPluginsController().notifyPluginsChanged();
                         }
                     }
-                    
                     getPluginsController().clearPluginStartupActivations();
                     PipController.getInstance().cleanup();
                     getPluginsController().notifyPluginsChanged();
@@ -2762,7 +2713,6 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
                         ? PipController.getInstance().snapshotState(str)
                         : null;
         if (!shouldEnable) {
-            
             plugin.setEnabled(false);
             plugin.setError(null);
             plugin.setEngine(PluginsConstants.PYTHON);
@@ -2781,14 +2731,12 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
             PluginDebugLog.log("loadPlugin metadata-only id=" + str + " (disabled)");
             return;
         }
-        
         plugin.setEnabled(false);
         if (this.pluginInstances.containsKey(str)) {
             if (!unloadPluginNow(str)) {
                 throw new LifecyclePendingException(str);
             }
         }
-        
         getPluginsController().preferences.edit()
                 .putString("crashed_plugin_id", str)
                 .putLong("crashed_plugin_started_at", System.currentTimeMillis())
@@ -2800,7 +2748,6 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
         boolean runtimeScopeEntered = false;
         try {
         ensureEnableStillRequested(str, enableGeneration);
-        
         try {
             if (dependenciesPrepared) {
                 PluginDebugLog.log("loadPlugin deps already prepared id=" + str);
@@ -2810,7 +2757,6 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
             } else {
                 PluginDebugLog.log("loadPlugin deps install id=" + str
                         + " reqs=" + requestedDependencies);
-                
                 PipController.getInstance().installDependencies(
                         requestedDependencies, str,
                         enableInstallDelegate(str, enableGeneration));
@@ -2841,12 +2787,10 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
             PluginDebugLog.log("loadPlugin importing module id=" + str);
             PyObject module = getPython().getModule(str);
             importedModule = module;
-            
             module.put("__nimarko_runtime_token__", runtimeToken);
             module.put("__nimarko_plugin_id__", str);
             module.put("__nimarko_plugin_generation__", enableGeneration);
             module.put("__nimarko_plugin_instance_id__", runtimeToken.getInstanceId());
-            
             ensureEnableStillRequested(str, enableGeneration);
             PluginDebugLog.log("loadPlugin module imported id=" + str + " → finding BasePlugin class");
             PyObject pyObjectFindPluginClass = findPluginClass(module);
@@ -2874,7 +2818,6 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
             getPluginsController().plugins.put(str, plugin);
             this.pluginRuntimeTokens.put(str, runtimeToken);
             this.pluginInstances.put(str, pyObjectCall);
-            
             try {
                 java.util.Set<String> impl = new java.util.HashSet<>();
                 for (String hook : new String[]{
@@ -2885,7 +2828,6 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
                     try {
                         PyObject fn = pyObjectCall.get(hook);
                         if (fn == null) continue;
-                        
                         PyObject ref = fn;
                         try {
                             PyObject inner = fn.get("__func__");
@@ -2893,17 +2835,14 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
                         } catch (Throwable ignored) {}
                         PyObject qualObj = ref.get("__qualname__");
                         String qual = qualObj != null ? qualObj.toString() : "";
-                        
                         if (!qual.startsWith("BasePlugin.")) {
                             impl.add(hook);
                         }
                     } catch (Throwable t) {
-                        
                         throw new RuntimeException("hook probe failed for " + hook, t);
                     }
                 }
                 plugin.implementedHooks = impl;
-                
                 java.util.HashMap<String, PyObject> bound = new java.util.HashMap<>(impl.size() * 2);
                 for (String hook : impl) {
                     try {
@@ -2914,10 +2853,8 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
                 plugin.boundHooks = bound;
                 FileLog.d("nimarko: plugin " + str + " implements " + impl);
             } catch (Throwable t) {
-                
                 plugin.implementedHooks = null;
             }
-            
             if (z && !forceInstantiate) {
                 ensureEnableStillRequested(str, enableGeneration);
                 setPluginEnabled(
@@ -2925,7 +2862,6 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
                         deferDependencyCleanup);
                 LifecycleOperation pending = lifecycleOperations.get(str);
                 if (pending != null && pending.instance == createdInstance) {
-                    
                     throw new LifecyclePendingException(str);
                 }
                 ensureEnableStillRequested(str, enableGeneration);
@@ -2954,18 +2890,14 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
             }
             if (!dependenciesPrepared && !forceInstantiate
                     && !deferDependencyCleanup) {
-                
                 PipController.getInstance().cleanup();
             }
             PluginDebugLog.log("loadPlugin SUCCESS id=" + str + " enabled=" + shouldEnable);
         } catch (LifecyclePendingException pending) {
-            
             throw pending;
         } catch (EnableCancelledException cancelled) {
-            
             int cancellationGeneration = getPluginsController()
                     .cancelPluginInitialization(str, enableGeneration, true);
-            
             if (cancellationGeneration < 0) {
                 getPluginsController().cleanupPlugin(str, runtimeToken);
             }
@@ -2978,7 +2910,6 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
             }
             throw cancelled;
         } catch (Exception failure) {
-            
             getPluginsController().cleanupPlugin(str, runtimeToken);
             finishLegacyOverlayProbe(runtimeToken);
             rollbackPluginImport(
@@ -3003,7 +2934,6 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
                 getPluginsController().exitPluginRuntime(runtimeToken);
             }
             getPluginsController().endPluginInitialization(str, enableGeneration);
-            
             getPluginsController().preferences.edit()
                     .remove("plugin_crashed_" + str)
                     .remove("plugin_enabled_before_quarantine_" + str)
@@ -3019,7 +2949,6 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
             return null;
         }
         try {
-            
             PyObject finder = this.basePluginClass.get("_findPluginClass");
             if (finder != null) {
                 PyObject result = finder.call(pyObject);
@@ -3082,7 +3011,6 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
                 PyObjectUtils.getBoolean(instance, "initialized", false);
         final LifecycleOperation operation;
         try {
-            
             operation = beginLifecycleOperation(
                     str, instance, runtimeToken,
                     runtimeToken != null ? runtimeToken.getGeneration() : 0,
@@ -3167,7 +3095,6 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
                     + str + " target=" + z
                     + " phase=" + timedOut.phase
                     + " runtime=" + timedOut.runtimeToken);
-            
             if (!z) {
                 if (callback != null) {
                     AndroidUtilities.runOnUIThread(
@@ -3182,7 +3109,6 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
         if (!z && retiring != null && !retiring.settled.get()) {
             PluginDebugLog.log("PY duplicate OFF during retirement plugin="
                     + str + " runtime=" + retiring.runtimeToken);
-            
             if (callback != null) {
                 AndroidUtilities.runOnUIThread(
                         () -> callback.run(null));
@@ -3214,7 +3140,6 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
                 PluginDebugLog.log("PY enable found half-disabled instance plugin="
                         + str + " generation=" + enableGeneration
                         + " runtime=" + runtimeToken);
-                
                 unloadPluginNow(str);
                 if (deferUntilLifecycleSettled(str, () ->
                         setPluginEnabled(
@@ -3226,7 +3151,6 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
                 runtimeToken = null;
                 ensureEnableStillRequested(str, enableGeneration);
             }
-            
             if (z && pyObject == null && plugin != null) {
                 PluginDebugLog.log("PY enable re-import plugin=" + str
                         + " generation=" + enableGeneration);
@@ -3250,7 +3174,6 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
                 throw new Exception("Plugin not found: " + str);
             }
             if (pyObject == null) {
-                
                 if (!z) {
                     plugin.setEnabled(false);
                     getPluginsController().preferences.edit().putBoolean("plugin_enabled_" + str, false).apply();
@@ -3274,7 +3197,6 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
                 return;
             }
             if (z) {
-                
                 ensureEnableStillRequested(str, enableGeneration);
                 if (runtimeToken == null) {
                     throw new EnableCancelledException(str);
@@ -3283,7 +3205,6 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
                         + " generation=" + enableGeneration
                         + " runtime=" + runtimeToken);
                 callOnPluginLoadWithTimeout(str, pyObject, enableGeneration, runtimeToken);
-                
                 pyObject.put("initialized", true);
                 PluginDebugLog.log("PY on_plugin_load returned plugin=" + str
                         + " generation=" + enableGeneration
@@ -3300,7 +3221,6 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
             if (z) {
                 final PyObject committedObject = pyObject;
                 final Plugin committedPlugin = plugin;
-                
                 if (this.pluginInstances.get(str) != committedObject) {
                     throw new EnableCancelledException(str);
                 }
@@ -3341,7 +3261,6 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
                     + " generation=" + enableGeneration, th2);
             getPluginsController().endPluginInitialization(str);
             if (th2 instanceof EnableCancelledException) {
-                
                 finishLegacyOverlayProbe(operationToken);
                 if (callback != null) {
                     AndroidUtilities.runOnUIThread(() -> callback.run(null));
@@ -3360,7 +3279,6 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
                         && this.pluginRuntimeTokens.get(str) == failedToken
                         && getPluginsController().isPluginRuntimeCurrent(failedToken);
                 if (ownsFailedObject) {
-                    
                     if (PyObjectUtils.getBoolean(failedObject, "initialized", false)) {
                         unloadPluginNow(str);
                     } else if (lifecycleOperations.get(str) == null) {
@@ -3373,7 +3291,6 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
                         } catch (LifecyclePendingException ignored) {}
                     }
                 }
-                
                 getPluginsController().failPluginEnable(
                         str, enableGeneration, th2, failedToken);
                 finishLegacyOverlayProbe(failedToken);
@@ -3437,7 +3354,6 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
                 try {
                     PluginDebugLog.log("PY unload worker start plugin="
                             + pluginId + " runtime=" + runtimeToken);
-                    
                     boolean entered = false;
                     getPluginsController().beginPluginUnload(runtimeToken);
                     try {
@@ -3531,7 +3447,6 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
             return;
         }
         if (!owned) {
-            
             getPluginsController().runWhenPluginRuntimeQuiescent(
                     runtimeToken,
                     () -> getPluginsController().releasePluginRuntime(runtimeToken));
@@ -3546,7 +3461,6 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
         try {
             invalidatePluginSettingCache(pluginId, null);
         } catch (Throwable ignored) {}
-        
         try {
             Plugin p = getPluginsController().plugins.get(pluginId);
             if (p != null) {
@@ -3555,7 +3469,6 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
             }
         } catch (Throwable ignored) {}
         removePluginModuleIfOwned(pluginId, null, runtimeToken, false);
-        
         getPluginsController().runWhenPluginRuntimeQuiescent(
                 runtimeToken,
                 () -> getPluginsController().releasePluginRuntime(runtimeToken));
@@ -3687,7 +3600,6 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
             settleLifecycleOperation(operation);
         } catch (TimeoutException te) {
             markLifecycleTimedOut(operation, future, exec);
-            
             getPluginsController().cancelPluginInitialization(pluginId, enableGeneration, false);
             FileLog.w("nimarko: on_plugin_load timeout (>" + PLUGIN_LOAD_TIMEOUT_MS + "ms) id=" + pluginId);
             throw new TimeoutException("on_plugin_load for " + pluginId
@@ -3731,7 +3643,6 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
                 markerData = new PluginDeleteMarkerData(
                         DELETE_STATE_PREPARED,
                         newPluginUpdateTransactionId());
-                
                 writePluginDeleteMarker(
                         directory, str, markerData.state,
                         markerData.transactionId, false);
@@ -3790,7 +3701,6 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
             return;
         }
         try {
-            
             File tempDir = new File(ApplicationLoader.getFilesDirFixed(), "temp");
             if (!tempDir.exists()) tempDir.mkdirs();
             File tempFile = new File(tempDir, str + ".py");
@@ -3996,7 +3906,6 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
                                                     "\n")));
                             continue;
                         } catch (Throwable notASequence) {
-                            
                         }
                     }
                     metadata.put(key, literal.toString());
@@ -4295,7 +4204,6 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
         }
         final StagedCandidatePayload hostOwnedPayload;
         try {
-            
             hostOwnedPayload =
                     copyAuthorizedCandidateToHostStage(path);
         } catch (Throwable failure) {
@@ -4405,7 +4313,6 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
             return;
         }
         PluginDebugLog.log("loadPluginFromFile START file=" + str + " plugin=" + (plugin != null ? plugin.getId() : "null"));
-        
         if (app.nimarkogram.messenger.NimarkoConfig.pluginsSafeMode) {
             PluginDebugLog.log("loadPluginFromFile ABORT: safe mode is active");
             if (callback != null) {
@@ -4549,7 +4456,6 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
                     }
                     throw new LifecyclePendingException(id);
                 }
-                
                 backupFile = allocatePluginBackupFile(id);
                 copyFileAndSync(destFile, backupFile);
                 syncDirectoryStrict(backupFile.getParentFile());
@@ -4583,7 +4489,6 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
                     id, destFile.getAbsolutePath(), p, false,
                     getPluginsController().getPluginToggleGeneration(id),
                     false, true);
-            
             writePluginUpdateMarker(
                     getPluginsController().getPluginsDir(),
                     id, backupFile, UPDATE_STATE_COMMITTED,
@@ -4598,12 +4503,10 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
             if (!artifactsCommitted) {
                 dependencyCleanupComplete = false;
             } else if (UPDATE_CLEANUP_UNINSTALL.equals(updateCleanupMode)) {
-                
                 dependencyCleanupComplete =
                         PipController.getInstance()
                                 .uninstallDependencies(id);
             } else {
-                
                 dependencyCleanupComplete =
                         PipController.getInstance().cleanupAndReport();
             }
@@ -4628,7 +4531,6 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
                     }
                 }
             } else {
-                
                 FileLog.w("Plugin update committed; dependency cleanup "
                         + "deferred for " + id);
             }
@@ -4639,7 +4541,6 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
             }
 
         } catch (LifecyclePendingException pending) {
-            
             final File deferredBackup = backupFile;
             final boolean deferredBackupCreated = backupCreated;
             final boolean deferredCandidateWriteStarted =
@@ -4672,7 +4573,6 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
             }
         } catch (Throwable e) {
             if (updateCommitted) {
-                
                 FileLog.e("Plugin update committed; post-commit work failed "
                         + "for " + id, e);
                 try {
@@ -5118,7 +5018,6 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
     private static boolean matchesSourceChecksum(
             File source, String expected) throws IOException {
         if (expected == null) {
-            
             return source != null && source.isFile();
         }
         if (UPDATE_NO_BACKUP.equals(expected)) {
@@ -5389,7 +5288,6 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
                     throw new IOException(
                             "Plugin rollback backup checksum mismatch");
                 }
-                
                 android.system.Os.rename(
                         backupFile.getAbsolutePath(),
                         destFile.getAbsolutePath());
@@ -5453,7 +5351,6 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
         boolean reloadRestoredPlugin = false;
 
         if (hadExistingFile) {
-            
             getPluginsController().restorePluginEnabledPreference(
                     pluginId, transactionGeneration,
                     restoreEnabledPreference);
@@ -5468,7 +5365,6 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
             reloadRestoredPlugin &=
                     sourceRecovered && dependencyStateRecovered;
             if (!reloadRestoredPlugin) {
-                
                 if (previousPlugin != null) {
                     previousPlugin.setEnabled(false);
                     previousPlugin.setError(failure);
@@ -5566,7 +5462,6 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
                 && dependencySnapshotPrepared
                 && dependencySnapshotFile.exists()
                 && !candidateWriteStarted) {
-            
             if (!dependencySnapshotFile.delete()) {
                 FileLog.w("Could not remove unpublished dependency snapshot "
                         + dependencySnapshotFile.getAbsolutePath());
@@ -5586,13 +5481,11 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
                     pluginId, previousPlugin);
         }
         if (hadExistingFile && reloadRestoredPlugin) {
-            
             try {
                 loadPlugin(
                         pluginId, destFile.getAbsolutePath(),
                         backupRestored ? null : previousPlugin);
             } catch (LifecyclePendingException pendingRestore) {
-                
                 FileLog.e("Original plugin is still retiring after rollback for "
                         + pluginId, pendingRestore);
             } catch (Throwable reloadFailure) {
@@ -5867,11 +5760,9 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
             FileLog.e("nimarko: executeOnAppEvent base_plugin load failed", t);
             return;
         }
-        
         PyObject pyObject2 = this.debuggerListener;
             if (pyObject2 != null) {
                 try {
-                    
                     pyObject2.callAttr(PluginsConstants.ON_APP_EVENT, pyObjectCall);
                 } catch (PyException e) {
                     FileLog.e("Failed to execute app event for debugger listener", e);
@@ -5880,7 +5771,6 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
             for (java.util.Map.Entry<String, PyObject> entry : this.pluginInstances.entrySet()) {
                 String pid = entry.getKey();
                 PyObject pyObject3 = entry.getValue();
-                
                 if (!getPluginsController().isPluginActive(pid)) {
                     continue;
                 }
@@ -5923,7 +5813,6 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
             try {
                 PyObject pyObjectCall = pyMethodCaller.call(pyObject, t);
                 if (pyObjectCall != null) {
-                    
                     String string = PyObjectUtils.getString(pyObjectCall, PluginsConstants.STRATEGY, PluginsConstants.Strategy.DEFAULT);
                     if (string.endsWith(PluginsConstants.Strategy.CANCEL)) {
                         return new PluginsController.HookResult<>(null, true, false);
@@ -5967,7 +5856,6 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
         if (runtimeToken == null) {
             return new PluginsController.HookResult<>(t, false, false);
         }
-        
         getPluginsController().getWatchdog().onPluginExecutionStarted(str);
         try {
             return executeHook(instance, t, cls, str2, pyMethodCaller, callback);
@@ -6022,7 +5910,6 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
             try {
                 PyObject pyObjectCallAttr = pyObject.callAttr("post_request_hook", str, Integer.valueOf(i), tLObject, tL_error);
                 if (pyObjectCallAttr != null) {
-                    
                     String string = PyObjectUtils.getString(pyObjectCallAttr, PluginsConstants.STRATEGY, "");
                     if (string.endsWith(PluginsConstants.Strategy.CANCEL)) {
                         return new PluginsController.HookResult<>(null, true, false);
@@ -6216,9 +6103,7 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
                     }
                     metadataCache.put(cacheKey, new MetadataCacheEntry(file, map));
                 } catch (PyException e) {
-                    
                     // empty metadata so the caller can fall through to its
-                    
                     FileLog.e("Failed to parse metadata from " + str + ". Error: " + e.getMessage(), e);
                 }
             }
@@ -6244,7 +6129,6 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
                     if (obj instanceof Boolean) {
                         java2 = Boolean.valueOf(pyObjectCallAttr.toBoolean());
                     } else if (obj instanceof Integer) {
-                        
                         try {
                             java2 = Integer.valueOf(pyObjectCallAttr.toInt());
                         } catch (RuntimeException convErr) {
@@ -6268,7 +6152,6 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
                     if (java2 != null) {
                         if (generation.get() == readGeneration) {
                             this.settingsCache.computeIfAbsent(str, k -> new ConcurrentHashMap<>()).put(str2, java2);
-                            
                             if (generation.get() == readGeneration) return java2;
                             ConcurrentHashMap<String, Object> raced = settingsCache.get(str);
                             if (raced != null) raced.remove(str2, java2);
@@ -6277,7 +6160,6 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
                     }
                 }
                 } catch (RuntimeException e) {
-                
                 FileLog.e("Failed to get plugin setting " + str + "/" + str2, e);
                     return obj;
                 }
@@ -6309,7 +6191,6 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
                     settingsCache.clear();
                     return false;
                 }
-                
                 for (AtomicLong generation : settingsCacheGenerations.values()) generation.incrementAndGet();
                 settingsCache.clear();
                 return true;
@@ -6515,7 +6396,6 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
         if (pluginValidationResultValidatePluginFromFile.plugin != null) {
             HostInstallTicket ticket = null;
             boolean sheetShown = false;
-            
             try {
                 com.exteragram.messenger.plugins.PluginsController.PluginValidationResult exteraResult =
                         new com.exteragram.messenger.plugins.PluginsController.PluginValidationResult(
@@ -6524,7 +6404,6 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
                 com.exteragram.messenger.plugins.ui.components.InstallPluginBottomSheet.PluginInstallParams exteraParams =
                         new com.exteragram.messenger.plugins.ui.components.InstallPluginBottomSheet.PluginInstallParams(
                                 pluginInstallParams.filePath, !pluginInstallParams.incompatible);
-                
                 final InstallPluginBottomSheet sheet =
                         new com.exteragram.messenger.plugins.ui.components.InstallPluginBottomSheet(
                                 baseFragment, exteraResult,
@@ -6536,7 +6415,6 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
                     throw new SecurityException(
                             "Could not bind host install authority");
                 }
-                
                 if (baseFragment.showDialog(
                         sheet,
                         dialog -> sheet.onHostFragmentTeardown())

@@ -66,10 +66,8 @@ public class CopyUtilities {
         }
 
         try {
-            
             MessageObject.addEntitiesToText(
                     result, validEntities, out, true, false, false);
-            
             MediaDataController.addAnimatedEmojiSpans(
                     validEntities, result, null);
         } catch (Throwable error) {
@@ -157,7 +155,6 @@ public class CopyUtilities {
             final int start = spanned.getSpanStart(span);
             final int end = spanned.getSpanEnd(span);
             spannable.setSpan(new CodeHighlighting.Span(true, 0, null, span.lng, spannable.subSequence(start, end).toString()), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-
         }
         for (int i = 0; i < quotes.size(); ++i) {
             ParsedSpan span = quotes.get(i);

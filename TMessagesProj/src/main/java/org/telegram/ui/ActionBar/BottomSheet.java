@@ -116,6 +116,7 @@ public class BottomSheet extends Dialog implements BaseFragment.AttachedSheet {
     private CharSequence[] items;
     private int[] itemIcons;
     private View customView;
+    private boolean nativeCustomView;
     private CharSequence title;
     private boolean bigTitle;
     private boolean multipleLinesTitle;
@@ -280,13 +281,11 @@ public class BottomSheet extends Dialog implements BaseFragment.AttachedSheet {
         if (view == null) {
             return;
         }
-        
         try {
             android.graphics.drawable.Drawable bg = view.getBackground();
             if (bg != null && bg.getBounds().isEmpty() && view.getWidth() > 0 && view.getHeight() > 0) {
                 bg.setBounds(0, 0, view.getWidth(), view.getHeight());
             }
-            
             if (view instanceof android.widget.TextView) {
                 android.widget.TextView tv = (android.widget.TextView) view;
                 int tc = tv.getCurrentTextColor();
@@ -317,7 +316,6 @@ public class BottomSheet extends Dialog implements BaseFragment.AttachedSheet {
                 bg.setBounds(0, 0, view.getWidth(), view.getHeight());
                 fixed = true;
             }
-            
             if (bg instanceof android.graphics.drawable.GradientDrawable) {
                 try {
                     android.content.res.ColorStateList csl = ((android.graphics.drawable.GradientDrawable) bg).getColor();
@@ -333,13 +331,10 @@ public class BottomSheet extends Dialog implements BaseFragment.AttachedSheet {
                 int a = (tc >>> 24) & 0xFF;
                 int rgb = tc & 0xFFFFFF;
                 if (rgb == 0 && a > 0 && a < 0xC0) {
-                    
                     tv.setTextColor(Theme.getColor(Theme.key_dialogTextBlack));
                 } else {
-                    
                     tv.setTextColor(tc);
                 }
-                
                 try { tv.setHighlightColor(tv.getHighlightColor()); } catch (Throwable ignored3) {}
                 fixed = true;
             }
@@ -497,6 +492,7 @@ public class BottomSheet extends Dialog implements BaseFragment.AttachedSheet {
             }
             onSwipeStarts();
         }
+
 
         private int internalPaddingBottom;
 
@@ -1114,7 +1110,7 @@ public class BottomSheet extends Dialog implements BaseFragment.AttachedSheet {
             if (type != Builder.CELL_TYPE_CALL) {
                 setBackgroundDrawable(Theme.getSelectorDrawable(false, resourcesProvider));
             }
-            
+
             imageView = new ImageView(context);
             imageView.setScaleType(ImageView.ScaleType.CENTER);
             imageView.setColorFilter(new PorterDuffColorFilter(getThemedColor(Theme.key_dialogIcon), PorterDuff.Mode.MULTIPLY));
@@ -1379,7 +1375,6 @@ public class BottomSheet extends Dialog implements BaseFragment.AttachedSheet {
     }
 
     private void onCreateInternal() {
-
         Window window = null;
         if (attachedFragment != null) {
             attachedFragment.addSheet(this);
@@ -1423,7 +1418,6 @@ public class BottomSheet extends Dialog implements BaseFragment.AttachedSheet {
 
                 @Override
                 protected boolean drawChild(Canvas canvas, View child, long drawingTime) {
-                    
                     try {
                         return super.drawChild(canvas, child, drawingTime);
                     } catch (Throwable t) {
@@ -1504,14 +1498,14 @@ public class BottomSheet extends Dialog implements BaseFragment.AttachedSheet {
                 ViewGroup viewGroup = (ViewGroup) customView.getParent();
                 viewGroup.removeView(customView);
             }
-            
-            final View nimarkoCustomView = customView;
-            nimarkoCustomView.post(() -> nimarkoInvalidateSubtree(nimarkoCustomView));
-            
-            try {
-                nimarkoCustomView.getViewTreeObserver().addOnGlobalLayoutListener(
-                        () -> nimarkoFixLateViews(nimarkoCustomView));
-            } catch (Throwable ignored) {}
+            if (!nativeCustomView) {
+                final View nimarkoCustomView = customView;
+                nimarkoCustomView.post(() -> nimarkoInvalidateSubtree(nimarkoCustomView));
+                try {
+                    nimarkoCustomView.getViewTreeObserver().addOnGlobalLayoutListener(
+                            () -> nimarkoFixLateViews(nimarkoCustomView));
+                } catch (Throwable ignored) {}
+            }
             if (!useBackgroundTopPadding) {
                 containerView.setClipToPadding(false);
                 containerView.setClipChildren(false);
@@ -1658,6 +1652,10 @@ public class BottomSheet extends Dialog implements BaseFragment.AttachedSheet {
             backDrawable.setAlpha(dimBehind ? dimBehindAlpha : 0);
             containerView.setTranslationY(0);
             onContainerViewTranslation();
+            onOpenAnimationEnd();
+            if (delegate != null) {
+                delegate.onOpenAnimationEnd();
+            }
             return;
         }
         backDrawable.setAlpha(0);
@@ -1794,8 +1792,7 @@ public class BottomSheet extends Dialog implements BaseFragment.AttachedSheet {
         containerView.setVisibility(View.VISIBLE);
 
         if (!onCustomOpenAnimation()) {
-            
-            if (useHardwareLayer && customView == null) {
+            if (useHardwareLayer && (customView == null || nativeCustomView)) {
                 container.setLayerType(View.LAYER_TYPE_HARDWARE, null);
             }
             if (transitionFromRight) {
@@ -1852,8 +1849,7 @@ public class BottomSheet extends Dialog implements BaseFragment.AttachedSheet {
                         if (delegate != null) {
                             delegate.onOpenAnimationEnd();
                         }
-                        
-                        if (useHardwareLayer && customView == null) {
+                        if (useHardwareLayer && (customView == null || nativeCustomView)) {
                             container.setLayerType(View.LAYER_TYPE_NONE, null);
                         }
 
@@ -2242,7 +2238,6 @@ public class BottomSheet extends Dialog implements BaseFragment.AttachedSheet {
             try {
                 super.dismiss();
             } catch (Exception e) {
-                
                 FileLog.e(e, false);
             }
         }
@@ -2304,6 +2299,12 @@ public class BottomSheet extends Dialog implements BaseFragment.AttachedSheet {
 
         public Builder setCustomView(View view) {
             bottomSheet.customView = view;
+            return this;
+        }
+
+        public Builder setNativeCustomView(View view) {
+            bottomSheet.customView = view;
+            bottomSheet.nativeCustomView = true;
             return this;
         }
 
@@ -2463,10 +2464,8 @@ public class BottomSheet extends Dialog implements BaseFragment.AttachedSheet {
         if (attachedFragment != null) {
             LaunchActivity.instance.checkSystemBarColors(true, true, true);
             AndroidUtilities.setLightNavigationBar(getWindowView(), AndroidUtilities.computePerceivedBrightness(getNavigationBarColor(getThemedColor(Theme.key_windowBackgroundGray))) >= .721f);
-
             return;
         }
-
         AndroidUtilities.setNavigationBarColor(this, overlayDrawNavBarColor);
         AndroidUtilities.setLightNavigationBar(this, AndroidUtilities.computePerceivedBrightness(overlayDrawNavBarColor) > .721);
     }
@@ -2525,6 +2524,7 @@ public class BottomSheet extends Dialog implements BaseFragment.AttachedSheet {
             container.invalidate();
         }
     }
+
 
     public BaseFragment attachedFragment;
 

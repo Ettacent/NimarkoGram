@@ -57,6 +57,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Locale;
 import java.util.TimeZone;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class LocaleController {
 
@@ -82,11 +83,9 @@ public class LocaleController {
                         lang = "en";
                     }
                     lang = lang.toLowerCase();
-                    
                     if (app.nimarkogram.messenger.NimarkoConfig.showSeconds) {
                         formatterDay = createFormatter(lang.toLowerCase().equals("ar") || lang.toLowerCase().equals("ko") ? locale : Locale.US, is24HourFormat ? "HH:mm:ss" : "h:mm:ss a", is24HourFormat ? "HH:mm:ss" : "h:mm:ss a");
                     } else if (app.nimarkogram.messenger.NimarkoConfig.oldTimeStyle) {
-                        
                         formatterDay = createFormatter(Locale.US, is24HourFormat ? "HH:mm" : "h:mm a", is24HourFormat ? "HH:mm" : "h:mm a");
                     } else {
                         formatterDay = createFormatter(lang.toLowerCase().equals("ar") || lang.toLowerCase().equals("ko") ? locale : Locale.US, is24HourFormat ? getStringInternal("formatterDay24H", R.string.formatterDay24H) : getStringInternal("formatterDay12H", R.string.formatterDay12H), is24HourFormat ? "HH:mm" : "h:mm a");
@@ -410,7 +409,9 @@ public class LocaleController {
         return formatterScheduleSend[n];
     }
 
-    private static HashMap<Integer, String> resourcesCacheMap = new HashMap<>();
+
+    private static final ConcurrentHashMap<Integer, String> resourcesCacheMap = new ConcurrentHashMap<>();
+    private static final ConcurrentHashMap<String, Integer> stringResourceIds = new ConcurrentHashMap<>();
 
     private HashMap<String, PluralRules> allRules = new HashMap<>();
 
@@ -1221,7 +1222,6 @@ public class LocaleController {
             }
             HashMap<String, String> stringMap = new HashMap<>(10_000);
             XmlPullParser parser = Xml.newPullParser();
-            
             stream = new FileInputStream(file);
             parser.setInput(stream, "UTF-8");
             int eventType = parser.getEventType();
@@ -1384,6 +1384,7 @@ public class LocaleController {
             android.content.res.Configuration config = new android.content.res.Configuration();
             config.locale = currentLocale;
             ApplicationLoader.applicationContext.getResources().updateConfiguration(config, ApplicationLoader.applicationContext.getResources().getDisplayMetrics());
+            clearStringResourceIdCache();
             changingConfiguration = false;
             FileLog.d("applyLanguage: reloadLastFile=" + reloadLastFile + " force=" + force + " isLoadingRemote=" + isLoadingRemote);
             if (reloadLastFile || !isLoadingRemote && !force && shouldReinstallLangpack(localeInfo.shortName)) {
@@ -1438,7 +1439,6 @@ public class LocaleController {
     }
 
     private String getStringInternal(String key, String fallback, int fallbackRes, int res) {
-        
         boolean forceLocal = isNimarkoBrandedKey(key) || isNimarkoBrandedKey(fallback);
         String value = (!forceLocal && BuildVars.USE_CLOUD_STRINGS) ? localeValues.get(key) : null;
         if (value == null) {
@@ -1487,7 +1487,7 @@ public class LocaleController {
     public static String getServerString(String key) {
         String value = getInstance().localeValues.get(key);
         if (value == null) {
-            int resourceId = ApplicationLoader.applicationContext.getResources().getIdentifier(key, "string", ApplicationLoader.applicationContext.getPackageName());
+            int resourceId = getStringResId(key);
             if (resourceId != 0) {
                 value = ApplicationLoader.applicationContext.getString(resourceId);
             }
@@ -1531,7 +1531,23 @@ public class LocaleController {
     }
 
     public static int getStringResId(String key) {
-        return ApplicationLoader.applicationContext.getResources().getIdentifier(key, "string", ApplicationLoader.applicationContext.getPackageName());
+        if (TextUtils.isEmpty(key)) {
+            return 0;
+        }
+        Integer cached = stringResourceIds.get(key);
+        if (cached != null) {
+            return cached;
+        }
+        int resourceId = ApplicationLoader.applicationContext.getResources().getIdentifier(key, "string", ApplicationLoader.applicationContext.getPackageName());
+        if (resourceId == 0) {
+            return 0;
+        }
+        Integer previous = stringResourceIds.putIfAbsent(key, resourceId);
+        return previous != null ? previous : resourceId;
+    }
+
+    private static void clearStringResourceIdCache() {
+        stringResourceIds.clear();
     }
 
     public static String nullable(String val) {
@@ -1545,8 +1561,8 @@ public class LocaleController {
         }
         String param = getInstance().stringForQuantity(getInstance().currentPluralRules.quantityForNumber(plural));
         param = key + "_" + param;
-        int resourceId = ApplicationLoader.applicationContext.getResources().getIdentifier(param, "string", ApplicationLoader.applicationContext.getPackageName());
-        int fallbackResourceId = ApplicationLoader.applicationContext.getResources().getIdentifier(key + "_other", "string", ApplicationLoader.applicationContext.getPackageName());
+        int resourceId = getStringResId(param);
+        int fallbackResourceId = getStringResId(key + "_other");
         return getString(param, key + "_other", resourceId, fallbackResourceId);
     }
 
@@ -1556,8 +1572,8 @@ public class LocaleController {
         }
         String param = getInstance().stringForQuantity(getInstance().currentPluralRules.quantityForNumber(plural));
         param = key + "_" + param;
-        int resourceId = ApplicationLoader.applicationContext.getResources().getIdentifier(param, "string", ApplicationLoader.applicationContext.getPackageName());
-        int fallbackResourceId = ApplicationLoader.applicationContext.getResources().getIdentifier(key + "_other", "string", ApplicationLoader.applicationContext.getPackageName());
+        int resourceId = getStringResId(param);
+        int fallbackResourceId = getStringResId(key + "_other");
         Object[] argsWithPlural = new Object[args.length + 1];
         argsWithPlural[0] = plural;
         System.arraycopy(args, 0, argsWithPlural, 1, args.length);
@@ -1570,8 +1586,8 @@ public class LocaleController {
         }
         String param = getInstance().stringForQuantity(getInstance().currentPluralRules.quantityForNumber(plural));
         param = key + "_" + param;
-        int resourceId = ApplicationLoader.applicationContext.getResources().getIdentifier(param, "string", ApplicationLoader.applicationContext.getPackageName());
-        int fallbackResourceId = ApplicationLoader.applicationContext.getResources().getIdentifier(key + "_other", "string", ApplicationLoader.applicationContext.getPackageName());
+        int resourceId = getStringResId(param);
+        int fallbackResourceId = getStringResId(key + "_other");
         Object[] argsWithPlural = new Object[args.length + 1];
         argsWithPlural[0] = plural;
         System.arraycopy(args, 0, argsWithPlural, 1, args.length);
@@ -1597,6 +1613,7 @@ public class LocaleController {
     public static String formatPluralStringComma(String key, int plural, Object... args) {
         return formatPluralStringComma(key, plural, ',', args);
     }
+
 
     public static String formatPluralStringComma(String key, int plural, char symbol) {
         return formatPluralStringComma(key, plural, symbol, new Object[] {});
@@ -1631,12 +1648,12 @@ public class LocaleController {
             }
             if (value == null) {
                 try {
-                    int resourceId = ApplicationLoader.applicationContext.getResources().getIdentifier(param, "string", ApplicationLoader.applicationContext.getPackageName());
+                    int resourceId = getStringResId(param);
                     value = ApplicationLoader.applicationContext.getString(resourceId);
                 } catch (Exception e2) {}
             }
             if (value == null) {
-                int resourceId = ApplicationLoader.applicationContext.getResources().getIdentifier(key + "_other", "string", ApplicationLoader.applicationContext.getPackageName());
+                int resourceId = getStringResId(key + "_other");
                 value = ApplicationLoader.applicationContext.getString(resourceId);
             }
             value = value.replace("%d", "%1$s");
@@ -1692,7 +1709,6 @@ public class LocaleController {
 
     public static String formatString(String key, String fallback, int res, int fallbackRes, Object... args) {
         try {
-            
             boolean forceLocal = isNimarkoBrandedKey(key) || isNimarkoBrandedKey(fallback);
             String value = (!forceLocal && BuildVars.USE_CLOUD_STRINGS) ? getInstance().localeValues.get(key) : null;
             if (value == null) {
@@ -2150,6 +2166,7 @@ public class LocaleController {
         if (changingConfiguration) {
             return;
         }
+        clearStringResourceIdCache();
         is24HourFormat = DateFormat.is24HourFormat(ApplicationLoader.applicationContext);
         systemDefaultLocale = newConfig.locale;
         if (languageOverride != null) {
@@ -2383,6 +2400,7 @@ public class LocaleController {
         }
         return "LOC_ERR";
     }
+
 
     public static String formatPmSentDate(long date) {
         try {
@@ -2742,7 +2760,6 @@ public class LocaleController {
 
             if (dateDay == day && year == dateYear) {
                 return LocaleController.formatString(R.string.LastSeenFormatted, LocaleController.formatString("TodayAtFormatted", R.string.TodayAtFormatted, getInstance().getFormatterDay().format(new Date(date))));
-                 
             } else if (dateDay + 1 == day && year == dateYear) {
                 if (madeShorter != null) {
                     madeShorter[0] = true;
@@ -3228,6 +3245,7 @@ public class LocaleController {
                         Configuration config = new Configuration();
                         config.locale = currentLocale;
                         ApplicationLoader.applicationContext.getResources().updateConfiguration(config, ApplicationLoader.applicationContext.getResources().getDisplayMetrics());
+                        clearStringResourceIdCache();
                         changingConfiguration = false;
 
                         RestrictedLanguagesSelectActivity.invalidateRestrictedLanguages();
@@ -4650,5 +4668,4 @@ public class LocaleController {
             }
         }
     }
-     
 }

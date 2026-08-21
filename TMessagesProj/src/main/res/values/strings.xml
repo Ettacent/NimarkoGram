@@ -11093,13 +11093,16 @@
     <string name="CP_Header_Record">Media</string>
 
     <!-- Privacy (extra) -->
-    <string name="NM_PR_AllowSystemPasscode">Allow use system PIN/Pattern</string>
-    <string name="NM_PR_AllowSystemPasscode_Desc">\"Cancel\" button on the fingerprint confirmation dialog will be replaced by \"Pin/Pattern\" button and you will be able to use your system password to unlock NimarkoGram.</string>
-    <string name="NM_PR_AskBioOpenArchive">Biometrics to open archive</string>
-    <string name="NM_PR_AskBioOpenEncrypted">Biometrics to open secret chats</string>
+    <string name="NM_PR_AllowSystemPasscode">Use device screen lock</string>
+    <string name="NM_PR_AllowSystemPasscode_Desc">Allow fingerprint, face, PIN, pattern or device password. This is your device’s system credential; NimarkoGram does not create a separate code.</string>
+    <string name="NM_PR_AskBioOpenArchive">Protect archived chats</string>
+    <string name="NM_PR_AskBioOpenArchive_Desc">Require device authentication before opening the archive.</string>
+    <string name="NM_PR_AskBioOpenEncrypted">Protect secret chats</string>
+    <string name="NM_PR_AskBioOpenEncrypted_Desc">Require device authentication before opening a secret chat.</string>
     <string name="NM_PR_AskPasscodeBeforeDelete">Passcode before delete</string>
     <string name="NM_PR_HideArchiveList">Hide archive from chats list</string>
-    <string name="NM_PR_HideArchiveList_Desc">The archive will be masked as NimarkoGram channel. \nYou will be able to open archive from drawer or by long tap on search button.</string>
+    <string name="NM_PR_HideArchiveList_Desc">Removes the archive row from the main chat list. You can open it here or by holding the Search button.</string>
+    <string name="NM_PR_OpenArchive">Open archived chats</string>
     <string name="NM_PR_HideArchivedStories">Hide archived stories</string>
     <string name="NM_PR_HideArchivedStories_Desc">Hides the archived-stories section from your profile.</string>
 
@@ -11171,15 +11174,18 @@
     <string name="NM_GE_ArchiveStories_Desc">Automatically move stories to the archive.</string>
 
     <string name="NM_PR_DeleteAccount">Delete Telegram account</string>
-    <string name="NM_PR_TestFingerprint">Test fingerprint</string>
-    <string name="NM_PR_TestFingerprint_Desc">If fingerprint authentication is already enabled and you do not see the features, try pressing the \"Test Fingerprint\" button to resolve the issue.</string>
-    <string name="NM_PR_AskBioOpenChats">Ask for biometrics to open chats</string>
+    <string name="NM_PR_TestFingerprint">Test authentication</string>
+    <string name="NM_PR_TestFingerprint_Desc">Checks whether biometric or device authentication is available and refreshes its state.</string>
+    <string name="NM_PR_AskBioOpenChats">Protect selected chats</string>
     <string name="NM_PR_AuthenticationRequired">Authentication is required to change this protected setting</string>
-    <string name="NM_PR_AskBioOpenChats_Desc">System password (fingerprint, face id, PIN or pattern) will be required to access selected type of chats.</string>
+    <string name="NM_PR_AuthenticationUnavailable">Authentication unavailable</string>
+    <string name="NM_PR_AuthenticationUnavailable_Desc">No biometric or device screen lock is available. Disable this protection setting?</string>
+    <string name="NM_PR_AskBioOpenChats_Desc">Require device authentication before opening chats selected below.</string>
     <string name="NM_PR_AskBioOpenChats_Title">Select chats</string>
-    <string name="NM_PR_RequireBiometricsToDelete">Require biometrics to delete chats</string>
-    <string name="NM_PR_RequireBiometricsToDelete_Desc">If you want to delete a chat or clear history, biometric confirmation will be required. Passcode and biometric confirmation in system need to be enabled.</string>
+    <string name="NM_PR_RequireBiometricsToDelete">Confirm chat deletion</string>
+    <string name="NM_PR_RequireBiometricsToDelete_Desc">Require device authentication before deleting a chat or clearing its history.</string>
     <string name="NM_PR_Header_Privacy">Privacy</string>
+    <string name="NM_PR_Header_ChatProtection">Chat protection</string>
     <string name="NM_PR_HideProxy">Don\'t show proxy sponsor</string>
     <string name="NM_PR_WindowBlurOnBackground">Blur app in recents</string>
     <string name="NM_PR_BiometricFixed">Biometrics fixed</string>
@@ -11457,7 +11463,6 @@
     <string name="NM_DBG_OldTimeStyle">Default time style in chats</string>
     <string name="NM_DBG_AudioSource">Microphone audio source</string>
     <string name="NM_DBG_JacksonJSONProvider">Use Jackson JSON provider</string>
-    <string name="NM_DBG_PlayGIFsAsVideos">Play GIFs as videos</string>
     <string name="NM_DBG_HideVideoTimestamp">Hide video timestamp</string>
     <string name="NM_DBG_ReplacePunctuation">Replace punctuation marks</string>
     <string name="NM_DBG_EditTextFix">EditText suggestions fix</string>

@@ -511,7 +511,6 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
         public long effectId;
         @Nullable
         public Boolean highQuality;
-         
         public boolean forceAsSticker;
         public boolean isHighQuality() {
             if (highQuality == null) {
@@ -1038,13 +1037,16 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
     private boolean manualRecording;
     private Timer progressTimer = null;
     private final Object progressTimerSync = new Object();
-     
     private final AtomicBoolean progressUpdatePending = new AtomicBoolean();
     private volatile int progressTimerGeneration;
     private boolean downloadingCurrentMessage;
     private boolean playMusicAgain;
     private PlaylistGlobalSearchParams playlistGlobalSearchParams;
     private AudioInfo audioInfo;
+    private final DispatchQueue audioInfoQueue = new DispatchQueue("audioInfoQueue");
+    private int audioInfoLoadGeneration;
+    private String cachedAudioInfoKey;
+    private AudioInfo cachedAudioInfo;
     private VideoPlayer videoPlayer;
     private boolean playerWasReady;
     private TextureView currentTextureView;
@@ -1300,7 +1302,6 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
             int count = 0;
             Cursor cursor = null;
             try {
-                
                 if (app.nimarkogram.messenger.utils.PermissionsUtils.isImagesPermissionGranted()) {
                     cursor = MediaStore.Images.Media.query(ApplicationLoader.applicationContext.getContentResolver(), MediaStore.Images.Media.EXTERNAL_CONTENT_URI, new String[]{"COUNT(_id)"}, null, null, null);
                     if (cursor != null) {
@@ -1317,7 +1318,6 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
                 }
             }
             try {
-                
                 if (app.nimarkogram.messenger.utils.PermissionsUtils.isVideoPermissionGranted()) {
                     cursor = MediaStore.Images.Media.query(ApplicationLoader.applicationContext.getContentResolver(), MediaStore.Video.Media.EXTERNAL_CONTENT_URI, new String[]{"COUNT(_id)"}, null, null, null);
                     if (cursor != null) {
@@ -1342,6 +1342,7 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
             }
         }, 2000);
     }
+
 
     private ExternalObserver externalObserver;
     private InternalObserver internalObserver;
@@ -1686,6 +1687,7 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
 
     public void cleanup() {
         cleanupPlayer(true, true);
+        audioInfoLoadGeneration++;
         audioInfo = null;
         playMusicAgain = false;
         for (int a = 0; a < UserConfig.MAX_ACCOUNT_COUNT; a++) {
@@ -1848,13 +1850,9 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
                     if (downloadingCurrentMessage) {
                         playMusicAgain = true;
                         playMessage(playingMessageObject);
-                    } else if (audioInfo == null) {
-                        try {
-                            File cacheFile = FileLoader.getInstance(UserConfig.selectedAccount).getPathToMessage(playingMessageObject.messageOwner);
-                            audioInfo = AudioInfo.getAudioInfo(cacheFile);
-                        } catch (Exception e) {
-                            FileLog.e(e);
-                        }
+                    } else if (playingMessageObject.isMusic()) {
+                        File cacheFile = FileLoader.getInstance(playingMessageObject.currentAccount).getPathToMessage(playingMessageObject.messageOwner);
+                        loadAudioInfoAsync(playingMessageObject, cacheFile);
                     }
                 }
             }
@@ -2149,11 +2147,9 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
                         }
                     }
                 }
-                 
             }
             previousAccValue = val;
             accelerometerVertical = gravityFast[1] > 2.5f && Math.abs(gravityFast[2]) < 4.0f && Math.abs(gravityFast[0]) > 1.5f;
-             
         }
         if (raisedToBack == minCount || accelerometerVertical) {
             lastAccelerometerDetected = System.currentTimeMillis();
@@ -2196,17 +2192,14 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
                     if (useFrontSpeaker) {
                         setUseFrontSpeaker(true);
                     }
-
                 }
             } else if (allowListening) {
                 if (!useFrontSpeaker) {
                     if (BuildVars.LOGS_ENABLED) {
                         FileLog.d("start listen");
                     }
-
                     setUseFrontSpeaker(true);
                     startAudioAgain(false);
-
                 }
             }
             raisedToBack = 0;
@@ -2219,10 +2212,8 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
                     if (BuildVars.LOGS_ENABLED) {
                         FileLog.d("start listen by proximity only");
                     }
-
                     setUseFrontSpeaker(true);
                     startAudioAgain(false);
-
                 }
             }
         } else if (!proximityTouched && !manualRecording) {
@@ -2233,7 +2224,6 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
                 raiseToSpeakUpdated(false);
                 raiseToEarRecord = false;
                 ignoreOnPause = false;
-
             } else if (useFrontSpeaker) {
                 if (BuildVars.LOGS_ENABLED) {
                     FileLog.d("stop listen");
@@ -2241,7 +2231,6 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
                 useFrontSpeaker = false;
                 startAudioAgain(true);
                 ignoreOnPause = false;
-
             }
         }
         if (timeSinceRaise != 0 && raisedToBack == minCount && Math.abs(System.currentTimeMillis() - timeSinceRaise) > 1000) {
@@ -2782,7 +2771,6 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
             }
             return;
         }
-        
         if (!playlistEndReached[0]) {
             loadingPlaylist = true;
             AccountInstance.getInstance(playingMessageObject.currentAccount).getMediaDataController().loadMedia(playingMessageObject.getDialogId(), 50, playlistMaxId[0], 0, MediaDataController.MEDIA_MUSIC, 0, 1, playlistClassGuid, 0, null, null);
@@ -3169,7 +3157,6 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
             }
         } else {
             if (pipClosingToInline) {
-                
                 showPipAfterInlineClose = true;
                 return;
             }
@@ -3229,7 +3216,6 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
         currentTextureViewContainer = container;
         if (currentAspectRatioFrameLayoutReady && currentAspectRatioFrameLayout != null) {
             currentAspectRatioFrameLayout.setAspectRatio(currentAspectRatioFrameLayoutRatio, currentAspectRatioFrameLayoutRotation);
-            
         }
     }
 
@@ -3403,7 +3389,6 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
             @Override
             public boolean onSurfaceDestroyed(SurfaceTexture surfaceTexture) {
                 if (videoPlayer == null) {
-                    
                     pipSwitchingState = 0;
                     return false;
                 }
@@ -3657,14 +3642,13 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
             downloadingCurrentMessage = true;
             isPaused = false;
             lastProgress = 0;
+            audioInfoLoadGeneration++;
             audioInfo = null;
             playingMessageObject = messageObject;
             if (canStartMusicPlayerService()) {
                 Intent intent = new Intent(ApplicationLoader.applicationContext, MusicPlayerService.class);
                 try {
-                     
                     ApplicationLoader.applicationContext.startService(intent);
-                    
                 } catch (Throwable e) {
                     FileLog.e(e);
                 }
@@ -3738,7 +3722,6 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
                 @Override
                 public boolean onSurfaceDestroyed(SurfaceTexture surfaceTexture) {
                     if (videoPlayer == null) {
-                        
                         pipSwitchingState = 0;
                         return false;
                     }
@@ -3947,16 +3930,14 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
                     if (Math.abs(currentPlaybackSpeed - 1.0f) > 0.001f) {
                         audioPlayer.setPlaybackSpeed(Math.round(currentPlaybackSpeed * 10f) / 10f);
                     }
+                    audioInfoLoadGeneration++;
                     audioInfo = null;
                     if (!saved) {
                         clearPlaylist();
                     }
                 } else {
-                    try {
-                        audioInfo = AudioInfo.getAudioInfo(cacheFile);
-                    } catch (Exception e) {
-                        FileLog.e(e);
-                    }
+                    audioInfo = null;
+                    loadAudioInfoAsync(messageObject, cacheFile);
                     String name = messageObject.getFileName();
                     if (!TextUtils.isEmpty(name) && messageObject.getDuration() >= 10 * 60) {
                         SharedPreferences preferences = ApplicationLoader.applicationContext.getSharedPreferences("media_saved_pos", Activity.MODE_PRIVATE);
@@ -4040,7 +4021,6 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
             startRaiseToEarSensors(raiseChat);
         }
         if (!ApplicationLoader.mainInterfacePaused && proximityWakeLock != null && !proximityWakeLock.isHeld() && (playingMessageObject.isVoice() || playingMessageObject.isRoundVideo()) && SharedConfig.enabledRaiseTo(false)) {
-
         }
         startProgressTimer(playingMessageObject);
         NotificationCenter.getInstance(messageObject.currentAccount).postNotificationName(NotificationCenter.messagePlayingDidStart, messageObject, oldMessageObject);
@@ -4088,9 +4068,7 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
         if (canStartMusicPlayerService()) {
             Intent intent = new Intent(ApplicationLoader.applicationContext, MusicPlayerService.class);
             try {
-                 
                 ApplicationLoader.applicationContext.startService(intent);
-                
             } catch (Throwable e) {
                 FileLog.e(e);
             }
@@ -4255,6 +4233,54 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
         return audioInfo;
     }
 
+    private void loadAudioInfoAsync(MessageObject messageObject, File file) {
+        if (messageObject == null || file == null || !file.exists() || !messageObject.isMusic()) {
+            return;
+        }
+        final int generation = ++audioInfoLoadGeneration;
+        final int account = messageObject.currentAccount;
+        final int messageId = messageObject.getId();
+        final long dialogId = messageObject.getDialogId();
+        final String cacheKey = file.getAbsolutePath() + ':' + file.length() + ':' + file.lastModified();
+        if (cacheKey.equals(cachedAudioInfoKey) && cachedAudioInfo != null) {
+            audioInfo = cachedAudioInfo;
+            notifyPlayingMetadataChanged(messageObject);
+            return;
+        }
+        audioInfoQueue.postRunnable(() -> {
+            AudioInfo loadedAudioInfo = null;
+            try {
+                loadedAudioInfo = AudioInfo.getAudioInfo(file);
+            } catch (Exception e) {
+                FileLog.e(e);
+            }
+            final AudioInfo result = loadedAudioInfo;
+            AndroidUtilities.runOnUIThread(() -> {
+                MessageObject playing = playingMessageObject;
+                if (generation != audioInfoLoadGeneration
+                        || playing == null
+                        || playing.currentAccount != account
+                        || playing.getId() != messageId
+                        || playing.getDialogId() != dialogId) {
+                    return;
+                }
+                if (result != null) {
+                    cachedAudioInfoKey = cacheKey;
+                    cachedAudioInfo = result;
+                    audioInfo = result;
+                    notifyPlayingMetadataChanged(playing);
+                }
+            });
+        });
+    }
+
+    private void notifyPlayingMetadataChanged(MessageObject messageObject) {
+        NotificationCenter.getInstance(messageObject.currentAccount).postNotificationName(
+                NotificationCenter.messagePlayingMetadataChanged,
+                messageObject
+        );
+    }
+
     public void setPlaybackOrderType(int type) {
         boolean oldShuffle = SharedConfig.shuffleMusic;
         SharedConfig.setPlaybackOrderType(type);
@@ -4415,7 +4441,6 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
         if (isSamePlayingMessage(messageObject)) {
             return !downloadingCurrentMessage;
         }
-        
         return false;
     }
 
@@ -4679,7 +4704,6 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
 
                     AndroidUtilities.runOnUIThread(() -> {
                         requestRecordAudioFocus(true);
-
                         audioRecorder = new AudioRecord(app.nimarkogram.messenger.NimarkoConfig.getMediaRecorderAudioSource(), sampleRate, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT, recordBufferSize);
                         recordStartTime = System.currentTimeMillis();
                         writtenFrame = 0;
@@ -4719,6 +4743,7 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
             }
 
             setBluetoothScoOn(true);
+
 
             sendAfterDone = 0;
             recordingAudio = new TLRPC.TL_document();
@@ -6119,7 +6144,6 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
 
             Cursor cursor = null;
             try {
-                
                 if (Build.VERSION.SDK_INT < 23 || app.nimarkogram.messenger.utils.PermissionsUtils.isImagesPermissionGranted()) {
                     cursor = MediaStore.Images.Media.query(ApplicationLoader.applicationContext.getContentResolver(), MediaStore.Images.Media.EXTERNAL_CONTENT_URI, projectionPhotos, null, null, (Build.VERSION.SDK_INT > 28 ? MediaStore.Images.Media.DATE_MODIFIED : MediaStore.Images.Media.DATE_TAKEN) + " DESC");
                     if (cursor != null) {
@@ -6159,7 +6183,6 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
                                 mediaAlbumsSorted.add(0, allMediaAlbum);
                             }
                             if (allPhotosAlbum.photos.size() < 15) {
-                                
                                 photoEntry.isLivePhoto();
                             }
                             allPhotosAlbum.addPhoto(photoEntry);
@@ -6206,7 +6229,6 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
             }
 
             try {
-                
                 if (Build.VERSION.SDK_INT < 23 || app.nimarkogram.messenger.utils.PermissionsUtils.isVideoPermissionGranted()) {
                     cursor = MediaStore.Images.Media.query(ApplicationLoader.applicationContext.getContentResolver(), MediaStore.Video.Media.EXTERNAL_CONTENT_URI, projectionVideo, null, null, (Build.VERSION.SDK_INT > 28 ? MediaStore.Video.Media.DATE_MODIFIED : MediaStore.Video.Media.DATE_TAKEN) + " DESC");
                     if (cursor != null) {
@@ -6536,6 +6558,7 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
         }
     }
 
+
     private static class VideoConvertRunnable implements Runnable {
 
         private VideoConvertMessage convertMessage;
@@ -6562,6 +6585,7 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
             }).start();
         }
     }
+
 
     private boolean convertVideo(final VideoConvertMessage convertMessage) {
         MessageObject messageObject = convertMessage.messageObject;
@@ -6625,6 +6649,7 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
         boolean needCompress = avatarStartTime != -1 || info.cropState != null || info.mediaEntities != null || info.paintPath != null || info.filterState != null ||
                 resultWidth != originalWidth || resultHeight != originalHeight || rotationValue != 0 || info.roundVideo || startTime != -1 || !info.mixedSoundInfos.isEmpty();
 
+
         SharedPreferences preferences = ApplicationLoader.applicationContext.getSharedPreferences("videoconvert", Activity.MODE_PRIVATE);
 
         long time = System.currentTimeMillis();
@@ -6672,6 +6697,7 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
         );
         convertVideoParams.soundInfos.addAll(info.mixedSoundInfos);
         boolean error = videoConvertor.convertVideo(convertVideoParams);
+
 
         boolean canceled = info.canceled;
         if (!canceled) {
@@ -6808,6 +6834,7 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
         return playlistGlobalSearchParams != null;
     }
 
+
     private SavedMusicPlaylistState savedMusicPlaylistState;
 
     private static class SavedMusicPlaylistState {
@@ -6844,6 +6871,7 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
 
         final SavedMusicPlaylistState state = savedMusicPlaylistState;
         savedMusicPlaylistState = null;
+
 
         final ArrayList<MessageObject> currentPlayList = SharedConfig.shuffleMusic ? shuffledPlaylist : playlist;
         if (currentPlayList == null) {

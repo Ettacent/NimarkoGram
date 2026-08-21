@@ -423,7 +423,6 @@ public class BotDownloads {
     public static void showAlert(Context context, String url, String file_name, String botname, Utilities.Callback<Boolean> whenDone) {
         if (whenDone == null) return;
         showAlert(context, url, file_name, botname, whenDone, 0, "");
-
     }
 
     public static AlertDialog showAlert(Context context, String url, String file_name, String botname, Utilities.Callback<Boolean> whenDone, final long size, final String mime) {
@@ -782,7 +781,6 @@ public class BotDownloads {
                         segment1 += CircularProgressDrawable.interpolator.getInterpolation((t - i * 1350) / 667f) * 250;
                         segment0 += CircularProgressDrawable.interpolator.getInterpolation((t - (667 + i * 1350)) / 667f) * 250;
                     }
-
                     strokePaint.setColor(Theme.multAlpha(0xFFFFFFFF, 1.0f * (1.0f - done)));
                     canvas.drawArc(rect, -90 - segment0, -360 * Math.max(.02f, animatedProgress.set(progress)) * hasPercent, false, strokePaint);
                     invalidateSelf();
@@ -852,7 +850,6 @@ public class BotDownloads {
             }
 
             public void setArrow(int rightMargin) {
-
                 arrow = rightMargin >= 0;
                 if (arrow) {
                     arrowMargin = rightMargin;

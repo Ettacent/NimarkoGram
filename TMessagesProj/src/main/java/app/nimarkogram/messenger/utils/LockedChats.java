@@ -1,4 +1,3 @@
- 
 package app.nimarkogram.messenger.utils;
 
 import android.content.SharedPreferences;
@@ -10,6 +9,7 @@ import org.telegram.messenger.ApplicationLoader;
 import org.telegram.messenger.UserConfig;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
 
@@ -42,7 +42,6 @@ public final class LockedChats {
         if (preferences.getBoolean(MIGRATION_CLEANED_KEY, false)) return;
         SharedPreferences.Editor editor = preferences.edit().remove(LEGACY_PREF_KEY);
         for (int account = 0; account < UserConfig.MAX_ACCOUNT_COUNT; account++) {
-            
             editor.remove(LEGACY_ACCOUNT_KEY_PREFIX + account);
         }
         editor.putBoolean(MIGRATION_CLEANED_KEY, true).commit();
@@ -123,6 +122,32 @@ public final class LockedChats {
 
     public static void setLocked(long dialogId, boolean locked) {
         setLocked(UserConfig.selectedAccount, dialogId, locked);
+    }
+
+    public static boolean replaceAll(int account, long expectedUid, Collection<Long> dialogIds) {
+        synchronized (LockedChats.class) {
+            HashSet<String> cache = getCacheLocked(account, expectedUid);
+            if (cache == null || expectedUid != currentUid(account)) return false;
+            HashSet<String> replacement = new HashSet<>();
+            if (dialogIds != null) {
+                for (Long dialogId : dialogIds) {
+                    if (dialogId != null && dialogId != 0L) {
+                        replacement.add(String.valueOf(dialogId));
+                    }
+                }
+            }
+            HashSet<String> previous = new HashSet<>(cache);
+            cache.clear();
+            cache.addAll(replacement);
+            if (expectedUid != currentUid(account)
+                    || !prefs().edit().putString(keyForIdentity(account, expectedUid),
+                    new Gson().toJson(new ArrayList<>(cache))).commit()) {
+                cache.clear();
+                cache.addAll(previous);
+                return false;
+            }
+            return true;
+        }
     }
 
     public static ArrayList<String> getAll(int account) {

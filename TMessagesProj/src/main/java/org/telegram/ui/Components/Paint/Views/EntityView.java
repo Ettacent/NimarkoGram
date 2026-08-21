@@ -88,7 +88,6 @@ public class EntityView extends FrameLayout {
     private final Runnable longPressRunnable = () -> {
         recognizedLongPress = true;
         if (delegate != null) {
-            
             if (!app.nimarkogram.messenger.NimarkoConfig.disableVibration) {
                 try {
                     performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
@@ -338,7 +337,6 @@ public class EntityView extends FrameLayout {
                 delegate.getTransformedTouch(event.getRawX(1), event.getRawY(1), xy2);
             } else {
                 isMultitouch = false;
-                
             }
         }
         if (isMultitouch) {
@@ -366,7 +364,6 @@ public class EntityView extends FrameLayout {
         boolean handled = false;
 
         switch (action) {
-
             case MotionEvent.ACTION_DOWN: {
                 hadMultitouch = false;
                 previousLocationX = xy[0];
@@ -461,7 +458,6 @@ public class EntityView extends FrameLayout {
         if (stickyXRunnableValue == STICKY_NONE) {
             runStickyXAnimator(1, 0);
         } else {
-            
             if (!app.nimarkogram.messenger.NimarkoConfig.disableVibration) {
                 try {
                     performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP, HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING);
@@ -486,7 +482,6 @@ public class EntityView extends FrameLayout {
         if (stickyYRunnableValue == STICKY_NONE) {
             runStickyYAnimator(1, 0);
         } else {
-            
             if (!app.nimarkogram.messenger.NimarkoConfig.disableVibration) {
                 try {
                     performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP, HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING);
@@ -608,7 +603,6 @@ public class EntityView extends FrameLayout {
         float newScale = Math.max(this.scale, 0.1f);
         newScale = Utilities.clamp(newScale, getMaxScale(), getMinScale());
         if (allowHaptic() && (newScale >= getMaxScale() || newScale <= getMinScale()) != (oldScale >= getMaxScale() || oldScale <= getMinScale())) {
-            
             if (!app.nimarkogram.messenger.NimarkoConfig.disableVibration) {
                 try {
                     performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP, HapticFeedbackConstants.FLAG_IGNORE_VIEW_SETTING);
@@ -617,7 +611,6 @@ public class EntityView extends FrameLayout {
         }
         setScaleX(newScale);
         setScaleY(newScale);
-
     }
 
     protected boolean allowHaptic() {
@@ -647,7 +640,6 @@ public class EntityView extends FrameLayout {
                         AndroidUtilities.runOnUIThread(setStickyAngleRunnable = () -> {
                             currentStickyAngle = stickyAngle;
                             hasStickyAngle = true;
-                            
                             if (!app.nimarkogram.messenger.NimarkoConfig.disableVibration) {
                                 try {
                                     performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP, HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING);
@@ -878,7 +870,6 @@ public class EntityView extends FrameLayout {
                     delegate.getTransformedTouch(event.getRawX(1), event.getRawY(1), xy2);
                 } else {
                     isMultitouch = false;
-                    
                 }
             }
             if (isMultitouch) {
@@ -901,7 +892,6 @@ public class EntityView extends FrameLayout {
             float x = cxy[0];
             float y = cxy[1];
             switch (action) {
-
                 case MotionEvent.ACTION_DOWN: {
                     hadMultitouch = false;
                     int handle = pointInsideHandle(event.getX(), event.getY());
@@ -940,7 +930,6 @@ public class EntityView extends FrameLayout {
                             AndroidUtilities.cancelRunOnUIThread(longPressRunnable);
 
                             if (delegate == null) return false;
-
                             int[] pos = delegate.getCenterLocation(EntityView.this);
                             float pd = MathUtils.distance(pos[0], pos[1], previousLocationX, previousLocationY);
                             float d = MathUtils.distance(pos[0], pos[1], x, y);

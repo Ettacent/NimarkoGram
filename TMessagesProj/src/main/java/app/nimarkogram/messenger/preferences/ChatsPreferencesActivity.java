@@ -1,14 +1,3 @@
-/**
- * This file is part of NimarkoGram for Android.
- * It is licensed under GNU GPL v. 2 or later.
- * You should have received a copy of the license in this archive (see LICENSE).
- *
- * NimarkoGram modifications:
- * Copyright Ettacent, 2026.
- *
- * Portions derived from Cherrygram:
- * Copyright github.com/arsLan4k1390, 2022-2026.
- */
 
 package app.nimarkogram.messenger.preferences;
 
@@ -80,7 +69,6 @@ public class ChatsPreferencesActivity extends NimarkoUniversalPreferencesActivit
 
     @Override
     public void fillItems(ArrayList<UItem> items, UniversalAdapter adapter) {
-        
         items.add(UItem.asHeader(getString(R.string.CP_Header_DialogList)));
         items.add(SettingsHelper.asSwitchCG(sortByUnreadRow, getString(R.string.CP_SortByUnread))
                 .setChecked(NimarkoConfig.sortByUnread));
@@ -133,7 +121,6 @@ public class ChatsPreferencesActivity extends NimarkoUniversalPreferencesActivit
                 .setChecked(NimarkoConfig.disableSwipeToNext));
         items.add(SettingsHelper.asSwitchCG(deleteForAllRow, getString(R.string.CP_DeleteForAll), getString(R.string.CP_DeleteForAll_Desc))
                 .setChecked(NimarkoConfig.deleteForAll));
-        
         if (VibrateUtils.hasVibrator()) {
             items.add(SettingsHelper.asSwitchCG(disableVibrationRow, getString(R.string.CP_DisableVibration))
                     .setChecked(NimarkoConfig.disableVibration));
@@ -189,7 +176,6 @@ public class ChatsPreferencesActivity extends NimarkoUniversalPreferencesActivit
     @Override
     public void onClick(UItem item, View view, int position, float x, float y) {
         final int id = item.id;
-        
         if (id == sortByUnreadRow) {
             NimarkoConfig.toggleSortByUnread();
             updateCheckState(view, NimarkoConfig.sortByUnread);
@@ -392,6 +378,7 @@ public class ChatsPreferencesActivity extends NimarkoUniversalPreferencesActivit
         return userCell;
     }
 
+
     private String getDoubleTapActionValue() {
         return switch (NimarkoConfig.doubletapaction) {
             case NimarkoConfig.DOUBLE_TAP_ACTION_REACTION -> getString(R.string.Reactions);
@@ -483,6 +470,7 @@ public class ChatsPreferencesActivity extends NimarkoUniversalPreferencesActivit
         handleMenuAlert(getString(R.string.DirectShare), menuItems, fragment);
     }
 
+
     public static void showChatMenuItemsConfigurator(BaseFragment fragment) {
         List<MenuItemConfig> menuItems = Arrays.asList(
                 new MenuItemConfig(getString(R.string.NM_JumpToBeginning), R.drawable.ic_upward_solar,
@@ -516,6 +504,7 @@ public class ChatsPreferencesActivity extends NimarkoUniversalPreferencesActivit
         );
         handleMenuAlert(getString(R.string.CP_AdminActions), menuItems, fragment);
     }
+
 
     private String getNotificationSoundValue() {
         return switch (NimarkoConfig.notificationSound) {

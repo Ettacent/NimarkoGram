@@ -112,6 +112,14 @@ public class RichMediaCell extends RichBlockCell
 
     // mode transition: 0 = collage, 1 = slideshow
     private final AnimatedFloat modeProgress = new AnimatedFloat(this, 0, 320, CubicBezierInterpolator.EASE_OUT_QUINT);
+    private boolean modeLayoutScheduled;
+    private final Runnable modeLayoutRunnable = () -> {
+        modeLayoutScheduled = false;
+        if (modeProgress.isInProgress()) {
+            requestLayout();
+            invalidate();
+        }
+    };
     private int lastSwitchIconRes;
 
     private int currentPage;
@@ -424,7 +432,7 @@ public class RichMediaCell extends RichBlockCell
         for (int i = 0; i < menuButtons.size(); i++) {
             menuButtons.get(i).measure(MeasureSpec.makeMeasureSpec(dp(32), MeasureSpec.EXACTLY), MeasureSpec.makeMeasureSpec(dp(32), MeasureSpec.EXACTLY));
         }
-        if (modeProgress.isInProgress()) requestLayout();
+        scheduleModeLayout();
     }
 
     private void computeGeometry(int w) {
@@ -636,8 +644,12 @@ public class RichMediaCell extends RichBlockCell
 
         drawGlassButtons(canvas);
 
-        if (modeProgress.isInProgress()) {
-            requestLayout();
+    }
+
+    private void scheduleModeLayout() {
+        if (modeProgress.isInProgress() && !modeLayoutScheduled) {
+            modeLayoutScheduled = true;
+            postOnAnimation(modeLayoutRunnable);
         }
     }
 

@@ -380,6 +380,37 @@ public class GroupMedia {
         return null;
     }
 
+    public boolean hasPendingStaticPreviewMedia() {
+        for (int i = 0; i < holders.size(); i++) {
+            ImageReceiver receiver = holders.get(i).imageReceiver;
+            if (receiver != null
+                    && (receiver.hasPendingImageRequest() || hasRemoteImageTarget(receiver))
+                    && receiver.getBitmap() == null
+                    && !receiver.hasNotThumbOrOnlyStaticThumb()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public void prepareStaticPreviewMediaForBitmap() {
+        for (int i = 0; i < holders.size(); i++) {
+            ImageReceiver receiver = holders.get(i).imageReceiver;
+            if (receiver != null && receiver.getDrawable() != null) {
+                receiver.setCurrentAlpha(1f);
+            }
+        }
+    }
+
+    private static boolean hasRemoteImageTarget(ImageReceiver receiver) {
+        return receiver.getImageKey() != null
+                || receiver.getMediaKey() != null
+                || receiver.getThumbKey() != null
+                || receiver.getImageLocation() != null
+                || receiver.getMediaLocation() != null
+                || receiver.getThumbLocation() != null;
+    }
+
     public boolean allVisible() {
         for (MediaHolder holder : holders) {
             if (!holder.imageReceiver.getVisible()) {

@@ -531,7 +531,6 @@ public class EditTextCaption extends EditTextBoldCursor implements FloatingToolb
         TextStyleSpan[] spans = editable.getSpans(start, end, TextStyleSpan.class);
         int result = 0;
         for (int flag : STYLE_FLAGS) {
-            
             int covered = start;
             boolean advanced = true;
             while (advanced && covered < end) {

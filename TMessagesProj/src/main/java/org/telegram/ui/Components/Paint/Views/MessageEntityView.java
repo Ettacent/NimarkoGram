@@ -69,9 +69,13 @@ public class MessageEntityView extends EntityView {
     private boolean staticPresentation;
     private int staticPresentationWidth;
     private boolean staticPresentationInsetsApplied;
+    private boolean staticMeasureCacheValid;
+    private int staticMeasureWidthSpec;
+    private int staticMeasureHeightSpec;
+    private int staticMeasuredWidth;
+    private int staticMeasuredHeight;
     private int renderingAccount = UserConfig.selectedAccount;
     private Theme.ResourcesProvider staticResourcesProvider;
-
     public boolean drawForBitmap() {
         return false;
     }
@@ -107,10 +111,28 @@ public class MessageEntityView extends EntityView {
                 messageOwner.fwd_from = null;
             }
             if (!staticPresentation) {
-            messageOwner.voiceTranscriptionOpen = false;
+                messageOwner.voiceTranscriptionOpen = false;
             }
-            final MessageObject newMsg = new MessageObject(msg.currentAccount, messageOwner, msg.replyMessageObject, MessagesController.getInstance(msg.currentAccount).getUsers(), MessagesController.getInstance(msg.currentAccount).getChats(), null, null, true, true, 0, !staticPresentation, isRepostVideoPreview, false);
-            newMsg.setType();
+            final MessageObject newMsg = new MessageObject(
+                    msg.currentAccount,
+                    messageOwner,
+                    msg.replyMessageObject,
+                    MessagesController.getInstance(msg.currentAccount).getUsers(),
+                    MessagesController.getInstance(msg.currentAccount).getChats(),
+                    null,
+                    null,
+                    !staticPresentation,
+                    !staticPresentation,
+                    0,
+                    !staticPresentation,
+                    isRepostVideoPreview,
+                    false
+            );
+            if (staticPresentation) {
+                newMsg.applyMediaExistanceFlags(msg.getMediaExistanceFlags());
+                newMsg.putInDownloadsStore = msg.putInDownloadsStore;
+                newMsg.pathThumb = msg.pathThumb;
+            }
             if (staticPresentation && newMsg.isGif()) {
                 newMsg.gifState = 1f;
             }
@@ -871,6 +893,10 @@ public class MessageEntityView extends EntityView {
                     public BlurringShader.StoryBlurDrawer blurDrawer = new BlurringShader.StoryBlurDrawer(blurManager, this, BlurringShader.StoryBlurDrawer.BLUR_TYPE_ACTION_BACKGROUND);
 
                     @Override
+                    public boolean shouldBypassPluginHooks() {
+                        return staticPresentation;
+                    }
+                    @Override
                     public int getParentWidth() {
                         if (staticPresentation && staticPresentationWidth > 0) {
                             return staticPresentationWidth;
@@ -949,9 +975,6 @@ public class MessageEntityView extends EntityView {
                     }
                 };
                 cell.isChat = true;
-                if (staticPresentation) {
-                    cell.setHideStaticPreviewMediaControls(true);
-                }
                 return new RecyclerListView.Holder(cell);
             }
 
@@ -961,6 +984,12 @@ public class MessageEntityView extends EntityView {
                 MessageObject message = messageObjects.get(position);
                 if (holder.itemView instanceof ChatMessageCell) {
                     final ChatMessageCell cell = (ChatMessageCell) holder.itemView;
+                    cell.setStaticQuotePresentation(staticPresentation);
+                    if (staticPresentation) {
+                        cell.setForceDrawVideoThumbnail(true);
+                        cell.setFullyDraw(true);
+                        cell.shouldCheckVisibleOnScreen = true;
+                    }
                     boolean pinnedTop = false;
                     if (groupedMessages != null) {
                         MessageObject.GroupedMessagePosition p = groupedMessages.getPosition(message);
@@ -968,7 +997,17 @@ public class MessageEntityView extends EntityView {
                             pinnedTop = p.minY != 0;
                         }
                     }
-                    cell.setMessageObject(message, groupedMessages, groupedMessages != null, pinnedTop, false);
+                    if (staticPresentation) {
+                        cell.setMessageObjectForStaticPreview(
+                                message,
+                                groupedMessages,
+                                groupedMessages != null,
+                                pinnedTop,
+                                false
+                        );
+                    } else {
+                        cell.setMessageObject(message, groupedMessages, groupedMessages != null, pinnedTop, false);
+                    }
                 } else if (holder.itemView instanceof ChatActionCell) {
                     final ChatActionCell cell = (ChatActionCell) holder.itemView;
                     cell.setMessageObject(message);
@@ -1092,6 +1131,34 @@ public class MessageEntityView extends EntityView {
         updatePosition();
     }
 
+    public boolean isStaticPresentationReady() {
+        if (!staticPresentation || listView.getAdapter() == null) {
+            return !staticPresentation;
+        }
+        if (!isAttachedToWindow() || listView.isComputingLayout() || isLayoutRequested()) {
+            return false;
+        }
+        if (listView.getChildCount() < listView.getAdapter().getItemCount()) {
+            return false;
+        }
+        for (int i = 0; i < listView.getChildCount(); i++) {
+            View child = listView.getChildAt(i);
+            if (child instanceof ChatMessageCell) {
+                ChatMessageCell cell = (ChatMessageCell) child;
+                if (!cell.isCellAttachedToWindow() || !cell.isStaticPreviewBound()) {
+                    return false;
+                }
+            }
+            if (child instanceof ChatActionCell) {
+                ChatActionCell cell = (ChatActionCell) child;
+                if (!cell.isCellAttachedToWindow() || cell.getMessageObject() == null) {
+                    return false;
+                }
+            }
+        }
+        return getMeasuredWidth() > 0 && getMeasuredHeight() > 0;
+    }
+
     private ChatMessageCell getCell() {
         if (listView == null) return null;
         for (int i = 0; i < listView.getChildCount(); ++i) {
@@ -1190,6 +1257,7 @@ public class MessageEntityView extends EntityView {
         listView.setEnabled(false);
         listView.setClickable(false);
         listView.setNestedScrollingEnabled(false);
+        listView.setHasFixedSize(true);
         listView.setItemAnimator(null);
         if (!staticPresentationInsetsApplied) {
             staticPresentationInsetsApplied = true;
@@ -1202,6 +1270,12 @@ public class MessageEntityView extends EntityView {
             listView.setClipToPadding(false);
         }
         requestLayout();
+    }
+
+    @Override
+    public void requestLayout() {
+        staticMeasureCacheValid = false;
+        super.requestLayout();
     }
 
     @Override
@@ -1237,9 +1311,21 @@ public class MessageEntityView extends EntityView {
 //        dateCell.measure(container.getMeasuredWidth() > 0 ? MeasureSpec.makeMeasureSpec(container.getMeasuredWidth(), MeasureSpec.EXACTLY) : widthMeasureSpec, heightMeasureSpec);
 //        container.measure(widthMeasureSpec, MeasureSpec.makeMeasureSpec(MeasureSpec.getSize(heightMeasureSpec) - dateCell.getMeasuredHeight(), MeasureSpec.getMode(heightMeasureSpec)));
 //        dateCell.measure(container.getMeasuredWidth() > 0 ? MeasureSpec.makeMeasureSpec(container.getMeasuredWidth(), MeasureSpec.EXACTLY) : widthMeasureSpec, heightMeasureSpec);
+        if (staticPresentation
+                && staticMeasureCacheValid
+                && staticMeasureWidthSpec == widthMeasureSpec
+                && staticMeasureHeightSpec == heightMeasureSpec) {
+            setMeasuredDimension(staticMeasuredWidth, staticMeasuredHeight);
+            return;
+        }
         container.measure(widthMeasureSpec, heightMeasureSpec);
         setMeasuredDimension(container.getMeasuredWidth(), container.getMeasuredHeight());
         if (staticPresentation) {
+            staticMeasureWidthSpec = widthMeasureSpec;
+            staticMeasureHeightSpec = heightMeasureSpec;
+            staticMeasuredWidth = getMeasuredWidth();
+            staticMeasuredHeight = getMeasuredHeight();
+            staticMeasureCacheValid = true;
             return;
         }
         updatePosition();

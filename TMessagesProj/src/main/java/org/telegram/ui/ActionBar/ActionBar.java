@@ -96,7 +96,6 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
     private Drawable glassDrawableBack;
     private Drawable glassDrawableMenu;
     private INavigationLayout.BackButtonState backButtonState = INavigationLayout.BackButtonState.BACK;
-    
     public UnreadImageView backButtonImageView;
     private BackupImageView avatarSearchImageView;
     private Drawable backButtonDrawable;
@@ -187,7 +186,6 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
     public ActionBar(Context context, Theme.ResourcesProvider resourcesProvider) {
         super(context);
         this.resourcesProvider = resourcesProvider;
-        
         setClipChildren(false);
         setOnClickListener(v -> {
             if (isSearchFieldVisible()) {
@@ -198,6 +196,7 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
             }
         });
     }
+
 
     private boolean glassMode;
     private boolean glassOnlyBack;
@@ -211,7 +210,6 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
 
     public void setChatAvatarContainer(ChatAvatarContainer chatAvatarContainer) {
         if (chatAvatarContainer != null && !isChatAvatarContainerReady(chatAvatarContainer)) {
-            
             return;
         }
         if (this.chatAvatarContainer == chatAvatarContainer) {
@@ -255,6 +253,7 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
         } else {
             glassDrawable.setRadius(dp(23));
         }
+
 
         glassDrawableBack = factory.create(this)
             .setColorProvider(colorProvider)
@@ -369,6 +368,7 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
             return;
         }
 
+
         final Drawable drawable = backButtonImageView.getDrawable();
         final int layerToSet = (drawable instanceof BackDrawable || drawable instanceof MenuDrawable) ?
             View.LAYER_TYPE_HARDWARE :
@@ -461,7 +461,6 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
                         && !((String) titleView.getText()).isEmpty()) {
                     TextPaint textPaint = titleView.getTextPaint();
                     textPaint.getFontMetricsInt(fontMetricsInt);
-                    
                     textPaint.getTextBounds((String) titleView.getText(), 0, 1, rect);
                     int x = titleView.getTextStartX() + Theme.getCurrentHolidayDrawableXOffset() + (rect.width() - (drawable.getIntrinsicWidth() + Theme.getCurrentHolidayDrawableXOffset())) / 2;
                     int y = titleView.getTextStartY() + Theme.getCurrentHolidayDrawableYOffset() + (int) Math.ceil((titleView.getTextHeight() - rect.height()) / 2.0f) + (int) (dp(8) * (1f - titlesContainer.getScaleY()));
@@ -481,7 +480,6 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
                 if (snowflakesEffect == null) {
                     snowflakesEffect = new SnowflakesEffect(0);
                 }
-                
                 snowflakesEffect.bypassLiteMode = nimarkoSnow;
             } else if (!manualStart) {
                 if (snowflakesEffect != null) {
@@ -524,7 +522,6 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
             return;
         }
         subtitleTextView = new SimpleTextView(getContext());
-        
         subtitleTextView.setGravity(getSubtitleGravity());
         subtitleTextView.setVisibility(GONE);
         subtitleTextView.setTextColor(getThemedColor(Theme.key_actionBarDefaultSubtitle));
@@ -537,7 +534,6 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
             return;
         }
         additionalSubtitleTextView = new SimpleTextView(getContext());
-        
         additionalSubtitleTextView.setGravity(getSubtitleGravity());
         additionalSubtitleTextView.setVisibility(GONE);
         additionalSubtitleTextView.setTextColor(getThemedColor(Theme.key_actionBarDefaultSubtitle));
@@ -600,9 +596,7 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
         titleTextView[i].setDrawablePadding(dp(4));
         titleTextView[i].setPadding(0, dp(8), 0, dp(8));
         titleTextView[i].setRightDrawableTopPadding(-dp(1));
-        
         titleTextView[i].setWidthWrapContent(true);
-        
         titleTextView[i].setRightDrawableOutside(true);
         if (useContainerForTitles) {
             titlesContainer.addView(titleTextView[i], 0, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, Gravity.LEFT | Gravity.TOP));
@@ -613,7 +607,6 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
 
     private boolean isCenterTitle = false;
     private boolean forceDisableCenterTitle;
-    
     private float animatedCenterTitleX = Float.NaN;
     private float animatedCenterTitleAvailableWidth = Float.NaN;
     private int centerTitleAnimationTargetX = Integer.MIN_VALUE;
@@ -659,12 +652,10 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
     }
 
     private int getTitleGravity() {
-        
         return Gravity.LEFT | Gravity.CENTER_VERTICAL;
     }
 
     private int getSubtitleGravity() {
-        
         return Gravity.LEFT;
     }
 
@@ -752,12 +743,10 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
     }
 
     private void updateCenterTitleLayoutAnimation(int targetX, int targetWidth, boolean animate) {
-        
         if (!shouldCenterTitle() && Float.isNaN(animatedCenterTitleX) && !isCenterTitleSliding()) {
             resetCenterTitleLayoutAnimation();
             return;
         }
-        
         if (Float.isNaN(animatedCenterTitleX) || Float.isNaN(animatedCenterTitleAvailableWidth)) {
             animatedCenterTitleX = targetX;
             animatedCenterTitleAvailableWidth = targetWidth;
@@ -1038,7 +1027,6 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
                 ActionBar.this.invalidate();
                 if (chatAvatarContainer != null
                         && chatAvatarContainer.shouldUseCompactTitleIsland()) {
-                    
                     chatAvatarContainer.requestLayout();
                 }
                 if (doOnActionModeFactorChanged != null) {
@@ -1078,6 +1066,7 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
         layoutParams.gravity = Gravity.RIGHT;
         actionMode.setLayoutParams(layoutParams);
         actionMode.setVisibility(INVISIBLE);
+
 
         return actionMode;
     }
@@ -1286,9 +1275,25 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
     }
 
     public void hideActionMode() {
+        hideActionMode(null);
+    }
+
+    public void hideActionMode(Runnable onAnimationFinished) {
         if (actionMode == null || !actionModeVisible) {
+            if (onAnimationFinished != null) {
+                onAnimationFinished.run();
+            }
             return;
         }
+        final boolean[] finishCallbackInvoked = {false};
+        final Runnable finishCallback = () -> {
+            if (!finishCallbackInvoked[0]) {
+                finishCallbackInvoked[0] = true;
+                if (onAnimationFinished != null) {
+                    onAnimationFinished.run();
+                }
+            }
+        };
         actionMode.hideAllPopupMenus();
         actionModeVisible = false;
         checkMenuItemsWidth();
@@ -1355,6 +1360,7 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
                         actionModeExtraView.setVisibility(INVISIBLE);
                     }
                 }
+                finishCallback.run();
             }
 
             @Override
@@ -1362,6 +1368,7 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
                 if (actionModeAnimation != null && actionModeAnimation.equals(animation)) {
                     actionModeAnimation = null;
                 }
+                finishCallback.run();
             }
         });
         actionModeAnimation.start();
@@ -1659,6 +1666,7 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
         additionalTextLeft = x;
     }
 
+
     @Override
     protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
         int width = MeasureSpec.getSize(widthMeasureSpec);
@@ -1686,7 +1694,6 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
         if (backButtonImageView != null && backButtonImageView.getVisibility() != GONE) {
             backButtonImageView.measure(MeasureSpec.makeMeasureSpec(dp(54), MeasureSpec.EXACTLY), actionBarHeightSpec);
             if (countLayout != null) {
-                
                 countLayout.measure(
                         MeasureSpec.makeMeasureSpec(dp(100), MeasureSpec.EXACTLY),
                         actionBarHeightSpec);
@@ -1695,7 +1702,7 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
         } else {
             textLeft = dp(AndroidUtilities.isTablet() ? 26 : 18);
         }
-        
+
         if (menu != null && menu.getVisibility() != GONE) {
             int menuWidth;
             boolean searchFieldIsVisible = menu.searchFieldVisible();
@@ -1724,7 +1731,6 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
 
         for (int i = 0; i < 2; i++) {
             if (titleTextView[0] != null && titleTextView[0].getVisibility() != GONE || subtitleTextView != null && subtitleTextView.getVisibility() != GONE) {
-                
                 int availableWidth;
                 if (shouldCenterTitle()) {
                     availableWidth = getAnimatedCenterTitleAvailableWidth(getCenteredTitleAvailableWidth(width, textLeft, shouldUseAdaptiveCenterTitle()));
@@ -1817,7 +1823,6 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
         if (backButtonImageView != null && backButtonImageView.getVisibility() != GONE) {
             backButtonImageView.layout(0, additionalTop, backButtonImageView.getMeasuredWidth(), additionalTop + backButtonImageView.getMeasuredHeight());
             if (countLayout != null) {
-                
                 int counterLeft = backButtonImageView.getLeft() + dp(30);
                 int counterTop = backButtonImageView.getTop() - dp(15);
                 countLayout.layout(
@@ -1866,7 +1871,6 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
                         textTop = (getCurrentActionBarHeight() - titleTextView[i].getTextHeight()) / 2;
                     }
                 }
-                
                 {
                     int mw = titleTextView[i].getMeasuredWidth();
                     int titleTop = additionalTop + textTop - titleTextView[i].getPaddingTop();
@@ -2019,6 +2023,7 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
             }
             additionalSubTitleOverlayContainer.setText(textToSet, true);
         }
+
 
         CharSequence textToSet = title != null ? LocaleController.getString(title, titleId) : lastTitle;
         Drawable rightDrawableToSet = title != null ? null : lastRightDrawable;
@@ -2395,6 +2400,7 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
             transitionSet.addTransition(new Fade());
             transitionSet.addTransition(new ChangeBounds() {
 
+
                 public void captureStartValues(TransitionValues transitionValues) {
                     super.captureStartValues(transitionValues);
                     if (transitionValues.view instanceof SimpleTextView) {
@@ -2476,7 +2482,6 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
     private float glassAlpha = 1f;
     private float glassLiquidIntensity = BlurredBackgroundDrawable.DEFAULT_LIQUID_INTENSITY;
     public void setGlassAlpha(float a) {
-        
         a = Float.isNaN(a) || Float.isInfinite(a) ? 1f : Utilities.clamp01(a);
         if (glassAlpha != a) {
             glassAlpha = a;
@@ -2512,7 +2517,6 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
             if (chatAvatarContainer != null
                     && (chatAvatarContainer.shouldUseCompactTitleIsland()
                     || glassModeIsForum)) {
-                
                 chatAvatarContainer.requestLayout();
             }
         }
@@ -2596,7 +2600,6 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
                 hasBackButton ? s + p : 0,
                 s + p,
                 useCompactChatTitle ? 1f - animatorAvatarContainerHasAvatar.getFloatValue() : 0f);
-        
         final int minimumIslandWidth = Math.min(barWidth, p * 2 + 1);
         final int boundedLeftDefault = Math.min(
                 leftDefault, Math.max(0, barWidth - minimumIslandWidth));
@@ -2693,7 +2696,6 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
                 && (chatAvatarContainer.isInlineCenteredAvatar()
                 || compactTitleWidthChanged
                 || compactMenuGeometryChanged)) {
-            
             chatAvatarContainer.requestLayout();
         }
     }
@@ -2721,7 +2723,7 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
         final int defaultMenuWidth = Math.max(0, menu != null ? (int) menu.getItemsWidth() - dp(1) - dp(1) : 0);
         final int actionMenuWidth = Math.max(0, actionMode != null ? actionMode.getItemsWidth() - dp(1) - dp(1) : 0);
         final int searchMenuWidth = dp(46);
-        final int width =   (actionModeVisible ? actionMenuWidth : defaultMenuWidth);
+        final int width =  (actionModeVisible ? actionMenuWidth : defaultMenuWidth);
 
         animatorHasMenuItems.setValue(width > 0, isAnimationsAllowed);
         if (animatorMenuItemsWidth.getToFactor() != width) {
@@ -2778,9 +2780,7 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
         }
         if (glassDrawableMenu != null && menuWidth > 0 && !glassOnlyBack) {
             glassDrawableMenu.setBounds(getWidth() - Math.max(s, menuWidth) - p * 2, t, getWidth(), b);
-            
             final int menuGlassA = hasForcedMenuWidth ? 255 : (int) (255 * animatorHasMenuItems.getFloatValue());
-            
             glassDrawableMenu.setAlpha((int) (glassA * menuGlassA / 255f * (1f - search)));
             glassDrawableMenu.draw(canvas);
         }
@@ -3015,7 +3015,6 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
             countLayout.setGravity(Gravity.LEFT);
 
             addView(countLayout, LayoutHelper.createFrame(54, 54, Gravity.LEFT | Gravity.TOP));
-            
             countLayout.setClickable(false);
             countLayout.setFocusable(false);
             countLayout.setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO);
@@ -3024,7 +3023,6 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
         }
 
         public void checkUnreadView(int count) {
-            
             if (!app.nimarkogram.messenger.NimarkoConfig.unreadBadgeOnBackButton) {
                 if (countLayout != null) {
                     countLayout.setVisibility(GONE);
@@ -3067,5 +3065,4 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
     public int getItemsColor() {
         return itemsColor;
     }
-     
 }

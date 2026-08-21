@@ -1,7 +1,3 @@
-/*
- * Copyright github.com/arsLan4k1390, 2022-2026.
- * Licensed under GNU GPL v2 or later. See LICENSE.
- */
 package app.nimarkogram.messenger.preferences;
 
 import android.os.Build;
@@ -26,7 +22,6 @@ public class DebugPreferencesActivity extends BasePreferencesActivity {
     private static final int ID_SHOW_RPC_ERRORS    = 1;
     private static final int ID_AUDIO_SOURCE       = 2;
     private static final int ID_JACKSON_JSON       = 3;
-    private static final int ID_PLAY_GIFS_AS_VIDEO = 4;
     private static final int ID_HIDE_VIDEO_TS      = 5;
     private static final int ID_OLD_TIME_STYLE     = 6;
     private static final int ID_REPLACE_PUNCT      = 7;
@@ -54,8 +49,6 @@ public class DebugPreferencesActivity extends BasePreferencesActivity {
         }
         items.add(UItem.asCheck(ID_JACKSON_JSON, LocaleController.getString(R.string.NM_DBG_JacksonJSONProvider))
                 .setChecked(NimarkoConfig.jacksonJSON_Provider));
-        items.add(UItem.asCheck(ID_PLAY_GIFS_AS_VIDEO, LocaleController.getString(R.string.NM_DBG_PlayGIFsAsVideos))
-                .setChecked(NimarkoConfig.playGIFsAsVideos));
         items.add(UItem.asCheck(ID_HIDE_VIDEO_TS, LocaleController.getString(R.string.NM_DBG_HideVideoTimestamp))
                 .setChecked(NimarkoConfig.hideVideoTimestamp));
         items.add(UItem.asCheck(ID_REPLACE_PUNCT, LocaleController.getString(R.string.NM_DBG_ReplacePunctuation))
@@ -64,7 +57,6 @@ public class DebugPreferencesActivity extends BasePreferencesActivity {
                 .setChecked(NimarkoConfig.editTextSuggestionsFix));
         items.add(UItem.asCheck(ID_SHOW_ACCOUNTS, LocaleController.getString(R.string.NM_DBG_ShowAccounts))
                 .setChecked(NimarkoConfig.showAccounts));
-        
         items.add(UItem.asCheck(ID_SEND_MAX_QUALITY, LocaleController.getString(R.string.NM_DBG_SendMaxQuality))
                 .setChecked(NimarkoConfig.sendVideosAtMaxQuality));
         items.add(UItem.asShadow(null));
@@ -103,9 +95,6 @@ public class DebugPreferencesActivity extends BasePreferencesActivity {
             NimarkoConfig.toggleJacksonJSON_Provider();
             applyCheck(item, view, NimarkoConfig.jacksonJSON_Provider);
             showRestartBulletin();
-        } else if (id == ID_PLAY_GIFS_AS_VIDEO) {
-            NimarkoConfig.togglePlayGIFsAsVideos();
-            applyCheck(item, view, NimarkoConfig.playGIFsAsVideos);
         } else if (id == ID_HIDE_VIDEO_TS) {
             NimarkoConfig.toggleHideVideoTimestamp();
             applyCheck(item, view, NimarkoConfig.hideVideoTimestamp);
@@ -125,7 +114,6 @@ public class DebugPreferencesActivity extends BasePreferencesActivity {
             NimarkoConfig.toggleSendVideosAtMaxQuality();
             applyCheck(item, view, NimarkoConfig.sendVideosAtMaxQuality);
         } else if (id == ID_FORCE_CRASH && BuildVars.DEBUG_VERSION) {
-            
             throw new RuntimeException("NimarkoGram debug: force-crash button");
         }
     }

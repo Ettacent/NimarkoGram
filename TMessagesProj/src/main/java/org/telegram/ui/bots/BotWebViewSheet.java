@@ -218,6 +218,7 @@ public class BotWebViewSheet extends Dialog implements NotificationCenter.Notifi
     private boolean silent;
     private String buttonText;
 
+
     private Paint linePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private Paint dimPaint = new Paint();
     private Paint backgroundPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -314,8 +315,57 @@ public class BotWebViewSheet extends Dialog implements NotificationCenter.Notifi
     private int finishRestoreGeneration;
     private Runnable restoreTransitionFallbackRunnable;
     private final Runnable finishRestoreRunnable = this::finishRestoredWebViewResume;
+    private int frameRateRequestGeneration;
+    private Runnable frameRateLease;
+    private Runnable releaseFrameRateRunnable;
     private boolean backButtonShown;
     private boolean forceExpnaded;
+
+    private void beginRestoreFrameRate() {
+        frameRateRequestGeneration++;
+        if (releaseFrameRateRunnable != null && windowView != null) {
+            windowView.removeCallbacks(releaseFrameRateRunnable);
+            releaseFrameRateRunnable = null;
+        }
+        if (frameRateLease != null) {
+            frameRateLease.run();
+        }
+        frameRateLease = AndroidUtilities.requestHighFrameRate(
+                windowView,
+                swipeContainer,
+                webViewContainer == null ? null : webViewContainer.getWebView()
+        );
+    }
+
+    private void finishRestoreFrameRate() {
+        final int generation = frameRateRequestGeneration;
+        if (releaseFrameRateRunnable != null) {
+            windowView.removeCallbacks(releaseFrameRateRunnable);
+        }
+        releaseFrameRateRunnable = () -> {
+            if (generation != frameRateRequestGeneration) {
+                return;
+            }
+            releaseFrameRateRunnable = null;
+            if (frameRateLease != null) {
+                frameRateLease.run();
+                frameRateLease = null;
+            }
+        };
+        windowView.postDelayed(releaseFrameRateRunnable, 450);
+    }
+
+    private void releaseRestoreFrameRate() {
+        frameRateRequestGeneration++;
+        if (releaseFrameRateRunnable != null && windowView != null) {
+            windowView.removeCallbacks(releaseFrameRateRunnable);
+            releaseFrameRateRunnable = null;
+        }
+        if (frameRateLease != null) {
+            frameRateLease.run();
+            frameRateLease = null;
+        }
+    }
 
     private void finishRestoredWebViewResume() {
         if (finishRestoreGeneration != restoreTransitionGeneration || !restoringPreservedWebView || !restoreTransitionFinished || !sheetStarted || dismissed || webViewContainer == null || !isShowing()) {
@@ -332,6 +382,7 @@ public class BotWebViewSheet extends Dialog implements NotificationCenter.Notifi
             restoreThemeUpdatePending = false;
             webViewContainer.notifyThemeChanged();
         }
+        finishRestoreFrameRate();
     }
 
     private boolean defaultFullsize = false;
@@ -378,7 +429,6 @@ public class BotWebViewSheet extends Dialog implements NotificationCenter.Notifi
             tab.viewWidth = webView.getWidth();
             tab.viewHeight = webView.getHeight();
             webView.onPause();
-
         }
         if (tab.error = errorShown) {
             tab.errorDescription = errorCode;
@@ -429,18 +479,15 @@ public class BotWebViewSheet extends Dialog implements NotificationCenter.Notifi
             sensors.resume();
         }
         if (tab.buttons != null) {
-
             botButtons.setState(tab.buttons, false);
         }
         setFullscreen(tab.fullscreen, false, tab.fullscreenBlur);
         currentAccount = tab.props != null ? tab.props.currentAccount : UserConfig.selectedAccount;
         if (tab.webView != null) {
-
             webViewContainer.replaceWebView(currentAccount, tab.webView, tab.proxy);
             webViewContainer.setState(tab.ready || tab.webView.isPageLoaded(), tab.lastUrl);
             if (Theme.isCurrentThemeDark() != tab.themeIsDark) {
                 restoreThemeUpdatePending = true;
-
             }
         } else {
             tab.props.response = null;
@@ -499,7 +546,6 @@ public class BotWebViewSheet extends Dialog implements NotificationCenter.Notifi
                 }
                 if (botButtons != null && botButtons.getTotalHeight() > 0) {
                     height -= botButtons.getTotalHeight();
-
                 }
                 height += dp(24);
                 super.onMeasure(widthMeasureSpec, MeasureSpec.makeMeasureSpec(height, MeasureSpec.EXACTLY));
@@ -766,7 +812,7 @@ public class BotWebViewSheet extends Dialog implements NotificationCenter.Notifi
 
             @Override
             public void onWebAppExpand() {
-                if (  swipeContainer.isSwipeInProgress()) {
+                if ( swipeContainer.isSwipeInProgress()) {
                     return;
                 }
                 swipeContainer.stickTo(-swipeContainer.getOffsetY() + swipeContainer.getTopActionBarOffsetY());
@@ -1247,7 +1293,6 @@ public class BotWebViewSheet extends Dialog implements NotificationCenter.Notifi
             windowView.setPadding(insets.left, 0, insets.right, Math.max(this.keyboardInset, (bottomTabs != null ? bottomTabs.getHeight(false) : 0) + insets.bottom));
         }
         swipeContainerLayoutParams.topMargin = dp(24);
-
         actionBarLayoutParams.leftMargin = !fullscreen ? 0 : insets.left;
         actionBarLayoutParams.rightMargin = 0;
         bulletinContainerLayoutParams.leftMargin = !fullscreen ? 0 : insets.left;
@@ -2088,6 +2133,7 @@ public class BotWebViewSheet extends Dialog implements NotificationCenter.Notifi
     }
 
     private void cleanupSheet(boolean destroyWebView, boolean stopTabListeners) {
+        releaseRestoreFrameRate();
         restoreTransitionGeneration++;
         if (windowView != null) {
             windowView.removeCallbacks(finishRestoreRunnable);
@@ -2122,6 +2168,9 @@ public class BotWebViewSheet extends Dialog implements NotificationCenter.Notifi
             cleanupSheet(true, true);
             return;
         }
+        if (restoringPreservedWebView) {
+            beginRestoreFrameRate();
+        }
         setOpen(true);
         final int showRestoreGeneration = restoreTransitionGeneration;
         windowView.setAlpha(0f);
@@ -2129,7 +2178,6 @@ public class BotWebViewSheet extends Dialog implements NotificationCenter.Notifi
             @Override
             public void onLayoutChange(View v, int left, int top, int right, int bottom, int oldLeft, int oldTop, int oldRight, int oldBottom) {
                 v.removeOnLayoutChangeListener(this);
-
                 swipeContainer.setSwipeOffsetY(swipeContainer.getHeight());
                 windowView.setAlpha(1f);
 
@@ -2232,9 +2280,7 @@ public class BotWebViewSheet extends Dialog implements NotificationCenter.Notifi
         if (webViewContainer.onBackPressed()) {
             return;
         }
-
             dismiss(true, null);
-
     }
 
     @Override
@@ -2585,7 +2631,6 @@ public class BotWebViewSheet extends Dialog implements NotificationCenter.Notifi
 
     public void setActionBarColor(int color, boolean isOverride, boolean animated) {
         int from = actionBarColor;
-
         int to = color;
         int navBarTo = navigationBarColor(color);
 
@@ -2601,7 +2646,6 @@ public class BotWebViewSheet extends Dialog implements NotificationCenter.Notifi
             animator.addUpdateListener(animation -> {
                 float progress = (float) animation.getAnimatedValue();
                 actionBarColor = ColorUtils.blendARGB(from, to, progress);
-
                 checkNavBarColor();
                 windowView.invalidate();
                 actionBar.setBackgroundColor(actionBarColor);
@@ -2616,7 +2660,6 @@ public class BotWebViewSheet extends Dialog implements NotificationCenter.Notifi
                 public void onAnimationEnd(Animator animation) {
                     float progress = 1f;
                     actionBarColor = ColorUtils.blendARGB(from, to, progress);
-
                     checkNavBarColor();
                     windowView.invalidate();
                     actionBar.setBackgroundColor(actionBarColor);
@@ -2631,7 +2674,6 @@ public class BotWebViewSheet extends Dialog implements NotificationCenter.Notifi
         } else {
             float progress = 1f;
             actionBarColor = to;
-
             checkNavBarColor();
             windowView.invalidate();
             actionBar.setBackgroundColor(actionBarColor);
@@ -2647,7 +2689,6 @@ public class BotWebViewSheet extends Dialog implements NotificationCenter.Notifi
     public void checkNavBarColor() {
         if (!superDismissed && LaunchActivity.instance != null) {
             LaunchActivity.instance.checkSystemBarColors(true, true, true);
-
         }
         if (windowView != null) {
             windowView.invalidate();

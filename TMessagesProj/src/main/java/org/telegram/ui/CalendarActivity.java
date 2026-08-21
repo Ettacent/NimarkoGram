@@ -110,6 +110,7 @@ public class CalendarActivity extends BaseFragment implements NotificationCenter
 
     HintView selectDaysHint;
 
+
     private int dateSelectedStart;
     private int dateSelectedEnd;
     private ValueAnimator selectionAnimator;
@@ -319,6 +320,7 @@ public class CalendarActivity extends BaseFragment implements NotificationCenter
                 LocaleController.getString(R.string.CalendarWeekNameShortSunday),
         };
 
+
         Drawable headerShadowDrawable = ContextCompat.getDrawable(context, R.drawable.header_shadow).mutate();
 
         View calendarSignatureView = new View(context) {
@@ -434,6 +436,7 @@ public class CalendarActivity extends BaseFragment implements NotificationCenter
             removeDaysButton.setVisibility(View.GONE);
             bottomBar.addView(removeDaysButton, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT, 0, 0, 0f, 0, 0));
             contentView.addView(bottomBar, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, 48, Gravity.BOTTOM, 0, 0, 0, 0));
+
 
             selectDaysButton.setBackground(Theme.createSelectorDrawable(ColorUtils.setAlphaComponent(Theme.getColor(Theme.key_chat_fieldOverlayText), (int) (0.2f * 255)), 2));
             removeDaysButton.setBackground(Theme.createSelectorDrawable(ColorUtils.setAlphaComponent(Theme.getColor(Theme.key_text_RedBold), (int) (0.2f * 255)), 2));
@@ -613,7 +616,6 @@ public class CalendarActivity extends BaseFragment implements NotificationCenter
             periodDay.storyItems.add(messageObject.getId());
             periodDay.messageObject = messageObject;
             periodDay.date = (int) (calendar.getTimeInMillis() / 1000L);
-
             messagesByDays.put(index, periodDay);
             if (month < minMontYear || minMontYear == 0) {
                 minMontYear = month;
@@ -798,6 +800,7 @@ public class CalendarActivity extends BaseFragment implements NotificationCenter
                     return true;
                 }
 
+
                 @SuppressLint("NotifyDataSetChanged")
                 @Override
                 public boolean onSingleTapUp(MotionEvent e) {
@@ -970,6 +973,7 @@ public class CalendarActivity extends BaseFragment implements NotificationCenter
                             previewMenu.addView(cellDelete);
                         }
                         previewMenu.setFitItems(true);
+
 
                         blurredView = new View(context) {
                             @Override
@@ -1410,6 +1414,7 @@ public class CalendarActivity extends BaseFragment implements NotificationCenter
             }
             actionBar.setTitleAnimated(title, fromBottom, 150);
 
+
             if ((!inSelectionMode || daysSelected > 0) && selectDaysHint != null) {
                 selectDaysHint.hide();
             }
@@ -1485,6 +1490,7 @@ public class CalendarActivity extends BaseFragment implements NotificationCenter
         new ThemeDescription(null, 0, null, null, null, descriptionDelegate, Theme.key_windowBackgroundWhite);
         new ThemeDescription(null, 0, null, null, null, descriptionDelegate, Theme.key_windowBackgroundWhiteBlackText);
         new ThemeDescription(null, 0, null, null, null, descriptionDelegate, Theme.key_listSelector);
+
 
         return super.getThemeDescriptions();
     }

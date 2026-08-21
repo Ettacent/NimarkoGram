@@ -262,7 +262,6 @@ public class ScrimOptions extends Dialog {
         }
 
         final boolean animateOptions = false; 
-
         openAnimator = ValueAnimator.ofFloat(openProgress, open ? 1 : 0);
         openAnimator.addUpdateListener(anm -> {
             openProgress = (float) anm.getAnimatedValue();
@@ -271,7 +270,6 @@ public class ScrimOptions extends Dialog {
                 optionsView.setScaleY(AndroidUtilities.lerp(.8f, 1f, openProgress));
                 optionsView.setAlpha(openProgress);
             }
-
             windowView.invalidate();
             containerView.invalidate();
         });
@@ -284,7 +282,6 @@ public class ScrimOptions extends Dialog {
                     optionsView.setScaleY(AndroidUtilities.lerp(.8f, 1f, openProgress));
                     optionsView.setAlpha(openProgress);
                 }
-
                 windowView.invalidate();
                 containerView.invalidate();
                 if (after != null) {
@@ -297,6 +294,7 @@ public class ScrimOptions extends Dialog {
         openAnimator.setDuration(duration);
         openAnimator.start();
     }
+
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -533,6 +531,7 @@ public class ScrimOptions extends Dialog {
                 scrimDrawableTy1 = 0f;
             }
 
+
             final float bb = boundsBottom + (scrimDrawableBackground != null ? dp(21) : 0);
 
             if (bb + optionsContainer.getMeasuredHeight() > windowView.getMeasuredHeight() - dp(16)) {
@@ -550,6 +549,8 @@ public class ScrimOptions extends Dialog {
     public void setScrim(ChatMessageCell cell) {
 
     }
+
+
 
     public void setScrimDrawable(Drawable drawable, int width, int height) {
         scrimDrawableBackground = iBlur3Factory.create()

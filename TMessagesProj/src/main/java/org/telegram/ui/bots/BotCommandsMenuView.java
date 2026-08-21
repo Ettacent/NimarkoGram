@@ -136,7 +136,7 @@ public class BotCommandsMenuView extends View {
         if (menuTextLayout != null) {
             boolean update = false;
             if (expanded && expandProgress != 1f) {
-                expandProgress += 16f / 150f;
+                expandProgress += AndroidUtilities.screenRefreshTime / 150f;
                 if (expandProgress > 1) {
                     expandProgress = 1f;
                 } else {
@@ -144,7 +144,7 @@ public class BotCommandsMenuView extends View {
                 }
                 update = true;
             } else if (!expanded && expandProgress != 0) {
-                expandProgress -= 16f / 150f;
+                expandProgress -= AndroidUtilities.screenRefreshTime / 150f;
                 if (expandProgress < 0) {
                     expandProgress = 0;
                 } else {

@@ -43,6 +43,7 @@ public final class BadgesController {
         real.putPluginBadge(userId, emojiDocumentId, text);
     }
 
+
     public BadgeDTO i(TLObject obj) {
         return BadgeDTO.fromReal(real.i(obj));
     }
@@ -110,6 +111,7 @@ public final class BadgesController {
 
     public boolean q() { return real.q(); }
     public boolean t() { return real.t(); }
+
 
     public BadgeDTO getBadgeForUser(long userId) {
         return BadgeDTO.fromReal(real.getBadgeForUser(userId));

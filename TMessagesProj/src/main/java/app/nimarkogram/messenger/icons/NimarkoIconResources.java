@@ -85,7 +85,6 @@ public class NimarkoIconResources extends Resources {
     private volatile ReplacementState replacementState;
     private final Object folderWarmLock = new Object();
     private volatile int warmedFolderSelection = Integer.MIN_VALUE;
-     
     private static volatile NimarkoIconResources sInstalled;
 
     private android.graphics.Bitmap backArrowBitmap;
@@ -97,7 +96,6 @@ public class NimarkoIconResources extends Resources {
         super(wrapped.getAssets(), wrapped.getDisplayMetrics(), wrapped.getConfiguration());
         this.wrapped = wrapped;
         applySelection(NimarkoConfig.iconReplacement, 1L);
-        
         prepareBackArrowBitmap();
         sInstalled = this;
         prewarmFolderIconsAsync();
@@ -148,7 +146,6 @@ public class NimarkoIconResources extends Resources {
                     backArrowBitmapResolved = true;
                     return loaded;
                 }
-                
                 if (loaded != null) {
                     loaded.recycle();
                 }
@@ -161,7 +158,6 @@ public class NimarkoIconResources extends Resources {
         try {
             final int stockId = org.telegram.messenger.R.drawable.ic_ab_back;
             final int wrappedId = state.replacement.wrap(stockId);
-            
             if (wrappedId == stockId) {
                 return null;
             }
@@ -203,7 +199,6 @@ public class NimarkoIconResources extends Resources {
                 generation = state.generation;
             }
         }
-        
         prepareBackArrowBitmap();
         prewarmFolderIconsAsync();
         if (onApplied != null) {
@@ -240,11 +235,9 @@ public class NimarkoIconResources extends Resources {
                 replacement = new NoIconReplace();
                 break;
         }
-        
         synchronized (backArrowLock) {
             backArrowBitmap = null;
             backArrowBitmapResolved = false;
-            
             replacementState = new ReplacementState(replacement, selection, generation);
         }
     }
@@ -256,13 +249,11 @@ public class NimarkoIconResources extends Resources {
         }
         try {
             org.telegram.messenger.Utilities.globalQueue.postRunnable(() -> {
-                
                 if (replacementState == state) {
                     prewarmFolderIconsBlocking();
                 }
             });
         } catch (Throwable ignored) {
-            
         }
     }
 
@@ -284,7 +275,6 @@ public class NimarkoIconResources extends Resources {
                     continue;
                 }
                 try {
-                    
                     getDrawable(drawableId);
                 } catch (Throwable ignored) {
                     complete = false;
@@ -295,6 +285,7 @@ public class NimarkoIconResources extends Resources {
             }
         }
     }
+
 
     private static final class CacheKey {
         final int id;
@@ -346,11 +337,9 @@ public class NimarkoIconResources extends Resources {
 
         final Drawable loaded = loader.load();
         synchronized (cacheLock) {
-            
             hit = drawableCache.get(key);
             if (hit == null) {
                 ReplacementState current = replacementState;
-                
                 if (loaded != null && current != null && current.generation == key.generation) {
                     drawableCache.put(key, loaded);
                 }
@@ -368,7 +357,6 @@ public class NimarkoIconResources extends Resources {
 
     private Drawable cached(CacheKey key, Drawable loaded) {
         if (loaded == null) return null;
-        
         if (loaded instanceof NoTintBitmapDrawable) {
             android.graphics.Bitmap bmp = ((NoTintBitmapDrawable) loaded).getBitmap();
             if (bmp != null) return new NoTintBitmapDrawable(wrapped, bmp);
@@ -406,14 +394,11 @@ public class NimarkoIconResources extends Resources {
         }
         final int wrappedId = replacement.wrap(stockId);
         if (wrappedId == stockId) return loadRaw(wrappedId, density, theme);   
-        
         final boolean noTint = replacement.isNoTint(stockId);
-        
         Drawable twin = loadRaw(wrappedId, android.util.DisplayMetrics.DENSITY_XXXHIGH, theme);
         if (!(twin instanceof android.graphics.drawable.BitmapDrawable)) return twin;  
         android.graphics.Bitmap bmp = ((android.graphics.drawable.BitmapDrawable) twin).getBitmap();
         if (bmp == null) return twin;
-        
         if (noTint) twin = new NoTintBitmapDrawable(wrapped, bmp);
 
         int w = org.telegram.messenger.AndroidUtilities.dp(24f);   
@@ -424,7 +409,7 @@ public class NimarkoIconResources extends Resources {
                 w = stock.getIntrinsicWidth();
                 h = stock.getIntrinsicHeight();
             }
-        } catch (Throwable ignore) {   }
+        } catch (Throwable ignore) {  }
         if (RENDER_24DP_ICONS.contains(stockId)) {                 
             w = h = org.telegram.messenger.AndroidUtilities.dp(24f);
         }
@@ -448,16 +433,15 @@ public class NimarkoIconResources extends Resources {
 
     private static final class NoTintBitmapDrawable extends android.graphics.drawable.BitmapDrawable {
         NoTintBitmapDrawable(Resources res, android.graphics.Bitmap bmp) { super(res, bmp); }
-        
         @Override public void setColorFilter(android.graphics.ColorFilter colorFilter) {
             super.setColorFilter(org.telegram.ui.ActionBar.Theme.isCurrentThemeDark() ? null : colorFilter);
         }
         @Override public void setTintList(android.content.res.ColorStateList tint) {
             super.setTintList(org.telegram.ui.ActionBar.Theme.isCurrentThemeDark() ? null : tint);
         }
-        
         @Override public Drawable mutate() { return this; }
     }
+
 
     @Override
     public android.content.res.Configuration getConfiguration() {

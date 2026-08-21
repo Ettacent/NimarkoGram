@@ -1,14 +1,3 @@
-/**
- * This file is part of NimarkoGram for Android.
- * It is licensed under GNU GPL v. 2 or later.
- * You should have received a copy of the license in this archive (see LICENSE).
- *
- * NimarkoGram modifications:
- * Copyright Ettacent, 2026.
- *
- * Portions derived from Cherrygram:
- * Copyright github.com/arsLan4k1390, 2022-2026.
- */
 
 package app.nimarkogram.messenger.preferences;
 
@@ -65,7 +54,6 @@ public class AppearancePreferencesActivity extends NimarkoUniversalPreferencesAc
 
     @Override
     protected CharSequence getTitle() {
-         
         return getString(R.string.AP_Header_Appearance);
     }
 
@@ -77,7 +65,6 @@ public class AppearancePreferencesActivity extends NimarkoUniversalPreferencesAc
 
     @Override
     public void fillItems(ArrayList<UItem> items, UniversalAdapter adapter) {
-        
         items.add(UItem.asHeader(getString(R.string.AP_Header_Appearance)));
         items.add(UItem.asButton(iconPackRow, getString(R.string.AP_IconReplacements), getIconPackValueText()));
         items.add(UItem.asButton(oneUISwitchesRow, getString(R.string.NM_SwitchStyle), getSwitchStyleValueText()));
@@ -166,7 +153,6 @@ public class AppearancePreferencesActivity extends NimarkoUniversalPreferencesAc
     @Override
     public void onClick(UItem item, View view, int position, float x, float y) {
         if (item.id == centerTitleRow) {
-            
             if (getActionBar() != null) {
                 getActionBar().prepareCenterTitleAnimation();
             }
@@ -201,7 +187,6 @@ public class AppearancePreferencesActivity extends NimarkoUniversalPreferencesAc
                     NimarkoConfig.switchStyle, getContext(), i -> {
                         NimarkoConfig.setSwitchStyle(i);
                         SettingsHelper.updateButtonValue(view, getSwitchStyleValueText());
-                        
                         if (listView != null) {
                             for (int k = 0; k < listView.getChildCount(); k++) {
                                 View c = listView.getChildAt(k);
@@ -209,7 +194,6 @@ public class AppearancePreferencesActivity extends NimarkoUniversalPreferencesAc
                             }
                         }
                         if (getParentLayout() != null) getParentLayout().rebuildAllFragmentViews(false, false);
-                        
                         showRestartBulletin();
                     });
         } else if (item.id == disableDividersRow) {
@@ -218,12 +202,10 @@ public class AppearancePreferencesActivity extends NimarkoUniversalPreferencesAc
 
             Theme.applyCommonTheme();
             listView.adapter.update(true);
-            
             if (getParentLayout() != null) getParentLayout().rebuildAllFragmentViews(false, false);
         } else if (item.id == glareOnElementsRow) {
             NimarkoConfig.toggleGlareOnElements();
             updateCheckState(view, NimarkoConfig.glareOnElements);
-            
             if (getParentLayout() != null) getParentLayout().rebuildAllFragmentViews(false, false);
         } else if (item.id == mediaGlowRow) {
             NimarkoConfig.toggleMediaGlow();
@@ -232,7 +214,6 @@ public class AppearancePreferencesActivity extends NimarkoUniversalPreferencesAc
         } else if (item.id == forumAvatarsRow) {
             NimarkoConfig.toggleForumAvatarsLikeChats();
             updateCheckState(view, NimarkoConfig.forumAvatarsLikeChats);
-            
             if (getParentLayout() != null) getParentLayout().rebuildAllFragmentViews(false, false);
         } else if (item.id == forceBlurRow) {
             NimarkoConfig.toggleForceBlur();
@@ -249,24 +230,20 @@ public class AppearancePreferencesActivity extends NimarkoUniversalPreferencesAc
         } else if (item.id == iosStyleComposerRow) {
             NimarkoConfig.toggleIosStyleComposer();
             updateCheckState(view, NimarkoConfig.iosStyleComposer);
-            
             if (getParentLayout() != null) {
                 getParentLayout().rebuildAllFragmentViews(false, false);
             }
         } else if (item.id == hideBubbleTailRow) {
             NimarkoConfig.toggleHideBubbleTail();
             updateCheckState(view, NimarkoConfig.hideBubbleTail);
-            
             NotificationCenter.getGlobalInstance().postNotificationName(NotificationCenter.nmUpdateBubbleShape);
         } else if (item.id == onlineIndicatorRow) {
             NimarkoConfig.toggleOnlineIndicatorInGroups();
             updateCheckState(view, NimarkoConfig.onlineIndicatorInGroups);
-            
             NotificationCenter.getGlobalInstance().postNotificationName(NotificationCenter.nmUpdateOnlineIndicator);
         } else if (item.id == hideStickerTimeRow) {
             NimarkoConfig.toggleHideStickerTime();
             updateCheckState(view, NimarkoConfig.hideStickerTime);
-            
             if (stickerSizeCell != null) stickerSizeCell.refreshPreview();
         } else if (item.id == customTitleRow) {
             showCustomTitleDialog(view);
@@ -281,7 +258,6 @@ public class AppearancePreferencesActivity extends NimarkoUniversalPreferencesAc
 
     @Override
     public boolean onLongClick(UItem item, View view, int position, float x, float y) {
-        
         return false;
     }
 

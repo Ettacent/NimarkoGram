@@ -29,6 +29,7 @@ import android.graphics.Shader;
 import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.Drawable;
 import android.os.Build;
+import android.os.SystemClock;
 import android.view.View;
 
 import androidx.annotation.Keep;
@@ -228,6 +229,9 @@ public class ImageReceiver implements NotificationCenter.NotificationCenterDeleg
     private int currentAccount;
     private View parentView;
     private Runnable parentRunnable;
+    private Runnable failedLoadRetryRunnable;
+    private String failedLoadRetryKey;
+    private int failedLoadRetryCount;
 
     private int param;
     private Object currentParentObject;
@@ -351,6 +355,7 @@ public class ImageReceiver implements NotificationCenter.NotificationCenterDeleg
     private int crossfadeDuration = DEFAULT_CROSSFADE_DURATION;
     private float pressedProgress;
     private int animateFromIsPressed;
+    private long lastPressedAnimationTime;
     private String uniqKeyPrefix;
     private ArrayList<Runnable> loadingOperations = new ArrayList<>();
     private boolean attachedToWindow;
@@ -714,7 +719,7 @@ public class ImageReceiver implements NotificationCenter.NotificationCenterDeleg
                 recycleBitmap(mediaKey, TYPE_IMAGE);
                 crossfadeImage = currentMediaDrawable;
                 crossfadeShader = mediaShader;
-                crossfadeKey = currentImageKey;
+                crossfadeKey = currentMediaKey;
                 crossfadingWithThumb = false;
                 currentMediaDrawable = null;
                 currentMediaKey = null;
@@ -808,6 +813,66 @@ public class ImageReceiver implements NotificationCenter.NotificationCenterDeleg
         invalidate();
     }
 
+    void retryImageLoad(String key, int type, int guid) {
+        if (!attachedToWindow || key == null || currentGuid != guid || hasImageLoaded()) {
+            return;
+        }
+        String currentKey;
+        Drawable currentDrawable;
+        if (type == TYPE_THUMB) {
+            currentKey = currentThumbKey;
+            currentDrawable = currentThumbDrawable;
+        } else if (type == TYPE_MEDIA) {
+            currentKey = currentMediaKey;
+            currentDrawable = currentMediaDrawable;
+        } else {
+            currentKey = currentImageKey;
+            currentDrawable = currentImageDrawable;
+        }
+        if (!key.equals(currentKey) || currentDrawable != null) {
+            return;
+        }
+        if (!key.equals(failedLoadRetryKey)) {
+            resetFailedLoadRetry();
+            failedLoadRetryKey = key;
+            failedLoadRetryCount = 0;
+        }
+        if (failedLoadRetryRunnable != null) {
+            return;
+        }
+        if (failedLoadRetryCount >= 2) {
+            return;
+        }
+        final int expectedGuid = currentGuid;
+        final long delay = failedLoadRetryCount++ == 0 ? 250 : 900;
+        failedLoadRetryRunnable = () -> {
+            failedLoadRetryRunnable = null;
+            if (!attachedToWindow || currentGuid != expectedGuid || hasImageLoaded()) {
+                return;
+            }
+            String activeKey = type == TYPE_THUMB ? currentThumbKey : type == TYPE_MEDIA ? currentMediaKey : currentImageKey;
+            if (key.equals(activeKey)) {
+                loadImage();
+            }
+        };
+        AndroidUtilities.runOnUIThread(failedLoadRetryRunnable, delay);
+    }
+
+    private void resetFailedLoadRetry() {
+        if (failedLoadRetryRunnable != null) {
+            AndroidUtilities.cancelRunOnUIThread(failedLoadRetryRunnable);
+            failedLoadRetryRunnable = null;
+        }
+        failedLoadRetryKey = null;
+        failedLoadRetryCount = 0;
+    }
+
+    private void completeFailedLoadRetry(String key) {
+        if (key != null && key.equals(failedLoadRetryKey)) {
+            resetFailedLoadRetry();
+        }
+    }
+
     public boolean canInvertBitmap() {
         return currentMediaDrawable instanceof ExtendedBitmapDrawable || currentImageDrawable instanceof ExtendedBitmapDrawable || currentThumbDrawable instanceof ExtendedBitmapDrawable || staticThumbDrawable instanceof ExtendedBitmapDrawable;
     }
@@ -821,6 +886,9 @@ public class ImageReceiver implements NotificationCenter.NotificationCenterDeleg
     }
 
     public void setPressed(int value) {
+        if (isPressed != value) {
+            lastPressedAnimationTime = SystemClock.uptimeMillis();
+        }
         isPressed = value;
     }
 
@@ -1000,7 +1068,7 @@ public class ImageReceiver implements NotificationCenter.NotificationCenterDeleg
         invalidate();
         if (forceCrossfade && crossfadeWithOldImage && crossfadeImage != null) {
             currentAlpha = 0.0f;
-            lastUpdateAlphaTime = System.currentTimeMillis();
+            lastUpdateAlphaTime = SystemClock.uptimeMillis();
             crossfadeWithThumb = currentThumbDrawable != null || staticThumbDrawable != null;
         }
     }
@@ -1059,7 +1127,6 @@ public class ImageReceiver implements NotificationCenter.NotificationCenterDeleg
     }
 
     private boolean hasRoundRadius() {
-         
         return true;
     }
 
@@ -1097,6 +1164,7 @@ public class ImageReceiver implements NotificationCenter.NotificationCenterDeleg
     }
 
     public void onDetachedFromWindow() {
+        resetFailedLoadRetry();
         if (!attachedToWindow) {
             return;
         }
@@ -1230,17 +1298,6 @@ public class ImageReceiver implements NotificationCenter.NotificationCenterDeleg
     }
 
     private void drawDrawable(Canvas canvas, Drawable drawable, int alpha, BitmapShader shader, int orientation, int invert,  BackgroundThreadDrawHolder backgroundThreadDrawHolder) {
-        if (isPressed == 0 && pressedProgress != 0) {
-            pressedProgress -= 16 / 150f;
-            if (pressedProgress < 0) {
-                pressedProgress = 0;
-            }
-            invalidate();
-        }
-        if (isPressed != 0) {
-            pressedProgress = 1f;
-            animateFromIsPressed = isPressed;
-        }
         if (pressedProgress == 0 || pressedProgress == 1f) {
             drawDrawable(canvas, drawable, alpha, shader, orientation, invert, isPressed, backgroundThreadDrawHolder);
         } else {
@@ -1825,19 +1882,10 @@ public class ImageReceiver implements NotificationCenter.NotificationCenterDeleg
         }
         if (currentAlpha != 1) {
             if (!skip) {
-                if (backgroundThreadDrawHolder != null) {
-                    long currentTime = System.currentTimeMillis();
-                    long dt = currentTime - lastUpdateAlphaTime;
-                    if (lastUpdateAlphaTime == 0) {
-                        dt = 16;
-                    }
-                    if (dt > 30 && AndroidUtilities.screenRefreshRate > 60) {
-                        dt = 30;
-                    }
-                    currentAlpha += dt / (float) crossfadeDuration;
-                } else {
-                    currentAlpha += 16f / (float) crossfadeDuration;
-                }
+                long currentTime = SystemClock.uptimeMillis();
+                long dt = lastUpdateAlphaTime == 0 ? 16 : Math.max(0, Math.min(64, currentTime - lastUpdateAlphaTime));
+                lastUpdateAlphaTime = currentTime;
+                currentAlpha += dt / (float) crossfadeDuration;
                 if (currentAlpha > 1) {
                     currentAlpha = 1;
                     previousAlpha = 1f;
@@ -1856,7 +1904,6 @@ public class ImageReceiver implements NotificationCenter.NotificationCenterDeleg
     }
 
     public void skipDraw() {
-
     }
 
     public boolean draw(Canvas canvas) {
@@ -1865,6 +1912,20 @@ public class ImageReceiver implements NotificationCenter.NotificationCenterDeleg
 
     public boolean draw(Canvas canvas, BackgroundThreadDrawHolder backgroundThreadDrawHolder) {
         boolean result = false;
+        if (backgroundThreadDrawHolder == null && (isPressed != 0 || pressedProgress > 0f)) {
+            long now = SystemClock.uptimeMillis();
+            long dt = lastPressedAnimationTime == 0 ? 0 : Math.max(0, Math.min(64, now - lastPressedAnimationTime));
+            lastPressedAnimationTime = now;
+            if (isPressed == 0 && pressedProgress > 0) {
+                pressedProgress = Math.max(0, pressedProgress - dt / 150f);
+                invalidate();
+            } else if (isPressed != 0) {
+                pressedProgress = 1f;
+                animateFromIsPressed = isPressed;
+            }
+        } else if (backgroundThreadDrawHolder == null) {
+            lastPressedAnimationTime = 0;
+        }
         if (gradientBitmap != null && currentImageKey != null) {
             canvas.save();
             canvas.clipRect(imageX, imageY, imageX + imageW, imageY + imageH);
@@ -2323,6 +2384,10 @@ public class ImageReceiver implements NotificationCenter.NotificationCenterDeleg
 
     public boolean hasImageSet() {
         return currentImageDrawable != null || currentMediaDrawable != null || currentThumbDrawable != null || staticThumbDrawable != null || currentImageKey != null || currentMediaKey != null;
+    }
+
+    public boolean hasPendingImageRequest() {
+        return setImageBackup != null && setImageBackup.isSet();
     }
 
     public boolean hasMediaSet() {
@@ -2937,7 +3002,7 @@ public class ImageReceiver implements NotificationCenter.NotificationCenterDeleg
                         previousAlpha = 1f;
                     }
                     currentAlpha = 0.0f;
-                    lastUpdateAlphaTime = System.currentTimeMillis();
+                    lastUpdateAlphaTime = SystemClock.uptimeMillis();
                     crossfadeWithThumb = crossfadeImage != null || currentThumbDrawable != null || staticThumbDrawable != null;
                 }
             } else {
@@ -2980,7 +3045,7 @@ public class ImageReceiver implements NotificationCenter.NotificationCenterDeleg
                             previousAlpha = 1f;
                         }
                         currentAlpha = 0.0f;
-                        lastUpdateAlphaTime = System.currentTimeMillis();
+                        lastUpdateAlphaTime = SystemClock.uptimeMillis();
                         crossfadeWithThumb = crossfadeImage != null || currentThumbDrawable != null || staticThumbDrawable != null;
                     }
                 } else {
@@ -3023,7 +3088,7 @@ public class ImageReceiver implements NotificationCenter.NotificationCenterDeleg
                 } else {
                     currentAlpha = 0.0f;
                     previousAlpha = 1f;
-                    lastUpdateAlphaTime = System.currentTimeMillis();
+                    lastUpdateAlphaTime = SystemClock.uptimeMillis();
                     crossfadeWithThumb = staticThumbDrawable != null;
                 }
             } else {
@@ -3031,6 +3096,7 @@ public class ImageReceiver implements NotificationCenter.NotificationCenterDeleg
                 previousAlpha = 1f;
             }
         }
+        completeFailedLoadRetry(key);
         if (delegate != null) {
             delegate.didSetImage(this, currentImageDrawable != null || currentThumbDrawable != null || staticThumbDrawable != null || currentMediaDrawable != null, currentImageDrawable == null && currentMediaDrawable == null, memCache);
         }
@@ -3279,6 +3345,7 @@ public class ImageReceiver implements NotificationCenter.NotificationCenterDeleg
         ImageLoader.getInstance().moveToFront(currentImageKey);
         ImageLoader.getInstance().moveToFront(currentThumbKey);
     }
+
 
     public void moveLottieToFront() {
         BitmapDrawable drawable = null;

@@ -7,7 +7,6 @@ import java.io.Serializable;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
 
 import org.mvel2.MVEL;
 import org.telegram.messenger.ApplicationLoader;
@@ -17,11 +16,8 @@ import app.nimarkogram.messenger.plugins.PluginsController;
 import app.nimarkogram.messenger.plugins.utils.PyObjectUtils;
 
 public class MenuItemRecord {
-    
-    private static final int MVEL_CACHE_MAX = 256;
-    private static final ConcurrentHashMap<String, Serializable> mvelExpressionCache = new ConcurrentHashMap<>();
-
     public final String conditionString;
+    private final Serializable compiledCondition;
     public final String iconName;
     public final int iconResId;
     public final String itemId;
@@ -52,13 +48,24 @@ public class MenuItemRecord {
         this.iconName = PyObjectUtils.getString(pyObject, "icon", null, true);
         this.subtext = PyObjectUtils.getString(pyObject, "subtext", null, true);
         this.conditionString = PyObjectUtils.getString(pyObject, "condition", null, true);
+        Serializable condition = null;
+        if (!TextUtils.isEmpty(this.conditionString)) {
+            try {
+                condition = MVEL.compileExpression(this.conditionString);
+            } catch (Exception e) {
+                try {
+                    org.telegram.messenger.FileLog.d("nimarko: invalid menu condition for plugin "
+                            + this.pluginId + " condition='" + this.conditionString + "': " + e);
+                } catch (Throwable ignored) {}
+            }
+        }
+        this.compiledCondition = condition;
         this.priority = PyObjectUtils.getInt(pyObject, PluginsConstants.MenuItemProperties.PRIORITY, 0, true);
 
         int resId = 0;
         if (!TextUtils.isEmpty(this.iconName)) {
             Context context = ApplicationLoader.applicationContext;
             String pkg = context.getPackageName();
-            
             String[] candidates = new String[] {
                 this.iconName,                                        
                 this.iconName.startsWith("msg_") ? null : "msg_" + this.iconName,    
@@ -97,18 +104,14 @@ public class MenuItemRecord {
         if (TextUtils.isEmpty(this.conditionString) || map == null) {
             return true;
         }
+        if (compiledCondition == null) {
+            return false;
+        }
         try {
-            
-            if (mvelExpressionCache.size() > MVEL_CACHE_MAX) {
-                mvelExpressionCache.clear();
-            }
-            Serializable expression = mvelExpressionCache.computeIfAbsent(this.conditionString, MVEL::compileExpression);
-
-            Object result = MVEL.executeExpression(expression, map, Boolean.class);
+            Object result = MVEL.executeExpression(compiledCondition, map, Boolean.class);
 
             return result instanceof Boolean ? (Boolean) result : false;
         } catch (Exception e) {
-            
             try {
                 org.telegram.messenger.FileLog.d("nimarko: MenuItemRecord.checkCondition failed for plugin "
                         + this.pluginId + " condition='" + this.conditionString + "': " + e);

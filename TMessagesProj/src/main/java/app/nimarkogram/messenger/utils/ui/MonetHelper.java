@@ -19,14 +19,13 @@ import org.telegram.messenger.ApplicationLoader;
 import org.telegram.messenger.FileLog;
 import org.telegram.ui.ActionBar.Theme;
 
-import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 @RequiresApi(api = Build.VERSION_CODES.S)
 public class MonetHelper {
-    
     private static final double SMALL_TEXT_CONTRAST = 7.0;
     private static final Pattern PALETTE_TOKEN = Pattern.compile(
             "^([an])([1-3])_(0|10|50|[1-9]00|1000)(?:_([0-9]{1,3}))?$"
@@ -262,7 +261,6 @@ public class MonetHelper {
                 return 0;
             }
         }
-        
         Matcher matcher = PALETTE_TOKEN.matcher(rawColor);
         matcher.matches();
         int group = "n".equals(matcher.group(1)) ? 2 : 1;
@@ -427,6 +425,7 @@ public class MonetHelper {
     }
 
     private static class OverlayChangeReceiver extends BroadcastReceiver {
+
         private final Runnable applyChangedPalette = () -> {
             Theme.ThemeInfo activeTheme = Theme.getActiveTheme();
             if (activeTheme != null && activeTheme.isMonet()) {
@@ -438,7 +437,6 @@ public class MonetHelper {
             IntentFilter packageFilter = new IntentFilter(ACTION_OVERLAY_CHANGED);
             packageFilter.addDataScheme("package");
             packageFilter.addDataSchemeSpecificPart("android", PatternMatcher.PATTERN_LITERAL);
-            
             ContextCompat.registerReceiver(context, this, packageFilter, ContextCompat.RECEIVER_NOT_EXPORTED);
         }
 

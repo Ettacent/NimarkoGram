@@ -71,8 +71,6 @@ import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
 import com.google.android.exoplayer2.C;
-import com.google.android.gms.cast.framework.CastContext;
-
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.ApplicationLoader;
 import org.telegram.messenger.BuildVars;
@@ -166,6 +164,7 @@ public class AudioPlayerAlert extends BottomSheet implements NotificationCenter.
     private ChooseQualityLayout.QualityIcon optionsIcon;
     private ActionBarMenuSubItem castItem;
     private CastMediaRouteButton castItemButton;
+    private boolean castRouteReady;
     private LineProgressView progressView;
     private SeekBarView seekBarView;
     private SimpleTextView timeTextView;
@@ -364,7 +363,6 @@ public class AudioPlayerAlert extends BottomSheet implements NotificationCenter.
                         padding = 0;
                     }
                 }
-
                 if (padWithItem) {
                     padding = 0;
                 }
@@ -508,7 +506,6 @@ public class AudioPlayerAlert extends BottomSheet implements NotificationCenter.
         actionBar.setTitleColor(getThemedColor(Theme.key_player_actionBarTitle));
         actionBar.setSubtitleColor(getThemedColor(Theme.key_player_actionBarSubtitle));
         actionBar.setOccupyStatusBar(true);
-        
         actionBar.setForceDisableCenterTitle(true);
 
         actionBar.menuOccupyBack = true;
@@ -1112,19 +1109,25 @@ public class AudioPlayerAlert extends BottomSheet implements NotificationCenter.
                 }
             }
         };
-        boolean castAvailable = true;
-        try {
-            castItemButton.setRouteSelector(CastContext.getSharedInstance(context).getMergedSelector());
-        } catch (Exception e) {
-            FileLog.e(e);
-            castAvailable = false;
-        }
         castItemButton.setVisibility(View.INVISIBLE);
-        if (castAvailable) {
-            castItem = optionsButton.addSubItem(6, R.drawable.menu_video_chromecast, getString(R.string.VideoPlayerChromecast));
-            castItem.addView(castItemButton, 0, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT));
-            updateColors();
-        }
+        castItem = optionsButton.addSubItem(6, R.drawable.menu_video_chromecast, getString(R.string.VideoPlayerChromecast));
+        castItem.addView(castItemButton, 0, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT));
+        optionsButton.setSubItemShown(6, false);
+        CastMediaRouteButton pendingCastButton = castItemButton;
+        ActionBarMenuSubItem pendingCastItem = castItem;
+        CastSync.withContext(castContext -> {
+            if (castContext == null || isDismissed() || castItemButton != pendingCastButton || castItem != pendingCastItem) {
+                return;
+            }
+            try {
+                pendingCastButton.setRouteSelector(castContext.getMergedSelector());
+                castRouteReady = true;
+                optionsButton.setSubItemShown(6, !noforwards);
+                updateColors();
+            } catch (Throwable error) {
+                FileLog.e(error);
+            }
+        });
         if (optionsIcon != null) {
             optionsIcon.setCasting(CastSync.isActive(), true);
         }
@@ -1514,9 +1517,7 @@ public class AudioPlayerAlert extends BottomSheet implements NotificationCenter.
         } else {
             int offset = dp(13);
             int top = scrollOffsetY - backgroundPaddingTop - offset;
-
                 top += listView.getTranslationY();
-
             if (top + backgroundPaddingTop < ActionBar.getCurrentActionBarHeight()) {
                 float toMove = offset + dp(11 - 7);
                 float moveProgress = Math.min(1.0f, (ActionBar.getCurrentActionBarHeight() - top - backgroundPaddingTop) / toMove);
@@ -1714,7 +1715,6 @@ public class AudioPlayerAlert extends BottomSheet implements NotificationCenter.
             return;
         }
         if (id == 1390) {
-            
             setSleepTimer();
             return;
         }
@@ -1748,6 +1748,9 @@ public class AudioPlayerAlert extends BottomSheet implements NotificationCenter.
         } else if (id == 5) {
             saveToMusic(messageObject);
         } else if (id == 6) {
+            if (!castRouteReady || castItemButton == null) {
+                return;
+            }
             ChromecastController.getInstance().setCurrentMediaAndCastIfNeeded(MediaController.getInstance().getCurrentChromecastMedia());
             castItemButton.performClick();
         } else if (id == 7) {
@@ -2039,9 +2042,7 @@ public class AudioPlayerAlert extends BottomSheet implements NotificationCenter.
 
         int offset = dp(13);
         top = scrollOffsetY - backgroundPaddingTop - offset;
-
             top += listView.getTranslationY();
-
         float rad = 1.0f;
 
         if (top + backgroundPaddingTop < ActionBar.getCurrentActionBarHeight()) {
@@ -2312,11 +2313,11 @@ public class AudioPlayerAlert extends BottomSheet implements NotificationCenter.
                 optionsButton.showSubItem(1);
                 optionsButton.showSubItem(2);
                 optionsButton.showSubItem(5);
+                optionsButton.setSubItemShown(6, castRouteReady);
                 optionsButton.setAdditionalYOffset(-dp(157 + 40));
             }
             optionsButton.setSubItemShown(4, messageObject.getId() > 0);
             optionsButton.setSubItemShown(7, isMyList());
-            
             if (optionsButton != null) {
                 optionsButton.setSubItemShown(1390, !isMyList() && !noforwards);
                 optionsButton.setSubItemShown(1391, !isMyList() && !noforwards);
@@ -3728,5 +3729,4 @@ public class AudioPlayerAlert extends BottomSheet implements NotificationCenter.
             NimarkoConfig.setSleepTimer(false);
         }
     }
-     
 }

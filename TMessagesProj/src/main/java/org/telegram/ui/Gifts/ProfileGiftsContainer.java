@@ -52,6 +52,7 @@ import androidx.recyclerview.widget.ItemTouchHelper;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
+
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.BirthdayController;
 import org.telegram.messenger.ChatObject;
@@ -322,7 +323,6 @@ public class ProfileGiftsContainer extends FrameLayout implements NotificationCe
                     }
                     final int fromPosition = viewHolder.getAdapterPosition();
                     final int toPosition = target.getAdapterPosition();
-                    
                     final int fromGiftIndex = list.indexOf(fromGift);
                     final int toGiftIndex = list.indexOf(toGift);
                     if (fromGiftIndex < 0 || toGiftIndex < 0 || fromGiftIndex == toGiftIndex) {
@@ -1287,7 +1287,6 @@ public class ProfileGiftsContainer extends FrameLayout implements NotificationCe
             currentMenu.show();
             return true;
         });
-
         addView(tabsView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, 42, Gravity.TOP));
 
         BlurredBackgroundSourceColor source = new BlurredBackgroundSourceColor();
@@ -1301,7 +1300,7 @@ public class ProfileGiftsContainer extends FrameLayout implements NotificationCe
         ScaleStateListAnimator.apply(button2, .02f, 1.2f);
 
         buttonContainer = new FrameLayout(context);
-        
+
         FrameLayout.LayoutParams lp = LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, 60, Gravity.FILL_HORIZONTAL | Gravity.BOTTOM);
         lp.bottomMargin += AndroidUtilities.navigationBarHeight;
         addView(buttonContainer, lp);
@@ -1573,6 +1572,7 @@ public class ProfileGiftsContainer extends FrameLayout implements NotificationCe
         Bulletin.updateCurrentPosition();
     }
 
+
     private int buttonContainerOffset;
 
     public void setButtonOffset(int offset) {
@@ -1836,7 +1836,6 @@ public class ProfileGiftsContainer extends FrameLayout implements NotificationCe
     }
 
     public void updateColors() {
-
         button.updateColors();
         button.setBackground(Theme.createRoundRectDrawable(dp(19), processColor(Theme.getColor(Theme.key_featuredStickers_addButton, resourcesProvider))));
         View[] pages = viewPager.getViewPages();

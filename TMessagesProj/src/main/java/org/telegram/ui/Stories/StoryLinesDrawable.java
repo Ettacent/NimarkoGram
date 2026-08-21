@@ -124,12 +124,12 @@ public class StoryLinesDrawable {
                     int bufferingAlpha = 0;
                     if (buffering) {
                         if (incrementBuffering) {
-                            bufferingProgress += 16 / 600f;
+                            bufferingProgress += AndroidUtilities.screenRefreshTime / 600f;
                             if (bufferingProgress > 0.5f) {
                                 incrementBuffering = false;
                             }
                         } else {
-                            bufferingProgress -= 16 / 600f;
+                            bufferingProgress -= AndroidUtilities.screenRefreshTime / 600f;
                             if (bufferingProgress < -0.5f) {
                                 incrementBuffering = true;
                             }

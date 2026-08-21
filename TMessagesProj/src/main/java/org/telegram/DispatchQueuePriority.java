@@ -57,11 +57,26 @@ public class DispatchQueuePriority {
     }
 
     public Runnable postRunnable(Runnable runnable, int priority) {
-        if (priority != 1) {
-            runnable = new PriorityRunnable(priority, runnable);
-        }
+        runnable = new PriorityRunnable(priority, runnable);
         postRunnable(runnable);
         return runnable;
+    }
+
+    public Runnable changePriority(Runnable runnable, int priority) {
+        if (!(runnable instanceof PriorityRunnable)) {
+            return runnable;
+        }
+        PriorityRunnable priorityRunnable = (PriorityRunnable) runnable;
+        synchronized (priorityRunnable) {
+            if (priorityRunnable.priority == priority) {
+                return priorityRunnable;
+            }
+            if (threadPoolExecutor.remove(priorityRunnable)) {
+                priorityRunnable.priority = priority;
+                threadPoolExecutor.execute(priorityRunnable);
+            }
+        }
+        return priorityRunnable;
     }
 
     public void cancelRunnable(Runnable runnable) {
@@ -86,7 +101,7 @@ public class DispatchQueuePriority {
     }
 
     private static class PriorityRunnable implements Runnable {
-        final int priority;
+        volatile int priority;
         final Runnable runnable;
 
         private PriorityRunnable(int priority, Runnable runnable) {

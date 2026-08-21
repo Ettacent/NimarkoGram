@@ -176,7 +176,7 @@ public class ThemeSmallPreviewView extends FrameLayout implements NotificationCe
             themeDrawable.draw(canvas, changeThemeProgress);
         }
         if (changeThemeProgress != 1f) {
-            changeThemeProgress += 16 / 150f;
+            changeThemeProgress += AndroidUtilities.screenRefreshTime / 150f;
             if (changeThemeProgress >= 1f) {
                 changeThemeProgress = 1f;
             }

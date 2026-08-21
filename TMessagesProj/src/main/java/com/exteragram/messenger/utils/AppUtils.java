@@ -87,6 +87,7 @@ public class AppUtils {
         return app.nimarkogram.messenger.utils.AppUtils.compareVersions(op, v1, v2);
     }
 
+
     public static Object getPrivateField(Object obj, String fieldName) {
         return app.nimarkogram.messenger.utils.AppUtils.getPrivateField(obj, fieldName);
     }

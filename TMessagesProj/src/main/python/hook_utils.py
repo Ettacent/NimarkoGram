@@ -26,10 +26,8 @@ _HOOK_TARGET_REMAP = {
         'app.nimarkogram.messenger.plugins.PythonPluginsEngine',
     'com.exteragram.messenger.plugins.PluginsController$PluginValidationResult':
         'app.nimarkogram.messenger.plugins.PluginsController$PluginValidationResult',
-    
     'com.exteragram.messenger.plugins.Plugin':
         'app.nimarkogram.messenger.plugins.Plugin',
-    
     'com.exteragram.messenger.utils.text.TranslatorUtils$TranslateCallback':
         'app.nimarkogram.messenger.utils.text.TranslatorUtils$TranslateCallback',
 }
@@ -57,7 +55,6 @@ def find_class(class_name: str) -> Optional[JavaClass]:
         _CLASS_CACHE[class_name] = clazz
         return clazz
     except Exception as original_error:
-        
         prefix = 'com.exteragram.messenger.'
         if class_name.startswith(prefix):
             current_name = 'app.nimarkogram.messenger.' + class_name[len(prefix):]

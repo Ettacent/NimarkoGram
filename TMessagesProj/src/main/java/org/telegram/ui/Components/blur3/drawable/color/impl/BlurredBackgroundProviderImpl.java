@@ -145,7 +145,6 @@ public class BlurredBackgroundProviderImpl {
                 .setStrokeColorTop(0xFFFFFFFF, 0x28FFFFFF)
                 .setStrokeColorBottom(0xFFFFFFFF, 0x14FFFFFF)
                 .setShadowColor(0x20000000, 0)
-                
                 .setStrokeWidth(dpf2(0.5f), dpf2(0.5f))
                 .build();
     }
@@ -165,7 +164,6 @@ public class BlurredBackgroundProviderImpl {
                 .setStrokeColorTop(0xFFFFFFFF, 0x20FFFFFF)
                 .setStrokeColorBottom(0xFFFFFFFF, 0x14FFFFFF)
                 .setShadowColor(0x20000000, 0)
-                
                 .setStrokeWidth(dpf2(0.55f), dpf2(0.55f))
                 .build();
     }
@@ -181,7 +179,6 @@ public class BlurredBackgroundProviderImpl {
                 .setStrokeColorTop(0xFFFFFFFF, 0x28FFFFFF)
                 .setStrokeColorBottom(0xFFFFFFFF, 0x14FFFFFF)
                 .setShadowColor(0x20000000, 0)
-                
                 .setStrokeWidth(dpf2(1), dpf2(2 / 3f))
                 .build();
     }
@@ -228,7 +225,6 @@ public class BlurredBackgroundProviderImpl {
                 final int colorBg = Theme.getColor(Theme.key_undo_background, r);
                 return Theme.multAlpha(colorBg, alpha);
             })
-            
             .setStrokeWidth(dpf2(0.5f), dpf2(0.5f))
             .build();
     }

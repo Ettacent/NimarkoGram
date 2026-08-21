@@ -118,7 +118,7 @@ public class AspectRatioFrameLayout extends FrameLayout {
    * @param widthHeightRatio The width to height ratio.
    */
   public void setAspectRatio(float widthHeightRatio, int rotation) {
-    if (this.videoAspectRatio != widthHeightRatio) {
+    if (this.videoAspectRatio != widthHeightRatio || this.rotation != rotation) {
       this.videoAspectRatio = widthHeightRatio;
       this.rotation = rotation;
       requestLayout();
@@ -185,53 +185,54 @@ public class AspectRatioFrameLayout extends FrameLayout {
     if (Math.abs(aspectDeformation) <= MAX_ASPECT_RATIO_DEFORMATION_FRACTION) {
       // We're within the allowed tolerance.
       aspectRatioUpdateDispatcher.scheduleUpdate(videoAspectRatio, viewAspectRatio, false);
-      return;
+    } else {
+      switch (resizeMode) {
+        case RESIZE_MODE_FIXED_WIDTH:
+          height = (int) (width / videoAspectRatio);
+          break;
+        case RESIZE_MODE_FIXED_HEIGHT:
+          width = (int) (height * videoAspectRatio);
+          break;
+        case RESIZE_MODE_ZOOM:
+          if (aspectDeformation > 0) {
+            width = (int) (height * videoAspectRatio);
+          } else {
+            height = (int) (width / videoAspectRatio);
+          }
+          break;
+        case RESIZE_MODE_FIT:
+          if (aspectDeformation > 0) {
+            height = (int) (width / videoAspectRatio);
+          } else {
+            width = (int) (height * videoAspectRatio);
+          }
+          break;
+        case RESIZE_MODE_FILL:
+          if (aspectDeformation <= 0) {
+            height = (int) (width / videoAspectRatio);
+          } else {
+            width = (int) (height * videoAspectRatio);
+          }
+        default:
+          // Ignore target aspect ratio
+          break;
+      }
+      aspectRatioUpdateDispatcher.scheduleUpdate(videoAspectRatio, viewAspectRatio, true);
+      super.onMeasure(MeasureSpec.makeMeasureSpec(width, MeasureSpec.EXACTLY), MeasureSpec.makeMeasureSpec(height, MeasureSpec.EXACTLY));
     }
-
-    switch (resizeMode) {
-      case RESIZE_MODE_FIXED_WIDTH:
-        height = (int) (width / videoAspectRatio);
-        break;
-      case RESIZE_MODE_FIXED_HEIGHT:
-        width = (int) (height * videoAspectRatio);
-        break;
-      case RESIZE_MODE_ZOOM:
-        if (aspectDeformation > 0) {
-          width = (int) (height * videoAspectRatio);
-        } else {
-          height = (int) (width / videoAspectRatio);
-        }
-        break;
-      case RESIZE_MODE_FIT:
-        if (aspectDeformation > 0) {
-          height = (int) (width / videoAspectRatio);
-        } else {
-          width = (int) (height * videoAspectRatio);
-        }
-        break;
-      case RESIZE_MODE_FILL:
-        if (aspectDeformation <= 0) {
-          height = (int) (width / videoAspectRatio);
-        } else {
-          width = (int) (height * videoAspectRatio);
-        }
-      default:
-        // Ignore target aspect ratio
-        break;
-    }
-    aspectRatioUpdateDispatcher.scheduleUpdate(videoAspectRatio, viewAspectRatio, true);
-    super.onMeasure(MeasureSpec.makeMeasureSpec(width, MeasureSpec.EXACTLY), MeasureSpec.makeMeasureSpec(height, MeasureSpec.EXACTLY));
 
     int count = getChildCount();
     for (int a = 0; a < count; a++) {
       View child = getChildAt(a);
       if (child instanceof TextureView) {
         matrix.reset();
-        int px = getWidth() / 2;
-        int py = getHeight() / 2;
+        int measuredWidth = getMeasuredWidth();
+        int measuredHeight = getMeasuredHeight();
+        int px = measuredWidth / 2;
+        int py = measuredHeight / 2;
         matrix.postRotate(rotation, px, py);
-        if (rotation == 90 || rotation == 270) {
-          float ratio = (float) getHeight() / getWidth();
+        if ((rotation == 90 || rotation == 270) && measuredWidth != 0 && measuredHeight != 0) {
+          float ratio = (float) measuredHeight / measuredWidth;
           matrix.postScale(1 / ratio, ratio, px, py);
         }
         ((TextureView) child).setTransform(matrix);

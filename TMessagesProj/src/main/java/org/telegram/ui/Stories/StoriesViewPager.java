@@ -551,7 +551,6 @@ public class StoriesViewPager extends ViewPager {
                             pageLayout.peerStoryView.setDialogId(pageLayout.dialogId, positionInPage);
                         }
                     }
-
                 } else {
                     getCurrentPeerView().selectPosition(positionInPage);
                 }

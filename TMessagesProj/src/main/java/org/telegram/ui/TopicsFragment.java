@@ -4,6 +4,7 @@ import static org.telegram.messenger.AndroidUtilities.dp;
 import static org.telegram.messenger.AndroidUtilities.lerp;
 import static org.telegram.messenger.LocaleController.getString;
 
+
 import android.animation.Animator;
 import android.animation.AnimatorListenerAdapter;
 import android.animation.ValueAnimator;
@@ -23,6 +24,7 @@ import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.Drawable;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.SystemClock;
 import android.text.SpannableString;
 import android.text.SpannableStringBuilder;
 import android.text.Spanned;
@@ -154,7 +156,6 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
 
     @Override
     public boolean isActionBarCrossfadeEnabled() {
-        
         return false;
     }
 
@@ -162,6 +163,7 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
     private final static int BOTTOM_BUTTON_TYPE_REPORT = 1;
     final long chatId;
     ArrayList<Item> forumTopics = new ArrayList<>();
+    private int topicsMeasureGeneration;
 
     private int lastItemsCount;
     private ArrayList<Item> frozenForumTopicsList = new ArrayList<>();
@@ -367,7 +369,6 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
         if (chatId != 0L) {
             TLRPC.Dialog dialog = messagesController.getDialog(-chatId);
             if (dialog != null) {
-                
                 return dialog.view_forum_as_messages
                         ? new ChatActivity(args)
                         : new TopicsFragment(args);
@@ -435,7 +436,6 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
             protected boolean drawChild(Canvas canvas, View child, long drawingTime) {
                 if (child == actionBar && !isInPreviewMode()) {
                     int y = (int) (actionBar.getY() + getActionBarFullHeight());
-                    
                     if (searchAnimationProgress > 0) {
                         if (searchAnimationProgress < 1) {
                             int a = Theme.dividerPaint.getAlpha();
@@ -588,7 +588,6 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
                     if (iBlur3SourceGlassFrosted != null && !iBlur3SourceGlassFrosted.inRecording()) {
                         if (iBlur3SourceGlassFrosted.needUpdateDisplayList(width, height) || iBlur3Invalidated) {
                             final Canvas c = iBlur3SourceGlassFrosted.beginRecording(width, height);
-                            
                             c.drawColor(getThemedColor(Theme.key_windowBackgroundWhite));
                             scrollableViewNoiseSuppressor.draw(c, DownscaleScrollableNoiseSuppressor.DRAW_FROSTED_GLASS);
                             iBlur3SourceGlassFrosted.endRecording();
@@ -832,6 +831,7 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
             }
         });
 
+
         actionBar.setOnClickListener(v -> {
             if (!searching) {
                 openProfile(false);
@@ -871,10 +871,8 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
 
                 }
             });
-            
             searchItem.setSearchPaddingStart(7);
             searchItem.setSearchFieldHint(getString(R.string.Search));
-            
         }
         other = menu.addItem(0, R.drawable.ic_ab_other, themeDelegate);
         other.setContentDescription(getString(R.string.AccDescrMoreOptions));
@@ -929,7 +927,6 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
                 true);
         iBlur3Capture = new ViewGroupPartRenderer(recyclerListView, parentDialogsActivity != null ? (ViewGroup) parentDialogsActivity.getFragmentView() : contentView, recyclerListView::drawChild);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && scrollableViewNoiseSuppressor != null) {
-            
             invalidateBlurredSourcesView = new OnPostDrawView(context, true, flags -> blur3_UpdateBlur());
             contentView.addView(invalidateBlurredSourcesView);
         }
@@ -988,6 +985,7 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
                     }
                 });
             }
+
 
             @Override
             public void endAnimations() {
@@ -1060,7 +1058,6 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
                 }
                 final long previousSelectedTopic = selectedTopicForTablet;
                 selectedTopicForTablet = topicId;
-                
                 notifyTopicSelectionChanged(previousSelectedTopic);
                 notifyTopicSelectionChanged(selectedTopicForTablet);
             }
@@ -1103,7 +1100,6 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
                         && !hiddenShown
                         && (itemAnimator == null || !itemAnimator.isRunning())
                         && !TopicsFragment.this.recyclerListView.isArchiveSettleAnimationRunning()) {
-                    
                     finishGeneralTopicMoving();
                 }
             }
@@ -1184,7 +1180,6 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
                 }
 
                 if (recyclerListView.getViewOffset() != 0 && dy > 0 && isDragging) {
-                    
                     float currentOffset = recyclerListView.getViewOffset();
                     float consumedOffset = Math.min(currentOffset, dy);
                     recyclerListView.setViewsOffset(currentOffset - consumedOffset);
@@ -1265,10 +1260,8 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
                             && pullViewState == ARCHIVE_ITEM_STATE_HIDDEN
                             && firstView == null
                             && consumedDy < dy) {
-                        
                         recyclerListView.setOverScrollMode(View.OVER_SCROLL_NEVER);
                     }
-                    
                     recyclerListView.trackHiddenGeneralPull(
                             isDragging, dy, generalRevealBeforeScroll, viewOffsetBeforeScroll);
                     if (dy > 0 && translatedDy > 0) {
@@ -1308,7 +1301,6 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
                     if (!TopicsFragment.this.recyclerListView.isArchiveSettleAnimationRunning()) {
                         disableActionBarScrolling = false;
                     }
-                    
                     int firstVisibleItem = layoutManager.findFirstVisibleItemPosition();
                     if (firstVisibleItem != RecyclerView.NO_POSITION) {
                         View firstView = layoutManager.findViewByPosition(firstVisibleItem);
@@ -1372,6 +1364,7 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
         floatingButton.imageView.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
         floatingButton.imageView.setPadding(dp(12), dp(12), dp(12), dp(12));
         floatingButton.setContentDescription(getString(R.string.CreateTopic));
+
 
         FlickerLoadingView flickerLoadingView = new FlickerLoadingView(context);
         flickerLoadingView.setViewType(FlickerLoadingView.TOPIC_CELL_TYPE);
@@ -1465,7 +1458,6 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
                 if (child == searchTabsView && isInPreviewMode()) {
                     int y = (int) (searchTabsView.getY() + searchTabsView.getMeasuredHeight());
                     getParentLayout().drawHeaderShadow(canvas, (int) (255 * searchAnimationProgress), y);
-
                 }
                 return super.drawChild(canvas, child, drawingTime);
             }
@@ -1497,7 +1489,6 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
         topPanelLayout.addOnLayoutChangeListener((v, left, top, right, bottom,
                                                   oldLeft, oldTop, oldRight, oldBottom) -> {
             if (bottom - top != oldBottom - oldTop) {
-                
                 blur3_InvalidateBlur();
                 checkUi_listViewPadding();
                 if (recyclerListView != null) {
@@ -1672,7 +1663,6 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
         if (iBlur3SourceColor != null) {
             iBlur3SourceColor.setColor(getThemedColor(Theme.key_windowBackgroundWhite));
         }
-        
         iBlur3Invalidated = true;
         if (contentView != null) {
             contentView.setBackgroundColor(getThemedColor(Theme.key_windowBackgroundWhite));
@@ -1795,7 +1785,6 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
         @Override
         public void captureCalculateHash(IBlur3Hash builder, RectF position) {
             super.captureCalculateHash(builder, position);
-            
             builder.addF(viewOffset);
             builder.add(getPaddingTop());
             builder.addF(topPanelAnimatedInset);
@@ -1836,7 +1825,6 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
                     || offsetAfter > offsetBefore + epsilon)) {
                 hiddenGeneralPulledThisGesture = true;
             } else if (dy > 0 && revealAfter <= epsilon && offsetAfter <= epsilon) {
-                
                 hiddenGeneralPulledThisGesture = false;
             }
         }
@@ -1902,14 +1890,12 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
             int screenClipSave = canvas.save();
             canvas.clipRect(0, getScreenContentClipTop(), getMeasuredWidth(),
                     getMeasuredHeight() + additionalClipBottom);
-            
             View generalTopicView = isAttachedGeneralTopicView(generalTopicViewMoving)
                     ? generalTopicViewMoving : null;
             if (generalTopicView != null) {
                 canvas.save();
                 int generalTopicClipTop = getGeneralTopicClipTop();
                 if (generalTopicClipTop != 0) {
-                    
                     canvas.clipRect(0, generalTopicClipTop, getMeasuredWidth(), getMeasuredHeight() + additionalClipBottom);
                 }
                 canvas.translate(generalTopicView.getLeft(), generalTopicView.getY());
@@ -1969,21 +1955,18 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
         }
 
         private int getGeneralTopicClipTop() {
-            
             return hiddenCount > 0
                     ? Math.max(blurTopPadding, getPaddingTop())
                     : blurTopPadding;
         }
 
         private int getScreenContentClipTop() {
-            
             return Math.max(blurTopPadding, getPaddingTop());
         }
 
         private int getPullForegroundClipTop() {
             int clipTop = getScreenContentClipTop();
             if (actionBar != null && actionBar.getVisibility() == View.VISIBLE) {
-                
                 clipTop = Math.max(clipTop, actionBar.getBottom() - getTop());
             }
             return clipTop;
@@ -2226,7 +2209,6 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
                     dialogCell.resetPinnedArchiveState();
                     dialogCell.invalidate();
                 }
-                
                 AndroidUtilities.doOnPreDraw(this, () -> {
                     Runnable finishMovingGeneral = () -> {
                         if (animationGeneration == archiveVisibilityAnimationGeneration && hiddenShown) {
@@ -2291,10 +2273,8 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
                     int height = (int) (AndroidUtilities.dp(
                             SharedConfig.useThreeLinesLayout ? 78 : 72)
                             * PullForegroundDrawable.SNAP_HEIGHT);
-                    
                     int visualDiff = Math.round(
                             view.getY() - pTop + view.getMeasuredHeight());
-                    
                     int layoutOffset = view.getBottom() - pTop;
                     long pullingTime = startArchivePullingTime == 0 ? 0
                             : System.currentTimeMillis() - startArchivePullingTime;
@@ -2334,7 +2314,6 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
                         }
                     });
                 } else if (getViewOffset() != 0f) {
-                    
                     animateArchiveSettle(0, () -> {
                         scrollToGeneralTopicAnchor(false);
                         resetHiddenGeneralPullGesture();
@@ -2369,7 +2348,6 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
         dialogInsertFinished = 0;
         dialogChangeFinished = 0;
         AndroidUtilities.runOnUIThread(() -> {
-
         });
     }
 
@@ -2599,7 +2577,6 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
             other.setVisibility(View.VISIBLE);
             actionBar.checkMenuItemsWidth();
         } else {
-            
             other.setVisibility(View.GONE);
             actionBar.checkMenuItemsWidth();
             AndroidUtilities.requestAdjustResize(getParentActivity(), classGuid);
@@ -2618,7 +2595,6 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
                 }
             }
         });
-        
         searchAnimator.setDuration(320);
         searchAnimator.setInterpolator(CubicBezierInterpolator.EASE_OUT_QUINT);
         searchAnimator.start();
@@ -2736,7 +2712,6 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
                 if (inPreviewMode) {
                     ((View) fragmentView.getParent()).invalidate();
                 }
-                
                 actionBar.showActionMode(true);
                 NotificationCenter.getGlobalInstance().postNotificationName(NotificationCenter.needCheckSystemBarColors);
                 Iterator<Integer> iterator = selectedTopics.iterator();
@@ -2866,7 +2841,6 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
             actionMode.setBackgroundColor(Color.TRANSPARENT);
             actionMode.drawBlur = false;
         }
-        
         View actionModeSpacer = new View(actionMode.getContext());
         actionMode.addView(actionModeSpacer,
                 LayoutHelper.createLinear(0, LayoutHelper.MATCH_PARENT, 1.0f, 72, 0, 0, 0));
@@ -3190,7 +3164,6 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
             return;
         }
         emojiPickerPreloadScheduled = true;
-        
         AndroidUtilities.runOnUIThread(emojiPickerPreloadRunnable, 250);
     }
 
@@ -3217,7 +3190,6 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
         if (ChatObject.isChannel(chatLocal)) {
             getMessagesController().startShortPoll(chatLocal, classGuid, false);
         }
-        
         String settingsPreloadKey = currentAccount + ":" + chatId;
         boolean shouldPreloadSettings;
         synchronized (settingsPreloadLock) {
@@ -3285,6 +3257,7 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
     }
 
     private void updateTopicsList(boolean animated, boolean enalbeEnterAnimation) {
+        topicsMeasureGeneration++;
         if (!animated && updateAnimated) {
             animated = true;
         }
@@ -3559,37 +3532,61 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
             } else if (viewType == VIEW_TYPE_EMPTY) {
                 return new RecyclerListView.Holder(emptyView = new View(getContext()) {
                     HashMap<String, Boolean> precalcEllipsized = new HashMap<>();
+                    int cachedGeneration = -1;
+                    int cachedWidth = -1;
+                    int cachedHiddenCount;
+                    int cachedChildrenHeight;
+                    int cachedGeneralHeight;
+                    float cachedNameTextSize;
+                    float cachedTimeTextSize;
+                    boolean cachedRtl;
+                    boolean cachedPreview;
 
                     @Override
                     protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
                         int width = MeasureSpec.getSize(widthMeasureSpec);
-                        int hiddenCount = 0;
-                        int childrenHeight = 0, generalHeight = AndroidUtilities.dp(64);
-                        for (int i = 0; i < getArray().size(); ++i) {
-                            if (getArray().get(i) == null || getArray().get(i).topic == null) {
-                                continue;
+                        boolean preview = isInPreviewMode();
+                        float nameTextSize = Theme.dialogs_namePaint[0].getTextSize();
+                        float timeTextSize = Theme.dialogs_timePaint.getTextSize();
+                        if (cachedGeneration != topicsMeasureGeneration || cachedWidth != width
+                                || cachedRtl != LocaleController.isRTL || cachedPreview != preview
+                                || cachedNameTextSize != nameTextSize || cachedTimeTextSize != timeTextSize) {
+                            cachedGeneration = topicsMeasureGeneration;
+                            cachedWidth = width;
+                            cachedRtl = LocaleController.isRTL;
+                            cachedPreview = preview;
+                            cachedNameTextSize = nameTextSize;
+                            cachedTimeTextSize = timeTextSize;
+                            cachedHiddenCount = 0;
+                            cachedChildrenHeight = 0;
+                            cachedGeneralHeight = AndroidUtilities.dp(64);
+                            precalcEllipsized.clear();
+                            for (int i = 0; i < getArray().size(); ++i) {
+                                if (getArray().get(i) == null || getArray().get(i).topic == null) {
+                                    continue;
+                                }
+                                String title = getArray().get(i).topic.title;
+                                Boolean oneline = precalcEllipsized.get(title);
+                                if (oneline == null) {
+                                    int nameLeft = AndroidUtilities.dp(!LocaleController.isRTL ? (preview ? 11 : 50) + 4 : 18);
+                                    int nameWidth = !LocaleController.isRTL ?
+                                            width - nameLeft - AndroidUtilities.dp(14 + 8) :
+                                            width - nameLeft - AndroidUtilities.dp((preview ? 11 : 50) + 5 + 8);
+                                    nameWidth -= (int) Math.ceil(Theme.dialogs_timePaint.measureText("00:00"));
+                                    oneline = Theme.dialogs_namePaint[0].measureText(title) <= nameWidth;
+                                    precalcEllipsized.put(title, oneline);
+                                }
+                                int childHeight = AndroidUtilities.dp(64 + (!oneline ? 20 : 0));
+                                if (getArray().get(i).topic.id == 1) {
+                                    cachedGeneralHeight = childHeight;
+                                }
+                                if (getArray().get(i).topic.hidden) {
+                                    cachedHiddenCount++;
+                                }
+                                cachedChildrenHeight += childHeight;
                             }
-                            String title = getArray().get(i).topic.title;
-                            Boolean oneline = precalcEllipsized.get(title);
-                            if (oneline == null) {
-                                int nameLeft = AndroidUtilities.dp(!LocaleController.isRTL ? (isInPreviewMode() ? 11 : 50) + 4 : 18);
-                                int nameWidth = !LocaleController.isRTL ?
-                                        width - nameLeft - AndroidUtilities.dp(14 + 8) :
-                                        width - nameLeft - AndroidUtilities.dp((isInPreviewMode() ? 11 : 50) + 5 + 8);
-                                nameWidth -= (int) Math.ceil(Theme.dialogs_timePaint.measureText("00:00"));
-                                oneline = Theme.dialogs_namePaint[0].measureText(title) <= nameWidth;
-                                precalcEllipsized.put(title, oneline);
-                            }
-                            int childHeight = AndroidUtilities.dp(64 + (!oneline ? 20 : 0));
-                            if (getArray().get(i).topic.id == 1) {
-                                generalHeight = childHeight;
-                            }
-                            if (getArray().get(i).topic.hidden) {
-                                hiddenCount++;
-                            }
-                            childrenHeight += childHeight;
                         }
-                        int height = Math.max(0, hiddenCount > 0 ? recyclerListView.getMeasuredHeight() - recyclerListView.getPaddingTop() - recyclerListView.getPaddingBottom() - childrenHeight + generalHeight : 0);
+                        int height = Math.max(0, cachedHiddenCount > 0 ? recyclerListView.getMeasuredHeight() - recyclerListView.getPaddingTop() - recyclerListView.getPaddingBottom() - cachedChildrenHeight + cachedGeneralHeight : 0);
                         super.onMeasure(widthMeasureSpec, MeasureSpec.makeMeasureSpec(height, MeasureSpec.EXACTLY));
                     }
                 });
@@ -3605,7 +3602,8 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
         @Override
         public void onBindViewHolder(@NonNull RecyclerView.ViewHolder holder, int position) {
             if (holder.getItemViewType() == VIEW_TYPE_TOPIC) {
-                TLRPC.TL_forumTopic topic = getArray().get(position).topic;
+                TopicsFragment.Item item = getArray().get(position);
+                TLRPC.TL_forumTopic topic = item.topic;
                 TLRPC.TL_forumTopic nextTopic = null;
                 if (position + 1 < getArray().size()) {
                     nextTopic = getArray().get(position + 1).topic;
@@ -3617,8 +3615,7 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
                 int oldId = dialogCell.forumTopic == null ? 0 : dialogCell.forumTopic.id;
                 int newId = topic.id;
                 boolean animated = oldId == newId && dialogCell.position == position && animatedUpdateEnabled;
-                MessageObject messageObject = tlMessage == null ? null
-                        : new MessageObject(currentAccount, tlMessage, false, false);
+                MessageObject messageObject = item.getMessageObject(currentAccount, tlMessage);
                 dialogCell.forumTopic = topic;
                 dialogCell.position = position;
                 if (getMessagesController().isMonoForum(-chatId)) {
@@ -4005,18 +4002,22 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
 
         float progress;
         boolean increment;
+        long lastFrameTime;
 
         @Override
         protected void dispatchDraw(Canvas canvas) {
             super.dispatchDraw(canvas);
+            long now = SystemClock.uptimeMillis();
+            float dt = lastFrameTime == 0 ? 16f : Math.max(0f, Math.min(64f, now - lastFrameTime));
+            lastFrameTime = now;
             if (increment) {
-                progress += 16 / 1200f;
+                progress += dt / 1200f;
                 if (progress > 1) {
                     increment = false;
                     progress = 1;
                 }
             } else {
-                progress -= 16 / 1200f;
+                progress -= dt / 1200f;
                 if (progress < 0) {
                     increment = true;
                     progress = 0;
@@ -4166,7 +4167,6 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
                 Item item = new Item(FILTER_TYPE);
                 item.filterIndex = 0;
                 items.add(item);
-
                 item = new Item(FILTER_TYPE);
                 item.filterIndex = 1;
                 items.add(item);
@@ -4200,7 +4200,6 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
                         @Override
                         public void onScrolled(@NonNull RecyclerView recyclerView, int dx, int dy) {
                             super.onScrolled(recyclerView, dx, dy);
-
                         }
                     });
                     downloadsContainer.setUiCallback(MessagesSearchContainer.this);
@@ -4213,7 +4212,6 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
                         @Override
                         public void onScrolled(@NonNull RecyclerView recyclerView, int dx, int dy) {
                             super.onScrolled(recyclerView, dx, dy);
-
                         }
                     });
                     return filteredSearchView;
@@ -4266,7 +4264,6 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
             }
             args.putInt("message_id", messageObject.getId());
             TopicsFragment.this.presentFragment(new ChatActivity(args));
-
         }
 
         private ArrayList<MessageObject> selectedItems = new ArrayList<>();
@@ -4334,11 +4331,11 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
                 searchRunnable = null;
             }
 
+
             messagesIsLoading = false;
             canLoadMore = false;
             searchResultTopics.clear();
             searchResultMessages.clear();
-            updateRows();
             if (TextUtils.isEmpty(searchString)) {
                 isLoading = false;
                 searchResultTopics.clear();
@@ -4349,7 +4346,6 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
                     }
                 }
                 updateRows();
-                
                 return;
             } else {
                 updateRows();
@@ -4374,7 +4370,6 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
 
                 if (!searchResultTopics.isEmpty()) {
                     isLoading = false;
-                    
                     itemsEnterAnimator.showItemsAnimated(0);
                 }
 
@@ -4403,7 +4398,6 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
                 req.offset_id = searchResultMessages.get(searchResultMessages.size() - 1).getId();
             }
             messagesIsLoading = true;
-
             ConnectionsManager.getInstance(currentAccount).sendRequest(req, (response, error) -> AndroidUtilities.runOnUIThread(() -> {
                 if (searchString.equals(this.searchString)) {
                     int oldRowCount = rowCount;
@@ -4483,6 +4477,7 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
                     default:
                         throw new RuntimeException("unsupported view type");
                 }
+
 
                 view.setLayoutParams(new RecyclerView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
                 return new RecyclerListView.Holder(view);
@@ -4590,10 +4585,8 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
     private void normalizeHeaderGlassState() {
         if (actionBar != null) {
             if (avatarContainer != null) {
-                
                 actionBar.setChatAvatarContainer(avatarContainer);
             }
-            
             actionBar.setSkipDrawChild(false);
             actionBar.setGlassAlpha(1f);
             if (searchAnimator == null || !searchAnimator.isRunning()) {
@@ -4619,7 +4612,6 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
     @Override
     public void prepareFragmentToSlide(boolean topFragment, boolean beginSlide) {
         if (!topFragment && beginSlide) {
-            
             normalizeHeaderGlassState();
             isSlideBackTransition = true;
             setFragmentIsSliding(true);
@@ -4629,7 +4621,6 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
             setFragmentIsSliding(false);
             setSlideTransitionProgress(1f);
             if (!topFragment && actionBar != null) {
-                
                 actionBar.setGlassAlpha(1f);
             }
         }
@@ -4753,6 +4744,7 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
         if (w <= 0 || h <= 0) {
             return;
         }
+        View sourceView = parentLayout.getView();
         if (blurredPreviewBitmap == null
                 || blurredPreviewBitmap.isRecycled()
                 || blurredPreviewBitmap.getWidth() != w
@@ -4768,7 +4760,7 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
         }
         Canvas canvas = new Canvas(blurredPreviewBitmap);
         canvas.scale(1.0f / 6.0f, 1.0f / 6.0f);
-        parentLayout.getView().draw(canvas);
+        sourceView.draw(canvas);
         Utilities.stackBlurBitmap(blurredPreviewBitmap, Math.max(7, Math.max(w, h) / 180));
         blurredView.setBackground(blurredPreviewDrawable);
         blurredView.setAlpha(0.0f);
@@ -4806,11 +4798,35 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
 
         final TLRPC.TL_forumTopic topic;
         private long contentsHash;
+        private TLRPC.Message cachedMessageSource;
+        private long cachedMessageFingerprint = Long.MIN_VALUE;
+        private MessageObject cachedMessageObject;
 
         public Item(int viewType, TLRPC.TL_forumTopic topic) {
             super(viewType, true);
             this.topic = topic;
             contentsHash = calculateContentsHash(topic);
+        }
+
+        private MessageObject getMessageObject(int account, TLRPC.Message message) {
+            if (message == null) {
+                cachedMessageSource = null;
+                cachedMessageFingerprint = Long.MIN_VALUE;
+                cachedMessageObject = null;
+                return null;
+            }
+            long fingerprint = message.id;
+            fingerprint = mix(fingerprint, message.date);
+            fingerprint = mix(fingerprint, message.edit_date);
+            fingerprint = mix(fingerprint, message.flags);
+            fingerprint = mix(fingerprint, message.message);
+            fingerprint = mix(fingerprint, message.media);
+            if (cachedMessageSource != message || cachedMessageFingerprint != fingerprint) {
+                cachedMessageSource = message;
+                cachedMessageFingerprint = fingerprint;
+                cachedMessageObject = new MessageObject(account, message, false, false);
+            }
+            return cachedMessageObject;
         }
 
         private long mix(long hash, long value) {
@@ -5010,6 +5026,9 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
         return WindowInsetsCompat.CONSUMED;
     }
 
+
+
+
     private final @Nullable DownscaleScrollableNoiseSuppressor scrollableViewNoiseSuppressor;
     private final @Nullable BlurredBackgroundSourceRenderNode iBlur3SourceGlassFrosted;
     private final @Nullable BlurredBackgroundSourceRenderNode iBlur3SourceGlass;
@@ -5051,6 +5070,7 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
                 || fragmentView.getMeasuredWidth() <= 0 || fragmentView.getMeasuredHeight() <= 0) {
             return;
         }
+
 
         final int mainTabBottom = fragmentView.getMeasuredHeight() - navigationBarHeight - dp(DialogsActivity.MAIN_TABS_MARGIN);
         final int mainTabTop = mainTabBottom - dp(DialogsActivity.MAIN_TABS_HEIGHT);

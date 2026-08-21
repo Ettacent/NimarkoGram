@@ -1,4 +1,4 @@
- 
+
 package app.nimarkogram.messenger.security;
 
 import static org.telegram.messenger.LocaleController.getString;
@@ -30,11 +30,9 @@ public class NimarkoBiometricPrompt {
 
     private static final String TAG = "NimarkoBiometricPrompt";
 
-    private static BiometricPrompt.PromptInfo createPromptInfo() {
+    private static BiometricPrompt.PromptInfo createPromptInfo(boolean allowSystem) {
         BiometricPrompt.PromptInfo.Builder builder = new BiometricPrompt.PromptInfo.Builder();
         builder.setTitle(getString(R.string.exteraAppName));
-        
-        boolean allowSystem = app.nimarkogram.messenger.NimarkoConfig.allowSystemPasscode;
         if (allowSystem) {
             builder.setDeviceCredentialAllowed(true);
         } else {
@@ -73,11 +71,17 @@ public class NimarkoBiometricPrompt {
     }
 
     public static void callBiometricPrompt(Activity activity, int account, NimarkoBiometricListener listener) {
-        if (!(activity instanceof FragmentActivity) || !canAuthenticateConfigured()) {
+        callBiometricPrompt(activity, account,
+                app.nimarkogram.messenger.NimarkoConfig.allowSystemPasscode, listener);
+    }
+
+    public static void callBiometricPrompt(Activity activity, int account,
+                                           boolean allowSystem, NimarkoBiometricListener listener) {
+        if (!(activity instanceof FragmentActivity) || !canAuthenticate(allowSystem)) {
             if (listener != null) listener.onError(BiometricPrompt.ERROR_HW_NOT_PRESENT, "Authentication unavailable");
             return;
         }
-        startPrompt((FragmentActivity) activity, account, listener);
+        startPrompt((FragmentActivity) activity, account, allowSystem, listener);
     }
 
     public static void prompt(Activity activity, Runnable successCallback) {
@@ -93,8 +97,13 @@ public class NimarkoBiometricPrompt {
     }
 
     public static void prompt(Activity activity, int account, Runnable successCallback, Runnable failCallback) {
-        
-        callBiometricPrompt(activity, account, new NimarkoBiometricListener() {
+        prompt(activity, account, app.nimarkogram.messenger.NimarkoConfig.allowSystemPasscode,
+                successCallback, failCallback);
+    }
+
+    public static void prompt(Activity activity, int account, boolean allowSystem,
+                              Runnable successCallback, Runnable failCallback) {
+        callBiometricPrompt(activity, account, allowSystem, new NimarkoBiometricListener() {
             @Override
             public void onSuccess(BiometricPrompt.AuthenticationResult result) {
                 if (successCallback != null) successCallback.run();
@@ -135,9 +144,13 @@ public class NimarkoBiometricPrompt {
     }
 
     public static boolean canAuthenticateConfigured() {
+        return canAuthenticate(app.nimarkogram.messenger.NimarkoConfig.allowSystemPasscode);
+    }
+
+    public static boolean canAuthenticate(boolean allowSystem) {
         try {
             int authenticators = androidx.biometric.BiometricManager.Authenticators.BIOMETRIC_WEAK;
-            if (app.nimarkogram.messenger.NimarkoConfig.allowSystemPasscode) {
+            if (allowSystem) {
                 authenticators |= androidx.biometric.BiometricManager.Authenticators.DEVICE_CREDENTIAL;
             }
             return androidx.biometric.BiometricManager.from(ApplicationLoader.applicationContext)
@@ -167,6 +180,7 @@ public class NimarkoBiometricPrompt {
             }
         }
     }
+
 
     private static final Object AUTH_LOCK = new Object();
     private static final ArrayList<PendingAuth> pendingAuths = new ArrayList<>();
@@ -206,7 +220,8 @@ public class NimarkoBiometricPrompt {
                 && captureOwnerUid(auth.account) == auth.ownerUid;
     }
 
-    private static void startPrompt(FragmentActivity activity, int account, NimarkoBiometricListener callback) {
+    private static void startPrompt(FragmentActivity activity, int account, boolean allowSystem,
+                                    NimarkoBiometricListener callback) {
         final long ownerUid = captureOwnerUid(account);
         if (ownerUid <= 0 || !isOwnerLive(activity)) {
             if (callback != null) {
@@ -238,7 +253,6 @@ public class NimarkoBiometricPrompt {
                             synchronized (AUTH_LOCK) {
                                 PendingAuth auth = authRef[0];
                                 if (auth == null || auth.terminal || !isIdentityLive(auth)) return;
-                                
                                 if (callback != null) callback.onFailed();
                             }
                         },
@@ -265,7 +279,7 @@ public class NimarkoBiometricPrompt {
                 return;
             }
             pendingAuths.add(auth);
-            prompt.authenticate(createPromptInfo());
+            prompt.authenticate(createPromptInfo(allowSystem));
         }
     }
 
@@ -286,7 +300,9 @@ public class NimarkoBiometricPrompt {
         FingerprintController.checkKeyReady();
 
         cancelPendingAuthentications();
-        startPrompt((FragmentActivity) activity, account, new NimarkoBiometricListener() {
+        startPrompt((FragmentActivity) activity, account,
+                app.nimarkogram.messenger.NimarkoConfig.allowSystemPasscode,
+                new NimarkoBiometricListener() {
             @Override
             public void onSuccess(BiometricPrompt.AuthenticationResult result) {
                 Log.d(TAG, "PasscodeView onAuthenticationSucceeded");
@@ -335,6 +351,7 @@ public class NimarkoBiometricPrompt {
         }
     }
 
+
     private static final java.util.HashMap<String, Long> recentlyVerified = new java.util.HashMap<>();
     private static final java.util.HashMap<Integer, Long> verifiedAccountUids = new java.util.HashMap<>();
 
@@ -358,7 +375,6 @@ public class NimarkoBiometricPrompt {
     }
 
     public static boolean isRecentlyVerified(int account, long userId, long chatId, int encId) {
-        
         int ttlSec = app.nimarkogram.messenger.NimarkoConfig.lockedChatsBiometricTtlSec;
         long effectiveTtlMs;
         if (ttlSec == 0) {

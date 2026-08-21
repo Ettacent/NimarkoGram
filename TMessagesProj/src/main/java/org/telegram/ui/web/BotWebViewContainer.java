@@ -568,7 +568,6 @@ public abstract class BotWebViewContainer extends FrameLayout implements Notific
             if (!focusable) {
                 setDescendantFocusability(FOCUS_BLOCK_DESCENDANTS);
                 BotWebViewContainer.this.setFocusable(false);
-
                 if (webView != null) {
                     webView.setDescendantFocusability(FOCUS_BLOCK_DESCENDANTS);
                     webView.clearFocus();
@@ -577,7 +576,6 @@ public abstract class BotWebViewContainer extends FrameLayout implements Notific
             } else {
                 setDescendantFocusability(FOCUS_BEFORE_DESCENDANTS);
                 BotWebViewContainer.this.setFocusable(true);
-
                 if (webView != null) {
                     webView.setDescendantFocusability(FOCUS_BEFORE_DESCENDANTS);
                 }
@@ -834,7 +832,7 @@ public abstract class BotWebViewContainer extends FrameLayout implements Notific
         if (getParent() instanceof ChatAttachAlertBotWebViewLayout.WebViewSwipeContainer) {
             ChatAttachAlertBotWebViewLayout.WebViewSwipeContainer swipeContainer = (ChatAttachAlertBotWebViewLayout.WebViewSwipeContainer) getParent();
             if (swipeContainer.isFullSize()) {
-                return (int) (swipeContainer.getMeasuredHeight() - swipeContainer.getOffsetY()   + viewPortHeightOffset);
+                return (int) (swipeContainer.getMeasuredHeight() - swipeContainer.getOffsetY()  + viewPortHeightOffset);
             }
         }
         return 0;
@@ -1432,7 +1430,6 @@ public abstract class BotWebViewContainer extends FrameLayout implements Notific
                     x = jsonArray.optBoolean(0, true);
                     y = jsonArray.optBoolean(1, true);
                 } catch (Exception e) {}
-
                 if (getParent() instanceof ChatAttachAlertBotWebViewLayout.WebViewSwipeContainer) {
                     ChatAttachAlertBotWebViewLayout.WebViewSwipeContainer swipeContainer = (ChatAttachAlertBotWebViewLayout.WebViewSwipeContainer) getParent();
                     swipeContainer.allowThisScroll(x, y);
@@ -1628,7 +1625,6 @@ public abstract class BotWebViewContainer extends FrameLayout implements Notific
                             public void didReceivedNotification(int id, int account, Object... args) {
                                 if (id == NotificationCenter.onRequestPermissionResultReceived) {
                                     int requestCode = (int) args[0];
-                                    
                                     int[] grantResults = (int[]) args[2];
 
                                     if (requestCode == REQUEST_CODE_QR_CAMERA_PERMISSION) {
@@ -2036,6 +2032,7 @@ public abstract class BotWebViewContainer extends FrameLayout implements Notific
                     try {
                         emojiId = Long.parseLong(info.getString("icon_custom_emoji_id"));
                     } catch (Throwable t) {}
+
 
                     lastButtonColor = color;
                     lastButtonTextColor = textColor;
@@ -3667,12 +3664,10 @@ public abstract class BotWebViewContainer extends FrameLayout implements Notific
     }
 
     public interface WebViewScrollListener {
-         
         void onWebViewScrolled(WebView webView, int dx, int dy);
     }
 
     public interface Delegate {
-         
         void onCloseRequested(@Nullable Runnable callback);
 
         default void onInstantClose() { onCloseRequested(null); };
@@ -4206,13 +4201,14 @@ public abstract class BotWebViewContainer extends FrameLayout implements Notific
                 @Override
                 public boolean shouldOverrideUrlLoading(WebView view, String url) {
                     if (url == null) return false;
+                    final BotWebViewContainer container = botWebViewContainer;
                     if (url.trim().startsWith("sms:")) {
                         return false;
                     }
                     if (url.trim().startsWith("tel:")) {
                         if (opener != null) {
-                            if (botWebViewContainer.delegate != null) {
-                                botWebViewContainer.delegate.onInstantClose();
+                            if (container != null && container.delegate != null) {
+                                container.delegate.onInstantClose();
                             } else if (onCloseListener != null) {
                                 onCloseListener.run();
                                 onCloseListener = null;
@@ -4226,8 +4222,8 @@ public abstract class BotWebViewContainer extends FrameLayout implements Notific
                         if (Browser.openInExternalApp(context, url, true)) {
                             d("shouldOverrideUrlLoading("+url+") = true (openInExternalBrowser)");
                             if (!isPageLoaded && !canGoBack()) {
-                                if (botWebViewContainer.delegate != null) {
-                                    botWebViewContainer.delegate.onInstantClose();
+                                if (container != null && container.delegate != null) {
+                                    container.delegate.onInstantClose();
                                 } else if (onCloseListener != null) {
                                     onCloseListener.run();
                                     onCloseListener = null;
@@ -4253,24 +4249,25 @@ public abstract class BotWebViewContainer extends FrameLayout implements Notific
                             return true;
                         }
                     }
-                    if (botWebViewContainer != null && Browser.isInternalUri(uriNew, null)) {
+                    if (container != null && Browser.isInternalUri(uriNew, null)) {
                         if (!bot && "1".equals(uriNew.getQueryParameter("embed")) && "t.me".equals(uriNew.getAuthority())) {
                             return false;
                         }
-                        if (MessagesController.getInstance(botWebViewContainer.currentAccount).webAppAllowedProtocols != null &&
-                            MessagesController.getInstance(botWebViewContainer.currentAccount).webAppAllowedProtocols.contains(uriNew.getScheme())) {
+                        if (MessagesController.getInstance(container.currentAccount).webAppAllowedProtocols != null &&
+                            MessagesController.getInstance(container.currentAccount).webAppAllowedProtocols.contains(uriNew.getScheme())) {
                             if (opener != null) {
-                                if (botWebViewContainer.delegate != null) {
-                                    botWebViewContainer.delegate.onInstantClose();
+                                if (container.delegate != null) {
+                                    container.delegate.onInstantClose();
                                 } else if (onCloseListener != null) {
                                     onCloseListener.run();
                                     onCloseListener = null;
                                 }
-                                if (opener.botWebViewContainer != null && opener.botWebViewContainer.delegate != null) {
-                                    opener.botWebViewContainer.delegate.onCloseToTabs();
+                                final BotWebViewContainer openerContainer = opener.botWebViewContainer;
+                                if (openerContainer != null && openerContainer.delegate != null) {
+                                    openerContainer.delegate.onCloseToTabs();
                                 }
                             }
-                            botWebViewContainer.onOpenUri(uriNew);
+                            container.onOpenUri(uriNew);
                         }
                         d("shouldOverrideUrlLoading("+url+") = true");
                         return true;
@@ -4342,7 +4339,6 @@ public abstract class BotWebViewContainer extends FrameLayout implements Notific
                     if (botWebViewContainer != null) {
                         botWebViewContainer.onURLChanged(dangerousUrl ? urlFallback : getUrl(), !canGoBack(), !canGoForward());
                     }
-
                 }
 
                 @Override
@@ -4936,7 +4932,6 @@ public abstract class BotWebViewContainer extends FrameLayout implements Notific
                         d("onDownloadStart " + url + " " + userAgent + " " + contentDisposition + " " + mimeType + " " + contentLength);
                         try {
                             if (url.startsWith("blob:")) {
-                                
                                 return;
                             } else {
                                 final String filename = AndroidUtilities.escape(getFilename(url, contentDisposition, mimeType));
@@ -5043,7 +5038,6 @@ public abstract class BotWebViewContainer extends FrameLayout implements Notific
         public String getUrl() {
             if (currentWarning != null) return currentWarning.url;
             if (dangerousUrl) return urlFallback;
-
             return lastUrl = super.getUrl();
         }
 
@@ -5148,8 +5142,12 @@ public abstract class BotWebViewContainer extends FrameLayout implements Notific
         @Override
         public boolean onTouchEvent(MotionEvent event) {
             if (event.getAction() == MotionEvent.ACTION_DOWN) {
-                botWebViewContainer.lastClickMs = System.currentTimeMillis();
-                if (!botWebViewContainer.isVerifyingAge()) {
+                final BotWebViewContainer container = botWebViewContainer;
+                if (container == null) {
+                    return super.onTouchEvent(event);
+                }
+                container.lastClickMs = System.currentTimeMillis();
+                if (!container.isVerifyingAge()) {
                     getSettings().setMediaPlaybackRequiresUserGesture(false);
                 }
             }
@@ -5204,7 +5202,6 @@ public abstract class BotWebViewContainer extends FrameLayout implements Notific
             final String ourl = url;
             checkCachedMetaProperties(url);
             openedByUrl = url;
-
             url = tonsite2magic(url);
             currentUrl = url;
             d("loadUrl " + url);

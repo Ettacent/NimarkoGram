@@ -1,14 +1,3 @@
-/**
- * This file is part of NimarkoGram for Android.
- * It is licensed under GNU GPL v. 2 or later.
- * You should have received a copy of the license in this archive (see LICENSE).
- *
- * NimarkoGram modifications:
- * Copyright Ettacent, 2026.
- *
- * Portions derived from Cherrygram:
- * Copyright github.com/arsLan4k1390, 2022-2026.
- */
 
 package app.nimarkogram.messenger.preferences;
 
@@ -45,7 +34,6 @@ public class MessagesPreferencesActivity extends NimarkoUniversalPreferencesActi
 
     @Override
     protected CharSequence getTitle() {
-         
         return getString(R.string.MessagesSettings);
     }
 
@@ -154,7 +142,6 @@ public class MessagesPreferencesActivity extends NimarkoUniversalPreferencesActi
 
     @Override
     public boolean onLongClick(UItem item, View view, int position, float x, float y) {
-        
         return false;
     }
 

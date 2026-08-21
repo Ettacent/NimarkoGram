@@ -256,6 +256,7 @@ public class StoryMediaAreasView extends FrameLayout implements View.OnClickList
                 return;
             }
 
+
             if (selectedArea.mediaArea instanceof TL_stories.TL_mediaAreaUrl) {
                 Browser.openUrl(getContext(), ((TL_stories.TL_mediaAreaUrl) selectedArea.mediaArea).url);
                 selectedArea = null;
@@ -461,6 +462,7 @@ public class StoryMediaAreasView extends FrameLayout implements View.OnClickList
         }
     }
 
+
     private final Rect rect = new Rect();
     private final RectF rectF = new RectF();
     private final Paint cutPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -546,7 +548,6 @@ public class StoryMediaAreasView extends FrameLayout implements View.OnClickList
             parentBitmap.recycle();
             parentBitmap = null;
         }
-        
     }
 
     private Bitmap parentBitmap;

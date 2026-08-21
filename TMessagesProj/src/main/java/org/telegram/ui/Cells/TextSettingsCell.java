@@ -322,13 +322,13 @@ public class TextSettingsCell extends FrameLayout {
             }
             //LocaleController.isRTL ? Gravity.LEFT : Gravity.RIGHT;
             if (incrementLoadingProgress) {
-                loadingProgress += 16 / 1000f;
+                loadingProgress += AndroidUtilities.screenRefreshTime / 1000f;
                 if (loadingProgress > 1f) {
                     loadingProgress = 1f;
                     incrementLoadingProgress = false;
                 }
             } else {
-                loadingProgress -= 16 / 1000f;
+                loadingProgress -= AndroidUtilities.screenRefreshTime / 1000f;
                 if (loadingProgress < 0) {
                     loadingProgress = 0;
                     incrementLoadingProgress = true;
@@ -338,12 +338,12 @@ public class TextSettingsCell extends FrameLayout {
             if (changeProgressStartDelay > 0) {
                 changeProgressStartDelay -= 15;
             } else if (drawLoading && drawLoadingProgress != 1f) {
-                drawLoadingProgress += 16 / 150f;
+                drawLoadingProgress += AndroidUtilities.screenRefreshTime / 150f;
                 if (drawLoadingProgress > 1f) {
                     drawLoadingProgress = 1f;
                 }
             } else if (!drawLoading && drawLoadingProgress != 0) {
-                drawLoadingProgress -= 16 / 150f;
+                drawLoadingProgress -= AndroidUtilities.screenRefreshTime / 150f;
                 if (drawLoadingProgress < 0) {
                     drawLoadingProgress = 0;
                 }

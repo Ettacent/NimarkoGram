@@ -135,7 +135,6 @@ public class PhotoAttachPhotoCell extends FrameLayout {
                             path.addCircle(spoilerRevealX, spoilerRevealY, spoilerMaxRadius * spoilerRevealProgress, Path.Direction.CW);
                             canvas.clipPath(path, Region.Op.DIFFERENCE);
                         }
-
                         spoilerEffect2.draw(canvas, container, imageView.getMeasuredWidth(), imageView.getMeasuredHeight());
                         if (photoEntry != null && photoEntry.starsAmount > 0) {
                             imageView.drawBlurredText(canvas, 1f);

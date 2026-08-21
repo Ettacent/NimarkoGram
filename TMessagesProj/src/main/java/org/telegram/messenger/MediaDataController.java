@@ -144,6 +144,7 @@ public class MediaDataController extends BaseController {
         }
     }
 
+
     public static MediaDataController getInstance(int num) {
         MediaDataController localInstance = Instance[num];
         if (localInstance == null) {
@@ -203,7 +204,6 @@ public class MediaDataController extends BaseController {
                 }
                 serializedData.cleanup();
             } catch (Exception e) {
-                
             }
         }
         loadRepliesOfDraftReplies(replyMessageOwners);
@@ -1599,6 +1599,7 @@ public class MediaDataController extends BaseController {
         return set;
     }
 
+
     private TLRPC.TL_messages_stickerSet getCachedStickerSetInternal(String short_name, Integer hash) {
         TLRPC.TL_messages_stickerSet set = null;
         SQLiteCursor cursor = null;
@@ -2203,10 +2204,8 @@ public class MediaDataController extends BaseController {
                     if (gif) {
                         recentGifs = documents;
                     } else if (type == TYPE_FAVE) {
-                        
                         recentStickers[type] = documents;
                     } else {
-                        
                         int cap = app.nimarkogram.messenger.NimarkoConfig.recentStickersAmplifier + 1;
                         ArrayList<TLRPC.Document> merged = new ArrayList<>(documents);
                         if (merged.size() < cap && recentStickers[type] != null) {
@@ -2248,7 +2247,6 @@ public class MediaDataController extends BaseController {
         });
         loadHash[type] = calcStickersHash(stickerSets[type]);
         getNotificationCenter().postNotificationName(NotificationCenter.stickersDidLoad, type, forceUpdateUi);
-        
     }
 
     public void calcNewHash(int type) {
@@ -2558,6 +2556,7 @@ public class MediaDataController extends BaseController {
     public int getArchivedStickersCount(int type) {
         return archivedStickersCount[type];
     }
+
 
     public void verifyAnimatedStickerMessage(TLRPC.Message message) {
         verifyAnimatedStickerMessage(message, false);
@@ -3688,7 +3687,7 @@ public class MediaDataController extends BaseController {
             baseFragment.showDialog(alert.create());
         }
     }
-    
+
     private int reqId;
     private int mergeReqId;
     private long lastMergeDialogId;
@@ -3981,7 +3980,6 @@ public class MediaDataController extends BaseController {
                     req.saved_reaction.add(reaction.toTLReaction());
                     req.flags |= 8;
                 }
-                
                 req.filter = app.nimarkogram.messenger.utils.chats.NimarkoChatHelper2.getSearchFilterType();
                 mergeReqId = getConnectionsManager().sendRequest(req, (response, error) -> AndroidUtilities.runOnUIThread(() -> {
                     if (lastMergeDialogId == mergeDialogId) {
@@ -4067,7 +4065,6 @@ public class MediaDataController extends BaseController {
             req.saved_reaction.add(reaction.toTLReaction());
             req.flags |= 8;
         }
-        
         req.filter = app.nimarkogram.messenger.utils.chats.NimarkoChatHelper2.getSearchFilterType();
         lastSearchQuery = query;
         long queryWithDialogFinal = queryWithDialog;
@@ -4173,7 +4170,8 @@ public class MediaDataController extends BaseController {
     public String getLastSearchQuery() {
         return lastSearchQuery;
     }
-    
+
+
     public final static int MEDIA_PHOTOVIDEO = 0;
     public final static int MEDIA_FILE = 1;
     public final static int MEDIA_AUDIO = 2;
@@ -4184,6 +4182,7 @@ public class MediaDataController extends BaseController {
     public final static int MEDIA_VIDEOS_ONLY = 7;
     public final static int MEDIA_POLL = 8;
     public final static int MEDIA_TYPES_COUNT = 9;
+
 
     public void loadMedia(long dialogId, int count, int max_id, int min_id, int type, long topicId, int fromCache, int classGuid, int requestIndex, ReactionsLayoutInBubble.VisibleReaction tag, String query) {
         boolean isChannel = DialogObject.isChatDialog(dialogId) && ChatObject.isChannel(-dialogId, currentAccount);
@@ -4821,6 +4820,7 @@ public class MediaDataController extends BaseController {
                         }
                     }
 
+
                     HashSet<Long> groupsToLoad = tag != null ? new HashSet<>() : null;
                     while (cursor.next()) {
                         NativeByteBuffer data = cursor.byteBufferValue(0);
@@ -5008,7 +5008,7 @@ public class MediaDataController extends BaseController {
             AndroidUtilities.runOnUIThread(() -> getNotificationCenter().postNotificationName(NotificationCenter.musicDidLoad, dialogId, arrayListBegin, arrayListEnd));
         });
     }
-    
+
     public ArrayList<TLRPC.TL_topPeer> hints = new ArrayList<>();
     public ArrayList<TLRPC.TL_topPeer> inlineBots = new ArrayList<>();
     public ArrayList<TLRPC.TL_topPeer> guestBots = new ArrayList<>();
@@ -5097,6 +5097,7 @@ public class MediaDataController extends BaseController {
                     }
                     arrayList.clear();
                 }
+
 
                 HashSet<String> category = new HashSet<>(1);
                 category.add(SHORTCUT_CATEGORY);
@@ -5658,6 +5659,7 @@ public class MediaDataController extends BaseController {
         });
     }
 
+
     public static int SHORTCUT_TYPE_USER_OR_CHAT = 0;
     public static int SHORTCUT_TYPE_ATTACHED_BOT = 1;
 
@@ -5817,7 +5819,6 @@ public class MediaDataController extends BaseController {
                         try {
                             canvas.setBitmap(null);
                         } catch (Exception e) {
-                            
                         }
                         bitmap = result;
                     }
@@ -5978,7 +5979,7 @@ public class MediaDataController extends BaseController {
     public boolean canCreateAttachedMenuBotShortcut(long botId) {
         return true;
     }
-    
+
     private static Comparator<TLRPC.MessageEntity> entityComparator = (entity1, entity2) -> {
         if (entity1.offset > entity2.offset) {
             return 1;
@@ -6190,7 +6191,6 @@ public class MediaDataController extends BaseController {
         getMessagesStorage().getStorageQueue().postRunnable(() -> {
             try {
                 getMessagesStorage().getDatabase().beginTransaction();
-                
                 SQLitePreparedStatement state = getMessagesStorage().getDatabase().executeFast("REPLACE INTO chat_pinned_v2 VALUES(?, ?, ?)");
                 for (int a = 0, N = arrayList.size(); a < N; a++) {
                     TLRPC.Message message = arrayList.get(a);
@@ -6275,6 +6275,7 @@ public class MediaDataController extends BaseController {
             Timer.Task t1 = Timer.start(logLogger, "loadReplyMessagesForMessages: (encrypted) finding messages to load");
             ArrayList<Long> replyMessages = new ArrayList<>();
             LongSparseArray<ArrayList<MessageObject>> replyMessageRandomOwners = new LongSparseArray<>();
+            ArrayList<MessageObject> replyOwners = new ArrayList<>();
             for (int a = 0; a < messages.size(); a++) {
                 MessageObject messageObject = messages.get(a);
                 if (messageObject == null) {
@@ -6288,6 +6289,7 @@ public class MediaDataController extends BaseController {
                         replyMessageRandomOwners.put(id, messageObjects);
                     }
                     messageObjects.add(messageObject);
+                    replyOwners.add(messageObject);
                     if (!replyMessages.contains(id)) {
                         replyMessages.add(id);
                     }
@@ -6350,7 +6352,7 @@ public class MediaDataController extends BaseController {
                     Timer.Task t4 = Timer.start(logLogger, "loadReplyMessagesForMessages (encrypted) runOnUIThread: posting notification");
                     AndroidUtilities.runOnUIThread(() -> {
                         Timer.done(t4);
-                        getNotificationCenter().postNotificationName(NotificationCenter.replyMessagesDidLoad, dialogId, loadedMessages, null);
+                        getNotificationCenter().postNotificationName(NotificationCenter.replyMessagesDidLoad, dialogId, loadedMessages, null, replyOwners);
                     });
                     if (callback != null) {
                         callback.run();
@@ -7019,9 +7021,7 @@ public class MediaDataController extends BaseController {
     }
 
     public static void addTextStyleRuns(MessageObject msg, Spannable text) {
-        
         ArrayList<TLRPC.MessageEntity> ents = MessagesFilterHelper.INSTANCE.addSpoilerEntities(msg);
-        
         ents = app.nimarkogram.messenger.utils.chats.NimarkoChatsPasswordHelper.checkLockedChatsEntities(msg, ents);
         addTextStyleRuns(ents, msg.messageText, text, -1);
     }
@@ -7031,9 +7031,7 @@ public class MediaDataController extends BaseController {
     }
 
     public static void addTextStyleRuns(MessageObject msg, Spannable text, int allowedFlags) {
-        
         ArrayList<TLRPC.MessageEntity> ents = MessagesFilterHelper.INSTANCE.addSpoilerEntities(msg);
-        
         ents = app.nimarkogram.messenger.utils.chats.NimarkoChatsPasswordHelper.checkLockedChatsEntities(msg, ents);
         addTextStyleRuns(ents, msg.messageText, text, allowedFlags);
     }
@@ -7498,7 +7496,6 @@ public class MediaDataController extends BaseController {
                         s.removeSpan(spansUrl[b]);
                     }
                 }
-
             }
         }
 
@@ -7599,14 +7596,12 @@ public class MediaDataController extends BaseController {
             String gr = m.group(1);
             boolean allowEntity = true;
             if (cs instanceof Spannable) {
-                
                 URLSpan[] spansUrl = ((Spannable) cs).getSpans(m.start() - offset, m.end() - offset, URLSpan.class);
                 if (spansUrl != null && spansUrl.length > 0) {
                     allowEntity = false;
                 }
             }
             if (allowEntity) {
-                
                 for (int i = 0; i < entities.size(); ++i) {
                     final TLRPC.MessageEntity entity = entities.get(i);
                     if (entity instanceof TLRPC.TL_messageEntityPre || entity instanceof TLRPC.TL_messageEntityCode) {
@@ -7646,9 +7641,11 @@ public class MediaDataController extends BaseController {
         }
     }
 
+
     private LongSparseArray<Integer> draftsFolderIds = new LongSparseArray<>();
     private LongSparseArray<LongSparseArray<TLRPC.DraftMessage>> drafts = new LongSparseArray<>();
     private LongSparseArray<LongSparseArray<TLRPC.Message>> draftMessages = new LongSparseArray<>();
+    private boolean draftDialogsReloadScheduled;
     private boolean inTransaction;
     private SharedPreferences draftPreferences;
     private boolean loadingDrafts;
@@ -7837,9 +7834,26 @@ public class MediaDataController extends BaseController {
 
                 });
             }
-            getMessagesController().sortDialogs(null);
-            getNotificationCenter().postNotificationName(NotificationCenter.dialogsNeedReload);
+            scheduleDraftDialogsReload();
         }
+    }
+
+    private void scheduleDraftDialogsReload() {
+        if (draftDialogsReloadScheduled) {
+            return;
+        }
+        draftDialogsReloadScheduled = true;
+        AndroidUtilities.runOnUIThread(this::runDraftDialogsReload);
+    }
+
+    private void runDraftDialogsReload() {
+        if (getNotificationCenter().isAnimationInProgress()) {
+            getNotificationCenter().doOnIdle(this::runDraftDialogsReload);
+            return;
+        }
+        draftDialogsReloadScheduled = false;
+        getMessagesController().sortDialogs(null);
+        getNotificationCenter().postNotificationName(NotificationCenter.dialogsNeedReload);
     }
 
     private static boolean suggestedPostEquals(TLRPC.SuggestedPost a, TLRPC.SuggestedPost b) {
@@ -8021,7 +8035,6 @@ public class MediaDataController extends BaseController {
             if (threads != null) {
                 replyToMessage = threads.get(threadId);
             }
-
         } else if (draft != null && draft.reply_to == null) {
             replyToMessage = null;
         }
@@ -8053,7 +8066,6 @@ public class MediaDataController extends BaseController {
                 FileLog.e(e);
             }
         }
-        
         editor.apply();
         if (fromServer && (threadId == 0 || getMessagesController().isForum(dialogId))) {
             if (draft != null && draft.reply_to != null && draft.reply_to.reply_to_msg_id != 0 && (replyToMessage == null || replyToMessage.reply_to instanceof TLRPC.TL_messageReplyHeader && replyToMessage.replyMessage == null)) {
@@ -8229,6 +8241,7 @@ public class MediaDataController extends BaseController {
     public void endTransaction() {
         inTransaction = false;
     }
+
 
     private HashMap<String, TL_bots.BotInfo> botInfos = new HashMap<>();
     private LongSparseArray<ArrayList<TLRPC.Message>> botDialogKeyboards = new LongSparseArray<>();
@@ -8682,6 +8695,8 @@ public class MediaDataController extends BaseController {
         return null;
     }
 
+
+
     public static class KeywordResult {
         public KeywordResult() {
         }
@@ -8694,6 +8709,7 @@ public class MediaDataController extends BaseController {
         public String emoji;
         public String keyword;
     }
+
 
     public interface KeywordResultCallback {
         void run(ArrayList<KeywordResult> param, String alias);
@@ -9394,6 +9410,7 @@ public class MediaDataController extends BaseController {
         }
     }
 
+
     public ArrayList<TLRPC.EmojiStatus> getDefaultEmojiStatuses() {
         final int type = 1; 
         if (!emojiStatusesFromCacheFetched[type]) {
@@ -9456,7 +9473,6 @@ public class MediaDataController extends BaseController {
             }
 
             TL_account.TL_emojiStatuses statuses = new TL_account.TL_emojiStatuses();
-            
             statuses.hash = emojiStatusesHash[type];
             statuses.statuses = emojiStatuses[type];
             updateEmojiStatuses(type, statuses);
@@ -9550,6 +9566,7 @@ public class MediaDataController extends BaseController {
             emojiStatusesFetching[type] = false;
         });
     }
+
 
     ArrayList<TLRPC.Reaction> recentReactions = new ArrayList<>();
     ArrayList<TLRPC.Reaction> topReactions = new ArrayList<>();
@@ -9730,6 +9747,7 @@ public class MediaDataController extends BaseController {
             value = preferences.getString("group", null);
             lastCheckTime = preferences.getLong("group_last_check", 0);
         }
+
 
         TLRPC.TL_emojiList emojiList = null;
         if (value != null) {

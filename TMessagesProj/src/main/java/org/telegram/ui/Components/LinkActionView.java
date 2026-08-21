@@ -139,6 +139,7 @@ public class LinkActionView extends LinearLayout {
         shareView.setSingleLine(true);
         linearLayout.addView(shareView, LayoutHelper.createLinear(0, 42, 1f, 4, 0, containerPadding, 0));
 
+
         removeView = new TextView(context);
         ScaleStateListAnimator.apply(removeView, .025f, 1.2f);
         removeView.setGravity(Gravity.CENTER);
@@ -272,6 +273,7 @@ public class LinkActionView extends LinearLayout {
                 container = bottomSheet.getContainer();
             }
 
+
             if (container != null) {
                 float x = 0;
                 float y;
@@ -309,6 +311,7 @@ public class LinkActionView extends LinearLayout {
                 dimView.setAlpha(0);
                 dimView.animate().alpha(1f).setDuration(150);
                 layout.measure(MeasureSpec.makeMeasureSpec(container.getMeasuredWidth(), MeasureSpec.UNSPECIFIED), MeasureSpec.makeMeasureSpec(container.getMeasuredHeight(), MeasureSpec.UNSPECIFIED));
+
 
                 actionBarPopupWindow = new ActionBarPopupWindow(layout, LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT);
                 actionBarPopupWindow.setOnDismissListener(new PopupWindow.OnDismissListener() {
@@ -428,7 +431,6 @@ public class LinkActionView extends LinearLayout {
         linkView.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText));
         incomingLinkView.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText));
         optionsView.setColorFilter(Theme.getColor(Theme.key_dialogTextGray3));
-        
         avatarsContainer.countTextView.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlueText));
         avatarsContainer.setBackground(Theme.createSimpleSelectorRoundRectDrawable(AndroidUtilities.dp(6), 0, ColorUtils.setAlphaComponent(Theme.getColor(Theme.key_windowBackgroundWhiteBlueText), (int) (255 * 0.3f))));
 
@@ -436,6 +438,7 @@ public class LinkActionView extends LinearLayout {
             qrCodeBottomSheet.updateColors();
         }
     }
+
 
     public void setLink(String link) {
         this.link = link;

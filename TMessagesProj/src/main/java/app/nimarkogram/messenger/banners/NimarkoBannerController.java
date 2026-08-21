@@ -1,4 +1,3 @@
- 
 package app.nimarkogram.messenger.banners;
 
 import android.text.TextUtils;
@@ -41,7 +40,6 @@ public final class NimarkoBannerController {
 
     private static final long FAIL_CD       = 30_000L;   
     private static final long VER_CHECK_INT = 60_000L;   
-                                                         
     private static final long STATUS_INT    = 300_000L;  
     private static final long MIN_VID       = 10_000L;   
     private static final long MIN_IMG       = 1_000L;    
@@ -96,7 +94,6 @@ public final class NimarkoBannerController {
     private volatile boolean myHideAvatar;
     private volatile boolean myHasSound;
     private volatile String myStatusRaw; 
-    
     private volatile boolean statusEverFetched;
 
     private final Map<CacheKey, String> cachedBanners = new ConcurrentHashMap<>();
@@ -142,6 +139,7 @@ public final class NimarkoBannerController {
 
     private NimarkoBannerController() {}
 
+
     public void ensureStarted() {
         if (started) {
             if (NimarkoBannerConfig.enabled) startStatusLoop();
@@ -158,7 +156,7 @@ public final class NimarkoBannerController {
                 if (!cache.exists()) //noinspection ResultOfMethodCallIgnored
                     cache.mkdirs();
                 cacheFolder = cache.getAbsolutePath();
-                File shared = new File(ApplicationLoader.getFilesDirFixed().getParentFile(), "cache/nimarkogram_shared");
+                File shared = new File(ApplicationLoader.getFilesDirFixed().getParentFile(), "cache/ettacent_shared");
                 if (!shared.exists()) //noinspection ResultOfMethodCallIgnored
                     shared.mkdirs();
                 placeholderFile = new File(shared, "zaglus.mp4");
@@ -166,9 +164,7 @@ public final class NimarkoBannerController {
                 FileLog.e("nimarko-banner: dir setup failed", t);
             }
             started = true;
-            
             myId();
-            
             if (NimarkoBannerConfig.enabled) startStatusLoop();
         }
     }
@@ -191,6 +187,7 @@ public final class NimarkoBannerController {
         if (r != null) AndroidUtilities.runOnUIThread(r);
     }
 
+
     public long myId() {
         int acc = UserConfig.selectedAccount;
         long uid;
@@ -211,7 +208,6 @@ public final class NimarkoBannerController {
         synchronized (this) {
             previous = currentScope;
             if (next.equals(previous)) return;
-            
             synchronized (statusStateLock) {
                 statusRevision++;
                 statusActivityRevision++;
@@ -238,7 +234,6 @@ public final class NimarkoBannerController {
                 final Scope displacedScope = displacedUid != 0L
                         ? new Scope(next.account, displacedUid) : null;
                 executor.submit(() -> {
-                    
                     if (displacedScope != null) {
                         cleanupScopeFiles(displacedScope);
                     }
@@ -330,6 +325,7 @@ public final class NimarkoBannerController {
         }
     }
 
+
     public static final class Resolved {
         public final String path;
         public final boolean isVideo;
@@ -354,10 +350,10 @@ public final class NimarkoBannerController {
                     isLoading = true;
                 }
             } else {
-                String lp = NimarkoBannerConfig.getLocalBannerPath();
+                String lp = NimarkoBannerConfig.localBannerPath;
                 if (NimarkoBannerRenderer.DBG) NimarkoBannerRenderer.dbg("resolve OWN NOT-approved myStatus=" + myStatus
-                        + " localBannerPath=" + lp + " exists=" + (!TextUtils.isEmpty(lp) && new File(lp).exists()));
-                if (!TextUtils.isEmpty(lp) && new File(lp).exists()) bf = lp;
+                        + " localBannerPath=" + lp);
+                if (!TextUtils.isEmpty(lp)) bf = lp;
             }
         } else {
             bf = findCachedBanner(k);
@@ -381,9 +377,7 @@ public final class NimarkoBannerController {
 
     public boolean shouldHideAvatar(long eid) {
         long my = myId();
-        
         if (eid == my && !"approved".equals(myStatus)) return false;
-        
         CacheKey k = key(eid);
         String p = cachedBanners.get(k);
         if (p == null) return false;
@@ -395,10 +389,8 @@ public final class NimarkoBannerController {
         long my = myId();
         if (eid == my) {
             if ("approved".equals(myStatus)) return false; 
-            
             if (!statusEverFetched) return false;
-            String lp = NimarkoBannerConfig.getLocalBannerPath();
-            return TextUtils.isEmpty(lp) || !new File(lp).exists();
+            return TextUtils.isEmpty(NimarkoBannerConfig.localBannerPath);
         }
         return usersNoBanner.contains(key(eid));
     }
@@ -415,9 +407,9 @@ public final class NimarkoBannerController {
         return e == null || !e.scope.equals(scope()) ? 0 : e.eid;
     }
 
+
     public boolean placeholderReady() { return phReady && placeholderFile != null; }
     public String placeholderPath() { return placeholderFile != null ? placeholderFile.getAbsolutePath() : ""; }
-     
     public boolean hasMeta(long eid) { return bannersMeta.containsKey(key(eid)); }
 
     private void dlPlaceholder() {
@@ -441,24 +433,15 @@ public final class NimarkoBannerController {
         }
     }
 
+
     private String findCachedBanner(CacheKey k) {
         String p = cachedBanners.get(k);
         if (p == null) return null;
         long now = now();
         if (now - getOr(existsTimes, k) > FAIL_CD) {
             existsTimes.put(k, now);
-            if (!new File(p).exists()) {
-                synchronized (cacheLock) {
-                    String old = cachedBanners.remove(k);
-                    if (old != null) bannerByPath.remove(old);
-                    bannersMeta.remove(k);
-                    checkTimes.remove(k);
-                    existsTimes.remove(k);
-                }
-                writeIndexAsync(k.scope);
-                loadBannerAsync(k);
-                return null;
-            }
+            final String expectedPath = p;
+            executor.submit(() -> verifyCachedBanner(k, expectedPath));
         }
         if (now - getOr(checkTimes, k) > VER_CHECK_INT && verChecking.add(k)) {
             checkTimes.put(k, now);
@@ -467,9 +450,27 @@ public final class NimarkoBannerController {
         return p;
     }
 
+    private void verifyCachedBanner(CacheKey key, String expectedPath) {
+        if (new File(expectedPath).exists()) {
+            return;
+        }
+        synchronized (cacheLock) {
+            if (!expectedPath.equals(cachedBanners.get(key))) {
+                return;
+            }
+            cachedBanners.remove(key);
+            bannerByPath.remove(expectedPath);
+            bannersMeta.remove(key);
+            checkTimes.remove(key);
+            existsTimes.remove(key);
+        }
+        writeIndexAsync(key.scope);
+        loadBannerAsync(key);
+        invalidate();
+    }
+
     private void loadBannerAsync(CacheKey k) {
         if (k == null || !isCurrentScope(k.scope)) return;
-        
         if (!loading.add(k)) return;
         executor.submit(() -> syncBanner(k, true, false));
     }
@@ -502,13 +503,11 @@ public final class NimarkoBannerController {
             boolean needDl = false, upd = false, hasCached;
             synchronized (cacheLock) {
                 Meta lm = bannersMeta.get(k);
-                
                 boolean fileCached = cachedBanners.containsKey(k)
                         && cachedBanners.get(k) != null && new File(cachedBanners.get(k)).exists();
                 if (!TextUtils.isEmpty(info.version)
                         && (lm == null || !info.version.equals(lm.version) || !fileCached)) {
                     rmCachedUnlocked(k);
-                    
                     usersNoBanner.remove(k);
                     needDl = true;
                 } else {
@@ -533,7 +532,6 @@ public final class NimarkoBannerController {
                 return;
             }
             if (TextUtils.isEmpty(info.url)) { NimarkoBannerRenderer.dbg("syncBanner EMPTY url → fail " + eid); failTimes.put(k, now()); return; }
-            
             String filePrefix = k.scope.fileTag() + "_" + eid;
             for (String oe : ALLOWED_EXT) safeRemove(new File(cacheFolder, filePrefix + oe));
             File[] priorFiles = new File(cacheFolder).listFiles();
@@ -554,7 +552,6 @@ public final class NimarkoBannerController {
             boolean dlok = NimarkoBannerHttp.download(info.url, cp);
             NimarkoBannerRenderer.dbg("syncBanner DOWNLOAD result=" + dlok + " exists=" + cp.exists() + " size=" + (cp.exists() ? cp.length() : -1));
             if (!dlok || !validDownload(cp, info.type)) {
-                
                 safeRemove(cp);
                 failTimes.put(k, now());
                 return;
@@ -599,6 +596,7 @@ public final class NimarkoBannerController {
         existsTimes.remove(k);
     }
 
+
     private File indexFile(Scope scope) { return new File(cacheFolder, "cache_index_" + scope.fileTag() + ".json"); }
 
     private void readIndex(Scope scope, long startRevision) {
@@ -615,7 +613,6 @@ public final class NimarkoBannerController {
             long now = now();
             ArrayList<CacheKey> redl = new ArrayList<>();
             synchronized (indexPersistenceLock) {
-                
                 if (indexRevisions.getOrDefault(scope, 0L) != startRevision
                         || !isCurrentScope(scope)) {
                     return;
@@ -709,6 +706,7 @@ public final class NimarkoBannerController {
         }
     }
 
+
     public String statusString() { return myStatus; }
     public boolean hideAvatarFlag() { return myHideAvatar; }
 
@@ -726,7 +724,6 @@ public final class NimarkoBannerController {
             JsonObject d = readJson(statusFile(scope));
             if (d == null || !isCurrentScope(scope)) return;
             synchronized (statusStateLock) {
-                
                 if (!isCurrentScope(scope)
                         || statusRevision != startRevision
                         || statusActivityRevision != startActivityRevision) {
@@ -798,7 +795,6 @@ public final class NimarkoBannerController {
                 statusFetching.remove(scope);
                 return false;
             }
-            
             statusActivityRevision++;
             requestRevision = statusRevision;
         }
@@ -807,7 +803,6 @@ public final class NimarkoBannerController {
             if (!s.ok) return false;
             final String old;
             synchronized (statusStateLock) {
-                
                 if (!statusRevisionMatches(scope, requestRevision)) return false;
                 statusEverFetched = true;
                 old = myStatus;
@@ -822,7 +817,6 @@ public final class NimarkoBannerController {
                 clearMyCache(ownKey);
                 loadBannerAsync(ownKey);
             }
-            
             if (!old.equals(myStatus)) invalidate();
             return true;
         } finally {
@@ -857,6 +851,7 @@ public final class NimarkoBannerController {
         writeIndexAsync(k.scope);
     }
 
+
     private String ensureToken(final Scope scope) {
         if (!isScopeOwner(scope)) return null;
         return NimarkoInlineAuth.ensureToken(scope.account, authLock, new NimarkoInlineAuth.Backend() {
@@ -864,7 +859,6 @@ public final class NimarkoBannerController {
                 return NimarkoBannerConfig.getAuthToken(scope.account, scope.uid);
             }
             @Override public void cacheToken(String t) {
-                
                 NimarkoBannerConfig.setAuthToken(scope.account, scope.uid, t);
             }
             @Override public NimarkoInlineAuth.Reg register(long uid) {
@@ -881,6 +875,7 @@ public final class NimarkoBannerController {
             }
         }, () -> isScopeOwner(scope));
     }
+
 
     public void submitModeration(File tmp, String ext, long size) {
         final Scope operationScope = scope();
@@ -948,6 +943,7 @@ public final class NimarkoBannerController {
         });
     }
 
+
     public void setHideAvatarRemote(boolean v) {
         final Scope operationScope = scope();
         final long operationRevision = beginStatusMutation(operationScope);
@@ -983,7 +979,6 @@ public final class NimarkoBannerController {
     }
 
     public void onAccountSwitched() {
-        
         if (!started) {
             NimarkoBannerConfig.reloadAccount();
             return;
@@ -1023,7 +1018,6 @@ public final class NimarkoBannerController {
             File dest = new File(storageDir, "local_banner_" + operationScope.fileTag() + ext);
             boolean saved = false;
             synchronized (localBannerLock) {
-                
                 if (operationGeneration != localBannerGeneration
                         || !isCurrentScope(operationScope)) {
                     safeRemove(tmp);
@@ -1111,11 +1105,13 @@ public final class NimarkoBannerController {
         } catch (Throwable ignored) {}
     }
 
+
     public static boolean isBannerPluginFile(File file) {
         if (file == null) return false;
         String n = file.getName().toLowerCase();
         return n.contains("nimarkobanner") && n.endsWith(".plugin");
     }
+
 
     private void invalidate() {
         NimarkoBannerRenderer r = NimarkoBannerRenderer.peek();
@@ -1231,6 +1227,7 @@ public final class NimarkoBannerController {
             if (out != null) atomic.failWrite(out);
         }
     }
+
 
     private void uiOk(@StringRes int res) { uiBulletin(LocaleController.getString(res)); }
     private void uiInfo(@StringRes int res) { uiBulletin(LocaleController.getString(res)); }

@@ -664,7 +664,6 @@ public class SpoilerEffect extends Drawable {
 
     public static void clipOutCanvas(Canvas canvas, List<SpoilerEffect> spoilers) {
         if (spoilers.isEmpty()) {
-            
             return;
         }
         tempPath.rewind();
@@ -791,6 +790,7 @@ public class SpoilerEffect extends Drawable {
                 canvas.restore();
             }
 
+
             boolean useAlphaLayer = spoilers.get(0).rippleProgress != -1;
             if (useAlphaLayer) {
                 int w = v.getMeasuredWidth();
@@ -826,6 +826,7 @@ public class SpoilerEffect extends Drawable {
             canvas.restore();
         }
     }
+
 
     @SuppressLint("WrongConstant")
     @MainThread

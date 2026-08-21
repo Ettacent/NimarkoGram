@@ -108,9 +108,11 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.collection.LongSparseArray;
 import androidx.core.content.ContextCompat;
+import androidx.core.graphics.Insets;
 import androidx.core.graphics.ColorUtils;
 import androidx.annotation.NonNull;
 import androidx.core.view.ViewCompat;
+import androidx.core.view.WindowInsetsCompat;
 import androidx.recyclerview.widget.DefaultItemAnimator;
 import androidx.recyclerview.widget.GridLayoutManager;
 import androidx.recyclerview.widget.GridLayoutManagerFixed;
@@ -280,6 +282,52 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
     private Object lastInsets;
     private boolean hasCutout;
 
+    private static boolean isGestureNavigationMode(View view, int navigationBarInset) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+            return false;
+        }
+        WindowInsetsCompat insets = ViewCompat.getRootWindowInsets(view);
+        if (insets != null) {
+            if (insets.isVisible(WindowInsetsCompat.Type.ime())) {
+                return false;
+            }
+            Insets navigationBars = insets.getInsets(WindowInsetsCompat.Type.navigationBars());
+            if (navigationBars.bottom > 0) {
+                Insets tappableElement = insets.getInsets(WindowInsetsCompat.Type.tappableElement());
+                if (tappableElement.bottom < navigationBars.bottom
+                        || AndroidUtilities.getNavigationBarThirdButtonsFactor(navigationBars.bottom) < .5f) {
+                    return true;
+                }
+            }
+        }
+        try {
+            int id = view.getResources().getIdentifier("config_navBarInteractionMode", "integer", "android");
+            if (id != 0 && view.getResources().getInteger(id) == 2) {
+                return true;
+            }
+        } catch (Exception ignore) {
+        }
+        return navigationBarInset > 0
+                && AndroidUtilities.getNavigationBarThirdButtonsFactor(navigationBarInset) < .5f;
+    }
+
+    private static boolean shouldDrawBehindNavigationBar(View view, int fallbackInset) {
+        return isGestureNavigationMode(view, fallbackInset);
+    }
+
+    private static int getGestureNavigationBarInset(View view) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+            return 0;
+        }
+        WindowInsetsCompat insets = ViewCompat.getRootWindowInsets(view);
+        if (insets == null || insets.isVisible(WindowInsetsCompat.Type.ime())) {
+            return 0;
+        }
+        Insets navigationBars = insets.getInsets(WindowInsetsCompat.Type.navigationBars());
+        return navigationBars.bottom > 0 && isGestureNavigationMode(view, navigationBars.bottom)
+                ? navigationBars.bottom : 0;
+    }
+
     private boolean isVisible;
     private boolean collapsed;
     private boolean attachedToWindow;
@@ -338,11 +386,8 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
     private FrameLayout containerView;
     private WebActionBar actionBar;
     private AddressBarList addressBarList;
-
     private Runnable lineProgressTickRunnable;
-
     private ContextProgressView progressView;
-
     private Dialog visibleDialog;
     private Paint backgroundPaint;
     private Drawable layerShadowDrawable;
@@ -351,6 +396,7 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
 
     private AnimatorSet runAfterKeyboardClose;
     private boolean keyboardVisible;
+
 
     private float searchPanelTranslation;
     private FrameLayout searchPanel;
@@ -374,6 +420,7 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
 
     private WebPlayerView currentPlayingVideo;
     private WebPlayerView fullscreenedVideo;
+
 
     private int openUrlReqId;
     private int openUrlReqAccount = -1;
@@ -776,9 +823,7 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
                 anchor = "";
             }
             if (index == 0 || url.toLowerCase().contains(webPageUrl)) {
-
                     scrollToAnchor(anchor, true);
-
                 isAnchor = true;
             }
         } else {
@@ -1007,7 +1052,11 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
                     }
                     heightSize += AndroidUtilities.statusBarHeight;
                 }
-                heightSize -= insets.getSystemWindowInsetBottom();
+                final int navigationBarInset = Math.max(insets.getSystemWindowInsetBottom(), insets.getStableInsetBottom());
+                final boolean drawBehindNavigationBar = shouldDrawBehindNavigationBar(this, navigationBarInset);
+                if (!drawBehindNavigationBar) {
+                    heightSize -= insets.getSystemWindowInsetBottom();
+                }
                 widthSize -= insets.getSystemWindowInsetRight() + insets.getSystemWindowInsetLeft();
                 if (insets.getSystemWindowInsetRight() != 0) {
                     bWidth = insets.getSystemWindowInsetRight();
@@ -1017,13 +1066,12 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
                     bHeight = heightSize;
                 } else {
                     bWidth = widthSize;
-                    bHeight = insets.getStableInsetBottom();
+                    bHeight = drawBehindNavigationBar ? 0 : insets.getStableInsetBottom();
                 }
                 heightSize -= insets.getSystemWindowInsetTop();
             } else {
                 setMeasuredDimension(widthSize, heightSize);
             }
-
             if (sheet == null) {
                 keyboardVisible = heightSize < AndroidUtilities.displaySize.y - dp(100);
             }
@@ -1401,7 +1449,10 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
                             canvas.drawRect(w - right, 0, w, h, statusBarPaint);
                         }
                     }
-                    canvas.drawRect(0, h - insets.getStableInsetBottom(), w, h, navigationBarPaint);
+                    final int navigationBarInset = Math.max(insets.getSystemWindowInsetBottom(), insets.getStableInsetBottom());
+                    if (!shouldDrawBehindNavigationBar(this, navigationBarInset)) {
+                        canvas.drawRect(0, h - insets.getStableInsetBottom(), w, h, navigationBarPaint);
+                    }
                 }
             }
         }
@@ -1453,7 +1504,6 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
             if (checkingForLongPress && windowView != null) {
                 checkingForLongPress = false;
                 if (pressedLink != null) {
-                    
                     if (!app.nimarkogram.messenger.NimarkoConfig.disableVibration) {
                         try {
                             windowView.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS, HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING);
@@ -1472,13 +1522,11 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
                         textSelectionHelper.trySelect(pressedLinkOwnerView);
                     }
                     if (textSelectionHelper.isInSelectionMode() && !app.nimarkogram.messenger.NimarkoConfig.disableVibration) {
-                        
                         try {
                             windowView.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS, HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING);
                         } catch (Exception ignored) {}
                     }
                 } else if (pressedLinkOwnerLayout != null && pressedLinkOwnerView != null) {
-                    
                     if (!app.nimarkogram.messenger.NimarkoConfig.disableVibration) {
                         try {
                             windowView.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS, HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING);
@@ -1954,11 +2002,9 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
                     ObjectAnimator.ofFloat(pages[0], View.TRANSLATION_X, AndroidUtilities.displaySize.x, 0)
                 );
             } else if (order == -1) {
-
                 pages[0].setTranslationX(0.0f);
                 pageSwitchAnimation.playTogether(
                     ObjectAnimator.ofFloat(pages[1], View.TRANSLATION_X, 0, AndroidUtilities.displaySize.x)
-
                 );
             }
             pageSwitchAnimation.setDuration(320);
@@ -2764,7 +2810,6 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
             } else if ((flags & TEXT_FLAG_ITALIC) != 0) {
                 paint.setTypeface(typefaceItalic);
             } else if ((flags & TEXT_FLAG_MONO) != 0) {
-                
             } else {
                 paint.setTypeface(typefaceNormal);
             }
@@ -4078,7 +4123,6 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
 
     @Override
     public void didReceivedNotification(int id, int account, Object... args) {
-        
         final PageLayout[] currentPages = pages;
         if (!notificationsRegistered || account != notificationsAccount || currentPages == null) {
             return;
@@ -4210,7 +4254,6 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
     private WindowVisibilityManager.Controller activityVisibilityController;
 
     public void setParentActivity(Activity activity, BaseFragment fragment) {
-        
         unregisterNotificationObservers();
         if (activityVisibilityController != null) {
             activityVisibilityController.destroy();
@@ -4977,9 +5020,7 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
 
         actionBar.forwardButton.setOnClickListener(v -> {
             if (sheet != null) {
-
                     sheet.dismiss(true);
-
             }
         });
 
@@ -5081,7 +5122,6 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
         if (MessagesController.getInstance(currentAccount).getTranslateController().isContextTranslateEnabled()) {
             textSelectionHelper.setOnTranslate((text, fromLang, toLang, onAlertDismiss) -> {
                 TranslateAlert2.showAlert(parentActivity, parentFragment, currentAccount, fromLang, toLang, text, null, false, null, onAlertDismiss);
-
             });
         }
         textSelectionHelper.layoutManager = pages[0].layoutManager;
@@ -5117,7 +5157,6 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
         });
         backgroundPaint.setColor(getThemedColor(Theme.key_iv_background));
         updatePaintColors(this);
-        
         registerNotificationObservers();
     }
 
@@ -5244,7 +5283,6 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
     }
 
     private void updateWindowLayoutParamsForSearch() {
-         
     }
 
     private void updateSearchButtons() {
@@ -5621,9 +5659,7 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
             windowView.setInnerTranslationX(0);
 
             pages[0].scrollToTop(false);
-            
             setCurrentHeaderHeight(dp(56));
-            
         }
 
         boolean scrolledToAnchor;
@@ -5728,7 +5764,6 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
                 try {
                     wm.removeView(windowView);
                 } catch (Exception e) {
-                    
                 }
             }
             try {
@@ -5738,7 +5773,6 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
                 if (Build.VERSION.SDK_INT >= 28) {
                     windowLayoutParams.layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES;
                 }
-                
                 windowView.setFocusable(false);
                 containerView.setFocusable(false);
                 wm.addView(windowView, windowLayoutParams);
@@ -5766,7 +5800,6 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
                 }
             } else {
                 if (progress != null) {
-                    
                 }
                 sheet.show();
             }
@@ -5831,19 +5864,15 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
             progressViewAnimation = new AnimatorSet();
             if (show) {
                 progressView.setVisibility(View.VISIBLE);
-
                 progressViewAnimation.playTogether(
-
                         ObjectAnimator.ofFloat(progressView, View.SCALE_X, 1.0f),
                         ObjectAnimator.ofFloat(progressView, View.SCALE_Y, 1.0f),
                         ObjectAnimator.ofFloat(progressView, View.ALPHA, 1.0f));
             } else {
-
                 progressViewAnimation.playTogether(
                         ObjectAnimator.ofFloat(progressView, View.SCALE_X, 0.1f),
                         ObjectAnimator.ofFloat(progressView, View.SCALE_Y, 0.1f),
                         ObjectAnimator.ofFloat(progressView, View.ALPHA, 0.0f)
-
                 );
             }
             progressViewAnimation.addListener(new AnimatorListenerAdapter() {
@@ -5853,7 +5882,6 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
                         if (!show) {
                             progressView.setVisibility(View.INVISIBLE);
                         } else {
-
                         }
                     }
                 }
@@ -6734,7 +6762,6 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
                 if (!pageBlockBlockquoteBlocks.blocks.isEmpty()) {
                     final int parentLayer = Math.max(0, block.level);
                     final int parentQuoteLevels = block.quoteLevels;
-                    
                     final boolean parentBottom = (block.quoteLevels == 0 && block.level <= 0) || block.bottom;
                     block.level = -1; 
                     final int size = pageBlockBlockquoteBlocks.blocks.size();
@@ -7702,7 +7729,6 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
     }
 
     public static interface IBlock {
-        
         public int getBoundLeft();
         public int getBoundRight();
         public int getLastLineBoundRight();
@@ -7786,7 +7812,6 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
 
         @Override
         protected boolean drawChild(Canvas canvas, View child, long drawingTime) {
-            
             return super.drawChild(canvas, child, drawingTime);
         }
 
@@ -7847,12 +7872,10 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
 
         @Override
         public boolean onTouchEvent(MotionEvent event) {
-            
             float x = event.getX();
             float y = event.getY();
             if (channelCell.getVisibility() == VISIBLE && y > channelCell.getTranslationY() && y < channelCell.getTranslationY() + dp(39)) {
                 if (adapter != null && adapter.channelBlock != null && event.getAction() == MotionEvent.ACTION_UP) {
-                    
                 }
                 return true;
             }
@@ -8026,9 +8049,7 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
             if (!imageView.hasBitmapImage() || imageView.getCurrentAlpha() != 1.0f) {
                 canvas.drawRect(imageView.getDrawRegion(), photoBackgroundPaint);
             }
-            
                 imageView.draw(canvas);
-
             int count = 0;
             if (captionLayout != null) {
                 canvas.save();
@@ -8050,7 +8071,6 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
                 if (imageView.getVisible()) {
                     radialProgress.draw(canvas);
                 }
-
         }
 
         private int getIconForCurrentState() {
@@ -8139,7 +8159,6 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
                 buttonState = -1;
                 radialProgress.setIcon(getIconForCurrentState(), false, animated);
             } else if (buttonState == 3) {
-                
             }
         }
 
@@ -8171,6 +8190,7 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
             DownloadController.getInstance(parent.getCurrentAccount()).removeLoadingFileObserver(this);
             firstFrameRendered = false;
         }
+
 
         @Override
         protected void onDetachedFromWindow() {
@@ -8211,7 +8231,6 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
             if (currentDocument == null || parent.videoPlayer != null) {
                 return;
             }
-
             parent.videoPlayer = new VideoPlayerHolderBase() {
                 @Override
                 public boolean needRepeat() {
@@ -9602,7 +9621,6 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
                 public boolean onInterceptTouchEvent(MotionEvent ev) {
                     boolean intercept = super.onInterceptTouchEvent(ev);
                     if (tableLayout.getMeasuredWidth() > getMeasuredWidth() - dp(36) && intercept) {
-                        
                     }
                     return intercept;
                 }
@@ -10380,7 +10398,6 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
                         case 0: {
                             BlockPhotoCell cell = (BlockPhotoCell) holder.itemView;
                             cell.groupPosition = group.positions.get(pageBlock);
-                            
                             cell.setBlock((TL_iv.pageBlockPhoto) pageBlock, parentAdapter.currentPage.cached_page, null, false, true);
                             break;
                         }
@@ -10510,6 +10527,7 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
                 canvas.restore();
             }
         }
+
 
         @Override
         public void fillTextLayoutBlocks(ArrayList<TextSelectionHelper.TextLayoutBlock> blocks) {
@@ -12633,12 +12651,10 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
 
         @Override
         public boolean onTouchEvent(MotionEvent event) {
-            
             float x = event.getX();
             float y = event.getY();
             if (channelCell.getVisibility() == VISIBLE && y > channelCell.getTranslationY() && y < channelCell.getTranslationY() + dp(39)) {
                 if (adapter != null && adapter.channelBlock != null && event.getAction() == MotionEvent.ACTION_UP) {
-                    
                 }
                 return true;
             }
@@ -12795,7 +12811,6 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
                 if (!isFirst && currentType == 0 && currentBlock.level <= 0) {
                     height += dp(8);
                 }
-                
                 boolean nextIsChannel = parentBlock instanceof TL_iv.pageBlockCover && adapter != null && adapter.blocks != null && adapter.blocks.size() > 1 && adapter.blocks.get(1) instanceof TL_iv.pageBlockChannel;
                 if (currentType != 2 && !nextIsChannel) {
                     height += dp(8);
@@ -12826,12 +12841,10 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
             if (!imageView.hasBitmapImage() || imageView.getCurrentAlpha() != 1.0f) {
                 canvas.drawRect(imageView.getImageX(), imageView.getImageY(), imageView.getImageX2(), imageView.getImageY2(), photoBackgroundPaint);
             }
-            
                 imageView.draw(canvas);
                 if (imageView.getVisible()) {
                     radialProgress.draw(canvas);
                 }
-
             if (!TextUtils.isEmpty(currentBlock.url) && !(currentPhoto instanceof WebInstantView.WebPhoto)) {
                 int x = getMeasuredWidth() - dp(11 + 24);
                 int y = (int) (imageView.getImageY() + dp(11));
@@ -12869,7 +12882,6 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
             if (currentPhotoObject == null) return;
             if (buttonState == 0) {
                 radialProgress.setProgress(0, animated);
-                
                 imageView.setImage(ImageLocation.getForPhoto(currentPhotoObject, currentPhoto), currentFilter, ImageLocation.getForPhoto(currentPhotoObjectThumb, currentPhoto), currentThumbFilter, currentPhotoObject.size, null, currentPage, 1);
                 buttonState = 1;
                 radialProgress.setIcon(getIconForCurrentState(), true, animated);
@@ -13931,7 +13943,6 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
             scrollView = new HorizontalScrollView(context) {
                 @Override
                 public boolean onInterceptTouchEvent(MotionEvent ev) {
-
                     return super.onInterceptTouchEvent(ev);
                 }
 
@@ -14392,6 +14403,7 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
         return false;
     }
 
+
     private class RealPageBlocksAdapter implements PhotoViewer.PageBlocksAdapter {
 
         private final TLRPC.WebPage page;
@@ -14722,7 +14734,6 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
                 actionBar.forwardButtonDrawable.setState(false); 
                 actionBar.setBackButtonCached(backButton > .5f);
             } else {
-
                 actionBar.forwardButtonDrawable.setState(false); 
                 actionBar.setBackButtonCached(false); 
             }
@@ -15046,7 +15057,6 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
                 updatePages();
             });
             swipeContainer.setTopActionBarOffsetY(dp(sheet != null && !sheet.halfSize() ? 0 : 56) + AndroidUtilities.statusBarHeight);
-
             addView(swipeContainer, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT));
 
             cleanup();
@@ -15294,7 +15304,6 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
             progress = Utilities.clamp01(progress + delta);
             if (isArticle()) {
                 return;
-
             } else if (isWeb()) {
                 BotWebViewContainer.MyWebView webView = webViewContainer.getWebView();
                 if (webView == null) return;
@@ -15779,6 +15788,7 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
 
         @Override
         public void release() {
+            releaseAnimationFrameRate();
             released = true;
             setBannerOverlayVisible(false);
             if (pages[0] != null && pages[0].swipeBack) {
@@ -15925,12 +15935,65 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
         private float dismissProgress;
         private ValueAnimator openAnimator;
         private ValueAnimator dismissAnimator;
+        private int frameRateRequestGeneration;
+        private Runnable frameRateLease;
+        private Runnable releaseFrameRateRunnable;
+
+        private int beginAnimationFrameRate() {
+            frameRateRequestGeneration++;
+            if (releaseFrameRateRunnable != null) {
+                windowView.removeCallbacks(releaseFrameRateRunnable);
+                releaseFrameRateRunnable = null;
+            }
+            if (frameRateLease != null) {
+                frameRateLease.run();
+            }
+            frameRateLease = AndroidUtilities.requestHighFrameRate(
+                    windowView,
+                    pages[0] == null ? null : pages[0].getWebView(),
+                    pages[1] == null ? null : pages[1].getWebView()
+            );
+            return frameRateRequestGeneration;
+        }
+
+        private void finishAnimationFrameRate(int generation) {
+            if (generation != frameRateRequestGeneration) {
+                return;
+            }
+            if (releaseFrameRateRunnable != null) {
+                windowView.removeCallbacks(releaseFrameRateRunnable);
+            }
+            releaseFrameRateRunnable = () -> {
+                if (generation != frameRateRequestGeneration) {
+                    return;
+                }
+                releaseFrameRateRunnable = null;
+                if (frameRateLease != null) {
+                    frameRateLease.run();
+                    frameRateLease = null;
+                }
+            };
+            windowView.postDelayed(releaseFrameRateRunnable, 450);
+        }
+
+        private void releaseAnimationFrameRate() {
+            frameRateRequestGeneration++;
+            if (releaseFrameRateRunnable != null) {
+                windowView.removeCallbacks(releaseFrameRateRunnable);
+                releaseFrameRateRunnable = null;
+            }
+            if (frameRateLease != null) {
+                frameRateLease.run();
+                frameRateLease = null;
+            }
+        }
 
         public void animateOpen(boolean open, boolean animated, Runnable callback) {
             if (openAnimator != null) {
                 openAnimator.cancel();
             }
             if (animated) {
+                final int frameRateGeneration = beginAnimationFrameRate();
                 openAnimator = ValueAnimator.ofFloat(openProgress, open ? 1f : 0f);
                 openAnimator.addUpdateListener(anm -> {
                     openProgress = (float) anm.getAnimatedValue();
@@ -15949,6 +16012,7 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
                         }
                         checkFullyVisible();
                         if (open) animationsLock.unlock();
+                        finishAnimationFrameRate(frameRateGeneration);
                     }
                 });
                 if (open) {
@@ -16030,6 +16094,12 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
             AndroidUtilities.setLightStatusBar(dialog != null ? dialog.windowView : windowView, isAttachedLightStatusBar());
             if (dialog != null) {
                 dialog.updateNavigationBarColor();
+                if (getGestureNavigationBarInset(windowView) > 0) {
+                    AndroidUtilities.setNavigationBarColor(dialog, Color.TRANSPARENT, false);
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && dialog.getWindow() != null) {
+                        dialog.getWindow().setNavigationBarContrastEnforced(false);
+                    }
+                }
             } else {
                 LaunchActivity.instance.checkSystemBarColors(true, true, true);
                 AndroidUtilities.setLightNavigationBar(getWindowView(), AndroidUtilities.computePerceivedBrightness(getNavigationBarColor(getThemedColor(Theme.key_windowBackgroundGray))) >= .721f);
@@ -16076,8 +16146,57 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
 
         public class WindowView extends SizeNotifierFrameLayout implements BaseFragment.AttachedSheetWindow, BottomSheetTabsOverlay.SheetView {
 
+            private int gestureNavigationBarInset = -1;
+
             public WindowView(Context context) {
                 super(context);
+            }
+
+            @Override
+            public boolean drawBehindNavigationBar() {
+                return shouldDrawBehindNavigationBar(this, Math.max(0, gestureNavigationBarInset));
+            }
+
+            private void updateGestureNavigationBarInset() {
+                int inset = getGestureNavigationBarInset(this);
+                if (gestureNavigationBarInset == inset) {
+                    return;
+                }
+                gestureNavigationBarInset = inset;
+                requestLayout();
+                ViewParent parent = getParent();
+                if (parent instanceof View) {
+                    ((View) parent).requestLayout();
+                    ((View) parent).invalidate();
+                }
+                if (dialog != null) {
+                    checkNavColor();
+                }
+            }
+
+            @Override
+            public WindowInsets dispatchApplyWindowInsets(WindowInsets insets) {
+                WindowInsets result = super.dispatchApplyWindowInsets(insets);
+                updateGestureNavigationBarInset();
+                return result;
+            }
+
+            @Override
+            protected void onAttachedToWindow() {
+                super.onAttachedToWindow();
+                gestureNavigationBarInset = -1;
+                ViewCompat.requestApplyInsets(this);
+                post(() -> {
+                    if (isAttachedToWindow()) {
+                        updateGestureNavigationBarInset();
+                    }
+                });
+            }
+
+            @Override
+            protected void onDetachedFromWindow() {
+                gestureNavigationBarInset = -1;
+                super.onDetachedFromWindow();
             }
 
             private final Paint scrimPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -16090,7 +16209,24 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
 
             @Override
             protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
-                super.onMeasure(widthMeasureSpec, heightMeasureSpec);
+                int height = MeasureSpec.getSize(heightMeasureSpec);
+                int overlap = 0;
+                if (MeasureSpec.getMode(heightMeasureSpec) == MeasureSpec.EXACTLY && gestureNavigationBarInset > 0) {
+                    ViewParent parent = getParent();
+                    if (parent instanceof View) {
+                        View parentView = (View) parent;
+                        int reservedBottom = parentView.getPaddingBottom();
+                        int parentHeight = Math.max(parentView.getHeight(), parentView.getMeasuredHeight());
+                        if (parentHeight > height) {
+                            reservedBottom = Math.max(reservedBottom, parentHeight - height);
+                        }
+                        overlap = Math.min(gestureNavigationBarInset, Math.max(0, reservedBottom));
+                    }
+                }
+                int resolvedHeightSpec = overlap == 0
+                        ? heightMeasureSpec
+                        : MeasureSpec.makeMeasureSpec(height + overlap, MeasureSpec.EXACTLY);
+                super.onMeasure(widthMeasureSpec, resolvedHeightSpec);
                 updateTranslation();
             }
 

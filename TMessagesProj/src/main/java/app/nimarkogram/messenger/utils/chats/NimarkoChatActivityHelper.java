@@ -1,7 +1,3 @@
-/*
- * Copyright github.com/arsLan4k1390, 2022-2026.
- * Licensed under GNU GPL v2 or later. See LICENSE.
- */
 
 package app.nimarkogram.messenger.utils.chats;
 
@@ -119,7 +115,7 @@ public class NimarkoChatActivityHelper extends BaseController {
     public final static int OPTION_DO_NOT_ASK_PASSCODE = 2026;
     public final static int OPTION_OPEN_TELEGRAM_BROWSER = 2027;
     public final static int OPTION_ADVANCED_SEARCH = 2033;
-     
+
     public final static int OPTION_NIMARKO_MEDIA_DOWNLOAD = 2050;
 
     public void checkActionBarOptions(
@@ -135,7 +131,6 @@ public class NimarkoChatActivityHelper extends BaseController {
         } else if (id == OPTION_JUMP_TO_BEGINNING) {
             chatActivity.jumpToDate(2);
         } else if (id == OPTION_DELETE_ALL_FROM_SELF) {
-            
             NimarkoMessageHelper.getInstance(currentAccount).createDeleteHistoryAlert(
                     chatActivity, currentChat, forumTopic, mergeDialogId, chatActivity.getResourceProvider());
         } else if (id == OPTION_UPGRADE_GROUP) {
@@ -152,7 +147,6 @@ public class NimarkoChatActivityHelper extends BaseController {
         } else if (id == OPTION_TEXT_MENTION) {
             if (chatActivity.getChatActivityEnterView() != null && chatActivity.getChatActivityEnterView().getEditField() != null) {
                 chatActivity.getChatActivityEnterView().getEditField().setSelectionOverride(editTextStart, editTextEnd);
-                
                 chatActivity.getChatActivityEnterView().getEditField().makeSelectedMention();
             }
         } else if (id == OPTION_SELECT_BETWEEN) {
@@ -215,13 +209,11 @@ public class NimarkoChatActivityHelper extends BaseController {
         } else if (id == OPTION_TEXT_CODE) {
             if (chatActivity.getChatActivityEnterView() != null && chatActivity.getChatActivityEnterView().getEditField() != null) {
                 chatActivity.getChatActivityEnterView().getEditField().setSelectionOverride(editTextStart, editTextEnd);
-                
                 chatActivity.getChatActivityEnterView().getEditField().makeSelectedCode();
             }
         } else if (id == OPTION_GO_TO_SAVED) {
             chatActivity.presentFragment(ChatActivity.of(NimarkoChatHelper2.getCustomChatID(currentAccount)));
         } else if (id == OPTION_ASK_PASSCODE) {
-            
             final int account = currentAccount;
             final long ownerUid = UserConfig.getInstance(account).getClientUserId();
             final long dialogId = chatActivity.getDialogId();
@@ -237,7 +229,6 @@ public class NimarkoChatActivityHelper extends BaseController {
                 }
             }, null);
         } else if (id == OPTION_DO_NOT_ASK_PASSCODE) {
-            
             final int account = currentAccount;
             final long ownerUid = UserConfig.getInstance(account).getClientUserId();
             final long dialogId = chatActivity.getDialogId();
@@ -256,7 +247,7 @@ public class NimarkoChatActivityHelper extends BaseController {
             Browser.openInTelegramBrowser(chatActivity.getParentActivity(), SearchEngine.getCurrent().getSearchURL(""), null);
         }
     }
-     
+
     public void checkProcessSelectedOption(
             int option,
             ChatActivity chatActivity,
@@ -265,7 +256,6 @@ public class NimarkoChatActivityHelper extends BaseController {
             TLRPC.Chat currentChat
     ) {
         switch (option) {
-            
             case OPTION_FORWARD_WO_CAPTION: {
                 if (getMessagesController().isFrozen()) {
                     AccountFrozenAlert.show(currentAccount);
@@ -286,9 +276,7 @@ public class NimarkoChatActivityHelper extends BaseController {
                 chatActivity.presentFragment(fragment);
                 break;
             }
-            
             case OPTION_DETAILS: {
-                
                 if (selectedObject != null && selectedObject.messageOwner != null) {
                     try {
                         NimarkoJsonBottomSheet.getMessageId(selectedObject);
@@ -313,7 +301,6 @@ public class NimarkoChatActivityHelper extends BaseController {
                 break;
             }
             case OPTION_GET_CUSTOM_REACTIONS: {
-                
                 if (selectedObject.messageOwner == null
                         || selectedObject.messageOwner.reactions == null
                         || selectedObject.messageOwner.reactions.results == null) break;
@@ -349,7 +336,6 @@ public class NimarkoChatActivityHelper extends BaseController {
                 break;
             }
             case OPTION_DOWNLOAD_STICKER: {
-                
                 if ((Build.VERSION.SDK_INT <= Build.VERSION_CODES.P || BuildVars.NO_SCOPED_STORAGE) && chatActivity.getParentActivity().checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
                     chatActivity.getParentActivity().requestPermissions(new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE}, 4);
                     return;
@@ -365,7 +351,6 @@ public class NimarkoChatActivityHelper extends BaseController {
                 break;
             }
             case OPTION_TRANSLATE_DOUBLE_TAP: {
-                
                 String toLang = TranslateAlert2.getToLanguage();
 
                 boolean noforwards = getMessagesController().isChatNoForwards(currentChat) || selectedObject.messageOwner.noforwards || chatActivity.getDialogId() == UserObject.VERIFY;
@@ -397,7 +382,7 @@ public class NimarkoChatActivityHelper extends BaseController {
             }
         }
     }
-     
+
     private void searchWithID(ChatActivity chatActivity, String inputID) {
         if (inputID.length() > 20) {
             AlertDialog.Builder builder = new AlertDialog.Builder(chatActivity.getContext());
@@ -505,7 +490,6 @@ public class NimarkoChatActivityHelper extends BaseController {
                 chatActivity.processSelectedOption(ChatActivity.OPTION_REPLY);
                 break;
             case NimarkoConfig.DOUBLE_TAP_ACTION_SAVE:
-                
                 chatActivity.processSelectedOption(
                         app.nimarkogram.messenger.NimarkoMessageMenuInjector.OPTION_SAVE_MESSAGE_CHAT);
                 break;
@@ -514,7 +498,7 @@ public class NimarkoChatActivityHelper extends BaseController {
                 break;
         }
     }
-     
+
     public void forwardWithPasscode(
             DialogsActivity fragment,
             ChatActivity chatActivityOrg,
@@ -578,7 +562,7 @@ public class NimarkoChatActivityHelper extends BaseController {
         public static void attachTo(@NonNull RecyclerView recyclerView, @NonNull View contentView, ChatActivityEnterView chatActivityEnterView) {
             if (recyclerView == null || contentView == null || chatActivityEnterView == null) return;
             final int VELOCITY_THRESHOLD = dp(NimarkoConfig.hideKeyboardOnScrollIntensity * 1000); 
-            final int invertedSensitivity = dp(10000)   - VELOCITY_THRESHOLD + 1;
+            final int invertedSensitivity = dp(10000)  - VELOCITY_THRESHOLD + 1;
 
             recyclerView.addOnItemTouchListener(new RecyclerView.OnItemTouchListener() {
                 private VelocityTracker velocityTracker = null;

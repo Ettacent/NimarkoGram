@@ -4,9 +4,11 @@ import android.content.Context;
 import android.database.ContentObserver;
 import android.media.AudioManager;
 import android.os.Handler;
+import android.os.Process;
 import android.provider.Settings;
 
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 
 import com.google.android.gms.cast.Cast;
 import com.google.android.gms.cast.MediaError;
@@ -20,12 +22,15 @@ import com.google.android.gms.cast.framework.media.RemoteMediaClient;
 
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.ApplicationLoader;
+import org.telegram.messenger.DispatchQueue;
 import org.telegram.messenger.FileLog;
 import org.telegram.messenger.MediaController;
 import org.telegram.messenger.Utilities;
 import org.telegram.ui.ActionBar.BaseFragment;
 
+import java.util.ArrayList;
 import java.util.Set;
+import java.util.concurrent.Executor;
 import java.util.concurrent.atomic.AtomicInteger;
 
 public class CastSync {
@@ -36,21 +41,134 @@ public class CastSync {
     public static int type;
     public static AtomicInteger pending;
 
+    public interface CastContextCallback {
+        void onResult(@Nullable CastContext context);
+    }
+
+    private static final Object contextLock = new Object();
+    private static final DispatchQueue contextQueue = new DispatchQueue(
+            "castContextQueue", true, Process.THREAD_PRIORITY_BACKGROUND);
+    private static final Executor contextExecutor = command -> contextQueue.postRunnable(command);
+    private static final ArrayList<CastContextCallback> contextCallbacks = new ArrayList<>();
+    private static volatile CastContext sharedContext;
+    private static boolean contextLoading;
+
     public static Context getContext() {
         Context context = LaunchActivity.instance;
         if (context == null) context = ApplicationLoader.applicationContext;
         return context;
     }
 
-    private static boolean listened;
+    public static void preload() {
+        requestContext(null);
+    }
+
+    public static void withContext(@NonNull CastContextCallback callback) {
+        requestContext(callback);
+    }
+
+    private static void requestContext(@Nullable CastContextCallback callback) {
+        CastContext ready = sharedContext;
+        if (ready != null) {
+            if (callback != null) {
+                CastContext result = ready;
+                AndroidUtilities.runOnUIThread(() -> callback.onResult(result));
+            }
+            return;
+        }
+
+        Context context = getContext();
+        if (context == null) {
+            if (callback != null) {
+                AndroidUtilities.runOnUIThread(() -> callback.onResult(null));
+            }
+            return;
+        }
+
+        boolean startLoading = false;
+        synchronized (contextLock) {
+            ready = sharedContext;
+            if (ready == null) {
+                if (callback != null) {
+                    contextCallbacks.add(callback);
+                }
+                if (!contextLoading) {
+                    contextLoading = true;
+                    startLoading = true;
+                }
+            }
+        }
+        if (ready != null) {
+            if (callback != null) {
+                CastContext result = ready;
+                AndroidUtilities.runOnUIThread(() -> callback.onResult(result));
+            }
+            return;
+        }
+        if (!startLoading) return;
+
+        Context appContext = context.getApplicationContext();
+        if (appContext == null) appContext = context;
+        try {
+            CastContext.getSharedInstance(appContext, contextExecutor)
+                    .addOnCompleteListener(contextExecutor, task -> {
+                        CastContext result = null;
+                        Throwable error = null;
+                        if (task.isSuccessful()) {
+                            result = task.getResult();
+                        } else {
+                            error = task.getException();
+                        }
+                        CastContext finalResult = result;
+                        Throwable finalError = error;
+                        AndroidUtilities.runOnUIThread(() -> completeContextLoad(finalResult, finalError));
+                    });
+        } catch (Throwable error) {
+            AndroidUtilities.runOnUIThread(() -> completeContextLoad(null, error));
+        }
+    }
+
+    private static void completeContextLoad(@Nullable CastContext context, @Nullable Throwable error) {
+        ArrayList<CastContextCallback> callbacks;
+        synchronized (contextLock) {
+            if (context != null) {
+                sharedContext = context;
+            }
+            contextLoading = false;
+            callbacks = new ArrayList<>(contextCallbacks);
+            contextCallbacks.clear();
+        }
+        if (error != null) {
+            FileLog.e(error);
+        }
+        for (int i = 0; i < callbacks.size(); i++) {
+            try {
+                callbacks.get(i).onResult(context);
+            } catch (Throwable callbackError) {
+                FileLog.e(callbackError);
+            }
+        }
+    }
+
+    private static volatile boolean listened;
+    private static boolean listenerRequested;
     public static void check(int type) {
         CastSync.type = type;
-        if (listened) return;
+        synchronized (contextLock) {
+            if (listened || listenerRequested) return;
+            listenerRequested = true;
+        }
+        withContext(context -> {
+            synchronized (contextLock) {
+                listenerRequested = false;
+            }
+            attachSessionListener(context);
+        });
+    }
+
+    private static void attachSessionListener(@Nullable CastContext castContext) {
+        if (castContext == null || listened) return;
         try {
-            final Context context = getContext();
-            if (context == null) return;
-            final CastContext castContext = CastContext.getSharedInstance(getContext());
-            if (castContext == null) return;
             castContext.getSessionManager().addSessionManagerListener(new SessionManagerListener<CastSession>() {
                 @Override
                 public void onSessionEnded(@NonNull CastSession session, int i) {
@@ -134,11 +252,9 @@ public class CastSync {
     }
 
     public static void stop() {
-        final Context context = getContext();
-        if (context == null) return;
+        CastContext castContext = sharedContext;
+        if (castContext == null) return;
         try {
-            final CastContext castContext = CastContext.getSharedInstance(getContext());
-            if (castContext == null) return;
             castContext.getSessionManager().endCurrentSession(true);
         } catch (Exception e) {
             FileLog.e(e);
@@ -146,11 +262,9 @@ public class CastSync {
     }
 
     public static boolean isActive() {
-        final Context context = getContext();
-        if (context == null) return false;
+        CastContext castContext = sharedContext;
+        if (castContext == null) return false;
         try {
-            final CastContext castContext = CastContext.getSharedInstance(getContext());
-            if (castContext == null) return false;
             final CastSession castSession = castContext.getSessionManager().getCurrentCastSession();
             return castSession != null && (castSession.isConnecting() || castSession.isConnected());
         } catch (Exception e) {
@@ -160,11 +274,9 @@ public class CastSync {
     }
 
     public static RemoteMediaClient getClient() {
-        final Context context = getContext();
-        if (context == null) return null;
+        CastContext castContext = sharedContext;
+        if (castContext == null) return null;
         try {
-            final CastContext castContext = CastContext.getSharedInstance(getContext());
-            if (castContext == null) return null;
             final CastSession castSession = castContext.getSessionManager().getCurrentCastSession();
             if (castSession != null && castSession.isConnected()) {
                 return castSession.getRemoteMediaClient();

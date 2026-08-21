@@ -209,7 +209,6 @@ public class ProxyListActivity extends BaseFragment implements NotificationCente
         }
 
         public void setProxy(SharedConfig.ProxyInfo proxyInfo) {
-            
             String label;
             if (isOwnWsBypass(proxyInfo)) {
                 label = LocaleController.getString(R.string.NM_WSB_Title);
@@ -465,7 +464,6 @@ public class ProxyListActivity extends BaseFragment implements NotificationCente
             }
             if (position == useProxyRow) {
                 if (useProxySettings && isOwnWsBypass(SharedConfig.currentProxy)) {
-                    
                     app.nimarkogram.messenger.wsbypass.NimarkoWsBypassController.getInstance().setEnabled(false);
                     reconcileProxyState();
                     updateRows(true);
@@ -543,7 +541,6 @@ public class ProxyListActivity extends BaseFragment implements NotificationCente
                 }
                 SharedConfig.ProxyInfo info = proxyList.get(position - proxyStartRow);
                 if (!isOwnWsBypass(info) && app.nimarkogram.messenger.wsbypass.NimarkoWsBypassConfig.enabled) {
-                    
                     app.nimarkogram.messenger.wsbypass.NimarkoWsBypassController.getInstance().setEnabled(false);
                 }
                 useProxySettings = true;
@@ -585,14 +582,12 @@ public class ProxyListActivity extends BaseFragment implements NotificationCente
                 builder.setPositiveButton(getString(R.string.Delete), (dialog, which) -> {
                     boolean keptBypass = false;
                     for (SharedConfig.ProxyInfo info : new ArrayList<>(proxyList)) {
-                        
                         if (isOwnWsBypass(info)) {
                             keptBypass = true;
                             continue;
                         }
                         SharedConfig.deleteProxy(info);
                     }
-                    
                     useProxyForCalls = false;
                     useProxySettings = keptBypass && SharedConfig.currentProxy != null && useProxySettings;
                     NotificationCenter.getGlobalInstance().removeObserver(ProxyListActivity.this, NotificationCenter.proxySettingsChanged);
@@ -859,7 +854,6 @@ public class ProxyListActivity extends BaseFragment implements NotificationCente
             if (proxyInfo.checking || SystemClock.elapsedRealtime() - proxyInfo.availableCheckTime < 2 * 60 * 1000) {
                 continue;
             }
-            
             if (isOwnWsBypass(proxyInfo)) {
                 proxyInfo.checking = false;
                 app.nimarkogram.messenger.wsbypass.WsBypassCore core =
@@ -989,7 +983,6 @@ public class ProxyListActivity extends BaseFragment implements NotificationCente
                     int idx = proxyList.indexOf(SharedConfig.currentProxy);
                     if (idx >= 0) {
                         RecyclerListView.Holder holder = (RecyclerListView.Holder) listView.findViewHolderForAdapterPosition(idx + proxyStartRow);
-                        
                         if (holder != null && holder.itemView instanceof TextDetailProxyCell) {
                             ((TextDetailProxyCell) holder.itemView).updateStatus();
                         }
@@ -1057,7 +1050,6 @@ public class ProxyListActivity extends BaseFragment implements NotificationCente
                 return;
             }
             SharedConfig.ProxyInfo info = proxyList.get(position - proxyStartRow);
-            
             if (isOwnWsBypass(info)) {
                 return;
             }
@@ -1270,7 +1262,6 @@ public class ProxyListActivity extends BaseFragment implements NotificationCente
 
         @Override
         public long getItemId(int position) {
-            
             if (position == useProxyShadowRow) {
                 return -1;
             } else if (position == proxyShadowRow) {

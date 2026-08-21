@@ -36,7 +36,6 @@ public class AltSeekbar extends FrameLayout {
     private final TextView leftTextView;
     private final TextView rightTextView;
     public SeekBarView seekBarView;
-     
     public Slider slider;
     private final int min;
     private final int max;

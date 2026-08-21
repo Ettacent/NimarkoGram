@@ -320,7 +320,7 @@ public class SeekBarWaveform {
             return;
         }
         if (clearProgress != 1f) {
-            clearProgress += 16 / 150f;
+            clearProgress += AndroidUtilities.screenRefreshTime / 150f;
             if (clearProgress > 1f) {
                 clearProgress = 1f;
             } else {

@@ -24,7 +24,6 @@ public class LockedChatsPreferencesActivity extends BasePreferencesActivity {
 
     private static final int ID_ADD = 1_000_001;
     private static final int ID_HEADER = 1_000_002;
-    
     private static final int ID_DIALOG_BASE = 2_000_000;
     private final ArrayList<Long> rowDialogIds = new ArrayList<>();
 
@@ -47,7 +46,6 @@ public class LockedChatsPreferencesActivity extends BasePreferencesActivity {
                 long did;
                 try { did = Long.parseLong(s); } catch (Throwable t) { continue; }
                 String name = displayNameFor(messagesController, did);
-                
                 int rowId = ID_DIALOG_BASE + rowDialogIds.size();
                 rowDialogIds.add(did);
                 items.add(UItem.asCheck(rowId, name).setChecked(true));
@@ -102,14 +100,12 @@ public class LockedChatsPreferencesActivity extends BasePreferencesActivity {
                 if (listView != null && listView.adapter != null) {
                     listView.adapter.update(true);
                 }
-                
                 fragment.finishFragment();
                 return true;
             });
             presentFragment(picker);
             return;
         }
-        
         int idx = id - ID_DIALOG_BASE;
         if (idx >= 0 && idx < rowDialogIds.size()) {
             final int account = currentAccount;

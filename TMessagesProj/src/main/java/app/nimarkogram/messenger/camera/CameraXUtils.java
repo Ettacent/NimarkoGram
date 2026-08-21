@@ -5,6 +5,8 @@ import android.content.Context;
 import android.hardware.camera2.CameraCharacteristics;
 import android.hardware.camera2.CaptureRequest;
 import android.os.Build;
+import android.os.Looper;
+import android.os.Process;
 import android.util.Range;
 import android.util.Size;
 import android.view.Surface;
@@ -33,6 +35,7 @@ import org.telegram.messenger.ApplicationLoader;
 import org.telegram.messenger.SharedConfig;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
@@ -40,6 +43,9 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import app.nimarkogram.messenger.NimarkoConfig;
 import app.nimarkogram.messenger.NimarkoCameraLog;
@@ -54,8 +60,19 @@ public final class CameraXUtils {
     private CameraXUtils() {}
 
     private static volatile Map<Quality, Size> qualityToSize;
-    private static volatile Exception qualityException;
+    private static final Map<String, Map<Quality, Size>> QUALITY_TO_SIZE_BY_CAMERA =
+            new ConcurrentHashMap<>();
     private static volatile int suggestedCameraResolution = -1;
+    private static final AtomicBoolean QUALITY_LOAD_STARTED = new AtomicBoolean();
+    private static ExecutorService newQualityExecutor() {
+        return Executors.newSingleThreadExecutor(command ->
+            new Thread(() -> {
+                try {
+                    Process.setThreadPriority(Process.THREAD_PRIORITY_BACKGROUND);
+                } catch (Throwable ignored) {}
+                command.run();
+            }, "cameraCapabilities"));
+    }
     private static final Object PROVIDER_LOCK = new Object();
     @Nullable private static volatile ListenableFuture<ProcessCameraProvider> sharedProviderFuture;
     private static final Map<String, CameraCapabilities> CAMERA_CAPABILITIES =
@@ -117,7 +134,6 @@ public final class CameraXUtils {
                                 + created.getAvailableConcurrentCameraInfos().size());
                     } catch (Throwable error) {
                         if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("CXUtils provider initialization FAILED", error);
-                        
                         synchronized (PROVIDER_LOCK) {
                             if (sharedProviderFuture == createdFuture) {
                                 sharedProviderFuture = null;
@@ -131,36 +147,53 @@ public final class CameraXUtils {
     }
 
     public static Map<Quality, Size> getAvailableVideoSizes() {
-        return qualityToSize != null ? qualityToSize : new HashMap<>();
+        Map<Quality, Size> sizes = qualityToSize;
+        return sizes != null ? sizes : Collections.emptyMap();
     }
 
     public static void loadCameraXSizes() {
-        if (qualityToSize != null || qualityException != null) return;
+        if (qualityToSize != null) return;
         if (!isCameraXSupported()) return;
         Context context = ApplicationLoader.applicationContext;
         if (context == null) return;
+        if (!QUALITY_LOAD_STARTED.compareAndSet(false, true)) return;
+        final ExecutorService executor;
+        try {
+            executor = newQualityExecutor();
+        } catch (Throwable ignored) {
+            QUALITY_LOAD_STARTED.set(false);
+            return;
+        }
         try {
             ListenableFuture<ProcessCameraProvider> providerFuture = getProviderFuture(context);
             providerFuture.addListener(() -> {
                 try {
                     ProcessCameraProvider provider = providerFuture.get();
+                    for (CameraInfo cameraInfo : provider.getAvailableCameraInfos()) {
+                        cacheAvailableVideoSizes(cameraInfo);
+                    }
                     CameraSelector selector = buildIntendedBackCameraSelector(provider);
-                    qualityToSize = fetchAvailableVideoSizes(selector, provider);
-                    loadSuggestedResolution();
-                } catch (Exception e) {
-                    qualityException = e;
+                    CameraInfo selectedCamera = resolveSelectedCameraInfo(provider, selector);
+                    Map<Quality, Size> loadedSizes = cacheAvailableVideoSizes(selectedCamera);
+                    if (!loadedSizes.isEmpty()) {
+                        qualityToSize = loadedSizes;
+                        loadSuggestedResolution();
+                    }
+                } catch (Throwable ignored) {
+                } finally {
+                    QUALITY_LOAD_STARTED.set(false);
+                    executor.shutdown();
                 }
-            }, ContextCompat.getMainExecutor(context));
-        } catch (Throwable t) {
-            qualityException = t instanceof Exception ? (Exception) t : new RuntimeException(t);
+            }, executor);
+        } catch (Throwable ignored) {
+            QUALITY_LOAD_STARTED.set(false);
+            executor.shutdown();
         }
     }
 
     @SuppressLint("RestrictedApi")
-    private static Map<Quality, Size> fetchAvailableVideoSizes(CameraSelector selector, ProcessCameraProvider provider) {
+    private static Map<Quality, Size> fetchAvailableVideoSizes(@Nullable CameraInfo cameraInfo) {
         Map<Quality, Size> result = new HashMap<>();
-        if (selector == null || provider == null) return result;
-        CameraInfo cameraInfo = resolveSelectedCameraInfo(provider, selector);
         if (cameraInfo == null) return result;
         for (Quality quality : QualitySelector.getSupportedQualities(cameraInfo)) {
             Size resolution = QualitySelector.getResolution(cameraInfo, quality);
@@ -169,9 +202,42 @@ public final class CameraXUtils {
         return result;
     }
 
+    @SuppressLint({"UnsafeOptInUsageError", "RestrictedApi"})
+    private static Map<Quality, Size> cacheAvailableVideoSizes(@Nullable CameraInfo cameraInfo) {
+        if (cameraInfo == null) return Collections.emptyMap();
+        final String cameraId;
+        try {
+            cameraId = Camera2CameraInfo.from(cameraInfo).getCameraId();
+        } catch (Throwable ignored) {
+            return Collections.emptyMap();
+        }
+        Map<Quality, Size> cached = QUALITY_TO_SIZE_BY_CAMERA.get(cameraId);
+        if (cached != null) return cached;
+        Map<Quality, Size> loaded = fetchAvailableVideoSizes(cameraInfo);
+        if (loaded.isEmpty()) return Collections.emptyMap();
+        loaded = Collections.unmodifiableMap(loaded);
+        Map<Quality, Size> raced = QUALITY_TO_SIZE_BY_CAMERA.putIfAbsent(cameraId, loaded);
+        return raced != null ? raced : loaded;
+    }
+
     public static Quality getVideoQuality(CameraSelector selector, ProcessCameraProvider provider) {
         final int configuredHeight = getEffectiveConfiguredHeight();
-        for (Map.Entry<Quality, Size> entry : fetchAvailableVideoSizes(selector, provider).entrySet()) {
+        CameraInfo selectedCamera = resolveSelectedCameraInfo(provider, selector);
+        Map<Quality, Size> sizes = null;
+        if (selectedCamera != null) {
+            try {
+                sizes = QUALITY_TO_SIZE_BY_CAMERA.get(
+                        Camera2CameraInfo.from(selectedCamera).getCameraId());
+            } catch (Throwable ignored) {
+            }
+        }
+        if (sizes == null && Looper.myLooper() != Looper.getMainLooper()) {
+            sizes = cacheAvailableVideoSizes(selectedCamera);
+        } else if (sizes == null) {
+            loadCameraXSizes();
+            sizes = Collections.emptyMap();
+        }
+        for (Map.Entry<Quality, Size> entry : sizes.entrySet()) {
             if (entry.getValue().getHeight() == configuredHeight) return entry.getKey();
         }
         return qualityForConfiguredHeight(configuredHeight);
@@ -205,7 +271,6 @@ public final class CameraXUtils {
 
     private static Quality qualityForConfiguredHeight(int configuredHeight) {
         if (configuredHeight >= 2160) return Quality.UHD;
-        
         if (configuredHeight >= 1440) return Quality.FHD;
         if (configuredHeight >= 1080) return Quality.FHD;
         if (configuredHeight >= 720) return Quality.HD;
@@ -216,7 +281,6 @@ public final class CameraXUtils {
     private static int getSuggestedResolution(boolean isPreview) {
         int perfClass = SharedConfig.getDevicePerformanceClass();
         if (perfClass == SharedConfig.PERFORMANCE_CLASS_LOW) return 720;
-        
         return 1080;
     }
 
@@ -272,7 +336,6 @@ public final class CameraXUtils {
                 backCount++;
 
                 String cameraId = c2.getCameraId();
-                
                 if (cameraId == null || cameraId.equals(defaultBackId)) continue;
 
                 int[] capabilities = c2.getCameraCharacteristic(
@@ -287,7 +350,6 @@ public final class CameraXUtils {
                         }
                     }
                 }
-                
                 if (logicalMultiCamera) continue;
 
                 float intrinsicRatio = safeIntrinsicZoomRatio(info);
@@ -440,7 +502,6 @@ public final class CameraXUtils {
             if (logicalBack != null && physicalId != null) {
                 String logicalId = Camera2CameraInfo.from(logicalBack).getCameraId();
                 CameraSelector logicalSelector = buildCameraIdSelector(logicalId, false);
-                
                 return CameraSelector.Builder.fromSelector(logicalSelector)
                         .setPhysicalCameraId(physicalId)
                         .build();
@@ -490,7 +551,6 @@ public final class CameraXUtils {
     @SuppressLint("UnsafeOptInUsageError")
     static CameraSelector buildCameraIdSelector(String cameraId, boolean frontFacing) {
         return new CameraSelector.Builder()
-                
                 .requireLensFacing(frontFacing
                         ? CameraSelector.LENS_FACING_FRONT
                         : CameraSelector.LENS_FACING_BACK)
@@ -596,10 +656,8 @@ public final class CameraXUtils {
                                 Camera2CameraInfo.from(first).getCameraId();
                         String secondId =
                                 Camera2CameraInfo.from(second).getCameraId();
-                        
                         CameraSelector firstSelector = first.getCameraSelector();
                         CameraSelector secondSelector = second.getCameraSelector();
-                        
                         int score = 0;
                         if (preferredFirstId != null
                                 && preferredFirstId.equals(firstId)) score += 4;
@@ -608,7 +666,6 @@ public final class CameraXUtils {
                         if (preferUltraWide) {
                             CameraInfo backInfo = firstFront ? second : first;
                             String backId = firstFront ? secondId : firstId;
-                            
                             if (preferredUltraWideId != null
                                     && preferredUltraWideId.equals(backId)) {
                                 score += 12;
@@ -666,10 +723,8 @@ public final class CameraXUtils {
                             != frontFacing) {
                         continue;
                     }
-                    
                     CameraSelector selector = buildCameraIdSelector(
                             cameraId, frontFacing);
-                    
                     CameraInfo resolved = provider.getCameraInfo(selector);
                     if (resolved != null && cameraId.equals(
                             Camera2CameraInfo.from(resolved).getCameraId())) {
@@ -859,7 +914,6 @@ public final class CameraXUtils {
                     sorted.sort(Comparator
                             .comparingDouble((Size size) ->
                                     Math.abs(normalizedRatio(size) - preferredRatio))
-                            
                             .thenComparingInt(size -> {
                                 long area = (long) size.getWidth() * size.getHeight();
                                 return preferCaptureRate
@@ -984,7 +1038,6 @@ public final class CameraXUtils {
                     }
                 }
             }
-            
             return null;
         } catch (Throwable ignored) {
             return null;
@@ -1074,7 +1127,6 @@ public final class CameraXUtils {
                     useOis ? CaptureRequest.LENS_OPTICAL_STABILIZATION_MODE_ON
                             : CaptureRequest.LENS_OPTICAL_STABILIZATION_MODE_OFF);
         }
-        
         if ((useOis || !NimarkoConfig.cameraStabilisation)
                 && containsMode(capabilities.videoStabilizationModes,
                         CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE_OFF)) {
@@ -1144,7 +1196,6 @@ public final class CameraXUtils {
             case NimarkoConfig.CameraXFpsRange25to30: return new Range<>(25, 30);
             case NimarkoConfig.CameraXFpsRange30to30: return new Range<>(30, 30);
             case NimarkoConfig.CameraXFpsRange30to60: return new Range<>(30, 60);
-            
             case NimarkoConfig.CameraXFpsRange60to60: return new Range<>(30, 60);
             case NimarkoConfig.CameraXFpsRangeDefault:
             default:                                  return null;
@@ -1226,7 +1277,6 @@ public final class CameraXUtils {
                 }
             }
         } catch (Throwable ignored) {
-            
         }
         return null;
     }
@@ -1264,7 +1314,7 @@ public final class CameraXUtils {
         if (ctx == null || !isCameraXSupported()) return;
         try {
             final ListenableFuture<ProcessCameraProvider> f = getProviderFuture(ctx);
-            f.addListener(() -> {   }, ContextCompat.getMainExecutor(ctx));
+            f.addListener(() -> {  }, ContextCompat.getMainExecutor(ctx));
         } catch (Throwable ignored) {}
     }
 }

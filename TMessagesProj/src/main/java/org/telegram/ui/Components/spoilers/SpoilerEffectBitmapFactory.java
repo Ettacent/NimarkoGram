@@ -88,13 +88,14 @@ public class SpoilerEffectBitmapFactory {
             shaderPaint.setShader(bitmapBuffers[0].shader);
             nextUpdateFrameTimeNanos = 0;
         } else if (isDrawnWithClipRegion && !LiteMode.isEnabled(LiteMode.FLAG_CHAT_SPOILER)) {
-            
+
             currentBitmapBuffer = 0;
             doDraw(new Canvas(bitmapBuffers[0].bitmap), new Rect(0, 0, size, size));
             shaderPaint.setShader(bitmapBuffers[0].shader);
             nextUpdateFrameTimeNanos = 0;
             isDrawnWithClipRegion = false;
         }
+
 
         return shaderPaint;
     }
@@ -146,7 +147,6 @@ public class SpoilerEffectBitmapFactory {
     private final Choreographer.FrameCallback postFrameCallback = frameTimeNanos -> {
         invalidated = false;
         checkUpdateImpl(frameTimeNanos);
-        
         scheduleFrameCallbackIfNeeded();
     };
 
@@ -170,6 +170,7 @@ public class SpoilerEffectBitmapFactory {
         final Rect updateRegion = new Rect(clipRegion);
         clipRegion.setEmpty();
         final int nextBitmapBuffer = (currentBitmapBuffer + 1) % 2;
+
         dispatchQueue.postRunnable(() -> {
             try {
                 if (bitmapBuffers[nextBitmapBuffer] == null) {
@@ -190,9 +191,7 @@ public class SpoilerEffectBitmapFactory {
                     backgroundCanvas.restoreToCount(save);
                 }
 
-                final String copyMode = copyBitmap(backgroundBitmap,
-                        bitmapBuffers[nextBitmapBuffer].bitmap);
-                if (copyMode == null) {
+                if (!copyBitmap(backgroundBitmap, bitmapBuffers[nextBitmapBuffer].bitmap)) {
                     failUpdate(updateRegion);
                     return;
                 }
@@ -233,26 +232,24 @@ public class SpoilerEffectBitmapFactory {
         });
     }
 
-    private String copyBitmap(Bitmap source, Bitmap destination) {
+    private boolean copyBitmap(Bitmap source, Bitmap destination) {
         if (source == null || source.isRecycled()
                 || destination == null || destination.isRecycled()) {
-            return null;
+            return false;
         }
         try {
             if (Utilities.copyBitmaps(source, destination)) {
-                return "native";
+                return true;
             }
-        } catch (LinkageError linkageError) {
-        } catch (RuntimeException error) {
-        }
+        } catch (LinkageError | RuntimeException ignored) {}
 
         try {
             Canvas canvas = new Canvas(destination);
             destination.eraseColor(Color.TRANSPARENT);
             canvas.drawBitmap(source, 0, 0, null);
-            return "canvas";
-        } catch (RuntimeException error) {
-            return null;
+            return true;
+        } catch (RuntimeException ignored) {
+            return false;
         }
     }
 

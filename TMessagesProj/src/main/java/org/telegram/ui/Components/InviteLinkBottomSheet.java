@@ -355,9 +355,7 @@ public class InviteLinkBottomSheet extends BottomSheet {
                             final TLRPC.TL_chatInviteImporter finalImporter = importer;
                             MessagesController.getInstance(currentAccount).getChannelParticipant(chat, user, participant -> AndroidUtilities.runOnUIThread(() -> {
                                 progressDialog.dismissUnless(400);
-
                                     showSubscriptionSheet(context, currentAccount, -chatId, invite.subscription_pricing, finalImporter, participant, resourcesProvider);
-
                             }));
                         } else {
                             showSubscriptionSheet(context, currentAccount, -chatId, invite.subscription_pricing, importer, part, resourcesProvider);
@@ -429,6 +427,7 @@ public class InviteLinkBottomSheet extends BottomSheet {
         listView.setGlowColor(Theme.getColor(Theme.key_dialogScrollGlow));
         shadow.setBackgroundColor(Theme.getColor(Theme.key_dialogShadowLine));
         setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundGray));
+
 
         int count = listView.getHiddenChildCount();
 
@@ -518,7 +517,6 @@ public class InviteLinkBottomSheet extends BottomSheet {
         if (invite.subscription_pricing != null) {
             revenueHeaderRow = rowCount++;
             revenueRow = rowCount++;
-            
             divider3Row = rowCount++;
         }
         creatorHeaderRow = rowCount++;
@@ -528,30 +526,24 @@ public class InviteLinkBottomSheet extends BottomSheet {
         boolean needLoadUsers = invite.usage > joinedUsers.size() || invite.subscription_expired > expiredUsers.size() || invite.request_needed && invite.requested > requestedUsers.size();
         boolean usersLoaded = false;
         if (!joinedUsers.isEmpty()) {
-
             joinedHeaderRow = rowCount++;
             joinedStartRow = rowCount;
             rowCount += joinedUsers.size();
             joinedEndRow = rowCount;
-
             usersLoaded = true;
         }
         if (!expiredUsers.isEmpty()) {
-
             expiredHeaderRow = rowCount++;
             expiredStartRow = rowCount;
             rowCount += expiredUsers.size();
             expiredEndRow = rowCount;
-
             usersLoaded = true;
         }
         if (!requestedUsers.isEmpty()) {
-
             requestedHeaderRow = rowCount++;
             requestedStartRow = rowCount;
             rowCount += requestedUsers.size();
             requestedEndRow = rowCount;
-
             usersLoaded = true;
         }
         if (needUsers || needLoadUsers) {
@@ -562,7 +554,6 @@ public class InviteLinkBottomSheet extends BottomSheet {
             }
         }
         if (emptyHintRow == -1) {
-
         }
 
         adapter.notifyDataSetChanged();
@@ -751,7 +742,6 @@ public class InviteLinkBottomSheet extends BottomSheet {
                     view = new RevenueCell(context);
                     break;
                 case 10:
-                    
                     view = new HeaderCell(context, resourcesProvider);
                     break;
             }
@@ -926,7 +916,6 @@ public class InviteLinkBottomSheet extends BottomSheet {
                         }
                     } else {
                         privacyCell.setText(null);
-                        
                         privacyCell.setFixedSize(12);
                     }
                     break;
@@ -1107,7 +1096,9 @@ public class InviteLinkBottomSheet extends BottomSheet {
                     if (p >= 0)
                         adapter.onBindViewHolder(listView.getChildViewHolder(TimerPrivacyCell.this), p);
                 }
-                AndroidUtilities.runOnUIThread(this);
+                if (timer && isAttachedToWindow()) {
+                    AndroidUtilities.runOnUIThread(this, 500);
+                }
             }
         };
 

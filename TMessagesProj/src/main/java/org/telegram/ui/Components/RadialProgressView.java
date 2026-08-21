@@ -13,6 +13,7 @@ import android.graphics.Canvas;
 import android.graphics.Paint;
 import android.graphics.RectF;
 import android.graphics.drawable.Drawable;
+import android.os.SystemClock;
 import android.view.View;
 import android.view.animation.AccelerateInterpolator;
 import android.view.animation.DecelerateInterpolator;
@@ -121,11 +122,8 @@ public class RadialProgressView extends View {
     }
 
     private void updateAnimation() {
-        long newTime = System.currentTimeMillis();
-        long dt = newTime - lastUpdateTime;
-        if (dt > 17) {
-            dt = 17;
-        }
+        long newTime = SystemClock.uptimeMillis();
+        long dt = lastUpdateTime == 0 ? 16 : Math.max(0, Math.min(64, newTime - lastUpdateTime));
         lastUpdateTime = newTime;
         updateAnimation(dt);
     }
@@ -136,12 +134,12 @@ public class RadialProgressView extends View {
         radOffset -= count * 360;
 
         if (toCircle && toCircleProgress != 1f) {
-            toCircleProgress += 16 / 220f;
+            toCircleProgress += dt / 220f;
             if (toCircleProgress > 1f) {
                 toCircleProgress = 1f;
             }
         } else if (!toCircle && toCircleProgress != 0f) {
-            toCircleProgress -= 16 / 400f;
+            toCircleProgress -= dt / 400f;
             if (toCircleProgress < 0) {
                 toCircleProgress = 0f;
             }

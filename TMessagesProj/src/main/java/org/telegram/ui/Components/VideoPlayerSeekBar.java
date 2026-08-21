@@ -71,6 +71,7 @@ public class VideoPlayerSeekBar {
     private float bufferedProgress;
     private float currentRadius;
     private long lastUpdateTime;
+    private float frameTime = 16f;
     private View parentView;
 
     private int lineHeight = AndroidUtilities.dp(4);
@@ -340,13 +341,18 @@ public class VideoPlayerSeekBar {
     }
 
     public void draw(Canvas canvas, View view) {
+        final long now = SystemClock.elapsedRealtime();
+        frameTime = lastUpdateTime == 0 ? 16f : Math.max(1f, Math.min(64f, now - lastUpdateTime));
+        lastUpdateTime = now;
+
         rect.left = horizontalPadding + AndroidUtilities.lerp(thumbWidth / 2f, 0, transitionProgress);
         rect.top = AndroidUtilities.lerp((height - lineHeight) / 2f, height - AndroidUtilities.dp(3) - smallLineHeight, transitionProgress);
         rect.bottom = AndroidUtilities.lerp((height + lineHeight) / 2f, height - AndroidUtilities.dp(3), transitionProgress);
 
         float thumbX = this.thumbX;
         animatedThumbX = Math.min(animatedThumbX, thumbX);
-        animatedThumbX = AndroidUtilities.lerp(animatedThumbX, thumbX, .5f);
+        float thumbSmoothing = 1f - (float) Math.pow(.5f, frameTime / 16f);
+        animatedThumbX = AndroidUtilities.lerp(animatedThumbX, thumbX, thumbSmoothing);
         if (Math.abs(thumbX - animatedThumbX) > 0.005f) {
             parentView.invalidate();
         }
@@ -354,7 +360,7 @@ public class VideoPlayerSeekBar {
 
         float currentThumbX = thumbX;
         if (animateThumbProgress != 1f) {
-            animateThumbProgress += 16 / 220f;
+            animateThumbProgress += frameTime / 220f;
             if (animateThumbProgress >= 1f) {
                 animateThumbProgress = 1f;
             } else {
@@ -375,7 +381,7 @@ public class VideoPlayerSeekBar {
         drawProgressBar(canvas, rect, paint);
 
         if (bufferedAnimationValue != 1f) {
-            bufferedAnimationValue += 16 / 100f;
+            bufferedAnimationValue += frameTime / 100f;
             if (bufferedAnimationValue > 1) {
                 bufferedAnimationValue = 1f;
             } else {
@@ -406,19 +412,13 @@ public class VideoPlayerSeekBar {
 
         int newRad = AndroidUtilities.dp(pressed ? 8 : 6);
         if (currentRadius != newRad) {
-            long newUpdateTime = SystemClock.elapsedRealtime();
-            long dt = newUpdateTime - lastUpdateTime;
-            lastUpdateTime = newUpdateTime;
-            if (dt > 18) {
-                dt = 16;
-            }
             if (currentRadius < newRad) {
-                currentRadius += AndroidUtilities.dp(1) * (dt / 60.0f);
+                currentRadius += AndroidUtilities.dp(1) * (frameTime / 60.0f);
                 if (currentRadius > newRad) {
                     currentRadius = newRad;
                 }
             } else {
-                currentRadius -= AndroidUtilities.dp(1) * (dt / 60.0f);
+                currentRadius -= AndroidUtilities.dp(1) * (frameTime / 60.0f);
                 if (currentRadius < newRad) {
                     currentRadius = newRad;
                 }
@@ -623,17 +623,19 @@ public class VideoPlayerSeekBar {
             currentTimestamp = timestampIndex;
         }
         if (timestampChangeT < 1f) {
-            long tx = Math.min(17, Math.abs(SystemClock.elapsedRealtime() - lastTimestampUpdate));
+            long now = SystemClock.elapsedRealtime();
+            long tx = lastTimestampUpdate == 0 ? 16 : Math.min(64, Math.abs(now - lastTimestampUpdate));
             float duration = timestamps.size() > 8 ? 160f : 220f;
             timestampChangeT = Math.min(timestampChangeT + tx / duration, 1);
             parentView.invalidate();
-            lastTimestampUpdate = SystemClock.elapsedRealtime();
+            lastTimestampUpdate = now;
         }
         if (timestampsAppearing < 1f) {
-            long tx = Math.min(17, Math.abs(SystemClock.elapsedRealtime() - lastTimestampUpdate));
+            long now = SystemClock.elapsedRealtime();
+            long tx = lastTimestampsAppearingUpdate == 0 ? 16 : Math.min(64, Math.abs(now - lastTimestampsAppearingUpdate));
             timestampsAppearing = Math.min(timestampsAppearing + tx / 200f, 1);
             parentView.invalidate();
-            lastTimestampsAppearingUpdate = SystemClock.elapsedRealtime();
+            lastTimestampsAppearingUpdate = now;
         }
         float changeT = CubicBezierInterpolator.DEFAULT.getInterpolation(timestampChangeT);
 

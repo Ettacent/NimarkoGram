@@ -166,6 +166,7 @@ public class SharedAudioCell extends FrameLayout implements DownloadController.F
         int viewWidth = MeasureSpec.getSize(widthMeasureSpec);
         int maxWidth = viewWidth - dp(AndroidUtilities.leftBaseline) - dp(8 + 20);
 
+
         int dateWidth = 0;
         if (viewType == VIEW_TYPE_GLOBAL_SEARCH) {
             String str = LocaleController.stringForMessageListDate(currentMessageObject.messageOwner.date);
@@ -461,6 +462,7 @@ public class SharedAudioCell extends FrameLayout implements DownloadController.F
         }
     }
 
+
     private int getMiniIconForCurrentState() {
         if (miniButtonState < 0) {
             return MediaActionDrawable.ICON_NONE;
@@ -665,10 +667,10 @@ public class SharedAudioCell extends FrameLayout implements DownloadController.F
     @Override
     protected void dispatchDraw(Canvas canvas) {
         if (showName && showNameProgress != 1f) {
-            showNameProgress += 16 / 150f;
+            showNameProgress += AndroidUtilities.screenRefreshTime / 150f;
             invalidate();
         } else if (!showName && showNameProgress != 0) {
-            showNameProgress -= 16 / 150f;
+            showNameProgress -= AndroidUtilities.screenRefreshTime / 150f;
             invalidate();
         }
         showNameProgress = Utilities.clamp(showNameProgress, 1f, 0);
@@ -694,10 +696,10 @@ public class SharedAudioCell extends FrameLayout implements DownloadController.F
     private void drawReorder(Canvas canvas) {
         if (showReorderIcon || showReorderIconProgress != 0) {
             if (showReorderIcon && showReorderIconProgress != 1f) {
-                showReorderIconProgress += 16 /150f;
+                showReorderIconProgress += AndroidUtilities.screenRefreshTime / 150f;
                 invalidate();
             } else if (!showReorderIcon && showReorderIconProgress != 0) {
-                showReorderIconProgress -= 16 /150f;
+                showReorderIconProgress -= AndroidUtilities.screenRefreshTime / 150f;
                 invalidate();
             }
             showReorderIconProgress = Utilities.clamp(showReorderIconProgress, 1f, 0);
@@ -783,6 +785,7 @@ public class SharedAudioCell extends FrameLayout implements DownloadController.F
         }
     }
 
+
     public void showReorderIcon(boolean show, boolean animated) {
         if (showReorderIcon == show) {
             return;
@@ -857,4 +860,3 @@ public class SharedAudioCell extends FrameLayout implements DownloadController.F
         }
     }
 }
-

@@ -273,7 +273,6 @@ public class SelectAnimatedEmojiDialog extends FrameLayout implements Notificati
         private ViewTreeObserver.OnScrollChangedListener mSuperScrollListener;
         private ViewTreeObserver mViewTreeObserver;
         private static final ViewTreeObserver.OnScrollChangedListener NOP = () -> {
-             
         };
 
         static {
@@ -282,7 +281,6 @@ public class SelectAnimatedEmojiDialog extends FrameLayout implements Notificati
                 f = PopupWindow.class.getDeclaredField("mOnScrollChangedListener");
                 f.setAccessible(true);
             } catch (NoSuchFieldException e) {
-                 
             }
             superListenerField = f;
         }
@@ -504,6 +502,7 @@ public class SelectAnimatedEmojiDialog extends FrameLayout implements Notificati
         final Integer bubbleX = emojiX == null ? null : MathUtils.clamp(emojiX, AndroidUtilities.dp(26), AndroidUtilities.dp(340 - 48));
         boolean bubbleRight = bubbleX != null && bubbleX > AndroidUtilities.dp(170);
 
+
         setFocusableInTouchMode(true);
         if (type == TYPE_EMOJI_STATUS || type == TYPE_EMOJI_STATUS_TOP || type == TYPE_EMOJI_STATUS_CHANNEL || type == TYPE_EMOJI_STATUS_CHANNEL_TOP || type == TYPE_SET_DEFAULT_REACTION || type == TYPE_SET_REPLY_ICON || type == TYPE_SET_REPLY_ICON_BOTTOM) {
             topMarginDp = topPaddingDp;
@@ -672,7 +671,6 @@ public class SelectAnimatedEmojiDialog extends FrameLayout implements Notificati
                             layoutManager.scrollToPositionWithOffset(0, 0);
                             return true;
                         }
-
                     }
                     int position = 0;
                     int f = 1 + (isGiftsVisible() ? 1 : 0);
@@ -704,7 +702,6 @@ public class SelectAnimatedEmojiDialog extends FrameLayout implements Notificati
             if (emojiTabs.recentTab != null) {
                 emojiTabs.recentTab.setOnLongClickListener(e -> {
                     onRecentLongClick();
-                    
                     if (!app.nimarkogram.messenger.NimarkoConfig.disableVibration) {
                         try {
                             performHapticFeedback(HapticFeedbackConstants.LONG_PRESS, HapticFeedbackConstants.FLAG_IGNORE_VIEW_SETTING);
@@ -964,7 +961,6 @@ public class SelectAnimatedEmojiDialog extends FrameLayout implements Notificati
                 if (type == TYPE_TAGS || type == TYPE_STICKER_SET_EMOJI || !isLongPressEnabled) return false;
                 if (view instanceof ImageViewEmoji && (type == TYPE_REACTIONS || type == TYPE_EXPANDABLE_REACTIONS)) {
                     incrementHintUse();
-                    
                     if (!app.nimarkogram.messenger.NimarkoConfig.disableVibration) {
                         try {
                             performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
@@ -1079,7 +1075,6 @@ public class SelectAnimatedEmojiDialog extends FrameLayout implements Notificati
                     onEmojiClick(viewEmoji, viewEmoji.span);
                 }
                 if (type != TYPE_REACTIONS && type != TYPE_TAGS && !app.nimarkogram.messenger.NimarkoConfig.disableVibration) {
-                    
                     try {
                         performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP, HapticFeedbackConstants.FLAG_IGNORE_VIEW_SETTING);
                     } catch (Exception ignore) {}
@@ -1087,7 +1082,6 @@ public class SelectAnimatedEmojiDialog extends FrameLayout implements Notificati
             } else if (view instanceof ImageView) {
                 onEmojiClick(view, null);
                 if (type != TYPE_REACTIONS && type != TYPE_TAGS && !app.nimarkogram.messenger.NimarkoConfig.disableVibration) {
-                    
                     try {
                         performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP, HapticFeedbackConstants.FLAG_IGNORE_VIEW_SETTING);
                     } catch (Exception ignore) {}
@@ -1096,7 +1090,6 @@ public class SelectAnimatedEmojiDialog extends FrameLayout implements Notificati
                 EmojiPackExpand button = (EmojiPackExpand) view;
                 expand(position, button);
                 if (type != TYPE_REACTIONS && type != TYPE_TAGS && !app.nimarkogram.messenger.NimarkoConfig.disableVibration) {
-                    
                     try {
                         performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP, HapticFeedbackConstants.FLAG_IGNORE_VIEW_SETTING);
                     } catch (Exception ignore) {}
@@ -1691,6 +1684,7 @@ public class SelectAnimatedEmojiDialog extends FrameLayout implements Notificati
     public void search(String query) {
         search(query, true, true);
     }
+
 
     public boolean paused = false;
     public boolean pausedExceptSelected = false;
@@ -2443,7 +2437,7 @@ public class SelectAnimatedEmojiDialog extends FrameLayout implements Notificati
             }
 
             this.notifyDataSetChanged();
-            
+
             switchSearchEmptyView(searched && count == 0);
         }
     }
@@ -3461,7 +3455,6 @@ public class SelectAnimatedEmojiDialog extends FrameLayout implements Notificati
             this.document = document;
             createImageReceiver(parent);
             Drawable thumb = null;
-
             if (thumb == null) {
                 thumb = DocumentObject.getSvgThumb(document, Theme.key_windowBackgroundWhiteGrayIcon, 0.2f);
             }
@@ -4196,7 +4189,6 @@ public class SelectAnimatedEmojiDialog extends FrameLayout implements Notificati
             fromCount = recentExpanded ? recent.size() : Math.min(maxlen - (includeEmpty ? 1 : 0) - 2, recent.size());
             toCount = recent.size();
             recentExpanded = true;
-
         } else {
             return;
         }
@@ -4291,7 +4283,6 @@ public class SelectAnimatedEmojiDialog extends FrameLayout implements Notificati
 
         @Override
         public boolean drawChild(Canvas canvas, View child, long drawingTime) {
-
             return super.drawChild(canvas, child, drawingTime);
         }
 
@@ -4554,11 +4545,10 @@ public class SelectAnimatedEmojiDialog extends FrameLayout implements Notificati
                 }
             }
 
+
             @Override
             public void drawBitmap(Canvas canvas, Bitmap bitmap, Paint paint) {
-
                 canvas.drawBitmap(bitmap, 0, 0, paint);
-
             }
 
             @Override
@@ -4688,7 +4678,6 @@ public class SelectAnimatedEmojiDialog extends FrameLayout implements Notificati
                             imageView.drawable.setBounds(imageView.drawableBounds);
                             imageView.drawable.draw(canvas);
                         } else if (imageView.imageReceiverToDraw != null) {
-
                             imageView.imageReceiverToDraw.draw(canvas, imageView.backgroundThreadDrawHolder[threadIndex]);
                         }
                     }
@@ -4767,7 +4756,6 @@ public class SelectAnimatedEmojiDialog extends FrameLayout implements Notificati
                         if (scale != 1 || skewAlpha < 1) {
                             canvas.save();
                             if (imageView.selectedProgress > 1 && type != TYPE_TOPIC_ICON && type != TYPE_AVATAR_CONSTRUCTOR && type != TYPE_CHAT_REACTIONS) {
-                                
                                 final float s = AndroidUtilities.lerp(1f, 0.85f, imageView.selectedProgress);
                                 canvas.scale(s, s, AndroidUtilities.rectTmp2.centerX(), AndroidUtilities.rectTmp2.centerY());
                             }
@@ -4970,7 +4958,6 @@ public class SelectAnimatedEmojiDialog extends FrameLayout implements Notificati
         if (listStateId != null) {
             Parcelable state = listStates.get(listStateId);
             if (state != null) {
-
             }
         }
         this.dismiss = dismiss;
@@ -5416,7 +5403,6 @@ public class SelectAnimatedEmojiDialog extends FrameLayout implements Notificati
 
         if (bubble2View != null) {
             float bubble2t = MathUtils.clamp((t * showDuration - 30) / 120 / durationScale, 0, 1);
-
             bubble2View.setAlpha(bubble2t);
             bubble2View.setScaleX(bubble2t);
             bubble2View.setScaleY(bubble2t * (isBottom() ? -1 : 1));
@@ -5677,7 +5663,7 @@ public class SelectAnimatedEmojiDialog extends FrameLayout implements Notificati
         bigReactionImageReceiver.setParentView(view);
         if (selectedReactionView != null) {
             if (pressedProgress != 1f && !cancelPressed && isLongPressEnabled) {
-                pressedProgress += 16f / 1500f;
+                pressedProgress += AndroidUtilities.screenRefreshTime / 1500f;
                 if (pressedProgress >= 1f) {
                     pressedProgress = 1f;
                     if (bigReactionListener != null) {
@@ -5915,6 +5901,7 @@ public class SelectAnimatedEmojiDialog extends FrameLayout implements Notificati
             menuView = new ActionBarPopupWindow.ActionBarPopupWindowLayout(context, R.drawable.popup_fixed_alert2, resourcesProvider);
             linearLayoutView.addView(menuView, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, Gravity.CENTER, 0, 0, 0, 0));
 
+
             ActionBarMenuItem.addItem(true, false, menuView, 0, LocaleController.getString(R.string.SetEmojiStatusUntil1Hour), false, resourcesProvider)
                     .setOnClickListener(e -> done((int) (System.currentTimeMillis() / 1000 + 60 * 60)));
             ActionBarMenuItem.addItem(false, false, menuView, 0, LocaleController.getString(R.string.SetEmojiStatusUntil2Hours), false, resourcesProvider)
@@ -6053,7 +6040,6 @@ public class SelectAnimatedEmojiDialog extends FrameLayout implements Notificati
                 }
             }, () -> {
                 if (date != null) {
-                    
                     if (!app.nimarkogram.messenger.NimarkoConfig.disableVibration) {
                         try {
                             performHapticFeedback(HapticFeedbackConstants.LONG_PRESS, HapticFeedbackConstants.FLAG_IGNORE_VIEW_SETTING);
@@ -6205,7 +6191,6 @@ public class SelectAnimatedEmojiDialog extends FrameLayout implements Notificati
                 showMenuAnimator.cancel();
             }
             showingMenu = show;
-
             showMenuAnimator = ValueAnimator.ofFloat(showMenuT, show ? 1f : 0);
             showMenuAnimator.addUpdateListener(anm -> {
                 showMenuT = (float) anm.getAnimatedValue();

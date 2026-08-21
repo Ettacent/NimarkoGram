@@ -901,7 +901,7 @@ public class RecyclerListView extends RecyclerView implements IBlur3Capture {
                     }
 
                     if (replaceLayoutProgress != 1f) {
-                        replaceLayoutProgress += 16f / 150f;
+                        replaceLayoutProgress += AndroidUtilities.screenRefreshTime / 150f;
                         if (replaceLayoutProgress > 1f) {
                             replaceLayoutProgress = 1f;
                         } else {
@@ -971,6 +971,7 @@ public class RecyclerListView extends RecyclerView implements IBlur3Capture {
                     }
                 }
             }
+
 
             if (floatingDateVisible && floatingDateProgress != 1f) {
                 floatingDateProgress += dt / 120.0f;
@@ -1052,6 +1053,7 @@ public class RecyclerListView extends RecyclerView implements IBlur3Capture {
         public float getProgress() {
             return progress;
         }
+
 
         public void applyBlurDrawables(
                 BlurredBackgroundDrawableViewFactory factory,
@@ -1181,7 +1183,6 @@ public class RecyclerListView extends RecyclerView implements IBlur3Capture {
                     View child = currentChildView;
                     if (onItemLongClickListener != null) {
                         if (onItemLongClickListener.onItemClick(currentChildView, currentChildPosition)) {
-                            
                             if (!app.nimarkogram.messenger.NimarkoConfig.disableVibration) {
                                 try {
                                     child.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
@@ -1191,7 +1192,6 @@ public class RecyclerListView extends RecyclerView implements IBlur3Capture {
                         }
                     } else {
                         if (onItemLongClickListenerExtended.onItemClick(currentChildView, currentChildPosition, event.getX() - currentChildView.getX(), event.getY() - currentChildView.getY())) {
-                            
                             if (!app.nimarkogram.messenger.NimarkoConfig.disableVibration) {
                                 try {
                                     child.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
@@ -1244,7 +1244,7 @@ public class RecyclerListView extends RecyclerView implements IBlur3Capture {
                         final View child = viewGroup.getChildAt(i);
                         if (x >= child.getLeft() && x <= child.getRight() && y >= child.getTop() && y <= child.getBottom()) {
                             if (child.isClickable()) {
-                                
+
                                 currentChildView = null;
                                 break;
                             }
@@ -1318,7 +1318,6 @@ public class RecyclerListView extends RecyclerView implements IBlur3Capture {
                     removeSelection(pressedChild, event);
 
                 }
-                
                 if ((action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_POINTER_UP || action == MotionEvent.ACTION_CANCEL) && longPressCalled) {
                     finishLongPressGesture();
                 }
@@ -1431,7 +1430,6 @@ public class RecyclerListView extends RecyclerView implements IBlur3Capture {
         if (!longPressCalled) {
             return;
         }
-        
         longPressCalled = false;
         if (onItemLongClickListenerExtended != null) {
             onItemLongClickListenerExtended.onLongClickRelease();
@@ -1478,7 +1476,6 @@ public class RecyclerListView extends RecyclerView implements IBlur3Capture {
                 return (int[]) f.get(null);
             }
         } catch (Throwable t) {
-            
         }
         return null;
     }
@@ -1929,6 +1926,7 @@ public class RecyclerListView extends RecyclerView implements IBlur3Capture {
                         int firstVisibleItem = linearLayoutManager.findFirstVisibleItemPosition();
                         int lastVisibleItem = linearLayoutManager.findLastVisibleItemPosition();
                         int visibleItemCount = Math.abs(lastVisibleItem - firstVisibleItem) + 1;
+
 
                         if (firstVisibleItem == NO_POSITION) {
                             return;
@@ -2778,7 +2776,6 @@ public class RecyclerListView extends RecyclerView implements IBlur3Capture {
     @Override
     protected void onDetachedFromWindow() {
         super.onDetachedFromWindow();
-        
         longPressCalled = false;
         selectorPosition = NO_POSITION;
         selectorView = null;
@@ -2933,6 +2930,7 @@ public class RecyclerListView extends RecyclerView implements IBlur3Capture {
         this.useRelativePositions = useRelativePositions;
     }
 
+
     @Override
     public boolean onTouchEvent(MotionEvent e) {
         if (fastScroll != null && fastScroll.pressed) {
@@ -3046,34 +3044,52 @@ public class RecyclerListView extends RecyclerView implements IBlur3Capture {
 
     private void cancelMultiselectScroll() {
         multiselectScrollRunning = false;
-        AndroidUtilities.cancelRunOnUIThread(scroller);
+        multiselectScrollLastFrameTime = 0;
+        multiselectScrollRemainder = 0;
+        removeCallbacks(scroller);
     }
 
+    private long multiselectScrollLastFrameTime;
+    private float multiselectScrollRemainder;
     Runnable scroller = new Runnable() {
         @Override
         public void run() {
-            int dy;
+            if (!multiselectScrollRunning) {
+                return;
+            }
+            long now = SystemClock.uptimeMillis();
+            long frameTime = Math.min(32, Math.max(1, now - multiselectScrollLastFrameTime));
+            multiselectScrollLastFrameTime = now;
+            multiselectScrollRemainder += AndroidUtilities.dp(12f) * frameTime / 16f * (multiselectScrollToTop ? -1 : 1);
+            int dy = (int) multiselectScrollRemainder;
+            multiselectScrollRemainder -= dy;
             multiSelectionListener.getPaddings(listPaddings);
             if (multiselectScrollToTop) {
-                dy = -AndroidUtilities.dp(12f);
                 chekMultiselect(0, listPaddings[0]);
             } else {
-                dy = AndroidUtilities.dp(12f);
                 chekMultiselect(0, getMeasuredHeight() - listPaddings[1]);
             }
-            multiSelectionListener.scrollBy(dy);
+            if (dy != 0) {
+                multiSelectionListener.scrollBy(dy);
+            }
             if (multiselectScrollRunning) {
-                AndroidUtilities.runOnUIThread(scroller);
+                postOnAnimation(scroller);
             }
         }
     };
 
     private void startMultiselectScroll(boolean top) {
+        if (multiselectScrollRunning && multiselectScrollToTop != top) {
+            multiselectScrollLastFrameTime = SystemClock.uptimeMillis();
+            multiselectScrollRemainder = 0;
+        }
         multiselectScrollToTop = top;
         if (!multiselectScrollRunning) {
             multiselectScrollRunning = true;
-            AndroidUtilities.cancelRunOnUIThread(scroller);
-            AndroidUtilities.runOnUIThread(scroller);
+            multiselectScrollLastFrameTime = SystemClock.uptimeMillis();
+            multiselectScrollRemainder = 0;
+            removeCallbacks(scroller);
+            postOnAnimation(scroller);
         }
     }
 
@@ -3120,6 +3136,8 @@ public class RecyclerListView extends RecyclerView implements IBlur3Capture {
         this.drawSelection = drawSelection;
     }
 
+
+
     private final @NonNull EdgeEffectTrackerFactory edgeEffectTrackerFactory;
 
     public boolean hasActiveEdgeEffects() {
@@ -3137,6 +3155,8 @@ public class RecyclerListView extends RecyclerView implements IBlur3Capture {
     public void removeEdgeEffectListener(EdgeEffectTrackerFactory.OnEdgeEffectListener listener) {
         edgeEffectTrackerFactory.removeEdgeEffectListener(listener);
     }
+
+
 
     private Matrix selfTransformationsMatrix;
 
@@ -3164,7 +3184,6 @@ public class RecyclerListView extends RecyclerView implements IBlur3Capture {
             canvas.restore();
 
             if (BuildConfig.DEBUG_PRIVATE_VERSION) {
-            
             }
         } else {
             for (int a = 0, N = getItemDecorationCount(); a < N; a++) {
@@ -3195,6 +3214,8 @@ public class RecyclerListView extends RecyclerView implements IBlur3Capture {
             }
         }
     }
+
+
 
     @Override
     public void captureCalculateHash(IBlur3Hash builder, RectF position) {
@@ -3355,13 +3376,11 @@ public class RecyclerListView extends RecyclerView implements IBlur3Capture {
             removeItemDecoration(sectionsItemDecoration);
         }
         addItemDecoration(sectionsItemDecoration = new ListSectionsDecoration(this, isSectionView, padding, topPadding));
-
     }
 
     @Override
     public void setItemAnimator(@Nullable ItemAnimator animator) {
         super.setItemAnimator(animator);
-
     }
 
     public static class ListSectionsDecoration extends RecyclerView.ItemDecoration implements IBlur3Capture {
@@ -3591,7 +3610,6 @@ public class RecyclerListView extends RecyclerView implements IBlur3Capture {
         } else {
             sectionBackgroundPaint.setShadowLayer(0, 0, 0, 0);
         }
-        
         sectionBackgroundPaint.setColor(Theme.getColor(Theme.key_windowBackgroundWhite, resourcesProvider));
         if (topRadius == bottomRadius) {
             if (SharedConfig.shadowsInSections) {

@@ -22,7 +22,6 @@ public abstract class NimarkoUniversalPreferencesActivity extends UniversalFragm
     @Override
     public View createView(Context context) {
         View view = super.createView(context);
-        
         ViewCompat.setOnApplyWindowInsetsListener(view, this::onInsetsInternal);
         ViewCompat.requestApplyInsets(view);
         return view;

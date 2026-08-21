@@ -15,6 +15,7 @@ import time
 import zlib
 from urllib.parse import quote, unquote, urlsplit
 
+
 _INSTALL_LOCK = threading.Lock()
 _INSTALLED = False
 _MAX_BINARY_SIZE = 64 * 1024 * 1024
@@ -29,10 +30,10 @@ _HEAD_CACHE_BYTES = 0
 _RAW_PATH = re.compile(
     r"^/api/repos/([^/]+)/([^/]+)/raw/branch/([^/]+)/(.+)$")
 
+
 def _gitverse_contents_url(url):
     try:
         string_url = str(url)
-        
         if not string_url.startswith("https://gitverse.ru/api/repos/"):
             return None
         parsed = urlsplit(string_url)
@@ -54,6 +55,7 @@ def _gitverse_contents_url(url):
     except Exception:
         return None
 
+
 def _validate_git_blob(data, expected_sha):
     if not expected_sha:
         return
@@ -61,6 +63,7 @@ def _validate_git_blob(data, expected_sha):
         b"blob " + str(len(data)).encode("ascii") + b"\0" + data).hexdigest()
     if digest.lower() != str(expected_sha).lower():
         raise ValueError("Git blob SHA-1 mismatch")
+
 
 def _validate_dex(data):
     if len(data) < 112 or data[:4] != b"dex\n" or data[7] != 0:
@@ -78,6 +81,7 @@ def _validate_dex(data):
     if (zlib.adler32(data[12:]) & 0xFFFFFFFF) != struct.unpack_from("<I", data, 8)[0]:
         raise ValueError("DEX checksum mismatch")
 
+
 def _validate_binary(path, data):
     lowered = path.lower()
     if lowered.endswith(".dex"):
@@ -87,6 +91,7 @@ def _validate_binary(path, data):
             raise ValueError("invalid ZIP-based binary")
     elif lowered.endswith(".so") and not data.startswith(b"\x7fELF"):
         raise ValueError("invalid ELF binary")
+
 
 def _cache_head_binary(key, data, metadata):
     global _HEAD_CACHE_BYTES
@@ -102,6 +107,7 @@ def _cache_head_binary(key, data, metadata):
             _, evicted = _HEAD_CACHE.popitem(last=False)
             _HEAD_CACHE_BYTES -= len(evicted[1])
 
+
 def _pop_head_binary(key):
     global _HEAD_CACHE_BYTES
     with _HEAD_CACHE_LOCK:
@@ -111,6 +117,7 @@ def _pop_head_binary(key):
         _HEAD_CACHE_BYTES -= len(cached[1])
     expires_at, data, metadata = cached
     return (data, metadata) if expires_at >= time.monotonic() else None
+
 
 def _install_jclass_compat():
     """Fallback direct Python jclass imports to the current package name."""
@@ -141,8 +148,8 @@ def _install_jclass_compat():
         jclass_with_compat.__nimarko_original_jclass__ = original
         java.jclass = jclass_with_compat
     except Exception:
-        
         return
+
 
 def install():
     """Install the compatibility layer once for the shared interpreter."""
@@ -211,7 +218,6 @@ def install():
                 api_response._content = (
                     b"" if normalized_method == "HEAD" else data)
                 api_response._content_consumed = True
-                
                 api_response.raw = io.BytesIO(api_response._content)
                 api_response.encoding = None
                 api_response.url = str(url)
@@ -221,7 +227,6 @@ def install():
                     api_response.headers["ETag"] = '"{}"'.format(payload["sha"])
                 return api_response
             except Exception:
-                
                 return original(session, method, url, *args, **kwargs)
 
         request_with_binary_compat.__nimarko_gitverse_binary_compat__ = True

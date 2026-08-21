@@ -1,5 +1,6 @@
 package org.telegram.ui.Components;
 
+import android.os.SystemClock;
 import android.view.MotionEvent;
 import android.view.View;
 
@@ -24,6 +25,8 @@ public class RecyclerViewItemRangeSelector implements RecyclerView.OnItemTouchLi
 
     private int autoScrollVelocity;
     private boolean isAutoScrolling;
+    private long autoScrollLastFrameTime;
+    private float autoScrollRemainder;
 
     private int hotspotHeight = AndroidUtilities.dp(80);
     private int hotspotOffsetTop;
@@ -47,15 +50,34 @@ public class RecyclerViewItemRangeSelector implements RecyclerView.OnItemTouchLi
             if (recyclerView == null) {
                 return;
             }
+            long now = SystemClock.uptimeMillis();
+            long frameTime = autoScrollLastFrameTime == 0 ? 16 : Math.max(1, Math.min(32, now - autoScrollLastFrameTime));
+            autoScrollLastFrameTime = now;
+            float distance = autoScrollVelocity * frameTime / 16f + autoScrollRemainder;
+            int frameDistance = (int) distance;
+            autoScrollRemainder = distance - frameDistance;
             if (inTopHotspot) {
-                recyclerView.scrollBy(0, -autoScrollVelocity);
-                AndroidUtilities.runOnUIThread(this);
+                if (frameDistance != 0) {
+                    recyclerView.scrollBy(0, -frameDistance);
+                }
+                recyclerView.postOnAnimation(this);
             } else if (inBottomHotspot) {
-                recyclerView.scrollBy(0, autoScrollVelocity);
-                AndroidUtilities.runOnUIThread(this);
+                if (frameDistance != 0) {
+                    recyclerView.scrollBy(0, frameDistance);
+                }
+                recyclerView.postOnAnimation(this);
             }
         }
     };
+
+    private void cancelAutoScroll() {
+        AndroidUtilities.cancelRunOnUIThread(autoScrollRunnable);
+        if (recyclerView != null) {
+            recyclerView.removeCallbacks(autoScrollRunnable);
+        }
+        autoScrollLastFrameTime = 0;
+        autoScrollRemainder = 0;
+    }
 
     public RecyclerViewItemRangeSelector(RecyclerViewItemRangeSelectorDelegate recyclerViewItemRangeSelectorDelegate) {
         delegate = recyclerViewItemRangeSelectorDelegate;
@@ -110,7 +132,9 @@ public class RecyclerViewItemRangeSelector implements RecyclerView.OnItemTouchLi
                         inBottomHotspot = false;
                         if (!inTopHotspot) {
                             inTopHotspot = true;
-                            AndroidUtilities.cancelRunOnUIThread(autoScrollRunnable);
+                            autoScrollLastFrameTime = 0;
+                            autoScrollRemainder = 0;
+                            cancelAutoScroll();
                             AndroidUtilities.runOnUIThread(autoScrollRunnable);
                         }
                         float simulatedFactor = (hotspotTopBoundEnd - hotspotTopBoundStart);
@@ -120,14 +144,16 @@ public class RecyclerViewItemRangeSelector implements RecyclerView.OnItemTouchLi
                         inTopHotspot = false;
                         if (!inBottomHotspot) {
                             inBottomHotspot = true;
-                            AndroidUtilities.cancelRunOnUIThread(autoScrollRunnable);
+                            autoScrollLastFrameTime = 0;
+                            autoScrollRemainder = 0;
+                            cancelAutoScroll();
                             AndroidUtilities.runOnUIThread(autoScrollRunnable);
                         }
                         float simulatedY = y + hotspotBottomBoundEnd;
                         float simulatedFactor = (hotspotBottomBoundStart + hotspotBottomBoundEnd);
                         autoScrollVelocity = (int) (simulatedY - simulatedFactor) / 2;
                     } else if (inTopHotspot || inBottomHotspot) {
-                        AndroidUtilities.cancelRunOnUIThread(autoScrollRunnable);
+                        cancelAutoScroll();
                         inTopHotspot = false;
                         inBottomHotspot = false;
                     }
@@ -157,7 +183,7 @@ public class RecyclerViewItemRangeSelector implements RecyclerView.OnItemTouchLi
         }
 
         lastDraggedIndex = -1;
-        AndroidUtilities.cancelRunOnUIThread(autoScrollRunnable);
+        cancelAutoScroll();
         inTopHotspot = false;
         inBottomHotspot = false;
 
@@ -184,7 +210,7 @@ public class RecyclerViewItemRangeSelector implements RecyclerView.OnItemTouchLi
         dragSelectActive = false;
         inTopHotspot = false;
         inBottomHotspot = false;
-        AndroidUtilities.cancelRunOnUIThread(autoScrollRunnable);
+        cancelAutoScroll();
         delegate.onStartStopSelection(false);
     }
 }

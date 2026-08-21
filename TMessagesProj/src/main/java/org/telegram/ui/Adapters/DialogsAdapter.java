@@ -95,7 +95,6 @@ public class DialogsAdapter extends RecyclerListView.SelectionAdapter implements
             VIEW_TYPE_USER = 6,
             VIEW_TYPE_HEADER = 7,
             VIEW_TYPE_SHADOW = 8,
-    
             VIEW_TYPE_LAST_EMPTY = 10,
             VIEW_TYPE_NEW_CHAT_HINT = 11,
             VIEW_TYPE_TEXT = 12,
@@ -243,11 +242,8 @@ public class DialogsAdapter extends RecyclerListView.SelectionAdapter implements
     }
 
     public int fixScrollGap(RecyclerListView animationSupportListView, int p, int offset, boolean hasHiddenArchive, boolean hasStories, boolean hasTabs, boolean oppened) {
-
         int cellHeight = AndroidUtilities.dp(SharedConfig.useThreeLinesLayout ? 76 : 70);
-
         int top = offset + animationSupportListView.getPaddingTop() - p * cellHeight - p;
-
         if (hasHiddenArchive) {
             top += cellHeight;
         }
@@ -255,7 +251,6 @@ public class DialogsAdapter extends RecyclerListView.SelectionAdapter implements
         if (top > paddingTop) {
             return offset + paddingTop - top;
         }
-
         return offset;
     }
 
@@ -298,6 +293,7 @@ public class DialogsAdapter extends RecyclerListView.SelectionAdapter implements
             }
             title = string;
         }
+
 
         public ItemInternal(int viewType, TLRPC.User user) {
             super(viewType, false);
@@ -413,7 +409,7 @@ public class DialogsAdapter extends RecyclerListView.SelectionAdapter implements
                 return dialog != null && itemInternal.dialog != null && dialog.id == itemInternal.dialog.id && dialog.isFolder == itemInternal.dialog.isFolder;
             }
             if (viewType == VIEW_TYPE_ME_URL) {
-                return recentMeUrl != null && itemInternal.recentMeUrl != null && recentMeUrl.url != null && recentMeUrl.url.equals(recentMeUrl.url);
+                return recentMeUrl != null && itemInternal.recentMeUrl != null && recentMeUrl.url != null && recentMeUrl.url.equals(itemInternal.recentMeUrl.url);
             }
             if (viewType == VIEW_TYPE_USER) {
                 return contact != null && itemInternal.contact != null && contact.user_id == itemInternal.contact.user_id;
@@ -530,7 +526,6 @@ public class DialogsAdapter extends RecyclerListView.SelectionAdapter implements
 
     boolean isCalculatingDiff;
     boolean updateListPending;
-    
     private final static boolean ALLOW_UPDATE_IN_BACKGROUND = true;
 
     public void updateList(Runnable saveScrollPosition) {
@@ -606,6 +601,7 @@ public class DialogsAdapter extends RecyclerListView.SelectionAdapter implements
         updateItemList();
         super.notifyDataSetChanged();
     }
+
 
     @Override
     public void onViewAttachedToWindow(RecyclerView.ViewHolder holder) {
@@ -1192,10 +1188,14 @@ public class DialogsAdapter extends RecyclerListView.SelectionAdapter implements
 
     public void moveDialogs(RecyclerListView recyclerView, int fromPosition, int toPosition) {
         ArrayList<TLRPC.Dialog> dialogs = parentFragment.getDialogsArray(currentAccount, dialogsType, folderId, false);
-        int fromIndex = fixPosition(fromPosition);
-        int toIndex = fixPosition(toPosition);
-        TLRPC.Dialog fromDialog = dialogs.get(fromIndex);
-        TLRPC.Dialog toDialog = dialogs.get(toIndex);
+        Object fromItem = getItem(fromPosition);
+        Object toItem = getItem(toPosition);
+        if (!(fromItem instanceof TLRPC.Dialog) || !(toItem instanceof TLRPC.Dialog)) return;
+        TLRPC.Dialog fromDialog = (TLRPC.Dialog) fromItem;
+        TLRPC.Dialog toDialog = (TLRPC.Dialog) toItem;
+        int fromIndex = dialogs.indexOf(fromDialog);
+        int toIndex = dialogs.indexOf(toDialog);
+        if (fromIndex < 0 || toIndex < 0) return;
         if (dialogsType == 7 || dialogsType == 8) {
             MessagesController.DialogFilter filter = getCurrentFilter();
             if (filter == null) {
@@ -1388,7 +1388,6 @@ public class DialogsAdapter extends RecyclerListView.SelectionAdapter implements
 
         private boolean preloadIsAvilable() {
             return false;
-            
         }
 
         public void updateList() {
@@ -1510,7 +1509,7 @@ public class DialogsAdapter extends RecyclerListView.SelectionAdapter implements
                     height = height - dialogsHeight + archiveHeight - paddingBottom;
                     if (paddingTop != 0) {
                         height -= AndroidUtilities.statusBarHeight;
-                        if (  !collapsedView && !isTransitionSupport) {
+                        if ( !collapsedView && !isTransitionSupport) {
                             height -= ActionBar.getCurrentActionBarHeight();
                             if (getParent() instanceof DialogsActivity.DialogsRecyclerView) {
                                 DialogsActivity.DialogsRecyclerView dialogsRecyclerView = (DialogsActivity.DialogsRecyclerView) getParent();
@@ -1524,7 +1523,7 @@ public class DialogsAdapter extends RecyclerListView.SelectionAdapter implements
                     height = archiveHeight - (dialogsHeight - height) - paddingBottom;
                     if (paddingTop != 0) {
                         height -= AndroidUtilities.statusBarHeight;
-                        if (  !collapsedView && !isTransitionSupport) {
+                        if ( !collapsedView && !isTransitionSupport) {
                             height -= ActionBar.getCurrentActionBarHeight();
                             if (getParent() instanceof DialogsActivity.DialogsRecyclerView) {
                                 DialogsActivity.DialogsRecyclerView dialogsRecyclerView = (DialogsActivity.DialogsRecyclerView) getParent();
@@ -1548,6 +1547,7 @@ public class DialogsAdapter extends RecyclerListView.SelectionAdapter implements
         }
     }
 
+
     private void updateItemListForCommunity() {
         itemInternals.clear();
         updateHasHints();
@@ -1557,6 +1557,7 @@ public class DialogsAdapter extends RecyclerListView.SelectionAdapter implements
 
         dialogsCount = communityPeersDialog.getDialogsCount();
         isEmpty = false;
+
 
         final int N = dialogsType == DialogsActivity.DIALOGS_TYPE_FORWARD ? 2 : 4;
         for (int b = 0; b < N; b++) {
@@ -1592,6 +1593,27 @@ public class DialogsAdapter extends RecyclerListView.SelectionAdapter implements
         }
     }
 
+    private ArrayList<TLRPC.Dialog> getVisibleDialogs(ArrayList<TLRPC.Dialog> source) {
+        if (source == null || source.isEmpty()
+                || folderId != 0
+                || dialogsType != DialogsActivity.DIALOGS_TYPE_DEFAULT
+                || isOnlySelect
+                || !app.nimarkogram.messenger.NimarkoConfig.hideArchiveFromChatsList) {
+            return source;
+        }
+        for (int i = 0; i < source.size(); i++) {
+            TLRPC.Dialog dialog = source.get(i);
+            if (dialog instanceof TLRPC.TL_dialogFolder
+                    && ((TLRPC.TL_dialogFolder) dialog).folder != null
+                    && ((TLRPC.TL_dialogFolder) dialog).folder.id == 1) {
+                ArrayList<TLRPC.Dialog> visible = new ArrayList<>(source);
+                visible.remove(i);
+                return visible;
+            }
+        }
+        return source;
+    }
+
     private void updateItemList() {
         if (communityId != 0) {
             updateItemListForCommunity();
@@ -1612,6 +1634,7 @@ public class DialogsAdapter extends RecyclerListView.SelectionAdapter implements
                 array = new ArrayList<>();
             }
         }
+        array = getVisibleDialogs(array);
 
         dialogsCount = array.size();
         isEmpty = false;

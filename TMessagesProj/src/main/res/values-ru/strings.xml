@@ -410,13 +410,16 @@
     <string name="CP_Header_Record">Медиа</string>
 
     <!-- Приватность (доп.) -->
-    <string name="NM_PR_AllowSystemPasscode">Использовать системный PIN/Граф. ключ</string>
-    <string name="NM_PR_AllowSystemPasscode_Desc">Кнопка \"Отмена\" в диалоге проверки отпечатка пальцев будет заменена на \"PIN/Граф. ключ\" и вы сможете разблокировать NimarkoGram при помощи системного PIN/Графического ключа.</string>
-    <string name="NM_PR_AskBioOpenArchive">Биометрия для архива</string>
-    <string name="NM_PR_AskBioOpenEncrypted">Биометрия для секретных чатов</string>
+    <string name="NM_PR_AllowSystemPasscode">Использовать блокировку устройства</string>
+    <string name="NM_PR_AllowSystemPasscode_Desc">Разрешает подтверждение отпечатком, лицом, PIN-кодом, графическим ключом или паролем устройства. Это системный код устройства — NimarkoGram не создаёт отдельный пароль.</string>
+    <string name="NM_PR_AskBioOpenArchive">Защищать архив</string>
+    <string name="NM_PR_AskBioOpenArchive_Desc">Запрашивать подтверждение устройства перед открытием архива.</string>
+    <string name="NM_PR_AskBioOpenEncrypted">Защищать секретные чаты</string>
+    <string name="NM_PR_AskBioOpenEncrypted_Desc">Запрашивать подтверждение устройства перед открытием секретного чата.</string>
     <string name="NM_PR_AskPasscodeBeforeDelete">Пароль перед удалением</string>
     <string name="NM_PR_HideArchiveList">Скрыть архив из списка чатов</string>
-    <string name="NM_PR_HideArchiveList_Desc">Архив будет замаскирован под канал NimarkoGram. \nВы сможете открыть архив из бокового меню или долгим нажатием на кнопку поиска.</string>
+    <string name="NM_PR_HideArchiveList_Desc">Убирает строку архива из основного списка чатов. Открыть архив можно здесь или долгим нажатием на кнопку поиска.</string>
+    <string name="NM_PR_OpenArchive">Открыть архив</string>
     <string name="NM_PR_HideArchivedStories">Скрыть архивированные истории</string>
     <string name="NM_PR_HideArchivedStories_Desc">Скрывает раздел архивированных историй в профиле.</string>
 
@@ -494,13 +497,16 @@
     <string name="NM_GE_ArchiveStories_Desc">Автоматически перемещать истории в архив.</string>
 
     <string name="NM_PR_DeleteAccount">Удаление аккаунта</string>
-    <string name="NM_PR_TestFingerprint">Протестировать отпечаток</string>
-    <string name="NM_PR_TestFingerprint_Desc">Если аутентификация по отпечатку пальца уже включена, но вы не видите соответствующие функции, попробуйте нажать кнопку \"Протестировать отпечаток\", чтобы решить проблему.</string>
-    <string name="NM_PR_AskBioOpenChats">Запрос биометрии для открытия чатов</string>
+    <string name="NM_PR_TestFingerprint">Проверить аутентификацию</string>
+    <string name="NM_PR_TestFingerprint_Desc">Проверяет доступность биометрии или блокировки устройства и обновляет их состояние.</string>
+    <string name="NM_PR_AskBioOpenChats">Защищать выбранные чаты</string>
     <string name="NM_PR_AuthenticationRequired">Для изменения этой защищённой настройки требуется аутентификация</string>
-    <string name="NM_PR_AskBioOpenChats_Desc">Для доступа к выбранным типам чатов потребуется системный пароль (отпечаток, скан лица, PIN или граф. ключ).</string>
+    <string name="NM_PR_AuthenticationUnavailable">Аутентификация недоступна</string>
+    <string name="NM_PR_AuthenticationUnavailable_Desc">На устройстве недоступны биометрия и блокировка экрана. Отключить эту настройку защиты?</string>
+    <string name="NM_PR_AskBioOpenChats_Desc">Запрашивать подтверждение устройства перед открытием выбранных ниже чатов.</string>
     <string name="NM_PR_AskBioOpenChats_Title">Выберите чаты</string>
     <string name="NM_PR_Header_Privacy">Приватность</string>
+    <string name="NM_PR_Header_ChatProtection">Защита чатов</string>
     <string name="NM_PR_HideProxy">Не показывать спонсора прокси</string>
     <string name="NM_PR_WindowBlurOnBackground">Размытие в недавних</string>
     <string name="NM_PR_BiometricFixed">Биометрия восстановлена</string>
@@ -560,7 +566,6 @@
     <string name="NM_DBG_OldTimeStyle">Стандартный стиль времени в чатах</string>
     <string name="NM_DBG_AudioSource">Источник звука микрофона</string>
     <string name="NM_DBG_JacksonJSONProvider">Использовать Jackson JSON</string>
-    <string name="NM_DBG_PlayGIFsAsVideos">Воспроизводить GIF как видео</string>
     <string name="NM_DBG_HideVideoTimestamp">Скрыть метку времени видео</string>
     <string name="NM_DBG_ReplacePunctuation">Заменять знаки пунктуации</string>
     <string name="NM_DBG_EditTextFix">Исправление подсказок EditText</string>
@@ -1029,8 +1034,8 @@
     <string name="EP_NavigationAnimationSpring">Пружинная</string>
     <string name="EP_DownloadSpeedBoostExtreme">Экстра</string>
     <!-- Privacy -->
-    <string name="NM_PR_RequireBiometricsToDelete">Запрос биометрии для удаления чатов</string>
-    <string name="NM_PR_RequireBiometricsToDelete_Desc">Если вы хотите удалить чат или очистить историю, потребуется биометрическое подтверждение. Пароль и биометрическое подтверждение в системе должны быть включены.</string>
+    <string name="NM_PR_RequireBiometricsToDelete">Подтверждать удаление чатов</string>
+    <string name="NM_PR_RequireBiometricsToDelete_Desc">Запрашивать подтверждение устройства перед удалением чата или очисткой его истории.</string>
     <!-- Messages -->
     <string name="CP_MessageMenu">Меню сообщения</string>
     <string name="CP_Messages_Size">Размер пузыря сообщений</string>

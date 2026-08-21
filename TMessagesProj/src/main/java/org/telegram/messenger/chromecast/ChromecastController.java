@@ -8,7 +8,6 @@ import androidx.annotation.NonNull;
 import com.google.android.gms.cast.CastDevice;
 import com.google.android.gms.cast.MediaError;
 import com.google.android.gms.cast.MediaLoadOptions;
-import com.google.android.gms.cast.MediaMetadata;
 import com.google.android.gms.cast.MediaStatus;
 import com.google.android.gms.cast.framework.CastContext;
 import com.google.android.gms.cast.framework.CastSession;
@@ -16,7 +15,7 @@ import com.google.android.gms.cast.framework.SessionManager;
 import com.google.android.gms.cast.framework.SessionManagerListener;
 import com.google.android.gms.cast.framework.media.RemoteMediaClient;
 
-import org.telegram.messenger.ApplicationLoader;
+import org.telegram.messenger.FileLog;
 import org.telegram.ui.CastSync;
 import org.telegram.ui.PhotoViewer;
 
@@ -30,25 +29,70 @@ public class ChromecastController implements SessionManagerListener<CastSession>
     private final static String CAST_STATE = "CAST_STATE";
 
     private final ChromecastControllerState state;
-    private final SessionManager sessionManager;
+    private final Object initializationLock = new Object();
+    private volatile SessionManager sessionManager;
+    private boolean initializationRequested;
 
     private ChromecastController() {
-        CastContext castContext = CastContext.getSharedInstance(ApplicationLoader.applicationContext);
-        castContext.addCastStateListener(i -> Log.d(CAST_STATE, "onCastStateChanged " + i));  // ???
-
         state = new ChromecastControllerState();
+        ensureInitialized();
+    }
 
-        sessionManager = castContext.getSessionManager();
-        sessionManager.addSessionManagerListener(this, CastSession.class);
+    private void ensureInitialized() {
+        synchronized (initializationLock) {
+            if (sessionManager != null || initializationRequested) {
+                return;
+            }
+            initializationRequested = true;
+        }
 
-        tryInitClient(sessionManager.getCurrentCastSession());
+        CastSync.withContext(castContext -> {
+            synchronized (initializationLock) {
+                if (sessionManager != null) {
+                    initializationRequested = false;
+                    return;
+                }
+            }
+            if (castContext == null) {
+                synchronized (initializationLock) {
+                    initializationRequested = false;
+                }
+                return;
+            }
+
+            SessionManager manager;
+            try {
+                manager = castContext.getSessionManager();
+                manager.addSessionManagerListener(this, CastSession.class);
+                sessionManager = manager;
+            } catch (Throwable error) {
+                synchronized (initializationLock) {
+                    initializationRequested = false;
+                }
+                FileLog.e(error);
+                return;
+            }
+
+            try {
+                castContext.addCastStateListener(i -> Log.d(CAST_STATE, "onCastStateChanged " + i));
+                tryInitClient(manager.getCurrentCastSession());
+            } catch (Throwable error) {
+                FileLog.e(error);
+            } finally {
+                synchronized (initializationLock) {
+                    initializationRequested = false;
+                }
+            }
+        });
     }
 
     public boolean isCasting() {
+        ensureInitialized();
         return state.getClient() != null;
     }
 
     public void setCurrentMediaAndCastIfNeeded(ChromecastMediaVariations newMedia) {
+        ensureInitialized();
         Log.d(CAST_CONTROLLER, "set current media");
         ChromecastMediaVariations currentMedia = state.getMedia();
         if (CastSync.isActive() && eq(currentMedia, newMedia)) {
@@ -59,10 +103,12 @@ public class ChromecastController implements SessionManagerListener<CastSession>
     }
 
     public String setCover(File file) {
+        ensureInitialized();
         return state.setCoverFile(file);
     }
 
     public boolean isPlaying(ChromecastMediaVariations media) {
+        ensureInitialized();
         return CastSync.isActive() && eq(state.getMedia(), media);
     }
 
@@ -91,7 +137,8 @@ public class ChromecastController implements SessionManagerListener<CastSession>
     }
 
     private void tryInitClient(CastSession castSession) {
-        if (castSession == null) {
+        SessionManager manager = sessionManager;
+        if (castSession == null || manager == null) {
             return;
         }
 
@@ -107,7 +154,7 @@ public class ChromecastController implements SessionManagerListener<CastSession>
             return;
         }
 
-        state.setClient(new RemoteMediaClientHandler(castSession, sessionManager, client));
+        state.setClient(new RemoteMediaClientHandler(castSession, manager, client));
 
         final CastDevice device = castSession.getCastDevice();
         final String deviceName = device != null ? device.getFriendlyName() : null;
@@ -294,6 +341,7 @@ public class ChromecastController implements SessionManagerListener<CastSession>
     @Override
     public void onSessionResumed(@NonNull CastSession castSession, boolean b) {
         Log.d(CAST_SESSION_TAG, "onSessionResumed " + castSession.getSessionId() + " " + b);
+        tryInitClient(castSession);
     }
 
     @Override

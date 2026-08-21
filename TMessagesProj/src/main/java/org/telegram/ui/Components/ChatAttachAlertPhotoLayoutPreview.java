@@ -1321,12 +1321,22 @@ public class ChatAttachAlertPhotoLayoutPreview extends ChatAttachAlert.AttachAle
         }
 
         private boolean scrollerStarted = false;
+        private long scrollerLastFrameTime;
+        private float scrollerRemainder;
+        private int scrollerDirection;
         private final Runnable scroller = new Runnable() {
             @Override
             public void run() {
                 if (draggingCell == null || draggingCellHiding) {
+                    scrollerLastFrameTime = 0;
+                    scrollerRemainder = 0;
+                    scrollerDirection = 0;
                     return;
                 }
+
+                long now = SystemClock.uptimeMillis();
+                float frameScale = scrollerLastFrameTime == 0 ? 1f : Math.max(0.25f, Math.min(2f, (now - scrollerLastFrameTime) / 16f));
+                scrollerLastFrameTime = now;
 
                 int scrollY = listView.computeVerticalScrollOffset();
 
@@ -1338,19 +1348,31 @@ public class ChatAttachAlertPhotoLayoutPreview extends ChatAttachAlert.AttachAle
                 final float r = AndroidUtilities.dp(32);
                 float dy = 0;
                 if (top < r && scrollY > getListTopPadding()) {
-                    dy = -(1f - top / r) * (float) AndroidUtilities.dp(6);
+                    dy = -(1f - top / r) * AndroidUtilities.dp(6) * frameScale;
                 } else if (bottom < r) {
-                    dy = (1f - bottom / r) * (float) AndroidUtilities.dp(6);
+                    dy = (1f - bottom / r) * AndroidUtilities.dp(6) * frameScale;
                 }
 
-                if (Math.abs((int) dy) > 0 && listView.canScrollVertically((int) dy) && !(dy > 0 && atBottom)) {
-                    draggingCellTouchY += dy;
-                    listView.scrollBy(0, (int) dy);
-                    invalidate();
+                int direction = Float.compare(dy, 0);
+                if (direction != scrollerDirection) {
+                    scrollerRemainder = 0;
+                    scrollerDirection = direction;
+                }
+                if (direction == 0 || (dy > 0 && atBottom) || !listView.canScrollVertically(direction)) {
+                    scrollerRemainder = 0;
+                } else {
+                    float distance = dy + scrollerRemainder;
+                    int scrollDy = (int) distance;
+                    scrollerRemainder = distance - scrollDy;
+                    if (scrollDy != 0) {
+                        draggingCellTouchY += scrollDy;
+                        listView.scrollBy(0, scrollDy);
+                        invalidate();
+                    }
                 }
 
                 scrollerStarted = true;
-                postDelayed(this, 15);
+                postOnAnimation(this);
             }
         };
         /*
@@ -1705,7 +1727,8 @@ public class ChatAttachAlertPhotoLayoutPreview extends ChatAttachAlert.AttachAle
 
                 if (!scrollerStarted) {
                     scrollerStarted = true;
-                    postDelayed(scroller, 16);
+                    scrollerLastFrameTime = 0;
+                    postOnAnimation(scroller);
                 }
 
                 invalidate();
@@ -1855,6 +1878,9 @@ public class ChatAttachAlertPhotoLayoutPreview extends ChatAttachAlert.AttachAle
                 tapTime = 0;
                 removeCallbacks(scroller);
                 scrollerStarted = false;
+                scrollerLastFrameTime = 0;
+                scrollerRemainder = 0;
+                scrollerDirection = 0;
                 if (!result) {
                     stopDragging();
                     result = true;

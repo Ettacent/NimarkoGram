@@ -17,6 +17,7 @@ import android.widget.FrameLayout;
 import androidx.annotation.NonNull;
 import androidx.recyclerview.widget.RecyclerView;
 
+
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.ChatObject;
 import org.telegram.messenger.LocaleController;
@@ -239,7 +240,6 @@ public class UniversalAdapter extends AdapterWithDiffUtils {
         }
         boolean fromItemHadDivider = hasDivider(fromPosition);
         boolean toItemHadDivider = hasDivider(toPosition);
-        
         UItem fromItem = items.remove(fromPosition);
         items.add(toPosition, fromItem);
         notifyItemMoved(fromPosition, toPosition);
@@ -397,7 +397,6 @@ public class UniversalAdapter extends AdapterWithDiffUtils {
                 } else {
                     view = new HeaderCell(context, resourcesProvider);
                 }
-                
                 view.setTag(RecyclerListView.TAG_NOT_SECTION);
                 break;
             case VIEW_TYPE_ANIMATED_HEADER:
@@ -692,7 +691,6 @@ public class UniversalAdapter extends AdapterWithDiffUtils {
                         cell.setTextAndValueAndIcon(item.text, item.textValue, item.iconResId, divider);
                     }
                 }
-                
                 if (item.colorfulIcon && item.iconResId != 0) {
                     cell.setColorfulIcon(item.iconColorTop, item.iconColorBottom, item.iconResId);
                 }
@@ -741,12 +739,10 @@ public class UniversalAdapter extends AdapterWithDiffUtils {
             }
             case VIEW_TYPE_TEXT_CHECK:
                 NotificationsCheckCell checkCell1 = (NotificationsCheckCell) holder.itemView;
-                
                 final boolean multiline = true;
                 checkCell1.setTextAndValueAndCheck(item.text, item.subtext, item.checked, 0, multiline, divider);
                 break;
             case VIEW_TYPE_ICON_TEXT_CHECK:
-                
                 ((NotificationsCheckCell) holder.itemView).setTextAndValueAndCheck(item.text, item.subtext, item.checked, divider);
                 break;
             case VIEW_TYPE_SHADOW_COLLAPSE_BUTTON:
@@ -985,7 +981,6 @@ public class UniversalAdapter extends AdapterWithDiffUtils {
                     title = chat.title;
                 } else if (object instanceof TLRPC.User) {
                     TLRPC.User user = (TLRPC.User) object;
-                    
                     title = UserObject.getUserName(user);
                 }
                 profileCell.allowBotOpenButton(item.locked, item.object2 instanceof Utilities.Callback ? (Utilities.Callback) item.object2 : null);
@@ -1034,7 +1029,6 @@ public class UniversalAdapter extends AdapterWithDiffUtils {
             case VIEW_TYPE_SWITCH:
             case VIEW_TYPE_EXPANDABLE_SWITCH:
                 TextCheckCell2 switchCell = (TextCheckCell2) holder.itemView;
-                
                 switchCell.getCheckBox().setColors(item.red ? Theme.key_fill_RedNormal : Theme.key_switchTrack,
                     Theme.key_switchTrackChecked, Theme.key_windowBackgroundWhite, Theme.key_windowBackgroundWhite);
                 switchCell.getCheckBox().setDrawIconType(item.intValue);
@@ -1211,6 +1205,7 @@ public class UniversalAdapter extends AdapterWithDiffUtils {
     protected int getThemedColor(int key) {
         return Theme.getColor(key, resourcesProvider);
     }
+
 
     private static class FullscreenCustomFrameLayout extends FrameLayout {
         private int minusHeight = 0;

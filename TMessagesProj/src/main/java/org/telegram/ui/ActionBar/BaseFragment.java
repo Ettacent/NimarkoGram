@@ -93,7 +93,6 @@ public abstract class BaseFragment {
     private PreviewDelegate previewDelegate;
     protected Theme.ResourcesProvider resourceProvider;
     private boolean isFullyVisible;
-
     public ArrayList<AttachedSheet> sheetsStack;
 
     public static interface AttachedSheet {
@@ -124,7 +123,11 @@ public abstract class BaseFragment {
         }
     }
 
-    public static interface AttachedSheetWindow {}
+    public static interface AttachedSheetWindow {
+        default boolean drawBehindNavigationBar() {
+            return false;
+        }
+    }
 
     @Nullable
     public StoryViewer getLastStoryViewer() {
@@ -289,7 +292,6 @@ public abstract class BaseFragment {
     }
 
     public boolean isActionBarCrossfadeEnabled() {
-        
         if (app.nimarkogram.messenger.NimarkoConfig.isSpringAnimationEnabled()
                 && app.nimarkogram.messenger.NimarkoConfig.actionbarCrossfade) {
             if (getLastStoryViewer() != null && getLastStoryViewer().attachedToParent()) {
@@ -377,7 +379,6 @@ public abstract class BaseFragment {
     public void setParentFragment(BaseFragment fragment) {
         setParentLayout(fragment.parentLayout);
         fragmentView = createView(parentLayout.getView().getContext());
-        
         if (fragmentView != null && app.nimarkogram.messenger.NimarkoConfig.disableVibration) {
             app.nimarkogram.messenger.utils.VibrateUtils.disableHapticFeedback(fragmentView);
         }
@@ -1144,7 +1145,6 @@ public abstract class BaseFragment {
             if (activity != null) {
                 Window window = activity.getWindow();
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && window != null && window.getNavigationBarColor() != color) {
-                    
                 }
             }
         }
@@ -1339,6 +1339,7 @@ public abstract class BaseFragment {
         return storyViewer;
     }
 
+
     public void setTitleOverlayTextIfActionBarAttached(String title, int titleId, Runnable action) {
         if (actionBar != null && actionBar.shouldAddToContainer()) {
             setTitleOverlayText(title, titleId, action);
@@ -1347,7 +1348,6 @@ public abstract class BaseFragment {
 
     public void setTitleOverlayText(String title, int titleId, Runnable action) {
         if (actionBar != null) {
-            
             actionBar.setTitleOverlayText(title, titleId, true, action);
         }
     }
@@ -1446,7 +1446,6 @@ public abstract class BaseFragment {
 
     @Deprecated
     public boolean isSupportEdgeToEdge() {
-        
         return false;
     }
 
@@ -1469,6 +1468,7 @@ public abstract class BaseFragment {
 
     }
 
+
     private Bulletin.Delegate bulletinDelegate;
 
     public void setBulletinDelegate(Bulletin.Delegate bulletinDelegate) {
@@ -1478,6 +1478,7 @@ public abstract class BaseFragment {
     public Bulletin.Delegate getBulletinDelegate() {
         return bulletinDelegate;
     }
+
 
     protected void dumpCanvas() {
         AndroidUtilities.dumpCanvas(fragmentView);

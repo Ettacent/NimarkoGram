@@ -180,7 +180,7 @@ public class SwipeGestureSettingsView extends FrameLayout {
         boolean changeFolder = picker.getValue() == SWIPE_GESTURE_FOLDERS;
 
         if (changeFolder && progressToSwipeFolders != 1f) {
-            progressToSwipeFolders += 16 / 300f;
+            progressToSwipeFolders += AndroidUtilities.screenRefreshTime / 300f;
             if (progressToSwipeFolders > 1f) {
                 progressToSwipeFolders = 1f;
             } else {
@@ -189,7 +189,7 @@ public class SwipeGestureSettingsView extends FrameLayout {
                 invalidate();
             }
         } else if (!changeFolder && progressToSwipeFolders != 0) {
-            progressToSwipeFolders -= 16 / 300f;
+            progressToSwipeFolders -= AndroidUtilities.screenRefreshTime / 300f;
             if (progressToSwipeFolders < 0f) {
                 progressToSwipeFolders = 0f;
             } else {
@@ -223,7 +223,7 @@ public class SwipeGestureSettingsView extends FrameLayout {
         }
 
         if (colorProgress != 1f) {
-            colorProgress += 16 / 100f;
+            colorProgress += AndroidUtilities.screenRefreshTime / 100f;
             if (colorProgress > 1f) {
                 colorProgress = 1f;
             } else {

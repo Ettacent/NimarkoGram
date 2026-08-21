@@ -18,6 +18,7 @@ import android.graphics.PorterDuffXfermode;
 import android.graphics.RectF;
 import android.graphics.drawable.Drawable;
 import android.os.Build;
+import android.os.SystemClock;
 import android.view.Gravity;
 import android.view.MotionEvent;
 import android.view.TextureView;
@@ -68,6 +69,8 @@ public class PinchToZoomHelper {
     private float[] spoilerRadii = new float[8];
 
     private boolean inOverlayMode;
+    private boolean overlayRemovalPending;
+    private boolean ignoreTouchSequence;
 
     float parentOffsetX;
     float parentOffsetY;
@@ -107,6 +110,8 @@ public class PinchToZoomHelper {
     float pinchScale;
 
     private float enterProgress;
+    private long lastOverlayFrameTime;
+    private float overlayFrameDelta = 16f;
     private float[] clipTopBottom = new float[2];
 
     private boolean isHardwareVideo;
@@ -124,7 +129,6 @@ public class PinchToZoomHelper {
     }
 
     public void startZoom(View child, ImageReceiver image, View textureViewContainer, View textureView, MessageObject messageObject, int spoilerEffect2AttachIndex) {
-        cancelFinishTransition();
         this.child = child;
         this.messageObject = messageObject;
 
@@ -152,6 +156,7 @@ public class PinchToZoomHelper {
         progressToFullView = 0f;
 
         if (!isSimple) {
+            overlayView.setVisibility(View.VISIBLE);
             parentView.addView(overlayView);
 
             hasMediaSpoiler = messageObject != null && messageObject.hasMediaSpoilers() && !messageObject.isMediaSpoilersRevealed;
@@ -197,6 +202,7 @@ public class PinchToZoomHelper {
                 fullImageWidth = imageWidth;
             }
 
+
             if (messageObject != null && messageObject.isVideo() && MediaController.getInstance().isPlayingMessage(messageObject)) {
                 isHardwareVideo = true;
                 MediaController.getInstance().setTextureView(overlayView.videoTextureView, overlayView.aspectRatioFrameLayout, overlayView.videoPlayerContainer, true);
@@ -211,8 +217,9 @@ public class PinchToZoomHelper {
                 overlayView.videoTextureView.setScaleX(1f);
                 overlayView.videoTextureView.setScaleY(1f);
 
-                if (callback != null) {
-                    overlayView.backupImageView.setImageBitmap(callback.getCurrentTextureView().getBitmap((int) fullImageWidth, (int) fullImageHeight));
+                Bitmap currentFrame = captureCurrentVideoFrame(image);
+                if (currentFrame != null) {
+                    overlayView.backupImageView.setImageBitmap(currentFrame);
                     overlayView.backupImageView.setSize((int) fullImageWidth, (int) fullImageHeight);
                     overlayView.backupImageView.getImageReceiver().setRoundRadius(image.getRoundRadius(true));
                 }
@@ -244,6 +251,7 @@ public class PinchToZoomHelper {
             callback.onZoomStarted(messageObject);
         }
         enterProgress = 0f;
+        lastOverlayFrameTime = SystemClock.uptimeMillis();
     }
 
     private void setFullImage(MessageObject messageObject) {
@@ -365,14 +373,24 @@ public class PinchToZoomHelper {
     }
 
     public boolean prepareForNewTouchSequence(MotionEvent event) {
-        if (event == null || event.getActionMasked() != MotionEvent.ACTION_DOWN) {
+        if (event == null) {
             return false;
         }
-        if (!inOverlayMode && !isInPinchToZoomTouchMode && finishTransition == null) {
-            return false;
+        int action = event.getActionMasked();
+        if (action == MotionEvent.ACTION_DOWN) {
+            ignoreTouchSequence = false;
+            if (finishTransition != null || overlayRemovalPending || inOverlayMode) {
+                ignoreTouchSequence = true;
+                if (inOverlayMode && finishTransition == null) {
+                    finishZoom();
+                }
+            }
         }
-        clear();
-        return true;
+        boolean consume = ignoreTouchSequence;
+        if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) {
+            ignoreTouchSequence = false;
+        }
+        return consume;
     }
 
     public void clear() {
@@ -388,7 +406,6 @@ public class PinchToZoomHelper {
             inOverlayMode = false;
         }
         final ZoomOverlayView overlayToRemove = overlayView;
-        overlayView = null;
         if (overlayToRemove != null) {
             overlayToRemove.backupImageView.getImageReceiver().clearImage();
             if (mediaSpoilerEffect2 != null) {
@@ -403,8 +420,15 @@ public class PinchToZoomHelper {
                 }
             }
             if (overlayToRemove.getParent() != null) {
-                 
-                AndroidUtilities.removeFromParent(overlayToRemove);
+                overlayRemovalPending = true;
+                AndroidUtilities.removeFromParent(overlayToRemove, () -> {
+                    if (overlayView == overlayToRemove) {
+                        overlayRemovalPending = false;
+                        overlayToRemove.setVisibility(View.VISIBLE);
+                    }
+                });
+            } else {
+                overlayRemovalPending = false;
             }
         }
         if (child != null) {
@@ -434,6 +458,7 @@ public class PinchToZoomHelper {
         finishProgress = 1f;
         progressToFullView = 0f;
         enterProgress = 0f;
+        lastOverlayFrameTime = 0;
         messageObject = null;
     }
 
@@ -468,7 +493,17 @@ public class PinchToZoomHelper {
         if (overlayView == null) {
             return null;
         }
-        return overlayView.videoTextureView.getBitmap(w, h);
+        Bitmap bitmap = null;
+        if (overlayView.videoTextureView.isAvailable()) {
+            bitmap = overlayView.videoTextureView.getBitmap(w, h);
+        }
+        if (bitmap == null) {
+            Bitmap backup = overlayView.backupImageView.getImageReceiver().getBitmap();
+            if (backup != null && !backup.isRecycled()) {
+                bitmap = Bitmap.createScaledBitmap(backup, w, h, true);
+            }
+        }
+        return bitmap;
     }
 
     public ImageReceiver getPhotoImage() {
@@ -478,6 +513,9 @@ public class PinchToZoomHelper {
     protected boolean zoomEnabled(View child, ImageReceiver receiver) {
         if (isSimple) {
             return true;
+        }
+        if (overlayRemovalPending || overlayView != null && overlayView.getParent() != null && !inOverlayMode) {
+            return false;
         }
         Drawable drawable = receiver.getDrawable();
         if (drawable instanceof AnimatedFileDrawable) {
@@ -489,6 +527,7 @@ public class PinchToZoomHelper {
         }
         return receiver.hasNotThumbOrOnlyStaticThumb();
     }
+
 
     private class ZoomOverlayView extends FrameLayout {
 
@@ -536,13 +575,16 @@ public class PinchToZoomHelper {
 
             addView(videoPlayerContainer, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT));
             setWillNotDraw(false);
-        
         }
+
 
         @Override
         protected void dispatchDraw(Canvas canvas) {
+            long now = SystemClock.uptimeMillis();
+            overlayFrameDelta = lastOverlayFrameTime == 0 ? 16f : Math.max(0f, Math.min(64f, now - lastOverlayFrameTime));
+            lastOverlayFrameTime = now;
             if (finishTransition == null && enterProgress != 1f) {
-                enterProgress += 16f / 220;
+                enterProgress += overlayFrameDelta / 220f;
                 if (enterProgress > 1f) {
                     enterProgress = 1f;
                 } else {
@@ -589,7 +631,7 @@ public class PinchToZoomHelper {
             canvas.translate(parentOffsetX + pinchTranslationX * finishProgress, parentOffsetY + pinchTranslationY * finishProgress);
             if (fullImage != null && fullImage.hasNotThumb()) {
                 if (progressToFullView != 1) {
-                    progressToFullView += 16f / 150f;
+                    progressToFullView += overlayFrameDelta / 150f;
                     if (progressToFullView > 1) {
                         progressToFullView = 1f;
                     } else {
@@ -789,8 +831,9 @@ public class PinchToZoomHelper {
     }
 
     public boolean checkPinchToZoom(MotionEvent ev, View child, ImageReceiver image, View textureViewContainer, View textureView, MessageObject messageObject, int spoilerEffect2Index) {
-        prepareForNewTouchSequence(ev);
-        
+        if (prepareForNewTouchSequence(ev)) {
+            return true;
+        }
         if (!zoomEnabled(child, image)) {
             return false;
         }
@@ -875,6 +918,23 @@ public class PinchToZoomHelper {
         }
         int pointerId = ev.getPointerId(actionIndex);
         return pointerId == pointerId1 || pointerId == pointerId2;
+    }
+
+    private Bitmap captureCurrentVideoFrame(ImageReceiver image) {
+        Bitmap frame = null;
+        TextureView currentTextureView = callback == null ? null : callback.getCurrentTextureView();
+        if (currentTextureView != null && currentTextureView.isAvailable()) {
+            int width = Math.max(1, (int) fullImageWidth);
+            int height = Math.max(1, (int) fullImageHeight);
+            frame = currentTextureView.getBitmap(width, height);
+        }
+        if (frame == null) {
+            Bitmap preview = image.getBitmap();
+            if (preview != null && !preview.isRecycled()) {
+                frame = preview.copy(Bitmap.Config.ARGB_8888, false);
+            }
+        }
+        return frame;
     }
 
     protected void invalidateViews() {

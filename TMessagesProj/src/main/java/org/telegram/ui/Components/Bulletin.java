@@ -760,7 +760,7 @@ public class Bulletin {
             return true;
         }
     }
-    
+
     public abstract static class Layout extends FrameLayout {
 
         private final List<Callback> callbacks = new ArrayList<>();
@@ -1036,7 +1036,7 @@ public class Bulletin {
             default void onExitTransitionEnd(@NonNull Layout layout) {
             }
         }
-        
+
         @NonNull
         public Transition createTransition() {
             return new SpringTransition();
@@ -1263,7 +1263,6 @@ public class Bulletin {
         protected int getThemedColor(int key) {
             return Theme.getColor(key, resourcesProvider);
         }
-        
     }
 
     @SuppressLint("ViewConstructor")
@@ -2182,7 +2181,7 @@ public class Bulletin {
             return textView.getText();
         }
     }
-    
+
     @SuppressLint("ViewConstructor")
     public abstract static class Button extends FrameLayout implements Layout.Callback {
 
@@ -2332,6 +2331,7 @@ public class Bulletin {
         setCanHide(true);
     }
 
+
     public static class EmptyBulletin extends Bulletin {
 
         public EmptyBulletin() {
@@ -2400,7 +2400,7 @@ public class Bulletin {
             }
 
             if (timeReplaceProgress < 1f) {
-                timeReplaceProgress += 16f / 150f;
+                timeReplaceProgress += AndroidUtilities.screenRefreshTime / 150f;
                 if (timeReplaceProgress > 1f) {
                     timeReplaceProgress = 1f;
                 } else {

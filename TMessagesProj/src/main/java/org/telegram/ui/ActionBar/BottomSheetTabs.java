@@ -77,6 +77,13 @@ public class BottomSheetTabs extends FrameLayout {
     private final ActionBarLayout actionBarLayout;
 
     private TabsAccessibilityHelper accessibilityHelper;
+    private Runnable highFrameRateLease;
+    private final Runnable releaseHighFrameRate = () -> {
+        if (highFrameRateLease != null) {
+            highFrameRateLease.run();
+            highFrameRateLease = null;
+        }
+    };
 
     public BottomSheetTabs(Context context, ActionBarLayout actionBarLayout) {
         super(context);
@@ -91,6 +98,14 @@ public class BottomSheetTabs extends FrameLayout {
         updateVisibility(false);
     }
 
+    private void prepareTabOpenAnimation() {
+        AndroidUtilities.cancelRunOnUIThread(releaseHighFrameRate);
+        if (highFrameRateLease == null) {
+            highFrameRateLease = AndroidUtilities.requestHighFrameRate(this);
+        }
+        AndroidUtilities.runOnUIThread(releaseHighFrameRate, 1200);
+    }
+
     @Override
     protected boolean dispatchHoverEvent(MotionEvent event) {
         if (drawTabs && !getTabs().isEmpty() && accessibilityHelper != null && accessibilityHelper.dispatchHoverEvent(event)) {
@@ -100,8 +115,14 @@ public class BottomSheetTabs extends FrameLayout {
     }
 
     public boolean openTab(WebTabData tab) {
+        if (tab == null) {
+            return false;
+        }
+        prepareTabOpenAnimation();
         BaseFragment lastFragment = LaunchActivity.getLastFragment();
-        if (lastFragment == null || lastFragment.getParentActivity() == null) return false;
+        if (lastFragment == null || lastFragment.getParentActivity() == null) {
+            return false;
+        }
         if (lastFragment instanceof ChatActivity) {
             if (((ChatActivity) lastFragment).getChatActivityEnterView() != null) {
                 ((ChatActivity) lastFragment).getChatActivityEnterView().closeKeyboard();
@@ -110,6 +131,9 @@ public class BottomSheetTabs extends FrameLayout {
         }
         if (tab.articleViewer != null) {
             BaseFragment fragment = actionBarLayout.getSheetFragment();
+            if (fragment == null || fragment.getParentActivity() == null) {
+                return false;
+            }
             final ArticleViewer articleViewer = tab.articleViewer;
             BottomSheetTabDialog.checkSheet(articleViewer.sheet);
             fragment.addSheet(articleViewer.sheet);
@@ -122,7 +146,9 @@ public class BottomSheetTabs extends FrameLayout {
         }
         final boolean[] opened = new boolean[1];
         Utilities.Callback<BaseFragment> open = fragment -> {
-            if (fragment == null) return;
+            if (fragment == null) {
+                return;
+            }
             if (fragment instanceof ChatActivity) {
                 if (((ChatActivity) fragment).getChatActivityEnterView() != null) {
                     ((ChatActivity) fragment).getChatActivityEnterView().closeKeyboard();
@@ -541,6 +567,9 @@ public class BottomSheetTabs extends FrameLayout {
                 if (action == MotionEvent.ACTION_DOWN || action == MotionEvent.ACTION_MOVE) {
                     closeRippleHit = drawable.closeRipple.getBounds().contains((int) (x - rect.left), (int) (y - rect.centerY()));
                     hit = !closeRippleHit && rect.contains(x, y);
+                    if (action == MotionEvent.ACTION_DOWN && hit) {
+                        prepareTabOpenAnimation();
+                    }
                     drawable.closeRipple.setState(closeRippleHit ? new int[]{android.R.attr.state_pressed, android.R.attr.state_enabled} : new int[] {});
                 } else if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) {
                     if (hit && action == MotionEvent.ACTION_UP) {
@@ -598,7 +627,6 @@ public class BottomSheetTabs extends FrameLayout {
         }
 
         backgroundPaint.setColor(backgroundColorAnimated.set(backgroundColor));
-        
         super.dispatchDraw(canvas);
 
         final int tabColor = tabColorAnimated.set(this.tabColor);
@@ -736,6 +764,7 @@ public class BottomSheetTabs extends FrameLayout {
             return false;
         }
     }
+
 
     public static class TabDrawable {
 

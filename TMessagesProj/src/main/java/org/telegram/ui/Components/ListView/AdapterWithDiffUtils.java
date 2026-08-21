@@ -21,7 +21,6 @@ public abstract class AdapterWithDiffUtils extends RecyclerListView.SelectionAda
         }
         final int oldSize = oldItems.size();
         final int newSize = newItems.size();
-        
         if (oldSize == 0) {
             if (newSize != 0) {
                 notifyItemRangeInserted(0, newSize);
@@ -33,7 +32,8 @@ public abstract class AdapterWithDiffUtils extends RecyclerListView.SelectionAda
             return;
         }
         callback.setItems(oldItems, newItems);
-        DiffUtil.calculateDiff(callback).dispatchUpdatesTo(this);
+        final DiffUtil.DiffResult diffResult = DiffUtil.calculateDiff(callback);
+        diffResult.dispatchUpdatesTo(this);
     }
 
     public static abstract class Item {

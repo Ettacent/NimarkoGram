@@ -18,9 +18,11 @@ import me.vkryl.core.reference.ReferenceList;
 
 public final class Choreographer60FpsContent implements Choreographer.FrameCallback {
 
+
     private static final int  TARGET_FPS        = 60;
 
     private static final long FRAME_INTERVAL_NS = 1_000_000_000L / TARGET_FPS;
+
 
     private static Choreographer60FpsContent sInstance;
 
@@ -31,6 +33,7 @@ public final class Choreographer60FpsContent implements Choreographer.FrameCallb
         }
         return sInstance;
     }
+
 
     private final Choreographer mChoreographer = Choreographer.getInstance();
 
@@ -48,8 +51,8 @@ public final class Choreographer60FpsContent implements Choreographer.FrameCallb
 
     private int mCounter;
 
+
     public interface FrameCallback {
-         
         void doFrame(long frameTimeNanos);
     }
 
@@ -94,6 +97,7 @@ public final class Choreographer60FpsContent implements Choreographer.FrameCallb
         }
         group.runnableCallbacksOnce.add(callback);
     }
+
 
     public void addFrameCallback(Runnable callback, int fps) {
         checkMainThread();
@@ -151,6 +155,7 @@ public final class Choreographer60FpsContent implements Choreographer.FrameCallb
         }
     }
 
+
     private Choreographer60FpsContent() {
         mChoreographer.postFrameCallback(this);
     }
@@ -173,7 +178,6 @@ public final class Choreographer60FpsContent implements Choreographer.FrameCallb
     }
 
     private void dispatchFrame(long frameTimeNanos) {
-        
         for (int i = 0; i < mGroups.size(); i++) {
             CallbackGroup group = mGroups.valueAt(i);
             final boolean fire;
@@ -231,8 +235,11 @@ public final class Choreographer60FpsContent implements Choreographer.FrameCallb
             for (int i = 0; i < mGroups.size(); i++) {
                 CallbackGroup g = mGroups.valueAt(i);
                 try {
-                    g.callbacks.hasReferences();
-                    g.runnableCallbacks.hasReferences();
+                    g.callbacks.isEmpty();
+                    g.runnableCallbacks.isEmpty();
+                    if (g.runnableCallbacksOnce != null) {
+                        g.runnableCallbacksOnce.isEmpty();
+                    }
                 } catch (Throwable ignored) {}
             }
         }
@@ -244,7 +251,6 @@ public final class Choreographer60FpsContent implements Choreographer.FrameCallb
         CallbackGroup group = mGroups.get(fps);
         if (group == null) {
             long intervalNs = 1_000_000_000L / fps;
-            
             int stride = (TARGET_FPS % fps == 0) ? TARGET_FPS / fps : 0;
             group = new CallbackGroup(intervalNs, stride);
             mGroups.put(fps, group);
@@ -252,11 +258,10 @@ public final class Choreographer60FpsContent implements Choreographer.FrameCallb
         return group;
     }
 
+
     private static final class CallbackGroup {
         final long intervalNs;
-         
         final int  stride;
-         
         long accumulatedNs;
 
         final ReferenceList<FrameCallback> callbacks = new ReferenceList<>();

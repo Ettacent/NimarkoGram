@@ -54,7 +54,6 @@ import java.util.ArrayList;
 public class TextCell extends FrameLayout {
 
     public final SimpleTextView textView;
-    
     public final SimpleTextView subtitleView;
     public final AnimatedTextView valueTextView;
     public final SimpleTextView valueSpoilersTextView;
@@ -621,7 +620,6 @@ public class TextCell extends FrameLayout {
     }
 
     public void setColorfulIcon(int colorTop, int colorBottom, int resId) {
-        
         colorTop = app.nimarkogram.messenger.utils.ui.MonetHelper.getSettingsIconBackgroundColor(colorTop);
         colorBottom = app.nimarkogram.messenger.utils.ui.MonetHelper.getSettingsIconBackgroundColor(colorBottom);
         final int foreground = app.nimarkogram.messenger.utils.ui.MonetHelper
@@ -933,15 +931,14 @@ public class TextCell extends FrameLayout {
                 paint = new Paint(Paint.ANTI_ALIAS_FLAG);
                 paint.setColor(Theme.getColor(Theme.key_dialogSearchBackground, resourcesProvider));
             }
-            
             if (incrementLoadingProgress) {
-                loadingProgress += 16 / 1000f;
+                loadingProgress += AndroidUtilities.screenRefreshTime / 1000f;
                 if (loadingProgress > 1f) {
                     loadingProgress = 1f;
                     incrementLoadingProgress = false;
                 }
             } else {
-                loadingProgress -= 16 / 1000f;
+                loadingProgress -= AndroidUtilities.screenRefreshTime / 1000f;
                 if (loadingProgress < 0) {
                     loadingProgress = 0;
                     incrementLoadingProgress = true;
@@ -951,12 +948,12 @@ public class TextCell extends FrameLayout {
             if (changeProgressStartDelay > 0) {
                 changeProgressStartDelay -= 15;
             } else if (drawLoading && drawLoadingProgress != 1f) {
-                drawLoadingProgress += 16 / 150f;
+                drawLoadingProgress += AndroidUtilities.screenRefreshTime / 150f;
                 if (drawLoadingProgress > 1f) {
                     drawLoadingProgress = 1f;
                 }
             } else if (!drawLoading && drawLoadingProgress != 0) {
-                drawLoadingProgress -= 16 / 150f;
+                drawLoadingProgress -= AndroidUtilities.screenRefreshTime / 150f;
                 if (drawLoadingProgress < 0) {
                     drawLoadingProgress = 0;
                 }

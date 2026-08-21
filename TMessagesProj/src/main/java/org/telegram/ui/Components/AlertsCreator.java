@@ -1775,7 +1775,7 @@ public class AlertsCreator {
         urlView.setMaxLines(5);
         urlView.setEllipsize(TextUtils.TruncateAt.END);
         urlView.setPadding(dp(14), dp(12), dp(14), dp(12));
-         
+
         final GradientDrawable urlBackground = new GradientDrawable();
         urlBackground.setCornerRadius(dp(22));
         urlBackground.setColor(Theme.multAlpha(Theme.getColor(Theme.key_dialogTextBlack, resourcesProvider), 0.06f));
@@ -2046,7 +2046,7 @@ public class AlertsCreator {
         }
 
         messageTextView.setText(replaceTags(message));
-         
+
         builder.setPositiveButton(LocaleController.getString(R.string.Import), (dialogInterface, i) -> {
             if (onProcessRunnable != null) {
                 onProcessRunnable.run();
@@ -3114,6 +3114,7 @@ public class AlertsCreator {
         frameLayout.addView(textView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, (LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT) | Gravity.TOP, 24, 11, 24, 0));
         frameLayout.addView(messageTextView, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, (LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT) | Gravity.TOP, 24, 48, 24, 18));
 
+
         if (days == -1) {
             textView.setText(LocaleController.formatString("ClearHistory", R.string.ClearHistory));
             if (user != null) {
@@ -3446,6 +3447,7 @@ public class AlertsCreator {
             lastNameEditTextView.setSelection(lastNameEditTextView.getText().toString().length());
         }
 
+
         builder.setView(dialogView);
         EditText finalLastNameEditTextView = lastNameEditTextView;
         AlertDialog.OnButtonClickListener onDoneListener = (dialogInterface, i) -> {
@@ -3540,6 +3542,7 @@ public class AlertsCreator {
         messageTextView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 16);
 
         messageTextView.setText(replaceTags(LocaleController.formatString("ChatWithAdminMessage", R.string.ChatWithAdminMessage, chatWithAdmin, LocaleController.formatDateAudio(chatWithAdminDate, false))));
+
 
         TextView buttonTextView = new TextView(fragment.getParentActivity());
         buttonTextView.setPadding(dp(34), 0, dp(34), 0);
@@ -5230,6 +5233,7 @@ public class AlertsCreator {
         return builder;
     }
 
+
     public interface StatusUntilDatePickerDelegate {
         void didSelectDate(int date);
     }
@@ -5237,6 +5241,7 @@ public class AlertsCreator {
     public interface FormattedDatePickerDelegate {
         void didSelectDate(int date, int flags);
     }
+
 
     private static final int FMT_DATE_MONTH_PICKER_HALF_SIZE = 12 * 10; 
 
@@ -5379,7 +5384,6 @@ public class AlertsCreator {
             protected void dispatchDraw(@NonNull Canvas canvas) {
                 super.dispatchDraw(canvas);
                 final float cy = getHeight() / 2f;
-                
                 sep2.draw(canvas, minutePicker.getX() - dp(50), cy);
             }
         };
@@ -5402,10 +5406,12 @@ public class AlertsCreator {
         hourPicker.setOnValueChangedListener(onValueChangeListener);
         minutePicker.setOnValueChangedListener(onValueChangeListener);
 
+
+
         final boolean[] canceled = {true};
 
         int[] flagArr = new int[1];
-         
+
         buttonTextView.setPadding(dp(34), 0, dp(34), 0);
         buttonTextView.setRound();
         container.addView(buttonTextView, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 48, Gravity.LEFT | Gravity.BOTTOM, 16, 15, 16, 16));
@@ -5462,6 +5468,7 @@ public class AlertsCreator {
             button.setText(formatPollCloseCustomDeadline((int)((currentTime - systemTime) / 1000)));
         }
     }
+
 
     public static BottomSheet.Builder createPollCloseDatePickerDialog(Context context, long currentDate, final ScheduleDatePickerDelegate datePickerDelegate, final Runnable cancelRunnable, final ScheduleDatePickerColors datePickerColors, Theme.ResourcesProvider resourcesProvider) {
         if (context == null) {
@@ -5670,6 +5677,7 @@ public class AlertsCreator {
 
         return builder;
     }
+
 
     public static BottomSheet.Builder createStatusUntilDatePickerDialog(Context context, long currentDate, final StatusUntilDatePickerDelegate delegate) {
         if (context == null) {
@@ -7325,6 +7333,7 @@ public class AlertsCreator {
             }
         });
 
+
         float aspectRatio = 540f / 936f;
         View background = new View(context);
         background.setBackground(new BitmapDrawable(SvgHelper.getBitmap(svg, dp(320), dp(320 * aspectRatio), false)));
@@ -7704,10 +7713,8 @@ public class AlertsCreator {
         if (activity == null) {
             return;
         }
-        
         if (!nmDeleteAlertBypassBiometric
-                && (app.nimarkogram.messenger.NimarkoConfig.askBiometricsBeforeDelete
-                    || app.nimarkogram.messenger.NimarkoConfig.askPasscodeBeforeDelete)) {
+                && app.nimarkogram.messenger.NimarkoConfig.askPasscodeBeforeDelete) {
             app.nimarkogram.messenger.utils.CGCompat.runOrAskBeforeDestructive(activity, () -> {
                 nmDeleteAlertBypassBiometric = true;
                 try {
@@ -8024,7 +8031,6 @@ public class AlertsCreator {
                     cell.setText(LocaleController.getString(R.string.DeleteMessagesOption), "", false, false);
                 }
                 cell.setPadding(LocaleController.isRTL ? dp(16) : dp(8), 0, LocaleController.isRTL ? dp(8) : dp(16), 0);
-                
                 if (app.nimarkogram.messenger.NimarkoConfig.deleteForAll) {
                     deleteForAll[0] = true;
                     cell.setChecked(true, false);
@@ -8080,7 +8086,6 @@ public class AlertsCreator {
                 FrameLayout frameLayout = new FrameLayout(activity);
                 CheckBoxCell cell = new CheckBoxCell(activity, 1, resourcesProvider);
                 cell.setBackgroundDrawable(Theme.getSelectorDrawable(false));
-                
                 if (canDeleteInbox) {
                     cell.setText(LocaleController.formatString("DeleteMessagesOptionAlso", R.string.DeleteMessagesOptionAlso, UserObject.getFirstName(user)), "", app.nimarkogram.messenger.NimarkoConfig.deleteForAll, false);
                 } else if (chat != null && (hasNotOut || myMessagesCount == count)) {
@@ -8089,7 +8094,6 @@ public class AlertsCreator {
                     cell.setText(LocaleController.getString(R.string.DeleteMessagesOption), "", false, false);
                 }
                 cell.setPadding(LocaleController.isRTL ? dp(16) : dp(8), 0, LocaleController.isRTL ? dp(8) : dp(16), 0);
-                
                 if (app.nimarkogram.messenger.NimarkoConfig.deleteForAll) {
                     deleteForAll[0] = true;
                     cell.setChecked(true, false);
@@ -8766,7 +8770,6 @@ public class AlertsCreator {
         popupWindow.showAsDropDown(anchorView, offsetX, offsetY);
 
         popupLayout.updateRadialSelectors();
-
         ActionBarPopupWindow.startAnimation(popupLayout);
 
         popupLayout.setOnTouchListener((v, event) -> {
@@ -9048,6 +9051,7 @@ public class AlertsCreator {
         });
         ScaleStateListAnimator.apply(buttonTextView, 0.02f, 1.2f);
 
+
         TextView buttonAnytimeTextView = new TextView(context) {
             @Override
             public CharSequence getAccessibilityClassName() {
@@ -9159,7 +9163,6 @@ public class AlertsCreator {
                     MessagesController.getInstance(currentAccount).putUsers(r.users, false);
                     MessagesController.getInstance(currentAccount).putChats(r.chats, false);
                     if (LaunchActivity.instance == null) {
-
                         button.setLoading(false);
                         return;
                     }

@@ -438,11 +438,13 @@ public class StoryCaptionView extends NestedScrollView implements ItemOptions.Sc
         return 1f;
     }
 
+
     @Override
     public void draw(Canvas canvas) {
         if (disableDraw) {
             return;
         }
+
 
         final int width = getWidth();
         final int height = getHeight();
@@ -450,6 +452,7 @@ public class StoryCaptionView extends NestedScrollView implements ItemOptions.Sc
 
         final int saveCount = canvas.save();
         canvas.clipRect(0, scrollY, width, height + scrollY + blackoutBottomOffset);
+
 
         canvas.clipRect(0, scrollY, width, height + scrollY);
         super.draw(canvas);
@@ -476,6 +479,7 @@ public class StoryCaptionView extends NestedScrollView implements ItemOptions.Sc
         super.scrollBy(x, y);
         invalidate();
     }
+
 
     @Override
     public void invalidate() {
@@ -515,7 +519,6 @@ public class StoryCaptionView extends NestedScrollView implements ItemOptions.Sc
         valueAnimator.setDuration(250);
         valueAnimator.setInterpolator(CubicBezierInterpolator.DEFAULT);
         valueAnimator.start();
-        
     }
 
     public void collapse() {
@@ -553,7 +556,6 @@ public class StoryCaptionView extends NestedScrollView implements ItemOptions.Sc
     boolean touched;
 
     public void cancelTouch() {
-        
         touched = false;
     }
 
@@ -912,7 +914,6 @@ public class StoryCaptionView extends NestedScrollView implements ItemOptions.Sc
 
                     eff.setOnRippleEndCallback(() -> post(() -> {
                         isSpoilersRevealed = true;
-                        
                     }));
 
                     float rad = (float) Math.sqrt(Math.pow(getWidth(), 2) + Math.pow(getHeight(), 2));
@@ -1175,12 +1176,10 @@ public class StoryCaptionView extends NestedScrollView implements ItemOptions.Sc
                                 lineInfo.layoutEmoji = AnimatedEmojiSpan.update(AnimatedEmojiDrawable.CACHE_TYPE_MESSAGES, StoryCaptionTextView.this, lineInfo.layoutEmoji, lineInfo.staticLayout);
                                 AnimatedEmojiSpan.drawAnimatedEmojis(canvas, lineInfo.staticLayout, lineInfo.layoutEmoji, 0, spoilers, 0, 0, 0, progressToExpand, emojiColorFilter);
                                 canvas.restore();
-                                
                             } else {
                                 float offsetX = lerp(lineInfo.collapsedX, lineInfo.finalX, progressToExpand);
                                 float offsetY = lerp(lineInfo.collapsedY, lineInfo.finalY, CubicBezierInterpolator.EASE_OUT.getInterpolation(progressToExpand));
                                 canvas.translate(horizontalPadding + offsetX, verticalPadding + replyOffset + offsetY);
-                                
                                 if (drawLoading) {
                                     putLayoutRects(lineInfo.staticLayout, horizontalPadding + offsetX, verticalPadding + replyOffset + offsetY);
                                 }

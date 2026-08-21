@@ -43,6 +43,12 @@ public class VideoPlayerHolderBase {
     private Surface surface;
     public Bitmap playerStubBitmap;
     public Paint playerStubPaint;
+    private volatile long mediaGeneration;
+    private volatile long playerGeneration;
+    private Uri boundMediaUri;
+    private long stubCaptureGeneration = 1;
+    private long stubCaptureInFlightGeneration = -1;
+    private Bitmap reusableStubBitmap;
     public long pendingSeekTo;
     Uri contentUri;
 
@@ -51,6 +57,9 @@ public class VideoPlayerHolderBase {
     }
 
     public VideoPlayerHolderBase with(SurfaceView surfaceView) {
+        if (this.surfaceView != surfaceView) {
+            invalidateStubCapture();
+        }
         this.surfaceView = surfaceView;
         this.textureView = null;
         this.surface = null;
@@ -58,18 +67,26 @@ public class VideoPlayerHolderBase {
     }
 
     public VideoPlayerHolderBase with(TextureView textureView) {
+        if (this.textureView != textureView) {
+            invalidateStubCapture();
+        }
         this.surfaceView = null;
         this.textureView = textureView;
         this.surface = null;
         return this;
     }
 
+
     public VideoPlayerHolderBase with(Surface surface) {
+        if (this.surface != surface) {
+            invalidateStubCapture();
+        }
         this.surfaceView = null;
         this.textureView = null;
         this.surface = surface;
         return this;
     }
+
 
     final DispatchQueue dispatchQueue = Utilities.getOrCreatePlayerQueue();
     public Uri uri;
@@ -95,6 +112,7 @@ public class VideoPlayerHolderBase {
     long startTime;
 
     public void preparePlayer(Uri uri, boolean audioDisabled, float speed) {
+        bindMedia(uri);
         this.audioDisabled = audioDisabled;
         this.currentAccount = currentAccount;
         this.contentUri = uri;
@@ -116,6 +134,7 @@ public class VideoPlayerHolderBase {
     }
 
     public void start(boolean attach, boolean paused, Uri uri, long position, boolean audioDisabled, float speed) {
+        bindMedia(uri);
         startTime = System.currentTimeMillis();
         this.audioDisabled = audioDisabled;
         this.paused = paused;
@@ -194,22 +213,31 @@ public class VideoPlayerHolderBase {
         if (videoPlayer != null) {
             videoPlayer.releasePlayer(true);
         }
-        videoPlayer = new VideoPlayer(false, audioDisabled);
-        videoPlayer.allowMultipleInstances = allowMultipleInstances;
-        videoPlayer.setDelegate(new VideoPlayer.VideoPlayerDelegate() {
+        final VideoPlayer player = new VideoPlayer(false, audioDisabled);
+        final long delegatePlayerGeneration = ++playerGeneration;
+        final long delegateMediaGeneration = mediaGeneration;
+        videoPlayer = player;
+        player.allowMultipleInstances = allowMultipleInstances;
+        player.setDelegate(new VideoPlayer.VideoPlayerDelegate() {
             @Override
             public void onStateChanged(boolean playWhenReady, int playbackState) {
+                if (released
+                        || videoPlayer != player
+                        || playerGeneration != delegatePlayerGeneration
+                        || mediaGeneration != delegateMediaGeneration) {
+                    return;
+                }
                 lastState = playbackState;
-                currentPosition = videoPlayer.getCurrentPosition();
-                playerDuration = videoPlayer.getDuration();
+                currentPosition = player.getCurrentPosition();
+                playerDuration = player.getDuration();
                 if (playbackState == ExoPlayer.STATE_READY || playbackState == ExoPlayer.STATE_BUFFERING) {
                     dispatchQueue.cancelRunnable(progressRunnable);
                     dispatchQueue.postRunnable(progressRunnable);
                 } else if (playbackState == ExoPlayer.STATE_ENDED) {
                     if (needRepeat()) {
                         progress = 0;
-                        videoPlayer.seekTo(0);
-                        videoPlayer.play();
+                        player.seekTo(0);
+                        player.play();
                     } else {
                         progress = 1f;
                     }
@@ -218,20 +246,37 @@ public class VideoPlayerHolderBase {
             }
 
             @Override
-            public void onError(VideoPlayer player, Exception e) {
+            public void onError(VideoPlayer callbackPlayer, Exception e) {
+                if (released
+                        || callbackPlayer != player
+                        || videoPlayer != player
+                        || playerGeneration != delegatePlayerGeneration
+                        || mediaGeneration != delegateMediaGeneration) {
+                    return;
+                }
                 FileLog.e(e);
-                final long positionMs = getCurrentPosition();
+                final long positionMs = player.getCurrentPosition();
                 triesCount--;
                 if (triesCount > 0) {
                     dispatchQueue.postRunnable(initRunnable = () -> {
-                        if (released || uri == null) {
+                        if (released
+                                || videoPlayer != player
+                                || playerGeneration != delegatePlayerGeneration
+                                || mediaGeneration != delegateMediaGeneration
+                                || uri == null) {
                             return;
                         }
-                        videoPlayer.preparePlayer(uri, "other");
-                        videoPlayer.seekTo(positionMs);
+                        player.preparePlayer(uri, "other");
+                        player.seekTo(positionMs);
                     });
                 } else {
                     AndroidUtilities.runOnUIThread(() -> {
+                        if (released
+                                || videoPlayer != player
+                                || playerGeneration != delegatePlayerGeneration
+                                || mediaGeneration != delegateMediaGeneration) {
+                            return;
+                        }
                         if (onErrorListener != null) {
                             onErrorListener.run();
                             onErrorListener = null;
@@ -242,6 +287,12 @@ public class VideoPlayerHolderBase {
 
             @Override
             public void onVideoSizeChanged(int width, int height, int unappliedRotationDegrees, float pixelWidthHeightRatio) {
+                if (released
+                        || videoPlayer != player
+                        || playerGeneration != delegatePlayerGeneration
+                        || mediaGeneration != delegateMediaGeneration) {
+                    return;
+                }
                 VideoPlayerHolderBase.this.onVideoSizeChanged(width, height, unappliedRotationDegrees, pixelWidthHeightRatio);
             }
 
@@ -249,15 +300,16 @@ public class VideoPlayerHolderBase {
             public void onRenderedFirstFrame() {
                 final long frameToken = VideoPlayerHolderBase.this.getRenderedFrameToken();
                 AndroidUtilities.runOnUIThread(() -> {
-                    if (released || !VideoPlayerHolderBase.this.isRenderedFrameTokenValid(frameToken)) {
+                    if (released
+                            || videoPlayer != player
+                            || playerGeneration != delegatePlayerGeneration
+                            || mediaGeneration != delegateMediaGeneration
+                            || !VideoPlayerHolderBase.this.isRenderedFrameTokenValid(frameToken)) {
+                        clearReadyListener(delegatePlayerGeneration, delegateMediaGeneration, frameToken);
                         return;
                     }
                     VideoPlayerHolderBase.this.onRenderedFirstFrame(frameToken);
-
-                    if (onReadyListener != null) {
-                        onReadyListener.run();
-                        onReadyListener = null;
-                    }
+                    runReadyListener(delegatePlayerGeneration, delegateMediaGeneration, frameToken);
                 }, surface != null ? 0 : surfaceView == null ? 16 : 32);
             }
 
@@ -271,7 +323,7 @@ public class VideoPlayerHolderBase {
                 return false;
             }
         });
-        videoPlayer.setIsStory();
+        player.setIsStory();
     }
 
     protected void onVideoSizeChanged(int width, int height, int unappliedRotationDegrees, float pixelWidthHeightRatio) {
@@ -279,8 +331,20 @@ public class VideoPlayerHolderBase {
     }
 
     private Runnable onReadyListener;
+    private long onReadyPlayerGeneration = -1;
+    private long onReadyMediaGeneration = -1;
+    private long onReadyFrameToken;
+
     public void setOnReadyListener(Runnable listener) {
         onReadyListener = listener;
+        if (listener == null) {
+            onReadyPlayerGeneration = -1;
+            onReadyMediaGeneration = -1;
+            return;
+        }
+        onReadyPlayerGeneration = playerGeneration;
+        onReadyMediaGeneration = mediaGeneration;
+        onReadyFrameToken = getRenderedFrameToken();
     }
     private Runnable onErrorListener;
     public void setOnErrorListener(Runnable listener) {
@@ -297,6 +361,8 @@ public class VideoPlayerHolderBase {
             }
         }
         released = true;
+        invalidateStubCapture();
+        setOnReadyListener(null);
         dispatchQueue.cancelRunnable(initRunnable);
         dispatchQueue.cancelRunnable(progressRunnable);
         initRunnable = null;
@@ -320,6 +386,10 @@ public class VideoPlayerHolderBase {
             AndroidUtilities.recycleBitmap(playerStubBitmap);
             playerStubBitmap = null;
         }
+        if (reusableStubBitmap != null) {
+            AndroidUtilities.recycleBitmap(reusableStubBitmap);
+            reusableStubBitmap = null;
+        }
         return true;
     }
 
@@ -341,16 +411,51 @@ public class VideoPlayerHolderBase {
 
     public void prepareStub() {
         if (surfaceView != null && firstFrameRendered && surfaceView.getHolder().getSurface().isValid()) {
-            stubAvailable = true;
-            if (playerStubBitmap == null) {
-                playerStubBitmap = Bitmap.createBitmap(720, 1280, Bitmap.Config.ARGB_8888);
-                playerStubPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-            }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-                AndroidUtilities.getBitmapFromSurface(surfaceView, playerStubBitmap);
-                if (playerStubBitmap.getPixel(0, 0) == Color.TRANSPARENT) {
-                    stubAvailable = false;
+                final long generation = stubCaptureGeneration;
+                if (stubCaptureInFlightGeneration == generation) {
+                    return;
                 }
+                final long capturedMediaGeneration = mediaGeneration;
+                final SurfaceView capturedSurfaceView = surfaceView;
+                final Bitmap capturedBitmap;
+                if (reusableStubBitmap != null && !reusableStubBitmap.isRecycled()
+                        && reusableStubBitmap.getWidth() == 720 && reusableStubBitmap.getHeight() == 1280) {
+                    capturedBitmap = reusableStubBitmap;
+                    reusableStubBitmap = null;
+                } else {
+                    capturedBitmap = Bitmap.createBitmap(720, 1280, Bitmap.Config.ARGB_8888);
+                }
+                stubCaptureInFlightGeneration = generation;
+                AndroidUtilities.getBitmapFromSurface(capturedSurfaceView, capturedBitmap, success -> {
+                    if (stubCaptureInFlightGeneration == generation) {
+                        stubCaptureInFlightGeneration = -1;
+                    }
+                    if (released
+                            || !success
+                            || generation != stubCaptureGeneration
+                            || capturedMediaGeneration != mediaGeneration
+                            || capturedSurfaceView != surfaceView) {
+                        releaseStubBitmap(capturedBitmap);
+                        return;
+                    }
+                    if (capturedBitmap.getPixel(0, 0) == Color.TRANSPARENT) {
+                        releaseStubBitmap(capturedBitmap);
+                        stubAvailable = playerStubBitmap != null;
+                        return;
+                    }
+                    Bitmap oldBitmap = playerStubBitmap;
+                    playerStubBitmap = capturedBitmap;
+                    if (playerStubPaint == null) {
+                        playerStubPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+                    }
+                    stubAvailable = true;
+                    if (oldBitmap != null && oldBitmap != capturedBitmap) {
+                        releaseStubBitmap(oldBitmap);
+                    }
+                });
+            } else {
+                stubAvailable = playerStubBitmap != null;
             }
         }
     }
@@ -432,7 +537,6 @@ public class VideoPlayerHolderBase {
             }
             boolean playing = videoPlayer.isPlaying();
             if (enabled && !videoPlayer.createdWithAudioTrack()) {
-                
                 videoPlayer.pause();
                 long position = videoPlayer.getCurrentPosition();
                 videoPlayer.releasePlayer(false);
@@ -451,7 +555,6 @@ public class VideoPlayerHolderBase {
                         videoPlayer.setTextureView(textureView);
                     }
                 }
-                
                 videoPlayer.seekTo(position + 50);
                 if (playing && !prepared) {
                     videoPlayer.setPlayWhenReady(true);
@@ -476,7 +579,6 @@ public class VideoPlayerHolderBase {
             } else {
                 localProgress = currentPosition / (float) playerDuration;
             }
-
             progress = localProgress;
             if (!seeking) {
                 currentSeek = progress;
@@ -538,6 +640,60 @@ public class VideoPlayerHolderBase {
         onRenderedFirstFrame();
     }
 
+    private void bindMedia(Uri mediaUri) {
+        boolean sameMedia = boundMediaUri == null ? mediaUri == null : boundMediaUri.equals(mediaUri);
+        if (sameMedia) {
+            return;
+        }
+        boundMediaUri = mediaUri;
+        mediaGeneration++;
+        invalidateStubCapture();
+        stubAvailable = false;
+        setOnReadyListener(null);
+    }
+
+    private void invalidateStubCapture() {
+        stubCaptureGeneration++;
+    }
+
+    private void releaseStubBitmap(Bitmap bitmap) {
+        if (bitmap == null || bitmap.isRecycled()) {
+            return;
+        }
+        if (!released && reusableStubBitmap == null) {
+            reusableStubBitmap = bitmap;
+        } else {
+            AndroidUtilities.recycleBitmap(bitmap);
+        }
+    }
+
+    private void runReadyListener(long callbackPlayerGeneration, long callbackMediaGeneration, long frameToken) {
+        if (onReadyListener == null) {
+            return;
+        }
+        if (onReadyPlayerGeneration != callbackPlayerGeneration
+                || onReadyMediaGeneration != callbackMediaGeneration
+                || onReadyFrameToken != frameToken) {
+            if (onReadyMediaGeneration != mediaGeneration
+                    || !isRenderedFrameTokenValid(onReadyFrameToken)) {
+                setOnReadyListener(null);
+            }
+            return;
+        }
+        Runnable listener = onReadyListener;
+        setOnReadyListener(null);
+        listener.run();
+    }
+
+    private void clearReadyListener(long callbackPlayerGeneration, long callbackMediaGeneration, long frameToken) {
+        if (onReadyListener != null
+                && onReadyPlayerGeneration == callbackPlayerGeneration
+                && onReadyMediaGeneration == callbackMediaGeneration
+                && onReadyFrameToken == frameToken) {
+            setOnReadyListener(null);
+        }
+    }
+
     public void onStateChanged(boolean playWhenReady, int playbackState) {
 
     }
@@ -575,6 +731,7 @@ public class VideoPlayerHolderBase {
         this.onSeekUpdate = onSeekUpdate;
     }
 
+
     private volatile boolean firstSeek = true;
     private volatile long lastSeek = -1;
     private long lastBetterSeek = -1;
@@ -584,7 +741,6 @@ public class VideoPlayerHolderBase {
 
     private final Runnable betterSeek = () -> {
         if (videoPlayer != null) {
-
         }
     };
 

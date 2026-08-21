@@ -26,8 +26,11 @@ import android.net.Uri;
 import android.os.Build;
 import android.os.Environment;
 import android.os.Process;
+import android.os.SystemClock;
 import android.provider.MediaStore;
+import android.text.Spanned;
 import android.view.Gravity;
+import android.view.MotionEvent;
 import android.view.View;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
@@ -43,6 +46,7 @@ import org.telegram.messenger.ApplicationLoader;
 import org.telegram.messenger.ChatObject;
 import org.telegram.messenger.DispatchQueue;
 import org.telegram.messenger.FileLog;
+import org.telegram.messenger.ImageReceiver;
 import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.MessageObject;
 import org.telegram.messenger.R;
@@ -55,9 +59,11 @@ import org.telegram.tgnet.TLRPC;
 import org.telegram.ui.ActionBar.ActionBarMenu;
 import org.telegram.ui.ActionBar.BottomSheet;
 import org.telegram.ui.ActionBar.Theme;
+import org.telegram.ui.Cells.ChatActionCell;
 import org.telegram.ui.Cells.ChatMessageCell;
 import org.telegram.ui.ChatActivity;
 import org.telegram.ui.Components.AvatarDrawable;
+import org.telegram.ui.Components.AnimatedEmojiSpan;
 import org.telegram.ui.Components.BackupImageView;
 import org.telegram.ui.Components.BulletinFactory;
 import org.telegram.ui.Components.CubicBezierInterpolator;
@@ -90,7 +96,15 @@ public final class NimarkoQuoteCreator {
     private static final long MAX_EXPORT_PIXELS = 6_000_000L;
     private static final long LOW_MEMORY_EXPORT_PIXELS = 3_000_000L;
     private static final int MAX_EXPORT_SIDE = 8_192;
+    private static final long MAX_LIVE_PREVIEW_PIXELS = 1_600_000L;
+    private static final long MAX_SNAPSHOT_PREVIEW_PIXELS = 2_000_000L;
+    private static final int MAX_SNAPSHOT_PREVIEW_SIDE = 4_096;
     private static final float MAX_INLINE_PHOTO_ASPECT_RATIO = 3f;
+    private static final long PREVIEW_REVEAL_DURATION = 300L;
+    private static final float PREVIEW_REVEAL_SCALE = 0.996f;
+    private static final long MEDIA_PREVIEW_SETTLE_TIMEOUT_MS = 500L;
+    private static final long MEDIA_EXPORT_SETTLE_TIMEOUT_MS = 1_200L;
+    private static final int MEDIA_PREVIEW_SETTLE_MIN_FRAMES = 2;
     private static final long CACHE_LIFETIME_MS = 24L * 60L * 60L * 1000L;
     private static final DispatchQueue EXPORT_QUEUE = new DispatchQueue(
             "quoteExportQueue",
@@ -171,9 +185,9 @@ public final class NimarkoQuoteCreator {
 
     public static void openSelection(ChatActivity chatActivity) {
         ArrayList<MessageObject> messages = collectSelection(chatActivity);
-        if (open(chatActivity, messages)) {
-            chatActivity.clearSelectionMode(true);
-        }
+        AndroidUtilities.runOnUIThread(() -> {
+            chatActivity.clearSelectionMode(true, () -> open(chatActivity, messages));
+        });
     }
 
     public static void updateActionModeVisibility(ActionBarMenu actionMode, ChatActivity chatActivity) {
@@ -460,11 +474,20 @@ public final class NimarkoQuoteCreator {
         private final Activity activity;
         private final Theme.ResourcesProvider resourcesProvider;
         private final ArrayList<MessageObject> messages;
-        private final QuoteCardView quoteCard;
+        private final LinearLayout rootView;
+        private final ScrollView scrollView;
+        private final FrameLayout previewFrame;
+        private final int reservedPreviewHeight;
         private final ButtonWithCounterView sendButton;
         private final ButtonWithCounterView saveButton;
         private final ButtonWithCounterView shareButton;
+        private QuoteCardView quoteCard;
+        private QuoteBitmapPreviewView bitmapPreview;
+        private Bitmap previewBitmap;
         private BottomSheet sheet;
+        private volatile int previewGeneration;
+        private int previewBuildStartedGeneration;
+        private boolean previewReady;
         private boolean exporting;
         private boolean saving;
         private volatile boolean dismissed;
@@ -480,7 +503,8 @@ public final class NimarkoQuoteCreator {
             this.messages = messages;
 
             Context context = activity;
-            LinearLayout root = new LinearLayout(context);
+            rootView = new LinearLayout(context);
+            LinearLayout root = rootView;
             root.setOrientation(LinearLayout.VERTICAL);
             root.setBackgroundColor(Theme.getColor(Theme.key_dialogBackground, resourcesProvider));
             root.setClipToPadding(false);
@@ -512,9 +536,15 @@ public final class NimarkoQuoteCreator {
             }
             root.addView(title, linear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, 24, 0, 24, 10));
 
-            ScrollView scrollView = new ScrollView(context) {
+            scrollView = new ScrollView(context) {
+                private boolean keepTouchForScrolling;
+
                 @Override
                 protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
+                    if (MeasureSpec.getMode(heightMeasureSpec) == MeasureSpec.EXACTLY) {
+                        super.onMeasure(widthMeasureSpec, heightMeasureSpec);
+                        return;
+                    }
                     int availableHeight = MeasureSpec.getSize(heightMeasureSpec);
                     if (availableHeight <= 0) {
                         availableHeight = AndroidUtilities.displaySize.y;
@@ -525,22 +555,43 @@ public final class NimarkoQuoteCreator {
                     );
                     super.onMeasure(widthMeasureSpec, MeasureSpec.makeMeasureSpec(maxHeight, MeasureSpec.AT_MOST));
                 }
+
+                @Override
+                public boolean onTouchEvent(MotionEvent event) {
+                    int action = event.getActionMasked();
+                    if (action == MotionEvent.ACTION_DOWN) {
+                        keepTouchForScrolling = canScrollVertically(-1);
+                    }
+                    if (keepTouchForScrolling && getParent() != null) {
+                        getParent().requestDisallowInterceptTouchEvent(true);
+                    }
+                    boolean handled = super.onTouchEvent(event);
+                    if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) {
+                        keepTouchForScrolling = false;
+                        if (getParent() != null) {
+                            getParent().requestDisallowInterceptTouchEvent(false);
+                        }
+                    }
+                    return handled;
+                }
             };
             scrollView.setClipToPadding(false);
             scrollView.setFillViewport(false);
             scrollView.setOverScrollMode(View.OVER_SCROLL_IF_CONTENT_SCROLLS);
 
-            FrameLayout previewFrame = new FrameLayout(context);
+            previewFrame = new FrameLayout(context);
             previewFrame.setPadding(AndroidUtilities.dp(14), AndroidUtilities.dp(4), AndroidUtilities.dp(14), AndroidUtilities.dp(10));
-            quoteCard = new QuoteCardView(context, chatActivity, messages);
-            FrameLayout.LayoutParams cardParams = new FrameLayout.LayoutParams(
-                    FrameLayout.LayoutParams.MATCH_PARENT,
-                    FrameLayout.LayoutParams.WRAP_CONTENT,
-                    Gravity.CENTER_HORIZONTAL
-            );
-            previewFrame.addView(quoteCard, cardParams);
+            reservedPreviewHeight = estimatePreviewHeight(messages);
+            previewFrame.setMinimumHeight(reservedPreviewHeight);
             scrollView.setOnScrollChangeListener(
-                    (view, scrollX, scrollY, oldScrollX, oldScrollY) -> quoteCard.updateVisibleMediaState()
+                    (view, scrollX, scrollY, oldScrollX, oldScrollY) -> {
+                        if (previewReady) {
+                            QuoteCardView card = quoteCard;
+                            if (card != null && bitmapPreview == null) {
+                                card.updateVisibleMediaState();
+                            }
+                        }
+                    }
             );
             scrollView.addView(previewFrame, new ScrollView.LayoutParams(
                     ScrollView.LayoutParams.MATCH_PARENT,
@@ -548,9 +599,8 @@ public final class NimarkoQuoteCreator {
             ));
             root.addView(scrollView, new LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT
+                    reservedPreviewHeight
             ));
-
             LinearLayout secondaryActions = new LinearLayout(context);
             secondaryActions.setOrientation(LinearLayout.HORIZONTAL);
             secondaryActions.setGravity(Gravity.CENTER);
@@ -582,53 +632,337 @@ public final class NimarkoQuoteCreator {
                             : View.GONE
             );
             root.addView(sendButton, linear(LayoutHelper.MATCH_PARENT, 48, 16, 0, 16, 6));
+            setPreviewActionsReady(previewReady);
 
             BottomSheet.Builder builder = new BottomSheet.Builder(context, false, resourcesProvider);
             builder.setApplyBottomPadding(false);
-            sheet = builder.setCustomView(root).create();
+            sheet = builder.setNativeCustomView(root).create();
             sheet.useBackgroundTopPadding = false;
-            sheet.fixNavigationBar();
             sheet.setOnDismissListener(this::onDismiss);
+            sheet.setDelegate(new BottomSheet.BottomSheetDelegate() {
+                @Override
+                public void onOpenAnimationEnd() {
+                    schedulePreviewBuild();
+                }
+            });
         }
 
         boolean show() {
-            quoteCard.setAlpha(0f);
-            quoteCard.setScaleX(0.985f);
-            quoteCard.setScaleY(0.985f);
+            ++previewGeneration;
             if (chatActivity.showDialog(sheet, false, dialog -> onDismiss()) == null) {
                 onDismiss();
                 return false;
             }
-            quoteCard.postOnAnimation(() -> {
-                if (dismissed) return;
-                quoteCard.refreshMediaState();
-                quoteCard.prepareRenderingCache();
-                quoteCard.animate()
-                        .alpha(1f)
-                        .scaleX(1f)
-                        .scaleY(1f)
-                        .setDuration(180)
-                        .setInterpolator(CubicBezierInterpolator.EASE_OUT_QUINT)
-                        .withEndAction(() -> {
-                            quoteCard.clearRenderingCache();
-                        })
-                        .start();
-            });
             return true;
+        }
+
+        private void schedulePreviewBuild() {
+            int generation = previewGeneration;
+            if (!isPreviewBuildValid(generation) || previewBuildStartedGeneration == generation) {
+                return;
+            }
+            previewBuildStartedGeneration = generation;
+            previewFrame.postOnAnimation(() -> startPreviewBuild(generation));
+        }
+
+        private FrameLayout.LayoutParams cardLayoutParams() {
+            return new FrameLayout.LayoutParams(
+                    FrameLayout.LayoutParams.MATCH_PARENT,
+                    FrameLayout.LayoutParams.WRAP_CONTENT,
+                    Gravity.CENTER_HORIZONTAL
+            );
+        }
+
+        private static int estimatePreviewHeight(ArrayList<MessageObject> messages) {
+            int maxHeight = Math.min(
+                    AndroidUtilities.dp(560),
+                    Math.round(AndroidUtilities.displaySize.y * 0.60f)
+            );
+            int estimatedDp = 108;
+            int count = Math.min(messages.size(), 6);
+            for (int i = 0; i < count; i++) {
+                MessageObject message = messages.get(i);
+                int rowDp = 68;
+                CharSequence text = message != null ? message.messageText : null;
+                if (text != null && !text.toString().trim().isEmpty()) {
+                    int estimatedLines = Math.max(1, (text.length() + 31) / 32);
+                    rowDp += Math.min(260, Math.max(0, estimatedLines - 1) * 19);
+                }
+                if (message != null && (message.isPhoto()
+                        || message.isVideo()
+                        || message.isGif()
+                        || message.isRoundVideo()
+                        || message.isSticker()
+                        || message.isAnimatedSticker())) {
+                    rowDp += 112;
+                }
+                estimatedDp += rowDp;
+            }
+            return Math.min(maxHeight, Math.max(AndroidUtilities.dp(180), AndroidUtilities.dp(estimatedDp)));
+        }
+
+        private void startPreviewBuild(int generation) {
+            if (!isPreviewBuildValid(generation)) return;
+            try {
+                QuoteCardView card = new QuoteCardView(activity, chatActivity, messages);
+                card.setAlpha(1f);
+                card.setScaleX(1f);
+                card.setScaleY(1f);
+                card.setVisibility(View.INVISIBLE);
+                quoteCard = card;
+                previewFrame.addView(card, 0, cardLayoutParams());
+                previewFrame.postOnAnimation(() -> buildPreviewStep(generation));
+            } catch (Throwable error) {
+                FileLog.e(error);
+                failPreview(generation);
+            }
+        }
+
+        private void buildPreviewStep(int generation) {
+            QuoteCardView card = quoteCard;
+            if (!isPreviewBuildValid(generation) || card == null) return;
+            try {
+                if (card.buildNextSegment()) {
+                    previewFrame.postOnAnimation(() -> buildPreviewStep(generation));
+                    return;
+                }
+                previewFrame.postOnAnimation(() -> finishPreview(generation));
+            } catch (Throwable error) {
+                FileLog.e(error);
+                failPreview(generation);
+            }
+        }
+
+        private void finishPreview(int generation) {
+            QuoteCardView card = quoteCard;
+            if (!isPreviewBuildValid(generation) || card == null || !card.isBuildComplete()) return;
+            card.refreshMediaState();
+            waitForPreviewMedia(
+                    generation,
+                    card,
+                    SystemClock.uptimeMillis() + MEDIA_PREVIEW_SETTLE_TIMEOUT_MS,
+                    0
+            );
+        }
+
+        private void waitForPreviewMedia(
+                int generation,
+                QuoteCardView card,
+                long deadline,
+                int frame
+        ) {
+            if (!isPreviewBuildValid(generation) || quoteCard != card) return;
+            card.setStaticMediaActive(true);
+            boolean pending = card.hasPendingStaticPreviewMedia();
+            if ((frame < MEDIA_PREVIEW_SETTLE_MIN_FRAMES
+                    || !card.isPresentationReady()
+                    || pending)
+                    && SystemClock.uptimeMillis() < deadline) {
+                previewFrame.postOnAnimation(
+                        () -> waitForPreviewMedia(generation, card, deadline, frame + 1)
+                );
+                return;
+            }
+            long pixels = (long) card.getWidth() * card.getHeight();
+            boolean snapshotCandidate = pixels > MAX_LIVE_PREVIEW_PIXELS
+                    && !card.requiresLivePreview();
+            if (pending || !card.isPresentationReady() || !snapshotCandidate) {
+                completePreview(generation, card);
+            } else {
+                createBitmapPreview(generation, card);
+            }
+        }
+
+        private void createBitmapPreview(int generation, QuoteCardView card) {
+            int sourceWidth = card.getWidth();
+            int sourceHeight = card.getHeight();
+            if (sourceWidth <= 0 || sourceHeight <= 0) {
+                completePreview(generation, card);
+                return;
+            }
+            double scale = Math.min(
+                    1.0,
+                    Math.sqrt(MAX_SNAPSHOT_PREVIEW_PIXELS / (double) ((long) sourceWidth * sourceHeight))
+            );
+            int longestSide = Math.max(sourceWidth, sourceHeight);
+            if (longestSide * scale > MAX_SNAPSHOT_PREVIEW_SIDE) {
+                scale = MAX_SNAPSHOT_PREVIEW_SIDE / (double) longestSide;
+            }
+            int bitmapWidth = Math.max(1, (int) Math.round(sourceWidth * scale));
+            int bitmapHeight = Math.max(1, (int) Math.round(sourceHeight * scale));
+            float bitmapScale = (float) scale;
+            EXPORT_QUEUE.postRunnable(() -> {
+                if (dismissed || generation != previewGeneration) return;
+                Bitmap bitmap;
+                try {
+                    bitmap = Bitmap.createBitmap(bitmapWidth, bitmapHeight, Bitmap.Config.ARGB_8888);
+                } catch (Throwable error) {
+                    FileLog.e(error);
+                    AndroidUtilities.runOnUIThread(() -> completePreview(generation, card));
+                    return;
+                }
+                AndroidUtilities.runOnUIThread(() -> {
+                    if (!isPreviewBuildValid(generation) || quoteCard != card) {
+                        recycleBitmapLater(bitmap);
+                        return;
+                    }
+                    previewBitmap = bitmap;
+                    card.setPreviewSnapshotMode(true);
+                    drawBitmapPreview(generation, card, bitmap, bitmapScale);
+                });
+            });
+        }
+
+        private void drawBitmapPreview(
+                int generation,
+                QuoteCardView card,
+                Bitmap bitmap,
+                float scale
+        ) {
+            if (!isPreviewBuildValid(generation) || quoteCard != card || previewBitmap != bitmap) {
+                card.setPreviewSnapshotMode(false);
+                if (previewBitmap == bitmap) previewBitmap = null;
+                recycleBitmapLater(bitmap);
+                return;
+            }
+            try {
+                Canvas canvas = new Canvas(bitmap);
+                canvas.scale(scale, scale);
+                card.draw(canvas);
+                canvas.setBitmap(null);
+            } catch (Throwable error) {
+                FileLog.e(error);
+                card.setPreviewSnapshotMode(false);
+                previewBitmap = null;
+                recycleBitmapLater(bitmap);
+                completePreview(generation, card);
+                return;
+            }
+            card.setPreviewSnapshotMode(false);
+            QuoteBitmapPreviewView preview = new QuoteBitmapPreviewView(activity, bitmap);
+            bitmapPreview = preview;
+            FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(
+                    FrameLayout.LayoutParams.MATCH_PARENT,
+                    card.getHeight(),
+                    Gravity.CENTER_HORIZONTAL
+            );
+            previewFrame.addView(preview, 1, params);
+            card.setVisibility(View.INVISIBLE);
+            card.setStaticMediaActive(false);
+            completePreview(generation, card);
+        }
+
+        private void completePreview(int generation, QuoteCardView card) {
+            if (!isPreviewBuildValid(generation) || quoteCard != card || previewReady) return;
+            View content = bitmapPreview != null ? bitmapPreview : card;
+            content.animate().cancel();
+            content.setAlpha(SharedConfig.animationsEnabled() ? 0f : 1f);
+            content.setScaleX(SharedConfig.animationsEnabled() ? PREVIEW_REVEAL_SCALE : 1f);
+            content.setScaleY(SharedConfig.animationsEnabled() ? PREVIEW_REVEAL_SCALE : 1f);
+            content.setTranslationY(SharedConfig.animationsEnabled() ? AndroidUtilities.dp(2) : 0f);
+            content.setVisibility(View.VISIBLE);
+            previewReady = true;
+            setPreviewActionsReady(true, true);
+            if (SharedConfig.animationsEnabled()) {
+                previewFrame.postOnAnimation(() -> {
+                    if (!isPreviewBuildValid(generation) || quoteCard != card
+                            || content != (bitmapPreview != null ? bitmapPreview : quoteCard)) {
+                        return;
+                    }
+                    content.animate()
+                            .alpha(1f)
+                            .scaleX(1f)
+                            .scaleY(1f)
+                            .translationY(0f)
+                            .setDuration(PREVIEW_REVEAL_DURATION)
+                            .setInterpolator(CubicBezierInterpolator.EASE_BOTH)
+                            .withEndAction(() -> {
+                                if (isPreviewBuildValid(generation) && bitmapPreview == null) {
+                                    card.updateVisibleMediaState();
+                                }
+                            })
+                            .start();
+                });
+            } else if (bitmapPreview == null) {
+                card.updateVisibleMediaState();
+            }
+        }
+
+        private static void recycleBitmapLater(Bitmap bitmap) {
+            if (bitmap == null || bitmap.isRecycled()) return;
+            AndroidUtilities.runOnUIThread(() -> {
+                if (!bitmap.isRecycled()) bitmap.recycle();
+            }, 500L);
+        }
+
+        private void setPreviewActionsReady(boolean ready) {
+            setPreviewActionsReady(ready, false);
+        }
+
+        private void setPreviewActionsReady(boolean ready, boolean animated) {
+            sendButton.setEnabled(ready);
+            saveButton.setEnabled(ready);
+            shareButton.setEnabled(ready);
+            float alpha = ready ? 1f : 0.48f;
+            setActionButtonAlpha(sendButton, alpha, animated);
+            setActionButtonAlpha(saveButton, alpha, animated);
+            setActionButtonAlpha(shareButton, alpha, animated);
+        }
+
+        private void setActionButtonAlpha(View button, float alpha, boolean animated) {
+            button.animate().cancel();
+            if (animated && SharedConfig.animationsEnabled()) {
+                button.animate()
+                        .alpha(alpha)
+                        .setDuration(PREVIEW_REVEAL_DURATION)
+                        .setInterpolator(CubicBezierInterpolator.EASE_BOTH)
+                        .start();
+            } else {
+                button.setAlpha(alpha);
+            }
+        }
+
+        private boolean isPreviewBuildValid(int generation) {
+            return !dismissed
+                    && generation == previewGeneration
+                    && activity != null
+                    && !activity.isFinishing()
+                    && !activity.isDestroyed();
+        }
+
+        private void failPreview(int generation) {
+            if (!isPreviewBuildValid(generation)) return;
+            showError(chatActivity, R.string.NM_QC_Failed);
+            sheet.dismiss();
         }
 
         private void onDismiss() {
             if (dismissed) return;
             dismissed = true;
+            previewGeneration++;
             exportGeneration++;
-            quoteCard.release();
             sendButton.animate().cancel();
             saveButton.animate().cancel();
             shareButton.animate().cancel();
+            if (quoteCard != null) {
+                quoteCard.animate().cancel();
+                quoteCard.release();
+            }
+            if (bitmapPreview != null) {
+                bitmapPreview.animate().cancel();
+                bitmapPreview.release();
+                bitmapPreview = null;
+                previewBitmap = null;
+            } else if (previewBitmap != null) {
+                recycleBitmapLater(previewBitmap);
+                previewBitmap = null;
+            }
         }
 
         private void export(ExportAction action) {
-            if (exporting || dismissed) return;
+            if (exporting || dismissed || !previewReady || quoteCard == null) {
+                return;
+            }
             boolean roundExportCorners = shouldRoundExportCorners(action);
             if (exportedFile != null
                     && exportedFile.isFile()
@@ -638,6 +972,21 @@ public final class NimarkoQuoteCreator {
             }
             exporting = true;
             setBusy(true, action);
+            quoteCard.refreshMediaState();
+            quoteCard.setStaticMediaActive(true);
+            waitForExportMedia(
+                    action,
+                    SystemClock.uptimeMillis() + MEDIA_EXPORT_SETTLE_TIMEOUT_MS
+            );
+        }
+
+        private void waitForExportMedia(ExportAction action, long deadline) {
+            if (dismissed || !exporting || quoteCard == null) return;
+            if (quoteCard.hasPendingStaticPreviewMedia()
+                    && SystemClock.uptimeMillis() < deadline) {
+                quoteCard.postOnAnimation(() -> waitForExportMedia(action, deadline));
+                return;
+            }
             quoteCard.postOnAnimation(() -> render(action));
         }
 
@@ -654,7 +1003,7 @@ public final class NimarkoQuoteCreator {
                 return;
             }
 
-            quoteCard.refreshMediaState();
+            quoteCard.setStaticMediaActive(true);
             Runtime runtime = Runtime.getRuntime();
             long memoryClass = runtime.maxMemory();
             long processMemoryAvailable = Math.max(
@@ -918,26 +1267,59 @@ public final class NimarkoQuoteCreator {
         private void exportFailed(int generation) {
             if (dismissed || generation != exportGeneration) return;
             exporting = false;
+            if (quoteCard != null) {
+                quoteCard.updateVisibleMediaState();
+            }
             setBusy(false, null);
             showError(chatActivity, R.string.NM_QC_Failed);
         }
 
         private void setBusy(boolean busy, ExportAction action) {
             if (dismissed) return;
+            sendButton.animate().cancel();
+            saveButton.animate().cancel();
+            shareButton.animate().cancel();
             sendButton.setLoading(busy && action == ExportAction.SEND);
             saveButton.setLoading(busy && action == ExportAction.SAVE);
             shareButton.setLoading(busy && action == ExportAction.SHARE);
             sendButton.setEnabled(!busy);
             saveButton.setEnabled(!busy);
             shareButton.setEnabled(!busy);
-            sendButton.animate().alpha(busy && action != ExportAction.SEND ? 0.55f : 1f).setDuration(150).start();
-            saveButton.animate().alpha(busy && action != ExportAction.SAVE ? 0.55f : 1f).setDuration(150).start();
-            shareButton.animate().alpha(busy && action != ExportAction.SHARE ? 0.55f : 1f).setDuration(150).start();
+            sendButton.setAlpha(busy && action != ExportAction.SEND ? 0.55f : 1f);
+            saveButton.setAlpha(busy && action != ExportAction.SAVE ? 0.55f : 1f);
+            shareButton.setAlpha(busy && action != ExportAction.SHARE ? 0.55f : 1f);
+        }
+    }
+
+    private static final class QuoteBitmapPreviewView extends View {
+        private final Paint bitmapPaint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG | Paint.DITHER_FLAG);
+        private final RectF destination = new RectF();
+        private Bitmap bitmap;
+
+        QuoteBitmapPreviewView(Context context, Bitmap bitmap) {
+            super(context);
+            this.bitmap = bitmap;
+            setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        }
+
+        @Override
+        protected void onDraw(Canvas canvas) {
+            super.onDraw(canvas);
+            Bitmap current = bitmap;
+            if (current == null || current.isRecycled() || getWidth() <= 0 || getHeight() <= 0) return;
+            destination.set(0, 0, getWidth(), getHeight());
+            canvas.drawBitmap(current, null, destination, bitmapPaint);
+        }
+
+        void release() {
+            Bitmap current = bitmap;
+            bitmap = null;
+            invalidate();
+            QuoteSheet.recycleBitmapLater(current);
         }
     }
 
     private static final class QuoteCardView extends LinearLayout {
-        private static final long MAX_HARDWARE_CACHE_PIXELS = 2_000_000L;
         private static final EntityView.EntityViewDelegate INERT_ENTITY_DELEGATE = new EntityView.EntityViewDelegate() {
             @Override
             public boolean onEntitySelected(EntityView entityView) {
@@ -985,15 +1367,24 @@ public final class NimarkoQuoteCreator {
         private final Theme.ResourcesProvider resourcesProvider;
         private final int wallpaperColor;
         private final int currentAccount;
+        private final Context context;
+        private final ArrayList<ArrayList<MessageObject>> pendingSegments;
         private final ArrayList<MessageEntityView> entities = new ArrayList<>();
+        private final boolean requiresLivePreview;
+        private ImageReceiver headerAvatarReceiver;
+        private int nextSegment;
         private boolean drawingToBitmap;
         private boolean bypassOuterRoundingForBitmap;
         private boolean telegramMediaPreview;
-        private boolean mediaConfigured;
         private boolean released;
 
-        QuoteCardView(Context context, ChatActivity chatActivity, ArrayList<MessageObject> messages) {
+        QuoteCardView(
+                Context context,
+                ChatActivity chatActivity,
+                ArrayList<MessageObject> messages
+        ) {
             super(context);
+            this.context = context;
             setOrientation(VERTICAL);
             setGravity(Gravity.CENTER_HORIZONTAL);
             setWillNotDraw(false);
@@ -1009,6 +1400,7 @@ public final class NimarkoQuoteCreator {
             resourcesProvider = chatActivity.getResourceProvider();
             currentAccount = chatActivity.getCurrentAccount();
             singleMessageQuote = messages.size() == 1;
+            requiresLivePreview = containsLivePreviewContent(messages);
             Drawable source = null;
             if (resourcesProvider instanceof MessagePreviewView.ResourcesDelegate) {
                 source = ((MessagePreviewView.ResourcesDelegate) resourcesProvider).getWallpaperDrawable();
@@ -1024,16 +1416,36 @@ public final class NimarkoQuoteCreator {
                     : Theme.isCurrentThemeDark();
             int bubbleColor = Theme.getColor(Theme.key_chat_serviceBackground, resourcesProvider);
             int shadowColor = Theme.getColor(Theme.key_chat_serviceText, resourcesProvider);
-            overlayPaint.setColor(ColorUtils.setAlphaComponent(bubbleColor, dark ? 24 : 14));
+            Theme.ThemeInfo activeTheme = Theme.getActiveTheme();
+            boolean darkMonet = dark && activeTheme != null && activeTheme.isMonet();
+            int previewSurfaceColor = darkMonet
+                    ? Theme.getColor(Theme.key_buttonNeutral, resourcesProvider)
+                    : bubbleColor;
+            overlayPaint.setColor(ColorUtils.setAlphaComponent(
+                    previewSurfaceColor,
+                    darkMonet ? 72 : dark ? 24 : 14
+            ));
             borderPaint.setStyle(Paint.Style.STROKE);
             borderPaint.setStrokeWidth(AndroidUtilities.dpf2(1));
-            borderPaint.setColor(ColorUtils.setAlphaComponent(shadowColor, dark ? 92 : 58));
+            borderPaint.setColor(ColorUtils.setAlphaComponent(
+                    shadowColor,
+                    darkMonet ? 112 : dark ? 92 : 58
+            ));
 
             addHeader(context, chatActivity, messages);
-            ArrayList<ArrayList<MessageObject>> segments = splitIntoNativeGroups(messages);
-            for (int i = 0; i < segments.size(); i++) {
-                addMessageEntity(context, segments.get(i));
-            }
+            pendingSegments = splitIntoNativeGroups(messages);
+        }
+
+        boolean buildNextSegment() {
+            if (released || nextSegment >= pendingSegments.size()) return false;
+            ArrayList<MessageObject> segment = pendingSegments.get(nextSegment++);
+            boolean more = nextSegment < pendingSegments.size();
+            addMessageEntity(context, segment, more);
+            return more;
+        }
+
+        boolean isBuildComplete() {
+            return nextSegment >= pendingSegments.size();
         }
 
         private void addHeader(Context context, ChatActivity chatActivity, ArrayList<MessageObject> messages) {
@@ -1082,6 +1494,7 @@ public final class NimarkoQuoteCreator {
             BackupImageView avatar = new BackupImageView(context);
             avatar.setRoundRadius(AndroidUtilities.dp(21));
             avatar.getImageReceiver().setCurrentAccount(currentAccount);
+            headerAvatarReceiver = avatar.getImageReceiver();
             if (sourcePeer != null) {
                 avatarDrawable.setInfo(currentAccount, sourcePeer);
                 avatar.setForUserOrChat(sourcePeer, avatarDrawable);
@@ -1195,7 +1608,11 @@ public final class NimarkoQuoteCreator {
                     && first.get(Calendar.DAY_OF_YEAR) == second.get(Calendar.DAY_OF_YEAR);
         }
 
-        private void addMessageEntity(Context context, ArrayList<MessageObject> segment) {
+        private void addMessageEntity(
+                Context context,
+                ArrayList<MessageObject> segment,
+                boolean addBottomGap
+        ) {
             MessageEntityView entity = new MessageEntityView(
                     context,
                     new PointF(0, 0),
@@ -1223,7 +1640,7 @@ public final class NimarkoQuoteCreator {
                     LinearLayout.LayoutParams.WRAP_CONTENT
             );
             params.gravity = Gravity.CENTER_HORIZONTAL;
-            params.setMargins(0, 0, 0, AndroidUtilities.dp(2));
+            params.setMargins(0, 0, 0, addBottomGap ? AndroidUtilities.dp(2) : 0);
             addView(entity, params);
         }
 
@@ -1241,10 +1658,6 @@ public final class NimarkoQuoteCreator {
 
         void refreshMediaState() {
             if (released) return;
-            if (mediaConfigured) {
-                updateVisibleMediaState();
-                return;
-            }
             for (int i = 0; i < entities.size(); i++) {
                 MessageEntityView entity = entities.get(i);
                 for (int j = 0; j < entity.listView.getChildCount(); j++) {
@@ -1257,8 +1670,146 @@ public final class NimarkoQuoteCreator {
                     }
                 }
             }
-            mediaConfigured = true;
-            updateVisibleMediaState();
+            if (getVisibility() == View.VISIBLE) {
+                updateVisibleMediaState();
+            } else {
+                setStaticMediaActive(true);
+            }
+        }
+
+        boolean hasPendingStaticPreviewMedia() {
+            if (released) return false;
+            if (isPendingHeaderAvatar(headerAvatarReceiver)) return true;
+            for (int i = 0; i < entities.size(); i++) {
+                MessageEntityView entity = entities.get(i);
+                if (!entity.isStaticPresentationReady()) {
+                    return true;
+                }
+                for (int j = 0; j < entity.listView.getChildCount(); j++) {
+                    View child = entity.listView.getChildAt(j);
+                    if (child instanceof ChatMessageCell
+                            && ((ChatMessageCell) child).hasPendingStaticPreviewMedia()) {
+                        return true;
+                    }
+                    if (child instanceof ChatActionCell
+                            && ((ChatActionCell) child).hasPendingStaticPreviewMedia()) {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
+
+        boolean isPresentationReady() {
+            if (released || !isAttachedToWindow() || entities.size() != pendingSegments.size()) {
+                return false;
+            }
+            for (int i = 0; i < entities.size(); i++) {
+                if (!entities.get(i).isStaticPresentationReady()) return false;
+            }
+            return getMeasuredWidth() > 0 && getMeasuredHeight() > 0;
+        }
+
+        boolean requiresLivePreview() {
+            return requiresLivePreview;
+        }
+
+        private static boolean isPendingHeaderAvatar(ImageReceiver receiver) {
+            if (receiver == null) return false;
+            boolean hasRemoteTarget = receiver.getImageKey() != null
+                    || receiver.getMediaKey() != null
+                    || receiver.getThumbKey() != null
+                    || receiver.getImageLocation() != null
+                    || receiver.getMediaLocation() != null
+                    || receiver.getThumbLocation() != null;
+            return (receiver.hasPendingImageRequest() || hasRemoteTarget)
+                    && receiver.getBitmap() == null
+                    && !receiver.hasNotThumbOrOnlyStaticThumb();
+        }
+
+        private static boolean containsLivePreviewContent(ArrayList<MessageObject> messages) {
+            for (int i = 0; i < messages.size(); i++) {
+                if (messageNeedsLivePreview(messages.get(i), true)) return true;
+            }
+            return false;
+        }
+
+        private static boolean messageNeedsLivePreview(MessageObject message, boolean inspectReply) {
+            if (message == null) return false;
+            if (message.type != MessageObject.TYPE_TEXT) return true;
+            if (message.photoThumbs != null && !message.photoThumbs.isEmpty()) return true;
+            if (hasAnimatedEmojiSpans(message.messageText)
+                    || hasAnimatedEmojiSpans(message.caption)) {
+                return true;
+            }
+            TLRPC.Message owner = message.messageOwner;
+            if (owner == null) return true;
+            TLRPC.MessageMedia media = MessageObject.getMedia(owner);
+            if (media != null && !(media instanceof TLRPC.TL_messageMediaEmpty)) return true;
+            if (owner.entities != null) {
+                for (int i = 0; i < owner.entities.size(); i++) {
+                    TLRPC.MessageEntity entity = owner.entities.get(i);
+                    if (entity instanceof TLRPC.TL_messageEntityCustomEmoji
+                            || entity instanceof TLRPC.TL_messageEntityTextUrl
+                            && entity.url != null
+                            && entity.url.startsWith("tg://emoji?id=")) {
+                        return true;
+                    }
+                }
+            }
+            if (owner.reactions != null
+                    && owner.reactions.results != null
+                    && !owner.reactions.results.isEmpty()) {
+                return true;
+            }
+            return inspectReply
+                    && message.replyMessageObject != null
+                    && messageNeedsLivePreview(message.replyMessageObject, false);
+        }
+
+        private static boolean hasAnimatedEmojiSpans(CharSequence text) {
+            if (!(text instanceof Spanned) || text.length() == 0) return false;
+            return ((Spanned) text).getSpans(
+                    0,
+                    text.length(),
+                    AnimatedEmojiSpan.class
+            ).length > 0;
+        }
+
+        void setStaticMediaActive(boolean active) {
+            if (released) return;
+            for (int i = 0; i < entities.size(); i++) {
+                MessageEntityView entity = entities.get(i);
+                for (int j = 0; j < entity.listView.getChildCount(); j++) {
+                    View child = entity.listView.getChildAt(j);
+                    if (!(child instanceof ChatMessageCell)) continue;
+                    ChatMessageCell cell = (ChatMessageCell) child;
+                    cell.shouldCheckVisibleOnScreen = true;
+                    cell.setVisibleOnScreen(active, 0, 0);
+                }
+            }
+        }
+
+        void setPreviewSnapshotMode(boolean value) {
+            if (released) return;
+            if (value) {
+                prepareStaticPreviewMediaForBitmap();
+            }
+            for (int i = 0; i < entities.size(); i++) {
+                MessageEntityView entity = entities.get(i);
+                for (int j = 0; j < entity.listView.getChildCount(); j++) {
+                    View child = entity.listView.getChildAt(j);
+                    if (!(child instanceof ChatMessageCell)) continue;
+                    ChatMessageCell cell = (ChatMessageCell) child;
+                    cell.shouldCheckVisibleOnScreen = !value;
+                    if (value) {
+                        cell.setVisibleOnScreen(true, 0, 0);
+                    }
+                }
+            }
+            if (!value && getVisibility() == View.VISIBLE) {
+                updateVisibleMediaState();
+            }
         }
 
         void setDrawingToBitmap(boolean value, boolean bypassOuterRounding) {
@@ -1266,6 +1817,7 @@ public final class NimarkoQuoteCreator {
             drawingToBitmap = value;
             bypassOuterRoundingForBitmap = value && bypassOuterRounding;
             if (value) {
+                prepareStaticPreviewMediaForBitmap();
                 setLayerType(View.LAYER_TYPE_NONE, null);
             }
             for (int i = 0; i < entities.size(); i++) {
@@ -1284,6 +1836,23 @@ public final class NimarkoQuoteCreator {
             }
             if (!value) {
                 updateVisibleMediaState();
+            }
+        }
+
+        private void prepareStaticPreviewMediaForBitmap() {
+            if (headerAvatarReceiver != null && headerAvatarReceiver.getDrawable() != null) {
+                headerAvatarReceiver.setCurrentAlpha(1f);
+            }
+            for (int i = 0; i < entities.size(); i++) {
+                MessageEntityView entity = entities.get(i);
+                for (int j = 0; j < entity.listView.getChildCount(); j++) {
+                    View child = entity.listView.getChildAt(j);
+                    if (child instanceof ChatMessageCell) {
+                        ((ChatMessageCell) child).prepareStaticPreviewMediaForBitmap();
+                    } else if (child instanceof ChatActionCell) {
+                        ((ChatActionCell) child).prepareStaticPreviewMediaForBitmap();
+                    }
+                }
             }
         }
 
@@ -1312,27 +1881,10 @@ public final class NimarkoQuoteCreator {
             }
         }
 
-        void prepareRenderingCache() {
-            if (released || drawingToBitmap) return;
-            if (!isAttachedToWindow()) return;
-            long pixels = (long) getWidth() * getHeight();
-            boolean cache = pixels > 0
-                    && pixels <= MAX_HARDWARE_CACHE_PIXELS
-                    && getWidth() <= 4096
-                    && getHeight() <= 4096;
-            setLayerType(cache ? View.LAYER_TYPE_HARDWARE : View.LAYER_TYPE_NONE, null);
-        }
-
-        void clearRenderingCache() {
-            if (!released) {
-                setLayerType(View.LAYER_TYPE_NONE, null);
-            }
-        }
-
         void release() {
             if (released) return;
+            setStaticMediaActive(false);
             released = true;
-            animate().cancel();
             setLayerType(View.LAYER_TYPE_NONE, null);
             for (int i = 0; i < entities.size(); i++) {
                 entities.get(i).prepareToDraw(false);

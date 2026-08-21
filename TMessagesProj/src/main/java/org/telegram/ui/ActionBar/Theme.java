@@ -58,6 +58,7 @@ import android.hardware.SensorEventListener;
 import android.hardware.SensorManager;
 import android.net.Uri;
 import android.os.Build;
+import android.os.Looper;
 import android.os.SystemClock;
 import android.text.TextPaint;
 import android.text.TextUtils;
@@ -261,7 +262,6 @@ public class Theme {
         public float crossfadeProgress;
         public boolean isCrossfadeBackground;
         public boolean lastDrawWithShadow;
-        
         private int lastBackgroundShapeGen = -1;
         private int lastShadowShapeGen = -1;
         private int lastTransitionShapeGen = -1;
@@ -487,7 +487,6 @@ public class Theme {
         }
 
         public Drawable getBackgroundDrawable() {
-            
             int shapeGen = app.nimarkogram.messenger.NimarkoConfig.bubbleShapeGeneration;
             if (lastBackgroundShapeGen != shapeGen) {
                 lastBackgroundShapeGen = shapeGen;
@@ -581,7 +580,6 @@ public class Theme {
         }
 
         public Drawable getTransitionDrawable(int color) {
-            
             int shapeGen = app.nimarkogram.messenger.NimarkoConfig.bubbleShapeGeneration;
             if (lastTransitionShapeGen != shapeGen) {
                 lastTransitionShapeGen = shapeGen;
@@ -623,7 +621,6 @@ public class Theme {
             if (gradientShader == null && !isSelected && crossfadeFromDrawable == null) {
                 return null;
             }
-            
             int shapeGen = app.nimarkogram.messenger.NimarkoConfig.bubbleShapeGeneration;
             if (lastShadowShapeGen != shapeGen) {
                 lastShadowShapeGen = shapeGen;
@@ -977,10 +974,8 @@ public class Theme {
             if (rad > heightHalf) {
                 rad = heightHalf;
             }
-            
             final boolean hideTail = app.nimarkogram.messenger.NimarkoConfig.hideBubbleTail;
             if (isOut) {
-                
                 if (drawFullBubble || currentType == TYPE_PREVIEW || customPaint || drawFullBottom) {
                     int radToUse = botButtonsBottom ? nearRad : rad;
                     if (currentType == TYPE_MEDIA || hideTail) {
@@ -996,7 +991,6 @@ public class Theme {
                     path.lineTo(bounds.left + padding, top - topY + currentBackgroundHeight);
                 }
                 if (drawFullBubble || currentType == TYPE_PREVIEW || customPaint || drawFullTop) {
-                    
                     path.lineTo(bounds.left + padding, bounds.top + padding + rad);
                     rect.set(bounds.left + padding, bounds.top + padding, bounds.left + padding + rad * 2, bounds.top + padding + rad * 2);
                     path.arcTo(rect, 180, 90, false);
@@ -1011,7 +1005,6 @@ public class Theme {
                     }
                     path.arcTo(rect, 270, 90, false);
                 } else {
-                    
                     path.lineTo(bounds.left + padding, top - topY - dp(2));
 
                     if (currentType == TYPE_MEDIA) {
@@ -1020,7 +1013,6 @@ public class Theme {
                         path.lineTo(bounds.right - dp(8), top - topY - dp(2));
                     }
                 }
-                
                 if (currentType == TYPE_MEDIA) {
                     if (customPaint || drawFullBottom) {
                         int radToUse = isBottomNear ? nearRad : rad;
@@ -1760,6 +1752,7 @@ public class Theme {
                         currentColors.put(key_chat_outVenueInfoText, subTextColor);
                         currentColors.put(key_chat_outVenueInfoSelectedText, subTextColor);
 
+
                         currentColors.put(key_chat_outLoader, textColor);
                         currentColors.put(key_chat_outLoaderSelected, textColor);
                         currentColors.put(key_chat_outFileProgress, myMessagesAccentColor);
@@ -1910,6 +1903,7 @@ public class Theme {
                 currentColors.put(a, defaultColors[a]);
             }
         }
+
 
         private float[] tempHSV = new float[3];
         private int setHue(int color, int hueFromColor) {
@@ -2115,7 +2109,6 @@ public class Theme {
     }
 
     public static int blendOver(int A, int B) { 
-        
         float aB = Color.alpha(B) / 255f,
               aA = Color.alpha(A) / 255f,
               aC = (aB + aA * (1 - aB));
@@ -2348,7 +2341,6 @@ public class Theme {
         public int previewWallpaperOffset;
         private int previewInColor;
         private int previewOutColor;
-        
         private String monetPreviewBgKey;
         private String monetPreviewInKey;
         private String monetPreviewOutKey;
@@ -2606,6 +2598,7 @@ public class Theme {
             return app.nimarkogram.messenger.utils.ui.MonetHelper.getColor(key);
         }
 
+
         private boolean isDefaultMyMessagesBubbles() {
             if (!firstAccentIsDefault) {
                 return false;
@@ -2827,6 +2820,7 @@ public class Theme {
             NotificationCenter.getInstance(account).addObserver(this, NotificationCenter.fileLoaded);
             NotificationCenter.getInstance(account).addObserver(this, NotificationCenter.fileLoadFailed);
         }
+
 
         @UiThread
         private void removeObservers() {
@@ -3160,7 +3154,6 @@ public class Theme {
         }
 
         default boolean isDark() {
-            
             return Theme.isCurrentThemeDark();
         }
 
@@ -4464,7 +4457,6 @@ public class Theme {
     private static int[] defaultColors;
     private static SparseIntArray fallbackKeys = new SparseIntArray();
     private static HashSet<Integer> themeAccentExclusionKeys = new HashSet<>();
-    
     private static final HashSet<String> verifiedAssetFiles = new HashSet<>();
     private static long installedApkTimestamp = Long.MIN_VALUE;
     private static final AtomicInteger backgroundThemeApplyGeneration = new AtomicInteger();
@@ -4785,6 +4777,7 @@ public class Theme {
         themeAccentExclusionKeys.add(key_stories_circle_dialog2);
         themeAccentExclusionKeys.add(key_stories_circle_closeFriends1);
         themeAccentExclusionKeys.add(key_stories_circle_closeFriends2);
+
 
         themes = new ArrayList<>();
         otherThemes = new ArrayList<>();
@@ -5150,7 +5143,6 @@ public class Theme {
                                 info.lastAccentId = 101;
 
                                 SerializedData data = new SerializedData(4 * (16 + 2));
-                                
                                 data.writeInt32(9);
                                 data.writeInt32(1);
 
@@ -5190,7 +5182,6 @@ public class Theme {
                         info.overrideWallpaper = accent.overrideWallpaper;
                     }
                 } else if (info.isMonet()) {
-                    
                     info.loadWallpapers(themeConfig);
                 }
             }
@@ -5421,7 +5412,6 @@ public class Theme {
     }
 
     public static Drawable getCurrentHolidayDrawable() {
-        
         boolean nimarkoForce = NimarkoConfig.drawSnowInActionBar;
         if (nimarkoForce && dialogs_holidayDrawable == null) {
             dialogs_holidayDrawable = ApplicationLoader.applicationContext.getResources().getDrawable(R.drawable.newyear);
@@ -5853,7 +5843,6 @@ public class Theme {
                         } else if (maskType == RIPPLE_MASK_CIRCLE_TO_BOUND_EDGE) {
                             rad = (Math.max(bounds.width(), bounds.height()) / 2);
                         } else {
-                            
                             rad = (int) Math.ceil(Math.sqrt((bounds.left - bounds.centerX()) * (bounds.left - bounds.centerX()) + (bounds.top - bounds.centerY()) * (bounds.top - bounds.centerY())));
                         }
                         canvas.drawCircle(bounds.centerX(), bounds.centerY(), rad, maskPaint);
@@ -6202,7 +6191,6 @@ public class Theme {
             }
             Color.colorToHSV(backgroundColor, tempHSV);
             if (tempHSV[1] > 0.01f) {
-                
                 tempHSV[1] = Math.min(1, Math.max(0, tempHSV[1] + (isCurrentThemeDark() ? .25f : -.25f)));
                 tempHSV[2] = Math.min(1, Math.max(0, tempHSV[2] + (isCurrentThemeDark() ? .05f : -.05f)));
             } else {
@@ -6544,8 +6532,12 @@ public class Theme {
     }
 
     public static void applyThemeInBackground(ThemeInfo themeInfo, boolean nightTheme, Runnable onDone) {
+        applyThemeInBackground(themeInfo, nightTheme, onDone, null);
+    }
+
+    public static void applyThemeInBackground(ThemeInfo themeInfo, boolean nightTheme, Runnable onDone, Runnable onCancelled) {
         int generation = backgroundThemeApplyGeneration.incrementAndGet();
-        applyThemeInBackground(themeInfo, true, true, nightTheme, onDone, generation);
+        applyThemeInBackground(themeInfo, true, true, nightTheme, onDone, onCancelled, generation);
     }
 
     public static void applyTheme(ThemeInfo themeInfo, boolean save, boolean nightTheme) {
@@ -6559,7 +6551,6 @@ public class Theme {
         if (themeInfo == null || !themeInfo.isMonet()) {
             return true;
         }
-        
         return isOpaqueThemeColor(colors, key_windowBackgroundWhite)
                 && isOpaqueThemeColor(colors, key_windowBackgroundGray)
                 && isOpaqueThemeColor(colors, key_actionBarDefault)
@@ -6703,7 +6694,7 @@ public class Theme {
         }
     }
 
-    private static void applyThemeInBackground(ThemeInfo themeInfo, boolean save, boolean removeWallpaperOverride, final boolean nightTheme, Runnable onDone, int generation) {
+    private static void applyThemeInBackground(ThemeInfo themeInfo, boolean save, boolean removeWallpaperOverride, final boolean nightTheme, Runnable onDone, Runnable onCancelled, int generation) {
         if (themeInfo == null) {
             if (onDone != null) {
                 onDone.run();
@@ -6725,6 +6716,9 @@ public class Theme {
                 String[] wallpaperLink = new String[1];
                 Runnable next = () -> {
                     if (generation != backgroundThemeApplyGeneration.get()) {
+                        if (onCancelled != null) {
+                            onCancelled.run();
+                        }
                         return;
                     }
                     try {
@@ -6820,17 +6814,19 @@ public class Theme {
                     }
                 };
                 if (themeInfo.assetName != null) {
-                    
                     final boolean monetAmoled = "Monet AMOLED".equals(themeInfo.name);
                     getThemeFileValuesInBackground(null, themeInfo.assetName, null, monetAmoled, colors -> {
                         AndroidUtilities.runOnUIThread(() -> {
                             if (generation != backgroundThemeApplyGeneration.get()) {
+                                if (onCancelled != null) {
+                                    onCancelled.run();
+                                }
                                 return;
                             }
                             if (!isThemePaletteValid(themeInfo, colors)) {
                                 FileLog.e("Refusing to apply an empty or incomplete theme palette: " + themeInfo.getKey());
-                                if (onDone != null) {
-                                    onDone.run();
+                                if (onCancelled != null) {
+                                    onCancelled.run();
                                 }
                                 return;
                             }
@@ -6842,12 +6838,15 @@ public class Theme {
                     getThemeFileValuesInBackground(new File(themeInfo.pathToFile), null, wallpaperLink, colors -> {
                         AndroidUtilities.runOnUIThread(() -> {
                             if (generation != backgroundThemeApplyGeneration.get()) {
+                                if (onCancelled != null) {
+                                    onCancelled.run();
+                                }
                                 return;
                             }
                             if (!isThemePaletteValid(themeInfo, colors)) {
                                 FileLog.e("Refusing to apply an empty or incomplete theme palette: " + themeInfo.getKey());
-                                if (onDone != null) {
-                                    onDone.run();
+                                if (onCancelled != null) {
+                                    onCancelled.run();
                                 }
                                 return;
                             }
@@ -8006,6 +8005,7 @@ public class Theme {
             accent.account = account;
             theme.accentsByThemeId.put(info.id, accent);
 
+
             if (!ThemeInfo.accentEquals(accent, settings)) {
                 File file = accent.getPathToWallpaper();
                 if (file != null) {
@@ -8192,6 +8192,7 @@ public class Theme {
                     FileLog.e(e);
                 }
             }
+
 
             Drawable backDrawable = ApplicationLoader.applicationContext.getResources().getDrawable(R.drawable.preview_back).mutate();
             setDrawableColor(backDrawable, actionBarIconColor);
@@ -8472,12 +8473,10 @@ public class Theme {
                                     try {
                                         value = Color.parseColor(param);
                                     } catch (IllegalArgumentException ignore) {
-                                        
                                     }
                                 } else if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S
                                         && app.nimarkogram.messenger.utils.ui.MonetHelper.isMonetColorToken(param)) {
                                     int resolved = app.nimarkogram.messenger.utils.ui.MonetHelper.getColor(param, monetAmoled);
-                                    
                                     if (resolved != 0 || param.endsWith("_0")) {
                                         value = resolved;
                                     }
@@ -8485,7 +8484,6 @@ public class Theme {
                                     try {
                                         value = Integer.parseInt(param);
                                     } catch (NumberFormatException ignore) {
-                                        
                                     }
                                 }
                                 int keyFromString = ThemeColors.stringKeyToInt(key);
@@ -8509,7 +8507,6 @@ public class Theme {
             stringMap.put(key_wallpaperFileOffset, wallpaperFileOffset);
         } catch (Throwable e) {
             FileLog.e(e);
-            
             stringMap.clear();
         } finally {
             try {
@@ -9957,6 +9954,7 @@ public class Theme {
         return key >= myMessagesBubblesStartIndex && key < myMessagesBubblesEndIndex;
     }
 
+
     private static boolean isMyMessages(int key) {
         return key >= myMessagesStartIndex && key < myMessagesEndIndex;
     }
@@ -10251,6 +10249,7 @@ public class Theme {
         return drawable;
     }
 
+
     public static BackgroundDrawableSettings createBackgroundDrawable(
             ThemeInfo currentTheme,
             SparseIntArray currentColors,
@@ -10487,7 +10486,6 @@ public class Theme {
                     }
                 }
             } catch (Throwable throwable) {
-                
             }
             if (settings.wallpaper == null) {
                 if (selectedColor == 0) {
@@ -10725,7 +10723,7 @@ public class Theme {
 
     public static Drawable getCachedWallpaper() {
         Drawable drawable = getCachedWallpaperNonBlocking();
-        if (drawable == null && wallpaperLoadTask != null) {
+        if (drawable == null && wallpaperLoadTask != null && Looper.myLooper() != Looper.getMainLooper()) {
             CountDownLatch countDownLatch = new CountDownLatch(1);
             Utilities.themeQueue.postRunnable(countDownLatch::countDown);
             try {
@@ -10979,6 +10977,8 @@ public class Theme {
         }
         return PAINT_FILLING;
     }
+
+
 
     public static Paint DEBUG_RED = new Paint(); static { DEBUG_RED.setColor(0xffff0000); }
     public static Paint DEBUG_BLUE = new Paint(); static { DEBUG_BLUE.setColor(0xff0000ff); }

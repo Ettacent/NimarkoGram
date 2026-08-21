@@ -5,6 +5,7 @@
 extern "C" {
 #include <libavformat/avformat.h>
 #include <libavcodec/avcodec.h>
+#include <libavutil/time.h>
 }
 
 // Pull-based reader over a single decoded video stream.
@@ -23,8 +24,8 @@ class VideoFrameReader {
 public:
     enum class Status {
         Ok,       // a frame is available via frame()
-        Again,    // input/output is temporarily unavailable; retry later
         Eof,      // stream fully drained, no more frames
+        Again,
         Aborted,  // shouldAbort() requested a stop mid-decode
         Error,    // unrecoverable decode/demux error
     };
@@ -82,11 +83,12 @@ public:
             }
             switch (feedNextPacket()) {
                 case FeedResult::Sent:
+                case FeedResult::NeedReceive:
                     break;
-                case FeedResult::Again:
-                    return Status::Again;
                 case FeedResult::Eof:
                     return Status::Eof;
+                case FeedResult::Again:
+                    return Status::Again;
                 case FeedResult::Aborted:
                     return Status::Aborted;
                 case FeedResult::Error:
@@ -126,8 +128,9 @@ public:
 private:
     enum class FeedResult {
         Sent,
-        Again,
+        NeedReceive,
         Eof,
+        Again,
         Aborted,
         Error,
     };
@@ -135,11 +138,21 @@ private:
     // Reads one packet for our stream and sends it to the decoder. On
     // end-of-input, sends a NULL flush packet and enters draining mode.
     FeedResult feedNextPacket() {
+        const int64_t retryStartedAt = av_gettime_relative();
+        int readRetries = 0;
         for (;;) {
             if (!m_packetPending) {
                 int ret = av_read_frame(m_fmt, m_pkt);
                 if (ret == AVERROR(EAGAIN)) {
-                    return FeedResult::Again;
+                    if (shouldAbort && shouldAbort()) {
+                        return FeedResult::Aborted;
+                    }
+                    if (av_gettime_relative() - retryStartedAt >= 50000) {
+                        return FeedResult::Again;
+                    }
+                    ++readRetries;
+                    av_usleep(1000L << (readRetries < 5 ? readRetries - 1 : 4));
+                    continue;
                 }
                 if (ret == AVERROR_EXIT) {
                     return FeedResult::Aborted;
@@ -151,7 +164,7 @@ private:
                         return FeedResult::Sent;
                     }
                     if (ret == AVERROR(EAGAIN)) {
-                        return FeedResult::Again;
+                        return FeedResult::NeedReceive;
                     }
                     if (ret == AVERROR_EOF) {
                         m_draining = true;
@@ -173,8 +186,7 @@ private:
             int ret = avcodec_send_packet(m_dec, m_pkt);
             if (ret == AVERROR(EAGAIN)) {
                 // The decoder has not consumed this packet. Keep it intact and
-                // let the caller drain output before retrying the same packet.
-                return FeedResult::Again;
+                return FeedResult::NeedReceive;
             }
             m_packetPending = false;
             av_packet_unref(m_pkt);

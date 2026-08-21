@@ -62,13 +62,13 @@ public class CrossOutDrawable extends Drawable {
     @Override
     public void draw(@NonNull Canvas canvas) {
         if (cross && progress != 1f) {
-            progress += 16f / 150f;
+            progress += AndroidUtilities.screenRefreshTime / 150f;
             invalidateSelf();
             if (progress > 1f) {
                 progress = 1f;
             }
         } else if (!cross && progress != 0f) {
-            progress -= 16f / 150f;
+            progress -= AndroidUtilities.screenRefreshTime / 150f;
             invalidateSelf();
             if (progress < 0) {
                 progress = 0;

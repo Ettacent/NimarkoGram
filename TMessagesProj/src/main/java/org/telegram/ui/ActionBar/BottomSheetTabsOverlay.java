@@ -108,6 +108,9 @@ public class BottomSheetTabsOverlay extends View {
     private ValueAnimator animator;
     private float dismissProgress;
     private float openingProgress;
+    private int frameRateRequestGeneration;
+    private Runnable frameRateLease;
+    private Runnable releaseFrameRateRunnable;
 
     private final AnimatedFloat animatedCount = new AnimatedFloat(this, 0, 350, CubicBezierInterpolator.EASE_OUT_QUINT);
 
@@ -456,6 +459,44 @@ public class BottomSheetTabsOverlay extends View {
         this.slowerDismiss = slowerDismiss;
     }
 
+    private int beginTransitionFrameRate(Sheet sheet, View contentView) {
+        frameRateRequestGeneration++;
+        if (releaseFrameRateRunnable != null) {
+            removeCallbacks(releaseFrameRateRunnable);
+            releaseFrameRateRunnable = null;
+        }
+        if (frameRateLease != null) {
+            frameRateLease.run();
+        }
+        SheetView windowView = sheet == null ? null : sheet.getWindowView();
+        frameRateLease = AndroidUtilities.requestHighFrameRate(
+                this,
+                windowView instanceof View ? (View) windowView : null,
+                contentView
+        );
+        return frameRateRequestGeneration;
+    }
+
+    private void finishTransitionFrameRate(int generation, long delay) {
+        if (generation != frameRateRequestGeneration) {
+            return;
+        }
+        if (releaseFrameRateRunnable != null) {
+            removeCallbacks(releaseFrameRateRunnable);
+        }
+        releaseFrameRateRunnable = () -> {
+            if (generation != frameRateRequestGeneration) {
+                return;
+            }
+            releaseFrameRateRunnable = null;
+            if (frameRateLease != null) {
+                frameRateLease.run();
+                frameRateLease = null;
+            }
+        };
+        postDelayed(releaseFrameRateRunnable, delay);
+    }
+
     public boolean openSheet(Sheet sheet, BottomSheetTabs.WebTabData tab, Runnable whenOpened) {
         if (sheet == null) return false;
         if (tabsView == null) return false;
@@ -466,6 +507,8 @@ public class BottomSheetTabsOverlay extends View {
                 animator = null;
             }
         }
+
+        final int frameRateGeneration = beginTransitionFrameRate(sheet, tab == null ? null : tab.webView);
 
         openingSheet = sheet;
         sheet.getWindowView().setDrawingFromOverlay(true);
@@ -501,10 +544,10 @@ public class BottomSheetTabsOverlay extends View {
                 if (whenOpened != null) {
                     whenOpened.run();
                 }
+                finishTransitionFrameRate(frameRateGeneration, 450);
             }
         });
         AndroidUtilities.applySpring(animator, 260, 30, 1);
-
         animator.start();
 
         return true;
@@ -536,6 +579,12 @@ public class BottomSheetTabsOverlay extends View {
         }
 
         BottomSheetTabs.WebTabData tab = sheet.saveState();
+        if (tab == null) {
+            sheet.setLastVisible(true);
+            dismissingSheet = null;
+            return false;
+        }
+        final int frameRateGeneration = beginTransitionFrameRate(sheet, tab.webView != null ? tab.webView : tab.view2);
         dismissingTab = tabsView.pushTab(tab);
         post(() -> {
             if (sheet != null && sheet.getWindowView() != null) {
@@ -560,6 +609,7 @@ public class BottomSheetTabsOverlay extends View {
                             tab.previewBitmap = b;
                             sheet.getWindowView().setDrawingFromOverlay(false);
                             sheet.release();
+                            finishTransitionFrameRate(frameRateGeneration, 300);
                         });
                         dismissingSheet = null;
                         invalidate();
@@ -579,6 +629,7 @@ public class BottomSheetTabsOverlay extends View {
                 sheet.release();
                 dismissingSheet = null;
                 invalidate();
+                finishTransitionFrameRate(frameRateGeneration, 300);
             }
         });
         AndroidUtilities.applySpring(animator, 220, 30, 1);

@@ -284,7 +284,7 @@ public class ReactionsEffectOverlay {
             protected void dispatchDraw(Canvas canvas) {
                 if (dismissed) {
                     if (dismissProgress != 1f) {
-                        dismissProgress += 16 / 150f;
+                        dismissProgress += AndroidUtilities.screenRefreshTime / 150f;
                         if (dismissProgress > 1f) {
                             dismissProgress = 1f;
                             AndroidUtilities.runOnUIThread(() -> {
@@ -414,6 +414,7 @@ public class ReactionsEffectOverlay {
                     y = fromY * (1f - animateInProgressY) + previewY * animateInProgressY;
                 }
 
+
                 effectImageView.setTranslationX(x);
                 effectImageView.setTranslationY(y);
                 effectImageView.setAlpha((1f - animateOutProgress));
@@ -442,7 +443,6 @@ public class ReactionsEffectOverlay {
                 if (animationType == LONG_ANIMATION && isStories) {
                     emojiImageView.setAlpha(1f - animateOutProgress);
                 }
-                
                 container.setTranslationX(x);
                 container.setTranslationY(y);
 
@@ -453,9 +453,9 @@ public class ReactionsEffectOverlay {
 
                 if ((animationType == SHORT_ANIMATION || emojiImageView.wasPlaying) && animateInProgress != 1f) {
                     if (fromHolder) {
-                        animateInProgress += 16f / 350f;
+                        animateInProgress += AndroidUtilities.screenRefreshTime / 350f;
                     } else {
-                        animateInProgress += 16f / 220f;
+                        animateInProgress += AndroidUtilities.screenRefreshTime / 220f;
                     }
                     if (animateInProgress > 1f) {
                         animateInProgress = 1f;
@@ -469,7 +469,7 @@ public class ReactionsEffectOverlay {
                             ReactionsEffectOverlay.this.animateOutProgress = 1f;
                         } else {
                             float duration = animationType == ONLY_MOVE_ANIMATION ? 350f : 220f;
-                            ReactionsEffectOverlay.this.animateOutProgress += 16f / duration;
+                            ReactionsEffectOverlay.this.animateOutProgress += AndroidUtilities.screenRefreshTime / duration;
                         }
                         if (ReactionsEffectOverlay.this.animateOutProgress > 0.7f) {
                             if (isStories && animationType == ONLY_MOVE_ANIMATION) {
@@ -531,6 +531,7 @@ public class ReactionsEffectOverlay {
                     }
                 }
 
+
                 if (!avatars.isEmpty() && effectImageView.wasPlaying) {
                     RLottieDrawable animation = effectImageView.getImageReceiver().getLottieAnimation();
 
@@ -549,7 +550,7 @@ public class ReactionsEffectOverlay {
                         }
 
                         if (isLeft && particle.outProgress != 1f) {
-                            particle.outProgress += 16f / 150f;
+                            particle.outProgress += AndroidUtilities.screenRefreshTime / 150f;
                             if (particle.outProgress > 1f) {
                                 particle.outProgress = 1f;
                                 avatars.remove(i);
@@ -576,7 +577,7 @@ public class ReactionsEffectOverlay {
                         canvas.restore();
 
                         if (particle.progress < 1f) {
-                            particle.progress += 16f / 350f;
+                            particle.progress += AndroidUtilities.screenRefreshTime / 350f;
                             if (particle.progress > 1f) {
                                 particle.progress = 1f;
                             }
@@ -729,7 +730,7 @@ public class ReactionsEffectOverlay {
                 effectImageView.getLayoutParams().height = size;
                 ((FrameLayout.LayoutParams) effectImageView.getLayoutParams()).topMargin = -topOffset;
                 ((FrameLayout.LayoutParams) effectImageView.getLayoutParams()).leftMargin = -leftOffset;
-           
+
             container.setPivotX(leftOffset);
             container.setPivotY(topOffset);
         } else {
@@ -758,7 +759,6 @@ public class ReactionsEffectOverlay {
     }
 
     public static void show(BaseFragment baseFragment, ReactionsContainerLayout reactionsLayout, View cell, View fromAnimationView, float x, float y, ReactionsLayoutInBubble.VisibleReaction visibleReaction, int currentAccount, int animationType) {
-        
         if (app.nimarkogram.messenger.NimarkoConfig.disableReactionAnim
                 || app.nimarkogram.messenger.NimarkoConfig.disableReactionsOverlay) {
             return;
@@ -812,7 +812,6 @@ public class ReactionsEffectOverlay {
     }
 
     public static void startAnimation() {
-        
         if (app.nimarkogram.messenger.NimarkoConfig.disableReactionAnim
                 || app.nimarkogram.messenger.NimarkoConfig.disableReactionsOverlay) {
             return;
@@ -894,6 +893,7 @@ public class ReactionsEffectOverlay {
                 && (messageId == overlay.messageId
                         || groupId != 0 && overlay.groupId == groupId);
     }
+
 
     private class AnimationView extends BackupImageView {
 

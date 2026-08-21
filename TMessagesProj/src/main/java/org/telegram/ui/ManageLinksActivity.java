@@ -565,6 +565,7 @@ public class ManageLinksActivity extends BaseFragment implements NotificationCen
         fragmentView.setTag(Theme.key_windowBackgroundGray);
         FrameLayout frameLayout = (FrameLayout) fragmentView;
 
+
         listView = new RecyclerListView(context);
         listView.setSections();
         actionBar.setAdaptiveBackground(listView);
@@ -663,7 +664,6 @@ public class ManageLinksActivity extends BaseFragment implements NotificationCen
             if ((position >= linksStartRow && position < linksEndRow) || (position >= revokedLinksStartRow && position < revokedLinksEndRow)) {
                 LinkCell cell = (LinkCell) view;
                 cell.optionsView.callOnClick();
-                
                 if (!app.nimarkogram.messenger.NimarkoConfig.disableVibration) {
                     try {
                         view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS, HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING);
@@ -1051,6 +1051,7 @@ public class ManageLinksActivity extends BaseFragment implements NotificationCen
         boolean animateHideExpiring;
         boolean drawDivider;
 
+
         public LinkCell(@NonNull Context context) {
             super(context);
 
@@ -1186,7 +1187,6 @@ public class ManageLinksActivity extends BaseFragment implements NotificationCen
 
         @Override
         protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
-            
             super.onMeasure(widthMeasureSpec, heightMeasureSpec);
             paint2.setStrokeWidth(dp(2));
         }
@@ -1667,6 +1667,7 @@ public class ManageLinksActivity extends BaseFragment implements NotificationCen
         AndroidUtilities.updateVisibleRows(listView);
     }
 
+
     private class DiffCallback extends DiffUtil.Callback {
 
         int oldRowCount;
@@ -1681,6 +1682,7 @@ public class ManageLinksActivity extends BaseFragment implements NotificationCen
         SparseIntArray newPositionToItem = new SparseIntArray();
         ArrayList<TLRPC.TL_chatInviteExported> oldLinks = new ArrayList<>();
         ArrayList<TLRPC.TL_chatInviteExported> oldRevokedLinks = new ArrayList<>();
+
 
         @Override
         public int getOldListSize() {

@@ -1,14 +1,3 @@
-/**
- * This file is part of NimarkoGram for Android.
- * It is licensed under GNU GPL v. 2 or later.
- * You should have received a copy of the license in this archive (see LICENSE).
- *
- * NimarkoGram modifications:
- * Copyright Ettacent, 2026.
- *
- * Portions derived from Cherrygram:
- * Copyright github.com/arsLan4k1390, 2022-2026.
- */
 
 package app.nimarkogram.messenger.preferences;
 
@@ -65,7 +54,6 @@ public class CameraPreferencesActivity extends NimarkoUniversalPreferencesActivi
 
     @Override
     protected CharSequence getTitle() {
-         
         return getString(R.string.CP_Category_Camera);
     }
 
@@ -122,7 +110,6 @@ public class CameraPreferencesActivity extends NimarkoUniversalPreferencesActivi
         items.add(UItem.asHeader(getString(R.string.NM_CAM_VideoQuality)));
         items.add(UItem.asButton(roundVideoSizeRow, getString(R.string.NM_CAM_RoundVideoSize), getRoundVideoSizeText()));
         items.add(UItem.asButton(roundVideoBitrateRow, getString(R.string.NM_CAM_RoundVideoBitrate), getRoundVideoBitrateText()));
-        
         if (advanced) {
             items.add(UItem.asButton(cameraXQualityRow, getString(R.string.CP_CameraQuality),
                     getCameraQualityText(app.nimarkogram.messenger.NimarkoConfig.cameraResolution)));
@@ -217,7 +204,6 @@ public class CameraPreferencesActivity extends NimarkoUniversalPreferencesActivi
                         getCameraQualityText(app.nimarkogram.messenger.NimarkoConfig.cameraResolution));
             });
         } else if (item.id == roundVideoSizeRow) {
-            
             ArrayList<CharSequence> labels = new ArrayList<>();
             ArrayList<Integer> values = new ArrayList<>();
             labels.add(getString(R.string.NM_CAM_RoundVideoSize_Auto)); values.add(NimarkoConfig.ROUND_AUTO);
@@ -265,7 +251,6 @@ public class CameraPreferencesActivity extends NimarkoUniversalPreferencesActivi
         } else if (item.id == useHighRangeRow) {
             NimarkoConfig.toggleCameraXUseHighRange();
             updateCheckState(view, app.nimarkogram.messenger.NimarkoConfig.cameraXUseHighRange);
-            
             if (!app.nimarkogram.messenger.NimarkoConfig.cameraXUseHighRange
                     && app.nimarkogram.messenger.NimarkoConfig.cameraXFpsRange
                     == NimarkoConfig.CameraXFpsRange30to60) {
@@ -281,7 +266,6 @@ public class CameraPreferencesActivity extends NimarkoUniversalPreferencesActivi
     }
 
     private boolean isExtendedFpsAvailable() {
-        
         return app.nimarkogram.messenger.NimarkoConfig.cameraXUseHighRange;
     }
 
@@ -332,7 +316,6 @@ public class CameraPreferencesActivity extends NimarkoUniversalPreferencesActivi
             case NimarkoConfig.CameraXFpsRange25to30 -> "25-30";
             case NimarkoConfig.CameraXFpsRange30to30 -> "30-30";
             case NimarkoConfig.CameraXFpsRange30to60 -> "30-60";
-            
             case NimarkoConfig.CameraXFpsRange60to60 -> "30-60";
             default -> getString(R.string.Default);
         };
@@ -350,7 +333,6 @@ public class CameraPreferencesActivity extends NimarkoUniversalPreferencesActivi
         return switch (NimarkoConfig.videoMessagesResolution) {
             case NimarkoConfig.ROUND_SD -> getString(R.string.NM_CAM_RoundVideoSize_SD);
             case NimarkoConfig.ROUND_STD -> getString(R.string.NM_CAM_RoundVideoSize_STD);
-            
             case NimarkoConfig.ROUND_HD, NimarkoConfig.ROUND_FHD -> getString(R.string.NM_CAM_RoundVideoSize_HD);
             default -> getString(R.string.NM_CAM_RoundVideoSize_Auto);
         };

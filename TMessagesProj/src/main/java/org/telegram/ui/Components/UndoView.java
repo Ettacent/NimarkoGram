@@ -1657,7 +1657,7 @@ public class UndoView extends FrameLayout {
             }
 
             if (timeReplaceProgress < 1f) {
-                timeReplaceProgress += 16f / 150f;
+                timeReplaceProgress += AndroidUtilities.screenRefreshTime / 150f;
                 if (timeReplaceProgress > 1f) {
                     timeReplaceProgress = 1f;
                 } else {
@@ -1721,6 +1721,7 @@ public class UndoView extends FrameLayout {
     }
 
     float enterOffset;
+
 
     @Keep
     public float getEnterOffset() {

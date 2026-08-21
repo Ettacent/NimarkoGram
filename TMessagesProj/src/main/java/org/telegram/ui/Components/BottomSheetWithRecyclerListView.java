@@ -212,7 +212,6 @@ public abstract class BottomSheetWithRecyclerListView extends BottomSheet {
                              continue;
                          }
                          if (editTextEmoji != null && editTextEmoji.isPopupView(child)) {
-
                              if (AndroidUtilities.isInMultiwindow || AndroidUtilities.isTablet()) {
                                  if (AndroidUtilities.isTablet()) {
                                      child.measure(MeasureSpec.makeMeasureSpec(widthSize, MeasureSpec.EXACTLY), MeasureSpec.makeMeasureSpec(Math.min(AndroidUtilities.dp(AndroidUtilities.isTablet() ? 200 : 320), heightSize - AndroidUtilities.statusBarHeight + getPaddingTop()), MeasureSpec.EXACTLY));
@@ -568,10 +567,10 @@ public abstract class BottomSheetWithRecyclerListView extends BottomSheet {
     protected void postDrawInternal(Canvas canvas, View parentView) {
         if (actionBarType == ActionBarType.FADING) {
             if (showShadow && shadowAlpha != 1f) {
-                shadowAlpha += 16 / 150f;
+                shadowAlpha += AndroidUtilities.screenRefreshTime / 150f;
                 parentView.invalidate();
             } else if (!showShadow && shadowAlpha != 0) {
-                shadowAlpha -= 16 / 150f;
+                shadowAlpha -= AndroidUtilities.screenRefreshTime / 150f;
                 parentView.invalidate();
             }
             shadowAlpha = Utilities.clamp(shadowAlpha, 1f, 0f);
@@ -828,6 +827,7 @@ public abstract class BottomSheetWithRecyclerListView extends BottomSheet {
         this.showHandle = showHandle;
     }
 
+
     private int savedScrollPosition = -1;
     private int savedScrollOffset;
     public void saveScrollPosition() {
@@ -859,7 +859,6 @@ public abstract class BottomSheetWithRecyclerListView extends BottomSheet {
     public void applyScrolledPosition(boolean ignorePaddingView) {
         if (recyclerListView != null && recyclerListView.getLayoutManager() != null && savedScrollPosition >= 0) {
             int offset = savedScrollOffset - containerView.getTop() - recyclerListView.getPaddingTop();
-
             if (recyclerListView.getLayoutManager() instanceof LinearLayoutManager) {
                 ((LinearLayoutManager) recyclerListView.getLayoutManager()).scrollToPositionWithOffset(savedScrollPosition, offset);
             }
