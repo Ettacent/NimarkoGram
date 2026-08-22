@@ -2281,7 +2281,7 @@ public class ChatEditActivity extends BaseFragment implements ImageUpdater.Image
         boolean isPrivate = !ChatObject.isPublic(currentChat);
 
         if (settingsSectionCell != null) {
-            settingsSectionCell.setVisibility( typeCell == null && (linkedCell == null || linkedCell.getVisibility() != View.VISIBLE) && (historyCell == null || historyCell.getVisibility() != View.VISIBLE) && (locationCell == null || locationCell.getVisibility() != View.VISIBLE) ? View.GONE : View.VISIBLE);
+            settingsSectionCell.setVisibility(typeCell == null && (linkedCell == null || linkedCell.getVisibility() != View.VISIBLE) && (historyCell == null || historyCell.getVisibility() != View.VISIBLE) && (locationCell == null || locationCell.getVisibility() != View.VISIBLE) ? View.GONE : View.VISIBLE);
         }
 
         if (logCell != null) {

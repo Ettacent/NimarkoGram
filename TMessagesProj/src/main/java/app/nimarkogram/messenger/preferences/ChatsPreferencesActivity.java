@@ -20,6 +20,7 @@ import org.telegram.messenger.UserObject;
 import org.telegram.tgnet.TLRPC;
 import org.telegram.ui.ActionBar.BaseFragment;
 import org.telegram.ui.Cells.UserCell;
+import org.telegram.ui.Components.IconBackgroundColors;
 import org.telegram.ui.Components.UItem;
 import org.telegram.ui.Components.UniversalAdapter;
 import org.telegram.ui.DialogsActivity;
@@ -39,31 +40,85 @@ import app.nimarkogram.messenger.preferences.helpers.SettingsHelper;
 
 public class ChatsPreferencesActivity extends NimarkoUniversalPreferencesActivity {
 
-    private final int sortByUnreadRow = 1, unarchiveOnSwipeRow = 2, forwardWithoutAuthorRow = 3,
+    private static final int PAGE_OVERVIEW = 0;
+    private static final int PAGE_CHAT_LIST = 1;
+    private static final int PAGE_INPUT = 2;
+    private static final int PAGE_GESTURES = 3;
+    private static final int PAGE_MEDIA = 4;
+    private static final int PAGE_REACTIONS = 5;
+    private static final int PAGE_NOTIFICATIONS = 6;
+    private static final int PAGE_TOOLS = 7;
+
+    private static final int openChatListRow = 1_001;
+    private static final int openInputRow = 1_002;
+    private static final int openGesturesRow = 1_003;
+    private static final int openMediaRow = 1_004;
+    private static final int openReactionsRow = 1_005;
+    private static final int openNotificationsRow = 1_006;
+    private static final int openToolsRow = 1_007;
+
+    private final int page;
+
+    private static final int sortByUnreadRow = 1, unarchiveOnSwipeRow = 2, forwardWithoutAuthorRow = 3,
             customChatRow = 4, recentEmojisStickersRow = 5;
 
-    private final int centerTitleRow = 10, unreadBadgeRow = 11, customBackgroundInChatsRow = 12,
-            snowflakesRow = 13, pencilIconRow = 14, forwardDateRow = 15, hideBottomBarRow = 16,
-            sendAsChannelButtonRow = 17, messageSizeRow = 18, chatMenuShortcutsRow = 19,
-            weekdayRow = 20;
+    private static final int pencilIconRow = 14, forwardDateRow = 15,
+            sendAsChannelButtonRow = 17, chatMenuShortcutsRow = 19;
 
-    private final int doubleTapRow = 30, slideActionRow = 31, leftBottomBtnRow = 32, autoQuoteRow = 33,
+    private static final int doubleTapRow = 30, slideActionRow = 31, leftBottomBtnRow = 32, autoQuoteRow = 33,
             disableSwipeToNextRow = 34, deleteForAllRow = 35, directShareRow = 36, disableVibrationRow = 37,
-            hideKbdSliderRow = 38, preReformRussianRow = 39, latexRenderingRow = 40;
+            hideKbdSliderRow = 38, preReformRussianRow = 39, latexRenderingRow = 40,
+            disableSendHintsRow = 41;
 
-    private final int largePhotosRow = 50, playVideoOnVolumeBtnRow = 51, autoPauseVideoRow = 52,
+    private static final int largePhotosRow = 50, playVideoOnVolumeBtnRow = 51, autoPauseVideoRow = 52,
             gifSpoilersRow = 53, videoSeekSliderRow = 54;
 
-    private final int reactionsOverlayRow = 60, reactionAnimationRow = 61, premStickAnimRow = 62,
+    private static final int reactionsOverlayRow = 60, reactionAnimationRow = 61, premStickAnimRow = 62,
             premStickAutoplayRow = 63;
 
-    private final int notificationSoundRow = 70, vibrateInChatsRow = 71;
+    private static final int notificationSoundRow = 70, vibrateInChatsRow = 71;
 
-    private final int messageMenuRow = 80, messageFilterRow = 81;
+    private static final int messageMenuRow = 80, messageFilterRow = 81;
+
+    public ChatsPreferencesActivity() {
+        this(PAGE_OVERVIEW);
+    }
+
+    private ChatsPreferencesActivity(int page) {
+        this.page = page;
+    }
+
+    public static ChatsPreferencesActivity forSetting(int itemId) {
+        int targetPage = switch (itemId) {
+            case sortByUnreadRow, unarchiveOnSwipeRow, customChatRow -> PAGE_CHAT_LIST;
+            case recentEmojisStickersRow, pencilIconRow, forwardDateRow, sendAsChannelButtonRow,
+                    autoQuoteRow, hideKbdSliderRow, preReformRussianRow, latexRenderingRow,
+                    disableSendHintsRow -> PAGE_INPUT;
+            case doubleTapRow, slideActionRow, leftBottomBtnRow, forwardWithoutAuthorRow,
+                    disableSwipeToNextRow, deleteForAllRow, disableVibrationRow -> PAGE_GESTURES;
+            case largePhotosRow, playVideoOnVolumeBtnRow, autoPauseVideoRow,
+                    gifSpoilersRow, videoSeekSliderRow -> PAGE_MEDIA;
+            case reactionsOverlayRow, reactionAnimationRow, premStickAnimRow,
+                    premStickAutoplayRow -> PAGE_REACTIONS;
+            case notificationSoundRow, vibrateInChatsRow -> PAGE_NOTIFICATIONS;
+            case chatMenuShortcutsRow, directShareRow, messageMenuRow, messageFilterRow -> PAGE_TOOLS;
+            default -> PAGE_OVERVIEW;
+        };
+        return new ChatsPreferencesActivity(targetPage);
+    }
 
     @Override
     protected CharSequence getTitle() {
-        return getString(R.string.FilterChats);
+        return switch (page) {
+            case PAGE_CHAT_LIST -> getString(R.string.NM_SettingsSectionChatList);
+            case PAGE_INPUT -> getString(R.string.NM_SettingsSectionInputText);
+            case PAGE_GESTURES -> getString(R.string.NM_SettingsSectionGesturesActions);
+            case PAGE_MEDIA -> getString(R.string.NM_SettingsSectionMediaPlayback);
+            case PAGE_REACTIONS -> getString(R.string.NM_SettingsSectionReactionsEffects);
+            case PAGE_NOTIFICATIONS -> getString(R.string.Notifications);
+            case PAGE_TOOLS -> getString(R.string.NM_SettingsSectionTools);
+            default -> getString(R.string.FilterChats);
+        };
     }
 
     @Override
@@ -74,113 +129,236 @@ public class ChatsPreferencesActivity extends NimarkoUniversalPreferencesActivit
 
     @Override
     public void fillItems(ArrayList<UItem> items, UniversalAdapter adapter) {
-        items.add(UItem.asHeader(getString(R.string.CP_Header_DialogList)));
-        items.add(SettingsHelper.asSwitchCG(sortByUnreadRow, getString(R.string.CP_SortByUnread))
-                .setChecked(NimarkoConfig.sortByUnread));
-        items.add(SettingsHelper.asSwitchCG(unarchiveOnSwipeRow, getString(R.string.CP_UnarchiveOnSwipe))
-                .setChecked(NimarkoConfig.unarchiveOnSwipe));
-        items.add(SettingsHelper.asSwitchCG(forwardWithoutAuthorRow, getString(R.string.ForwardWithoutAuthor))
-                .setChecked(NimarkoConfig.forwardWithoutAuthor));
-        items.add(SettingsHelper.asSwitchCG(customChatRow, getString(R.string.EP_CustomChat), getString(R.string.EP_CustomChat_Desc))
-                .setChecked(NimarkoConfig.customChatForSavedMessages));
-        if (NimarkoConfig.customChatForSavedMessages) {
-            items.add(SettingsHelper.asCustomWithBackground(createUserCell()));
+        switch (page) {
+            case PAGE_CHAT_LIST -> {
+                items.add(UItem.asHeader(getString(R.string.NM_SettingsSectionDisplay)));
+                fillChatList(items);
+                items.add(UItem.asShadow(getString(R.string.NM_SettingsSummaryChatList)));
+            }
+            case PAGE_INPUT -> fillInputPage(items);
+            case PAGE_GESTURES -> fillGesturesPage(items);
+            case PAGE_MEDIA -> {
+                items.add(UItem.asHeader(getString(R.string.NM_SettingsSectionMediaPlayback)));
+                fillMedia(items);
+                items.add(UItem.asShadow(getString(R.string.NM_SettingsSummaryMediaPlayback)));
+            }
+            case PAGE_REACTIONS -> {
+                items.add(UItem.asHeader(getString(R.string.NM_SettingsSectionReactionsEffects)));
+                fillReactions(items);
+                items.add(UItem.asShadow(getString(R.string.NM_SettingsSummaryReactionsEffects)));
+            }
+            case PAGE_NOTIFICATIONS -> {
+                items.add(UItem.asHeader(getString(R.string.Notifications)));
+                fillNotifications(items);
+                items.add(UItem.asShadow(getString(R.string.NM_SettingsSummaryChatNotifications)));
+            }
+            case PAGE_TOOLS -> {
+                items.add(UItem.asHeader(getString(R.string.NM_SettingsSectionTools)));
+                fillTools(items);
+            }
+            default -> fillOverview(items);
         }
-        items.add(UItem.asButton(recentEmojisStickersRow, 0, getString(R.string.CP_Slider_RecentEmojisAndStickers)));
+    }
+
+    private void fillOverview(ArrayList<UItem> items) {
+        items.add(UItem.asHeader(getString(R.string.NM_SettingsSectionInterface)));
+        items.add(asSettingsLink(openChatListRow, IconBackgroundColors.BLUE,
+                R.drawable.msg_folders, getString(R.string.NM_SettingsSectionChatList),
+                getString(R.string.NM_SettingsSummaryChatList)));
         items.add(UItem.asShadow(null));
 
-        items.add(UItem.asHeader(getString(R.string.NM_CP_Header_ChatView)));
-        items.add(SettingsHelper.asSwitchCG(centerTitleRow, getString(R.string.NM_CP_CenterTitleInChat))
-                .setChecked(NimarkoConfig.centerChatTitle));
-        items.add(SettingsHelper.asSwitchCG(unreadBadgeRow, getString(R.string.CP_UnreadBadgeOnBackButton), getString(R.string.CP_UnreadBadgeOnBackButton_Desc))
-                .setChecked(NimarkoConfig.unreadBadgeOnBackButton));
-        items.add(SettingsHelper.asSwitchCG(customBackgroundInChatsRow, getString(R.string.CP_CustomWallpapers), getString(R.string.CP_CustomWallpapers_Desc))
-                .setChecked(NimarkoConfig.customWallpapers));
-        items.add(SettingsHelper.asSwitchCG(snowflakesRow, getString(R.string.NM_CP_SnowflakesInChat))
-                .setChecked(NimarkoConfig.drawSnowInChat));
+        items.add(UItem.asHeader(getString(R.string.MessagesSettings)));
+        items.add(asSettingsLink(openInputRow, IconBackgroundColors.PURPLE,
+                R.drawable.msg_edit, getString(R.string.NM_SettingsSectionInputText),
+                getString(R.string.NM_SettingsSummaryInputText)));
+        items.add(asSettingsLink(openGesturesRow, IconBackgroundColors.CYAN,
+                R.drawable.msg_actions, getString(R.string.NM_SettingsSectionGesturesActions),
+                getString(R.string.NM_SettingsSummaryGesturesActions)));
+        items.add(asSettingsLink(openMediaRow, IconBackgroundColors.ORANGE,
+                R.drawable.msg_video, getString(R.string.NM_SettingsSectionMediaPlayback),
+                getString(R.string.NM_SettingsSummaryMediaPlayback)));
+        items.add(asSettingsLink(openReactionsRow, IconBackgroundColors.GREEN,
+                R.drawable.msg_reactions, getString(R.string.NM_SettingsSectionReactionsEffects),
+                getString(R.string.NM_SettingsSummaryReactionsEffects)));
+        items.add(UItem.asShadow(null));
+
+        items.add(UItem.asHeader(getString(R.string.NM_SettingsSectionNotificationsTools)));
+        items.add(asSettingsLink(openNotificationsRow, IconBackgroundColors.BLUE_DEEP,
+                R.drawable.msg_notifications, getString(R.string.Notifications),
+                getString(R.string.NM_SettingsSummaryChatNotifications)));
+        items.add(asSettingsLink(openToolsRow, IconBackgroundColors.ORANGE_DEEP,
+                R.drawable.msg_settings, getString(R.string.NM_SettingsSectionTools),
+                getString(R.string.NM_SettingsSummaryChatTools)));
+        items.add(UItem.asShadow(null));
+    }
+
+    private void fillInputPage(ArrayList<UItem> items) {
+        items.add(UItem.asHeader(getString(R.string.NM_SettingsSectionInterfaceInput)));
+        items.add(asSettingsLink(recentEmojisStickersRow, IconBackgroundColors.PURPLE,
+                R.drawable.msg_recent, getString(R.string.CP_Slider_RecentEmojisAndStickers),
+                getString(R.string.NM_CH_RecentEmojisStickers_Desc)));
+        items.add(SettingsHelper.asSwitchCG(sendAsChannelButtonRow,
+                        getString(R.string.CP_HideSendAsChannel),
+                        getString(R.string.CP_HideSendAsChannelDesc))
+                .setChecked(NimarkoConfig.hideSendAsChannel));
+        items.add(SettingsHelper.asSwitchCG(disableSendHintsRow,
+                        getString(R.string.NM_DisableSendHints),
+                        getString(R.string.NM_DisableSendHints_Desc))
+                .setChecked(NimarkoConfig.disableSendHints));
+        items.add(UItem.asHeader(getString(R.string.CP_HideKbdOnScroll)));
+        items.add(UItem.asIntSlideView(1, 0, NimarkoConfig.hideKeyboardOnScrollIntensity, 10,
+                val -> val == 0 ? getString(R.string.VibrationDisabled) : String.valueOf(val),
+                NimarkoConfig::setHideKeyboardOnScrollIntensity).setId(hideKbdSliderRow));
+        items.add(UItem.asShadow(null));
+
+        items.add(UItem.asHeader(getString(R.string.MessagesSettings)));
         items.add(SettingsHelper.asSwitchCG(pencilIconRow, getString(R.string.AP_ShowPencilIcon))
                 .setChecked(NimarkoConfig.showPencilIcon));
         items.add(SettingsHelper.asSwitchCG(forwardDateRow, getString(R.string.CP_ForwardMsgDate))
                 .setChecked(NimarkoConfig.msgForwardDate));
-        items.add(SettingsHelper.asSwitchCG(hideBottomBarRow, getString(R.string.CP_HideMuteUnmuteButton))
-                .setChecked(NimarkoConfig.hideMuteUnmuteButton));
-        items.add(SettingsHelper.asSwitchCG(weekdayRow, getString(R.string.NM_CP_WeekdayNearDate), getString(R.string.NM_CP_WeekdayNearDate_Desc))
-                .setChecked(NimarkoConfig.weekdayNearDate));
-        items.add(SettingsHelper.asSwitchCG(sendAsChannelButtonRow, getString(R.string.CP_HideSendAsChannel), getString(R.string.CP_HideSendAsChannelDesc))
-                .setChecked(NimarkoConfig.hideSendAsChannel));
-        items.add(UItem.asButton(messageSizeRow, R.drawable.msg_photo_settings, getString(R.string.CP_Messages_Size)));
-        items.add(UItem.asButton(chatMenuShortcutsRow, R.drawable.msg_list, getString(R.string.CP_ChatMenuShortcuts)));
-        items.add(UItem.asShadow(null));
-
-        items.add(UItem.asHeader(getString(R.string.NM_CP_Header_Interaction)));
-        items.add(UItem.asButton(doubleTapRow, getString(R.string.CP_DoubleTapAction), getDoubleTapActionValue()));
-        items.add(UItem.asButton(slideActionRow, getString(R.string.NM_MsgSlideAction), getSlideActionValue()));
-        items.add(UItem.asButton(leftBottomBtnRow, getString(R.string.CP_LeftBottomButtonAction), getLeftBottomButtonValue()));
-        items.add(SettingsHelper.asSwitchCG(autoQuoteRow, getString(R.string.CP_AutoQuoteReplies), getString(R.string.CP_AutoQuoteReplies_Desc))
+        items.add(SettingsHelper.asSwitchCG(autoQuoteRow,
+                        getString(R.string.CP_AutoQuoteReplies),
+                        getString(R.string.CP_AutoQuoteReplies_Desc))
                 .setChecked(NimarkoConfig.autoQuoteReplies));
-        items.add(SettingsHelper.asSwitchCG(preReformRussianRow, getString(R.string.NM_CP_PreReformRussian), getString(R.string.NM_CP_PreReformRussian_Desc))
+        items.add(SettingsHelper.asSwitchCG(preReformRussianRow,
+                        getString(R.string.NM_CP_PreReformRussian),
+                        getString(R.string.NM_CP_PreReformRussian_Desc))
                 .setChecked(NimarkoConfig.preReformRussian));
-        items.add(SettingsHelper.asSwitchCG(latexRenderingRow, getString(R.string.NM_CP_LatexRendering), getString(R.string.NM_CP_LatexRendering_Desc))
+        items.add(SettingsHelper.asSwitchCG(latexRenderingRow,
+                        getString(R.string.NM_CP_LatexRendering),
+                        getString(R.string.NM_CP_LatexRendering_Desc))
                 .setChecked(NimarkoConfig.latexRenderingEnabled));
-        items.add(SettingsHelper.asSwitchCG(disableSwipeToNextRow, getString(R.string.CP_DisableSwipeToNext), getString(R.string.CP_DisableSwipeToNext_Desc))
+        items.add(UItem.asShadow(getString(R.string.NM_SettingsSummaryInputText)));
+    }
+
+    private void fillGesturesPage(ArrayList<UItem> items) {
+        items.add(UItem.asHeader(getString(R.string.NM_SettingsSectionGesturesActions)));
+        items.add(asSettingsValue(doubleTapRow, IconBackgroundColors.BLUE,
+                R.drawable.msg_actions, getString(R.string.CP_DoubleTapAction), getDoubleTapActionValue()));
+        items.add(asSettingsValue(slideActionRow, IconBackgroundColors.CYAN,
+                R.drawable.msg_forward, getString(R.string.NM_MsgSlideAction), getSlideActionValue()));
+        items.add(asSettingsValue(leftBottomBtnRow, IconBackgroundColors.ORANGE,
+                R.drawable.msg_replace, getString(R.string.CP_LeftBottomButtonAction), getLeftBottomButtonValue()));
+        items.add(SettingsHelper.asSwitchCG(disableSwipeToNextRow,
+                        getString(R.string.CP_DisableSwipeToNext),
+                        getString(R.string.CP_DisableSwipeToNext_Desc))
                 .setChecked(NimarkoConfig.disableSwipeToNext));
-        items.add(SettingsHelper.asSwitchCG(deleteForAllRow, getString(R.string.CP_DeleteForAll), getString(R.string.CP_DeleteForAll_Desc))
-                .setChecked(NimarkoConfig.deleteForAll));
         if (VibrateUtils.hasVibrator()) {
             items.add(SettingsHelper.asSwitchCG(disableVibrationRow, getString(R.string.CP_DisableVibration))
                     .setChecked(NimarkoConfig.disableVibration));
         }
         items.add(UItem.asShadow(null));
-        items.add(UItem.asHeader(getString(R.string.CP_HideKbdOnScroll)));
-        items.add(UItem.asIntSlideView(1, 0, NimarkoConfig.hideKeyboardOnScrollIntensity, 10,
-                val -> val == 0 ? getString(R.string.VibrationDisabled) : String.valueOf(val),
-                NimarkoConfig::setHideKeyboardOnScrollIntensity));
-        items.add(UItem.asShadow(null));
 
-        items.add(UItem.asHeader(getString(R.string.NM_CP_Header_Media)));
+        items.add(UItem.asHeader(getString(R.string.NM_SettingsSectionActions)));
+        items.add(SettingsHelper.asSwitchCG(forwardWithoutAuthorRow, getString(R.string.ForwardWithoutAuthor))
+                .setChecked(NimarkoConfig.forwardWithoutAuthor));
+        items.add(SettingsHelper.asSwitchCG(deleteForAllRow,
+                        getString(R.string.CP_DeleteForAll),
+                        getString(R.string.CP_DeleteForAll_Desc))
+                .setChecked(NimarkoConfig.deleteForAll));
+        items.add(UItem.asShadow(getString(R.string.NM_SettingsSummaryGesturesActions)));
+    }
+
+    private void fillChatList(ArrayList<UItem> items) {
+        items.add(SettingsHelper.asSwitchCG(sortByUnreadRow, getString(R.string.CP_SortByUnread))
+                .setChecked(NimarkoConfig.sortByUnread));
+        items.add(SettingsHelper.asSwitchCG(unarchiveOnSwipeRow, getString(R.string.CP_UnarchiveOnSwipe))
+                .setChecked(NimarkoConfig.unarchiveOnSwipe));
+        items.add(SettingsHelper.asSwitchCG(customChatRow,
+                        getString(R.string.EP_CustomChat),
+                        getString(R.string.EP_CustomChat_Desc))
+                .setChecked(NimarkoConfig.customChatForSavedMessages));
+        if (NimarkoConfig.customChatForSavedMessages) {
+            items.add(SettingsHelper.asCustomWithBackground(createUserCell()));
+        }
+    }
+
+    private void fillMedia(ArrayList<UItem> items) {
         items.add(SettingsHelper.asSwitchCG(largePhotosRow, getString(R.string.EP_PhotosSize))
                 .setChecked(NimarkoConfig.largePhotos));
-        items.add(SettingsHelper.asSwitchCG(playVideoOnVolumeBtnRow, getString(R.string.CP_PlayVideo), getString(R.string.CP_PlayVideo_Desc))
+        items.add(SettingsHelper.asSwitchCG(playVideoOnVolumeBtnRow,
+                        getString(R.string.CP_PlayVideo),
+                        getString(R.string.CP_PlayVideo_Desc))
                 .setChecked(NimarkoConfig.playVideoOnVolume));
-        items.add(SettingsHelper.asSwitchCG(autoPauseVideoRow, getString(R.string.CP_AutoPauseVideo), getString(R.string.CP_AutoPauseVideo_Desc))
+        items.add(SettingsHelper.asSwitchCG(autoPauseVideoRow,
+                        getString(R.string.CP_AutoPauseVideo),
+                        getString(R.string.CP_AutoPauseVideo_Desc))
                 .setChecked(NimarkoConfig.autoPauseVideo));
         items.add(SettingsHelper.asSwitchCG(gifSpoilersRow, getString(R.string.NM_MSG_GifSpoilers))
                 .setChecked(NimarkoConfig.gifSpoilers));
-        items.add(UItem.asShadow(null));
         items.add(UItem.asHeader(getString(R.string.CP_VideoSeekDuration)));
         items.add(UItem.asIntSlideView(1, 0, NimarkoConfig.videoSeekDuration, 25,
                 val -> val == 0 ? getString(R.string.NM_WSB_Status_Off) : String.valueOf(val),
-                NimarkoConfig::setVideoSeekDuration));
-        items.add(UItem.asShadow(null));
+                NimarkoConfig::setVideoSeekDuration).setId(videoSeekSliderRow));
+    }
 
-        items.add(UItem.asHeader(getString(R.string.TelegramPremium)));
-        items.add(SettingsHelper.asSwitchCG(reactionsOverlayRow, getString(R.string.CP_DisableReactionsOverlay), getString(R.string.CP_DisableReactionsOverlay_Desc))
+    private void fillReactions(ArrayList<UItem> items) {
+        items.add(SettingsHelper.asSwitchCG(reactionsOverlayRow,
+                        getString(R.string.CP_DisableReactionsOverlay),
+                        getString(R.string.CP_DisableReactionsOverlay_Desc))
                 .setChecked(NimarkoConfig.disableReactionsOverlay));
-        items.add(SettingsHelper.asSwitchCG(reactionAnimationRow, getString(R.string.CP_DisableReactionAnim), getString(R.string.CP_DisableReactionAnim_Desc))
+        items.add(SettingsHelper.asSwitchCG(reactionAnimationRow,
+                        getString(R.string.CP_DisableReactionAnim),
+                        getString(R.string.CP_DisableReactionAnim_Desc))
                 .setChecked(NimarkoConfig.disableReactionAnim));
-        items.add(SettingsHelper.asSwitchCG(premStickAnimRow, getString(R.string.CP_DisablePremStickAnim), getString(R.string.CP_DisablePremStickAnim_Desc))
+        items.add(SettingsHelper.asSwitchCG(premStickAnimRow,
+                        getString(R.string.CP_DisablePremStickAnim),
+                        getString(R.string.CP_DisablePremStickAnim_Desc))
                 .setChecked(NimarkoConfig.disablePremStickAnim));
-        items.add(SettingsHelper.asSwitchCG(premStickAutoplayRow, getString(R.string.CP_DisablePremStickAutoPlay), getString(R.string.CP_DisablePremStickAutoPlay_Desc))
+        items.add(SettingsHelper.asSwitchCG(premStickAutoplayRow,
+                        getString(R.string.CP_DisablePremStickAutoPlay),
+                        getString(R.string.CP_DisablePremStickAutoPlay_Desc))
                 .setChecked(NimarkoConfig.disablePremStickAutoPlay));
-        items.add(UItem.asShadow(null));
+    }
 
-        items.add(UItem.asHeader(getString(R.string.SettingsNotifications)));
-        items.add(UItem.asButton(notificationSoundRow, getString(R.string.NotificationsSound), getNotificationSoundValue()));
+    private void fillNotifications(ArrayList<UItem> items) {
+        items.add(asSettingsValue(notificationSoundRow, IconBackgroundColors.BLUE,
+                R.drawable.msg_notifications, getString(R.string.NotificationsSound), getNotificationSoundValue()));
         if (VibrateUtils.hasVibrator()) {
-            items.add(UItem.asButton(vibrateInChatsRow, getString(R.string.CP_VibrateInChats), getVibrationValue()));
-            items.add(UItem.asShadow(getString(R.string.CP_VibrateInChats_Desc)));
+            items.add(asSettingsValue(vibrateInChatsRow, IconBackgroundColors.PURPLE,
+                    R.drawable.msg_noise_on, getString(R.string.CP_VibrateInChats), getVibrationValue()));
         }
-        items.add(UItem.asShadow(null));
+    }
 
-        items.add(UItem.asButton(directShareRow, R.drawable.msg_share, getString(R.string.DirectShare)));
-        items.add(UItem.asButton(messageMenuRow, R.drawable.msg_list, getString(R.string.CP_MessageMenu)));
-        items.add(UItem.asButton(messageFilterRow, R.drawable.msg_notspam, getString(R.string.CP_Message_Filtering)));
+    private void fillTools(ArrayList<UItem> items) {
+        items.add(asSettingsLink(chatMenuShortcutsRow, IconBackgroundColors.ORANGE,
+                R.drawable.msg_work, getString(R.string.CP_ChatMenuShortcuts)));
+        items.add(asSettingsLink(directShareRow, IconBackgroundColors.GREEN,
+                R.drawable.msg_share, getString(R.string.DirectShare), getString(R.string.DirectShareInfo)));
+        items.add(asSettingsLink(messageMenuRow, IconBackgroundColors.BLUE_DEEP,
+                R.drawable.msg_settings, getString(R.string.CP_MessageMenu),
+                getString(R.string.NM_SettingsSummaryMessageMenu)));
+        items.add(asSettingsLink(messageFilterRow, IconBackgroundColors.RED,
+                R.drawable.msg_search, getString(R.string.CP_Message_Filtering),
+                getString(R.string.NM_SettingsSummaryMessageFilters)));
         items.add(UItem.asShadow(null));
     }
 
     @Override
     public void onClick(UItem item, View view, int position, float x, float y) {
         final int id = item.id;
+        if (id == openChatListRow) {
+            presentFragment(new ChatsPreferencesActivity(PAGE_CHAT_LIST));
+            return;
+        } else if (id == openInputRow) {
+            presentFragment(new ChatsPreferencesActivity(PAGE_INPUT));
+            return;
+        } else if (id == openGesturesRow) {
+            presentFragment(new ChatsPreferencesActivity(PAGE_GESTURES));
+            return;
+        } else if (id == openMediaRow) {
+            presentFragment(new ChatsPreferencesActivity(PAGE_MEDIA));
+            return;
+        } else if (id == openReactionsRow) {
+            presentFragment(new ChatsPreferencesActivity(PAGE_REACTIONS));
+            return;
+        } else if (id == openNotificationsRow) {
+            presentFragment(new ChatsPreferencesActivity(PAGE_NOTIFICATIONS));
+            return;
+        } else if (id == openToolsRow) {
+            presentFragment(new ChatsPreferencesActivity(PAGE_TOOLS));
+            return;
+        }
         if (id == sortByUnreadRow) {
             NimarkoConfig.toggleSortByUnread();
             updateCheckState(view, NimarkoConfig.sortByUnread);
@@ -198,38 +376,19 @@ public class ChatsPreferencesActivity extends NimarkoUniversalPreferencesActivit
             listView.adapter.update(true);
         } else if (id == recentEmojisStickersRow) {
             NimarkoAlertDialogSwitchers.showRecentEmojisAndStickers(this);
+        } else if (id == disableSendHintsRow) {
+            NimarkoConfig.toggleDisableSendHints();
+            updateCheckState(view, NimarkoConfig.disableSendHints);
 
-        } else if (id == centerTitleRow) {
-            NimarkoConfig.toggleCenterChatTitle();
-            updateCheckState(view, NimarkoConfig.centerChatTitle);
-            getParentLayout().rebuildAllFragmentViews(false, false);
-        } else if (id == unreadBadgeRow) {
-            NimarkoConfig.toggleUnreadBadgeOnBackButton();
-            updateCheckState(view, NimarkoConfig.unreadBadgeOnBackButton);
-        } else if (id == customBackgroundInChatsRow) {
-            NimarkoConfig.toggleCustomWallpapers();
-            updateCheckState(view, NimarkoConfig.customWallpapers);
-        } else if (id == snowflakesRow) {
-            NimarkoConfig.toggleDrawSnowInChat();
-            updateCheckState(view, NimarkoConfig.drawSnowInChat);
-            getParentLayout().rebuildAllFragmentViews(false, false);
         } else if (id == pencilIconRow) {
             NimarkoConfig.toggleShowPencilIcon();
             updateCheckState(view, NimarkoConfig.showPencilIcon);
         } else if (id == forwardDateRow) {
             NimarkoConfig.toggleMsgForwardDate();
             updateCheckState(view, NimarkoConfig.msgForwardDate);
-        } else if (id == weekdayRow) {
-            NimarkoConfig.toggleWeekdayNearDate();
-            updateCheckState(view, NimarkoConfig.weekdayNearDate);
-        } else if (id == hideBottomBarRow) {
-            NimarkoConfig.toggleHideMuteUnmuteButton();
-            updateCheckState(view, NimarkoConfig.hideMuteUnmuteButton);
         } else if (id == sendAsChannelButtonRow) {
             NimarkoConfig.toggleHideSendAsChannel();
             updateCheckState(view, NimarkoConfig.hideSendAsChannel);
-        } else if (id == messageSizeRow) {
-            NimarkoAlertDialogSwitchers.showMessageSize(this);
         } else if (id == chatMenuShortcutsRow) {
             showChatMenuItemsConfigurator(this);
 

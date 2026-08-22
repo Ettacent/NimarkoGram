@@ -1266,7 +1266,7 @@ public class StoryCaptionView extends NestedScrollView implements ItemOptions.Sc
                             if (emoji != null && emoji.length != 0) {
                                 touchEmoji = emoji[0];
                                 if (event.getAction() == MotionEvent.ACTION_DOWN) {
-                                    linkResult = true; 
+                                    linkResult = true;
                                     pressedLink = null;
                                     pressedEmoji = emoji[0];
                                 }

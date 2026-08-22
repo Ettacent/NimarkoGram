@@ -4661,7 +4661,6 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
     }
 
 
-
     private boolean fillMediaData(int type) {
         SharedMediaData[] mediaData = sharedMediaPreloader.getSharedMediaData();
         if (mediaData == null) {
@@ -5545,7 +5544,7 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
     }
 
     private boolean prepareForMoving(MotionEvent ev, boolean forward) {
-        int id = getNextPageId(forward);  
+        int id = getNextPageId(forward);
         if (id < 0) {
             return false;
         }
@@ -11700,7 +11699,7 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
         return progress;
     }
 
-    @Deprecated 
+    @Deprecated
     public float getTabProgress() {
         float progress = 0;
         for (int i = 0; i < mediaPages.length; ++i) {
@@ -12366,8 +12365,8 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
     }
 
 
-    private final HashMap<Integer, StoryAlbumData> storyAlbumsById = new HashMap<>(); 
-    private final HashMap<Integer, Integer> storyAlbumsByTabType = new HashMap<>(); 
+    private final HashMap<Integer, StoryAlbumData> storyAlbumsById = new HashMap<>();
+    private final HashMap<Integer, Integer> storyAlbumsByTabType = new HashMap<>();
 
     private StoryAlbumData storyAlbums_getByAlbumId(int albumId) {
         StoryAlbumData data = storyAlbumsById.get(albumId);

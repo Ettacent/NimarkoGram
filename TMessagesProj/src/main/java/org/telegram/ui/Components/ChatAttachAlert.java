@@ -1103,8 +1103,8 @@ public class ChatAttachAlert extends BottomSheet implements NotificationCenter.N
                 && (photosEnabled || videosEnabled);
     }
 
-    private static final int NM_FAB_REST_MARGIN_DP = 16;  
-    private static final int NM_FAB_PANEL_GAP_DP = 13;    
+    private static final int NM_FAB_REST_MARGIN_DP = 16;
+    private static final int NM_FAB_PANEL_GAP_DP = 13;
     private float computeNimarkoFloatingCameraTranslationY() {
         int laidOutMargin = dp(83);
         if (nimarkoFloatingButton != null && nimarkoFloatingButton.getLayoutParams() instanceof FrameLayout.LayoutParams) {
@@ -1549,7 +1549,7 @@ public class ChatAttachAlert extends BottomSheet implements NotificationCenter.N
                     selectedMenuItem.setAdditionalYOffset(-dp(3));
                 }
 
-                LayoutParams layoutParams; 
+                LayoutParams layoutParams;
 
                 layoutParams = (LayoutParams) doneItem.getLayoutParams();
                 layoutParams.height = ActionBar.getCurrentActionBarHeight();
@@ -1714,7 +1714,7 @@ public class ChatAttachAlert extends BottomSheet implements NotificationCenter.N
                         emojiPadding = keyboardSize <= dp(20) && !AndroidUtilities.isInMultiwindow && !AndroidUtilities.isTablet() ? getCommentView().getEmojiPadding() : 0;
                     }
                     if (emojiPadding > 0) {
-                        paddingBottom += emojiPadding; 
+                        paddingBottom += emojiPadding;
                     }
                 }
                 setBottomClip(paddingBottom);
@@ -2772,7 +2772,6 @@ public class ChatAttachAlert extends BottomSheet implements NotificationCenter.N
         iBlur3FactoryFade.setSourceRootView(new ViewPositionWatcher(containerView), containerView);
 
 
-
         bottomFadeView = new View(context) {
             @Override
             protected void onSizeChanged(int w, int h, int oldw, int oldh) {
@@ -3033,7 +3032,6 @@ public class ChatAttachAlert extends BottomSheet implements NotificationCenter.N
                 toggleCaptionAbove();
             }
         });
-
 
 
         frameLayout2 = new FrameLayout(context) {
@@ -7238,8 +7236,6 @@ public class ChatAttachAlert extends BottomSheet implements NotificationCenter.N
             setCaptionAbove(false, animated);
         }
     }
-
-
 
 
     private final @Nullable DownscaleScrollableNoiseSuppressor scrollableViewNoiseSuppressor;

@@ -1243,7 +1243,7 @@ public class SelfStoryViewsPage extends FrameLayout implements NotificationCente
 
                 loading = true;
                 int[] localReqId = new int[1];
-                FileLog.d("SelfStoryViewsPage reactions load next " + storyItem.id + " " + initial + " offset=" + req.offset );
+                FileLog.d("SelfStoryViewsPage reactions load next " + storyItem.id + " " + initial + " offset=" + req.offset);
                 localReqId[0] = reqId = ConnectionsManager.getInstance(currentAccount).sendRequest(req, (response, error) -> AndroidUtilities.runOnUIThread(() -> {
                     if (localReqId[0] != reqId) {
                         FileLog.d("SelfStoryViewsPage reactions " + storyItem.id + " localId != reqId");
@@ -1725,7 +1725,7 @@ public class SelfStoryViewsPage extends FrameLayout implements NotificationCente
     }
 
     public static class FiltersState {
-        boolean sortByReactions = true; 
+        boolean sortByReactions = true;
         boolean contactsOnly;
         String searchQuery;
         String q;

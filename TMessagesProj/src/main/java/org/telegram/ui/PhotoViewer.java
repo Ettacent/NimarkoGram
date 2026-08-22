@@ -748,7 +748,7 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
 
         private String getOf() {
             lng = LocaleController.getInstance().getCurrentLocaleInfo().shortName;
-            String text = getString(R.string.Of); 
+            String text = getString(R.string.Of);
             text = text.replace("%1$d", "");
             text = text.replace("%2$d", "");
             return text;
@@ -2377,16 +2377,16 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
 
                     for (int i = 0; i < 4; i++) {
                         switch (i) {
-                            case 0: 
+                            case 0:
                                 rect.set(0, visibleRect.top, visibleRect.left, visibleRect.bottom);
                                 break;
-                            case 1: 
+                            case 1:
                                 rect.set(0, 0, width, visibleRect.top);
                                 break;
-                            case 2: 
+                            case 2:
                                 rect.set(visibleRect.right, visibleRect.top, width, visibleRect.bottom);
                                 break;
-                            case 3: 
+                            case 3:
                                 rect.set(0, visibleRect.bottom, width, height);
                                 break;
                         }
@@ -3913,7 +3913,7 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
         public void setTranslationY(float translationY) {
             super.setTranslationY(translationY);
             if (inScrollView) {
-                scrollView.invalidate(); 
+                scrollView.invalidate();
             }
         }
 
@@ -4932,9 +4932,9 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
         if (progressDrawables == null) {
             Drawable circleDrawable = ContextCompat.getDrawable(parentActivity, R.drawable.circle_big);
             progressDrawables = new Drawable[]{
-                    circleDrawable, 
-                    ContextCompat.getDrawable(parentActivity, R.drawable.cancel_big), 
-                    ContextCompat.getDrawable(parentActivity, R.drawable.load_big), 
+                    circleDrawable,
+                    ContextCompat.getDrawable(parentActivity, R.drawable.cancel_big),
+                    ContextCompat.getDrawable(parentActivity, R.drawable.load_big),
             };
         }
 
@@ -7302,7 +7302,7 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
                         MediaController.PhotoEntry photoEntry =
                                 (MediaController.PhotoEntry) snapshot.entry;
 
-                        if (thanosEffect == null ) {
+                        if (thanosEffect == null) {
                             if (isSegmentationSnapshotCurrent(snapshot)) {
                                 applyCurrentEditMode(segmentedImage);
                                 centerImage.setImageBitmap(segmentedImage);
@@ -13724,7 +13724,7 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
             }
             oldScale = Math.min(getContainerViewWidth() / (float) bitmapWidth, getContainerViewHeight() / (float) bitmapHeight);
             newScale = Math.min(getContainerViewWidth(3) / (float) bitmapWidth, getContainerViewHeight(3) / (float) bitmapHeight);
-            animateToScale = newScale / oldScale * scale1(false); 
+            animateToScale = newScale / oldScale * scale1(false);
             animateToX = getLeftInset() / 2 - getRightInset() / 2;
             animationStartTime = System.currentTimeMillis();
             zoomAnimation = true;
@@ -19644,7 +19644,7 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
     }
 
     public void onResume() {
-        redraw(0); 
+        redraw(0);
         if (photoViewerWebView != null) {
             photoViewerWebView.resumeWebView();
         }
@@ -21872,7 +21872,7 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
             return false;
         }
         if (photoProgressViews[0] != null && photoProgressViews[0].isVisible() && photoProgressViews[0].backgroundState != PROGRESS_NONE && Math.sqrt(Math.pow(AndroidUtilities.displaySize.x / 2f - e.getX(), 2) + Math.pow((AndroidUtilities.displaySize.y + AndroidUtilities.statusBarHeight) / 2f - e.getY(), 2)) < dp(40)) {
-            return false; 
+            return false;
         }
         if (scale == 1.0f) {
             float atx = (e.getX() - getContainerViewWidth() / 2) - ((e.getX() - getContainerViewWidth() / 2) - translationX) * (3.0f / scale);
@@ -22804,7 +22804,7 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
 
             if (videoPlayer != null && !videoPlayer.isHDR()) {
                 long timeToEnd = videoPlayer.getDuration() - videoPlayer.getCurrentPosition();
-                if (!hasFrame && !gotError && !gettingFrame && timeToEnd < 1000 * 5 + fadeDuration) { 
+                if (!hasFrame && !gotError && !gettingFrame && timeToEnd < 1000 * 5 + fadeDuration) {
                     final Uri uri = videoPlayer.getCurrentUri();
                     final int index = ++gettingFrameIndex;
                     final VideoPlayer requestedPlayer = videoPlayer;
@@ -23056,9 +23056,9 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
         if (allowCrossfade) {
             if (centerImageInsideBlur == null) {
                 centerImageInsideBlur = new AnimatedFloat[3];
-                centerImageInsideBlur[0] = new AnimatedFloat(this::invalidateBlur, 180, CubicBezierInterpolator.EASE_OUT); 
-                centerImageInsideBlur[1] = new AnimatedFloat(this::invalidateBlur, 180, CubicBezierInterpolator.EASE_OUT); 
-                centerImageInsideBlur[2] = new AnimatedFloat(this::invalidateBlur, 180, CubicBezierInterpolator.EASE_OUT); 
+                centerImageInsideBlur[0] = new AnimatedFloat(this::invalidateBlur, 180, CubicBezierInterpolator.EASE_OUT);
+                centerImageInsideBlur[1] = new AnimatedFloat(this::invalidateBlur, 180, CubicBezierInterpolator.EASE_OUT);
+                centerImageInsideBlur[2] = new AnimatedFloat(this::invalidateBlur, 180, CubicBezierInterpolator.EASE_OUT);
             }
             centerImageInsideBlur[0].set(1f, true);
             centerImageInsideBlur[2].set(1f, true);

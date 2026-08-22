@@ -284,15 +284,6 @@ public final class CameraXUtils {
         return 1080;
     }
 
-    /** True iff the device's performance class permits the CameraX path.
-     *  SAFETY (CG parity): low-end devices (PERFORMANCE_CLASS_LOW) can't run
-     *  CameraX's video pipeline without dropping frames or stalling preview
-     *  rebinds, which surfaces as black-frame artefacts and OOMs during
-     *  recording. CG gates the entire CameraX path behind perf-class >=
-     *  AVERAGE; mirroring that here keeps NG from offering a backend the
-     *  device can't sustain. The Stabilisation / Quality / FPS / Exposure
-     *  rows are intentionally hidden when CameraX is unsupported — users on
-     *  LOW-class hardware automatically fall through to the stock backend. */
     public static boolean isCameraXSupported() {
         return SharedConfig.getDevicePerformanceClass() >= SharedConfig.PERFORMANCE_CLASS_AVERAGE;
     }

@@ -84,9 +84,20 @@ import app.nimarkogram.messenger.NimarkoConfig;
 
 public class MessagesAndProfilesPreferencesActivity extends BaseFragment {
 
+    static final int SETTING_SHOW_SECONDS = 1;
+    static final int SETTING_PREMIUM_STATUSES = 2;
+    static final int SETTING_REPLY_BACKGROUND = 3;
+    static final int SETTING_REPLY_COLORS = 4;
+    static final int SETTING_REPLY_EMOJI = 5;
+    static final int SETTING_PROFILE_CHANNEL = 101;
+    static final int SETTING_PROFILE_ID_DC = 102;
+    static final int SETTING_PROFILE_BIRTHDAY = 103;
+    static final int SETTING_PROFILE_BUSINESS = 104;
+    static final int SETTING_PROFILE_COLOR = 105;
+    static final int SETTING_PROFILE_EMOJI = 106;
+
     private static final int PROFILE_BACKGROUND_COLOR_ID_RED = 14;
     private static final int REPLY_BACKGROUND_COLOR_ID = 13;
-    
     private static final long NIMARKO_EMOJI_ID_FALLBACK = 0L;
 
     private FrameLayout contentView;
@@ -207,13 +218,11 @@ public class MessagesAndProfilesPreferencesActivity extends BaseFragment {
                     View view;
                     switch (viewType) {
                         case VIEW_TYPE_MESSAGE:
-                            
                             ThemePreviewMessagesCell messagesCell = messagesCellPreview = new ThemePreviewMessagesCell(
                                     getContext(), parentLayout, ThemePreviewMessagesCell.TYPE_PEER_COLOR
                             );
                             messagesCell.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
                             messagesCell.fragment = MessagesAndProfilesPreferencesActivity.this;
-                            
                             try {
                                 for (org.telegram.ui.Cells.ChatMessageCell pc : messagesCell.getCells()) {
                                     if (pc != null && pc.getMessageObject() != null) {
@@ -226,23 +235,19 @@ public class MessagesAndProfilesPreferencesActivity extends BaseFragment {
                             break;
                         case VIEW_TYPE_HEADER:
                             HeaderCell header = new HeaderCell(getContext());
-                            header.setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundWhite));
                             view = header;
                             break;
                         case VIEW_TYPE_SWITCH:
                             TextCheckCell switchCell = new TextCheckCell(getContext());
-                            switchCell.setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundWhite));
                             view = switchCell;
                             break;
                         case VIEW_TYPE_TEXT_DETAIL:
                             TextDetailCell textDetailCell = new TextDetailCell(getContext(), getResourceProvider(), true, true);
-                            textDetailCell.setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundWhite));
                             textDetailCell.setContentDescriptionValueFirst(true);
                             view = textDetailCell;
                             break;
                         case VIEW_TYPE_CHANNEL:
                             view = new ProfileChannelCell(MessagesAndProfilesPreferencesActivity.this);
-                            view.setBackgroundColor(getThemedColor(Theme.key_windowBackgroundWhite));
                             break;
                         case VIEW_TYPE_SHADOW:
                         default: {
@@ -274,9 +279,9 @@ public class MessagesAndProfilesPreferencesActivity extends BaseFragment {
                             TextCheckCell switchCell = (TextCheckCell) holder.itemView;
                             switchCell.updateRTL();
                             if (position == timeWithSecondsSwitchRow) {
-                                switchCell.setTextAndValueAndCheck(getString(R.string.NM_MP_ShowSeconds), getString(R.string.NM_MP_ShowSeconds_Desc), NimarkoConfig.showSeconds, true, true);
+                                switchCell.setTextAndCheck(getString(R.string.NM_MP_ShowSeconds), NimarkoConfig.showSeconds, true);
                             } else if (position == premiumStatusSwitchRow) {
-                                switchCell.setTextAndValueAndCheck(getString(R.string.NM_MP_DisablePremiumStatuses), getString(R.string.NM_MP_DisablePremiumStatuses_Desc), NimarkoConfig.disablePremiumStatuses, true, true);
+                                switchCell.setTextAndCheck(getString(R.string.NM_MP_DisablePremiumStatuses), NimarkoConfig.disablePremiumStatuses, true);
                             } else if (position == replyBackgroundSwitchRow) {
                                 switchCell.setTextAndCheck(getString(R.string.NM_MP_ReplyBackground), NimarkoConfig.replyBackground, false);
                             } else if (position == replyColorSwitchRow) {
@@ -327,7 +332,6 @@ public class MessagesAndProfilesPreferencesActivity extends BaseFragment {
                                     final int buttonColor = processColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlueHeader, getResourceProvider()));
                                     drawable.setColorFilter(new PorterDuffColorFilter(buttonColor, PorterDuff.Mode.MULTIPLY));
                                 }
-                                
                                 detailCell.setImageClickListener(v -> {});
                             } else if (position == birthdayPreviewRow) {
                                 TLRPC.UserFull meFull = me != null
@@ -348,7 +352,6 @@ public class MessagesAndProfilesPreferencesActivity extends BaseFragment {
                                     final int buttonColor = processColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlueHeader, getResourceProvider()));
                                     drawable.setColorFilter(new PorterDuffColorFilter(buttonColor, PorterDuff.Mode.MULTIPLY));
                                 }
-                                
                                 detailCell.setImageClickListener(v -> {});
                             } else if (position == businessHoursPreviewRow) {
                                 detailCell.textView.setTextColor(Theme.getColor(Theme.key_avatar_nameInMessageGreen, getResourceProvider()));
@@ -403,7 +406,6 @@ public class MessagesAndProfilesPreferencesActivity extends BaseFragment {
                         ((TextCheckCell) view).setChecked(NimarkoConfig.showSeconds);
                     }
                     LocaleController.getInstance().recreateFormatters();
-                    
                     if (messagesCellPreview != null) {
                         for (ChatMessageCell previewCell : messagesCellPreview.getCells()) {
                             if (previewCell != null && previewCell.getMessageObject() != null) {
@@ -413,7 +415,6 @@ public class MessagesAndProfilesPreferencesActivity extends BaseFragment {
                             }
                         }
                     }
-                    
                     AndroidUtilities.runOnUIThread(() -> {
                         if (parentLayout != null) parentLayout.rebuildAllFragmentViews(true, true);
                         org.telegram.messenger.NotificationCenter.getGlobalInstance()
@@ -434,7 +435,6 @@ public class MessagesAndProfilesPreferencesActivity extends BaseFragment {
                         String tgPremium = NimarkoConfig.disablePremiumStatuses ? " | TG Premium" : "";
                         profilePage.profilePreview.subtitleView.setText(getString(R.string.Online) + tgPremium);
                     }
-                    
                     profilePage.profilePreview.titleView.requestLayout();
 
                     updateMessages();
@@ -478,7 +478,6 @@ public class MessagesAndProfilesPreferencesActivity extends BaseFragment {
 
                     updateMessages();
                 } else if (position == channelPreviewRow) {
-                    
                 } else if (position == channelPreviewSwitchRow) {
                     NimarkoConfig.toggleProfileChannelPreview();
                     if (view instanceof TextCheckCell) {
@@ -557,6 +556,7 @@ public class MessagesAndProfilesPreferencesActivity extends BaseFragment {
                     }
                 }
             });
+            listView.setSections(true);
             addView(listView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT));
 
             DefaultItemAnimator itemAnimator = new DefaultItemAnimator();
@@ -627,12 +627,11 @@ public class MessagesAndProfilesPreferencesActivity extends BaseFragment {
                 replyEmojiSwitchRow = rowCount++;
             }
             if (type == PAGE_PROFILE) {
-                
                 if (NimarkoConfig.profileChannelPreview) {
                     channelPreviewRow = rowCount++;
                     channelPreviewDivisorRow = rowCount++;
                 }
-                
+
                 if (NimarkoConfig.showIDDC
                         || NimarkoConfig.profileBirthDatePreview
                         || NimarkoConfig.profileBusinessPreview
@@ -643,11 +642,11 @@ public class MessagesAndProfilesPreferencesActivity extends BaseFragment {
                 if (NimarkoConfig.showIDDC) {
                     idDcPreviewRow = rowCount++;
                 }
-                
+
                 if (NimarkoConfig.profileBirthDatePreview) {
                     birthdayPreviewRow = rowCount++;
                 }
-                
+
                 if (NimarkoConfig.profileBusinessPreview) {
                     businessHoursPreviewRow = rowCount++;
                 }
@@ -655,14 +654,13 @@ public class MessagesAndProfilesPreferencesActivity extends BaseFragment {
                 if (NimarkoConfig.profileBusinessPreview) {
                     businessLocationPreviewRow = rowCount++;
                 }
-                
+
                 profilePreviewDivisorRow = rowCount++;
                 headerRow = rowCount++;
                 channelPreviewSwitchRow = rowCount++;
                 showDcIdSwitchRow = rowCount++;
                 birthdayPreviewSwitchRow = rowCount++;
                 businessPreviewSwitchRow = rowCount++;
-                
                 premiumStatusSwitchRow = rowCount++;
                 profileBackgroundSwitchRow = rowCount++;
                 profileEmojiSwitchRow = rowCount++;
@@ -671,10 +669,32 @@ public class MessagesAndProfilesPreferencesActivity extends BaseFragment {
                 if (previousRowCount == 0 && rowCount > 0) {
                     listAdapter.notifyItemRangeInserted(0, rowCount);
                 } else {
-                    
                     listAdapter.notifyDataSetChanged();
                 }
             }
+        }
+
+        private void scrollToSetting(int settingId) {
+            int position = -1;
+            if (type == PAGE_MESSAGE) {
+                if (settingId == SETTING_SHOW_SECONDS) position = timeWithSecondsSwitchRow;
+                else if (settingId == SETTING_PREMIUM_STATUSES) position = premiumStatusSwitchRow;
+                else if (settingId == SETTING_REPLY_BACKGROUND) position = replyBackgroundSwitchRow;
+                else if (settingId == SETTING_REPLY_COLORS) position = replyColorSwitchRow;
+                else if (settingId == SETTING_REPLY_EMOJI) position = replyEmojiSwitchRow;
+            } else {
+                if (settingId == SETTING_PROFILE_CHANNEL) position = channelPreviewSwitchRow;
+                else if (settingId == SETTING_PROFILE_ID_DC) position = showDcIdSwitchRow;
+                else if (settingId == SETTING_PROFILE_BIRTHDAY) position = birthdayPreviewSwitchRow;
+                else if (settingId == SETTING_PROFILE_BUSINESS) position = businessPreviewSwitchRow;
+                else if (settingId == SETTING_PROFILE_COLOR) position = profileBackgroundSwitchRow;
+                else if (settingId == SETTING_PROFILE_EMOJI) position = profileEmojiSwitchRow;
+            }
+            if (position < 0 || listView == null || listView.getLayoutManager() == null) return;
+            final int target = position;
+            ((LinearLayoutManager) listView.getLayoutManager())
+                    .scrollToPositionWithOffset(target, AndroidUtilities.dp(80));
+            listView.highlightRow(() -> target);
         }
 
         private void updateMessages() {
@@ -779,8 +799,16 @@ public class MessagesAndProfilesPreferencesActivity extends BaseFragment {
     }
 
     private boolean startAtProfile;
+    private int initialSettingId;
+
     public MessagesAndProfilesPreferencesActivity startOnProfile() {
         this.startAtProfile = true;
+        return this;
+    }
+
+    public MessagesAndProfilesPreferencesActivity openAtSetting(int settingId) {
+        initialSettingId = settingId;
+        startAtProfile = settingId >= 100;
         return this;
     }
 
@@ -929,6 +957,11 @@ public class MessagesAndProfilesPreferencesActivity extends BaseFragment {
         colorBar.updateColors();
 
         fragmentView = contentView = frameLayout;
+        if (initialSettingId != 0) {
+            contentView.post(() -> (startAtProfile ? profilePage : messagePage)
+                    .scrollToSetting(initialSettingId));
+        }
+
 
         return contentView;
     }
@@ -1159,7 +1192,6 @@ public class MessagesAndProfilesPreferencesActivity extends BaseFragment {
                 avatarDrawable.setInfo(0, getString(R.string.AppName), null);
                 imageReceiver.setImageBitmap(avatarDrawable);
             }
-            
             try {
                 Long statusDocId = user != null ? UserObject.getEmojiStatusDocumentId(user.emoji_status) : null;
                 if (statusDocId != null && statusDocId != 0) {
@@ -1369,8 +1401,9 @@ public class MessagesAndProfilesPreferencesActivity extends BaseFragment {
 
     @Override
     public boolean isSupportEdgeToEdge() {
-        return false; 
+        return false;
     }
+
 
     private static String getDCName(int dc) {
         switch (dc) {

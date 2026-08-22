@@ -463,9 +463,9 @@ public final class NimarkoConfig {
 
     public static final int ICON_REPLACE_NONE = 0;
     public static final int ICON_REPLACE_SOLAR = 1;
-    public static final int ICON_REPLACE_MD3 = 2;           
-    public static final int ICON_REPLACE_LIQUID_GLASS = 3;  
-    public static final int ICON_REPLACE_PLUMPY = 4;        
+    public static final int ICON_REPLACE_MD3 = 2;
+    public static final int ICON_REPLACE_LIQUID_GLASS = 3;
+    public static final int ICON_REPLACE_PLUMPY = 4;
     public static volatile int iconReplacement = nmForcePlumpyOnce();
     public static void setIconReplacement(int v) { iconReplacement = v; getEditor().putInt("iconReplacement", v).apply(); }
 
@@ -1032,7 +1032,7 @@ public final class NimarkoConfig {
     public static final int DTAP_SAVE = 3;
     public static final int DTAP_EDIT = 4;
     public static final int DTAP_TRANSLATE = 5;
-    public static final int DTAP_EDIT_OR_REACTION = 6; 
+    public static final int DTAP_EDIT_OR_REACTION = 6;
     public static final int DOUBLE_TAP_ACTION_NONE = DTAP_NONE;
     public static final int DOUBLE_TAP_ACTION_REACTION = DTAP_REACTION;
     public static final int DOUBLE_TAP_ACTION_REPLY = DTAP_REPLY;
@@ -1386,7 +1386,6 @@ public final class NimarkoConfig {
     public static void setSleepTimer(boolean v) { sleepTimer = v; getEditor().putBoolean("sleepTimer", v).apply(); }
 
 
-
     public static boolean nimarkoTextAnim = getPreferences().getBoolean("nimarkoTextAnim", true);
     public static void toggleNimarkoTextAnim() {
         nimarkoTextAnim = !nimarkoTextAnim;
@@ -1511,15 +1510,15 @@ public final class NimarkoConfig {
     public static final int ROUND_SD = 1;
     public static final int ROUND_HD = 2;
     public static final int ROUND_FHD = 3;
-    public static final int ROUND_STD = 4; 
+    public static final int ROUND_STD = 4;
     public static int videoMessagesResolution = getIntSafe("videoMessagesResolution", ROUND_STD);
     public static void setVideoMessagesResolution(int v) { videoMessagesResolution = v; getEditor().putInt("videoMessagesResolution", v).apply(); }
     public static int getVideoMessagesResolutionPx(int defaultPx) {
         switch (videoMessagesResolution) {
-            case ROUND_AUTO: return 384;  
+            case ROUND_AUTO: return 384;
             case ROUND_SD: return 240;
-            case ROUND_STD: return 384;   
-            case ROUND_FHD: return 720;   
+            case ROUND_STD: return 384;
+            case ROUND_FHD: return 720;
             case ROUND_HD:
             default: return 512;
         }

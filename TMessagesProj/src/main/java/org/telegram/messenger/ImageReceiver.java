@@ -859,7 +859,10 @@ public class ImageReceiver implements NotificationCenter.NotificationCenterDeleg
             state.exhausted[type] = true;
             return;
         }
-        if (!attachedToWindow || state.retryRunnables[type] != null) {
+        if (!attachedToWindow) {
+            return;
+        }
+        if (state.retryRunnables[type] != null) {
             return;
         }
         if (state.retryCounts[type] >= STICKER_LOAD_RETRY_LIMIT) {

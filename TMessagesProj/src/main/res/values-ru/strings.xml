@@ -4,7 +4,7 @@
     <string name="NM_CP_Header_ChatView">Вид чата</string>
     <string name="NM_CP_Header_Interaction">Взаимодействие</string>
     <string name="NM_CP_Header_Media">Медиа</string>
-    <string name="NM_CP_CenterTitleInChat">Центрировать заголовок в чате</string>
+    <string name="NM_CP_CenterTitleInChat">Заголовок чата по центру</string>
     <string name="NM_CP_SnowflakesInChat">Снежинки в чате</string>
     <string name="NM_CP_WeekdayNearDate">День недели у даты</string>
     <string name="NM_CP_WeekdayNearDate_Desc">Показывает день недели рядом с датой в чате.</string>
@@ -405,20 +405,20 @@
     <string name="NM_GE_OldNotificationIcon">Стандартная иконка уведомлений (Telegram)</string>
     <string name="NM_GE_SlowNetworkMode">Режим медленной сети</string>
     <string name="NM_GE_DownloadSpeedBoost">Ускорение загрузки</string>
-    <string name="NM_GE_UploadSpeedBoost">Увеличение скорости отдачи</string>
+    <string name="NM_GE_UploadSpeedBoost">Ускорение отправки</string>
     <string name="EP_Network">Сеть</string>
     <string name="CP_Header_Record">Медиа</string>
 
     <!-- Приватность (доп.) -->
-    <string name="NM_PR_AllowSystemPasscode">Использовать блокировку устройства</string>
-    <string name="NM_PR_AllowSystemPasscode_Desc">Разрешает подтверждение отпечатком, лицом, PIN-кодом, графическим ключом или паролем устройства. Это системный код устройства — NimarkoGram не создаёт отдельный пароль.</string>
+    <string name="NM_PR_AllowSystemPasscode">Защита устройства</string>
+    <string name="NM_PR_AllowSystemPasscode_Desc">Использовать биометрию или блокировку устройства.</string>
     <string name="NM_PR_AskBioOpenArchive">Защищать архив</string>
     <string name="NM_PR_AskBioOpenArchive_Desc">Запрашивать подтверждение устройства перед открытием архива.</string>
     <string name="NM_PR_AskBioOpenEncrypted">Защищать секретные чаты</string>
     <string name="NM_PR_AskBioOpenEncrypted_Desc">Запрашивать подтверждение устройства перед открытием секретного чата.</string>
     <string name="NM_PR_AskPasscodeBeforeDelete">Пароль перед удалением</string>
     <string name="NM_PR_HideArchiveList">Скрыть архив из списка чатов</string>
-    <string name="NM_PR_HideArchiveList_Desc">Убирает строку архива из основного списка чатов. Открыть архив можно здесь или долгим нажатием на кнопку поиска.</string>
+    <string name="NM_PR_HideArchiveList_Desc">Убрать архив из списка чатов. Открыть его можно здесь или удержанием поиска.</string>
     <string name="NM_PR_OpenArchive">Открыть архив</string>
     <string name="NM_PR_HideArchivedStories">Скрыть архивированные истории</string>
     <string name="NM_PR_HideArchivedStories_Desc">Скрывает раздел архивированных историй в профиле.</string>
@@ -497,7 +497,7 @@
     <string name="NM_GE_ArchiveStories_Desc">Автоматически перемещать истории в архив.</string>
 
     <string name="NM_PR_DeleteAccount">Удаление аккаунта</string>
-    <string name="NM_PR_TestFingerprint">Проверить аутентификацию</string>
+    <string name="NM_PR_TestFingerprint">Проверить защиту</string>
     <string name="NM_PR_TestFingerprint_Desc">Проверяет доступность биометрии или блокировки устройства и обновляет их состояние.</string>
     <string name="NM_PR_AskBioOpenChats">Защищать выбранные чаты</string>
     <string name="NM_PR_AuthenticationRequired">Для изменения этой защищённой настройки требуется аутентификация</string>
@@ -594,16 +594,18 @@
     <!-- Folders sub-screen -->
     <string name="NM_FO_TabsHeader">Вкладки папок</string>
     <string name="NM_FO_MiscHeader">Прочее</string>
-    <string name="NM_FO_TabsHideAllChats">Скрыть папку \"Все чаты\"</string>
+    <string name="NM_FO_TabsHideAllChats">Скрыть вкладку \"Все чаты\"</string>
     <string name="NM_FO_TabsNoCounter">Скрыть счетчик на вкладках</string>
-    <string name="NM_FO_TabStyle">Стиль папок</string>
-    <string name="NM_FO_TabStyleStroke">Добавить обводку</string>
+    <string name="NM_FO_TabStyle">Вид вкладок</string>
+    <string name="NM_FO_TabStyleStroke">Обводка активной вкладки</string>
+    <string name="NM_FO_TabStyleStroke_Desc">Выделяет активную вкладку контуром.</string>
     <string name="NM_FO_TabModeMix">Иконки с названиями</string>
     <string name="NM_FO_TabModeText">Только названия</string>
     <string name="NM_FO_TabModeIcon">Только иконки</string>
-    <string name="NM_FO_FolderNameInHeader">Название папки вместо \"NimarkoGram\"</string>
-    <string name="NM_FO_FolderNameInHeader_Desc">Это изменит \"NimarkoGram\" в заголовке сверху на название Вашей папки (удобно при отображении иконок вместо названий папок)</string>
+    <string name="NM_FO_FolderNameInHeader">Название папки в заголовке</string>
+    <string name="NM_FO_FolderNameInHeader_Desc">Показывать название текущей папки в заголовке.</string>
     <string name="NM_FO_FoldersAtBottom">Показывать папки снизу</string>
+    <string name="NM_FO_FoldersAtBottom_Desc">Переносит вкладки папок вниз списка чатов.</string>
 
     <!-- NG-extension: per-folder customisation (no CG analog) -->
     <string name="NM_Folder_Color">Цвет папки</string>
@@ -630,9 +632,9 @@
     <string name="NM_BT_OpenSettingsBySwipe">Открывать настройки свайпом</string>
     <string name="NM_BT_OpenSettingsBySwipe_Desc">Свайп слева направо по вкладкам открывает настройки, как боковое меню, когда вкладки отключены.</string>
     <string name="NM_BT_ForceOpenChats">Всегда искать в чатах</string>
-    <string name="NM_BT_ForceOpenChats_Desc">Если включено, кнопка всегда открывает поиск по чатам. Если выключено - открывается поиск, доступный на текущем экране (например, по настройкам или контактам).</string>
+    <string name="NM_BT_ForceOpenChats_Desc">Кнопка поиска всегда ищет по чатам.</string>
     <string name="NM_BT_LayoutFooterDesc">Нажмите, чтобы включить/отключить, удерживайте и перетаскивайте, чтобы изменить порядок.</string>
-    <string name="NM_BT_ShowSearchInTabs">Кнопка поиска в табах</string>
+    <string name="NM_BT_ShowSearchInTabs">Поиск рядом с вкладками</string>
     <string name="NM_BT_ShowSearchInTabs_Desc">Показывать круглую кнопку поиска рядом с нижней панелью вкладок. Долгое нажатие открывает архив чатов.</string>
     <string name="NM_BT_EditorHeader">Вкладки</string>
     <string name="NM_BT_EditorFooter">Нажмите на вкладку, чтобы включить или выключить её. Долгое нажатие — перетащить.</string>
@@ -738,8 +740,8 @@
     <string name="NM_AvatarCorners">Закругление аватарок</string>
     <string name="NM_AvatarCornersSquare">Квадрат</string>
     <string name="NM_AvatarCornersCircle">Круг</string>
-    <string name="NM_ForumAvatarsLikeChats">Единое закругление</string>
-    <string name="NM_ForumAvatarsLikeChats_Desc">Аватарки форумов скругляются так же, как у обычных чатов.</string>
+    <string name="NM_ForumAvatarsLikeChats">Форма аватаров в форумах</string>
+    <string name="NM_ForumAvatarsLikeChats_Desc">Использовать те же углы, что у аватаров чатов.</string>
     <string name="NM_SwitchStyle">Стиль переключателей</string>
     <string name="NM_Chat_Section">Чаты</string>
     <string name="NM_Stickers_Header">Стикеры</string>
@@ -748,10 +750,10 @@
     <string name="NM_StickerSizeBig">Большой</string>
     <string name="NM_StickerSizePreviewReply">на Марс 🚀</string>
     <string name="NM_StickerSizePreviewText">ахаха 😂</string>
-    <string name="NM_ForceBlur">Усиленный блюр</string>
-    <string name="NM_HideActionBarStatus">Скрыть статус в шапке чата</string>
+    <string name="NM_ForceBlur">Блюр интерфейса</string>
+    <string name="NM_HideActionBarStatus">Скрыть статус в шапке</string>
     <string name="NM_DisableSendHints">Отключить подсказки отправки</string>
-    <string name="NM_DisableSendHints_Desc">Не показывать подсказку «Удерживайте кнопку, чтобы отправить позже или без звука» над кнопкой отправки.</string>
+    <string name="NM_DisableSendHints_Desc">Скрыть подсказку об отправке позже и без звука.</string>
     <string name="NM_DoubleTap_EditOrReact">Своё — править, чужое — реакция</string>
     <string name="NM_React">Реакция</string>
     <string name="NM_NotificationReactions">Реакции в уведомлениях</string>
@@ -760,19 +762,19 @@
     <string name="NM_NotificationReactionEmoji">Эмодзи</string>
     <string name="NM_Effects_Header">Эффекты</string>
     <string name="NM_MediaGlow">Свечение медиа</string>
-    <string name="NM_MediaGlow_Desc">Мягко заполняет края полноэкранных фото и видео размытым фоном</string>
-    <string name="NM_HideBubbleTail">Убрать хвостик</string>
-    <string name="NM_HideBubbleTail_Desc">Рисует обычный скруглённый угол вместо «ушка», торчащего к краю экрана</string>
+    <string name="NM_MediaGlow_Desc">Заполнять края медиа мягким размытым фоном.</string>
+    <string name="NM_HideBubbleTail">Скрыть хвостики сообщений</string>
+    <string name="NM_HideBubbleTail_Desc">Использовать скруглённые углы без хвостиков.</string>
     <string name="NM_OnlineIndicatorInGroups">Индикатор онлайна в группах</string>
-    <string name="NM_OnlineIndicatorInGroups_Desc">Показывает маленькую точку онлайна на аватарках участников, которые сейчас в сети, в группах и супергруппах</string>
+    <string name="NM_OnlineIndicatorInGroups_Desc">Показывать онлайн-точку на аватарах в группах.</string>
     <string name="NM_MediaGlow_Strength">Сила подсветки</string>
     <string name="NM_MediaGlow_Blur">Размытие</string>
     <string name="NM_MediaGlow_Transition">Переход между медиа</string>
-    <string name="NM_CustomTitle">Свой заголовок</string>
+    <string name="NM_CustomTitle">Заголовок приложения</string>
     <string name="NM_Config_Header">Конфигурация</string>
     <string name="NM_Config_Export">Экспорт настроек</string>
     <string name="NM_Config_Import">Импорт настроек</string>
-    <string name="NM_Config_Info">Экспорт сохраняет все настройки в файл (выберете, куда). Перенесите файл на другое устройство и нажмите «Импорт».</string>
+    <string name="NM_Config_Info">Сохраните настройки в файл или восстановите их на другом устройстве.</string>
     <string name="NM_Config_Exported">Настройки сохранены в файл</string>
     <string name="NM_Config_Error">Не удалось</string>
     <string name="NM_Config_ImportEmpty">Выбранный файл — не конфигурация NimarkoGram</string>
@@ -786,9 +788,9 @@
     <string name="NM_BAN_StatusRejected">❌ Отклонено</string>
     <string name="NM_BAN_StatusBlocked">🚫 Заблокировано</string>
     <string name="NM_BAN_StatusUnknown">Неизвестно</string>
-    <string name="NM_BAN_BlockedWarning">Вы заблокированы xd</string>
+    <string name="NM_BAN_BlockedWarning">Доступ к публичным баннерам ограничен.</string>
     <string name="NM_BAN_PendingWarning">Ваш баннер уже на модерации!</string>
-    <string name="NM_BAN_ChangeGlobal">Изменить баннер (глобально)</string>
+    <string name="NM_BAN_ChangeGlobal">Изменить публичный баннер</string>
     <string name="NM_BAN_SubmitModeration">Отправить на модерацию</string>
     <string name="NM_BAN_RefreshStatus">Обновить статус</string>
     <string name="NM_BAN_RefreshHint">Запросить с сервера актуальный статус модерации</string>
@@ -863,7 +865,7 @@
     <string name="NM_CARDS_NameUsd">Доллар США</string>
     <string name="NM_CARDS_NameStorage">Хранилище</string>
     <string name="NM_CARDS_NameProxy">Прокси</string>
-    <string name="NM_CARDS_Footer">Живые инфо-карточки в поле поиска. Перетаскивайте за ручку для порядка, тумблер включает/выключает карточку, а тап по карточке открывает её настройки.</string>
+    <string name="NM_CARDS_Footer">Перетаскивайте для сортировки. Нажмите на карточку для настройки.</string>
     <string name="NM_WSBypassBuiltIn">**Обход блокировок** уже встроен в клиент</string>
     <string name="NM_NM_Title">NimarkoMedia</string>
     <string name="NM_NM_SupportedPlatforms">Поддерживаемые платформы</string>
@@ -908,13 +910,13 @@
     <string name="NM_MZ_LargerVoiceMessages">Адаптивная длина аудиосообщений</string>
 
     <!-- Privacy -->
-    <string name="NM_PR_LockedChats">Заблокированные чаты</string>
-    <string name="NM_PR_LockedChatsTtl">Запрашивать биометрию</string>
+    <string name="NM_PR_LockedChats">Защищённые чаты</string>
+    <string name="NM_PR_LockedChatsTtl">Повторная проверка</string>
     <string name="NM_PR_LockedChatsTtl_Always">Каждый раз</string>
     <string name="NM_PR_LockedChatsTtl_1Min">Через 1 минуту</string>
     <string name="NM_PR_LockedChatsTtl_5Min">Через 5 минут</string>
     <string name="NM_PR_LockedChatsTtl_15Min">Через 15 минут</string>
-    <string name="NM_PR_LockedChatsTtl_UntilRestart">До перезапуска приложения</string>
+    <string name="NM_PR_LockedChatsTtl_UntilRestart">До перезапуска</string>
 
     <!-- Misc CG flag-gap audit (Wave-N) -->
     <string name="NM_CH_UnarchiveOnSwipe">Разархивировать чат по свайпу</string>
@@ -954,42 +956,42 @@
     <!-- Appearance -->
     <string name="AP_Header_Appearance">Внешний вид</string>
     <string name="AP_Header">Заголовок</string>
-    <string name="AP_HideSearchBar">Скрыть поле поиска в чатах</string>
+    <string name="AP_HideSearchBar">Скрыть поиск в чатах</string>
     <string name="CP_Snowflakes_Header">Снежинки</string>
     <string name="AP_IconReplacements">Пакет иконок</string>
-    <string name="AP_DisableDividers">Отключить разделители</string>
+    <string name="AP_DisableDividers">Скрыть разделители</string>
     <string name="AP_GlareOnElements">Блики на элементах</string>
     <string name="AP_GlareOnElementsInfo">Отображение верхних и нижних бликов на элементах с эффектом жидкого стекла.</string>
     <string name="CP_Filters_Header">Папки</string>
-    <string name="CP_MainTabs_Header">Органайзер нижних вкладок</string>
+    <string name="CP_MainTabs_Header">Нижние вкладки</string>
     <string name="CP_ProfileReplyBackground">Сообщения и профили</string>
     <string name="AP_IconReplacement_Solar">Иконки Solar от @Design480</string>
-    <string name="AP_CenterTitle">Центрирование заголовка</string>
+    <string name="AP_CenterTitle">Заголовок по центру</string>
     <!-- Chats -->
-    <string name="CP_UnreadBadgeOnBackButton">Показать счетчик непрочитанных</string>
-    <string name="CP_UnreadBadgeOnBackButton_Desc">Включить счетчик непрочитанных чатов на кнопке «Назад» в открытом чате</string>
-    <string name="CP_CustomWallpapers">Кастомный фон в чатах</string>
-    <string name="CP_CustomWallpapers_Desc">Настройка кастомных обоев в чатах/группах/каналах, установленных премиум-пользователями или забущенными каналами</string>
-    <string name="CP_HideMuteUnmuteButton">Скрыть нижнюю панель в каналах</string>
-    <string name="CP_HideSendAsChannel">Скрыть \"Отправить как канал\"</string>
-    <string name="CP_HideSendAsChannelDesc">Вы сможете попасть в это меню путем зажатия кнопки Эмодзи/Стикеры/GIFки</string>
-    <string name="CP_Slider_RecentEmojisAndStickers">Кол-во недавних эмодзи и стикеров</string>
-    <string name="EP_CustomChat">Пользовательский чат для Избранного</string>
-    <string name="EP_CustomChat_Desc">Вы можете выбрать любой чат/группу/канал, чтобы пересылать туда сообщения (через кнопку в панели действий, в меню сообщения, при двойном тапе или при свайпе по сообщению)</string>
+    <string name="CP_UnreadBadgeOnBackButton">Счётчик непрочитанных</string>
+    <string name="CP_UnreadBadgeOnBackButton_Desc">Показывать число непрочитанных на кнопке «Назад».</string>
+    <string name="CP_CustomWallpapers">Обои отдельных чатов</string>
+    <string name="CP_CustomWallpapers_Desc">Показывать обои, заданные для отдельных чатов.</string>
+    <string name="CP_HideMuteUnmuteButton">Скрыть панель звука</string>
+    <string name="CP_HideSendAsChannel">Скрыть отправку от канала</string>
+    <string name="CP_HideSendAsChannelDesc">Меню останется доступно по удержанию кнопки эмодзи.</string>
+    <string name="CP_Slider_RecentEmojisAndStickers">Недавние эмодзи и стикеры</string>
+    <string name="EP_CustomChat">Чат вместо Избранного</string>
+    <string name="EP_CustomChat_Desc">Выберите чат, который будет использоваться вместо Избранного.</string>
     <string name="CP_AutoQuoteReplies">Цитировать ответы</string>
-    <string name="CP_AutoQuoteReplies_Desc">Отправлять цитату с текстом всего сообщения вместо обычного ответа. Не работает в топиках.</string>
-    <string name="CP_DisableSwipeToNext">Отключить переход на следующий канал</string>
-    <string name="CP_DisableSwipeToNext_Desc">Отключить переключение на следующий канал при прокрутке любого канала</string>
+    <string name="CP_AutoQuoteReplies_Desc">Использовать цитату вместо обычного ответа.</string>
+    <string name="CP_DisableSwipeToNext">Отключить свайп между каналами</string>
+    <string name="CP_DisableSwipeToNext_Desc">Не переходить в другой канал при прокрутке.</string>
     <string name="CP_DisableVibration">Отключить вибрацию</string>
-    <string name="CP_HideKbdOnScroll">Интенсивность скролла для скрытия клавиатуры при прокрутке</string>
-    <string name="EP_PhotosSize">Отправлять большие фото (2560px)</string>
-    <string name="CP_PlayVideo">Воспроизводить видео по нажатию на кнопку громкости</string>
-    <string name="CP_PlayVideo_Desc">При нажатии на кнопку громкости будет включено видео на экране в диалоге</string>
+    <string name="CP_HideKbdOnScroll">Скрытие клавиатуры при прокрутке</string>
+    <string name="EP_PhotosSize">Фото до 2560 пикселей</string>
+    <string name="CP_PlayVideo">Запуск видео кнопками громкости</string>
+    <string name="CP_PlayVideo_Desc">Запускать видимое видео кнопкой громкости.</string>
     <string name="CP_AutoPauseVideo">Останавливать медиа</string>
-    <string name="CP_AutoPauseVideo_Desc">При блокировке экрана или сворачивании приложения</string>
-    <string name="CP_VideoSeekDuration">Дабл-тап для перемотки видео (секунды)</string>
+    <string name="CP_AutoPauseVideo_Desc">Ставить на паузу при сворачивании приложения.</string>
+    <string name="CP_VideoSeekDuration">Шаг перемотки видео</string>
     <string name="CP_VibrateInChats">Вибрация в чатах</string>
-    <string name="CP_VibrateInChats_Desc">Издавать короткую вибрацию при получении сообщения в чатах</string>
+    <string name="CP_VibrateInChats_Desc">Вибрировать при сообщении в открытом чате.</string>
     <string name="NM_Vibrate_Off">Выкл.</string>
     <string name="NM_Vibrate_Click">Щелчок</string>
     <string name="NM_Vibrate_Wave">Волна</string>
@@ -1016,20 +1018,20 @@
     <!-- General -->
     <string name="AP_Header_General">Основные</string>
     <string name="EP_NavigationAnimation">Анимация навигации</string>
-    <string name="EP_NavigationAnimationCrossfading">Эффект плавного затухания</string>
-    <string name="NM_PredictiveBackAnimation">Predictive-Back навигация</string>
+    <string name="EP_NavigationAnimationCrossfading">Плавная смена заголовка</string>
+    <string name="NM_PredictiveBackAnimation">Предиктивный жест назад</string>
     <string name="CP_SilenceNonContacts">Заглушить не-контакты</string>
-    <string name="CP_SilenceNonContacts_Desc">Если включено, то уведомления со звуком будут приходить только от контактов. Вы можете добавить человека в контакты без наличия его номера телефона (в профиле человека)</string>
-    <string name="NM_ResidentNotification">Включить постоянное уведомление</string>
-    <string name="CP_HideStories">Скрыть Истории (локально)</string>
-    <string name="CP_HideStories_Desc">Истории исчезнут из списка чатов и из профилей.</string>
+    <string name="CP_SilenceNonContacts_Desc">Включать звук уведомлений только для контактов.</string>
+    <string name="NM_ResidentNotification">Постоянное уведомление</string>
+    <string name="CP_HideStories">Скрыть истории</string>
+    <string name="CP_HideStories_Desc">Убрать истории из чатов и профилей.</string>
     <string name="CP_ArchiveStories">Архивация историй</string>
-    <string name="CP_ArchiveStories_Desc">Истории будут автоматически архивироваться и перемещаться в ваш архив.</string>
+    <string name="CP_ArchiveStories_Desc">Автоматически переносить новые истории в архив.</string>
     <string name="AP_SystemEmoji">Системные эмодзи</string>
     <string name="AP_SystemFonts">Системный шрифт</string>
     <string name="AP_Tablet_Mode">Режим планшета</string>
-    <string name="EP_DownloadSpeedBoost">Увеличение скорости загрузки</string>
-    <string name="EP_SlowNetworkMode">Режим медленной сети</string>
+    <string name="EP_DownloadSpeedBoost">Ускорение загрузки</string>
+    <string name="EP_SlowNetworkMode">Режим слабой сети</string>
     <string name="EP_NavigationAnimationBezier">Обычная</string>
     <string name="EP_NavigationAnimationSpring">Пружинная</string>
     <string name="EP_DownloadSpeedBoostExtreme">Экстра</string>
@@ -1038,34 +1040,34 @@
     <string name="NM_PR_RequireBiometricsToDelete_Desc">Запрашивать подтверждение устройства перед удалением чата или очисткой его истории.</string>
     <!-- Messages -->
     <string name="CP_MessageMenu">Меню сообщения</string>
-    <string name="CP_Messages_Size">Размер пузыря сообщений</string>
-    <string name="CP_TimeOnStick">Скрыть время отправки на стикерах</string>
+    <string name="CP_Messages_Size">Размер облачка</string>
+    <string name="CP_TimeOnStick">Скрыть время у стикеров</string>
     <string name="CP_ForwardMsgDate">Показывать дату пересланного сообщения</string>
-    <string name="AP_ShowPencilIcon">Иконка карандаша для изменённых сообщений</string>
+    <string name="AP_ShowPencilIcon">Пометка изменённых сообщений</string>
     <string name="CP_Message_Filtering">Фильтрация сообщений</string>
     <string name="CP_LeftBottomButtonAction">Действие левой кнопки</string>
     <string name="CP_DoubleTapAction">Двойное нажатие</string>
     <string name="NM_MsgSlideAction">Свайп по сообщению</string>
-    <string name="CP_DeleteForAll">Использовать \"Удалить для всех\" по умолчанию</string>
-    <string name="CP_DeleteForAll_Desc">При удалении сообщений галочка будет ставиться автоматически.</string>
-    <string name="CP_DisableReactionsOverlay">Отключить реакции</string>
-    <string name="CP_DisableReactionsOverlay_Desc">Это отключит всплывающий список доступных реакций</string>
+    <string name="CP_DeleteForAll">Удалять для всех по умолчанию</string>
+    <string name="CP_DeleteForAll_Desc">Заранее отмечать этот пункт в окне удаления.</string>
+    <string name="CP_DisableReactionsOverlay">Скрыть панель реакций</string>
+    <string name="CP_DisableReactionsOverlay_Desc">Не показывать реакции над сообщением.</string>
     <string name="CP_DisableReactionAnim">Отключить анимацию реакций</string>
-    <string name="CP_DisableReactionAnim_Desc">(во время реакции на сообщение)</string>
-    <string name="CP_DisablePremStickAnim">Отключить нажатия на Premium стикеры</string>
-    <string name="CP_DisablePremStickAnim_Desc">Ничего не будет происходить если Вы будете нажимать на Premium стикер</string>
-    <string name="CP_DisablePremStickAutoPlay">Отключить автовоспроизведение Premium стикеров</string>
-    <string name="CP_DisablePremStickAutoPlay_Desc">Premium анимация стикеров не будет воспроизведена автоматически (функция не будет работать если Вы выключили нажатия на Premium стикеры)</string>
+    <string name="CP_DisableReactionAnim_Desc">Ставить реакции без большой анимации.</string>
+    <string name="CP_DisablePremStickAnim">Отключить эффекты премиум-стикеров</string>
+    <string name="CP_DisablePremStickAnim_Desc">Не запускать эффект при нажатии на стикер.</string>
+    <string name="CP_DisablePremStickAutoPlay">Отключить автовоспроизведение премиум-стикеров</string>
+    <string name="CP_DisablePremStickAutoPlay_Desc">Не запускать анимацию Premium-стикеров автоматически.</string>
     <string name="NM_ToSaved">Сохранить</string>
     <string name="NM_Without_Authorship">без авторства</string>
     <string name="NM_Without_Caption">без подписи</string>
     <!-- MessageMenu -->
     <string name="CP_MessageMenuItems">Элементы меню сообщения</string>
     <string name="NM_Menu_TelegramPlus">Современное меню сообщений</string>
-    <string name="NM_Menu_TelegramPlus_Desc">Компактное меню в стиле Liquid Glass с группировкой действий, пружинными анимациями и живым откликом. Компактная компоновка остаётся доступной.</string>
+    <string name="NM_Menu_TelegramPlus_Desc">Меню Liquid Glass с группировкой действий и плавным откликом.</string>
     <string name="CP_MessageMenuCompactLayout">Компактная компоновка меню</string>
-    <string name="CP_MessageMenuCompactLayout_Desc">Переносит до четырёх основных действий в отдельную панель с крупными значками и подписями. Остальные пункты сохраняют обычный размер.</string>
-    <string name="CP_MessageMenuCompactLayout_Dot">Зоны нажатия остаются удобными; точка рядом с действием означает, что доступно и долгое нажатие.</string>
+    <string name="CP_MessageMenuCompactLayout_Desc">До четырёх основных действий в виде крупных кнопок.</string>
+    <string name="CP_MessageMenuCompactLayout_Dot">Точка отмечает действие по удержанию.</string>
     <!-- Camera -->
     <string name="CP_Category_Camera">Камера</string>
     <string name="CP_CameraType">Тип камеры</string>
@@ -1226,7 +1228,7 @@
     <string name="CP_MainTabs_ShowTabs">Показывать вкладки</string>
     <string name="CP_MainTabs_ShowTabsTitle">Показывать названия вкладок</string>
     <string name="CP_Message_Filtering_Collapse">Сворачивать сообщения</string>
-    <string name="CP_Message_Filtering_Collapse_Desc">Сообщения будут сворачиваться автоматически. Развернуть сообщение можно, нажав на него.</string>
+    <string name="CP_Message_Filtering_Collapse_Desc">Автоматически сворачивать отфильтрованные сообщения.</string>
     <string name="CP_Message_Filtering_Entities">Фильтр по ссылкам</string>
     <string name="CP_Message_Filtering_EntitiesDesc">При включении эта опция расширяет фильтрацию и на ссылки (entities) внутри сообщений. Система проверяет адреса URL на наличие заданных ключевых слов.
         Если совпадение найдено в ссылке, под спойлер будет скрыто всё сообщение, даже если само слово отсутствует в тексте.
@@ -1297,7 +1299,7 @@
     <string name="ChooseSubtitles">Выбрать субтитры</string>
     <string name="DisableSubtitles">Отключить субтитры</string>
     <string name="NM_WSB_Title">Обход блокировок</string>
-    <string name="NM_WSB_MiscHeader">Разное</string>
+    <string name="NM_WSB_MiscHeader">Звонки и VPN</string>
     <string name="NM_WSB_SuspendOnVpn">Приостанавливать при VPN</string>
     <string name="NM_WSB_SuspendOnVpn_Desc">Ставит обход на паузу, пока активен системный VPN.</string>
     <string name="NM_WSB_Enable">Включить обход</string>
@@ -1307,7 +1309,7 @@
     <string name="NM_WSB_Status_Off">Выключено</string>
     <string name="NM_WSB_OpenProxySettings">Настройки прокси Telegram</string>
     <string name="NM_WSB_Status_VpnSuspended">Приостановлено — VPN активен</string>
-    <string name="NM_WSB_About">Помогает Telegram работать при блокировке. Создаёт локальный прокси и направляет трафик через него. По умолчанию включено.</string>
+    <string name="NM_WSB_About">Использует локальный прокси, когда Telegram недоступен.</string>
     <string name="NM_WSB_AuthorHeader">Автор</string>
     <string name="NM_WSB_AuthorChannel">Канал автора</string>
     <string name="NM_WSB_VoIP_Header">Звонки</string>

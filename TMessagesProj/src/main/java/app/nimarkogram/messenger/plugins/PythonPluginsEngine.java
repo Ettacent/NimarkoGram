@@ -1799,7 +1799,7 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
 
     @Override
     public boolean canOpenInExternalApp() {
-        return true; 
+        return true;
     }
 
     private PluginsController getPluginsController() {
@@ -3314,16 +3314,6 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
         }
     }
 
-    /**
-     * Mirror of {@link #callOnPluginLoadWithTimeout} for on_plugin_unload.
-     * The plugins queue is single-threaded; if a plugin's unload wedges
-     * (deadlock on its own ThreadPoolExecutor, blocking I/O while holding
-     * the GIL, etc.) every subsequent toggle queues behind it and the
-     * engine appears dead. Cap unload at {@link #PLUGIN_UNLOAD_TIMEOUT_MS}
-     * so the toggle always returns and the user can keep using the app.
-     * On timeout we log + fall through; cleanupPlugin() still rips out
-     * the native hooks so even a half-unloaded plugin stops firing.
-     */
     private void callOnPluginUnloadWithTimeout(
             String pluginId, PyObject pyObject,
             PluginsController.PluginRuntimeToken runtimeToken,
@@ -5686,7 +5676,7 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
                             arrayList.add(item);
                         }
                     }
-                } catch (Exception e) { 
+                } catch (Exception e) {
                     FileLog.e("Error parsing specific setting item", e);
                 }
             }
@@ -6103,7 +6093,6 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
                     }
                     metadataCache.put(cacheKey, new MetadataCacheEntry(file, map));
                 } catch (PyException e) {
-                    // empty metadata so the caller can fall through to its
                     FileLog.e("Failed to parse metadata from " + str + ". Error: " + e.getMessage(), e);
                 }
             }
@@ -6590,7 +6579,7 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
 
     public static final class Updater {
         private static final Updater INSTANCE = new Updater();
-        private int status = 0; 
+        private int status = 0;
         private boolean notifyWhenChangeStatus = false;
         private boolean sdkFromApk = true;
 

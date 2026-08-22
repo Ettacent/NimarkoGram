@@ -3,6 +3,7 @@
  * Originally Copyright github.com/arsLan4k1390, 2022-2026. GPL v2+.
  * Ported to Java for NimarkoGram.
  */
+
 package app.nimarkogram.messenger.icons;
 
 import android.annotation.SuppressLint;
@@ -289,8 +290,8 @@ public class NimarkoIconResources extends Resources {
 
     private static final class CacheKey {
         final int id;
-        final int density;       
-        final Theme theme;       
+        final int density;
+        final Theme theme;
         final long generation;
 
         CacheKey(int id, int density, Theme theme, long generation) {
@@ -393,30 +394,30 @@ public class NimarkoIconResources extends Resources {
             return loadRaw(stockId, density, theme);
         }
         final int wrappedId = replacement.wrap(stockId);
-        if (wrappedId == stockId) return loadRaw(wrappedId, density, theme);   
+        if (wrappedId == stockId) return loadRaw(wrappedId, density, theme);
         final boolean noTint = replacement.isNoTint(stockId);
         Drawable twin = loadRaw(wrappedId, android.util.DisplayMetrics.DENSITY_XXXHIGH, theme);
-        if (!(twin instanceof android.graphics.drawable.BitmapDrawable)) return twin;  
+        if (!(twin instanceof android.graphics.drawable.BitmapDrawable)) return twin;
         android.graphics.Bitmap bmp = ((android.graphics.drawable.BitmapDrawable) twin).getBitmap();
         if (bmp == null) return twin;
         if (noTint) twin = new NoTintBitmapDrawable(wrapped, bmp);
 
-        int w = org.telegram.messenger.AndroidUtilities.dp(24f);   
+        int w = org.telegram.messenger.AndroidUtilities.dp(24f);
         int h = w;
         try {
-            Drawable stock = loadRaw(stockId, density, theme);     
+            Drawable stock = loadRaw(stockId, density, theme);
             if (stock != null && stock.getIntrinsicWidth() > 0 && stock.getIntrinsicHeight() > 0) {
                 w = stock.getIntrinsicWidth();
                 h = stock.getIntrinsicHeight();
             }
         } catch (Throwable ignore) {  }
-        if (RENDER_24DP_ICONS.contains(stockId)) {                 
+        if (RENDER_24DP_ICONS.contains(stockId)) {
             w = h = org.telegram.messenger.AndroidUtilities.dp(24f);
         }
 
         if (w <= 0 || h <= 0) return twin;
         float scale = Math.min((float) w / bmp.getWidth(), (float) h / bmp.getHeight());
-        if (scale >= 1f) return twin;                          
+        if (scale >= 1f) return twin;
         int nw = Math.max(1, Math.round(bmp.getWidth()  * scale));
         int nh = Math.max(1, Math.round(bmp.getHeight() * scale));
         if (nw == bmp.getWidth() && nh == bmp.getHeight()) return twin;

@@ -21,6 +21,7 @@ import android.view.ViewGroup;
 import android.widget.FrameLayout;
 
 import androidx.annotation.NonNull;
+import androidx.core.view.ViewCompat;
 import androidx.recyclerview.widget.DefaultItemAnimator;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
@@ -42,6 +43,7 @@ import org.telegram.ui.Cells.GraySectionCell;
 import org.telegram.ui.Cells.TextCheckCell;
 import org.telegram.ui.Cells.TextInfoPrivacyCell;
 import org.telegram.ui.Components.LayoutHelper;
+import org.telegram.ui.Components.IconBackgroundColors;
 import org.telegram.ui.Components.OutlineEditText;
 import org.telegram.ui.Components.RecyclerListView;
 import org.telegram.ui.FiltersSetupActivity;
@@ -107,7 +109,6 @@ public class MessageFiltersPreferencesActivity extends BaseFragment {
         if (listAdapter != null) {
             listAdapter.notifyDataSetChanged();
         }
-        
         org.telegram.ui.Components.Bulletin.addDelegate(this, new org.telegram.ui.Components.Bulletin.Delegate() {
             @Override
             public int getBottomOffset(int tag) { return 0; }
@@ -158,7 +159,6 @@ public class MessageFiltersPreferencesActivity extends BaseFragment {
         frameLayout.addView(listView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT));
 
         listView.setOnItemClickListener((view, position, x, y) -> {
-            
             boolean requireDonate = false;
 
             RecyclerView.ViewHolder holder = listView.findViewHolderForAdapterPosition(position);
@@ -166,7 +166,6 @@ public class MessageFiltersPreferencesActivity extends BaseFragment {
                 return;
             }
             if (requireDonate) {
-                
                 return;
             }
             if (position == enableFilterRow) {
@@ -280,7 +279,6 @@ public class MessageFiltersPreferencesActivity extends BaseFragment {
                         NimarkoConfig.putBoolean("enableMsgFilters", true);
                         notifyRowChanged(enableFilterRow);
                     }
-                    
                     notifyRowChanged(regexPatternsRow);
                 }
             } else if (position == logicModeRow) {
@@ -296,6 +294,7 @@ public class MessageFiltersPreferencesActivity extends BaseFragment {
             }
         });
 
+
         listView.setSections(
             view -> !(view instanceof ShadowSectionCell
                     || view instanceof FiltersSetupActivity.HintInnerCell
@@ -307,8 +306,29 @@ public class MessageFiltersPreferencesActivity extends BaseFragment {
             true
         );
         actionBar.setAdaptiveBackground(listView);
+        ViewCompat.setOnApplyWindowInsetsListener(frameLayout, this::onInsetsInternal);
+        ViewCompat.requestApplyInsets(frameLayout);
 
         return fragmentView;
+    }
+
+    @Override
+    public boolean isSupportEdgeToEdge() {
+        return true;
+    }
+
+    @Override
+    public boolean drawEdgeNavigationBar() {
+        return false;
+    }
+
+    @Override
+    public void onInsets(int left, int top, int right, int bottom) {
+        if (listView != null) {
+            listView.setPadding(listView.getPaddingLeft(), listView.getPaddingTop(),
+                    listView.getPaddingRight(), bottom);
+            listView.setClipToPadding(false);
+        }
     }
 
     private class ListAdapter extends RecyclerListView.SelectionAdapter {
@@ -333,12 +353,10 @@ public class MessageFiltersPreferencesActivity extends BaseFragment {
 
         @Override
         public void onBindViewHolder(RecyclerView.ViewHolder holder, int position) {
-            
             boolean requireDonate = false;
             switch (holder.getItemViewType()) {
                 case VIEW_TYPE_SHADOW:
                     holder.itemView.setEnabled(false);
-                    
                     break;
                 case VIEW_TYPE_HEADER:
                     HeaderCell headerCell = (HeaderCell) holder.itemView;
@@ -364,33 +382,44 @@ public class MessageFiltersPreferencesActivity extends BaseFragment {
                         textCell.setTextAndValueAndIcon(
                                 getString(R.string.NM_MF_Exclusions),
                                 String.valueOf(MessagesFilterHelper.INSTANCE.getExcludedChatsCount(currentAccount)),
-                                R.drawable._menu_stream_comments_off_24,
+                                R.drawable.msg_notspam,
                                 false
                         );
+                        textCell.setColorfulIcon(IconBackgroundColors.ORANGE.top,
+                                IconBackgroundColors.ORANGE.bottom, R.drawable.msg_notspam);
                     } else if (position == logicModeRow) {
                         textCell.setEnabled(NimarkoConfig.isEnableMsgFilters());
                         int logic = NimarkoConfig.getMsgFiltersLogic();
-                        textCell.setTextAndValue(
+                        textCell.setTextAndValueAndIcon(
                                 getString(R.string.NM_MF_LogicMode),
                                 getString(logic == NimarkoConfig.MSG_FILTERS_LOGIC_AND
                                         ? R.string.NM_MF_LogicAnd
                                         : R.string.NM_MF_LogicOr),
+                                R.drawable.msg_customize,
                                 true
                         );
+                        textCell.setColorfulIcon(IconBackgroundColors.BLUE.top,
+                                IconBackgroundColors.BLUE.bottom, R.drawable.msg_customize);
                     } else if (position == chatWhitelistRow) {
                         textCell.setEnabled(NimarkoConfig.isEnableMsgFilters());
-                        textCell.setTextAndValue(
+                        textCell.setTextAndValueAndIcon(
                                 getString(R.string.NM_MF_ChatWhitelist),
                                 String.valueOf(countCsvIds(NimarkoConfig.getMsgFiltersChatWhitelist(currentAccount))),
+                                R.drawable.msg_contacts,
                                 true
                         );
+                        textCell.setColorfulIcon(IconBackgroundColors.GREEN.top,
+                                IconBackgroundColors.GREEN.bottom, R.drawable.msg_contacts);
                     } else if (position == chatBlacklistRow) {
                         textCell.setEnabled(NimarkoConfig.isEnableMsgFilters());
-                        textCell.setTextAndValue(
+                        textCell.setTextAndValueAndIcon(
                                 getString(R.string.NM_MF_ChatBlacklist),
                                 String.valueOf(countCsvIds(NimarkoConfig.getMsgFiltersChatBlacklist(currentAccount))),
+                                R.drawable.msg_block,
                                 false
                         );
+                        textCell.setColorfulIcon(IconBackgroundColors.RED.top,
+                                IconBackgroundColors.RED.bottom, R.drawable.msg_block);
                     }
                     break;
                 case VIEW_TYPE_TEXT_CHECK:
@@ -475,7 +504,6 @@ public class MessageFiltersPreferencesActivity extends BaseFragment {
                     TextInfoPrivacyCell textInfoPrivacyCell = (TextInfoPrivacyCell) holder.itemView;
                     if (position == filteredWordsAdviceRow) {
                         textInfoPrivacyCell.setText(getString(R.string.NM_MF_Field_Desc));
-                        
                     } else if (position == regexPatternsAdviceRow) {
                         textInfoPrivacyCell.setText(getString(R.string.NM_MF_Regex_Desc));
                     }
@@ -550,7 +578,6 @@ public class MessageFiltersPreferencesActivity extends BaseFragment {
                     break;
                 case VIEW_TYPE_HEADER:
                     view = new HeaderCell(mContext);
-                    
                     break;
                 case VIEW_TYPE_TEXT_CELL:
                     view = new TextCell(mContext);
@@ -562,7 +589,6 @@ public class MessageFiltersPreferencesActivity extends BaseFragment {
                     view = new TextInfoPrivacyCell(mContext);
                     break;
                 case VIEW_TYPE_EDIT_TEXT:
-                    
                     view = new OutlineEditText(mContext);
                     break;
                 default:
@@ -761,7 +787,6 @@ public class MessageFiltersPreferencesActivity extends BaseFragment {
         }
 
         UsersSelectActivity activity = new UsersSelectActivity(true, chatsList, 0);
-        
         return activity;
     }
 

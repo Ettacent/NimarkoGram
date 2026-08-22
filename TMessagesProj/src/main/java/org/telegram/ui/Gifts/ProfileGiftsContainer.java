@@ -1620,7 +1620,7 @@ public class ProfileGiftsContainer extends FrameLayout implements NotificationCe
 
             button.setVisibility(canSwitchNotify() ? View.GONE : View.VISIBLE);
             checkboxLayout.setVisibility(canSwitchNotify() ? View.VISIBLE : View.GONE);
-            buttonContainerHeightDp = 60; 
+            buttonContainerHeightDp = 60;
             if (list.chat_notifications_enabled != null) {
                 checkbox.setChecked(list.chat_notifications_enabled, true);
             }
@@ -1631,7 +1631,7 @@ public class ProfileGiftsContainer extends FrameLayout implements NotificationCe
         } else if (id == NotificationCenter.updateInterfaces) {
             button.setVisibility(canSwitchNotify() ? View.GONE : View.VISIBLE);
             checkboxLayout.setVisibility(canSwitchNotify() ? View.VISIBLE : View.GONE);
-            buttonContainerHeightDp = 60; 
+            buttonContainerHeightDp = 60;
             setVisibleHeight(visibleHeight);
         }
     }

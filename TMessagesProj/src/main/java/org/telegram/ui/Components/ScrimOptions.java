@@ -261,7 +261,7 @@ public class ScrimOptions extends Dialog {
             openAnimator.cancel();
         }
 
-        final boolean animateOptions = false; 
+        final boolean animateOptions = false;
         openAnimator = ValueAnimator.ofFloat(openProgress, open ? 1 : 0);
         openAnimator.addUpdateListener(anm -> {
             openProgress = (float) anm.getAnimatedValue();
@@ -549,7 +549,6 @@ public class ScrimOptions extends Dialog {
     public void setScrim(ChatMessageCell cell) {
 
     }
-
 
 
     public void setScrimDrawable(Drawable drawable, int width, int height) {

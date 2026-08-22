@@ -46,8 +46,8 @@ public class NimarkoUpdater {
     public static String downloadURL = null;
     public static String version, changelog, size, uploadDate;
     public static int versionCode;
-    public static long expectedSizeBytes = 0;   
-    public static String expectedSha256 = null; 
+    public static long expectedSizeBytes = 0;
+    public static String expectedSha256 = null;
     private static final long MAX_APK_BYTES = 512L * 1024L * 1024L;
     private static final java.util.regex.Pattern SHA256_PATTERN =
             java.util.regex.Pattern.compile("^[0-9a-fA-F]{64}$");
@@ -213,7 +213,7 @@ public class NimarkoUpdater {
     public static File otaPath, versionPath, apkFile;
 
     public static long id = 1L;
-    private static final long updateCheckInterval = 3600000L; 
+    private static final long updateCheckInterval = 3600000L;
     private static volatile boolean updateDownloaded = false;
     private static volatile boolean checkingForUpdates = false;
 
@@ -381,7 +381,7 @@ public class NimarkoUpdater {
                 uploadDate = dateMs > 0 ? LocaleController.formatDateTime(dateMs / 1000, true) : "";
 
                 Update update = new Update(version, versionCode, changelog, size, downloadURL, uploadDate);
-                lastUpdate = update;   
+                lastUpdate = update;
                 NimarkoUpdateConfig.setLastUpdate(version, versionCode, downloadURL, changelog, size, uploadDate);
                 if (update.isNew() && fragment != null && fragment.getContext() != null) {
                     checkDirs();
@@ -406,13 +406,13 @@ public class NimarkoUpdater {
     }
 
     private static volatile boolean downloadCanceled = false;
-    public static volatile Update lastUpdate;   
+    public static volatile Update lastUpdate;
     private static volatile boolean downloading = false;
-    private static volatile boolean downloadPaused = false;   
-    private static volatile long pausedBytes = 0;             
-    private static volatile String downloadLink;              
-    private static volatile int dlRealProgress = 0;   
-    private static int dlShownProgress = 0;           
+    private static volatile boolean downloadPaused = false;
+    private static volatile long pausedBytes = 0;
+    private static volatile String downloadLink;
+    private static volatile int dlRealProgress = 0;
+    private static int dlShownProgress = 0;
     private static volatile HttpURLConnection activeConnection;
     private static volatile int downloadGeneration = 0;
     private static volatile int activeDownloadGeneration = -1;
@@ -566,11 +566,11 @@ public class NimarkoUpdater {
                 }
                 connection = openApkConnection(link, offset);
                 if (myGeneration != downloadGeneration) return;
-                activeConnection = connection;   
+                activeConnection = connection;
                 final boolean append = offset > 0 && connection.getResponseCode() == 206;
-                if (!append) offset = 0;   
+                if (!append) offset = 0;
                 long total = connection.getContentLengthLong();
-                if (append && total > 0) total += offset;   
+                if (append && total > 0) total += offset;
                 long expectedTotal = expectedSizeBytes > 0 ? expectedSizeBytes : total;
                 if (expectedTotal > MAX_APK_BYTES) {
                     throw new java.io.IOException("invalid download length: " + expectedTotal);
@@ -590,10 +590,10 @@ public class NimarkoUpdater {
                         if (downloadPaused) {
                             pausedBytes = downloaded;
                             out.flush();
-                            out.getFD().sync();   
+                            out.getFD().sync();
                             NimarkoUpdateConfig.setPausedDownloadOffset(downloaded);
                             showPausedNotification(context, expectedTotal > 0 ? (int) (downloaded * 100L / expectedTotal) : 0);
-                            return;   
+                            return;
                         }
                         out.write(buf, 0, read);
                         downloaded += read;
@@ -633,7 +633,7 @@ public class NimarkoUpdater {
                 }
 
                 boolean sizeVerified = (expectedSizeBytes > 0 && outFile.length() == expectedSizeBytes)
-                        || (expectedTotal > 0 && downloaded == expectedTotal);   
+                        || (expectedTotal > 0 && downloaded == expectedTotal);
                 if (!hashVerified && !sizeVerified) {
                     outFile.delete();
                     throw new java.io.IOException("unverifiable download: no sha256 and size unknown/mismatch");
@@ -662,7 +662,7 @@ public class NimarkoUpdater {
                     NimarkoUpdateConfig.setUpdateIsDownloading(false);
                     NimarkoUpdateConfig.clearPausedDownload();
                 }
-                showReadyNotification(context, outFile);   
+                showReadyNotification(context, outFile);
                 AndroidUtilities.runOnUIThread(() -> {
                     if (myGeneration != downloadGeneration || !updateDownloaded) return;
                     stopProgressSmoother();
@@ -737,7 +737,7 @@ public class NimarkoUpdater {
             HttpURLConnection c = (HttpURLConnection) new URI(current).toURL().openConnection();
             c.setRequestProperty("User-Agent", "NimarkoGram-OTA");
             c.setRequestProperty("Accept-Encoding", "identity");
-            if (rangeStart > 0) c.setRequestProperty("Range", "bytes=" + rangeStart + "-");   
+            if (rangeStart > 0) c.setRequestProperty("Range", "bytes=" + rangeStart + "-");
             c.setConnectTimeout(15000);
             c.setReadTimeout(30000);
             c.setInstanceFollowRedirects(false);
@@ -751,7 +751,7 @@ public class NimarkoUpdater {
                 if (!isHttps(current)) throw new java.io.IOException("refusing non-https redirect target: " + current);
                 continue;
             }
-            if (code != 200 && code != 206) {   
+            if (code != 200 && code != 206) {
                 c.disconnect();
                 throw new java.io.IOException("HTTP " + code);
             }
@@ -826,7 +826,7 @@ public class NimarkoUpdater {
     }
 
 
-    private static final int UPDATE_NOTIF_ID = 0x4E47;          
+    private static final int UPDATE_NOTIF_ID = 0x4E47;
     private static final String UPDATE_CHANNEL = "nimarko_updates";
     private static int lastNotifProgress = -1;
 
@@ -1058,7 +1058,7 @@ public class NimarkoUpdater {
         final HttpURLConnection c;
         synchronized (downloadBindingLock) {
             if (!downloading || downloadPaused) return;
-            downloadPaused = true; 
+            downloadPaused = true;
             c = activeConnection;
         }
         if (c != null) {
@@ -1081,7 +1081,7 @@ public class NimarkoUpdater {
                     if ((version == null || version.isEmpty()) && savedVersion != null && !savedVersion.isEmpty()) {
                         version = savedVersion;
                     }
-                    downloadPaused = true;   
+                    downloadPaused = true;
                 }
             }
             if (expectedSizeBytes <= 0) {

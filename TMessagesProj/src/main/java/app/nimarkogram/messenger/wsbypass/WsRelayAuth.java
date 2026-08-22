@@ -20,9 +20,9 @@ public final class WsRelayAuth {
     private static final String API_URL = "https://calls.nimarko.org";
 
     public static final class Credential {
-        public final long expiry;   
-        public final long uid;      
-        public final byte[] hmac;   
+        public final long expiry;
+        public final long uid;
+        public final byte[] hmac;
 
         Credential(long expiry, long uid, byte[] hmac) {
             this.expiry = expiry;
@@ -347,8 +347,8 @@ public final class WsRelayAuth {
                 String token = o.optString("token", "");
                 return token.isEmpty() ? null : token;
             }
-            if (rc == 202) return null;        
-            return NimarkoInlineAuth.GIVE_UP;  
+            if (rc == 202) return null;
+            return NimarkoInlineAuth.GIVE_UP;
         } catch (Throwable t) {
             Log.e(TAG, "poll failed: " + t);
             return null;
@@ -432,7 +432,7 @@ public final class WsRelayAuth {
         return out;
     }
 
-    private static final String PREF_CRED = "ws_relay_cred";   
+    private static final String PREF_CRED = "ws_relay_cred";
     private static final String PREF_SLOT_UID = "ws_relay_slot_uid_";
 
     private static String credentialKey(long uid) { return PREF_CRED + "_" + uid; }

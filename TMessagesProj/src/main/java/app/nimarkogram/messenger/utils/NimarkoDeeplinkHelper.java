@@ -30,7 +30,6 @@ import app.nimarkogram.messenger.preferences.MainPreferencesActivity;
 import app.nimarkogram.messenger.preferences.MessageFiltersPreferencesActivity;
 import app.nimarkogram.messenger.preferences.MessageMenuPreferencesActivity;
 import app.nimarkogram.messenger.preferences.MessagesAndProfilesPreferencesActivity;
-import app.nimarkogram.messenger.preferences.MessagesPreferencesActivity;
 import app.nimarkogram.messenger.preferences.PrivacyPreferencesActivity;
 
 public class NimarkoDeeplinkHelper {
@@ -79,7 +78,7 @@ public class NimarkoDeeplinkHelper {
                     target = new ChatsPreferencesActivity();
                     break;
                 case DeepLinksRepo.NG_Messages:
-                    target = new MessagesPreferencesActivity();
+                    target = new ChatsPreferencesActivity();
                     break;
                 case DeepLinksRepo.NG_Message_Menu:
                 case "nimarko_messages_menu":
@@ -103,7 +102,6 @@ public class NimarkoDeeplinkHelper {
                     target = new DebugPreferencesActivity();
                     break;
                 case DeepLinksRepo.NG_Stars:
-                    
                     new StarsIntroActivity.StarsOptionsSheet(
                             fragment.getContext(),
                             fragment.getCurrentAccount(),
@@ -111,7 +109,6 @@ public class NimarkoDeeplinkHelper {
                     ).show();
                     return;
                 case DeepLinksRepo.NG_Username_Limits:
-                    
                     fragment.showDialog(new LimitReachedBottomSheet(
                             fragment,
                             fragment.getContext(),
@@ -124,7 +121,6 @@ public class NimarkoDeeplinkHelper {
                 case "nimarko_reboot":
                 case "restart":
                 case "reboot":
-                    
                     if (fragment.getParentActivity() == null) return;
                     AlertDialog.Builder restart = new AlertDialog.Builder(fragment.getParentActivity());
                     restart.setTitle(getString(R.string.NM_HUB_Restart));

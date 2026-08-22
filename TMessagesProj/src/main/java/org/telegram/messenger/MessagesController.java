@@ -278,7 +278,7 @@ public class MessagesController extends BaseController implements NotificationCe
     private long lastViewsCheckTime;
     public SparseIntArray premiumFeaturesTypesToPosition = new SparseIntArray();
     public SparseIntArray businessFeaturesTypesToPosition = new SparseIntArray();
-    
+
     public ArrayList<DialogFilter> dialogFilters = new ArrayList<>();
     public ArrayList<DialogFilter> frozenDialogFilters = null;
     public ArrayList<Long> hiddenUndoChats = new ArrayList<>();
@@ -717,8 +717,8 @@ public class MessagesController extends BaseController implements NotificationCe
     public int todoItemsMax;
     public int todoTitleLengthMax;
     public int todoItemLengthMax;
-    public String translationsManualEnabled; 
-    public String translationsAutoEnabled; 
+    public String translationsManualEnabled;
+    public String translationsAutoEnabled;
     public HashSet<Long> whitelistedBots;
     public int[] starsGroupcallMessageLimits;
     public int starsGroupcallMessageAmountMax;
@@ -1800,7 +1800,7 @@ public class MessagesController extends BaseController implements NotificationCe
         weatherSearchUsername = mainPreferences.getString("weatherSearchUsername", "izweatherbot");
         storyWeatherPreload = mainPreferences.getBoolean("storyWeatherPreload", true);
         starsGiftsEnabled = mainPreferences.getBoolean("starsGiftsEnabled", true);
-        stargiftsBlocked = mainPreferences.getBoolean("stargiftsBlocked", true); 
+        stargiftsBlocked = mainPreferences.getBoolean("stargiftsBlocked", true);
         starsPaidReactionAmountMax = mainPreferences.getLong("starsPaidReactionAmountMax", 10_000L);
         starsSubscriptionAmountMax = mainPreferences.getLong("starsSubscriptionAmountMax", 2500L);
         starsUsdSellRate1000 = mainPreferences.getFloat("starsUsdSellRate1000", 2000);
@@ -9709,8 +9709,6 @@ public class MessagesController extends BaseController implements NotificationCe
     }
 
 
-
-
     private ArrayList<CommunityPeerDialog> buildCommunityChats(long communityId) {
         final TLRPC.ChatFull chatFull = getChatFull(communityId);
         ArrayList<CommunityPeerDialog> result = new ArrayList<>();
@@ -9757,8 +9755,6 @@ public class MessagesController extends BaseController implements NotificationCe
 
         return result;
     }
-
-
 
 
     public static class UnreadCounts {
@@ -9829,10 +9825,6 @@ public class MessagesController extends BaseController implements NotificationCe
 
         return null;
     }
-
-
-
-
 
 
     public ArrayList<TLRPC.Dialog> getDialogs(int folderId) {
@@ -14877,8 +14869,6 @@ public class MessagesController extends BaseController implements NotificationCe
     }
 
 
-
-
     private ArrayList<TLRPC.Chat> joinedCommunities = new ArrayList<>();
 
     public ArrayList<TLRPC.Chat> getJoinedCommunities() {
@@ -19505,7 +19495,7 @@ public class MessagesController extends BaseController implements NotificationCe
                     long dialogId = MessageObject.getPeerId(update.peer);
                     SparseBooleanArray sparseBooleanArray = new SparseBooleanArray();
                     sparseBooleanArray.put(update.msg_id, update.results.has_unread_votes);
-                    final long topicId = update.top_msg_id; 
+                    final long topicId = update.top_msg_id;
                     if (BuildVars.DEBUG_PRIVATE_VERSION) {
                         FileLog.d("check poll vores for " + dialogId + " " + topicId);
                     }
@@ -21330,7 +21320,7 @@ public class MessagesController extends BaseController implements NotificationCe
                 ConnectionsManager.getInstance(currentAccount).sendRequest(req, (response, error) -> {
                     if (response != null) {
                         TLRPC.TL_messages_savedDialogs topics = (TLRPC.TL_messages_savedDialogs) response;
-                        int count = 0; 
+                        int count = 0;
                         AndroidUtilities.runOnUIThread(() -> {
                             getMessagesController().getTopicsController().updatePollVotesUnread(dialogId, topicId, count, false);
                             getMessagesStorage().updateUnreadPollVotesCount(dialogId, topicId, count);
@@ -22159,7 +22149,7 @@ public class MessagesController extends BaseController implements NotificationCe
             getMessagesStorage().putDialogs(dialogsToPut, 2);
         }
     }
-    
+
 
     public void sortDialogs(LongSparseArray<TLRPC.Chat> chatsDict) {
         if (chatsDict == null && ApplicationLoader.mainInterfacePaused) {
@@ -24850,7 +24840,7 @@ public class MessagesController extends BaseController implements NotificationCe
         }
 
         public final ArrayList<MessageObject> list = new ArrayList<>();
-        
+
         public MessageObject toMessageObject(TLRPC.Document document) {
             final TLRPC.TL_message msg = new TLRPC.TL_message();
             msg.id = SharedConfig.getLastLocalId();
@@ -24933,7 +24923,7 @@ public class MessagesController extends BaseController implements NotificationCe
             if (getFirstDocument() != lastFirstDocument) {
                 updateFirstMusic();
             }
-            
+
             final MessageObject after = toPosition == 0 ? null : list.get(toPosition - 1);
 
             final TLRPC.Document doc = fromItem.getDocument();
@@ -25097,7 +25087,7 @@ public class MessagesController extends BaseController implements NotificationCe
     }
 
     public boolean isWebBrowserInAppEnabled() {
-        if (app.nimarkogram.messenger.NimarkoConfig.inappBrowser) return true;   
+        if (app.nimarkogram.messenger.NimarkoConfig.inappBrowser) return true;
         return webBrowserSettings != null && !webBrowserSettings.open_external_browser;
     }
 
@@ -25106,7 +25096,6 @@ public class MessagesController extends BaseController implements NotificationCe
         if (app.nimarkogram.messenger.NimarkoConfig.inappBrowser) return true;
         return webBrowserSettings != null && !isWebBrowserOpenInExternal(webBrowserSettings, url);
     }
-
 
 
     private final Runnable loadWebConfigRunnable = this::loadWebBrowserConfig;

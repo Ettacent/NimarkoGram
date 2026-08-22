@@ -387,11 +387,11 @@ public class BottomSheetTabsOverlay extends View {
 
     public float offset;
     public float getScrollOffset() {
-        return this.offset; 
+        return this.offset;
     }
 
     public void setScrollOffset(float offset) {
-        this.offset = offset; 
+        this.offset = offset;
     }
 
     private float getScrollStep() {

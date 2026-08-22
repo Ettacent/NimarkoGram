@@ -6149,7 +6149,7 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
                     BotGuardHelper.getInstance(currentAccount).openGuardBotWebApp(-channel.id,
                         resultWebView.bot_id, resultWebView.query_id);
                 });
-                hasJoinMessage = true; 
+                hasJoinMessage = true;
             }
 
             if (!hasJoinMessage) {
@@ -6763,7 +6763,7 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
                     final int parentLayer = Math.max(0, block.level);
                     final int parentQuoteLevels = block.quoteLevels;
                     final boolean parentBottom = (block.quoteLevels == 0 && block.level <= 0) || block.bottom;
-                    block.level = -1; 
+                    block.level = -1;
                     final int size = pageBlockBlockquoteBlocks.blocks.size();
                     for (int b = 0; b < size; b++) {
                         TL_iv.PageBlock innerBlock = pageBlockBlockquoteBlocks.blocks.get(b);
@@ -7834,7 +7834,7 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
             } else {
                 currentDocument = null;
             }
-            isGif = MessageObject.isVideoDocument(currentDocument) || MessageObject.isGifDocument(currentDocument) ;
+            isGif = MessageObject.isVideoDocument(currentDocument) || MessageObject.isGifDocument(currentDocument);
             isFirst = first;
             channelCell.setVisibility(INVISIBLE);
             updateButtonState(false);
@@ -14706,7 +14706,7 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
 
     @Override
     public Theme.ResourcesProvider getResourcesProvider() {
-        return null; 
+        return null;
     }
 
     public boolean isFirstArticle() {
@@ -14731,11 +14731,11 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
             if (isFirstArticle() || pagesStack.size() > 1) {
                 final float backButton = lerp(pages[0].hasBackButton() || pagesStack.size() > 1 ? 1f : 0, pages[1].hasBackButton() || pagesStack.size() > 2 ? 1f : 0, page1Alpha);
                 actionBar.backButtonDrawable.setRotation(1f - backButton, false);
-                actionBar.forwardButtonDrawable.setState(false); 
+                actionBar.forwardButtonDrawable.setState(false);
                 actionBar.setBackButtonCached(backButton > .5f);
             } else {
-                actionBar.forwardButtonDrawable.setState(false); 
-                actionBar.setBackButtonCached(false); 
+                actionBar.forwardButtonDrawable.setState(false);
+                actionBar.setBackButtonCached(false);
             }
             actionBar.setHasForward(pages[0].hasForwardButton());
             actionBar.setIsLocal(pages[0].isLocal());
@@ -14902,7 +14902,7 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
                         if (isFirstArticle() || pagesStack.size() > 1) {
                             actionBar.backButtonDrawable.setRotation(backButton || pagesStack.size() > 1 ? 0 : 1, true);
                             actionBar.setBackButtonCached(backButton || pagesStack.size() > 1);
-                            actionBar.forwardButtonDrawable.setState(false); 
+                            actionBar.forwardButtonDrawable.setState(false);
                         } else {
                             actionBar.setBackButtonCached(false);
                             actionBar.forwardButtonDrawable.setState(false);
@@ -15515,7 +15515,7 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
                 pageLayout.webViewContainer.loadUrl(currentAccount, lastUrl);
             }
         }
-        
+
         public void enrich(PageLayout pageLayout) {
             BotWebViewContainer.MyWebView webView = pageLayout.webViewContainer.getWebView();
             if (webView != null) {

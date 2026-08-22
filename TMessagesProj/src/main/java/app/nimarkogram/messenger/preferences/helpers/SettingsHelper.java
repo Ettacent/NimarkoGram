@@ -1,4 +1,3 @@
- 
 package app.nimarkogram.messenger.preferences.helpers;
 
 import android.view.View;
@@ -8,6 +7,7 @@ import org.telegram.ui.Cells.NotificationsCheckCell;
 import org.telegram.ui.Cells.TextCell;
 import org.telegram.ui.Cells.TextCheckCell;
 import org.telegram.ui.Cells.TextDetailCell;
+import org.telegram.ui.SettingsActivity;
 import org.telegram.ui.Components.UItem;
 import org.telegram.ui.Components.UniversalAdapter;
 
@@ -36,9 +36,7 @@ public class SettingsHelper {
     }
 
     public static UItem asTextDetail(int id, int iconResId, CharSequence text, CharSequence value) {
-        
         UItem i = TextDetailCell.Factory.of(id, text, value);
-        
         i.iconResId = iconResId;
         return i;
     }
@@ -48,7 +46,6 @@ public class SettingsHelper {
     }
 
     public static UItem asSwitchCG(int id, CharSequence text, CharSequence subtext) {
-        
         UItem i = new UItem(UniversalAdapter.VIEW_TYPE_TEXT_CHECK, false);
         i.id = id;
         i.text = text;
@@ -73,6 +70,8 @@ public class SettingsHelper {
     public static void updateButtonValue(View view, String value) {
         if (view instanceof TextCell) {
             ((TextCell) view).setValue(value, true);
+        } else if (view instanceof SettingsActivity.SettingCell) {
+            ((SettingsActivity.SettingCell) view).setValue(value);
         } else {
             if (view != null) {
                 FileLog.e("Unknown view type for setValue: " + view.getClass().getName());

@@ -18,6 +18,8 @@ import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
 
+import androidx.core.view.ViewCompat;
+
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.ApplicationLoader;
 import org.telegram.messenger.R;
@@ -39,6 +41,7 @@ import app.nimarkogram.messenger.icons.icon_replaces.PlumpyFullReplace;
 public class IconPackSelectorActivity extends BaseFragment {
 
     private final ArrayList<PreviewCell> cells = new ArrayList<>();
+    private ScrollView scrollView;
 
     private static final int[] VALUES = {
             NimarkoConfig.ICON_REPLACE_NONE,
@@ -88,14 +91,35 @@ public class IconPackSelectorActivity extends BaseFragment {
                     16, i == 0 ? 8 : 6, 16, 0));
         }
 
-        ScrollView scroll = new ScrollView(context);
-        scroll.addView(list, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
+        scrollView = new ScrollView(context);
+        scrollView.addView(list, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
 
         FrameLayout root = new FrameLayout(context);
         root.setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundGray));
-        root.addView(scroll, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT));
+        root.addView(scrollView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT));
         fragmentView = root;
+        ViewCompat.setOnApplyWindowInsetsListener(root, this::onInsetsInternal);
+        ViewCompat.requestApplyInsets(root);
         return fragmentView;
+    }
+
+    @Override
+    public boolean isSupportEdgeToEdge() {
+        return true;
+    }
+
+    @Override
+    public boolean drawEdgeNavigationBar() {
+        return false;
+    }
+
+    @Override
+    public void onInsets(int left, int top, int right, int bottom) {
+        if (scrollView != null) {
+            scrollView.setPadding(scrollView.getPaddingLeft(), scrollView.getPaddingTop(),
+                    scrollView.getPaddingRight(), bottom);
+            scrollView.setClipToPadding(false);
+        }
     }
 
     private boolean nmApplyPending;
@@ -110,7 +134,7 @@ public class IconPackSelectorActivity extends BaseFragment {
         if (generation == nmApplyGeneration
                 && selection == NimarkoConfig.iconReplacement
                 && getParentActivity() instanceof LaunchActivity) {
-            ((LaunchActivity) getParentActivity()).reloadResources();   
+            ((LaunchActivity) getParentActivity()).reloadResources();
         }
     };
 
@@ -124,7 +148,7 @@ public class IconPackSelectorActivity extends BaseFragment {
     private static boolean isRowSelected(int rowValue) {
         int stored = NimarkoConfig.iconReplacement;
         if (!isKnownValue(stored)) {
-            stored = NimarkoConfig.ICON_REPLACE_NONE;   
+            stored = NimarkoConfig.ICON_REPLACE_NONE;
         }
         return rowValue == stored;
     }
@@ -132,8 +156,7 @@ public class IconPackSelectorActivity extends BaseFragment {
     private void select(int value) {
         if (NimarkoConfig.iconReplacement != value) {
             NimarkoConfig.setIconReplacement(value);
-            for (PreviewCell c : cells) c.refreshSelected();   
-            
+            for (PreviewCell c : cells) c.refreshSelected();
             AndroidUtilities.cancelRunOnUIThread(nmApplyPackRunnable);
             nmPendingApplyGeneration = ++nmApplyGeneration;
             nmPendingSelection = value;
@@ -144,7 +167,6 @@ public class IconPackSelectorActivity extends BaseFragment {
 
     @Override
     public void onFragmentDestroy() {
-        
         if (nmApplyPending) {
             AndroidUtilities.cancelRunOnUIThread(nmApplyPackRunnable);
             nmApplyPackRunnable.run();
@@ -153,13 +175,11 @@ public class IconPackSelectorActivity extends BaseFragment {
     }
 
     private Drawable[] buildIcons(int value) {
-        
         Resources base = ApplicationLoader.rawResources();
         if (base == null) base = ApplicationLoader.applicationContext.getResources();
         int n = SAMPLE_RES.length;
         Drawable[] out = new Drawable[n];
         int tint = Theme.getColor(Theme.key_windowBackgroundWhiteGrayIcon);
-        
         BaseIconReplace replace = replaceFor(value);
         for (int i = 0; i < n; i++) {
             int resId = SAMPLE_RES[i];
@@ -168,7 +188,6 @@ public class IconPackSelectorActivity extends BaseFragment {
             try { d = base.getDrawable(wrappedId); } catch (Throwable ignore) {}
             if (d != null) {
                 d = d.mutate();
-                
                 d.setColorFilter(new PorterDuffColorFilter(tint, PorterDuff.Mode.SRC_IN));
             }
             out[i] = d;
@@ -181,7 +200,7 @@ public class IconPackSelectorActivity extends BaseFragment {
             case NimarkoConfig.ICON_REPLACE_SOLAR:        return new SolarIconReplace();
             case NimarkoConfig.ICON_REPLACE_LIQUID_GLASS: return new LiquidGlassFullReplace();
             case NimarkoConfig.ICON_REPLACE_PLUMPY:       return new PlumpyFullReplace();
-            default:                                       return null;   
+            default:                                       return null;
         }
     }
 
@@ -204,7 +223,7 @@ public class IconPackSelectorActivity extends BaseFragment {
             mask.setColor(0xffffffff);
             setBackground(new android.graphics.drawable.RippleDrawable(
                     android.content.res.ColorStateList.valueOf(Theme.getColor(Theme.key_listSelector)), content, mask));
-            org.telegram.ui.Components.ScaleStateListAnimator.apply(this, 0.02f, 1.5f);   
+            org.telegram.ui.Components.ScaleStateListAnimator.apply(this, 0.02f, 1.5f);
 
             LinearLayout col = new LinearLayout(context);
             col.setOrientation(LinearLayout.VERTICAL);

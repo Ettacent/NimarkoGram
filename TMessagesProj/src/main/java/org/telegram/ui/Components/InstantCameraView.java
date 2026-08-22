@@ -477,8 +477,8 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
     private boolean singleZoomMaybe;
     private boolean singleZoomActive;
     private float singleZoomStartY;
-    private float singleZoomStartRatio;   
-    private float legacyZoom;             
+    private float singleZoomStartRatio;
+    private float legacyZoom;
 
     private int pointerId1, pointerId2;
     private int textureViewSize;
@@ -489,8 +489,8 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
     private final static int audioSampleRate = 48000;
 
     private static final int[] ALLOW_BIG_CAMERA_WHITELIST = {
-            285904780, 
-            -1394191079 
+            285904780,
+            -1394191079
     };
     private boolean allowSendingWhileRecording;
 
@@ -905,7 +905,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
     }
 
     public void destroy(boolean async) {
-        nmCancelRoundFrameWatchdog();   
+        nmCancelRoundFrameWatchdog();
         nmCancelCameraXDualFrameWatchdog();
         nmCancelCamera2SwitchFrameWatchdog();
         ++nmCamera2SwitchGeneration;
@@ -1173,7 +1173,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                         if (camera2Sessions[a] != null) {
                             final Camera2Session session = camera2Sessions[a];
                             session.setRecordingVideo(true);
-                            final int idx = a;   
+                            final int idx = a;
                             session.whenError(err -> nmHandleRoundCamError(
                                     idx, session, err == null ? -1 : err));
                             previewSize[a] = new Size(session.getPreviewWidth(), session.getPreviewHeight());
@@ -1202,7 +1202,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                 if (camera2SessionCurrent == null) return;
                 final Camera2Session session = camera2SessionCurrent;
                 session.setRecordingVideo(true);
-                final int nmSlot = isFrontface ? 0 : 1;   
+                final int nmSlot = isFrontface ? 0 : 1;
                 session.whenError(err -> nmHandleRoundCamError(
                         nmSlot, session, err == null ? -1 : err));
                 previewSize[0] = new Size(session.getPreviewWidth(), session.getPreviewHeight());
@@ -1584,10 +1584,10 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         final int size = mc.roundVideoSize;
         final int capH = nmRoundCaptureHeight(size);
         final boolean preferLogical = !app.nimarkogram.messenger.NimarkoConfig.roundCamLogicalDisabled && !nmRoundLogicalSlowThisSession;
-        Camera2Session s = Camera2Session.create(front, size, size, preferLogical, capH, true);   
+        Camera2Session s = Camera2Session.create(front, size, size, preferLogical, capH, true);
         if (s == null && preferLogical) {
             app.nimarkogram.messenger.NimarkoConfig.setRoundCamLogicalDisabled(true);
-            s = Camera2Session.create(front, size, size, false, capH, true);   
+            s = Camera2Session.create(front, size, size, false, capH, true);
         }
         return s;
     }
@@ -1647,7 +1647,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                     || app.nimarkogram.messenger.NimarkoConfig.roundCamLogicalDisabled || nmRoundLogicalSlowThisSession) {
                 return;
             }
-            nmRoundLogicalSlowThisSession = true;   
+            nmRoundLogicalSlowThisSession = true;
             nmReopenSinglePhysical();
         };
         AndroidUtilities.runOnUIThread(nmRoundFrameWatchdog, NM_ROUND_FRAME_TIMEOUT_MS);
@@ -1850,7 +1850,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
     private void nmReopenSinglePhysical() {
         try {
             if (!useCamera2) return;
-            nmCancelRoundFrameWatchdog();   
+            nmCancelRoundFrameWatchdog();
             nmCancelCamera2SwitchFrameWatchdog();
             bothCameras = false;
             final int generation = ++nmPhysicalReopenGeneration;
@@ -1923,8 +1923,8 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         if (cameraThread != null) {
             cameraThread.setSurfaceIndex(keep);
             if (camera2SessionCurrent != null) {
-                cameraThread.setCurrentSession(camera2SessionCurrent);   
-                nmArmRoundFrameWatchdog();   
+                cameraThread.setCurrentSession(camera2SessionCurrent);
+                nmArmRoundFrameWatchdog();
             }
         }
         updateFlash();
@@ -2347,7 +2347,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         return true;
     }
 
-    @Deprecated 
+    @Deprecated
     private Size chooseOptimalSize(ArrayList<Size> previewSizes) {
         ArrayList<Size> sortedSizes = new ArrayList<>();
         boolean allowBigSizeCamera = allowBigSizeCamera();
@@ -2387,7 +2387,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         return sortedSizes.get(0);
     }
 
-    @Deprecated 
+    @Deprecated
     private boolean allowBigSizeCamera() {
         if (SharedConfig.bigCameraForRound) {
             return true;
@@ -2408,7 +2408,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         return false;
     }
 
-    @Deprecated 
+    @Deprecated
     public static boolean allowBigSizeCameraDebug() {
         int devicePerformanceClass = Math.max(SharedConfig.getDevicePerformanceClass(), SharedConfig.getLegacyDevicePerformanceClass());
         if (devicePerformanceClass == SharedConfig.PERFORMANCE_CLASS_HIGH) {
@@ -2625,7 +2625,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         private final int DO_REINIT_MESSAGE = 2;
         private final int DO_SETSESSION_MESSAGE = 3;
         private final int DO_FLIP = 4;
-        private final int DO_SET_SURFACE_INDEX = 5;   
+        private final int DO_SET_SURFACE_INDEX = 5;
         private final int DO_DUAL_SWITCH_BEGIN = 6;
         private final int DO_DUAL_SWITCH_PROGRESS = 7;
         private final int DO_DUAL_SWITCH_FINISH = 8;
@@ -3492,7 +3492,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                 }
                 videoEncoder.startRecording(cameraFile, EGL14.eglGetCurrentContext());
                 recording = true;
-                legacyZoom = 0f; 
+                legacyZoom = 0f;
                 updateFlash();
             }
 
@@ -5520,7 +5520,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                     recordPlusTime = fromPause ? recordedTime : 0;
                     recordStartTime = System.currentTimeMillis();
                     recording = true;
-                    legacyZoom = 0f; 
+                    legacyZoom = 0f;
                     updateFlash();
                     invalidate();
                     NotificationCenter.getInstance(currentAccount).postNotificationName(NotificationCenter.recordStarted, recordingGuid, false);
@@ -5908,9 +5908,9 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         }
         return "#extension GL_OES_EGL_image_external : require\n" +
                 "precision highp float;\n" +
-                "varying vec2 vTextureCoord;\n" + 
-                "uniform vec2 resolution;\n" + 
-                "uniform vec2 preview;\n" + 
+                "varying vec2 vTextureCoord;\n" +
+                "uniform vec2 resolution;\n" +
+                "uniform vec2 preview;\n" +
                 "uniform float alpha;\n" +
 
                 "uniform samplerExternalOES sTexture;\n" +
@@ -6010,9 +6010,9 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         }
         return "#extension GL_OES_EGL_image_external : require\n" +
                 "precision highp float;\n" +
-                "varying vec2 vTextureCoord;\n" + 
-                "uniform vec2 resolution;\n" + 
-                "uniform vec2 preview;\n" + 
+                "varying vec2 vTextureCoord;\n" +
+                "uniform vec2 resolution;\n" +
+                "uniform vec2 preview;\n" +
                 "uniform float alpha;\n" +
                 "uniform vec2 texelSize;\n" +
                 "uniform float switchBlur;\n" +
@@ -6186,7 +6186,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             }
         } else if (ev.getActionMasked() == MotionEvent.ACTION_MOVE && singleZoomMaybe
                 && !isInPinchToZoomTouchMode && ev.getPointerCount() == 1) {
-            float dy = singleZoomStartY - ev.getY(); 
+            float dy = singleZoomStartY - ev.getY();
             if (!singleZoomActive && Math.abs(dy) > AndroidUtilities.dp(8)) {
                 singleZoomActive = true;
             }

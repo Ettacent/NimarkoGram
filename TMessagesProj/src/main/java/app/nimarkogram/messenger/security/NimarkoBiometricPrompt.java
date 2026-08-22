@@ -1,4 +1,3 @@
-
 package app.nimarkogram.messenger.security;
 
 import static org.telegram.messenger.LocaleController.getString;

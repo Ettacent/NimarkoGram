@@ -1368,16 +1368,26 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
             }
             layoutToIgnore = null;
         }
-        containerViewBack.setVisibility(View.INVISIBLE);
         maybeStartTracking = false;
         startedTracking = false;
         startedTrackingPointerId = -1;
         beginTrackingSent = false;
         animationInProgress = false;
-        containerView.setTranslationX(0);
-        containerViewBack.setTranslationX(0);
+        containerView.setAlpha(1f);
+        containerView.setScaleX(1f);
+        containerView.setScaleY(1f);
+        containerView.setTranslationX(0f);
+        containerView.setTranslationY(0f);
         containerView.setLayerType(LAYER_TYPE_NONE, null);
-        setInnerTranslationX(0);
+        containerViewBack.setAlpha(1f);
+        containerViewBack.setScaleX(1f);
+        containerViewBack.setScaleY(1f);
+        containerViewBack.setTranslationX(0f);
+        containerViewBack.setTranslationY(0f);
+        containerViewBack.setLayerType(LAYER_TYPE_NONE, null);
+        containerViewBack.setVisibility(View.INVISIBLE);
+        setInnerTranslationX(0f);
+        swipeProgress = 0f;
         if (USE_ACTIONBAR_CROSSFADE) {
             invalidateActionBars();
         }
@@ -3810,7 +3820,11 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
                 settings.theme.setCurrentAccentId(settings.accentId);
                 Theme.saveThemeAccents(settings.theme, true, false, true, false);
             }
-            Theme.applyThemeInBackground(settings.theme, settings.nightTheme, next, onCancelled);
+            Theme.applyThemeInBackground(settings.theme, settings.nightTheme, next, () -> {
+                if (onCancelled != null) {
+                    onCancelled.run();
+                }
+            });
         } else {
             next.run();
         }
@@ -4261,7 +4275,6 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
             return bottomSheetTabs.getHeight(animated);
         return 0;
     }
-
 
 
     @Override

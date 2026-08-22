@@ -1,4 +1,3 @@
- 
 package app.nimarkogram.messenger.preferences;
 
 import static org.telegram.messenger.LocaleController.getString;
@@ -10,6 +9,7 @@ import android.view.ViewGroup;
 import android.widget.FrameLayout;
 
 import androidx.annotation.NonNull;
+import androidx.core.view.ViewCompat;
 import androidx.recyclerview.widget.DefaultItemAnimator;
 import androidx.recyclerview.widget.ItemTouchHelper;
 import androidx.recyclerview.widget.LinearLayoutManager;
@@ -27,6 +27,7 @@ import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.Cells.TextCell;
 import org.telegram.ui.ChatActivity;
 import org.telegram.ui.Components.LayoutHelper;
+import org.telegram.ui.Components.IconBackgroundColors;
 import org.telegram.ui.Components.RecyclerListView;
 
 import java.util.ArrayList;
@@ -41,6 +42,11 @@ import app.nimarkogram.messenger.NimarkoConfig;
 public class MessageMenuOrderPreferencesActivity extends BaseFragment {
 
     private static final int MENU_RESET = 1;
+    private static final IconBackgroundColors[] ROW_COLORS = {
+            IconBackgroundColors.BLUE, IconBackgroundColors.PURPLE,
+            IconBackgroundColors.GREEN, IconBackgroundColors.ORANGE,
+            IconBackgroundColors.CYAN
+    };
 
     private RecyclerListView listView;
     private ListAdapter adapter;
@@ -78,7 +84,6 @@ public class MessageMenuOrderPreferencesActivity extends BaseFragment {
 
     private static Map<Integer, Integer> iconByOption() {
         Map<Integer, Integer> m = new HashMap<>();
-        
         m.put(ChatActivity.OPTION_REPLY, R.drawable.menu_reply);
         m.put(ChatActivity.OPTION_COPY, R.drawable.msg_copy);
         m.put(ChatActivity.OPTION_FORWARD, R.drawable.msg_forward);
@@ -108,13 +113,11 @@ public class MessageMenuOrderPreferencesActivity extends BaseFragment {
         Set<Integer> seen = new HashSet<>();
         if (persisted != null) {
             for (Integer opt : persisted) {
-                
                 if (opt != null && catalogue.contains(opt) && seen.add(opt)) {
                     workingOrder.add(opt);
                 }
             }
         }
-        
         for (int opt : CATALOGUE) {
             if (seen.add(opt)) workingOrder.add(opt);
         }
@@ -158,10 +161,34 @@ public class MessageMenuOrderPreferencesActivity extends BaseFragment {
         }
         frameLayout.addView(listView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT));
 
+        listView.setSections(true);
+        actionBar.setAdaptiveBackground(listView);
+        ViewCompat.setOnApplyWindowInsetsListener(frameLayout, this::onInsetsInternal);
+        ViewCompat.requestApplyInsets(frameLayout);
+
         itemTouchHelper = new ItemTouchHelper(new TouchHelperCallback());
         itemTouchHelper.attachToRecyclerView(listView);
 
         return fragmentView;
+    }
+
+    @Override
+    public boolean isSupportEdgeToEdge() {
+        return true;
+    }
+
+    @Override
+    public boolean drawEdgeNavigationBar() {
+        return false;
+    }
+
+    @Override
+    public void onInsets(int left, int top, int right, int bottom) {
+        if (listView != null) {
+            listView.setPadding(listView.getPaddingLeft(), listView.getPaddingTop(),
+                    listView.getPaddingRight(), bottom);
+            listView.setClipToPadding(false);
+        }
     }
 
     @Override
@@ -208,7 +235,6 @@ public class MessageMenuOrderPreferencesActivity extends BaseFragment {
             Integer moved = workingOrder.remove(from);
             workingOrder.add(to, moved);
             adapter.notifyItemMoved(from, to);
-            
             flush();
             return true;
         }
@@ -256,9 +282,10 @@ public class MessageMenuOrderPreferencesActivity extends BaseFragment {
             Integer labelRes = labels.get(opt);
             Integer iconRes = icons.get(opt);
             String text = labelRes != null ? LocaleController.getString(labelRes) : ("#" + opt);
-            
             int icon = iconRes != null ? iconRes : R.drawable.msg_reorder;
             cell.setTextAndIcon(text, icon, position < workingOrder.size() - 1);
+            IconBackgroundColors color = ROW_COLORS[position % ROW_COLORS.length];
+            cell.setColorfulIcon(color.top, color.bottom, icon);
         }
     }
 }

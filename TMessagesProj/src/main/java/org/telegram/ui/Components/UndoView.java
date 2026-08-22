@@ -66,7 +66,7 @@ import org.telegram.ui.PaymentFormActivity;
 import java.util.ArrayList;
 
 @SuppressWarnings("FieldCanBeLocal")
-@Deprecated 
+@Deprecated
 public class UndoView extends FrameLayout {
 
     private int infoTextViewEmojiCacheType = AnimatedEmojiDrawable.CACHE_TYPE_MESSAGES;

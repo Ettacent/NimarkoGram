@@ -1140,7 +1140,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             }
             updateContextViewPosition();
             updateStoriesViewAlpha(storiesAlpha);
-            positionHomeInfoCards(); 
+            positionHomeInfoCards();
             super.dispatchDraw(canvas);
             if (communityId == 0 || progressToActionMode > 0) {
                 drawHeaderShadow(canvas, top + actionBarHeight);
@@ -3005,8 +3005,8 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             currentConnectionState = getConnectionsManager().getConnectionState();
 
             globalObserversGroup.add(NotificationCenter.emojiLoaded);
-            globalObserversGroup.add(NotificationCenter.customTitleUpdated);   
-            globalObserversGroup.add(NotificationCenter.pluginMenuItemsUpdated); 
+            globalObserversGroup.add(NotificationCenter.customTitleUpdated);
+            globalObserversGroup.add(NotificationCenter.pluginMenuItemsUpdated);
             if (!onlySelect) {
                 globalObserversGroup.add(NotificationCenter.closeSearchByActiveAction);
                 globalObserversGroup.add(NotificationCenter.proxySettingsChanged);
@@ -5605,8 +5605,8 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         }
         if (!onlySelect && initialDialogsType == DIALOGS_TYPE_DEFAULT && folderId == 0 && communityId == 0) {
             homeInfoCards = new app.nimarkogram.messenger.infocards.InfoCardStripView(context, resourceProvider);
-            homeInfoCards.setOpaqueCards(true); 
-            homeInfoCards.setVisibilityFactor(0f); 
+            homeInfoCards.setOpaqueCards(true);
+            homeInfoCards.setVisibilityFactor(0f);
             contentView.addView(homeInfoCards, LayoutHelper.createFrame(
                     LayoutHelper.WRAP_CONTENT, 40,
                     Gravity.TOP | (LocaleController.isRTL ? Gravity.LEFT : Gravity.RIGHT),
@@ -6889,7 +6889,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             topBubblesFadeView.setPosition(s, Math.min(dp(40), topPanelsHeight + filtersTabHeight - s));
             topBubblesFadeView.setAlpha(Math.max(filtersTabVisibility, topPanelsVisibility));
         }
-        positionHomeInfoCards(); 
+        positionHomeInfoCards();
     }
 
     private void updateFiltersView(boolean showMediaFilters, ArrayList<Object> users, ArrayList<FiltersView.DateData> dates, boolean archive, boolean animated) {
@@ -11630,8 +11630,8 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
     }
 
     public static final int DIALOGS_TYPE_DEFAULT = 0;
-    public static final int DIALOGS_TYPE_BOT_SHARE = 1; 
-    public static final int DIALOGS_TYPE_ADD_USERS_TO = 2; 
+    public static final int DIALOGS_TYPE_BOT_SHARE = 1;
+    public static final int DIALOGS_TYPE_ADD_USERS_TO = 2;
     public static final int DIALOGS_TYPE_FORWARD = 3;
     public static final int DIALOGS_TYPE_USERS_ONLY = 4;
     public static final int DIALOGS_TYPE_CHANNELS_ONLY = 5;
@@ -11640,8 +11640,8 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
     public static final int DIALOGS_TYPE_FOLDER2 = 8;
     public static final int DIALOGS_TYPE_BLOCK = 9;
     public static final int DIALOGS_TYPE_WIDGET = 10;
-    public static final int DIALOGS_TYPE_IMPORT_HISTORY_GROUPS = 11; 
-    public static final int DIALOGS_TYPE_IMPORT_HISTORY_USERS = 12; 
+    public static final int DIALOGS_TYPE_IMPORT_HISTORY_GROUPS = 11;
+    public static final int DIALOGS_TYPE_IMPORT_HISTORY_USERS = 12;
     public static final int DIALOGS_TYPE_IMPORT_HISTORY = 13;
     public static final int DIALOGS_TYPE_START_ATTACH_BOT = 14;
     public static final int DIALOGS_TYPE_BOT_REQUEST_PEER = 15;
@@ -14553,7 +14553,6 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
     }
 
 
-
     @Override
     public void onFactorChanged(int id, float factor, float fraction, FactorAnimator callee) {
         if (id == ANIMATOR_ID_SEARCH_VISIBLE) {
@@ -14686,7 +14685,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
     }
 
     private void checkUi_topPanelVisible() {
-        final float factor = 1f; 
+        final float factor = 1f;
 
         if (topPanelLayout != null) {
             final float s = lerp(0.98f, 1f, factor);
@@ -14926,7 +14925,6 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
     public long getCommunityId() {
         return communityId;
     }
-
 
 
     private ViewPositionWatcher viewPositionWatcher;

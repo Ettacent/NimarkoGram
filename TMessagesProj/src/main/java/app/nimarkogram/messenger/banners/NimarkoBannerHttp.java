@@ -86,17 +86,14 @@ public final class NimarkoBannerHttp {
         if (!isConfigured()) return out;
         try {
             String url = API + "/get/" + eid;
-            NimarkoBannerRenderer.dbg("HTTP getBanner GET " + url);
             Request req = new Request.Builder().url(url).get().build();
             try (Response resp = HTTP.newCall(req).execute()) {
                 out.httpCode = resp.code();
                 if (resp.code() != 200 || resp.body() == null) {
-                    NimarkoBannerRenderer.dbg("HTTP getBanner code=" + resp.code() + " body=" + (resp.body() != null));
                     return out;
                 }
                 String bodyStr = readBodyLimited(resp.body(), MAX_JSON_SIZE);
                 if (bodyStr == null) return out;
-                NimarkoBannerRenderer.dbg("HTTP getBanner 200 body=" + bodyStr);
                 JsonObject d = parse(bodyStr);
                 if (d == null) return out;
                 out.hasBanner = optBool(d, "has_banner", false);
@@ -109,7 +106,6 @@ public final class NimarkoBannerHttp {
                 return out;
             }
         } catch (Throwable t) {
-            NimarkoBannerRenderer.dbg("HTTP getBanner EXCEPTION : " + t);
             out.httpCode = -1;
             return out;
         }

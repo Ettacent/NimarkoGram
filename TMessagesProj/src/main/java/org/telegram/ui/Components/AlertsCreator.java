@@ -5243,7 +5243,7 @@ public class AlertsCreator {
     }
 
 
-    private static final int FMT_DATE_MONTH_PICKER_HALF_SIZE = 12 * 10; 
+    private static final int FMT_DATE_MONTH_PICKER_HALF_SIZE = 12 * 10;
 
     public static BottomSheet.Builder createFormattedDatePickerDialog(Context context, final FormattedDatePickerDelegate datePickerDelegate, final Runnable cancelRunnable, Theme.ResourcesProvider resourcesProvider) {
         if (context == null) {
@@ -5405,7 +5405,6 @@ public class AlertsCreator {
         monthPicker.setOnValueChangedListener(onValueChangeListener);
         hourPicker.setOnValueChangedListener(onValueChangeListener);
         minutePicker.setOnValueChangedListener(onValueChangeListener);
-
 
 
         final boolean[] canceled = {true};

@@ -2812,7 +2812,7 @@ public class CameraView extends app.nimarkogram.messenger.camera.BaseCameraView 
                             || cameraSession[slot].getObject() != session) {
                         return;
                     }
-                    nmCamera2OpenRetries[slot] = 0;   
+                    nmCamera2OpenRetries[slot] = 0;
                     requestLayout();
                     if (dual && i == 1 && initFirstCameraAfterSecond) {
                         initFirstCameraAfterSecond = false;

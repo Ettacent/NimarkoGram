@@ -212,7 +212,7 @@ public class ApplicationLoader extends Application {
         NativeLoader.initNativeLibs(ApplicationLoader.applicationContext);
 
         try {
-            LocaleController.getInstance(); 
+            LocaleController.getInstance();
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -289,7 +289,7 @@ public class ApplicationLoader extends Application {
                         app.nimarkogram.messenger.wsbypass.WsRelayAuth.prefetchAsync(UserConfig.selectedAccount), 4500);
             }
         } catch (Throwable ignored) {}
-        for (int a = 0; a < UserConfig.MAX_ACCOUNT_COUNT; a++) { 
+        for (int a = 0; a < UserConfig.MAX_ACCOUNT_COUNT; a++) {
             UserConfig.getInstance(a).loadConfig();
             MessagesController.getInstance(a);
             if (a == 0) {
@@ -318,7 +318,7 @@ public class ApplicationLoader extends Application {
         }
 
         MediaController.getInstance();
-        for (int a = 0; a < UserConfig.MAX_ACCOUNT_COUNT; a++) { 
+        for (int a = 0; a < UserConfig.MAX_ACCOUNT_COUNT; a++) {
             ContactsController.getInstance(a).checkAppAccount();
             DownloadController.getInstance(a);
         }
@@ -343,7 +343,7 @@ public class ApplicationLoader extends Application {
                 return base;
             }
             if (Boolean.TRUE.equals(nmWrappingResources.get())) {
-                return base;   
+                return base;
             }
             if (nmAppAssets != base.getAssets()) {
                 synchronized (nmAppResourcesLock) {

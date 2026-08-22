@@ -382,8 +382,8 @@ public class AndroidUtilities {
                             + "\\,\\;\\?\\&\\=]|(?:\\%[a-fA-F0-9]{2})){1,64}(?:\\:(?:[a-zA-Z0-9\\$\\-\\_"
                             + "\\.\\+\\!\\*\\'\\(\\)\\,\\;\\?\\&\\=]|(?:\\%[a-fA-F0-9]{2})){1,25})?\\@)?)?"
                             + "(?:" + DOMAIN_NAME + ")"
-                            + "(?:\\:\\d{1,5})?)" 
-                            + "(\\/(?:(?:[" + GOOD_IRI_CHAR + "\\;\\/\\?\\:\\@\\&\\=\\#\\~"  
+                            + "(?:\\:\\d{1,5})?)"
+                            + "(\\/(?:(?:[" + GOOD_IRI_CHAR + "\\;\\/\\?\\:\\@\\&\\=\\#\\~"
                             + "\\-\\.\\+\\!\\*\\'\\(\\)\\,\\_])|(?:\\%[a-fA-F0-9]{2}))*)?"
                             + "(?:\\b|$)");
         } catch (Exception e) {
@@ -1388,12 +1388,12 @@ public class AndroidUtilities {
         return true;
     };
 
-    @Deprecated 
+    @Deprecated
     public static boolean addLinks(Spannable text, int mask) {
         return addLinks(text, mask, false);
     }
 
-    @Deprecated 
+    @Deprecated
     public static boolean addLinks(Spannable text, int mask, boolean internalOnly) {
         return addLinks(text, mask, internalOnly, true);
     }
@@ -1447,7 +1447,7 @@ public class AndroidUtilities {
         return success;
     }
 
-    @Deprecated 
+    @Deprecated
     public static boolean addLinks(Spannable text, int mask, boolean internalOnly, boolean removeOldReplacements) {
         if (text == null || containsUnsupportedCharacters(text.toString()) || mask == 0) {
             return false;
@@ -3691,7 +3691,6 @@ public class AndroidUtilities {
     }
 
 
-
     public static void appCenterLog(Throwable e) {
         ApplicationLoader.appCenterLog(e);
     }
@@ -4969,7 +4968,7 @@ public class AndroidUtilities {
         return null;
     }
 
-    public static void fixGoogleMapsBug() { 
+    public static void fixGoogleMapsBug() {
         SharedPreferences googleBug = ApplicationLoader.applicationContext.getSharedPreferences("google_bug_154855417", Context.MODE_PRIVATE);
         if (!googleBug.contains("fixed")) {
             File corruptedZoomTables = new File(ApplicationLoader.getFilesDirFixed(), "ZoomTables.data");
@@ -6331,7 +6330,7 @@ public class AndroidUtilities {
 
     public static Pattern getURIParsePattern() {
         if (uriParse == null) {
-            uriParse = Pattern.compile("^(([^:/?#]+):)?(//([^/?#]*))?([^?#]*)(\\?([^#]*))?(#(.*))?"); 
+            uriParse = Pattern.compile("^(([^:/?#]+):)?(//([^/?#]*))?([^?#]*)(\\?([^#]*))?(#(.*))?");
         }
         return uriParse;
     }
@@ -6697,7 +6696,7 @@ public class AndroidUtilities {
             int hapticType;
             switch (app.nimarkogram.messenger.NimarkoConfig.vibrateInChats) {
                 case app.nimarkogram.messenger.NimarkoConfig.VIBRATE_DISABLE:
-                    return; 
+                    return;
                 case app.nimarkogram.messenger.NimarkoConfig.VIBRATE_CLICK:
                     hapticType = HapticFeedbackConstants.VIRTUAL_KEY;
                     break;
@@ -6961,8 +6960,6 @@ public class AndroidUtilities {
     }
 
 
-
-
     @NonNull
     public static WindowInsets fixedDispatchApplyWindowInsets(@NonNull WindowInsets insets, ViewGroup view) {
         for (int a = 0, N = view.getChildCount(); a < N; a++) {
@@ -6971,8 +6968,6 @@ public class AndroidUtilities {
         }
         return insets;
     }
-
-
 
 
     public static void enableEdgeToEdge(Activity activity) {
@@ -7018,7 +7013,6 @@ public class AndroidUtilities {
                     : WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES;
         }
     }
-
 
 
     public static Insets getDefaultWindowInsets(WindowInsetsCompat insets, boolean withIme) {

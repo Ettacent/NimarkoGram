@@ -1632,10 +1632,10 @@ public class ImageLoader {
             int patternColor;
 
             boolean applyPattern = true;
-            if (wallPaper.settings.second_background_color == 0) { 
+            if (wallPaper.settings.second_background_color == 0) {
                 patternColor = AndroidUtilities.getPatternColor(wallPaper.settings.background_color);
                 canvas.drawColor(ColorUtils.setAlphaComponent(wallPaper.settings.background_color, 255));
-            } else if (wallPaper.settings.third_background_color == 0) { 
+            } else if (wallPaper.settings.third_background_color == 0) {
                 int color1 = ColorUtils.setAlphaComponent(wallPaper.settings.background_color, 255);
                 int color2 = ColorUtils.setAlphaComponent(wallPaper.settings.second_background_color, 255);
                 patternColor = AndroidUtilities.getAverageColor(color1, color2);

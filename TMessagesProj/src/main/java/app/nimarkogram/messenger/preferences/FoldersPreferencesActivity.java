@@ -9,6 +9,8 @@ import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.NotificationCenter;
 import org.telegram.messenger.R;
 import org.telegram.ui.Cells.TextCell;
+import org.telegram.ui.SettingsActivity;
+import org.telegram.ui.Components.IconBackgroundColors;
 import org.telegram.ui.Components.UItem;
 import org.telegram.ui.Components.UniversalAdapter;
 
@@ -37,7 +39,6 @@ public class FoldersPreferencesActivity extends BasePreferencesActivity {
     private FoldersPreviewCell ensurePreviewCell(Context context) {
         if (previewCell == null) {
             previewCell = new FoldersPreviewCell(context);
-            
             previewCell.setBackgroundColor(org.telegram.ui.ActionBar.Theme.getColor(
                     org.telegram.ui.ActionBar.Theme.key_windowBackgroundWhite));
         }
@@ -46,29 +47,34 @@ public class FoldersPreferencesActivity extends BasePreferencesActivity {
 
     @Override
     public void fillItems(ArrayList<UItem> items, UniversalAdapter adapter) {
-        
         Context ctx = getContext();
         if (ctx != null) {
             items.add(UItem.asCustom(ID_PREVIEW, ensurePreviewCell(ctx)));
             items.add(UItem.asShadow(null));
         }
 
+        items.add(UItem.asHeader(LocaleController.getString(R.string.NM_SettingsSectionFolderTabs)));
         items.add(UItem.asCheck(ID_HIDE_ALL_CHATS, LocaleController.getString(R.string.NM_FO_TabsHideAllChats))
                 .setChecked(NimarkoConfig.tabsHideAllChats));
         items.add(UItem.asCheck(ID_HIDE_COUNTER, LocaleController.getString(R.string.NM_FO_TabsNoCounter))
                 .setChecked(NimarkoConfig.tabsNoUnread));
-        items.add(UItem.asButton(ID_TAB_ICON_TYPE,
+        items.add(asSettingsValue(ID_TAB_ICON_TYPE, IconBackgroundColors.BLUE,
+                R.drawable.msg_customize,
                 LocaleController.getString(R.string.NM_FO_TabStyle),
                 safeAt(tabModeOptions(), NimarkoConfig.tabMode)));
-        items.add(UItem.asCheck(ID_ADD_STROKE, LocaleController.getString(R.string.NM_FO_TabStyleStroke))
+        items.add(SettingsHelper.asSwitchCG(ID_ADD_STROKE,
+                        LocaleController.getString(R.string.NM_FO_TabStyleStroke),
+                        LocaleController.getString(R.string.NM_FO_TabStyleStroke_Desc))
                 .setChecked(NimarkoConfig.tabStyleStroke));
         items.add(UItem.asShadow(null));
 
+        items.add(UItem.asHeader(LocaleController.getString(R.string.NM_SettingsSectionFolderLayout)));
         items.add(SettingsHelper.asSwitchCG(ID_FOLDER_NAME_HEADER,
-                LocaleController.getString(R.string.NM_FO_FolderNameInHeader),
-                LocaleController.getString(R.string.NM_FO_FolderNameInHeader_Desc))
+                LocaleController.getString(R.string.NM_FO_FolderNameInHeader))
                 .setChecked(NimarkoConfig.folderNameInHeader));
-        items.add(UItem.asCheck(ID_FOLDERS_AT_BOTTOM, LocaleController.getString(R.string.NM_FO_FoldersAtBottom))
+        items.add(SettingsHelper.asSwitchCG(ID_FOLDERS_AT_BOTTOM,
+                        LocaleController.getString(R.string.NM_FO_FoldersAtBottom),
+                        LocaleController.getString(R.string.NM_FO_FoldersAtBottom_Desc))
                 .setChecked(NimarkoConfig.foldersAtBottom));
         items.add(UItem.asShadow(null));
     }
@@ -80,7 +86,6 @@ public class FoldersPreferencesActivity extends BasePreferencesActivity {
             NimarkoConfig.toggleTabsHideAllChats();
             applyCheck(item, view, NimarkoConfig.tabsHideAllChats);
             if (previewCell != null) previewCell.updateAllChatsTabName(true);
-            
             if (getParentLayout() != null) getParentLayout().rebuildAllFragmentViews(false, false);
             getNotificationCenter().postNotificationName(NotificationCenter.dialogFiltersUpdated);
             getNotificationCenter().postNotificationName(NotificationCenter.mainUserInfoChanged);
@@ -102,7 +107,6 @@ public class FoldersPreferencesActivity extends BasePreferencesActivity {
                             previewCell.updateTabIcons(true);
                             previewCell.updateTabTitle(true);
                         }
-                        
                         if (getParentLayout() != null) getParentLayout().rebuildAllFragmentViews(false, false);
                         getNotificationCenter().postNotificationName(NotificationCenter.dialogFiltersUpdated);
                     });
@@ -110,33 +114,31 @@ public class FoldersPreferencesActivity extends BasePreferencesActivity {
             NimarkoConfig.toggleTabStyleStroke();
             applyCheck(item, view, NimarkoConfig.tabStyleStroke);
             if (previewCell != null) previewCell.invalidate();
-            
             if (getParentLayout() != null) getParentLayout().rebuildAllFragmentViews(false, false);
         } else if (id == ID_FOLDER_NAME_HEADER) {
             NimarkoConfig.toggleFolderNameInHeader();
             applyCheck(item, view, NimarkoConfig.folderNameInHeader);
-            
             if (getParentLayout() != null) getParentLayout().rebuildAllFragmentViews(false, false);
-            
             getNotificationCenter().postNotificationName(NotificationCenter.dialogFiltersUpdated);
         } else if (id == ID_FOLDERS_AT_BOTTOM) {
             NimarkoConfig.toggleFoldersAtBottom();
             applyCheck(item, view, NimarkoConfig.foldersAtBottom);
-            
             if (getParentLayout() != null) getParentLayout().rebuildAllFragmentViews(false, false);
-            
             showRestartBulletin();
         }
     }
 
     private void applyCheck(UItem item, View view, boolean value) {
         item.checked = value;
-        
         updateCheckState(view, value);
     }
 
     private void refreshValueCell(View view, String newValue) {
-        if (view instanceof TextCell) ((TextCell) view).setValue(newValue, true);
+        if (view instanceof TextCell) {
+            ((TextCell) view).setValue(newValue, true);
+        } else if (view instanceof SettingsActivity.SettingCell) {
+            ((SettingsActivity.SettingCell) view).setValue(newValue);
+        }
         if (listView != null && listView.adapter != null) listView.adapter.update(true);
     }
 

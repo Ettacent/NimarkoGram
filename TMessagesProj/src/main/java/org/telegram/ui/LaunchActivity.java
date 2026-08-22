@@ -1162,7 +1162,7 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && checkNavigationBar && (!useCurrentFragment || currentFragment == null || !currentFragment.isInPreviewMode())) {
                 int color = currentFragment != null && useCurrentFragment ? currentFragment.getNavigationBarColor() : Theme.getColor(Theme.key_windowBackgroundGray, null, true);
 
-                int mode = 0; 
+                int mode = 0;
                 if (currentFragment instanceof ChatActivity) {
                     ChatActivity chatActivity = (ChatActivity) currentFragment;
                     mode = chatActivity.isShouldHaveLightNavigationBarIcons() ? 2 : 1;
@@ -3262,7 +3262,7 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
                 }
             } else if (open_settings == 7 || open_settings == 8 || open_settings == 9) {
                 CharSequence bulletinText = null;
-                boolean can = BuildVars.DEBUG_PRIVATE_VERSION; 
+                boolean can = BuildVars.DEBUG_PRIVATE_VERSION;
                 if (!can) {
                     bulletinText = "Locked in release.";
                 } else if (open_settings == 7) {
@@ -7011,7 +7011,7 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
                 PhotoViewer.getPipInstance().destroyPhotoViewer();
             }
             if (PhotoViewer.hasInstance()) {
-                PhotoViewer.getInstance().closePhoto(false, false); 
+                PhotoViewer.getInstance().closePhoto(false, false);
             }
         }
     }
@@ -9072,7 +9072,7 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
             }
             if (storyItem != null) {
                 storyItem.dialogId = dialogId;
-                BaseFragment lastFragment = getLastFragment(); 
+                BaseFragment lastFragment = getLastFragment();
                 if (lastFragment == null) {
                     return;
                 }
@@ -9114,7 +9114,7 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
             }
             if (storyItem != null && list != null) {
                 storyItem.dialogId = dialogId;
-                BaseFragment lastFragment = getLastFragment(); 
+                BaseFragment lastFragment = getLastFragment();
                 if (lastFragment == null) {
                     return;
                 }
@@ -9149,7 +9149,7 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
                 }
                 if (storyItem1 != null) {
                     storyItem1.dialogId = dialogId;
-                    BaseFragment lastFragment = getLastFragment(); 
+                    BaseFragment lastFragment = getLastFragment();
                     if (lastFragment == null) {
                         return;
                     }
@@ -9183,7 +9183,7 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
             }
         }
 
-        BaseFragment lastFragment = getLastFragment(); 
+        BaseFragment lastFragment = getLastFragment();
         if (lastFragment == null) {
             return;
         }
@@ -9311,6 +9311,8 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
                 currentRipple = new SuperRipple(parent);
             }
         }
+
+
         if (currentRipple != null) {
             currentRipple.animate(x, y, intensity);
         }
@@ -9362,7 +9364,7 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
                 return;
             }
             try {
-                org.telegram.messenger.ApplicationLoader.reloadAppIconResources();   
+                org.telegram.messenger.ApplicationLoader.reloadAppIconResources();
                 org.telegram.ui.ActionBar.Theme.dividerPaint = null;
                 org.telegram.ui.ActionBar.Theme.createCommonResources(this);
                 org.telegram.ui.ActionBar.Theme.reloadAllResources(this);

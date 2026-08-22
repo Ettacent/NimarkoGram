@@ -50,10 +50,10 @@ public class MessagesPreferencesActivity extends NimarkoUniversalPreferencesActi
 
     @Override
     public void fillItems(ArrayList<UItem> items, UniversalAdapter adapter) {
-        items.add(UItem.asHeader(getString(R.string.AP_Header_Appearance)));
-        items.add(UItem.asButton(messageMenuRow, R.drawable.msg_list, getString(R.string.CP_MessageMenu)));
-        items.add(UItem.asButton(messageSizeRow, R.drawable.msg_photo_settings, getString(R.string.CP_Messages_Size)));
-        items.add(UItem.asButton(directShareRow, R.drawable.msg_share, getString(R.string.DirectShare)));
+        items.add(UItem.asHeader(getString(R.string.NM_CP_Header_ChatView)));
+        items.add(asPlainSettingsRow(messageMenuRow, getString(R.string.CP_MessageMenu)));
+        items.add(asPlainSettingsRow(messageSizeRow, getString(R.string.CP_Messages_Size)));
+        items.add(asPlainSettingsRow(directShareRow, getString(R.string.DirectShare)));
         items.add(SettingsHelper.asSwitchCG(showForwardDateRow, getString(R.string.CP_ForwardMsgDate))
                 .setChecked(app.nimarkogram.messenger.NimarkoConfig.msgForwardDate)
         );
@@ -63,26 +63,29 @@ public class MessagesPreferencesActivity extends NimarkoUniversalPreferencesActi
         items.add(UItem.asShadow(null));
 
         items.add(UItem.asHeader(getString(R.string.ActionsChartTitle)));
-        items.add(UItem.asButton(messageFilterRow, R.drawable.msg_notspam, getString(R.string.CP_Message_Filtering)));
-        items.add(UItem.asButton(leftBottomBtnRow, getString(R.string.CP_LeftBottomButtonAction), getLeftBottomButtonValue()));
-        items.add(UItem.asButton(doubleTapRow, getString(R.string.CP_DoubleTapAction), getDoubleTapActionValue()));
-        items.add(UItem.asButton(slideActionRow, getString(R.string.NM_MsgSlideAction), getSlideActionValue()));
-        items.add(SettingsHelper.asSwitchCG(deleteForAllRow, getString(R.string.CP_DeleteForAll), getString(R.string.CP_DeleteForAll_Desc))
+        items.add(asPlainSettingsRow(messageFilterRow, getString(R.string.CP_Message_Filtering)));
+        items.add(asPlainSettingsRow(leftBottomBtnRow,
+                getString(R.string.CP_LeftBottomButtonAction), getLeftBottomButtonValue()));
+        items.add(asPlainSettingsRow(doubleTapRow,
+                getString(R.string.CP_DoubleTapAction), getDoubleTapActionValue()));
+        items.add(asPlainSettingsRow(slideActionRow,
+                getString(R.string.NM_MsgSlideAction), getSlideActionValue()));
+        items.add(SettingsHelper.asSwitchCG(deleteForAllRow, getString(R.string.CP_DeleteForAll))
                 .setChecked(app.nimarkogram.messenger.NimarkoConfig.deleteForAll)
         );
         items.add(UItem.asShadow(null));
 
         items.add(UItem.asHeader(getString(R.string.TelegramPremium)));
-        items.add(SettingsHelper.asSwitchCG(reactionsOverlayRow, getString(R.string.CP_DisableReactionsOverlay), getString(R.string.CP_DisableReactionsOverlay_Desc))
+        items.add(SettingsHelper.asSwitchCG(reactionsOverlayRow, getString(R.string.CP_DisableReactionsOverlay))
                 .setChecked(app.nimarkogram.messenger.NimarkoConfig.disableReactionsOverlay)
         );
-        items.add(SettingsHelper.asSwitchCG(reactionAnimationRow, getString(R.string.CP_DisableReactionAnim), getString(R.string.CP_DisableReactionAnim_Desc))
+        items.add(SettingsHelper.asSwitchCG(reactionAnimationRow, getString(R.string.CP_DisableReactionAnim))
                 .setChecked(app.nimarkogram.messenger.NimarkoConfig.disableReactionAnim)
         );
-        items.add(SettingsHelper.asSwitchCG(tapsOnPremiumStickersRow, getString(R.string.CP_DisablePremStickAnim), getString(R.string.CP_DisablePremStickAnim_Desc))
+        items.add(SettingsHelper.asSwitchCG(tapsOnPremiumStickersRow, getString(R.string.CP_DisablePremStickAnim))
                 .setChecked(app.nimarkogram.messenger.NimarkoConfig.disablePremStickAnim)
         );
-        items.add(SettingsHelper.asSwitchCG(premiumStickersAutoplayRow, getString(R.string.CP_DisablePremStickAutoPlay), getString(R.string.CP_DisablePremStickAutoPlay_Desc))
+        items.add(SettingsHelper.asSwitchCG(premiumStickersAutoplayRow, getString(R.string.CP_DisablePremStickAutoPlay))
                 .setChecked(app.nimarkogram.messenger.NimarkoConfig.disablePremStickAutoPlay)
         );
         items.add(UItem.asShadow(null));

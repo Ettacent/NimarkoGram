@@ -39,12 +39,12 @@ public class MenuItemRecord {
         }
         this.menuType = PyObjectUtils.getString(pyObject, PluginsConstants.MenuItemProperties.MENU_TYPE, null, true);
         this.text = PyObjectUtils.getString(pyObject, "text", null, true);
-        
+
         this.onClickCallback = pyObject.callAttr("get", "on_click");
-        
+
         String id = PyObjectUtils.getString(pyObject, PluginsConstants.MenuItemProperties.ITEM_ID, null, true);
         this.itemId = TextUtils.isEmpty(id) ? UUID.randomUUID().toString() : id;
-        
+
         this.iconName = PyObjectUtils.getString(pyObject, "icon", null, true);
         this.subtext = PyObjectUtils.getString(pyObject, "subtext", null, true);
         this.conditionString = PyObjectUtils.getString(pyObject, "condition", null, true);
@@ -67,10 +67,10 @@ public class MenuItemRecord {
             Context context = ApplicationLoader.applicationContext;
             String pkg = context.getPackageName();
             String[] candidates = new String[] {
-                this.iconName,                                        
-                this.iconName.startsWith("msg_") ? null : "msg_" + this.iconName,    
-                this.iconName.startsWith("ic_") ? null : "ic_" + this.iconName,      
-                this.iconName.toLowerCase(),                          
+                this.iconName,
+                this.iconName.startsWith("msg_") ? null : "msg_" + this.iconName,
+                this.iconName.startsWith("ic_") ? null : "ic_" + this.iconName,
+                this.iconName.toLowerCase(),
             };
             for (String name : candidates) {
                 if (TextUtils.isEmpty(name)) continue;
@@ -127,7 +127,7 @@ public class MenuItemRecord {
         }
         if (obj != null && getClass() == obj.getClass()) {
             MenuItemRecord other = (MenuItemRecord) obj;
-            return Objects.equals(this.itemId, other.itemId) && 
+            return Objects.equals(this.itemId, other.itemId) &&
                    Objects.equals(this.pluginId, other.pluginId);
         }
         return false;

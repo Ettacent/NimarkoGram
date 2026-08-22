@@ -32,7 +32,7 @@ import app.nimarkogram.messenger.utils.ResourcesUtils;
 
 public class CameraPreferencesActivity extends NimarkoUniversalPreferencesActivity {
 
-    private final int cameraTypeSelectorRow = 0;
+    private final int cameraTypeSelectorRow = 2;
 
     private final int disableAttachCameraRow = 1;
 
@@ -72,11 +72,11 @@ public class CameraPreferencesActivity extends NimarkoUniversalPreferencesActivi
     public void fillItems(ArrayList<UItem> items, UniversalAdapter adapter) {
         final boolean cameraX = CameraXUtils.isCurrentCameraCameraX();
         final boolean camera2 = app.nimarkogram.messenger.NimarkoConfig.cameraType == NimarkoConfig.CAMERA_2;
-        final boolean advanced = cameraX || camera2;   
+        final boolean advanced = cameraX || camera2;
 
         if (CameraXUtils.isCameraXSupported()) {
             items.add(UItem.asHeader(getString(R.string.CP_CameraType)));
-            items.add(SettingsHelper.asCustomWithBackground(new CameraTypeSelector(getContext()) {
+            items.add(SettingsHelper.asCustomWithBackground(cameraTypeSelectorRow, new CameraTypeSelector(getContext()) {
                 @Override
                 protected void onSelectedCamera(int cameraSelected) {
                     super.onSelectedCamera(cameraSelected);
@@ -118,7 +118,7 @@ public class CameraPreferencesActivity extends NimarkoUniversalPreferencesActivi
         if (advanced) {
             items.add(UItem.asButton(cameraXQualityRow, getString(R.string.CP_CameraQuality),
                     getCameraQualityText(app.nimarkogram.messenger.NimarkoConfig.cameraResolution)));
-            items.add(UItem.asButton(cameraXFpsRangeRow, "FPS", getCameraXFpsRange()));
+            items.add(UItem.asButton(cameraXFpsRangeRow, getString(R.string.NM_CAM_FpsRange), getCameraXFpsRange()));
             items.add(SettingsHelper.asSwitchCG(cameraStabilisationRow, getString(R.string.CP_CameraStabilisation))
                     .setChecked(app.nimarkogram.messenger.NimarkoConfig.cameraStabilisation)
             );
@@ -146,6 +146,15 @@ public class CameraPreferencesActivity extends NimarkoUniversalPreferencesActivi
             }
         }
         items.add(UItem.asShadow(null));
+    }
+
+    @Override
+    public CameraPreferencesActivity openAtSetting(int itemId) {
+        if (itemId >= opticalStabilizationRow && itemId <= useHighRangeRow) {
+            cameraImprovementsExpanded = true;
+        }
+        super.openAtSetting(itemId);
+        return this;
     }
 
     @Override

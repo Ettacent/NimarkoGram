@@ -1169,8 +1169,8 @@ public class BottomSheetTabs extends FrameLayout {
             if (bottomSheetHeight <= 0)
                 return;
 
-            clipRadius[0] = clipRadius[1] = clipRadius[2] = clipRadius[3] = 0; 
-            clipRadius[4] = clipRadius[5] = clipRadius[6] = clipRadius[7] = bottomRadius; 
+            clipRadius[0] = clipRadius[1] = clipRadius[2] = clipRadius[3] = 0;
+            clipRadius[4] = clipRadius[5] = clipRadius[6] = clipRadius[7] = bottomRadius;
 
             clipPath.rewind();
             clipRect.set(0, 0, width, tabs.getY() + tabs.getHeight() - bottomSheetHeight);

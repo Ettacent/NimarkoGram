@@ -758,7 +758,7 @@ public class UniversalAdapter extends AdapterWithDiffUtils {
                         cell2.setFixedSize(0);
                         cell2.setText(item.text);
                     }
-                    if (item.accent) { 
+                    if (item.accent) {
                         cell2.setTextGravity(Gravity.CENTER);
                         cell2.getTextView().setWidth(Math.min(HintView2.cutInFancyHalf(cell2.getText(), cell2.getTextView().getPaint()), AndroidUtilities.displaySize.x - dp(60)));
                         cell2.getTextView().setPadding(0, dp(17), 0, dp(17));
@@ -944,7 +944,7 @@ public class UniversalAdapter extends AdapterWithDiffUtils {
                 ProfileSearchCell profileCell = (ProfileSearchCell) holder.itemView;
                 Object object = item.object;
                 CharSequence s = "";
-                if (item.accent && object instanceof TLRPC.User && ((TLRPC.User) object).bot_active_users != 0) { 
+                if (item.accent && object instanceof TLRPC.User && ((TLRPC.User) object).bot_active_users != 0) {
                     TLRPC.User user = (TLRPC.User) object;
                     if (user.bot_active_users != 0) {
                         s = LocaleController.formatPluralStringSpaced("BotUsers", user.bot_active_users);

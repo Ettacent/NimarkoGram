@@ -205,7 +205,7 @@ public class ChatAvatarContainer extends FrameLayout implements FactorAnimator.T
     private boolean occupyStatusBar = true;
     private int leftPadding = dp(8);
     private int rightAvatarPadding = 0;
-    private int nmCenteredAvatarCx;   
+    private int nmCenteredAvatarCx;
     StatusDrawable currentTypingDrawable;
 
     private int lastWidth = -1;
@@ -378,7 +378,7 @@ public class ChatAvatarContainer extends FrameLayout implements FactorAnimator.T
             }
         }
         avatarImageView.setContentDescription(getString(R.string.AccDescrProfilePicture));
-        avatarImageView.setRoundRadius(AndroidUtilities.dp(21));   
+        avatarImageView.setRoundRadius(AndroidUtilities.dp(21));
         addView(avatarImageView);
 
         centerChatTitle = resolveCenterChatTitle();
@@ -1217,7 +1217,7 @@ public class ChatAvatarContainer extends FrameLayout implements FactorAnimator.T
         }
         if (timeItem != null) {
             if (centerChatTitle) {
-                timeItem.layout(nmCenteredAvatarCx + dp(8), dp(5) + viewTop, nmCenteredAvatarCx + dp(42), viewTop + dp(15 + 34));   
+                timeItem.layout(nmCenteredAvatarCx + dp(8), dp(5) + viewTop, nmCenteredAvatarCx + dp(42), viewTop + dp(15 + 34));
             } else {
                 timeItem.layout(
                     leftPadding + dp(19.333f),

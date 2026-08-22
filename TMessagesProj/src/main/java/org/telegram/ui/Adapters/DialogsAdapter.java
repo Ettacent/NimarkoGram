@@ -881,8 +881,8 @@ public class DialogsAdapter extends RecyclerListView.SelectionAdapter implements
                 customDialog.name = getString(R.string.StoriesForwardTitle);
                 customDialog.message = getString(R.string.StoriesForwardText);
 
-                cell.useSeparator = false; 
-                cell.fullSeparator = false; 
+                cell.useSeparator = false;
+                cell.fullSeparator = false;
 
                 cell.setDialog(customDialog);
                 cell.checkHeight();
@@ -975,8 +975,8 @@ public class DialogsAdapter extends RecyclerListView.SelectionAdapter implements
                 } else {
                     DialogCell cell = (DialogCell) holder.itemView;
                     cell.isHiddenInCommunity = communityId != 0 && ChatObject.isHiddenInCommunity(currentAccount, dialog.id);
-                    cell.useSeparator = false; 
-                    cell.fullSeparator = false; 
+                    cell.useSeparator = false;
+                    cell.fullSeparator = false;
                     if (dialogsType == DialogsActivity.DIALOGS_TYPE_DEFAULT) {
                         if (AndroidUtilities.isTablet()) {
                             cell.setDialogSelected(dialog.id == openedDialogId);

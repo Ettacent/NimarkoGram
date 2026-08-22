@@ -2339,7 +2339,7 @@ public class MediaDataController extends BaseController {
                             data.reuse();
                         }
                         date = cursor.intValue(2);
-                        hash = cursor.longValue(3); 
+                        hash = cursor.longValue(3);
                         premium = cursor.intValue(4) == 1;
                     }
                 } catch (Throwable e) {
@@ -2882,7 +2882,7 @@ public class MediaDataController extends BaseController {
                 req.stickerset = inputStickerSetShortName;
             }
             getConnectionsManager().sendRequest(req, (response, error) -> AndroidUtilities.runOnUIThread(() -> {
-                if (BuildConfig.DEBUG && error != null) { 
+                if (BuildConfig.DEBUG && error != null) {
                     return;
                 }
                 if (response instanceof TLRPC.TL_messages_stickerSet) {
@@ -8696,7 +8696,6 @@ public class MediaDataController extends BaseController {
     }
 
 
-
     public static class KeywordResult {
         public KeywordResult() {
         }
@@ -9412,7 +9411,7 @@ public class MediaDataController extends BaseController {
 
 
     public ArrayList<TLRPC.EmojiStatus> getDefaultEmojiStatuses() {
-        final int type = 1; 
+        final int type = 1;
         if (!emojiStatusesFromCacheFetched[type]) {
             fetchEmojiStatuses(type, true);
         } else if (emojiStatuses[type] == null || emojiStatusesFetchDate[type] != null && (System.currentTimeMillis() / 1000 - emojiStatusesFetchDate[type]) > 60 * 30) {
@@ -9422,7 +9421,7 @@ public class MediaDataController extends BaseController {
     }
 
     public ArrayList<TLRPC.EmojiStatus> getDefaultChannelEmojiStatuses() {
-        final int type = 2; 
+        final int type = 2;
         if (!emojiStatusesFromCacheFetched[type]) {
             fetchEmojiStatuses(type, true);
         } else if (emojiStatuses[type] == null || emojiStatusesFetchDate[type] != null && (System.currentTimeMillis() / 1000 - emojiStatusesFetchDate[type]) > 60 * 30) {
@@ -9432,7 +9431,7 @@ public class MediaDataController extends BaseController {
     }
 
     public ArrayList<TLRPC.EmojiStatus> getRecentEmojiStatuses() {
-        final int type = 0; 
+        final int type = 0;
         if (!emojiStatusesFromCacheFetched[type]) {
             fetchEmojiStatuses(type, true);
         } else if (emojiStatuses[type] == null || emojiStatusesFetchDate[type] != null && (System.currentTimeMillis() / 1000 - emojiStatusesFetchDate[type]) > 60 * 30) {
@@ -9442,7 +9441,7 @@ public class MediaDataController extends BaseController {
     }
 
     public ArrayList<TLRPC.EmojiStatus> clearRecentEmojiStatuses() {
-        final int type = 0; 
+        final int type = 0;
         if (emojiStatuses[type] != null) {
             emojiStatuses[type].clear();
         }
@@ -9456,7 +9455,7 @@ public class MediaDataController extends BaseController {
     }
 
     public void pushRecentEmojiStatus(TLRPC.EmojiStatus status) {
-        final int type = 0; 
+        final int type = 0;
         if (emojiStatuses[type] != null) {
             if (status instanceof TLRPC.TL_emojiStatus) {
                 long documentId = ((TLRPC.TL_emojiStatus) status).document_id;

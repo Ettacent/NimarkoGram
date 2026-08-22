@@ -5027,8 +5027,6 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
     }
 
 
-
-
     private final @Nullable DownscaleScrollableNoiseSuppressor scrollableViewNoiseSuppressor;
     private final @Nullable BlurredBackgroundSourceRenderNode iBlur3SourceGlassFrosted;
     private final @Nullable BlurredBackgroundSourceRenderNode iBlur3SourceGlass;

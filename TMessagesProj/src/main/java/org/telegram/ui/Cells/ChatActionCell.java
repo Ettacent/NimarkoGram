@@ -398,7 +398,7 @@ public class ChatActionCell extends BaseCell implements DownloadController.FileD
     private TextLayout giftPremiumText;
     private int giftPremiumTextMoreX, giftPremiumTextMoreY, giftPremiumTextMoreH;
     private Text giftPremiumTextMore;
-    
+
     class TextLayout {
         public float x, y;
         public int width;
@@ -428,7 +428,7 @@ public class ChatActionCell extends BaseCell implements DownloadController.FileD
             AnimatedEmojiSpan.release(ChatActionCell.this, emoji);
         }
     }
-    
+
     private StaticLayout giftPremiumButtonLayout;
     private boolean buttonClickableAsImage = true;
     TextPaint settingWallpaperPaint;
@@ -600,7 +600,7 @@ public class ChatActionCell extends BaseCell implements DownloadController.FileD
     }
 
     private boolean offerExpired;
-    
+
     public void setMessageObject(MessageObject messageObject, boolean force) {
         if (messageObject == null) return;
         if (currentMessageObject == messageObject && (textLayout == null || TextUtils.equals(textLayout.getText(), messageObject.messageText)) && (hasReplyMessage || messageObject.replyMessageObject == null) && !force && messageObject.type != MessageObject.TYPE_SUGGEST_PHOTO && !messageObject.forceUpdate) {
@@ -3987,7 +3987,7 @@ public class ChatActionCell extends BaseCell implements DownloadController.FileD
         canvas.restore();
 
         if (topicSeparator != null) {
-            final float alpha = getAlpha(); 
+            final float alpha = getAlpha();
             final float top = 0;
             if (themeDelegate != null) {
                 themeDelegate.applyServiceShaderMatrix(getMeasuredWidth(), backgroundHeight, viewTranslationX, viewTop + top);

@@ -534,7 +534,7 @@ public class AudioPlayerAlert extends BottomSheet implements NotificationCenter.
 
         playerShadow = new View(context);
         playerShadow.setBackgroundColor(getThemedColor(Theme.key_dialogShadowLine));
-        
+
         playerLayout = new FrameLayout(context) {
             @Override
             protected void onLayout(boolean changed, int left, int top, int right, int bottom) {
@@ -1726,7 +1726,7 @@ public class AudioPlayerAlert extends BottomSheet implements NotificationCenter.
             if (UserConfig.selectedAccount != currentAccount) {
                 parentActivity.switchToAccount(currentAccount, true);
             }
-            
+
             Bundle args = new Bundle();
             long did = messageObject.getDialogId();
             if (DialogObject.isEncryptedDialog(did)) {
@@ -3435,7 +3435,7 @@ public class AudioPlayerAlert extends BottomSheet implements NotificationCenter.
                 }
             }
             if (clipProgress[index] > 0f || hasStableRect) {
-                final int width = Math.min(child.getWidth(), getWidth()); 
+                final int width = Math.min(child.getWidth(), getWidth());
                 final int height = Math.min(child.getHeight(), getHeight());
                 final int saveCount = canvas.saveLayer(0, 0, width, height, null, Canvas.ALL_SAVE_FLAG);
                 result = super.drawChild(canvas, child, drawingTime);
@@ -3505,27 +3505,27 @@ public class AudioPlayerAlert extends BottomSheet implements NotificationCenter.
             final int duration = 300;
 
             final ValueAnimator collapseAnimator = ValueAnimator.ofFloat(clipProgress[prevIndex], 0.75f);
-            collapseAnimator.setDuration(duration / 3 * 2); 
+            collapseAnimator.setDuration(duration / 3 * 2);
             collapseAnimator.addUpdateListener(a -> {
                 clipProgress[prevIndex] = (float) a.getAnimatedValue();
                 invalidate();
             });
 
             final ValueAnimator expandAnimator = ValueAnimator.ofFloat(clipProgress[index], 0f);
-            expandAnimator.setStartDelay(duration / 3); 
-            expandAnimator.setDuration(duration / 3 * 2); 
+            expandAnimator.setStartDelay(duration / 3);
+            expandAnimator.setDuration(duration / 3 * 2);
             expandAnimator.addUpdateListener(a -> {
                 clipProgress[index] = (float) a.getAnimatedValue();
                 invalidate();
             });
 
             final ObjectAnimator fadeOutAnimator = ObjectAnimator.ofFloat(textViews[prevIndex], View.ALPHA, 0f);
-            fadeOutAnimator.setStartDelay(duration / 4); 
-            fadeOutAnimator.setDuration(duration / 2); 
+            fadeOutAnimator.setStartDelay(duration / 4);
+            fadeOutAnimator.setDuration(duration / 2);
 
             final ObjectAnimator fadeInAnimator = ObjectAnimator.ofFloat(textViews[index], View.ALPHA, 1f);
-            fadeInAnimator.setStartDelay(duration / 4); 
-            fadeInAnimator.setDuration(duration / 2); 
+            fadeInAnimator.setStartDelay(duration / 4);
+            fadeInAnimator.setDuration(duration / 2);
 
             animatorSet.playTogether(collapseAnimator, expandAnimator, fadeOutAnimator, fadeInAnimator);
             animatorSet.start();

@@ -380,7 +380,7 @@ public class NotificationCenter {
     public static final int cgTabsUpdated = totalEvents++;
     public static final int pluginsUpdated = totalEvents++;
     public static final int pluginMenuItemsUpdated = totalEvents++;
-    public static final int customTitleUpdated = totalEvents++;   
+    public static final int customTitleUpdated = totalEvents++;
     public static final int pluginSettingsRegistered = totalEvents++;
     public static final int pluginSettingsUnregistered = totalEvents++;
     public static final int pluginIsNotResponding = totalEvents++;

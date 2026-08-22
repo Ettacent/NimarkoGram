@@ -148,8 +148,8 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
         final float tappedCenter = tabs[tappedTabIndex].getX() + tabs[tappedTabIndex].getWidth() / 2f;
         final float currentCenter = currentTab.getX() + currentTab.getWidth() / 2f;
         if (tappedCenter == currentCenter) return false;
-        final boolean visualForward = tappedCenter > currentCenter; 
-        final boolean pagerForward = targetPagerPosition > currentPagerPosition; 
+        final boolean visualForward = tappedCenter > currentCenter;
+        final boolean pagerForward = targetPagerPosition > currentPagerPosition;
         return visualForward != pagerForward;
     }
 
@@ -1032,7 +1032,6 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
     }
 
 
-
     public interface TabFragmentDelegate {
         default boolean canParentTabsSlide(MotionEvent ev, boolean forward) {
             return false;
@@ -1092,7 +1091,6 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
 
         return false;
     }
-
 
 
     private int navigationBarHeight;
@@ -1422,7 +1420,6 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
     }
 
 
-
     @Override
     public boolean canBeginSlide() {
         final BaseFragment fragment = getCurrentVisibleFragment();
@@ -1509,7 +1506,6 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
 
         accountSwitchHintShown = true;
     }
-
 
 
     private final @NonNull BlurredBackgroundSourceColor iBlur3SourceColor;

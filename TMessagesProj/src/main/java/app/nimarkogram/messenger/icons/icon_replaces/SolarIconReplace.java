@@ -2,6 +2,7 @@
  * Copyright github.com/arsLan4k1390, 2022-2026.
  * Licensed under GNU GPL v2 or later.
  */
+
 package app.nimarkogram.messenger.icons.icon_replaces;
 
 import static app.nimarkogram.messenger.icons.IconReplaceUtils.put;
@@ -384,6 +385,7 @@ public class SolarIconReplace extends BaseIconReplace {
         put(replaces, R.drawable.msg_online, R.drawable.msg_online_solar);
         put(replaces, R.drawable.msg_link_folder, R.drawable.msg_link2_solar);
         put(replaces, R.drawable.msg_bot, R.drawable.msg_bots_solar);
+        put(replaces, R.drawable.msg_plugins, R.drawable.msg_bots_solar);
         put(replaces, R.drawable.msg_brightness_high, R.drawable.msg_brightness_high_solar);
         put(replaces, R.drawable.msg_brightness_low, R.drawable.msg_brightness_low_solar);
         put(replaces, R.drawable.msg_header_share, R.drawable.msg_share_filled_solar);

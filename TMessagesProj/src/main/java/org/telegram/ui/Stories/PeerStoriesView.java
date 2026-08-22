@@ -2589,7 +2589,6 @@ public class PeerStoriesView extends SizeNotifierFrameLayout implements Notifica
     }
 
 
-
     private void likeStory(ReactionsLayoutInBubble.VisibleReaction visibleReaction) {
         if (currentStory.storyItem == null) {
             return;
@@ -4582,7 +4581,6 @@ public class PeerStoriesView extends SizeNotifierFrameLayout implements Notifica
 
         ImageView imageView = new ImageView(getContext());
         imageView.setImageDrawable(sharedResources.deleteDrawable);
-
 
 
         selfAvatarsContainer.setBackground(Theme.createSimpleSelectorRoundRectDrawable(AndroidUtilities.dp(15), 0, ColorUtils.setAlphaComponent(Color.WHITE, 120)));

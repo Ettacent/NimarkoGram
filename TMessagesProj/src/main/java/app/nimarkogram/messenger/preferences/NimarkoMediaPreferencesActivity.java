@@ -1,4 +1,3 @@
- 
 package app.nimarkogram.messenger.preferences;
 
 import android.view.View;
@@ -26,16 +25,20 @@ public class NimarkoMediaPreferencesActivity extends BasePreferencesActivity {
 
     @Override
     public void fillItems(ArrayList<UItem> items, UniversalAdapter adapter) {
-        
-        items.add(UItem.asHeader(LocaleController.getString(R.string.NM_NM_HeaderSettings)));
+        String supportedPlatforms = LocaleController.getString(R.string.NM_NM_SupportedPlatforms)
+                + "\n" + LocaleController.getString(R.string.NM_NM_PlatformsList);
+        items.add(UItem.asHeader(LocaleController.getString(R.string.NM_SettingsSectionDownloads)));
         items.add(UItem.asCheck(ID_AUTO_DOWNLOAD,
                 LocaleController.getString(R.string.NM_NM_AutoDownload))
                 .setChecked(NimarkoConfig.nimarkoMediaAuto));
-        items.add(UItem.asShadow(LocaleController.getString(R.string.NM_NM_AutoDownload_Desc)));
+        String mainHint = LocaleController.getString(R.string.NM_NM_AutoDownload_Desc);
+        if (!NimarkoConfig.nimarkoMediaAuto) {
+            mainHint += "\n\n" + supportedPlatforms;
+        }
+        items.add(UItem.asShadow(mainHint));
 
         if (NimarkoConfig.nimarkoMediaAuto) {
             items.add(UItem.asHeader(LocaleController.getString(R.string.NM_NM_YtFormat)));
-            
             items.add(UItem.asCheck(ID_YT_ASK,
                     LocaleController.getString(R.string.NM_NM_YtAsk))
                     .setChecked(NimarkoConfig.nimarkoMediaYtAsk));
@@ -47,14 +50,8 @@ public class NimarkoMediaPreferencesActivity extends BasePreferencesActivity {
                         LocaleController.getString(R.string.NM_NM_FormatAudio))
                         .setChecked(NimarkoConfig.nimarkoMediaYtFmt == 1));
             }
-            items.add(UItem.asShadow(null));
+            items.add(UItem.asShadow(supportedPlatforms));
         }
-
-        if (!NimarkoConfig.nimarkoMediaAuto) {
-            items.add(UItem.asShadow(null)); 
-        }
-        items.add(UItem.asShadow(LocaleController.getString(R.string.NM_NM_SupportedPlatforms)
-                + "\n" + LocaleController.getString(R.string.NM_NM_PlatformsList)));
     }
 
     @Override

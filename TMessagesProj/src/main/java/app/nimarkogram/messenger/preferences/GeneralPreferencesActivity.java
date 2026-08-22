@@ -32,6 +32,7 @@ import org.telegram.tgnet.tl.TL_stars;
 import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.Components.AnimatedEmojiDrawable;
 import org.telegram.ui.Components.BulletinFactory;
+import org.telegram.ui.Components.IconBackgroundColors;
 import org.telegram.ui.Components.LayoutHelper;
 import org.telegram.ui.Components.Reactions.ReactionsLayoutInBubble;
 import org.telegram.ui.Components.UItem;
@@ -53,37 +54,74 @@ import app.nimarkogram.messenger.preferences.helpers.SettingsHelper;
 
 public class GeneralPreferencesActivity extends NimarkoUniversalPreferencesActivity {
 
+    private static final int PAGE_OVERVIEW = 0;
+    private static final int PAGE_SYSTEM = 1;
+    private static final int PAGE_NOTIFICATIONS = 2;
+    private static final int PAGE_CONNECTION = 3;
+    private static final int PAGE_CONTENT = 4;
+    private static final int PAGE_BACKUP = 5;
+
+    private static final int openSystemRow = 1_001;
+    private static final int openNotificationsRow = 1_002;
+    private static final int openConnectionRow = 1_003;
+    private static final int openContentRow = 1_004;
+    private static final int openBackupRow = 1_005;
+
+    private final int page;
+
     private static final int MAX_CONFIG_IMPORT_BYTES = 2 * 1024 * 1024;
 
-    private final int springAnimationRow = 1;
-    private final int actionbarCrossfadeRow = 2;
-    private final int predictiveBackRow = 3;
+    private static final int springAnimationRow = 1;
+    private static final int actionbarCrossfadeRow = 2;
+    private static final int predictiveBackRow = 3;
 
-    private final int silenceNonContactsRow = 4;
-    private final int residentNotificationRow = 6;
-    private final int notificationReactionsRow = 17;
-    private final int notificationReactionEmojiRow = 18;
+    private static final int silenceNonContactsRow = 4;
+    private static final int residentNotificationRow = 6;
+    private static final int notificationReactionsRow = 17;
+    private static final int notificationReactionEmojiRow = 18;
 
-    private final int exportConfigRow = 19;
-    private final int importConfigRow = 20;
+    private static final int exportConfigRow = 19;
+    private static final int importConfigRow = 20;
 
-    private final int hideStoriesRow = 7;
-    private final int archiveStoriesRow = 8;
+    private static final int hideStoriesRow = 7;
+    private static final int archiveStoriesRow = 8;
 
-    private final int useSystemEmojiRow = 9;
-    private final int useSystemFontsRow = 10;
-    private final int tabledModeRow = 11;
+    private static final int useSystemEmojiRow = 9;
+    private static final int useSystemFontsRow = 10;
+    private static final int tabledModeRow = 11;
 
-    private final int downloadSpeedBoostRow = 12;
-    private final int uploadSpeedBoostRow = 13;
-    private final int slowNetworkMode = 14;
+    private static final int downloadSpeedBoostRow = 12;
+    private static final int uploadSpeedBoostRow = 13;
+    private static final int slowNetworkMode = 14;
 
-    private final int deletedGiftsRow = 15;
-    private final int localPremiumEmojisRow = 16;
+    private static final int deletedGiftsRow = 15;
+    private static final int localPremiumEmojisRow = 16;
 
     private boolean uiAlive;
     private int uiGeneration;
     private Runnable premiumBulletinRunnable;
+
+    public GeneralPreferencesActivity() {
+        this(PAGE_OVERVIEW);
+    }
+
+    private GeneralPreferencesActivity(int page) {
+        this.page = page;
+    }
+
+    public static GeneralPreferencesActivity forSetting(int itemId) {
+        int targetPage = switch (itemId) {
+            case springAnimationRow, actionbarCrossfadeRow, predictiveBackRow,
+                    useSystemEmojiRow, useSystemFontsRow, tabledModeRow -> PAGE_SYSTEM;
+            case silenceNonContactsRow, residentNotificationRow, notificationReactionsRow,
+                    notificationReactionEmojiRow, hideStoriesRow, archiveStoriesRow -> PAGE_NOTIFICATIONS;
+            case downloadSpeedBoostRow, uploadSpeedBoostRow, slowNetworkMode -> PAGE_CONNECTION;
+            case deletedGiftsRow, localPremiumEmojisRow -> PAGE_CONTENT;
+            case exportConfigRow, importConfigRow -> PAGE_BACKUP;
+            default -> PAGE_OVERVIEW;
+        };
+        return new GeneralPreferencesActivity(targetPage);
+    }
 
     @Override
     public boolean onFragmentCreate() {
@@ -112,7 +150,14 @@ public class GeneralPreferencesActivity extends NimarkoUniversalPreferencesActiv
 
     @Override
     protected CharSequence getTitle() {
-        return getString(R.string.AP_Header_General);
+        return switch (page) {
+            case PAGE_SYSTEM -> getString(R.string.NM_SettingsSectionSystemAnimations);
+            case PAGE_NOTIFICATIONS -> getString(R.string.NM_SettingsSectionNotificationsStories);
+            case PAGE_CONNECTION -> getString(R.string.NM_SettingsSectionConnection);
+            case PAGE_CONTENT -> getString(R.string.NM_SettingsSectionGiftsEmoji);
+            case PAGE_BACKUP -> getString(R.string.NM_SettingsSectionDataBackup);
+            default -> getString(R.string.AP_Header_General);
+        };
     }
 
     @Override
@@ -123,8 +168,61 @@ public class GeneralPreferencesActivity extends NimarkoUniversalPreferencesActiv
 
     @Override
     public void fillItems(ArrayList<UItem> items, UniversalAdapter adapter) {
-        items.add(UItem.asHeader(getString(R.string.LiteMode)));
-        items.add(UItem.asButton(springAnimationRow, getString(R.string.EP_NavigationAnimation), getSpringValue()));
+        switch (page) {
+            case PAGE_SYSTEM -> {
+                items.add(UItem.asHeader(getString(R.string.NM_SettingsSectionSystemAnimations)));
+                fillInterface(items);
+                items.add(UItem.asShadow(getString(R.string.NM_SettingsSummaryGeneralInterface)));
+            }
+            case PAGE_NOTIFICATIONS -> {
+                items.add(UItem.asHeader(getString(R.string.NM_SettingsSectionNotificationsStories)));
+                fillNotifications(items);
+                items.add(UItem.asShadow(getString(R.string.NM_SettingsSummaryNotificationsStories)));
+            }
+            case PAGE_CONNECTION -> {
+                items.add(UItem.asHeader(getString(R.string.NM_SettingsSectionConnection)));
+                fillConnection(items);
+                items.add(UItem.asShadow(getString(R.string.NM_SettingsSummaryConnection)));
+            }
+            case PAGE_CONTENT -> {
+                items.add(UItem.asHeader(getString(R.string.NM_SettingsSectionGiftsEmoji)));
+                fillContent(items);
+                items.add(UItem.asShadow(getString(R.string.NM_SettingsSummaryContent)));
+            }
+            case PAGE_BACKUP -> {
+                items.add(UItem.asHeader(getString(R.string.NM_SettingsSectionDataBackup)));
+                fillData(items);
+            }
+            default -> fillOverview(items);
+        }
+    }
+
+    private void fillOverview(ArrayList<UItem> items) {
+        items.add(UItem.asHeader(getString(R.string.NM_SettingsSectionInterface)));
+        items.add(asSettingsLink(openSystemRow, IconBackgroundColors.BLUE,
+                R.drawable.msg_speed, getString(R.string.NM_SettingsSectionSystemAnimations),
+                getString(R.string.NM_SettingsSummaryGeneralInterface)));
+        items.add(asSettingsLink(openNotificationsRow, IconBackgroundColors.PURPLE,
+                R.drawable.msg_notifications, getString(R.string.NM_SettingsSectionNotificationsStories),
+                getString(R.string.NM_SettingsSummaryNotificationsStories)));
+        items.add(asSettingsLink(openConnectionRow, IconBackgroundColors.CYAN,
+                R.drawable.msg_satellite, getString(R.string.NM_SettingsSectionConnection),
+                getString(R.string.NM_SettingsSummaryConnection)));
+        items.add(UItem.asShadow(null));
+
+        items.add(UItem.asHeader(getString(R.string.NM_SettingsSectionDataContent)));
+        items.add(asSettingsLink(openContentRow, IconBackgroundColors.ORANGE,
+                R.drawable.msg_emoji_gem, getString(R.string.NM_SettingsSectionGiftsEmoji),
+                getString(R.string.NM_SettingsSummaryContent)));
+        items.add(asSettingsLink(openBackupRow, IconBackgroundColors.GREEN,
+                R.drawable.files_storage, getString(R.string.NM_SettingsSectionDataBackup),
+                getString(R.string.NM_SettingsSummaryDataBackup)));
+        items.add(UItem.asShadow(null));
+    }
+
+    private void fillInterface(ArrayList<UItem> items) {
+        items.add(asSettingsValue(springAnimationRow, IconBackgroundColors.BLUE,
+                R.drawable.msg_speed, getString(R.string.EP_NavigationAnimation), getSpringValue()));
         if (NimarkoConfig.springAnimation == NimarkoConfig.SPRING_SPRING) {
             items.add(SettingsHelper.asSwitchCG(actionbarCrossfadeRow, getString(R.string.EP_NavigationAnimationCrossfading))
                     .setChecked(NimarkoConfig.actionbarCrossfade)
@@ -135,14 +233,24 @@ public class GeneralPreferencesActivity extends NimarkoUniversalPreferencesActiv
                     .setChecked(NimarkoConfig.predictiveBack)
             );
         }
-        items.add(UItem.asShadow(null));
+        items.add(SettingsHelper.asSwitchCG(useSystemEmojiRow, getString(R.string.AP_SystemEmoji))
+                .setChecked(NimarkoConfig.systemEmoji)
+        );
+        items.add(SettingsHelper.asSwitchCG(useSystemFontsRow, getString(R.string.AP_SystemFonts))
+                .setChecked(NimarkoConfig.systemFonts)
+        );
+        items.add(asSettingsValue(tabledModeRow, IconBackgroundColors.CYAN,
+                R.drawable.msg_screencast_off, getString(R.string.AP_Tablet_Mode), getTabletModeValue()));
+    }
 
-        items.add(UItem.asHeader(getString(R.string.SettingsNotifications)));
-        items.add(SettingsHelper.asSwitchCG(silenceNonContactsRow, getString(R.string.CP_SilenceNonContacts), getString(R.string.CP_SilenceNonContacts_Desc))
+    private void fillNotifications(ArrayList<UItem> items) {
+        items.add(SettingsHelper.asSwitchCG(silenceNonContactsRow,
+                        getString(R.string.CP_SilenceNonContacts),
+                        getString(R.string.CP_SilenceNonContacts_Desc))
                 .setChecked(NimarkoConfig.silenceNonContacts)
         );
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && Build.VERSION.SDK_INT < Build.VERSION_CODES.VANILLA_ICE_CREAM) {
-            items.add(SettingsHelper.asSwitchCG(residentNotificationRow, getString(R.string.NM_ResidentNotification), getString(R.string.NotificationsService))
+            items.add(SettingsHelper.asSwitchCG(residentNotificationRow, getString(R.string.NM_ResidentNotification))
                     .setChecked(NimarkoConfig.residentNotification)
             );
         }
@@ -158,53 +266,64 @@ public class GeneralPreferencesActivity extends NimarkoUniversalPreferencesActiv
             notificationReactionCell.update(false);
             items.add(UItem.asCustom(notificationReactionEmojiRow, notificationReactionCell));
         }
-        items.add(UItem.asShadow(null));
-
-        items.add(UItem.asHeader(getString(R.string.FilterStories)));
-        items.add(SettingsHelper.asSwitchCG(hideStoriesRow, getString(R.string.CP_HideStories), getString(R.string.CP_HideStories_Desc))
+        items.add(SettingsHelper.asSwitchCG(hideStoriesRow,
+                        getString(R.string.CP_HideStories),
+                        getString(R.string.CP_HideStories_Desc))
                 .setChecked(NimarkoConfig.hideStories)
         );
-        items.add(SettingsHelper.asTextDetail(archiveStoriesRow, R.drawable.msg_archive, getString(R.string.CP_ArchiveStories), getString(R.string.CP_ArchiveStories_Desc)));
-        items.add(UItem.asShadow(null));
+        items.add(asSettingsLink(archiveStoriesRow, IconBackgroundColors.ORANGE,
+                R.drawable.msg_archive_stories, getString(R.string.CP_ArchiveStories),
+                getString(R.string.CP_ArchiveStories_Desc)));
+    }
 
-        items.add(UItem.asHeader(getString(R.string.LocalMiscellaneousCache)));
-        items.add(SettingsHelper.asSwitchCG(useSystemEmojiRow, getString(R.string.AP_SystemEmoji))
-                .setChecked(NimarkoConfig.systemEmoji)
-        );
-        items.add(SettingsHelper.asSwitchCG(useSystemFontsRow, getString(R.string.AP_SystemFonts))
-                .setChecked(NimarkoConfig.systemFonts)
-        );
-        items.add(UItem.asButton(tabledModeRow, getString(R.string.AP_Tablet_Mode), getTabletModeValue()));
-        items.add(UItem.asShadow(null));
-
-        items.add(UItem.asHeader(getString(R.string.EP_Network)));
-        items.add(UItem.asButton(downloadSpeedBoostRow, getString(R.string.EP_DownloadSpeedBoost), getDownloadSpeedBoostText()));
+    private void fillConnection(ArrayList<UItem> items) {
+        items.add(asSettingsValue(downloadSpeedBoostRow, IconBackgroundColors.BLUE_DEEP,
+                R.drawable.msg_filled_data_received,
+                getString(R.string.EP_DownloadSpeedBoost), getDownloadSpeedBoostText()));
         items.add(SettingsHelper.asSwitchCG(uploadSpeedBoostRow, getString(R.string.NM_GE_UploadSpeedBoost))
                 .setChecked(NimarkoConfig.uploadSpeedBoost)
         );
         items.add(SettingsHelper.asSwitchCG(slowNetworkMode, getString(R.string.EP_SlowNetworkMode))
                 .setChecked(NimarkoConfig.slowNetworkMode)
         );
-        items.add(UItem.asShadow(null));
+    }
 
-        items.add(UItem.asHeader(getString(R.string.NM_GEN_MiscHeader)));
-        items.add(SettingsHelper.asSwitchCG(deletedGiftsRow, getString(R.string.NM_GEN_DeletedGifts), getString(R.string.NM_GEN_DeletedGifts_Desc))
+    private void fillContent(ArrayList<UItem> items) {
+        items.add(SettingsHelper.asSwitchCG(deletedGiftsRow,
+                        getString(R.string.NM_GEN_DeletedGifts),
+                        getString(R.string.NM_GEN_DeletedGifts_Desc))
                 .setChecked(NimarkoConfig.deletedGiftsInject)
         );
-        items.add(SettingsHelper.asSwitchCG(localPremiumEmojisRow, getString(R.string.NM_GEN_LocalPremiumEmoji), getString(R.string.NM_GEN_LocalPremiumEmoji_Desc))
+        items.add(SettingsHelper.asSwitchCG(localPremiumEmojisRow,
+                        getString(R.string.NM_GEN_LocalPremiumEmoji),
+                        getString(R.string.NM_GEN_LocalPremiumEmoji_Desc))
                 .setChecked(NimarkoConfig.localPremiumEmojis)
         );
-        items.add(UItem.asShadow(null));
+    }
 
-        items.add(UItem.asHeader(getString(R.string.NM_Config_Header)));
-        items.add(UItem.asButton(exportConfigRow, getString(R.string.NM_Config_Export)));
-        items.add(UItem.asButton(importConfigRow, getString(R.string.NM_Config_Import)));
+    private void fillData(ArrayList<UItem> items) {
+        items.add(asSettingsLink(exportConfigRow, IconBackgroundColors.ORANGE,
+                R.drawable.msg_share, getString(R.string.NM_Config_Export),
+                getString(R.string.NM_Config_Export_Desc)));
+        items.add(asSettingsLink(importConfigRow, IconBackgroundColors.GREEN,
+                R.drawable.msg_download, getString(R.string.NM_Config_Import),
+                getString(R.string.NM_Config_Import_Desc)));
         items.add(UItem.asShadow(getString(R.string.NM_Config_Info)));
     }
 
     @Override
     public void onClick(UItem item, View view, int position, float x, float y) {
-        if (item.id == springAnimationRow) {
+        if (item.id == openSystemRow) {
+            presentFragment(new GeneralPreferencesActivity(PAGE_SYSTEM));
+        } else if (item.id == openNotificationsRow) {
+            presentFragment(new GeneralPreferencesActivity(PAGE_NOTIFICATIONS));
+        } else if (item.id == openConnectionRow) {
+            presentFragment(new GeneralPreferencesActivity(PAGE_CONNECTION));
+        } else if (item.id == openContentRow) {
+            presentFragment(new GeneralPreferencesActivity(PAGE_CONTENT));
+        } else if (item.id == openBackupRow) {
+            presentFragment(new GeneralPreferencesActivity(PAGE_BACKUP));
+        } else if (item.id == springAnimationRow) {
             ArrayList<String> configStringKeys = new ArrayList<>();
             ArrayList<Integer> configValues = new ArrayList<>();
 

@@ -27,11 +27,9 @@ public class MessageMenuItemsPreferencesActivity extends BasePreferencesActivity
     private static final int ID_SAVE_MESSAGE = 12;
     private static final int ID_REPORT = 13;
     private static final int ID_JSON = 14;
-    
     private static final int ID_FORWARD_WO_CAPTION = 15;
     private static final int ID_DOWNLOAD_STICKER = 16;
     private static final int ID_GET_CUSTOM_REACTIONS = 17;
-    
     private static final int ID_DETAILS = 18;
 
     @Override
@@ -41,10 +39,9 @@ public class MessageMenuItemsPreferencesActivity extends BasePreferencesActivity
 
     @Override
     public void fillItems(ArrayList<UItem> items, UniversalAdapter adapter) {
-        
+        items.add(UItem.asHeader(LocaleController.getString(R.string.NM_SettingsSectionPrimaryActions)));
         items.add(UItem.asCheck(ID_SAVE_FOR_NOTIFICATIONS, LocaleController.getString(R.string.SaveForNotifications))
                 .setChecked(NimarkoConfig.showSaveForNotifications));
-        items.add(UItem.asShadow(null));
         items.add(UItem.asCheck(ID_REPLY, LocaleController.getString(R.string.Reply))
                 .setChecked(NimarkoConfig.showReply));
         items.add(UItem.asCheck(ID_SAVE_TO_GALLERY, LocaleController.getString(R.string.SaveToGallery))
@@ -69,10 +66,10 @@ public class MessageMenuItemsPreferencesActivity extends BasePreferencesActivity
                 .setChecked(NimarkoConfig.showSaveMessage));
         items.add(UItem.asCheck(ID_REPORT, LocaleController.getString(R.string.ReportChat))
                 .setChecked(NimarkoConfig.showReport));
-        items.add(UItem.asCheck(ID_JSON, "JSON")
+        items.add(UItem.asCheck(ID_JSON, LocaleController.getString(R.string.NM_MI_JSON))
                 .setChecked(NimarkoConfig.showJSON));
-        
         items.add(UItem.asShadow(null));
+        items.add(UItem.asHeader(LocaleController.getString(R.string.NM_SettingsSectionExtraActions)));
         items.add(UItem.asCheck(ID_FORWARD_WO_CAPTION, LocaleController.getString(R.string.NM_MI_ForwardWoCaption))
                 .setChecked(NimarkoConfig.showForwardWoCaption));
         items.add(UItem.asCheck(ID_DOWNLOAD_STICKER, LocaleController.getString(R.string.NM_MI_DownloadSticker))

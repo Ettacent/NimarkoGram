@@ -938,7 +938,7 @@ public class SelectAnimatedEmojiDialog extends FrameLayout implements Notificati
         emojiSearchGridView.setVisibility(View.GONE);
         gridViewContainer.addView(emojiSearchGridView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT, Gravity.FILL, 0, 0, 0, 0));
         contentView.addView(gridViewContainer, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT, Gravity.TOP, 0, type == TYPE_EXPANDABLE_REACTIONS || type == TYPE_STICKER_SET_EMOJI || type == TYPE_EFFECTS ? 0 : 36 + (1 / AndroidUtilities.density), 0, 0));
-        
+
         scrollHelper = new RecyclerAnimationScrollHelper(emojiGridView, layoutManager);
         scrollHelper.setAnimationCallback(new RecyclerAnimationScrollHelper.AnimationCallback() {
             @Override
@@ -1264,7 +1264,7 @@ public class SelectAnimatedEmojiDialog extends FrameLayout implements Notificati
             final int recentmaxlen = SPAN_COUNT_FOR_EMOJI * RECENT_MAX_LINES;
             final int recentSize = recent.size() > recentmaxlen && !recentExpanded ? recentmaxlen : recent.size() + (includeEmpty ? 1 : 0);
             if (position <= recentSize || position <= recentReactions.size()) {
-                emojiTabs.select(0); 
+                emojiTabs.select(0);
             } else {
                 final int maxlen = SPAN_COUNT_FOR_EMOJI * EXPAND_MAX_LINES;
                 for (int i = 0; i < positionToSection.size(); ++i) {
@@ -4362,7 +4362,7 @@ public class SelectAnimatedEmojiDialog extends FrameLayout implements Notificati
 
                         if (imageViewEmoji.getBackground() != null) {
                             imageViewEmoji.getBackground().setBounds((int) imageViewEmoji.getX(), (int) imageViewEmoji.getY(), (int) imageViewEmoji.getX() + imageViewEmoji.getWidth(), (int) imageViewEmoji.getY() + imageViewEmoji.getHeight());
-                            int wasAlpha = 255; 
+                            int wasAlpha = 255;
                             imageViewEmoji.getBackground().setAlpha((int) (wasAlpha * imageViewEmoji.getAlpha()));
                             imageViewEmoji.getBackground().draw(canvas);
                             imageViewEmoji.getBackground().setAlpha(wasAlpha);
@@ -4430,7 +4430,7 @@ public class SelectAnimatedEmojiDialog extends FrameLayout implements Notificati
                 lineDrawables.add(drawable);
                 drawable.imageViewEmojis = arrayList;
                 canvas.save();
-                canvas.translate(firstView.getLeft(), firstView.getY() );
+                canvas.translate(firstView.getLeft(), firstView.getY());
                 drawable.startOffset = firstView.getLeft();
                 int w = getMeasuredWidth() - firstView.getLeft() * 2;
                 int h = firstView.getMeasuredHeight();
@@ -4570,7 +4570,7 @@ public class SelectAnimatedEmojiDialog extends FrameLayout implements Notificati
                             continue;
                         }
                         drawable.setAlpha(255);
-                        int topOffset = 0; 
+                        int topOffset = 0;
                         int w = imageView.getWidth() - imageView.getPaddingLeft() - imageView.getPaddingRight();
                         int h = imageView.getHeight() - imageView.getPaddingTop() - imageView.getPaddingBottom();
                         AndroidUtilities.rectTmp2.set(
@@ -4646,7 +4646,7 @@ public class SelectAnimatedEmojiDialog extends FrameLayout implements Notificati
 
                         imageView.update(time);
 
-                        int topOffset = 0; 
+                        int topOffset = 0;
                         int w = imageView.getWidth() - imageView.getPaddingLeft() - imageView.getPaddingRight();
                         int h = imageView.getHeight() - imageView.getPaddingTop() - imageView.getPaddingBottom();
                         AndroidUtilities.rectTmp2.set(imageView.getPaddingLeft(), imageView.getPaddingTop(), imageView.getWidth() - imageView.getPaddingRight(), imageView.getHeight() - imageView.getPaddingBottom());

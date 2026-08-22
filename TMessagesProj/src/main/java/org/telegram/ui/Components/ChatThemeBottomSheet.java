@@ -1287,7 +1287,7 @@ public class ChatThemeBottomSheet extends BottomSheet implements NotificationCen
             if (selectedItemPosition == position) {
                 return;
             }
-            if (selectedItemPosition >= 0) {
+            if (selectedItemPosition >= 0 && selectedItemPosition < getItemCount()) {
                 notifyItemChanged(selectedItemPosition);
                 ThemeSmallPreviewView view = selectedViewRef == null ? null : selectedViewRef.get();
                 if (view != null) {
@@ -1295,7 +1295,9 @@ public class ChatThemeBottomSheet extends BottomSheet implements NotificationCen
                 }
             }
             selectedItemPosition = position;
-            notifyItemChanged(selectedItemPosition);
+            if (selectedItemPosition >= 0 && selectedItemPosition < getItemCount()) {
+                notifyItemChanged(selectedItemPosition);
+            }
         }
 
         @Override

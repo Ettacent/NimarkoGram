@@ -30,7 +30,7 @@ public class InfoCardsPreferencesActivity extends BasePreferencesActivity implem
     private static final int ID_INFINITE_SCROLL    = 101;
     private static final int ID_AUTO_SCROLL        = 102;
 
-    private static final int ID_CARD_BASE          = 1000; 
+    private static final int ID_CARD_BASE          = 1000;
 
     private int activeReorderSectionId = -1;
 
@@ -52,7 +52,6 @@ public class InfoCardsPreferencesActivity extends BasePreferencesActivity implem
         View view = super.createView(context);
         listView.listenReorder(this::onReordered);
         listView.allowReorder(true);
-        
         if (ratesCallback != null) ratesCallback.cancel();
         ratesCallback = InfoCardRates.fetchWeak(false, () -> {
             ratesCallback = null;
@@ -87,7 +86,6 @@ public class InfoCardsPreferencesActivity extends BasePreferencesActivity implem
             row.setListener(this);
             rows.put(info.id, row);
         }
-        
         row.bind(info, active, valueFor(info.id), active, active && hasOptions(info.id));
         return row;
     }
@@ -109,9 +107,8 @@ public class InfoCardsPreferencesActivity extends BasePreferencesActivity implem
                             LocaleController.getString(R.string.NM_CARDS_InfiniteScroll))
                     .setChecked(InfoCardsConfig.isInfiniteScrolling()));
 
-            items.add(UItem.asButtonCheck(ID_AUTO_SCROLL,
-                            LocaleController.getString(R.string.NM_CARDS_AutoScroll),
-                            LocaleController.getString(R.string.NM_CARDS_AutoScrollInfo))
+            items.add(UItem.asCheck(ID_AUTO_SCROLL,
+                            LocaleController.getString(R.string.NM_CARDS_AutoScroll))
                     .setChecked(InfoCardsConfig.isAutoScroll()));
 
             final List<Integer> active = InfoCardsConfig.getActiveCards();
@@ -163,6 +160,7 @@ public class InfoCardsPreferencesActivity extends BasePreferencesActivity implem
         }
     }
 
+
     @Override
     public void onToggle(int pillId, boolean active) {
         if (active) {
@@ -170,20 +168,19 @@ public class InfoCardsPreferencesActivity extends BasePreferencesActivity implem
         } else {
             moveToHidden(pillId);
         }
-        
         reload();
     }
 
     @Override
     public void onBodyTap(int pillId) {
-        
         if (!InfoCardsConfig.isCardActive(pillId) || !hasOptions(pillId)) return;
         showCurrencyPicker(pillId);
     }
 
+
     private void showCurrencyPicker(int pillId) {
         ArrayList<String> labels = new ArrayList<>(Arrays.asList(CURRENCIES));
-        labels.set(0, LocaleController.getString(R.string.Default)); 
+        labels.set(0, LocaleController.getString(R.string.Default));
         int selected = Math.max(0, Arrays.asList(CURRENCIES).indexOf(InfoCardsConfig.getTargetCurrency(pillId)));
         PopupHelper.show(labels, LocaleController.getString(R.string.NM_CARDS_Title), selected, getParentActivity(), i -> {
             InfoCardsConfig.setTargetCurrency(pillId, CURRENCIES[i]);
@@ -191,10 +188,11 @@ public class InfoCardsPreferencesActivity extends BasePreferencesActivity implem
         });
     }
 
+
     private void moveToHidden(int pillId) {
         List<Integer> active = InfoCardsConfig.getActiveCards();
         List<Integer> hidden = InfoCardsConfig.getHiddenCards();
-        if (active.size() <= 1) return; 
+        if (active.size() <= 1) return;
         if (!active.remove((Integer) pillId)) return;
         if (!hidden.contains(pillId)) hidden.add(pillId);
         InfoCardsConfig.setLayout(active, hidden);

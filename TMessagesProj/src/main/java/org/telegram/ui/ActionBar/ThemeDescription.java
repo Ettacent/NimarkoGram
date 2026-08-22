@@ -405,7 +405,6 @@ public class ThemeDescription {
                         ((ImageView) viewToInvalidate).setColorFilter(new PorterDuffColorFilter(color, PorterDuff.Mode.MULTIPLY));
                     }
                 } else if (viewToInvalidate instanceof BackupImageView) {
-                    //((BackupImageView) viewToInvalidate).setResourceImageColorFilter(new PorterDuffColorFilter(color, PorterDuff.Mode.MULTIPLY));
                 } else if (viewToInvalidate instanceof SimpleTextView) {
                     SimpleTextView textView = (SimpleTextView) viewToInvalidate;
                     textView.setSideDrawablesColor(color);

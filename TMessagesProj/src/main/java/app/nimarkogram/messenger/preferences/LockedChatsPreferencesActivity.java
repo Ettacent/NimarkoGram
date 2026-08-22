@@ -12,6 +12,7 @@ import org.telegram.messenger.R;
 import org.telegram.messenger.UserConfig;
 import org.telegram.tgnet.TLRPC;
 import org.telegram.ui.Cells.TextCheckCell;
+import org.telegram.ui.Components.IconBackgroundColors;
 import org.telegram.ui.Components.UItem;
 import org.telegram.ui.Components.UniversalAdapter;
 import org.telegram.ui.Components.BulletinFactory;
@@ -23,7 +24,6 @@ import app.nimarkogram.messenger.utils.LockedChats;
 public class LockedChatsPreferencesActivity extends BasePreferencesActivity {
 
     private static final int ID_ADD = 1_000_001;
-    private static final int ID_HEADER = 1_000_002;
     private static final int ID_DIALOG_BASE = 2_000_000;
     private final ArrayList<Long> rowDialogIds = new ArrayList<>();
 
@@ -34,13 +34,16 @@ public class LockedChatsPreferencesActivity extends BasePreferencesActivity {
 
     @Override
     public void fillItems(ArrayList<UItem> items, UniversalAdapter adapter) {
-        items.add(UItem.asHeader(LocaleController.getString(R.string.NM_PR_LockedChats)));
-        items.add(UItem.asButton(ID_ADD, R.drawable.msg_add, LocaleController.getString(R.string.FilterAddChats)));
-        items.add(UItem.asShadow(null));
+        items.add(asSettingsLink(ID_ADD, IconBackgroundColors.BLUE,
+                R.drawable.msg_contact_add, LocaleController.getString(R.string.FilterAddChats)));
 
         rowDialogIds.clear();
         List<String> all = LockedChats.getAll(currentAccount);
-        if (!all.isEmpty()) {
+        if (all.isEmpty()) {
+            items.add(UItem.asShadow(LocaleController.getString(R.string.NM_PR_NoLockedChats)));
+        } else {
+            items.add(UItem.asShadow(null));
+            items.add(UItem.asHeader(LocaleController.getString(R.string.NM_PR_LockedChats)));
             MessagesController messagesController = MessagesController.getInstance(currentAccount);
             for (String s : all) {
                 long did;
@@ -50,7 +53,7 @@ public class LockedChatsPreferencesActivity extends BasePreferencesActivity {
                 rowDialogIds.add(did);
                 items.add(UItem.asCheck(rowId, name).setChecked(true));
             }
-            items.add(UItem.asShadow(null));
+            items.add(UItem.asShadow(LocaleController.getString(R.string.NM_PR_LockedChatsHint)));
         }
     }
 

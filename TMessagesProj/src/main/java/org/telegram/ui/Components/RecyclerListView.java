@@ -3137,7 +3137,6 @@ public class RecyclerListView extends RecyclerView implements IBlur3Capture {
     }
 
 
-
     private final @NonNull EdgeEffectTrackerFactory edgeEffectTrackerFactory;
 
     public boolean hasActiveEdgeEffects() {
@@ -3155,7 +3154,6 @@ public class RecyclerListView extends RecyclerView implements IBlur3Capture {
     public void removeEdgeEffectListener(EdgeEffectTrackerFactory.OnEdgeEffectListener listener) {
         edgeEffectTrackerFactory.removeEdgeEffectListener(listener);
     }
-
 
 
     private Matrix selfTransformationsMatrix;
@@ -3214,7 +3212,6 @@ public class RecyclerListView extends RecyclerView implements IBlur3Capture {
             }
         }
     }
-
 
 
     @Override

@@ -7,6 +7,7 @@ import java.util.ArrayList;
 import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.NotificationCenter;
 import org.telegram.messenger.R;
+import org.telegram.ui.Components.IconBackgroundColors;
 import org.telegram.ui.Components.UItem;
 import org.telegram.ui.Components.UniversalAdapter;
 import org.telegram.messenger.browser.Browser;
@@ -55,7 +56,6 @@ public class WsBypassPreferencesActivity extends BasePreferencesActivity
     public void onResume() {
         super.onResume();
         ctrl.setSettingsReloader(this::reload);
-        
         if (NimarkoWsBypassConfig.enabled) {
             app.nimarkogram.messenger.wsbypass.WsRelayAuth.prefetchAsync(
                     org.telegram.messenger.UserConfig.selectedAccount);
@@ -86,57 +86,61 @@ public class WsBypassPreferencesActivity extends BasePreferencesActivity
     public void fillItems(ArrayList<UItem> items, UniversalAdapter adapter) {
         final boolean enabled = NimarkoWsBypassConfig.enabled;
 
-        items.add(UItem.asHeader(LocaleController.getString(R.string.General)));
+        items.add(UItem.asHeader(LocaleController.getString(R.string.NM_SettingsSectionConnection)));
         items.add(UItem.asCheck(ID_ENABLED, LocaleController.getString(R.string.NM_WSB_Enable))
                 .setChecked(enabled));
 
+        String state = enabled ? ctrl.getConnectionState() : NimarkoWsBypassController.STATE_OFF;
+        String dot;
+        String label;
+        switch (state) {
+            case NimarkoWsBypassController.STATE_RUNNING:
+                dot = "🟢";
+                label = LocaleController.getString(R.string.NM_WSB_Status_Connected);
+                break;
+            case NimarkoWsBypassController.STATE_STARTING:
+                dot = "🟡";
+                label = LocaleController.getString(R.string.NM_WSB_Status_Starting);
+                break;
+            case NimarkoWsBypassController.STATE_FAILED:
+                dot = "🔴";
+                label = LocaleController.getString(R.string.NM_WSB_Status_Failed);
+                break;
+            case NimarkoWsBypassController.STATE_VPN:
+                dot = "🔵";
+                label = LocaleController.getString(R.string.NM_WSB_Status_VpnSuspended);
+                break;
+            case NimarkoWsBypassController.STATE_OFF:
+            default:
+                dot = "⚪";
+                label = LocaleController.getString(R.string.NM_WSB_Status_Off);
+                break;
+        }
+        CharSequence statusDetails = enabled
+                ? dot + "  " + label + " · " + LocaleController.getString(R.string.NM_WSB_TapRetry)
+                : dot + "  " + label;
+        items.add(asSettingsLink(ID_STATUS, IconBackgroundColors.BLUE,
+                R.drawable.msg_info,
+                LocaleController.getString(R.string.NM_WSB_StatusTitle), statusDetails));
         if (enabled) {
-            String state = ctrl.getConnectionState();
-            String dot;
-            String label;
-            switch (state) {
-                case NimarkoWsBypassController.STATE_RUNNING:
-                    dot = "🟢";
-                    label = LocaleController.getString(R.string.NM_WSB_Status_Connected);
-                    break;
-                case NimarkoWsBypassController.STATE_STARTING:
-                    dot = "🟡";
-                    label = LocaleController.getString(R.string.NM_WSB_Status_Starting);
-                    break;
-                case NimarkoWsBypassController.STATE_FAILED:
-                    dot = "🔴";
-                    label = LocaleController.getString(R.string.NM_WSB_Status_Failed);
-                    break;
-                case NimarkoWsBypassController.STATE_VPN:
-                    dot = "🔵";
-                    label = LocaleController.getString(R.string.NM_WSB_Status_VpnSuspended);
-                    break;
-                case NimarkoWsBypassController.STATE_OFF:
-                default:
-                    dot = "🟡";
-                    label = LocaleController.getString(R.string.NM_WSB_Status_Starting);
-                    break;
-            }
-            items.add(UItem.asButton(ID_STATUS, R.drawable.msg_info, dot + "  " + label));
-            
             boolean terminal = NimarkoWsBypassController.STATE_RUNNING.equals(state)
                     || NimarkoWsBypassController.STATE_FAILED.equals(state)
                     || NimarkoWsBypassController.STATE_VPN.equals(state);
             if (!terminal) scheduleStatusPoll();
-            items.add(UItem.asButton(ID_OPEN_PROXY, R.drawable.msg_settings,
-                    LocaleController.getString(R.string.NM_WSB_OpenProxySettings)));
-
-            items.add(UItem.asShadow(null));
-            items.add(UItem.asHeader(LocaleController.getString(R.string.NM_WSB_MiscHeader)));
-            items.add(UItem.asCheck(ID_VOIP_BYPASS, LocaleController.getString(R.string.NM_WSB_VoIP_Enable))
-                    .setChecked(VoipBypassConfig.isVoipBypassEnabled()));
-            items.add(UItem.asCheck(ID_SUSPEND_VPN,
-                    LocaleController.getString(R.string.NM_WSB_SuspendOnVpn),
-                    LocaleController.getString(R.string.NM_WSB_SuspendOnVpn_Desc), true)
-                    .setChecked(NimarkoWsBypassConfig.suspendOnVpn));
         }
-
+        items.add(asSettingsLink(ID_OPEN_PROXY, IconBackgroundColors.PURPLE,
+                R.drawable.msg_link_2,
+                LocaleController.getString(R.string.NM_WSB_OpenProxySettings)));
         items.add(UItem.asShadow(LocaleController.getString(R.string.NM_WSB_About)));
+
+        items.add(UItem.asHeader(LocaleController.getString(R.string.NM_WSB_MiscHeader)));
+        items.add(UItem.asCheck(ID_VOIP_BYPASS, LocaleController.getString(R.string.NM_WSB_VoIP_Enable))
+                .setChecked(VoipBypassConfig.isVoipBypassEnabled()));
+        items.add(UItem.asCheck(ID_SUSPEND_VPN,
+                LocaleController.getString(R.string.NM_WSB_SuspendOnVpn))
+                .setChecked(NimarkoWsBypassConfig.suspendOnVpn));
+
+        items.add(UItem.asShadow(LocaleController.getString(R.string.NM_WSB_SuspendOnVpn_Desc)));
     }
 
     @Override
@@ -163,7 +167,6 @@ public class WsBypassPreferencesActivity extends BasePreferencesActivity
                 reload();
                 break;
             case ID_STATUS:
-                
                 if (NimarkoWsBypassConfig.enabled) {
                     ctrl.ensureStarted();
                     reload();
@@ -174,7 +177,6 @@ public class WsBypassPreferencesActivity extends BasePreferencesActivity
                 VoipBypassConfig.setVoipBypassEnabled(newVal);
                 updateCheckState(view, newVal);
                 if (newVal) {
-                    
                     app.nimarkogram.messenger.wsbypass.voip.VoipRelayAuth.prefetchAsync(
                             org.telegram.messenger.UserConfig.selectedAccount);
                 }

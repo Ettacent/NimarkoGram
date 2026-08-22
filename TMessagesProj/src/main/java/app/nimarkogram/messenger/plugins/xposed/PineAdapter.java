@@ -214,7 +214,7 @@ public final class PineAdapter extends MethodHook {
 
     private static boolean argCompatible(Class<?> pt, Object a) {
         if (a == null) {
-            return !pt.isPrimitive(); 
+            return !pt.isPrimitive();
         }
         if (pt.isPrimitive()) {
             if (pt == boolean.class) return a instanceof Boolean;

@@ -1,4 +1,3 @@
- 
 package app.nimarkogram.messenger.preferences;
 
 import android.app.Activity;
@@ -18,6 +17,7 @@ import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.R;
 import org.telegram.messenger.Utilities;
 import org.telegram.ui.Components.BulletinFactory;
+import org.telegram.ui.Components.IconBackgroundColors;
 import org.telegram.ui.Components.UItem;
 import org.telegram.ui.Components.UniversalAdapter;
 
@@ -46,6 +46,7 @@ public class BannerPreferencesActivity extends BasePreferencesActivity {
     private boolean pickingGlobal;
     private Runnable settingsReloader;
 
+
     @Override
     public String getTitle() {
         return LocaleController.getString(R.string.NM_BAN_Title);
@@ -65,7 +66,6 @@ public class BannerPreferencesActivity extends BasePreferencesActivity {
 
     @Override
     public void onFragmentDestroy() {
-        
         super.onFragmentDestroy();
     }
 
@@ -84,13 +84,11 @@ public class BannerPreferencesActivity extends BasePreferencesActivity {
 
     @Override
     public void fillItems(ArrayList<UItem> items, UniversalAdapter adapter) {
-        
-        items.add(UItem.asHeader(LocaleController.getString(R.string.NM_BAN_Title)));
+        items.add(UItem.asHeader(LocaleController.getString(R.string.NM_SettingsSectionStatus)));
         items.add(SettingsHelper.asSwitchCG(ID_ENABLED,
-                LocaleController.getString(R.string.NM_BAN_Enable),
-                LocaleController.getString(R.string.NM_BAN_EnableHint))
+                LocaleController.getString(R.string.NM_BAN_Enable))
                 .setChecked(NimarkoBannerConfig.enabled));
-        items.add(UItem.asShadow(null));
+        items.add(UItem.asShadow(LocaleController.getString(R.string.NM_BAN_EnableHint)));
         if (!NimarkoBannerConfig.enabled) {
             return;
         }
@@ -98,55 +96,47 @@ public class BannerPreferencesActivity extends BasePreferencesActivity {
         String st = ctrl.statusString();
 
         items.add(UItem.asHeader(LocaleController.getString(R.string.NM_BAN_GlobalHeader)));
-        items.add(UItem.asButton(ID_STATUS, R.drawable.msg_info,
-                LocaleController.getString(R.string.NM_BAN_StatusLabel), statusText(st)));
+        items.add(asSettingsValue(ID_STATUS, IconBackgroundColors.BLUE,
+                R.drawable.msg_info, LocaleController.getString(R.string.NM_BAN_StatusLabel), statusText(st)));
+        String moderationHint = null;
         switch (st) {
             case "approved":
-                items.add(UItem.asButton(ID_CHANGE_GLOBAL, R.drawable.msg_edit,
-                        LocaleController.getString(R.string.NM_BAN_ChangeGlobal)));
+                items.add(asSettingsLink(ID_CHANGE_GLOBAL, IconBackgroundColors.PURPLE,
+                        R.drawable.msg_edit, LocaleController.getString(R.string.NM_BAN_ChangeGlobal)));
                 break;
             case "pending":
-                items.add(UItem.asShadow(LocaleController.getString(R.string.NM_BAN_PendingWarning)));
+                moderationHint = LocaleController.getString(R.string.NM_BAN_PendingWarning);
                 break;
             case "blocked":
-                items.add(UItem.asShadow(LocaleController.getString(R.string.NM_BAN_BlockedWarning)));
+                moderationHint = LocaleController.getString(R.string.NM_BAN_BlockedWarning);
                 break;
-            default: 
-                items.add(UItem.asButton(ID_SUBMIT, R.drawable.msg_send,
-                        LocaleController.getString(R.string.NM_BAN_SubmitModeration)));
+            default:
+                items.add(asSettingsLink(ID_SUBMIT, IconBackgroundColors.GREEN,
+                        R.drawable.msg_send, LocaleController.getString(R.string.NM_BAN_SubmitModeration)));
                 break;
         }
-        items.add(UItem.asShadow(null));
+        items.add(asSettingsLink(ID_REFRESH, IconBackgroundColors.CYAN,
+                R.drawable.msg_retry, LocaleController.getString(R.string.NM_BAN_RefreshStatus)));
+        items.add(UItem.asShadow(moderationHint));
 
+        items.add(UItem.asHeader(LocaleController.getString(R.string.NM_SettingsSectionDisplay)));
         if ("approved".equals(st)) {
-            items.add(UItem.asHeader(LocaleController.getString(R.string.NM_BAN_AvatarSectionHeader)));
             items.add(SettingsHelper.asSwitchCG(ID_HIDE_AVATAR,
-                    LocaleController.getString(R.string.NM_BAN_HideAvatar),
-                    LocaleController.getString(R.string.NM_BAN_HideAvatarHint))
+                    LocaleController.getString(R.string.NM_BAN_HideAvatar))
                     .setChecked(ctrl.hideAvatarFlag()));
-            items.add(UItem.asShadow(null));
         }
-
-        items.add(UItem.asButtonWithSubtext(ID_REFRESH, R.drawable.msg_reset,
-                LocaleController.getString(R.string.NM_BAN_RefreshStatus),
-                LocaleController.getString(R.string.NM_BAN_RefreshHint), 0, 0));
-        items.add(UItem.asShadow(null));
-
-        items.add(UItem.asHeader(LocaleController.getString(R.string.NM_BAN_QualityHeader)));
         items.add(SettingsHelper.asSwitchCG(ID_LITE,
-                LocaleController.getString(R.string.NM_BAN_LiteMode),
-                LocaleController.getString(R.string.NM_BAN_LiteModeHint))
+                LocaleController.getString(R.string.NM_BAN_LiteMode))
                 .setChecked(NimarkoBannerConfig.liteMode));
-        items.add(UItem.asShadow(null));
+        items.add(UItem.asShadow(LocaleController.getString(R.string.NM_BAN_LiteModeHint)));
 
         items.add(UItem.asHeader(LocaleController.getString(R.string.NM_BAN_LocalHeader)));
-        items.add(SettingsHelper.asSwitchCG(ID_USE_AVATAR,
-                LocaleController.getString(R.string.NM_BAN_AvatarBanner),
-                LocaleController.getString(R.string.NM_BAN_AvatarHint))
-                .setChecked(NimarkoBannerConfig.useAvatar));
         if ("approved".equals(st)) {
             items.add(UItem.asShadow(LocaleController.getString(R.string.NM_BAN_LocalDisabledHint)));
         } else {
+            items.add(SettingsHelper.asSwitchCG(ID_USE_AVATAR,
+                    LocaleController.getString(R.string.NM_BAN_AvatarBanner))
+                    .setChecked(NimarkoBannerConfig.useAvatar));
             String lp = NimarkoBannerConfig.getLocalBannerPath();
             File f = lp == null ? null : new File(lp);
             String info;
@@ -158,15 +148,14 @@ public class BannerPreferencesActivity extends BasePreferencesActivity {
             } else {
                 info = LocaleController.getString(R.string.NM_BAN_NotSet);
             }
-            items.add(UItem.asButtonWithSubtext(ID_PICK_LOCAL, R.drawable.msg_photos,
-                    LocaleController.getString(R.string.NM_BAN_PickLocal), info, 0, 0));
+            items.add(asSettingsLink(ID_PICK_LOCAL, IconBackgroundColors.BLUE_DEEP,
+                    R.drawable.msg_gallery, LocaleController.getString(R.string.NM_BAN_PickLocal), info));
             if (f != null && f.exists()) {
-                items.add(UItem.asButton(ID_DELETE_LOCAL, R.drawable.msg_delete,
-                        LocaleController.getString(R.string.NM_BAN_DeleteLocal)));
+                items.add(asSettingsLink(ID_DELETE_LOCAL, IconBackgroundColors.RED,
+                        R.drawable.msg_delete, LocaleController.getString(R.string.NM_BAN_DeleteLocal)).red());
             }
             items.add(UItem.asShadow(LocaleController.getString(R.string.NM_BAN_LocalOnlyHint)));
         }
-        items.add(UItem.asShadow(null));
     }
 
     private static String statusText(String st) {
@@ -255,7 +244,6 @@ public class BannerPreferencesActivity extends BasePreferencesActivity {
         if (resultCode != Activity.RESULT_OK || data == null || data.getData() == null) return;
         final Uri uri = data.getData();
         final boolean global = pickingGlobal;
-        
         Utilities.globalQueue.postRunnable(() -> processPickedFile(uri, global));
     }
 
@@ -274,7 +262,6 @@ public class BannerPreferencesActivity extends BasePreferencesActivity {
                 total += n;
                 if (total > MAX_SIZE) {
                     out.close(); out = null;
-                    //noinspection ResultOfMethodCallIgnored
                     tmp.delete();
                     err(R.string.NM_BAN_FileTooBig);
                     return;
@@ -285,7 +272,6 @@ public class BannerPreferencesActivity extends BasePreferencesActivity {
 
             String ext = NimarkoBannerController.detectBannerExtension(tmp);
             if (ext == null) {
-                //noinspection ResultOfMethodCallIgnored
                 tmp.delete();
                 err(R.string.NM_BAN_InvalidFormat);
                 return;
@@ -297,7 +283,6 @@ public class BannerPreferencesActivity extends BasePreferencesActivity {
                 ctrl.setLocalBanner(tmp, ext);
             }
         } catch (Throwable t) {
-            //noinspection ResultOfMethodCallIgnored
             tmp.delete();
             err(R.string.NM_BAN_NoAccess);
         } finally {
@@ -309,7 +294,6 @@ public class BannerPreferencesActivity extends BasePreferencesActivity {
     private void err(int res) {
         AndroidUtilities.runOnUIThread(() -> {
             try {
-                
                 BulletinFactory factory = (getParentActivity() == null || getParentActivity().isFinishing() || isFinished)
                         ? BulletinFactory.global()
                         : BulletinFactory.of(this);

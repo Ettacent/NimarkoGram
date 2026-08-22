@@ -26,9 +26,11 @@ import org.telegram.ui.Cells.CheckBoxCell;
 import org.telegram.ui.Cells.NotificationsCheckCell;
 import org.telegram.ui.Cells.TextCell;
 import org.telegram.ui.Cells.TextCheckCell;
+import org.telegram.ui.SettingsActivity;
 import org.telegram.ui.Components.Bulletin;
 import org.telegram.ui.Components.BulletinFactory;
 import org.telegram.ui.Components.ItemOptions;
+import org.telegram.ui.Components.IconBackgroundColors;
 import org.telegram.ui.Components.LayoutHelper;
 import org.telegram.ui.Components.RecyclerListView;
 import org.telegram.ui.Components.ShareAlert;
@@ -39,6 +41,7 @@ import org.telegram.ui.Components.UniversalRecyclerView;
 public abstract class BasePreferencesActivity extends BaseFragment {
     protected LinearLayoutManager layoutManager;
     protected UniversalRecyclerView listView;
+    private int initialSearchItemId;
 
     @Override
     public View createView(Context context) {
@@ -70,6 +73,9 @@ public abstract class BasePreferencesActivity extends BaseFragment {
         this.actionBar.setAdaptiveBackground(this.listView);
         this.layoutManager = universalRecyclerView.layoutManager;
         frameLayout.addView(this.listView, LayoutHelper.createFrame(-1, -1.0f));
+        if (initialSearchItemId != 0) {
+            this.listView.post(() -> scrollToItem(initialSearchItemId));
+        }
         this.fragmentView = frameLayout;
         ViewCompat.setOnApplyWindowInsetsListener(frameLayout, this::onInsetsInternal);
         ViewCompat.requestApplyInsets(frameLayout);
@@ -152,6 +158,11 @@ public abstract class BasePreferencesActivity extends BaseFragment {
         listView.highlightRow(() -> listView.findPositionByItemId(i));
     }
 
+    public BasePreferencesActivity openAtSetting(int itemId) {
+        initialSearchItemId = itemId;
+        return this;
+    }
+
     public void showCopyLinkOptions(View view, final String str) {
         view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS, 1);
         ItemOptions.makeOptions(this, view)
@@ -179,6 +190,8 @@ public abstract class BasePreferencesActivity extends BaseFragment {
             View viewFindViewByItemId = listView.findViewByItemId(uItem.id);
             if (viewFindViewByItemId instanceof TextCell) {
                 ((TextCell) viewFindViewByItemId).setValue(charSequenceArr[i2], true);
+            } else if (viewFindViewByItemId instanceof SettingsActivity.SettingCell) {
+                ((SettingsActivity.SettingCell) viewFindViewByItemId).setValue(charSequenceArr[i2]);
             }
             listView.adapter.update(true);
         }, getResourceProvider(), z);
@@ -224,6 +237,34 @@ public abstract class BasePreferencesActivity extends BaseFragment {
     }
 
     public void initializeOptionStrings() {
+    }
+
+    protected UItem asPlainSettingsRow(int id, CharSequence title) {
+        return UItem.asButton(id, title);
+    }
+
+    protected UItem asPlainSettingsRow(int id, CharSequence title, CharSequence value) {
+        return UItem.asButton(id, title, value);
+    }
+
+    protected UItem asPlainSettingsRowWithSubtitle(int id, CharSequence title, CharSequence subtitle) {
+        return SettingsActivity.SettingCell.Factory.of(id, 0, 0, 0, title, subtitle, null);
+    }
+
+    protected UItem asSettingsLink(int id, IconBackgroundColors colors, int icon, CharSequence title) {
+        return SettingsActivity.SettingCell.Factory.of(id, colors.top, colors.bottom, icon, title);
+    }
+
+    protected UItem asSettingsLink(int id, IconBackgroundColors colors, int icon,
+                                   CharSequence title, CharSequence subtitle) {
+        return SettingsActivity.SettingCell.Factory.of(
+                id, colors.top, colors.bottom, icon, title, subtitle, null);
+    }
+
+    protected UItem asSettingsValue(int id, IconBackgroundColors colors, int icon,
+                                    CharSequence title, CharSequence value) {
+        return SettingsActivity.SettingCell.Factory.of(
+                id, colors.top, colors.bottom, icon, title, null, value);
     }
 
     public void showListDialog(UItem uItem, CharSequence[] charSequenceArr, int[] iArr, String str, int i, PopupUtils.OnItemClickListener onItemClickListener) {

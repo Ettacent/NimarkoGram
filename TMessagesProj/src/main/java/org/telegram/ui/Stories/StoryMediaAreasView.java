@@ -184,7 +184,7 @@ public class StoryMediaAreasView extends FrameLayout implements View.OnClickList
                 totalArea += (mediaArea.coordinates.w / 100f * W) * (mediaArea.coordinates.h / 100f * H);
             }
         }
-        malicious = false; 
+        malicious = false;
 
         hintsContainer.bringToFront();
     }

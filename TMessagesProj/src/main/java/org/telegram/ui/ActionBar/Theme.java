@@ -58,7 +58,6 @@ import android.hardware.SensorEventListener;
 import android.hardware.SensorManager;
 import android.net.Uri;
 import android.os.Build;
-import android.os.Looper;
 import android.os.SystemClock;
 import android.text.TextPaint;
 import android.text.TextUtils;
@@ -133,7 +132,6 @@ import org.telegram.ui.ThemeActivity;
 import org.telegram.ui.ThemePreviewActivity;
 
 import app.nimarkogram.messenger.NimarkoConfig;
-
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
@@ -775,8 +773,8 @@ public class Theme {
                 drawFullBottom = true;
                 drawFullTop = true;
             } else {
-                drawFullBottom = true; 
-                drawFullTop = true; 
+                drawFullBottom = true;
+                drawFullTop = true;
             }
             Path path;
             boolean invalidatePath;
@@ -1168,7 +1166,7 @@ public class Theme {
             Rect lastRect = new Rect();
             boolean lastDrawFullTop;
             boolean lastDrawFullBottom;
-            int lastBubbleShapeGen = -1;   
+            int lastBubbleShapeGen = -1;
 
             public boolean invalidatePath(Rect bounds, boolean drawFullBottom, boolean drawFullTop) {
                 int shapeGen = app.nimarkogram.messenger.NimarkoConfig.bubbleShapeGeneration;
@@ -1179,7 +1177,7 @@ public class Theme {
                 lastRect.set(bounds);
                 return invalidate;
             }
-            
+
             public Path getPath() {
                 return path;
             }
@@ -2108,7 +2106,7 @@ public class Theme {
         }
     }
 
-    public static int blendOver(int A, int B) { 
+    public static int blendOver(int A, int B) {
         float aB = Color.alpha(B) / 255f,
               aA = Color.alpha(A) / 255f,
               aC = (aB + aA * (1 - aB));
@@ -2137,7 +2135,7 @@ public class Theme {
     public static int adaptHSV(int color, float sat, float val) {
         float[] tempHSV = getTempHsv(5);
         Color.colorToHSV(color, tempHSV);
-        if (tempHSV[1] > .1f && tempHSV[1] < .9f) { 
+        if (tempHSV[1] > .1f && tempHSV[1] < .9f) {
             tempHSV[1] = MathUtils.clamp(tempHSV[1] + sat, 0, 1);
         }
         tempHSV[2] = MathUtils.clamp(tempHSV[2] + val, 0, 1);
@@ -3819,12 +3817,12 @@ public class Theme {
     public static final int key_chat_outPollWrongAnswer = colorsCount++;
 
     public static final int key_chat_attachIcon = colorsCount++;
-    public static final int key_chat_attachGalleryBackground = colorsCount++;   
-    public static final int key_chat_attachAudioBackground = colorsCount++; 
-    public static final int key_chat_attachContactBackground = colorsCount++;   
-    public static final int key_chat_attachContactText = colorsCount++; 
-    public static final int key_chat_attachLocationBackground = colorsCount++;  
-    public static final int key_chat_attachPollBackground = colorsCount++;  
+    public static final int key_chat_attachGalleryBackground = colorsCount++;
+    public static final int key_chat_attachAudioBackground = colorsCount++;
+    public static final int key_chat_attachContactBackground = colorsCount++;
+    public static final int key_chat_attachContactText = colorsCount++;
+    public static final int key_chat_attachLocationBackground = colorsCount++;
+    public static final int key_chat_attachPollBackground = colorsCount++;
 
     public static final int key_chat_status = colorsCount++;
     public static final int key_chat_inGreenCall = colorsCount++;
@@ -5084,7 +5082,7 @@ public class Theme {
                                         accent.backgroundRotation = data.readInt32(true);
                                     }
                                     if (version >= 4) {
-                                        data.readInt64(true); 
+                                        data.readInt64(true);
                                         accent.patternIntensity = (float) data.readDouble(true);
                                         accent.patternMotion = data.readBool(true);
                                         if (version >= 5) {
@@ -8940,7 +8938,7 @@ public class Theme {
             chat_msgTextPaint.setTextSize(dp(SharedConfig.fontSize));
             chat_msgGameTextPaint.setTextSize(dp(14));
             chat_msgBotButtonPaint.setTextSize(dp(15));
-            float smallerDp = (2 * SharedConfig.fontSize + 10) / 3f; 
+            float smallerDp = (2 * SharedConfig.fontSize + 10) / 3f;
             chat_namePaint.setTextSize(dp(smallerDp));
             chat_replyNamePaint.setTextSize(dp(smallerDp));
             chat_replyTextPaint.setTextSize(dp(smallerDp));
@@ -9301,7 +9299,7 @@ public class Theme {
             chat_contactNamePaint.setTextSize(dp(15));
             chat_contactPhonePaint.setTextSize(dp(13));
             chat_durationPaint.setTextSize(dp(12));
-            float smallerDp = (2 * SharedConfig.fontSize + 10) / 3f; 
+            float smallerDp = (2 * SharedConfig.fontSize + 10) / 3f;
             chat_namePaint.setTextSize(dp(smallerDp));
             chat_replyNamePaint.setTextSize(dp(smallerDp));
             chat_replyTextPaint.setTextSize(dp(smallerDp));
@@ -10723,7 +10721,7 @@ public class Theme {
 
     public static Drawable getCachedWallpaper() {
         Drawable drawable = getCachedWallpaperNonBlocking();
-        if (drawable == null && wallpaperLoadTask != null && Looper.myLooper() != Looper.getMainLooper()) {
+        if (drawable == null && wallpaperLoadTask != null) {
             CountDownLatch countDownLatch = new CountDownLatch(1);
             Utilities.themeQueue.postRunnable(countDownLatch::countDown);
             try {
@@ -10977,7 +10975,6 @@ public class Theme {
         }
         return PAINT_FILLING;
     }
-
 
 
     public static Paint DEBUG_RED = new Paint(); static { DEBUG_RED.setColor(0xffff0000); }

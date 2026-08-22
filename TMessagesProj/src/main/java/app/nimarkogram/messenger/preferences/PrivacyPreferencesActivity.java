@@ -17,11 +17,13 @@ import org.telegram.messenger.NotificationCenter;
 import org.telegram.messenger.R;
 import org.telegram.ui.ActionBar.AlertDialog;
 import org.telegram.ui.Components.BulletinFactory;
+import org.telegram.ui.Components.IconBackgroundColors;
 import org.telegram.ui.Components.UItem;
 import org.telegram.ui.Components.UniversalAdapter;
 
 import app.nimarkogram.messenger.NimarkoConfig;
 import app.nimarkogram.messenger.preferences.helpers.PopupHelper;
+import app.nimarkogram.messenger.preferences.helpers.SettingsHelper;
 import app.nimarkogram.messenger.security.NimarkoBiometricPrompt;
 import app.nimarkogram.messenger.utils.chats.NimarkoChatMenuInjector;
 
@@ -48,64 +50,67 @@ public class PrivacyPreferencesActivity extends BasePreferencesActivity {
 
     @Override
     public void fillItems(ArrayList<UItem> items, UniversalAdapter adapter) {
-        items.add(UItem.asHeader(LocaleController.getString(R.string.NM_PR_Header_Privacy)));
-        items.add(UItem.asCheck(ID_HIDE_PROXY, LocaleController.getString(R.string.NM_PR_HideProxy))
-                .setChecked(NimarkoConfig.hideProxySponsor));
-
-        UItem deleteAccountBtn = UItem.asButton(ID_DELETE_ACCOUNT, R.drawable.msg_delete,
-                LocaleController.getString(R.string.NM_PR_DeleteAccount));
-        deleteAccountBtn.red = true;
-        items.add(deleteAccountBtn);
-        items.add(UItem.asShadow(null));
-
-        items.add(UItem.asHeader(LocaleController.getString(R.string.FilterChats)));
-        items.add(UItem.asButtonCheck(ID_HIDE_ARCHIVED_STORIES,
-                        LocaleController.getString(R.string.NM_PR_HideArchivedStories),
-                        LocaleController.getString(R.string.NM_PR_HideArchivedStories_Desc))
-                .setChecked(NimarkoConfig.hideArchivedStories));
-        items.add(UItem.asButtonCheck(ID_HIDE_ARCHIVE_LIST,
-                        LocaleController.getString(R.string.NM_PR_HideArchiveList),
-                        LocaleController.getString(R.string.NM_PR_HideArchiveList_Desc))
-                .setChecked(NimarkoConfig.hideArchiveFromChatsList));
-        if (NimarkoConfig.hideArchiveFromChatsList) {
-            items.add(UItem.asButton(ID_OPEN_ARCHIVE, R.drawable.msg_archive,
-                    LocaleController.getString(R.string.NM_PR_OpenArchive)));
-        }
+        items.add(UItem.asHeader(LocaleController.getString(R.string.NM_SettingsSectionAuthentication)));
+        items.add(SettingsHelper.asSwitchCG(ID_ALLOW_SYSTEM_PASSCODE,
+                        LocaleController.getString(R.string.NM_PR_AllowSystemPasscode),
+                        LocaleController.getString(R.string.NM_PR_AllowSystemPasscode_Desc))
+                .setChecked(NimarkoConfig.allowSystemPasscode));
+        items.add(asSettingsLink(ID_TEST_FINGERPRINT, IconBackgroundColors.BLUE,
+                R.drawable.msg_pin_code,
+                LocaleController.getString(R.string.NM_PR_TestFingerprint),
+                LocaleController.getString(R.string.NM_PR_TestFingerprint_Desc)));
         items.add(UItem.asShadow(null));
 
         items.add(UItem.asHeader(LocaleController.getString(R.string.NM_PR_Header_ChatProtection)));
-        items.add(UItem.asButtonCheck(ID_PROTECT_SELECTED_CHATS,
+        items.add(SettingsHelper.asSwitchCG(ID_PROTECT_SELECTED_CHATS,
                         LocaleController.getString(R.string.NM_PR_AskBioOpenChats),
                         LocaleController.getString(R.string.NM_PR_AskBioOpenChats_Desc))
                 .setChecked(NimarkoConfig.askBiometricsToOpenChat));
         if (NimarkoConfig.askBiometricsToOpenChat) {
             int count = app.nimarkogram.messenger.utils.LockedChats.count(currentAccount);
-            items.add(UItem.asButton(ID_LOCKED_CHATS, R.drawable.msg_discussion,
+            items.add(asSettingsValue(ID_LOCKED_CHATS, IconBackgroundColors.GREEN,
+                    R.drawable.msg_saved,
                     LocaleController.getString(R.string.NM_PR_LockedChats), String.valueOf(count)));
-            items.add(UItem.asButton(ID_LOCKED_CHATS_TTL, R.drawable.msg_recent,
-                    LocaleController.getString(R.string.NM_PR_LockedChatsTtl),
-                    getLockedChatsTtlValueText()));
+            items.add(asSettingsValue(ID_LOCKED_CHATS_TTL, IconBackgroundColors.ORANGE,
+                    R.drawable.msg_recent,
+                    LocaleController.getString(R.string.NM_PR_LockedChatsTtl), getLockedChatsTtlValueText()));
         }
-        items.add(UItem.asButtonCheck(ID_PROTECT_SECRET_CHATS,
+        items.add(SettingsHelper.asSwitchCG(ID_PROTECT_SECRET_CHATS,
                         LocaleController.getString(R.string.NM_PR_AskBioOpenEncrypted),
                         LocaleController.getString(R.string.NM_PR_AskBioOpenEncrypted_Desc))
                 .setChecked(NimarkoConfig.askBiometricsToOpenEncrypted));
-        items.add(UItem.asButtonCheck(ID_PROTECT_ARCHIVE,
+        items.add(SettingsHelper.asSwitchCG(ID_PROTECT_ARCHIVE,
                         LocaleController.getString(R.string.NM_PR_AskBioOpenArchive),
                         LocaleController.getString(R.string.NM_PR_AskBioOpenArchive_Desc))
                 .setChecked(NimarkoConfig.askBiometricsToOpenArchive));
-        items.add(UItem.asButtonCheck(ID_REQUIRE_BIO_DELETE,
+        items.add(SettingsHelper.asSwitchCG(ID_REQUIRE_BIO_DELETE,
                         LocaleController.getString(R.string.NM_PR_RequireBiometricsToDelete),
                         LocaleController.getString(R.string.NM_PR_RequireBiometricsToDelete_Desc))
                 .setChecked(NimarkoConfig.askPasscodeBeforeDelete));
-        items.add(UItem.asButtonCheck(ID_ALLOW_SYSTEM_PASSCODE,
-                        LocaleController.getString(R.string.NM_PR_AllowSystemPasscode),
-                        LocaleController.getString(R.string.NM_PR_AllowSystemPasscode_Desc))
-                .setChecked(NimarkoConfig.allowSystemPasscode));
+        items.add(UItem.asShadow(null));
 
-        items.add(UItem.asButton(ID_TEST_FINGERPRINT, R.drawable.fingerprint,
-                LocaleController.getString(R.string.NM_PR_TestFingerprint)));
-        items.add(UItem.asShadow(LocaleController.getString(R.string.NM_PR_TestFingerprint_Desc)));
+        items.add(UItem.asHeader(LocaleController.getString(R.string.NM_SettingsSectionHiddenItems)));
+        items.add(UItem.asCheck(ID_HIDE_PROXY, LocaleController.getString(R.string.NM_PR_HideProxy))
+                .setChecked(NimarkoConfig.hideProxySponsor));
+        items.add(SettingsHelper.asSwitchCG(ID_HIDE_ARCHIVED_STORIES,
+                        LocaleController.getString(R.string.NM_PR_HideArchivedStories),
+                        LocaleController.getString(R.string.NM_PR_HideArchivedStories_Desc))
+                .setChecked(NimarkoConfig.hideArchivedStories));
+        items.add(SettingsHelper.asSwitchCG(ID_HIDE_ARCHIVE_LIST,
+                        LocaleController.getString(R.string.NM_PR_HideArchiveList),
+                        LocaleController.getString(R.string.NM_PR_HideArchiveList_Desc))
+                .setChecked(NimarkoConfig.hideArchiveFromChatsList));
+        if (NimarkoConfig.hideArchiveFromChatsList) {
+            items.add(asSettingsLink(ID_OPEN_ARCHIVE, IconBackgroundColors.BLUE_DEEP,
+                    R.drawable.msg_archive,
+                    LocaleController.getString(R.string.NM_PR_OpenArchive)));
+        }
+        items.add(UItem.asShadow(null));
+
+        items.add(UItem.asHeader(LocaleController.getString(R.string.NM_SettingsSectionAccount)));
+        items.add(asSettingsLink(ID_DELETE_ACCOUNT, IconBackgroundColors.RED,
+                R.drawable.msg_user_remove,
+                LocaleController.getString(R.string.NM_PR_DeleteAccount)).red());
         items.add(UItem.asShadow(null));
     }
 

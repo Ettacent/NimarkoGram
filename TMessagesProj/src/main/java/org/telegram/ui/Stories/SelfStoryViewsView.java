@@ -210,8 +210,6 @@ public class SelfStoryViewsView extends FrameLayout {
         viewPagerContainer.addView(viewPager, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT,0, 0, 0, 0, 0));
 
 
-
-
         addView(selfStoriesPreviewView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT));
         addView(viewPagerContainer);
         setVisibility(View.INVISIBLE);

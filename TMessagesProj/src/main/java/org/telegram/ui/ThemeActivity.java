@@ -631,7 +631,7 @@ public class ThemeActivity extends BaseFragment implements NotificationCenter.No
         Collections.sort(defaultThemes, (o1, o2) -> Integer.compare(o1.sortIndex, o2.sortIndex));
 
         if (currentType == THEME_TYPE_THEMES_BROWSER) {
-            selectThemeHeaderRow = rowCount++; // TYPE_HEADER
+            selectThemeHeaderRow = rowCount++;
             themeListRow2 = rowCount++;
             chatListInfoRow = rowCount++;
 
@@ -708,8 +708,8 @@ public class ThemeActivity extends BaseFragment implements NotificationCenter.No
             distanceRow = rowCount++;
             otherSectionRow = rowCount++;
         } else {
-            nightDisabledRow = rowCount++;  // TYPE_THEME_TYPE
-            nightScheduledRow = rowCount++; // TYPE_THEME_TYPE
+            nightDisabledRow = rowCount++;
+            nightScheduledRow = rowCount++;
             nightAutomaticRow = rowCount++;
             if (Build.VERSION.SDK_INT >= 29) {
                 nightSystemDefaultRow = rowCount++;
@@ -840,7 +840,7 @@ public class ThemeActivity extends BaseFragment implements NotificationCenter.No
         NotificationCenter.getGlobalInstance().addObserver(this, NotificationCenter.themeAccentListUpdated);
         NotificationCenter.getGlobalInstance().addObserver(this, NotificationCenter.emojiLoaded);
         NotificationCenter.getGlobalInstance().addObserver(this, NotificationCenter.needShareTheme);
-        NotificationCenter.getGlobalInstance().addObserver(this, NotificationCenter.needSetDayNightTheme);
+        NotificationCenter.getGlobalInstance().addObserver(this, NotificationCenter.didSetNewTheme);
         NotificationCenter.getGlobalInstance().addObserver(this, NotificationCenter.emojiPreviewThemesChanged);
         getNotificationCenter().addObserver(this, NotificationCenter.appConfigUpdated);
         getNotificationCenter().addObserver(this, NotificationCenter.contentSettingsLoaded);
@@ -864,7 +864,7 @@ public class ThemeActivity extends BaseFragment implements NotificationCenter.No
         NotificationCenter.getGlobalInstance().removeObserver(this, NotificationCenter.themeAccentListUpdated);
         NotificationCenter.getGlobalInstance().removeObserver(this, NotificationCenter.emojiLoaded);
         NotificationCenter.getGlobalInstance().removeObserver(this, NotificationCenter.needShareTheme);
-        NotificationCenter.getGlobalInstance().removeObserver(this, NotificationCenter.needSetDayNightTheme);
+        NotificationCenter.getGlobalInstance().removeObserver(this, NotificationCenter.didSetNewTheme);
         NotificationCenter.getGlobalInstance().removeObserver(this, NotificationCenter.emojiPreviewThemesChanged);
         getNotificationCenter().removeObserver(this, NotificationCenter.appConfigUpdated);
         getNotificationCenter().removeObserver(this, NotificationCenter.contentSettingsLoaded);
@@ -922,7 +922,7 @@ public class ThemeActivity extends BaseFragment implements NotificationCenter.No
                 sharingTheme = null;
                 sharingAccent = null;
             });
-        } else if (id == NotificationCenter.needSetDayNightTheme) {
+        } else if (id == NotificationCenter.didSetNewTheme) {
             updateMenuItem();
             checkCurrentDayNight();
         } else if (id == NotificationCenter.emojiPreviewThemesChanged) {
@@ -1083,7 +1083,6 @@ public class ThemeActivity extends BaseFragment implements NotificationCenter.No
                     pos[1] += menuItem.getIconView().getMeasuredHeight() / 2;
                     NotificationCenter.getGlobalInstance().postNotificationName(NotificationCenter.needSetDayNightTheme, themeInfo, false, pos, -1, toDark, menuItem.getIconView());
                     updateRows(true);
-                    //AndroidUtilities.updateVisibleRows(listView);
 
                     Theme.turnOffAutoNight(ThemeActivity.this);
                 }
@@ -1350,7 +1349,6 @@ public class ThemeActivity extends BaseFragment implements NotificationCenter.No
                     }
                 }
             } else if (position == contactsReimportRow) {
-                //not implemented
             } else if (position == contactsSortRow) {
                 if (getParentActivity() == null) {
                     return;
@@ -2804,7 +2802,6 @@ public class ThemeActivity extends BaseFragment implements NotificationCenter.No
         themeDescriptions.add(new ThemeDescription(listView, ThemeDescription.FLAG_CELLBACKGROUNDCOLOR, new Class[]{TextSettingsCell.class, TextCheckCell.class, HeaderCell.class, BrightnessControlCell.class, ThemeTypeCell.class, TextSizeCell.class, BubbleRadiusCell.class, ChatListCell.class, NotificationsCheckCell.class, ThemesHorizontalListCell.class, TintRecyclerListView.class, TextCell.class, PeerColorActivity.ChangeNameColorCell.class, SwipeGestureSettingsView.class, DefaultThemesPreviewCell.class, AppIconsSelectorCell.class}, null, null, null, Theme.key_windowBackgroundWhite));
         themeDescriptions.add(new ThemeDescription(fragmentView, ThemeDescription.FLAG_BACKGROUND, null, null, null, null, Theme.key_windowBackgroundGray));
 
-//        themeDescriptions.add(new ThemeDescription(actionBar, ThemeDescription.FLAG_BACKGROUND, null, null, null, null, Theme.key_actionBarDefault));
         themeDescriptions.add(new ThemeDescription(listView, ThemeDescription.FLAG_LISTGLOWCOLOR, null, null, null, null, Theme.key_actionBarDefault));
         themeDescriptions.add(new ThemeDescription(actionBar, ThemeDescription.FLAG_AB_ITEMSCOLOR, null, null, null, null, Theme.key_actionBarDefaultIcon));
         themeDescriptions.add(new ThemeDescription(actionBar, ThemeDescription.FLAG_AB_TITLECOLOR, null, null, null, null, Theme.key_actionBarDefaultTitle));
@@ -2928,14 +2925,13 @@ public class ThemeActivity extends BaseFragment implements NotificationCenter.No
     boolean lastIsDarkTheme;
 
     public void checkCurrentDayNight() {
-        if (currentType != THEME_TYPE_THEMES_BROWSER) {
-            return;
-        }
-        boolean toDark = !Theme.isCurrentThemeDay();
-        if (lastIsDarkTheme != toDark) {
-            lastIsDarkTheme = toDark;
-            sunDrawable.setCustomEndFrame(toDark ? sunDrawable.getFramesCount() - 1 : 0);
-            menuItem.getIconView().playAnimation();
+        if (currentType == THEME_TYPE_THEMES_BROWSER) {
+            boolean toDark = !Theme.isCurrentThemeDay();
+            if (lastIsDarkTheme != toDark) {
+                lastIsDarkTheme = toDark;
+                sunDrawable.setCustomEndFrame(toDark ? sunDrawable.getFramesCount() - 1 : 0);
+                menuItem.getIconView().playAnimation();
+            }
         }
         if (themeListRow2 >= 0) {
             for (int i = 0; i < listView.getChildCount(); i++) {

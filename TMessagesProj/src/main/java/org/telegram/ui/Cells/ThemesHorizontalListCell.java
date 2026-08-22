@@ -80,6 +80,7 @@ public class ThemesHorizontalListCell extends RecyclerListView implements Notifi
     private int currentType;
     private int prevCount;
     private BaseFragment fragment;
+    private Theme.ThemeInfo pendingThemeInfo;
 
     private class ThemesListAdapter extends RecyclerListView.SelectionAdapter {
 
@@ -448,13 +449,13 @@ public class ThemesHorizontalListCell extends RecyclerListView implements Notifi
                 }
             }
             applyTheme();
+            button.setChecked(themeInfo == getCheckedTheme(), false);
         }
 
         @Override
         protected void onAttachedToWindow() {
             super.onAttachedToWindow();
-            Theme.ThemeInfo t = currentType == ThemeActivity.THEME_TYPE_NIGHT ? Theme.getCurrentNightTheme() : Theme.getCurrentTheme();
-            button.setChecked(themeInfo == t, false);
+            button.setChecked(themeInfo == getCheckedTheme(), false);
             if (themeInfo != null && themeInfo.info != null && !themeInfo.themeLoaded) {
                 String name = FileLoader.getAttachFileName(themeInfo.info.document);
                 if (!loadingThemes.containsKey(name) && !loadingWallpapers.containsKey(themeInfo)) {
@@ -467,8 +468,7 @@ public class ThemesHorizontalListCell extends RecyclerListView implements Notifi
         }
 
         public void updateCurrentThemeCheck() {
-            Theme.ThemeInfo t = currentType == ThemeActivity.THEME_TYPE_NIGHT ? Theme.getCurrentNightTheme() : Theme.getCurrentTheme();
-            button.setChecked(themeInfo == t, true);
+            button.setChecked(themeInfo == getCheckedTheme(), true);
         }
 
         void updateColors(boolean animate) {
@@ -752,20 +752,15 @@ public class ThemesHorizontalListCell extends RecyclerListView implements Notifi
             }
             Theme.setCurrentNightTheme(themeInfo);
         } else {
-            if (themeInfo == Theme.getCurrentTheme()) {
+            if (themeInfo == getCheckedTheme()) {
                 return;
             }
+            pendingThemeInfo = themeInfo;
+            updateCurrentThemeChecks();
             NotificationCenter.getGlobalInstance().postNotificationName(NotificationCenter.needSetDayNightTheme, themeInfo, false, null, -1);
         }
         updateRows();
-
-        int count = getChildCount();
-        for (int a = 0; a < count; a++) {
-            View child = getChildAt(a);
-            if (child instanceof InnerThemeView) {
-                ((InnerThemeView) child).updateCurrentThemeCheck();
-            }
-        }
+        updateCurrentThemeChecks();
         EmojiThemes.saveCustomTheme(themeInfo, themeInfo.currentAccentId);
 
         if (currentType != ThemeActivity.THEME_TYPE_NIGHT) {
@@ -813,6 +808,8 @@ public class ThemesHorizontalListCell extends RecyclerListView implements Notifi
     @Override
     protected void onAttachedToWindow() {
         super.onAttachedToWindow();
+        NotificationCenter.getGlobalInstance().addObserver(this, NotificationCenter.needSetDayNightTheme);
+        NotificationCenter.getGlobalInstance().addObserver(this, NotificationCenter.didSetNewTheme);
         for (int a = 0; a < UserConfig.MAX_ACCOUNT_COUNT; a++) {
             NotificationCenter.getInstance(a).addObserver(this, NotificationCenter.fileLoaded);
             NotificationCenter.getInstance(a).addObserver(this, NotificationCenter.fileLoadFailed);
@@ -821,16 +818,28 @@ public class ThemesHorizontalListCell extends RecyclerListView implements Notifi
 
     @Override
     protected void onDetachedFromWindow() {
-        super.onDetachedFromWindow();
+        NotificationCenter.getGlobalInstance().removeObserver(this, NotificationCenter.needSetDayNightTheme);
+        NotificationCenter.getGlobalInstance().removeObserver(this, NotificationCenter.didSetNewTheme);
         for (int a = 0; a < UserConfig.MAX_ACCOUNT_COUNT; a++) {
             NotificationCenter.getInstance(a).removeObserver(this, NotificationCenter.fileLoaded);
             NotificationCenter.getInstance(a).removeObserver(this, NotificationCenter.fileLoadFailed);
         }
+        pendingThemeInfo = null;
+        super.onDetachedFromWindow();
     }
 
     @Override
     public void didReceivedNotification(int id, int account, Object... args) {
-        if (id == NotificationCenter.fileLoaded) {
+        if (id == NotificationCenter.needSetDayNightTheme) {
+            boolean nightTheme = args.length > 1 && Boolean.TRUE.equals(args[1]);
+            if (currentType != ThemeActivity.THEME_TYPE_NIGHT && !nightTheme && args.length > 0 && args[0] instanceof Theme.ThemeInfo) {
+                pendingThemeInfo = (Theme.ThemeInfo) args[0];
+                updateCurrentThemeChecks();
+            }
+        } else if (id == NotificationCenter.didSetNewTheme) {
+            pendingThemeInfo = null;
+            updateCurrentThemeChecks();
+        } else if (id == NotificationCenter.fileLoaded) {
             String fileName = (String) args[0];
             File file = (File) args[1];
             Theme.ThemeInfo info = loadingThemes.get(fileName);
@@ -848,6 +857,23 @@ public class ThemesHorizontalListCell extends RecyclerListView implements Notifi
         } else if (id == NotificationCenter.fileLoadFailed) {
             String fileName = (String) args[0];
             loadingThemes.remove(fileName);
+        }
+    }
+
+    private Theme.ThemeInfo getCheckedTheme() {
+        if (currentType == ThemeActivity.THEME_TYPE_NIGHT) {
+            return Theme.getCurrentNightTheme();
+        }
+        return pendingThemeInfo != null ? pendingThemeInfo : Theme.getCurrentTheme();
+    }
+
+    private void updateCurrentThemeChecks() {
+        int count = getChildCount();
+        for (int i = 0; i < count; i++) {
+            View child = getChildAt(i);
+            if (child instanceof InnerThemeView) {
+                ((InnerThemeView) child).updateCurrentThemeCheck();
+            }
         }
     }
 

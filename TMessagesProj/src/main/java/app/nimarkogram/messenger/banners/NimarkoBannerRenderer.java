@@ -49,15 +49,15 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 public final class NimarkoBannerRenderer {
 
-    private static final double AV_HIDE_DUR = 1.0;   
+    private static final double AV_HIDE_DUR = 1.0;
     private static final double FADE_DUR = 0.85;
     private static final float BASE_VOL = 0.05f;
     private static final int BLUR_DS = 8;
     private static final int BLUR_SR = 10;
     private static final double BLUR_INT = 4.0;
-    private static final int FREEZE_FADE = 1000; 
+    private static final int FREEZE_FADE = 1000;
     private static final int VID_FADE = 1000;
-    private static final double BANNER_BLEED = 1.02; 
+    private static final double BANNER_BLEED = 1.02;
     private static final int VID_HEIGHT_THRESHOLD = 8;
     private static final int BMP_MAX = 2048;
     private static final double COLL_SETTLE = 0.55;
@@ -66,21 +66,9 @@ public final class NimarkoBannerRenderer {
     private static final float AUDIO_VOL_UPDATE_THRESHOLD = 0.003f;
     private static final float AUDIO_MUTE_EPSILON = 0.02f;
     private static final long MIN_VID = 10_000L;
-    private static final double FAIL_CD_S = 30.0; 
+    private static final double FAIL_CD_S = 30.0;
 
     public static volatile boolean suppressActionsColor = false;
-
-    public static final boolean DBG = false;  
-    private String lastDbgKey = null;
-    static void dbg(String s) { if (DBG) android.util.Log.d("NimarkoBanner", s); }
-
-    public static final boolean DBG_AV = false;
-    private String lastAvKey = null;
-    static void av(String s) { if (DBG_AV) android.util.Log.d("NMAV", s); }
-    private void avChanged(String key, String s) {
-        if (!DBG_AV) return;
-        if (!key.equals(lastAvKey)) { lastAvKey = key; android.util.Log.d("NMAV", s); }
-    }
 
 
     public static volatile boolean suppressGifts = false;
@@ -124,7 +112,7 @@ public final class NimarkoBannerRenderer {
                     VideoPlayer p = videoPlayer;
                     if (p != null) { try { p.setVolume(0f); lastVol = 0f; } catch (Throwable ignored) {} }
                 } else {
-                    applyAudioVolume(lastAudioExtra); 
+                    applyAudioVolume(lastAudioExtra);
                 }
             };
             org.telegram.messenger.NotificationCenter nc = org.telegram.messenger.NotificationCenter.getGlobalInstance();
@@ -341,18 +329,15 @@ public final class NimarkoBannerRenderer {
         ctrl.ensureStarted();
         boolean texOnThisTv = videoTexture != null
                 && vidTexAttachedTvId == System.identityHashCode(topView);
-        av("RESUME eid=" + dialogId + " samePeer=" + samePeer + " topViewChanged=" + topViewChanged
-                + " texOnThisTv=" + texOnThisTv + " curIv=" + curIv + " vp=" + (videoPlayer != null)
-                + " vt=" + (videoTexture != null) + " vidReady=" + vidReady + " firstFrame=" + (vidFirstFrameTime > 0)
-                + " willResume=" + (!topViewChanged || texOnThisTv));
+
         if (!topViewChanged || texOnThisTv) {
             resumePlayerIfReady();
         } else {
         }
         if (curIv && videoPlayer == null && videoTexture == null) {
-            av("RESUME DEAD-recovery eid=" + dialogId + " — player gone, re-arming firstCommit/setupVideoAfter");
-            firstCommitTime = 0;            
-            setupVideoAfter = 0;            
+
+            firstCommitTime = 0;
+            setupVideoAfter = 0;
         }
         for (long d : new long[]{150, 500, 1200, 2200}) {
             AndroidUtilities.runOnUIThread(this::postInv, d);
@@ -390,7 +375,6 @@ public final class NimarkoBannerRenderer {
             frameIvByEid.remove(dialogId);
             return;
         }
-        // dialogId-only guard above does NOT return and B's destroy would fall through
         if (topView != null && currentTopView != null && topView != currentTopView) {
             return;
         }
@@ -523,7 +507,7 @@ public final class NimarkoBannerRenderer {
             if (!isCurrentVideoSession(sessionId, player, path)) { return; }
             if (!waitFrame) { return; }
             if (!vidReady) { return; }
-            if (appPaused || videoPausedByTab || overlayOpen || !isProfileOpen) { return; } 
+            if (appPaused || videoPausedByTab || overlayOpen || !isProfileOpen) { return; }
             if (!second) {
                 if (freshAttachPending) {
                     AndroidUtilities.runOnUIThread(
@@ -541,7 +525,7 @@ public final class NimarkoBannerRenderer {
                         350);
                 return;
             }
-            dbg("VID resume watchdog — no frame after re-attach, forcing dismissFreeze");
+
             dismissFreeze();
         } catch (Throwable ignored) {}
     }
@@ -553,7 +537,7 @@ public final class NimarkoBannerRenderer {
         videoHierarchyGeneration++;
         destroyVideo();
         avAlpha.clear(); avTimes.clear(); avBase.clear(); avAnim.clear(); avShow.clear();
-        clearSettleState(); 
+        clearSettleState();
         maxEh = 0; matKeyW = -1; matKeyY1 = -1; matKeyBw = -1; matKeyBh = -1; grad = null; gradKeyY1q = -1;
         lastDa = -1; lastBa = -1f; lastLh = 0; lastVol = -1f;
         viewedProfileId = 0; maxVh = 0;
@@ -590,7 +574,7 @@ public final class NimarkoBannerRenderer {
         double el = (frameTime != 0 ? frameTime : t()) - fc;
         if (el >= COLL_SETTLE || el < 0) return rawColl;
         float p = (float) (el / COLL_SETTLE);
-        float w = p * p * (3f - 2f * p);     
+        float w = p * p * (3f - 2f * p);
         return rawColl * w;
     }
 
@@ -648,7 +632,6 @@ public final class NimarkoBannerRenderer {
                             decision.suppressBackground = suppressBg;
                             return decision;
                         }
-                        // freshOpen: fall through so resolve()+setupVideo run this
                     }
                 } else {
                     if (!openAnimDone) { openAnimDone = true; animDoneTime = now; }
@@ -675,18 +658,6 @@ public final class NimarkoBannerRenderer {
             frameIvByEid.put(eid, iv);
             curBf = bf; curIv = iv; curLoading = r.loading;
 
-            if (DBG) {
-                String k = eid + "|" + bf + "|" + iv + "|" + r.loading + "|" + animNow + "|" + hasMainTabs
-                        + "|vp=" + (videoPlayer != null) + "|vt=" + (videoTexture != null) + "|rdy=" + vidReady;
-                if (!k.equals(lastDbgKey)) {
-                    lastDbgKey = k;
-                    dbg("RESOLVE eid=" + eid + " bf=" + bf + " isVideo=" + iv + " loading=" + r.loading
-                            + " animNow=" + animNow + " hasMainTabs=" + hasMainTabs
-                            + " videoPlayer=" + (videoPlayer != null) + " videoTexture=" + (videoTexture != null)
-                            + " vidReady=" + vidReady + " firstFrame=" + vidFirstFrameTime);
-                }
-            }
-
             boolean wantHide = ctrl.shouldHideAvatar(eid);
             boolean hide;
             float avA0 = getOr(avAlpha, eid, 1f);
@@ -697,14 +668,7 @@ public final class NimarkoBannerRenderer {
             } else {
                 hide = wantHide;
             }
-            avChanged(eid + "|" + wantHide + "|" + iv + "|" + coldReveal + "|" + hasFreeze
-                            + "|" + vidReady + "|" + (vidFirstFrameTime > 0) + "|" + hide + "|" + Math.round(avA0 * 100),
-                    "HIDE eid=" + eid + " wantHide=" + wantHide + " iv=" + iv
-                            + " -> hide=" + hide + " | coldReveal=" + coldReveal + " hasFreeze=" + hasFreeze
-                            + " vidReady=" + vidReady + " firstFrame=" + (vidFirstFrameTime > 0)
-                            + " avAlpha=" + String.format("%.2f", avA0)
-                            + " suppressBg=" + suppressBg + " vp=" + (videoPlayer != null)
-                            + " vt=" + (videoTexture != null) + " curBf=" + (curBf == null ? "null" : "set"));
+
             updateAvFade(eid, hide, now, openAnim, playProfileAnimation, expand);
             suppressGifts = hide && (getOr(avAlpha, eid, 1f) <= 0.05f);
             if (!avAnim.isEmpty()) postInv();
@@ -723,7 +687,7 @@ public final class NimarkoBannerRenderer {
                     if (!animNow || hasMainTabs || freshOpen) {
                         if (setupVideoAfter == 0.0) setupVideoAfter = now + 0.1;
                         if (now < setupVideoAfter && videoPlayer == null && videoTexture == null) {
-                            dbg("VID waiting setupVideoAfter (" + (setupVideoAfter - now) + "s left)");
+
                             try { topView.postInvalidateOnAnimation(); } catch (Throwable ignored) {}
                         } else {
                             if (pathEq(curVidPath, ctrl.placeholderPath()) && !bf.equals(ctrl.placeholderPath())) {
@@ -734,7 +698,7 @@ public final class NimarkoBannerRenderer {
                             scheduleSetupVideo(topView, bf, w, y1Hint);
                         }
                     } else {
-                        dbg("VID setup SKIPPED (open/transition anim in progress, no main tabs)");
+
                     }
                     boolean texShown = vidReady && vidFirstFrameTime > 0
                             && (now - vidFirstFrameTime) >= (VID_FADE / 1000.0);
@@ -809,15 +773,15 @@ public final class NimarkoBannerRenderer {
             if (profileExitActive && profileExitEid == eid) return;
 
             if (!hide) {
-                if (!avAlpha.containsKey(eid)) return; 
+                if (!avAlpha.containsKey(eid)) return;
                 float ca = getOr(avAlpha, eid, 1f);
-                if (ca >= 0.999f) {                    
+                if (ca >= 0.999f) {
                     setAvAlpha(1f, 1f);
                     avAlpha.remove(eid); avTimes.remove(eid);
                     avAnim.remove(eid); avBase.remove(eid); avShow.remove(eid);
                     return;
                 }
-                if (!avShow.contains(eid)) {           
+                if (!avShow.contains(eid)) {
                     avShow.add(eid); avAnim.add(eid); avBase.remove(eid);
                     anchorFadeStart(eid, 1f - ca, now);
                 }
@@ -1008,7 +972,7 @@ public final class NimarkoBannerRenderer {
 
     public void drawImageBanner(Canvas canvas, int w, int y1, float extra, long callerEid) {
         try {
-            if (videoTexture != null && videoPlayer != null) return; 
+            if (videoTexture != null && videoPlayer != null) return;
             if (canvas == null || w <= 0) return;
             long eid = callerEid;
             if (eid == 0) return;
@@ -1463,11 +1427,11 @@ public final class NimarkoBannerRenderer {
             float er = clamp01(extra / baseH);
             float targetVol;
             if (er <= AUDIO_MUTE_EPSILON) {
-                targetVol = 0f;                 
+                targetVol = 0f;
             } else if (er >= 1f - AUDIO_MUTE_EPSILON) {
-                targetVol = BASE_VOL;           
+                targetVol = BASE_VOL;
             } else {
-                targetVol = BASE_VOL * er * er; 
+                targetVol = BASE_VOL * er * er;
             }
             boolean terminal = targetVol == 0f || targetVol == BASE_VOL;
             if (targetVol != lastVol
@@ -1531,15 +1495,13 @@ public final class NimarkoBannerRenderer {
     }
 
     private void setupVideo(ViewGroup tv, String path, int w, int y1) {
-        ensureCallObserver(); 
+        ensureCallObserver();
         try {
             double now = frameTime != 0 ? frameTime : t();
-            av("setupVideo ENTER path=" + (path == null ? "null" : path.substring(Math.max(0, path.length() - 16)))
-                    + " curVid=" + (curVidPath == null ? "null" : "set") + " vp=" + (videoPlayer != null)
-                    + " vt=" + (videoTexture != null) + " vidReady=" + vidReady + " pausedByTab=" + videoPausedByTab);
+
             if (path.equals(curVidPath) && videoPlayer != null && videoTexture != null && !videoPausedByTab) {
-                if (vidTexAttachedTvId == System.identityHashCode(tv)) { return; } 
-                if (waitFrame && videoTexture.getParent() != null) { dbg("setupVideo SKIP rebuild — reveal in flight (waitFrame)"); return; }
+                if (vidTexAttachedTvId == System.identityHashCode(tv)) { return; }
+                if (waitFrame && videoTexture.getParent() != null) {  return; }
             }
             if (now - getOrD(failVids, path) < FAIL_CD_S) { return; }
             if (curVidPath != null && !curVidPath.equals(path)) {
@@ -1576,15 +1538,15 @@ public final class NimarkoBannerRenderer {
 
     private boolean prepVideo(String path) {
         try {
-            if (t() - getOrD(failVids, path) < FAIL_CD_S) { dbg("prepVideo SKIP (in fail cooldown) " + path); return false; }
+            if (t() - getOrD(failVids, path) < FAIL_CD_S) {  return false; }
             File f = new File(path);
             if (!f.exists() || f.length() < MIN_VID) {
-                dbg("prepVideo FAIL file exists=" + f.exists() + " len=" + (f.exists() ? f.length() : -1) + " min=" + MIN_VID + " " + path);
+
                 failVids.put(path, t()); return false;
             }
-            if (videoPlayer != null && path.equals(curVidPath)) { dbg("prepVideo already-prepared " + path); return true; }
-            if (path.equals(videoPreparing)) { dbg("prepVideo already-preparing " + path); return false; }
-            dbg("prepVideo START path=" + path + " size=" + f.length());
+            if (videoPlayer != null && path.equals(curVidPath)) {  return true; }
+            if (path.equals(videoPreparing)) {  return false; }
+
             if (videoPlayer != null) destroyVideo();
             if (path.equals(ctrl.placeholderPath())) curVidSound = false;
             else { long eid = ctrl.eidForPath(path); curVidSound = eid != 0 && ctrl.hasSound(eid); }
@@ -1601,11 +1563,11 @@ public final class NimarkoBannerRenderer {
                 if (videoTexture != null) { try { player.setTextureView(videoTexture); } catch (Throwable ignored) {} }
                 player.preparePlayer(Uri.fromFile(new File(path)), "other");
                 videoPreparing = null;
-                dbg("prepVideo preparePlayer OK, waiting STATE_READY " + path);
+
                 invalidateTopView();
                 return true;
             } catch (Throwable e) {
-                dbg("prepVideo EXCEPTION " + path + " : " + e);
+
                 if (isCurrentVideoSession(sessionId, player, path)) {
                     removeVidViews();
                     releasePlayer();
@@ -1627,9 +1589,9 @@ public final class NimarkoBannerRenderer {
 
     private void addVidViews(ViewGroup tv) {
         try {
-            if (videoPlayer == null) { reparentCover = false; dbg("addVidViews SKIP videoPlayer==null"); return; }
-            try { if (tv.getWindowToken() == null) { reparentCover = false; dbg("addVidViews SKIP no windowToken"); return; } } catch (Throwable ignored) {}
-            dbg("addVidViews adding TextureView+layers vh=" + Math.max(videoViewH, 1));
+            if (videoPlayer == null) { reparentCover = false;  return; }
+            try { if (tv.getWindowToken() == null) { reparentCover = false;  return; } } catch (Throwable ignored) {}
+
             int vh = Math.max(videoViewH, 1);
             maxVh = vh; lastLh = vh; lastDa = -1; lastBa = -1f; lastVol = -1f;
             lastFxExtra = -1; lastFxExpand = -1;
@@ -1909,7 +1871,7 @@ public final class NimarkoBannerRenderer {
         }
     }
 
-    private android.animation.ValueAnimator vidXfade; 
+    private android.animation.ValueAnimator vidXfade;
     private void runFreezeCrossfade(final TextureView tex, final ImageView fv, final Bitmap old) {
         float fa = fv != null ? fv.getAlpha() : 1f;
         if (fv != null && fa < 0.98f) {
@@ -1938,7 +1900,7 @@ public final class NimarkoBannerRenderer {
     private void doFreezeSwap(final TextureView tex, final ImageView fv, final Bitmap old, final long dur) {
         try {
             try { if (vidXfade != null) vidXfade.cancel(); } catch (Throwable ignored) {}
-            if (tex != null) { try { tex.animate().cancel(); tex.setAlpha(1f); tex.setVisibility(View.VISIBLE); } catch (Throwable ignored) {} } 
+            if (tex != null) { try { tex.animate().cancel(); tex.setAlpha(1f); tex.setVisibility(View.VISIBLE); } catch (Throwable ignored) {} }
             if (fv != null) {
                 fv.animate().cancel();
                 fv.animate().alpha(0f).setDuration(dur)
@@ -1957,14 +1919,14 @@ public final class NimarkoBannerRenderer {
 
     private void dismissFreeze() {
         try {
-            if (vidW <= 0 || vidH <= 0) { av("dismissFreeze DEFERRED — size unknown (vidW=" + vidW + " vidH=" + vidH + ")"); return; }
+            if (vidW <= 0 || vidH <= 0) {  return; }
             try { updateVidTransform(0, 0); } catch (Throwable ignored) {}
             if (vidFirstFrameTime != 0) { waitFrame = false; return; }
             waitFrame = false;
             int wgOld = resumeWatchGen;
             resumeWatchGen++;
-            vidFirstFrameTime = t(); freshAttachPending = false; dbg("VID firstFrame rendered → dismissFreeze (suppressBg in " + (VID_FADE / 1000.0) + "s)");
-            av("dismissFreeze REVEAL — firstFrame stamped, texture fading in NOW (avatar may hide from here)");
+            vidFirstFrameTime = t(); freshAttachPending = false;
+
             TextureView tex = videoTexture; ImageView fv = vidFreeze;
             frozenPath = null;
             boolean coverVisible = fv != null && fv.getVisibility() == View.VISIBLE
@@ -2066,7 +2028,7 @@ public final class NimarkoBannerRenderer {
                 if (isCurrentVideoSession(sessionId, player, fp)
                         && (vidW != fw || vidH != fh)) {
                     vidW = fw; vidH = fh;
-                    dbg("readVidSize " + fw + "x" + fh + " (pre-frame) " + fp);
+
                     try { updateVidTransform(0, 0); } catch (Throwable ignored) {}
                 }
             });
@@ -2084,8 +2046,7 @@ public final class NimarkoBannerRenderer {
             if (tw == 0) tw = videoTexture.getWidth();
             if (th == 0) th = videoTexture.getHeight();
             if (vw <= 0 || vh <= 0 || tw <= 0 || th <= 0) {
-                dbg("updateVidTransform SKIP vw=" + vw + " vh=" + vh + " tw=" + tw + " th=" + th
-                        + " (texW=" + videoTexture.getWidth() + " texH=" + videoTexture.getHeight() + ")");
+
                 return;
             }
             float sc = Math.max((float) tw / vw, (float) th / vh);
@@ -2095,9 +2056,7 @@ public final class NimarkoBannerRenderer {
             vidMatrix.setScale(sw / tw, sh / th);
             vidMatrix.postTranslate((tw - sw) / 2f, (th - sh) / 2f);
             videoTexture.setTransform(vidMatrix);
-            dbg("updateVidTransform APPLIED vid=" + vw + "x" + vh + " view=" + tw + "x" + th
-                    + " sc=" + sc + " scaleX=" + (sw / tw) + " scaleY=" + (sh / th)
-                    + " drawn=" + (int) sw + "x" + (int) sh);
+
         } catch (Throwable ignored) {}
     }
 
@@ -2256,21 +2215,18 @@ public final class NimarkoBannerRenderer {
 
         @Override public void onStateChanged(boolean playWhenReady, int playbackState) {
             try {
-                dbg("onStateChanged state=" + playbackState + " playWhenReady=" + playWhenReady + " cpMatch=" + cp.equals(curVidPath));
+
                 if (!isCurrentVideoSession(sessionId, player, cp)) return;
-                if (playbackState == 3 && !vidReady) { 
-                    dbg("VID STATE_READY → vidReady=true, play() " + cp);
-                    av("STATE_READY → vidReady=true | playGate appPaused=" + appPaused + " isProfileOpen=" + isProfileOpen
-                            + " pausedByTab=" + videoPausedByTab + " overlayOpen=" + overlayOpen
-                            + " willPlay=" + (!appPaused && isProfileOpen && !videoPausedByTab && !overlayOpen));
+                if (playbackState == 3 && !vidReady) {
+
+
                     vidReady = true;
                     failVids.remove(cp);
                     lastFxExtra = -1; lastFxExpand = -1;
                     try { player.setVolume(0f); lastVol = 0f; } catch (Throwable ignored) {}
-                    dbg("VID play-gate appPaused=" + appPaused + " isProfileOpen=" + isProfileOpen
-                            + " videoPausedByTab=" + videoPausedByTab + " overlayOpen=" + overlayOpen);
+
                     if (!appPaused && isProfileOpen && !videoPausedByTab && !overlayOpen) {
-                        dbg("VID play() called at READY " + cp);
+
                         try { player.play(); } catch (Throwable ignored) {}
                         if (waitFrame && videoTexture != null) {
                             final int g = ++resumeWatchGen;
@@ -2279,7 +2235,7 @@ public final class NimarkoBannerRenderer {
                                     300);
                         }
                     } else {
-                        dbg("VID play() SKIPPED at READY (gate false) — will play when state allows " + cp);
+
                     }
                     try { updateVidTransform(0, 0); } catch (Throwable ignored) {}
                     startBlur();
@@ -2290,7 +2246,7 @@ public final class NimarkoBannerRenderer {
 
         @Override public void onError(VideoPlayer player, Exception e) {
             try {
-                dbg("VID onError " + cp + " : " + e);
+
                 AndroidUtilities.runOnUIThread(() -> {
                     if (!isCurrentVideoSession(sessionId, this.player, cp)
                             || player != this.player) {
@@ -2306,8 +2262,7 @@ public final class NimarkoBannerRenderer {
 
         @Override public void onVideoSizeChanged(int width, int height, int unappliedRotationDegrees, float pixelWidthHeightRatio) {
             try {
-                dbg("onVideoSizeChanged " + width + "x" + height + " rot=" + unappliedRotationDegrees
-                        + " par=" + pixelWidthHeightRatio + " cpMatch=" + cp.equals(curVidPath));
+
                 if (!isCurrentVideoSession(sessionId, player, cp)) return;
                 vidW = width; vidH = height; updateVidTransform(0, 0);
             } catch (Throwable ignored) {}
@@ -2315,7 +2270,7 @@ public final class NimarkoBannerRenderer {
 
         @Override public void onRenderedFirstFrame() {
             try {
-                dbg("onRenderedFirstFrame vidW=" + vidW + " vidH=" + vidH + " cpMatch=" + cp.equals(curVidPath));
+
                 if (isCurrentVideoSession(sessionId, player, cp)) {
                     captureVideoFrameAsync(sessionId, cp, frame -> publishLatestVideoFrame(frame, cp, sessionId));
                     dismissFreeze();

@@ -36,6 +36,7 @@ import android.view.ViewGroup;
 import android.view.Window;
 import android.view.WindowInsets;
 import android.view.WindowManager;
+import android.webkit.WebView;
 import android.widget.FrameLayout;
 import android.widget.TextView;
 
@@ -169,6 +170,8 @@ public class BotWebViewSheet extends Dialog implements NotificationCenter.Notifi
 
     private final static int POLL_PERIOD = 60000;
     private final static long RESTORE_TRANSITION_FALLBACK_MS = 1200L;
+    private final static long RESTORE_CONTENT_READY_FALLBACK_MS = 360L;
+    private final static long RESTORE_CONTENT_FADE_DURATION_MS = 240L;
 
     private final static SimpleFloatPropertyCompat<BotWebViewSheet> ACTION_BAR_TRANSITION_PROGRESS_VALUE = new SimpleFloatPropertyCompat<BotWebViewSheet>("actionBarTransitionProgress", obj -> obj.actionBarTransitionProgress, (obj, value) -> {
         obj.actionBarTransitionProgress = value;
@@ -188,7 +191,7 @@ public class BotWebViewSheet extends Dialog implements NotificationCenter.Notifi
     private final Rect navInsets = new Rect();
     private final Rect insets = new Rect();
     private int keyboardInset = 0;
-    
+
     private BottomSheetTabs bottomTabs;
     private BottomSheetTabs.ClipTools bottomTabsClip;
     private boolean bottomTabsListening;
@@ -314,6 +317,7 @@ public class BotWebViewSheet extends Dialog implements NotificationCenter.Notifi
     private int restoreTransitionGeneration;
     private int finishRestoreGeneration;
     private Runnable restoreTransitionFallbackRunnable;
+    private Runnable restoreContentRevealRunnable;
     private final Runnable finishRestoreRunnable = this::finishRestoredWebViewResume;
     private int frameRateRequestGeneration;
     private Runnable frameRateLease;
@@ -371,6 +375,7 @@ public class BotWebViewSheet extends Dialog implements NotificationCenter.Notifi
         if (finishRestoreGeneration != restoreTransitionGeneration || !restoringPreservedWebView || !restoreTransitionFinished || !sheetStarted || dismissed || webViewContainer == null || !isShowing()) {
             return;
         }
+        final int generation = restoreTransitionGeneration;
         restoringPreservedWebView = false;
         restoreTransitionFinished = false;
         webViewContainer.setWebViewPaused(false);
@@ -382,7 +387,101 @@ public class BotWebViewSheet extends Dialog implements NotificationCenter.Notifi
             restoreThemeUpdatePending = false;
             webViewContainer.notifyThemeChanged();
         }
-        finishRestoreFrameRate();
+        scheduleRestoredWebViewReveal(generation);
+    }
+
+    private void prepareRestoredWebViewReveal() {
+        BotWebViewContainer.MyWebView webView = webViewContainer == null ? null : webViewContainer.getWebView();
+        if (webView == null) {
+            return;
+        }
+        webView.animate().setUpdateListener(null);
+        webView.animate().cancel();
+        webView.setAlpha(1f);
+        webViewContainer.animate().cancel();
+        webViewContainer.setAlpha(0f);
+    }
+
+    private void scheduleRestoredWebViewReveal(int generation) {
+        final BotWebViewContainer.MyWebView webView = webViewContainer == null ? null : webViewContainer.getWebView();
+        if (webView == null || windowView == null) {
+            if (webViewContainer != null) {
+                webViewContainer.setAlpha(1f);
+            }
+            finishRestoreFrameRate();
+            return;
+        }
+        if (restoreContentRevealRunnable != null) {
+            windowView.removeCallbacks(restoreContentRevealRunnable);
+        }
+        final Runnable[] revealRef = new Runnable[1];
+        revealRef[0] = () -> startRestoredWebViewReveal(generation, webView, revealRef[0]);
+        final Runnable reveal = revealRef[0];
+        restoreContentRevealRunnable = reveal;
+        try {
+            webView.postVisualStateCallback(generation, new WebView.VisualStateCallback() {
+                @Override
+                public void onComplete(long requestId) {
+                    if (restoreContentRevealRunnable == reveal && windowView != null) {
+                        windowView.removeCallbacks(reveal);
+                        windowView.postOnAnimation(reveal);
+                    }
+                }
+            });
+            windowView.postDelayed(reveal, RESTORE_CONTENT_READY_FALLBACK_MS);
+        } catch (Throwable e) {
+            FileLog.e(e);
+            windowView.postOnAnimation(reveal);
+        }
+    }
+
+    private void startRestoredWebViewReveal(int generation, BotWebViewContainer.MyWebView webView, Runnable reveal) {
+        if (restoreContentRevealRunnable != reveal) {
+            return;
+        }
+        if (windowView != null) {
+            windowView.removeCallbacks(reveal);
+        }
+        restoreContentRevealRunnable = null;
+        if (generation != restoreTransitionGeneration || dismissed || !sheetStarted || !isShowing() || webViewContainer == null || webViewContainer.getWebView() != webView) {
+            if (webViewContainer != null) {
+                webViewContainer.setAlpha(1f);
+            }
+            finishRestoreFrameRate();
+            return;
+        }
+        webViewContainer.animate().cancel();
+        webViewContainer.animate()
+                .alpha(1f)
+                .setDuration(RESTORE_CONTENT_FADE_DURATION_MS)
+                .setInterpolator(CubicBezierInterpolator.EASE_BOTH)
+                .withLayer()
+                .withEndAction(() -> {
+                    if (generation == restoreTransitionGeneration && webViewContainer != null && webViewContainer.getWebView() == webView) {
+                        webViewContainer.setAlpha(1f);
+                    }
+                    finishRestoreFrameRate();
+                })
+                .start();
+    }
+
+    private void cancelRestoredWebViewReveal(boolean showContent) {
+        if (restoreContentRevealRunnable != null && windowView != null) {
+            windowView.removeCallbacks(restoreContentRevealRunnable);
+        }
+        restoreContentRevealRunnable = null;
+        BotWebViewContainer.MyWebView webView = webViewContainer == null ? null : webViewContainer.getWebView();
+        if (webView != null) {
+            webView.animate().setUpdateListener(null);
+            webView.animate().cancel();
+            webView.setAlpha(1f);
+        }
+        if (webViewContainer != null) {
+            webViewContainer.animate().cancel();
+            if (showContent) {
+                webViewContainer.setAlpha(1f);
+            }
+        }
     }
 
     private boolean defaultFullsize = false;
@@ -494,6 +593,9 @@ public class BotWebViewSheet extends Dialog implements NotificationCenter.Notifi
             tab.props.responseTime = 0;
         }
         requestWebView(fragment, tab.props);
+        if (restoringPreservedWebView) {
+            prepareRestoredWebViewReveal();
+        }
         hasSettings = tab.settings;
 
         if (tab.error) {
@@ -1372,6 +1474,7 @@ public class BotWebViewSheet extends Dialog implements NotificationCenter.Notifi
                 windowView.removeCallbacks(restoreTransitionFallbackRunnable);
             }
         }
+        cancelRestoredWebViewReveal(true);
         restoreTransitionFallbackRunnable = null;
 
         if (springAnimation != null) {
@@ -2058,11 +2161,11 @@ public class BotWebViewSheet extends Dialog implements NotificationCenter.Notifi
             if (!fromTab) {
                 setFullscreen(resultUrl.fullscreen, !fromTab);
             }
-        } else if (requestProps.response instanceof TLRPC.TL_appWebViewResultUrl) { 
+        } else if (requestProps.response instanceof TLRPC.TL_appWebViewResultUrl) {
             TLRPC.TL_appWebViewResultUrl result = (TLRPC.TL_appWebViewResultUrl) requestProps.response;
             queryId = 0;
             url = result.url;
-        } else if (requestProps.response instanceof TLRPC.TL_simpleWebViewResultUrl) { 
+        } else if (requestProps.response instanceof TLRPC.TL_simpleWebViewResultUrl) {
             TLRPC.TL_simpleWebViewResultUrl resultUrl = (TLRPC.TL_simpleWebViewResultUrl) requestProps.response;
             queryId = 0;
             url = resultUrl.url;
@@ -2135,6 +2238,7 @@ public class BotWebViewSheet extends Dialog implements NotificationCenter.Notifi
     private void cleanupSheet(boolean destroyWebView, boolean stopTabListeners) {
         releaseRestoreFrameRate();
         restoreTransitionGeneration++;
+        cancelRestoredWebViewReveal(true);
         if (windowView != null) {
             windowView.removeCallbacks(finishRestoreRunnable);
             if (restoreTransitionFallbackRunnable != null) {

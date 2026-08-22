@@ -897,7 +897,7 @@ public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayou
         gridView.setFastScrollVisible(true);
         gridView.getFastScroll().setAlpha(0f);
         gridView.getFastScroll().usePadding = false;
-        gridView.getFastScroll().topOffset = ActionBar.getCurrentActionBarHeight(); 
+        gridView.getFastScroll().topOffset = ActionBar.getCurrentActionBarHeight();
         gridView.setAdapter(adapter = new PhotoAttachAdapter(context, !HIDE_CAMERA_TILE && needCamera && !disableAttachCamera));
         gridView.addItemDecoration(cameraViewItemDecoration = new CameraViewItemDecoration(gridView));
         adapter.createCache();
@@ -1691,7 +1691,6 @@ public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayou
             }
         });
     }
-
 
 
     private void requestGalleryPermission() {
@@ -2790,7 +2789,7 @@ public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayou
             return;
         }
         if (cameraView == null) {
-            final boolean lazy = true; 
+            final boolean lazy = true;
             final boolean frontface = isCameraFrontfaceBeforeEnteringEditMode != null ? isCameraFrontfaceBeforeEnteringEditMode : parentAlert.openWithFrontFaceCamera;
             final boolean useCameraX = app.nimarkogram.messenger.camera.CameraXUtils.isCurrentCameraCameraX()
                     && !cameraXFallbackToStock
@@ -3788,7 +3787,7 @@ public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayou
     }
 
     private int getTopScrollOffset() {
-        return dp(7) + ActionBar.getCurrentActionBarHeight() + listAdditionalH; 
+        return dp(7) + ActionBar.getCurrentActionBarHeight() + listAdditionalH;
     }
 
     @Override
@@ -4066,7 +4065,7 @@ public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayou
 
     @Override
     public int getButtonsHideOffset() {
-        return super.getButtonsHideOffset() + ActionBar.getCurrentActionBarHeight(); 
+        return super.getButtonsHideOffset() + ActionBar.getCurrentActionBarHeight();
     }
 
     @Override
@@ -4394,7 +4393,7 @@ public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayou
             contentSize = rows * itemSize + (rows - 1) * dp(GAP);
         }
 
-        final int insetsTop = ActionBar.getCurrentActionBarHeight(); 
+        final int insetsTop = ActionBar.getCurrentActionBarHeight();
         final int insetsBottom = AndroidUtilities.navigationBarHeight;
 
         int newSize = Math.max(0, availableHeight - contentSize - insetsTop - insetsBottom - dp(12) + dp(6));
@@ -5047,7 +5046,7 @@ public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayou
                 return 0;
             }
             float childTop = firstChild.getTop();
-            float listH = listView.getMeasuredHeight() - ActionBar.getCurrentActionBarHeight(); 
+            float listH = listView.getMeasuredHeight() - ActionBar.getCurrentActionBarHeight();
             float scrollY = (firstPosition / parentCount) * cellHeight - childTop;
             return Utilities.clamp(scrollY / (((float) cellCount) * cellHeight - listH), 1f, 0f);
         }
@@ -5083,7 +5082,7 @@ public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayou
 
         @Override
         public void getPositionForScrollProgress(RecyclerListView listView, float progress, int[] position) {
-            int topH = ActionBar.getCurrentActionBarHeight(); 
+            int topH = ActionBar.getCurrentActionBarHeight();
 
             int viewHeight = listView.getChildAt(0).getMeasuredHeight();
             int totalHeight = (int) (Math.ceil(getTotalItemsCount() / (float) itemsPerRow) * viewHeight);

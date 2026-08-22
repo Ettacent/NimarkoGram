@@ -45,7 +45,7 @@ import java.util.ArrayList;
 public class DefaultThemesPreviewCell extends LinearLayout {
 
     public final static int TYPE_CUSTOM_LIST = -1;
-    public final static int TYPE_CUSTOM_GRID = -2; // not implemented
+    public final static int TYPE_CUSTOM_GRID = -2;
 
     private final RecyclerListView recyclerView;
     private LinearLayoutManager layoutManager = null;
@@ -58,6 +58,7 @@ public class DefaultThemesPreviewCell extends LinearLayout {
     private int navBarColor;
 
     private int selectedPosition = -1;
+    private long selectionRevision;
     BaseFragment parentFragment;
     int currentType;
     int themeIndex;
@@ -92,7 +93,16 @@ public class DefaultThemesPreviewCell extends LinearLayout {
         recyclerView.setFocusable(false);
         recyclerView.setPadding(AndroidUtilities.dp(12), 0, AndroidUtilities.dp(12), 0);
         recyclerView.setOnItemClickListener((view, position) -> {
-            ChatThemeBottomSheet.ChatThemeItem chatTheme = adapter.items.get(position);
+            if (adapter.items == null || position < 0 || position >= adapter.items.size()) {
+                return;
+            }
+            ChatThemeBottomSheet.ChatThemeItem chatTheme = view instanceof ThemeSmallPreviewView
+                    ? ((ThemeSmallPreviewView) view).chatThemeItem
+                    : adapter.items.get(position);
+            int selectedIndex = adapter.items.indexOf(chatTheme);
+            if (chatTheme == null || selectedIndex < 0) {
+                return;
+            }
             Theme.ThemeInfo info = chatTheme.chatTheme.getThemeInfo(themeIndex);
             int accentId = -1;
             if (chatTheme.chatTheme.getEmoticonOrSlug().equals("\uD83C\uDFE0") || chatTheme.chatTheme.getEmoticonOrSlug().equals("\uD83C\uDFA8")) {
@@ -115,9 +125,8 @@ public class DefaultThemesPreviewCell extends LinearLayout {
                 }
             }
 
-            NotificationCenter.getGlobalInstance().postNotificationName(NotificationCenter.needSetDayNightTheme, info, false, null, accentId);
-
-            selectedPosition = position;
+            selectedPosition = selectedIndex;
+            selectionRevision++;
             for (int i = 0; i < adapter.items.size(); i++) {
                 adapter.items.get(i).isSelected = i == selectedPosition;
             }
@@ -130,6 +139,8 @@ public class DefaultThemesPreviewCell extends LinearLayout {
                 }
             }
             ((ThemeSmallPreviewView) view).playEmojiAnimation();
+
+            NotificationCenter.getGlobalInstance().postNotificationName(NotificationCenter.needSetDayNightTheme, info, false, null, accentId);
 
             if (info != null) {
                 SharedPreferences.Editor editor = ApplicationLoader.applicationContext.getSharedPreferences("themeconfig", Activity.MODE_PRIVATE).edit();
@@ -301,6 +312,7 @@ public class DefaultThemesPreviewCell extends LinearLayout {
                 EmojiThemes chatTheme = EmojiThemes.createPreviewCustom(parentFragment.getCurrentAccount());
                 ChatThemeBottomSheet.ChatThemeItem item = new ChatThemeBottomSheet.ChatThemeItem(chatTheme);
                 item.themeIndex = !Theme.isCurrentThemeDay() ? 2 : 0;
+                long selectionRevisionAtLoad = selectionRevision;
                 Utilities.themeQueue.postRunnable(() -> {
                     chatTheme.loadPreviewColors(parentFragment.getCurrentAccount());
                     AndroidUtilities.runOnUIThread(() -> {
@@ -308,9 +320,17 @@ public class DefaultThemesPreviewCell extends LinearLayout {
                             return;
                         }
                         ArrayList<ChatThemeBottomSheet.ChatThemeItem> updated = new ArrayList<>(adapter.items);
+                        item.themeIndex = themeIndex;
                         updated.add(item);
                         adapter.setItems(updated);
-                        updateDayNightMode();
+                        if (selectionRevision == selectionRevisionAtLoad) {
+                            updateDayNightMode();
+                        } else if (selectedPosition >= 0 && selectedPosition < updated.size()) {
+                            for (int i = 0; i < updated.size(); i++) {
+                                updated.get(i).isSelected = i == selectedPosition;
+                            }
+                            adapter.setSelectedItem(selectedPosition);
+                        }
                     });
                 });
             }
@@ -394,6 +414,7 @@ public class DefaultThemesPreviewCell extends LinearLayout {
         if (adapter.items == null) {
             return;
         }
+        Theme.ThemeInfo activeTheme = Theme.getActiveTheme();
         selectedPosition = -1;
         for (int i = 0; i < adapter.items.size(); i++) {
             TLRPC.TL_theme theme = adapter.items.get(i).chatTheme.getTlTheme(themeIndex);
@@ -401,13 +422,13 @@ public class DefaultThemesPreviewCell extends LinearLayout {
             if (theme != null) {
                 int settingsIndex = adapter.items.get(i).chatTheme.getSettingsIndex(themeIndex);
                 String key = Theme.getBaseThemeKey(theme.settings.get(settingsIndex));
-                if (Theme.getActiveTheme().name.equals(key)) {
-                    if (Theme.getActiveTheme().accentsByThemeId == null) {
+                if (activeTheme.getKey().equals(key)) {
+                    if (activeTheme.accentsByThemeId == null) {
                         selectedPosition = i;
                         break;
                     } else {
-                        Theme.ThemeAccent accent = Theme.getActiveTheme().accentsByThemeId.get(theme.id);
-                        if (accent != null && accent.id == Theme.getActiveTheme().currentAccentId) {
+                        Theme.ThemeAccent accent = activeTheme.accentsByThemeId.get(theme.id);
+                        if (accent != null && accent.id == activeTheme.currentAccentId) {
                             selectedPosition = i;
                             break;
                         }
@@ -415,14 +436,18 @@ public class DefaultThemesPreviewCell extends LinearLayout {
                 }
             } else if (themeInfo != null) {
                 String key = themeInfo.getKey();
-                if (Theme.getActiveTheme().name.equals(key) && adapter.items.get(i).chatTheme.getAccentId(themeIndex) == Theme.getActiveTheme().currentAccentId) {
+                if (activeTheme.getKey().equals(key) && adapter.items.get(i).chatTheme.getAccentId(themeIndex) == activeTheme.currentAccentId) {
                     selectedPosition = i;
                     break;
                 }
             }
         }
-        if (selectedPosition == -1 && currentType != ThemeActivity.THEME_TYPE_THEMES_BROWSER) {
-            selectedPosition = adapter.items.size() - 1;
+        if (selectedPosition == -1 && currentType != ThemeActivity.THEME_TYPE_THEMES_BROWSER && !adapter.items.isEmpty()) {
+            int lastPosition = adapter.items.size() - 1;
+            ChatThemeBottomSheet.ChatThemeItem lastItem = adapter.items.get(lastPosition);
+            if (lastItem.chatTheme.getThemeInfo(themeIndex) != null) {
+                selectedPosition = lastPosition;
+            }
         }
         for (int i = 0; i < adapter.items.size(); i++) {
             adapter.items.get(i).isSelected = i == selectedPosition;

@@ -294,7 +294,7 @@ public class ChatActivityEnterView extends FrameLayout implements
     public interface ChatActivityEnterViewDelegate {
 
         default void onEditTextScroll() {}
-        
+
         default void onContextMenuOpen() {}
 
         default void onContextMenuClose() {}
@@ -901,7 +901,7 @@ public class ChatActivityEnterView extends FrameLayout implements
     private ActionBarPopupWindow nmCameraChooser;
     private ActionBarMenuSubItem nmChooserFront, nmChooserRear;
     private boolean nmChooserActive;
-    private int nmChooserHover = -1;   
+    private int nmChooserHover = -1;
 
     private void nmOpenRoundCamera(boolean frontface) {
         if (delegate == null) {
@@ -967,8 +967,8 @@ public class ChatActivityEnterView extends FrameLayout implements
         window.setAnimationStyle(R.style.PopupContextAnimation2);
         window.setInputMethodMode(ActionBarPopupWindow.INPUT_METHOD_NOT_NEEDED);
         window.setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_STATE_UNSPECIFIED);
-        window.setFocusable(false);        
-        window.setOutsideTouchable(false); 
+        window.setFocusable(false);
+        window.setOutsideTouchable(false);
         window.setOnDismissListener(() -> {
             nmChooserActive = false;
             nmChooserHover = -1;
@@ -998,7 +998,7 @@ public class ChatActivityEnterView extends FrameLayout implements
         nmCameraChooser = window;
         nmChooserActive = true;
         nmChooserHover = -1;
-        nmShowCameraBlur();   
+        nmShowCameraBlur();
         try {
             window.showAtLocation(anchor, android.view.Gravity.LEFT | android.view.Gravity.TOP,
                     location[0] + anchor.getMeasuredWidth() - layout.getMeasuredWidth() + AndroidUtilities.dp(8), y);
@@ -1051,7 +1051,7 @@ public class ChatActivityEnterView extends FrameLayout implements
         int hover = nmChooserHover;
         ActionBarPopupWindow w = nmCameraChooser;
         if (w != null) {
-            try { w.dismiss(); } catch (Exception ignore) {}   
+            try { w.dismiss(); } catch (Exception ignore) {}
         }
         if (release) {
             if (hover == 0) nmOpenRoundCamera(true);
@@ -1496,7 +1496,7 @@ public class ChatActivityEnterView extends FrameLayout implements
 
         public void showTooltipIfNeed() {
             if (NimarkoConfig.disableSendHints) {
-                return;   
+                return;
             }
             if (SharedConfig.lockRecordAudioVideoHint < 3) {
                 showTooltip = true;
@@ -2608,11 +2608,11 @@ public class ChatActivityEnterView extends FrameLayout implements
                             float seekbarL = transformToView.getX() + leftOffset - getX() + horizontalPadding;
                             float toRadius = isInVideoMode() ? 0 : transformToView.getMeasuredHeight() / 2f;
 
-                            float top = lerp(circleT, seekbarT, progressToSeekbarStep3); 
-                            float bottom = lerp(circleB, seekbarB, progressToSeekbarStep3); 
-                            float left = lerp(circleL, seekbarL, progressToSeekbarStep3); 
-                            float right = lerp(circleR, seekbarR, progressToSeekbarStep3); 
-                            float transformRadius = lerp(radius, toRadius, progressToSeekbarStep3); 
+                            float top = lerp(circleT, seekbarT, progressToSeekbarStep3);
+                            float bottom = lerp(circleB, seekbarB, progressToSeekbarStep3);
+                            float left = lerp(circleL, seekbarL, progressToSeekbarStep3);
+                            float right = lerp(circleR, seekbarR, progressToSeekbarStep3);
+                            float transformRadius = lerp(radius, toRadius, progressToSeekbarStep3);
 
                             rectF.set(left, top, right, bottom);
                             audioTimelineView.drawIn(canvas, rectF, progressToSeekbarStep3);
@@ -4066,7 +4066,7 @@ public class ChatActivityEnterView extends FrameLayout implements
 
             @Override
             public boolean onTouchEvent(MotionEvent event) {
-                if (getAlpha() <= 0f) { 
+                if (getAlpha() <= 0f) {
                     return false;
                 }
                 return super.onTouchEvent(event);
@@ -6963,7 +6963,7 @@ public class ChatActivityEnterView extends FrameLayout implements
         final int panelHeight = topView != null
                 ? Math.max(0, topView.getLayoutParams().height) : 0;
         final int animatedPanelHeight = Math.round(panelHeight * progress);
-        final int topMargin = animatedPanelHeight + dp(9); 
+        final int topMargin = animatedPanelHeight + dp(9);
         if (layoutParams.topMargin != topMargin) {
             layoutParams.topMargin = topMargin;
             textFieldContainer.setLayoutParams(layoutParams);
@@ -9368,7 +9368,7 @@ public class ChatActivityEnterView extends FrameLayout implements
         }
         if (isStories && isLiveComment) {
             layoutParams.rightMargin = dp(suggestButtonVisible ? 50 : 2) + Math.max(0, sendButton.width() - dp(DEFAULT_HEIGHT));
-        } else if (attachVisible == 1 || attachVisible == 2 ) {
+        } else if (attachVisible == 1 || attachVisible == 2) {
             if (botButton != null && botButton.getVisibility() == VISIBLE && scheduledButton != null && scheduledButton.getVisibility() == VISIBLE && attachButton != null && attachButton.getVisibility() == VISIBLE) {
                 layoutParams.rightMargin = dp(146);
             } else if (botButton != null && botButton.getVisibility() == VISIBLE || notifyButton != null && notifyButton.getVisibility() == VISIBLE || scheduledButton != null && scheduledButton.getTag() != null) {
@@ -11140,7 +11140,7 @@ public class ChatActivityEnterView extends FrameLayout implements
             focus = false;
         }
         if (focus) {
-            if (searchingType == 0 && !messageEditText.isFocused() ) {
+            if (searchingType == 0 && !messageEditText.isFocused()) {
                 AndroidUtilities.runOnUIThread(focusRunnable = () -> {
                     focusRunnable = null;
                     boolean allowFocus;
@@ -12684,7 +12684,6 @@ public class ChatActivityEnterView extends FrameLayout implements
                     }
 
 
-
                     @Override
                     public boolean scaleToFill() {
                         return false;
@@ -12784,7 +12783,6 @@ public class ChatActivityEnterView extends FrameLayout implements
                     public void onClose() {
 
                     }
-
 
 
                     private boolean isCaptionAbove;
@@ -14274,7 +14272,7 @@ public class ChatActivityEnterView extends FrameLayout implements
             if (messageEditText != null) {
                 start = messageEditText.getSelectionStart();
                 end = messageEditText.getSelectionEnd();
-                messageEditText.setText(messageEditText.getText()); 
+                messageEditText.setText(messageEditText.getText());
                 messageEditText.setSelection(start, end);
             }
             AnimatorSet anims = new AnimatorSet();
@@ -14353,7 +14351,7 @@ public class ChatActivityEnterView extends FrameLayout implements
             if (messageEditText != null) {
                 start = messageEditText.getSelectionStart();
                 end = messageEditText.getSelectionEnd();
-                messageEditText.setText(messageEditText.getText()); 
+                messageEditText.setText(messageEditText.getText());
                 messageEditText.setSelection(start, end);
             }
             if (animated) {
@@ -16099,7 +16097,7 @@ public class ChatActivityEnterView extends FrameLayout implements
 
         @Override
         public boolean onTouchEvent(MotionEvent event) {
-            if (getAlpha() <= 0f) { 
+            if (getAlpha() <= 0f) {
                 return false;
             }
             if (event.getAction() == MotionEvent.ACTION_DOWN && (event.getX() < getWidth() - width() || event.getY() < getHeight() - height())) {
@@ -16263,7 +16261,7 @@ public class ChatActivityEnterView extends FrameLayout implements
         text.text = message[0].toString();
         return text;
     }
-    
+
     private WindowInsetsInAppController windowInsetsInAppController;
 
     public void setInAppInsetsController(WindowInsetsInAppController inAppInsetsController) {
@@ -16498,7 +16496,6 @@ public class ChatActivityEnterView extends FrameLayout implements
 
         resizeForTopView(visibility);
     }
-
 
 
     private float calculateIslandTotalHeight(boolean target) {

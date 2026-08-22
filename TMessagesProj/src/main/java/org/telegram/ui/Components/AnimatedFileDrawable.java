@@ -57,7 +57,7 @@ public final class AnimatedFileDrawable extends BitmapDrawable implements Animat
     public boolean skipFrameUpdate;
     public long currentTime;
 
-    private static final boolean USE_BITMAP_SHADER = true; 
+    private static final boolean USE_BITMAP_SHADER = true;
     private boolean PRERENDER_FRAME;
 
     private long lastFrameTime;
@@ -292,7 +292,6 @@ public final class AnimatedFileDrawable extends BitmapDrawable implements Animat
     }
 
 
-
     public void checkRepeat() {
         int count = 0;
         for (int j = 0; j < parents.size(); j++) {
@@ -354,7 +353,7 @@ public final class AnimatedFileDrawable extends BitmapDrawable implements Animat
                     isRestarted = true;
                 }
                 metaData[3] = backgroundBuffer.time = cacheMetadata.frame * Math.max(16, metaData[4] / Math.max(1, bitmapsCache.getFrameCount()));
-                backgroundBuffer.opaque = false; 
+                backgroundBuffer.opaque = false;
 
                 if (bitmapsCache.needGenCache()) {
                     AndroidUtilities.runOnUIThread(uiRunnableGenerateCache);
@@ -421,8 +420,6 @@ public final class AnimatedFileDrawable extends BitmapDrawable implements Animat
         }
         AndroidUtilities.runOnUIThread(uiRunnable);
     }
-
-
 
 
     private void adaptRenderingSize() {
@@ -525,7 +522,6 @@ public final class AnimatedFileDrawable extends BitmapDrawable implements Animat
             PRERENDER_FRAME = false;
         }
     }
-
 
 
     @AnyThread
@@ -818,7 +814,7 @@ public final class AnimatedFileDrawable extends BitmapDrawable implements Animat
     }
     private boolean scheduledForSeek;
 
-    @AnyThread  
+    @AnyThread
     private void scheduleNextGetFrame(boolean wait, boolean cancel) {
         final boolean ignoreScheduleNext = loadFrameTask != null && !cancel
             || (!PRERENDER_FRAME || nextRenderingBuffer2 != null && !(!scheduledForSeek && pendingSeekToUI >= 0)) && nextRenderingBuffer != null
@@ -1204,7 +1200,6 @@ public final class AnimatedFileDrawable extends BitmapDrawable implements Animat
     }
 
 
-
     public ArrayList<ImageReceiver> getParents() {
         return parents;
     }
@@ -1344,11 +1339,6 @@ public final class AnimatedFileDrawable extends BitmapDrawable implements Animat
         final int renderingSize = renderingWidth * renderingHeight;
         return Math.max(intrinsicSize, renderingSize) * 4 * 3;
     }
-
-
-
-
-
 
 
     private static final int PAUSE_AFTER_TICKS = 10;

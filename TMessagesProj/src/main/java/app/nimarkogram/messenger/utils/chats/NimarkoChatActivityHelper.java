@@ -566,7 +566,7 @@ public class NimarkoChatActivityHelper extends BaseController {
 
         public static void attachTo(@NonNull RecyclerView recyclerView, @NonNull View contentView, ChatActivityEnterView chatActivityEnterView) {
             if (recyclerView == null || contentView == null || chatActivityEnterView == null) return;
-            final int VELOCITY_THRESHOLD = dp(NimarkoConfig.hideKeyboardOnScrollIntensity * 1000); 
+            final int VELOCITY_THRESHOLD = dp(NimarkoConfig.hideKeyboardOnScrollIntensity * 1000);
             final int invertedSensitivity = dp(10000)  - VELOCITY_THRESHOLD + 1;
 
             recyclerView.addOnItemTouchListener(new RecyclerView.OnItemTouchListener() {
