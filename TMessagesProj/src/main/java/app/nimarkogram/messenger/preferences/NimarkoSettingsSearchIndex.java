@@ -689,9 +689,6 @@ final class NimarkoSettingsSearchIndex {
         if (titleRes == R.string.NM_MP_ProfileBackgroundColor) return R.string.NM_MP_ProfileBackgroundColor_Desc;
         if (titleRes == R.string.NM_MP_ProfileBackgroundEmoji) return R.string.NM_MP_ProfileBackgroundEmoji_Desc;
         if (titleRes == R.string.NM_NM_AutoDownload) return R.string.NM_NM_AutoDownload_Desc;
-        if (titleRes == R.string.NM_NM_YtAsk) return R.string.NM_SettingsDesc_AskYoutubeFormat;
-        if (titleRes == R.string.NM_NM_FormatVideo) return R.string.NM_SettingsDesc_VideoFormat;
-        if (titleRes == R.string.NM_NM_FormatAudio) return R.string.NM_SettingsDesc_AudioFormat;
         if (titleRes == R.string.NM_TA_Appear) return R.string.NM_TA_Appear_Desc;
         if (titleRes == R.string.NM_TA_Cursor) return R.string.NM_TA_Cursor_Desc;
         if (titleRes == R.string.NM_TA_Delete) return R.string.NM_TA_Delete_Desc;
