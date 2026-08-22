@@ -173,7 +173,9 @@ public class ProfileGiftsView extends View implements NotificationCenter.Notific
             document = gift.getDocument();
             documentId = document == null ? 0 : document.id;
             final TL_stars.starGiftAttributeBackdrop backdrop = findAttribute(gift.attributes, TL_stars.starGiftAttributeBackdrop.class);
-            color = backdrop.center_color | 0xFF000000;
+            color = backdrop != null
+                    ? backdrop.center_color | 0xFF000000
+                    : Theme.getColor(Theme.key_profile_verifiedBackground, resourcesProvider);
             slug = gift.slug;
             initParticles();
         }

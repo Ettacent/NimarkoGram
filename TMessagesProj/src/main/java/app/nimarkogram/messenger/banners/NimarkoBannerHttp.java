@@ -41,6 +41,7 @@ public final class NimarkoBannerHttp {
     private static final MediaType JSON_TYPE = MediaType.parse("application/json; charset=utf-8");
 
     public static final class Status {
+        public int httpCode = -1;
         public boolean ok;            
         public String status = "none";
         public boolean hideAvatar;
@@ -54,6 +55,7 @@ public final class NimarkoBannerHttp {
         try {
             Request req = new Request.Builder().url(API + "/status/" + userId).get().build();
             try (Response resp = HTTP.newCall(req).execute()) {
+                out.httpCode = resp.code();
                 if (resp.code() != 200 || resp.body() == null) return out;
                 String text = readBodyLimited(resp.body(), MAX_JSON_SIZE);
                 if (text == null) return out;
@@ -111,8 +113,8 @@ public final class NimarkoBannerHttp {
         }
     }
 
-    public static boolean setHideAvatar(long userId, boolean hide) {
-        if (!isConfigured()) return false;
+    public static int setHideAvatar(long userId, boolean hide) {
+        if (!isConfigured()) return -1;
         try {
             JsonObject payload = new JsonObject();
             payload.addProperty("user_id", userId);
@@ -122,10 +124,10 @@ public final class NimarkoBannerHttp {
                     .post(RequestBody.create(payload.toString(), JSON_TYPE))
                     .build();
             try (Response resp = HTTP.newCall(req).execute()) {
-                return resp.code() == 200;
+                return resp.code();
             }
         } catch (Throwable t) {
-            return false;
+            return -1;
         }
     }
 

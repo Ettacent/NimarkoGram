@@ -1420,11 +1420,27 @@ public class StarsController {
     }
 
     public static void showNoSupportDialog(Context context, Theme.ResourcesProvider resourcesProvider) {
-        new AlertDialog.Builder(context, resourcesProvider)
+        Activity activity = getWindowActivity(context);
+        if (activity == null) {
+            return;
+        }
+        new AlertDialog.Builder(activity, resourcesProvider)
             .setTitle(getString(R.string.StarsNotAvailableTitle))
             .setMessage(getString(R.string.StarsNotAvailableText))
             .setPositiveButton(getString(R.string.OK), null)
             .show();
+    }
+
+    private static Activity getWindowActivity(Context context) {
+        Activity activity = AndroidUtilities.getActivity(context);
+        if (!AndroidUtilities.isActivityRunning(activity) || activity.getWindow() == null) {
+            return null;
+        }
+        View decorView = activity.getWindow().getDecorView();
+        if (decorView == null || !decorView.isAttachedToWindow() || decorView.getWindowToken() == null) {
+            return null;
+        }
+        return activity;
     }
 
     public void payAfterConfirmed(MessageObject messageObject, TLRPC.InputInvoice inputInvoice, TLRPC.TL_payments_paymentFormStars form, Utilities.Callback<Boolean> whenDone) {
@@ -1521,8 +1537,15 @@ public class StarsController {
                     showNoSupportDialog(context, resourcesProvider);
                     return;
                 }
+                Activity activity = getWindowActivity(context);
+                if (activity == null) {
+                    if (whenDone != null) {
+                        whenDone.run(false);
+                    }
+                    return;
+                }
                 final boolean[] purchased = new boolean[] { false };
-                StarsIntroActivity.StarsNeededSheet sheet = new StarsIntroActivity.StarsNeededSheet(context, currentAccount, resourcesProvider, stars, StarsIntroActivity.StarsNeededSheet.TYPE_BOT, bot, () -> {
+                StarsIntroActivity.StarsNeededSheet sheet = new StarsIntroActivity.StarsNeededSheet(activity, currentAccount, resourcesProvider, stars, StarsIntroActivity.StarsNeededSheet.TYPE_BOT, bot, () -> {
                     purchased[0] = true;
                     payAfterConfirmed(messageObject, inputInvoice, form, success -> {
                         if (whenDone != null) {
@@ -1637,8 +1660,15 @@ public class StarsController {
                     showNoSupportDialog(context, resourcesProvider);
                     return;
                 }
+                Activity activity = getWindowActivity(context);
+                if (activity == null) {
+                    if (whenDone != null) {
+                        whenDone.run(0L, false);
+                    }
+                    return;
+                }
                 final boolean[] purchased = new boolean[] { false };
-                StarsIntroActivity.StarsNeededSheet sheet = new StarsIntroActivity.StarsNeededSheet(context, currentAccount, resourcesProvider, stars, StarsIntroActivity.StarsNeededSheet.TYPE_SUBSCRIPTION_BUY, chatInvite.title, () -> {
+                StarsIntroActivity.StarsNeededSheet sheet = new StarsIntroActivity.StarsNeededSheet(activity, currentAccount, resourcesProvider, stars, StarsIntroActivity.StarsNeededSheet.TYPE_SUBSCRIPTION_BUY, chatInvite.title, () -> {
                     purchased[0] = true;
                     payAfterConfirmed(hash, chatInvite, (did, success) -> {
                         if (whenDone != null) {

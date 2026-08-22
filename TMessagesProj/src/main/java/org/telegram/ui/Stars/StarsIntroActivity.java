@@ -2677,6 +2677,14 @@ public class StarsIntroActivity extends GradientHeaderActivity implements Notifi
 
         @Override
         public void show() {
+            Activity activity = AndroidUtilities.findActivity(getContext());
+            if (!AndroidUtilities.isActivityRunning(activity)
+                    || activity.getWindow() == null
+                    || activity.getWindow().getDecorView() == null
+                    || !activity.getWindow().getDecorView().isAttachedToWindow()
+                    || activity.getWindow().getDecorView().getWindowToken() == null) {
+                return;
+            }
             if (!canBuy) {
                 BulletinFactory.of(Bulletin.BulletinWindow.make(getContext()), resourcesProvider)
                     .createSimpleBulletin(R.raw.stars_topup,

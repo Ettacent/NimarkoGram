@@ -58,13 +58,13 @@ public class MessageMenuOrderPreferencesActivity extends BaseFragment {
             ChatActivity.OPTION_REPLY,
             ChatActivity.OPTION_COPY,
             ChatActivity.OPTION_FORWARD,
-            ChatActivity.OPTION_EDIT,
+            ChatActivity.OPTION_DELETE,
             ChatActivity.OPTION_PIN,
             ChatActivity.OPTION_SAVE_TO_GALLERY,
             ChatActivity.OPTION_SAVE_TO_DOWNLOADS_OR_MUSIC,
             ChatActivity.OPTION_SHARE,
             ChatActivity.OPTION_TRANSLATE,
-            ChatActivity.OPTION_DELETE,
+            ChatActivity.OPTION_EDIT,
     };
 
     private static Map<Integer, Integer> labelByOption() {

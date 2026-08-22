@@ -24,7 +24,7 @@ public class RecentEmojisStickersPreferencesActivity extends BasePreferencesActi
 
     @Override
     public void fillItems(ArrayList<UItem> items, UniversalAdapter adapter) {
-        
+        // 1. Emoji
         items.add(UItem.asHeader(LocaleController.getString(R.string.Emoji)));
         items.add(
                 UItem.asIntSlideView(
@@ -36,8 +36,9 @@ public class RecentEmojisStickersPreferencesActivity extends BasePreferencesActi
                         NimarkoConfig::setRecentEmojisAmplifier
                 )
         );
-        items.add(UItem.asShadow(null));
+        items.add(UItem.asShadow(LocaleController.getString(R.string.NM_SettingsDesc_RecentEmoji)));
 
+        // 2. Stickers
         items.add(UItem.asHeader(LocaleController.getString(R.string.AccDescrStickers)));
         items.add(
                 UItem.asIntSlideView(
@@ -49,13 +50,12 @@ public class RecentEmojisStickersPreferencesActivity extends BasePreferencesActi
                         NimarkoConfig::setRecentStickersAmplifier
                 )
         );
-        
-        items.add(UItem.asShadow(null));
+        items.add(UItem.asShadow(LocaleController.getString(R.string.NM_SettingsDesc_RecentStickers)));
     }
 
     @Override
     public void onClick(UItem item, View view, int position, float x, float y) {
-        
+        // Sliders apply via their callbacks; no row clicks to handle.
     }
 
     @Override

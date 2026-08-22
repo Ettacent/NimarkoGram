@@ -252,7 +252,7 @@ public class AppearancePreferencesActivity extends NimarkoUniversalPreferencesAc
                         getString(R.string.NM_MediaGlow_Desc))
                 .setChecked(NimarkoConfig.mediaGlow)
         );
-        items.add(SettingsHelper.asSwitchCG(snowflakesRow, getString(R.string.CP_Snowflakes_Header))
+        items.add(SettingsHelper.asSwitchCG(snowflakesRow, getString(R.string.NM_SnowInHeader))
                 .setChecked(app.nimarkogram.messenger.NimarkoConfig.drawSnowInActionBar));
         items.add(SettingsHelper.asSwitchCG(chatSnowflakesRow, getString(R.string.NM_CP_SnowflakesInChat))
                 .setChecked(NimarkoConfig.drawSnowInChat));
@@ -320,7 +320,7 @@ public class AppearancePreferencesActivity extends NimarkoUniversalPreferencesAc
 
             showRestartBulletin();
         } else if (item.id == iconPackRow) {
-            presentFragment(new IconPackSelectorActivity());
+            presentFragment(new IconPackSelectorActivity());   // dedicated screen with live previews
         } else if (item.id == oneUISwitchesRow) {
             java.util.ArrayList<CharSequence> opts = new java.util.ArrayList<>();
             opts.add(getString(R.string.Default));
@@ -353,7 +353,7 @@ public class AppearancePreferencesActivity extends NimarkoUniversalPreferencesAc
         } else if (item.id == mediaGlowRow) {
             NimarkoConfig.toggleMediaGlow();
             updateCheckState(view, NimarkoConfig.mediaGlow);
-            listView.adapter.update(true);
+            listView.adapter.update(true);   // show/hide strength/blur/transition rows
         } else if (item.id == forumAvatarsRow) {
             NimarkoConfig.toggleForumAvatarsLikeChats();
             updateCheckState(view, NimarkoConfig.forumAvatarsLikeChats);

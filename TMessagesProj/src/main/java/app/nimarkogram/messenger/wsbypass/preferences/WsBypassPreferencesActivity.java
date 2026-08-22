@@ -116,9 +116,7 @@ public class WsBypassPreferencesActivity extends BasePreferencesActivity
                 label = LocaleController.getString(R.string.NM_WSB_Status_Off);
                 break;
         }
-        CharSequence statusDetails = enabled
-                ? dot + "  " + label + " · " + LocaleController.getString(R.string.NM_WSB_TapRetry)
-                : dot + "  " + label;
+        CharSequence statusDetails = dot + "  " + label;
         items.add(asSettingsLink(ID_STATUS, IconBackgroundColors.BLUE,
                 R.drawable.msg_info,
                 LocaleController.getString(R.string.NM_WSB_StatusTitle), statusDetails));

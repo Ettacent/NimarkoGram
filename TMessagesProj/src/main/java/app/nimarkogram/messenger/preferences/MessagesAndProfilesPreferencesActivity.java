@@ -52,9 +52,9 @@ import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.ActionBar.ThemeDescription;
 import org.telegram.ui.Cells.ChatMessageCell;
 import org.telegram.ui.Cells.HeaderCell;
+import org.telegram.ui.Cells.NotificationsCheckCell;
 import org.telegram.ui.Cells.ProfileChannelCell;
 import org.telegram.ui.Cells.ShadowSectionCell;
-import org.telegram.ui.Cells.TextCheckCell;
 import org.telegram.ui.Cells.TextDetailCell;
 import org.telegram.ui.Cells.ThemePreviewMessagesCell;
 import org.telegram.ui.Components.AnimatedColor;
@@ -238,7 +238,8 @@ public class MessagesAndProfilesPreferencesActivity extends BaseFragment {
                             view = header;
                             break;
                         case VIEW_TYPE_SWITCH:
-                            TextCheckCell switchCell = new TextCheckCell(getContext());
+                            NotificationsCheckCell switchCell = new NotificationsCheckCell(
+                                    getContext(), 21, 60, false, getResourceProvider());
                             view = switchCell;
                             break;
                         case VIEW_TYPE_TEXT_DETAIL:
@@ -276,30 +277,40 @@ public class MessagesAndProfilesPreferencesActivity extends BaseFragment {
                             break;
                         }
                         case VIEW_TYPE_SWITCH: {
-                            TextCheckCell switchCell = (TextCheckCell) holder.itemView;
-                            switchCell.updateRTL();
+                            NotificationsCheckCell switchCell = (NotificationsCheckCell) holder.itemView;
                             if (position == timeWithSecondsSwitchRow) {
-                                switchCell.setTextAndCheck(getString(R.string.NM_MP_ShowSeconds), NimarkoConfig.showSeconds, true);
+                                bindSwitch(switchCell, R.string.NM_MP_ShowSeconds,
+                                        R.string.NM_MP_ShowSeconds_Desc, NimarkoConfig.showSeconds, true);
                             } else if (position == premiumStatusSwitchRow) {
-                                switchCell.setTextAndCheck(getString(R.string.NM_MP_DisablePremiumStatuses), NimarkoConfig.disablePremiumStatuses, true);
+                                bindSwitch(switchCell, R.string.NM_MP_DisablePremiumStatuses,
+                                        R.string.NM_MP_DisablePremiumStatuses_Desc, NimarkoConfig.disablePremiumStatuses, true);
                             } else if (position == replyBackgroundSwitchRow) {
-                                switchCell.setTextAndCheck(getString(R.string.NM_MP_ReplyBackground), NimarkoConfig.replyBackground, false);
+                                bindSwitch(switchCell, R.string.NM_MP_ReplyBackground,
+                                        R.string.NM_MP_ReplyBackground_Desc, NimarkoConfig.replyBackground, false);
                             } else if (position == replyColorSwitchRow) {
-                                switchCell.setTextAndCheck(getString(R.string.NM_MP_ReplyCustomColors), NimarkoConfig.replyCustomColors, false);
+                                bindSwitch(switchCell, R.string.NM_MP_ReplyCustomColors,
+                                        R.string.NM_MP_ReplyCustomColors_Desc, NimarkoConfig.replyCustomColors, false);
                             } else if (position == replyEmojiSwitchRow) {
-                                switchCell.setTextAndCheck(getString(R.string.NM_MP_ReplyBackgroundEmoji), NimarkoConfig.replyBackgroundEmoji, false);
+                                bindSwitch(switchCell, R.string.NM_MP_ReplyBackgroundEmoji,
+                                        R.string.NM_MP_ReplyBackgroundEmoji_Desc, NimarkoConfig.replyBackgroundEmoji, false);
                             } else if (position == channelPreviewSwitchRow) {
-                                switchCell.setTextAndCheck(getString(R.string.NM_MP_ProfileChannelPreview), NimarkoConfig.profileChannelPreview, false);
+                                bindSwitch(switchCell, R.string.NM_MP_ProfileChannelPreview,
+                                        R.string.NM_MP_ProfileChannelPreview_Desc, NimarkoConfig.profileChannelPreview, false);
                             } else if (position == showDcIdSwitchRow) {
-                                switchCell.setTextAndCheck(getString(R.string.NM_MP_ShowIdDc), NimarkoConfig.showIDDC, false);
+                                bindSwitch(switchCell, R.string.NM_MP_ShowIdDc,
+                                        R.string.NM_MP_ShowIdDc_Desc, NimarkoConfig.showIDDC, false);
                             } else if (position == birthdayPreviewSwitchRow) {
-                                switchCell.setTextAndCheck(getString(R.string.NM_MP_ProfileBirthDatePreview), NimarkoConfig.profileBirthDatePreview, false);
+                                bindSwitch(switchCell, R.string.NM_MP_ProfileBirthDatePreview,
+                                        R.string.NM_MP_ProfileBirthDatePreview_Desc, NimarkoConfig.profileBirthDatePreview, false);
                             } else if (position == businessPreviewSwitchRow) {
-                                switchCell.setTextAndCheck(getString(R.string.NM_MP_ProfileBusinessPreview), NimarkoConfig.profileBusinessPreview, false);
+                                bindSwitch(switchCell, R.string.NM_MP_ProfileBusinessPreview,
+                                        R.string.NM_MP_ProfileBusinessPreview_Desc, NimarkoConfig.profileBusinessPreview, false);
                             } else if (position == profileBackgroundSwitchRow) {
-                                switchCell.setTextAndCheck(getString(R.string.NM_MP_ProfileBackgroundColor), NimarkoConfig.profileBackgroundColor, false);
+                                bindSwitch(switchCell, R.string.NM_MP_ProfileBackgroundColor,
+                                        R.string.NM_MP_ProfileBackgroundColor_Desc, NimarkoConfig.profileBackgroundColor, false);
                             } else if (position == profileEmojiSwitchRow) {
-                                switchCell.setTextAndCheck(getString(R.string.NM_MP_ProfileBackgroundEmoji), NimarkoConfig.profileBackgroundEmoji, true);
+                                bindSwitch(switchCell, R.string.NM_MP_ProfileBackgroundEmoji,
+                                        R.string.NM_MP_ProfileBackgroundEmoji_Desc, NimarkoConfig.profileBackgroundEmoji, true);
                             }
                             break;
                         }
@@ -402,9 +413,7 @@ public class MessagesAndProfilesPreferencesActivity extends BaseFragment {
 
                 if (position == timeWithSecondsSwitchRow) {
                     NimarkoConfig.toggleShowSeconds();
-                    if (view instanceof TextCheckCell) {
-                        ((TextCheckCell) view).setChecked(NimarkoConfig.showSeconds);
-                    }
+                    setSwitchChecked(view, NimarkoConfig.showSeconds);
                     LocaleController.getInstance().recreateFormatters();
                     if (messagesCellPreview != null) {
                         for (ChatMessageCell previewCell : messagesCellPreview.getCells()) {
@@ -422,9 +431,7 @@ public class MessagesAndProfilesPreferencesActivity extends BaseFragment {
                     }, 220);
                 } else if (position == premiumStatusSwitchRow) {
                     NimarkoConfig.toggleDisablePremiumStatuses();
-                    if (view instanceof TextCheckCell) {
-                        ((TextCheckCell) view).setChecked(NimarkoConfig.disablePremiumStatuses);
-                    }
+                    setSwitchChecked(view, NimarkoConfig.disablePremiumStatuses);
 
                     if (!NimarkoConfig.disablePremiumStatuses) {
                         profilePage.profilePreview.titleView.setRightDrawable(profilePage.profilePreview.statusEmoji);
@@ -446,16 +453,12 @@ public class MessagesAndProfilesPreferencesActivity extends BaseFragment {
                     }
                 } else if (position == replyBackgroundSwitchRow) {
                     NimarkoConfig.toggleReplyBackground();
-                    if (view instanceof TextCheckCell) {
-                        ((TextCheckCell) view).setChecked(NimarkoConfig.replyBackground);
-                    }
+                    setSwitchChecked(view, NimarkoConfig.replyBackground);
 
                     updateMessages();
                 } else if (position == replyColorSwitchRow) {
                     NimarkoConfig.toggleReplyCustomColors();
-                    if (view instanceof TextCheckCell) {
-                        ((TextCheckCell) view).setChecked(NimarkoConfig.replyCustomColors);
-                    }
+                    setSwitchChecked(view, NimarkoConfig.replyCustomColors);
 
                     if (me != null && me.premium && UserObject.getColorId(me) != -1) {
                         selectedColor = NimarkoConfig.replyCustomColors ? UserObject.getColorId(me) : -1;
@@ -466,9 +469,7 @@ public class MessagesAndProfilesPreferencesActivity extends BaseFragment {
                     updateMessages();
                 } else if (position == replyEmojiSwitchRow) {
                     NimarkoConfig.toggleReplyBackgroundEmoji();
-                    if (view instanceof TextCheckCell) {
-                        ((TextCheckCell) view).setChecked(NimarkoConfig.replyBackgroundEmoji);
-                    }
+                    setSwitchChecked(view, NimarkoConfig.replyBackgroundEmoji);
 
                     if (me != null && me.premium && UserObject.getEmojiId(me) != 0) {
                         selectedEmoji = NimarkoConfig.replyBackgroundEmoji ? UserObject.getEmojiId(me) : 0;
@@ -480,41 +481,31 @@ public class MessagesAndProfilesPreferencesActivity extends BaseFragment {
                 } else if (position == channelPreviewRow) {
                 } else if (position == channelPreviewSwitchRow) {
                     NimarkoConfig.toggleProfileChannelPreview();
-                    if (view instanceof TextCheckCell) {
-                        ((TextCheckCell) view).setChecked(NimarkoConfig.profileChannelPreview);
-                    }
+                    setSwitchChecked(view, NimarkoConfig.profileChannelPreview);
 
                     profilePage.updateRows();
                     if (parentLayout != null) parentLayout.rebuildAllFragmentViews(false, false);
                 } else if (position == showDcIdSwitchRow) {
                     NimarkoConfig.toggleShowIDDC();
-                    if (view instanceof TextCheckCell) {
-                        ((TextCheckCell) view).setChecked(NimarkoConfig.showIDDC);
-                    }
+                    setSwitchChecked(view, NimarkoConfig.showIDDC);
 
                     profilePage.updateRows();
                     if (parentLayout != null) parentLayout.rebuildAllFragmentViews(false, false);
                 } else if (position == birthdayPreviewSwitchRow) {
                     NimarkoConfig.toggleProfileBirthDatePreview();
-                    if (view instanceof TextCheckCell) {
-                        ((TextCheckCell) view).setChecked(NimarkoConfig.profileBirthDatePreview);
-                    }
+                    setSwitchChecked(view, NimarkoConfig.profileBirthDatePreview);
 
                     profilePage.updateRows();
                     if (parentLayout != null) parentLayout.rebuildAllFragmentViews(false, false);
                 } else if (position == businessPreviewSwitchRow) {
                     NimarkoConfig.toggleProfileBusinessPreview();
-                    if (view instanceof TextCheckCell) {
-                        ((TextCheckCell) view).setChecked(NimarkoConfig.profileBusinessPreview);
-                    }
+                    setSwitchChecked(view, NimarkoConfig.profileBusinessPreview);
 
                     profilePage.updateRows();
                     if (parentLayout != null) parentLayout.rebuildAllFragmentViews(false, false);
                 } else if (position == profileBackgroundSwitchRow) {
                     NimarkoConfig.toggleProfileBackgroundColor();
-                    if (view instanceof TextCheckCell) {
-                        ((TextCheckCell) view).setChecked(NimarkoConfig.profileBackgroundColor);
-                    }
+                    setSwitchChecked(view, NimarkoConfig.profileBackgroundColor);
 
                     if (me != null && me.premium && UserObject.getProfileColorId(me) != -1) {
                         selectedColor = NimarkoConfig.profileBackgroundColor ? UserObject.getProfileColorId(me) : -1;
@@ -537,9 +528,7 @@ public class MessagesAndProfilesPreferencesActivity extends BaseFragment {
                     }
                 } else if (position == profileEmojiSwitchRow) {
                     NimarkoConfig.toggleProfileBackgroundEmoji();
-                    if (view instanceof TextCheckCell) {
-                        ((TextCheckCell) view).setChecked(NimarkoConfig.profileBackgroundEmoji);
-                    }
+                    setSwitchChecked(view, NimarkoConfig.profileBackgroundEmoji);
 
                     if (me != null && me.premium && UserObject.getProfileEmojiId(me) != 0) {
                         selectedEmoji = NimarkoConfig.profileBackgroundEmoji ? UserObject.getProfileEmojiId(me) : 0;
@@ -577,6 +566,18 @@ public class MessagesAndProfilesPreferencesActivity extends BaseFragment {
             updateRows();
 
             setWillNotDraw(false);
+        }
+
+        private void bindSwitch(NotificationsCheckCell cell, int titleRes, int descriptionRes,
+                                boolean checked, boolean divider) {
+            cell.setTextAndValueAndCheck(getString(titleRes), getString(descriptionRes),
+                    checked, 0, true, divider);
+        }
+
+        private void setSwitchChecked(View view, boolean checked) {
+            if (view instanceof NotificationsCheckCell) {
+                ((NotificationsCheckCell) view).setChecked(checked);
+            }
         }
 
         private int actionBarHeight;

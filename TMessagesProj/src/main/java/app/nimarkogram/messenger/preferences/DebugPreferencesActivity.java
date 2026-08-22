@@ -1,9 +1,15 @@
-/*
- * This file is part of NimarkoGram for Android.
- * Licensed under GNU GPL v2 or later. See LICENSE.
- * Copyright Ettacent, 2026.
+/**
+ * This is the source code of Cherrygram for Android.
+ * It is licensed under GNU GPL v. 2 or later.
+ * You should have received a copy of the license in this archive (see LICENSE).
+ * Please, be respectful and credit the original author if you use this code.
+ *
+ * Copyright github.com/arsLan4k1390, 2022-2026.
+ *
+ * Ported to NimarkoGram (DrKLO base) from CherrygramDebugPreferencesEntry.
+ * Strip: Firebase analytics, CG-server, SettingsHelper.asSwitchCG; replace
+ * with DrKLO UItem.asCheck + NimarkoConfig flags.
  */
-
 package app.nimarkogram.messenger.preferences;
 
 import android.os.Build;
@@ -15,7 +21,6 @@ import org.telegram.messenger.BuildVars;
 import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.R;
 import org.telegram.messenger.SharedConfig;
-import org.telegram.ui.Cells.TextCheckCell;
 import org.telegram.ui.Components.IconBackgroundColors;
 import org.telegram.ui.Components.UItem;
 import org.telegram.ui.Components.UniversalAdapter;
@@ -169,8 +174,6 @@ public class DebugPreferencesActivity extends BasePreferencesActivity {
 
     private void applyCheck(UItem item, View view, boolean value) {
         item.checked = value;
-        if (view instanceof TextCheckCell) {
-            ((TextCheckCell) view).setChecked(value);
-        }
+        updateCheckState(view, value);
     }
 }

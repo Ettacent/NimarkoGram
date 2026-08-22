@@ -5,7 +5,7 @@
     <string name="NM_CP_Header_Interaction">交互</string>
     <string name="NM_CP_Header_Media">媒体</string>
     <string name="NM_CP_CenterTitleInChat">聊天标题居中</string>
-    <string name="NM_CP_SnowflakesInChat">聊天中的雪花</string>
+    <string name="NM_CP_SnowflakesInChat">聊天飘雪</string>
     <string name="NM_CP_WeekdayNearDate">日期旁显示星期</string>
     <string name="NM_CP_WeekdayNearDate_Desc">在聊天的日期旁边添加星期。</string>
     <string name="NM_CP_PreReformRussian">俄语旧式拼写法</string>
@@ -762,6 +762,7 @@
     <string name="NM_BAN_PendingError">已在审核中</string>
     <string name="NM_BAN_NoAccess">无访问权限</string>
     <string name="NM_BAN_FileTooBig">文件超过 8 MB</string>
+    <string name="NM_BAN_RateLimited">请求过于频繁，请稍后再试。</string>
     <string name="NM_BAN_InvalidFormat">格式无效</string>
     <string name="NM_BAN_Sending">正在提交审核…</string>
     <string name="NM_BAN_SentOk">已提交审核！</string>
@@ -1052,7 +1053,7 @@
     <string name="CP_CameraXDesc">CameraX 仅在 <![CDATA[<a href="https://developer.android.com/training/camerax/devices">部分设备</a>]]> 上受支持，特效和滤镜的支持取决于你的制造商。</string>
     <string name="CP_Camera2Desc">启用 Camera2 后，所有在开启 Camera2 时隐藏的功能都将无法使用。</string>
     <string name="CP_SystemCameraDesc">直接访问系统相机（不适用于视频消息）。</string>
-    <string name="NM_MP_DisablePremiumStatuses_Desc">这将在除侧边菜单外的所有位置禁用会员状态</string>
+    <string name="NM_MP_DisablePremiumStatuses_Desc">在侧边菜单之外隐藏 Premium 表情状态</string>
     <string name="NM_ChooseFolderIcon">选择图标</string>
     <string name="CG_ChooseFolderIcon">选择图标</string>
     <string name="CG_ClearFromCache">从缓存中清除</string>

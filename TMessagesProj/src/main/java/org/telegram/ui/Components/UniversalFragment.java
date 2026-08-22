@@ -30,7 +30,6 @@ public abstract class UniversalFragment extends BaseFragment {
     public UniversalRecyclerView listView;
 
     public void setMD3(boolean enabled) {
-        
     }
 
     public void updateCheckState(View view, boolean isChecked) {
@@ -78,13 +77,7 @@ public abstract class UniversalFragment extends BaseFragment {
         };
         contentView.setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundGray));
 
-        listView = new UniversalRecyclerView(this, this::fillItems, this::onClick, this::onLongClick) {
-            @Override
-            protected void onMeasure(int widthSpec, int heightSpec) {
-
-                super.onMeasure(widthSpec, heightSpec);
-            }
-
+        listView = new UniversalRecyclerView(this, this::fillItemsInternal, this::onClick, this::onLongClick) {
             @Override
             protected void onLayout(boolean changed, int l, int t, int r, int b) {
                 super.onLayout(changed, l, t, r, b);
@@ -103,7 +96,6 @@ public abstract class UniversalFragment extends BaseFragment {
     @Override
     public void onResume() {
         super.onResume();
-        
         org.telegram.ui.Components.Bulletin.addDelegate(this, new org.telegram.ui.Components.Bulletin.Delegate() {
             @Override
             public int getBottomOffset(int tag) {
@@ -119,8 +111,14 @@ public abstract class UniversalFragment extends BaseFragment {
 
     protected abstract CharSequence getTitle();
     protected abstract void fillItems(ArrayList<UItem> items, UniversalAdapter adapter);
+    protected void onItemsFilled(ArrayList<UItem> items, UniversalAdapter adapter) {}
     protected abstract void onClick(UItem item, View view, int position, float x, float y);
     protected abstract boolean onLongClick(UItem item, View view, int position, float x, float y);
+
+    private void fillItemsInternal(ArrayList<UItem> items, UniversalAdapter adapter) {
+        fillItems(items, adapter);
+        onItemsFilled(items, adapter);
+    }
 
     private int savedScrollPosition = -1;
     private int savedScrollOffset;

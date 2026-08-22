@@ -8,7 +8,10 @@ import androidx.core.view.ViewCompat;
 import org.telegram.ui.SettingsActivity;
 import org.telegram.ui.Components.IconBackgroundColors;
 import org.telegram.ui.Components.UItem;
+import org.telegram.ui.Components.UniversalAdapter;
 import org.telegram.ui.Components.UniversalFragment;
+
+import java.util.ArrayList;
 
 public abstract class NimarkoUniversalPreferencesActivity extends UniversalFragment {
 
@@ -38,6 +41,11 @@ public abstract class NimarkoUniversalPreferencesActivity extends UniversalFragm
     public NimarkoUniversalPreferencesActivity openAtSetting(int itemId) {
         initialSearchItemId = itemId;
         return this;
+    }
+
+    @Override
+    protected void onItemsFilled(ArrayList<UItem> items, UniversalAdapter adapter) {
+        NimarkoSettingsSearchIndex.applyDescriptions(this, items);
     }
 
     protected UItem asPlainSettingsRow(int id, CharSequence title) {

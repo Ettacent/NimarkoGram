@@ -1,4 +1,3 @@
- 
 package app.nimarkogram.messenger.ui;
 
 import android.annotation.SuppressLint;
@@ -128,7 +127,7 @@ public class MessageMenuCompactView extends LinearLayout {
         ArrayList<Action> selected = new ArrayList<>(MAX_ACTIONS);
 
         if (!addFirst(selected, available, ChatActivity.OPTION_REPLY)) {
-            addFirst(selected, available, ChatActivity.OPTION_EDIT);
+            addFirst(selected, available, ChatActivity.OPTION_DELETE);
         }
         addFirst(
                 selected,
@@ -148,9 +147,9 @@ public class MessageMenuCompactView extends LinearLayout {
                 NimarkoMessageMenuInjector.OPTION_FORWARD_WO_AUTHOR,
                 ChatActivity.OPTION_SHARE
         );
-        addFirst(selected, available, ChatActivity.OPTION_DELETE);
-
         addFirst(selected, available, ChatActivity.OPTION_EDIT);
+
+        addFirst(selected, available, ChatActivity.OPTION_DELETE);
         addFirst(selected, available, ChatActivity.OPTION_SHARE);
         addFirst(selected, available, ChatActivity.OPTION_SAVE_TO_GALLERY, ChatActivity.OPTION_SAVE_TO_GALLERY2);
 
@@ -172,7 +171,6 @@ public class MessageMenuCompactView extends LinearLayout {
         );
         int margin = AndroidUtilities.dp(4);
         params.setMargins(margin, margin, margin, margin);
-        
         popupLayout.addView(panel, params);
         for (Action action : selected) {
             ViewParent parent = action.source.getParent();
@@ -224,7 +222,6 @@ public class MessageMenuCompactView extends LinearLayout {
         if (row.getTextView() == null || TextUtils.isEmpty(row.getTextView().getText())) {
             return false;
         }
-        
         return row.subtextView == null
                 || row.subtextView.getVisibility() != VISIBLE
                 || TextUtils.isEmpty(row.subtextView.getText());

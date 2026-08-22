@@ -5,7 +5,7 @@
     <string name="NM_CP_Header_Interaction">Interaction</string>
     <string name="NM_CP_Header_Media">Media</string>
     <string name="NM_CP_CenterTitleInChat">Centered chat title</string>
-    <string name="NM_CP_SnowflakesInChat">Snowflakes in chat</string>
+    <string name="NM_CP_SnowflakesInChat">Snow in chat</string>
     <string name="NM_CP_WeekdayNearDate">Show weekday by date</string>
     <string name="NM_CP_WeekdayNearDate_Desc">Adds the day of the week next to the date in chat.</string>
     <string name="NM_CP_PreReformRussian">Pre-reform Russian spelling</string>
@@ -11287,6 +11287,7 @@
     <string name="NM_BAN_PendingError">Already pending review</string>
     <string name="NM_BAN_NoAccess">No access</string>
     <string name="NM_BAN_FileTooBig">File larger than 8 MB</string>
+    <string name="NM_BAN_RateLimited">Too many requests. Please try again later.</string>
     <string name="NM_BAN_InvalidFormat">Invalid format</string>
     <string name="NM_BAN_Sending">Sending for moderation...</string>
     <string name="NM_BAN_SentOk">Sent for moderation!</string>
@@ -11566,7 +11567,7 @@
     <string name="NM_MP_ProfileBackgroundEmoji">Emoji in profile background</string>
     <!-- Descriptions ported from CherryGram CP_*_Desc strings -->
     <string name="NM_MP_ShowSeconds_Desc" translatable="false">12:34 -> 12:34:56</string>
-    <string name="NM_MP_DisablePremiumStatuses_Desc">This will disable premium statuses everywhere, except drawer</string>
+    <string name="NM_MP_DisablePremiumStatuses_Desc">Hide Premium emoji statuses outside the side menu</string>
     <!-- Mock content used by the ported ProfileChannelCell.setNimarko() preview -->
     <string name="NM_MP_PreviewChannelMessage">Welcome to NimarkoGram — a feature-rich Telegram fork.</string>
 

@@ -5,6 +5,9 @@ import android.text.TextUtils;
 
 import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.R;
+import org.telegram.ui.SettingsActivity;
+import org.telegram.ui.Components.UItem;
+import org.telegram.ui.Components.UniversalAdapter;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -56,7 +59,7 @@ final class NimarkoSettingsSearchIndex {
             this.screen = screen;
             this.itemId = itemId;
             this.titleRes = titleRes;
-            this.summaryRes = summaryRes;
+            this.summaryRes = summaryRes != 0 ? summaryRes : fallbackDescriptionRes(titleRes);
             this.iconRes = iconRes;
             this.pathFirstRes = pathFirstRes;
             this.pathSecondRes = pathSecondRes;
@@ -65,6 +68,10 @@ final class NimarkoSettingsSearchIndex {
 
         String title() {
             return LocaleController.getString(titleRes);
+        }
+
+        String summary() {
+            return summaryRes == 0 ? "" : LocaleController.getString(summaryRes);
         }
 
         String[] path() {
@@ -192,7 +199,7 @@ final class NimarkoSettingsSearchIndex {
                 13, R.string.NM_ForceBlur,
                 10, R.string.AP_GlareOnElements,
                 16, R.string.NM_MediaGlow,
-                3, R.string.CP_Snowflakes_Header,
+                3, R.string.NM_SnowInHeader,
                 28, R.string.NM_CP_SnowflakesInChat);
         row(entries, guid, SCREEN_APPEARANCE, 12, R.string.NM_ForumAvatarsLikeChats,
                 R.string.NM_ForumAvatarsLikeChats_Desc, R.drawable.msg_theme_solar,
@@ -504,6 +511,230 @@ final class NimarkoSettingsSearchIndex {
             }
         }
         return result;
+    }
+
+    static void applyDescriptions(Object owner, ArrayList<UItem> items) {
+        int screen = screenFor(owner);
+        if (screen == 0 || items == null) {
+            return;
+        }
+        for (UItem item : items) {
+            if (item == null || TextUtils.isEmpty(item.text) || !TextUtils.isEmpty(item.subtext)) {
+                continue;
+            }
+            Entry entry = findEntry(screen, item);
+            if (entry == null || entry.summaryRes == 0) {
+                continue;
+            }
+            CharSequence description = entry.summary();
+            if (TextUtils.isEmpty(description)) {
+                continue;
+            }
+            if (item.instanceOf(SettingsActivity.SettingCell.Factory.class)) {
+                item.subtext = description;
+            } else if (item.viewType == UniversalAdapter.VIEW_TYPE_CHECK) {
+                item.viewType = UniversalAdapter.VIEW_TYPE_TEXT_CHECK;
+                item.subtext = description;
+            } else if (item.viewType == UniversalAdapter.VIEW_TYPE_TEXT_CHECK) {
+                item.subtext = description;
+            } else if (item.viewType == UniversalAdapter.VIEW_TYPE_RADIO && TextUtils.isEmpty(item.textValue)) {
+                item.textValue = description;
+            }
+        }
+    }
+
+    private static Entry findEntry(int screen, UItem item) {
+        Entry titleMatch = null;
+        for (Entry entry : ENTRIES) {
+            if (entry.screen != screen || entry.itemId == 0) {
+                continue;
+            }
+            boolean sameTitle = TextUtils.equals(entry.title(), item.text);
+            if (entry.itemId == item.id && sameTitle) {
+                return entry;
+            }
+            if (sameTitle) {
+                titleMatch = entry;
+            }
+        }
+        return titleMatch;
+    }
+
+    private static int screenFor(Object owner) {
+        if (owner instanceof GeneralPreferencesActivity) return SCREEN_GENERAL;
+        if (owner instanceof AppearancePreferencesActivity) return SCREEN_APPEARANCE;
+        if (owner instanceof ChatsPreferencesActivity || owner instanceof MessagesPreferencesActivity) return SCREEN_CHATS;
+        if (owner instanceof PrivacyPreferencesActivity) return SCREEN_PRIVACY;
+        if (owner instanceof FoldersPreferencesActivity) return SCREEN_FOLDERS;
+        if (owner instanceof BottomTabsPreferencesActivity) return SCREEN_BOTTOM_TABS;
+        if (owner instanceof MessageMenuPreferencesActivity) return SCREEN_MESSAGE_MENU;
+        if (owner instanceof MessageMenuItemsPreferencesActivity) return SCREEN_MESSAGE_MENU_ITEMS;
+        if (owner instanceof NimarkoMediaPreferencesActivity) return SCREEN_MEDIA;
+        if (owner instanceof NimarkoTextAnimPreferencesActivity) return SCREEN_TEXT_ANIMATION;
+        if (owner instanceof BannerPreferencesActivity) return SCREEN_BANNERS;
+        if (owner instanceof DebugPreferencesActivity) return SCREEN_ADVANCED;
+        if (owner instanceof RecentEmojisStickersPreferencesActivity) return SCREEN_RECENT;
+        if (owner instanceof app.nimarkogram.messenger.wsbypass.preferences.WsBypassPreferencesActivity) return SCREEN_BYPASS;
+        if (owner instanceof app.nimarkogram.messenger.infocards.preferences.InfoCardsPreferencesActivity) return SCREEN_INFO_CARDS;
+        return 0;
+    }
+
+    private static int fallbackDescriptionRes(int titleRes) {
+        if (titleRes == R.string.EP_NavigationAnimation) return R.string.NM_SettingsDesc_NavigationAnimation;
+        if (titleRes == R.string.EP_NavigationAnimationCrossfading) return R.string.NM_SettingsDesc_NavigationCrossfade;
+        if (titleRes == R.string.NM_PredictiveBackAnimation) return R.string.NM_SettingsDesc_PredictiveBack;
+        if (titleRes == R.string.AP_SystemEmoji) return R.string.NM_SettingsDesc_SystemEmoji;
+        if (titleRes == R.string.AP_SystemFonts) return R.string.NM_SettingsDesc_SystemFonts;
+        if (titleRes == R.string.AP_Tablet_Mode) return R.string.NM_SettingsDesc_TabletMode;
+        if (titleRes == R.string.NM_ResidentNotification) return R.string.NM_SettingsDesc_ResidentNotification;
+        if (titleRes == R.string.NM_NotificationReactionEmoji) return R.string.NM_SettingsDesc_ReactionEmoji;
+        if (titleRes == R.string.CP_HideStories) return R.string.CP_HideStories_Desc;
+        if (titleRes == R.string.CP_ArchiveStories) return R.string.CP_ArchiveStories_Desc;
+        if (titleRes == R.string.EP_DownloadSpeedBoost) return R.string.NM_SettingsDesc_DownloadBoost;
+        if (titleRes == R.string.NM_GE_UploadSpeedBoost) return R.string.NM_SettingsDesc_UploadBoost;
+        if (titleRes == R.string.EP_SlowNetworkMode) return R.string.NM_SettingsDesc_SlowNetwork;
+        if (titleRes == R.string.NM_GEN_DeletedGifts) return R.string.NM_GEN_DeletedGifts_Desc;
+        if (titleRes == R.string.NM_GEN_LocalPremiumEmoji) return R.string.NM_GEN_LocalPremiumEmoji_Desc;
+        if (titleRes == R.string.NM_Config_Export) return R.string.NM_Config_Export_Desc;
+        if (titleRes == R.string.NM_Config_Import) return R.string.NM_Config_Import_Desc;
+        if (titleRes == R.string.AP_IconReplacements) return R.string.NM_SettingsDesc_IconPack;
+        if (titleRes == R.string.NM_SwitchStyle) return R.string.NM_SettingsDesc_SwitchStyle;
+        if (titleRes == R.string.AP_DisableDividers) return R.string.NM_SettingsDesc_DisableDividers;
+        if (titleRes == R.string.AP_CenterTitle) return R.string.NM_SettingsDesc_CenterTitle;
+        if (titleRes == R.string.AP_HideSearchBar) return R.string.NM_SettingsDesc_HideSearchBar;
+        if (titleRes == R.string.NM_HideActionBarStatus) return R.string.NM_SettingsDesc_HideHeaderStatus;
+        if (titleRes == R.string.NM_CustomTitle) return R.string.NM_SettingsDesc_CustomTitle;
+        if (titleRes == R.string.NM_ForceBlur) return R.string.NM_SettingsDesc_ForceBlur;
+        if (titleRes == R.string.AP_GlareOnElements) return R.string.AP_GlareOnElementsInfo;
+        if (titleRes == R.string.NM_MediaGlow) return R.string.NM_MediaGlow_Desc;
+        if (titleRes == R.string.NM_SnowInHeader) return R.string.NM_SnowInHeader_Desc;
+        if (titleRes == R.string.NM_CP_SnowflakesInChat) return R.string.NM_CP_SnowflakesInChat_Desc;
+        if (titleRes == R.string.CP_TimeOnStick) return R.string.NM_SettingsDesc_StickerTime;
+        if (titleRes == R.string.CP_Messages_Size) return R.string.NM_SettingsDesc_MessageSize;
+        if (titleRes == R.string.NM_CP_CenterTitleInChat) return R.string.NM_SettingsDesc_CenterChatTitle;
+        if (titleRes == R.string.NM_IOSStyleComposer) return R.string.NM_IOSStyleComposer_Desc;
+        if (titleRes == R.string.NM_HideBubbleTail) return R.string.NM_HideBubbleTail_Desc;
+        if (titleRes == R.string.NM_ForumAvatarsLikeChats) return R.string.NM_ForumAvatarsLikeChats_Desc;
+        if (titleRes == R.string.NM_OnlineIndicatorInGroups) return R.string.NM_OnlineIndicatorInGroups_Desc;
+        if (titleRes == R.string.CP_UnreadBadgeOnBackButton) return R.string.CP_UnreadBadgeOnBackButton_Desc;
+        if (titleRes == R.string.CP_CustomWallpapers) return R.string.CP_CustomWallpapers_Desc;
+        if (titleRes == R.string.NM_CP_WeekdayNearDate) return R.string.NM_CP_WeekdayNearDate_Desc;
+        if (titleRes == R.string.CP_HideMuteUnmuteButton) return R.string.NM_SettingsDesc_HideMuteButton;
+        if (titleRes == R.string.CP_SortByUnread) return R.string.NM_SettingsDesc_SortUnread;
+        if (titleRes == R.string.CP_UnarchiveOnSwipe) return R.string.NM_SettingsDesc_UnarchiveSwipe;
+        if (titleRes == R.string.EP_CustomChat) return R.string.EP_CustomChat_Desc;
+        if (titleRes == R.string.CP_Slider_RecentEmojisAndStickers) return R.string.NM_CH_RecentEmojisStickers_Desc;
+        if (titleRes == R.string.AP_ShowPencilIcon) return R.string.NM_SettingsDesc_PencilIcon;
+        if (titleRes == R.string.CP_ForwardMsgDate) return R.string.NM_SettingsDesc_ForwardDate;
+        if (titleRes == R.string.CP_HideSendAsChannel) return R.string.CP_HideSendAsChannelDesc;
+        if (titleRes == R.string.CP_AutoQuoteReplies) return R.string.CP_AutoQuoteReplies_Desc;
+        if (titleRes == R.string.NM_CP_PreReformRussian) return R.string.NM_CP_PreReformRussian_Desc;
+        if (titleRes == R.string.NM_CP_LatexRendering) return R.string.NM_CP_LatexRendering_Desc;
+        if (titleRes == R.string.NM_DisableSendHints) return R.string.NM_DisableSendHints_Desc;
+        if (titleRes == R.string.CP_DoubleTapAction) return R.string.NM_SettingsDesc_DoubleTap;
+        if (titleRes == R.string.NM_MsgSlideAction) return R.string.NM_SettingsDesc_MessageSwipe;
+        if (titleRes == R.string.CP_LeftBottomButtonAction) return R.string.NM_SettingsDesc_LeftButton;
+        if (titleRes == R.string.ForwardWithoutAuthor) return R.string.NM_SettingsDesc_ForwardWithoutAuthor;
+        if (titleRes == R.string.CP_DisableSwipeToNext) return R.string.CP_DisableSwipeToNext_Desc;
+        if (titleRes == R.string.CP_DeleteForAll) return R.string.CP_DeleteForAll_Desc;
+        if (titleRes == R.string.CP_DisableVibration) return R.string.NM_SettingsDesc_MenuVibration;
+        if (titleRes == R.string.EP_PhotosSize) return R.string.NM_SettingsDesc_LargePhotos;
+        if (titleRes == R.string.CP_PlayVideo) return R.string.CP_PlayVideo_Desc;
+        if (titleRes == R.string.CP_AutoPauseVideo) return R.string.CP_AutoPauseVideo_Desc;
+        if (titleRes == R.string.NM_MSG_GifSpoilers) return R.string.NM_SettingsDesc_GifSpoilers;
+        if (titleRes == R.string.CP_HideKbdOnScroll) return R.string.NM_SettingsDesc_HideKeyboardOnScroll;
+        if (titleRes == R.string.CP_VideoSeekDuration) return R.string.NM_SettingsDesc_VideoSeek;
+        if (titleRes == R.string.CP_DisableReactionsOverlay) return R.string.CP_DisableReactionsOverlay_Desc;
+        if (titleRes == R.string.CP_DisableReactionAnim) return R.string.CP_DisableReactionAnim_Desc;
+        if (titleRes == R.string.CP_DisablePremStickAnim) return R.string.CP_DisablePremStickAnim_Desc;
+        if (titleRes == R.string.CP_DisablePremStickAutoPlay) return R.string.CP_DisablePremStickAutoPlay_Desc;
+        if (titleRes == R.string.NotificationsSound) return R.string.NM_SettingsDesc_NotificationSound;
+        if (titleRes == R.string.CP_VibrateInChats) return R.string.NM_SettingsDesc_ChatVibration;
+        if (titleRes == R.string.CP_ChatMenuShortcuts) return R.string.NM_SettingsDesc_ChatShortcuts;
+        if (titleRes == R.string.NM_PR_HideProxy) return R.string.NM_SettingsDesc_HideProxy;
+        if (titleRes == R.string.NM_PR_DeleteAccount) return R.string.NM_SettingsDesc_DeleteAccount;
+        if (titleRes == R.string.NM_PR_OpenArchive) return R.string.NM_SettingsDesc_OpenArchive;
+        if (titleRes == R.string.NM_PR_LockedChats) return R.string.NM_SettingsDesc_LockedChats;
+        if (titleRes == R.string.NM_PR_LockedChatsTtl) return R.string.NM_SettingsDesc_LockedChatsTtl;
+        if (titleRes == R.string.NM_PR_HideArchivedStories) return R.string.NM_PR_HideArchivedStories_Desc;
+        if (titleRes == R.string.NM_PR_HideArchiveList) return R.string.NM_PR_HideArchiveList_Desc;
+        if (titleRes == R.string.NM_PR_AskBioOpenChats) return R.string.NM_PR_AskBioOpenChats_Desc;
+        if (titleRes == R.string.NM_PR_AskBioOpenEncrypted) return R.string.NM_PR_AskBioOpenEncrypted_Desc;
+        if (titleRes == R.string.NM_PR_AskBioOpenArchive) return R.string.NM_PR_AskBioOpenArchive_Desc;
+        if (titleRes == R.string.NM_PR_RequireBiometricsToDelete) return R.string.NM_PR_RequireBiometricsToDelete_Desc;
+        if (titleRes == R.string.NM_PR_AllowSystemPasscode) return R.string.NM_PR_AllowSystemPasscode_Desc;
+        if (titleRes == R.string.NM_PR_TestFingerprint) return R.string.NM_PR_TestFingerprint_Desc;
+        if (titleRes == R.string.NM_FO_TabsHideAllChats) return R.string.NM_SettingsDesc_HideAllChatsTab;
+        if (titleRes == R.string.NM_FO_TabsNoCounter) return R.string.NM_SettingsDesc_FolderCounter;
+        if (titleRes == R.string.NM_FO_TabStyle) return R.string.NM_SettingsDesc_FolderTabStyle;
+        if (titleRes == R.string.NM_FO_TabStyleStroke) return R.string.NM_FO_TabStyleStroke_Desc;
+        if (titleRes == R.string.NM_FO_FolderNameInHeader) return R.string.NM_SettingsDesc_FolderNameHeader;
+        if (titleRes == R.string.NM_FO_FoldersAtBottom) return R.string.NM_FO_FoldersAtBottom_Desc;
+        if (titleRes == R.string.NM_BT_ShowTabs) return R.string.NM_SettingsDesc_BottomTabs;
+        if (titleRes == R.string.NM_BT_ShowTabsTitle) return R.string.NM_SettingsDesc_BottomTabsTitle;
+        if (titleRes == R.string.NM_BT_ForceOpenChats) return R.string.CP_MainTabs_ForceOpenChats_Desc;
+        if (titleRes == R.string.NM_BT_ShowSearchInTabs) return R.string.NM_BT_ShowSearchInTabs_Desc;
+        if (titleRes == R.string.Reset) return R.string.NM_SettingsDesc_ResetTabs;
+        if (titleRes == R.string.Emoji) return R.string.NM_SettingsDesc_RecentEmoji;
+        if (titleRes == R.string.AccDescrStickers) return R.string.NM_SettingsDesc_RecentStickers;
+        if (titleRes == R.string.NM_MP_ShowSeconds) return R.string.NM_MP_ShowSeconds_Desc;
+        if (titleRes == R.string.NM_MP_DisablePremiumStatuses) return R.string.NM_MP_DisablePremiumStatuses_Desc;
+        if (titleRes == R.string.NM_MP_ReplyBackground) return R.string.NM_MP_ReplyBackground_Desc;
+        if (titleRes == R.string.NM_MP_ReplyCustomColors) return R.string.NM_MP_ReplyCustomColors_Desc;
+        if (titleRes == R.string.NM_MP_ReplyBackgroundEmoji) return R.string.NM_MP_ReplyBackgroundEmoji_Desc;
+        if (titleRes == R.string.NM_MP_ProfileChannelPreview) return R.string.NM_MP_ProfileChannelPreview_Desc;
+        if (titleRes == R.string.NM_MP_ShowIdDc) return R.string.NM_MP_ShowIdDc_Desc;
+        if (titleRes == R.string.NM_MP_ProfileBirthDatePreview) return R.string.NM_MP_ProfileBirthDatePreview_Desc;
+        if (titleRes == R.string.NM_MP_ProfileBusinessPreview) return R.string.NM_MP_ProfileBusinessPreview_Desc;
+        if (titleRes == R.string.NM_MP_ProfileBackgroundColor) return R.string.NM_MP_ProfileBackgroundColor_Desc;
+        if (titleRes == R.string.NM_MP_ProfileBackgroundEmoji) return R.string.NM_MP_ProfileBackgroundEmoji_Desc;
+        if (titleRes == R.string.NM_NM_AutoDownload) return R.string.NM_NM_AutoDownload_Desc;
+        if (titleRes == R.string.NM_NM_YtAsk) return R.string.NM_SettingsDesc_AskYoutubeFormat;
+        if (titleRes == R.string.NM_NM_FormatVideo) return R.string.NM_SettingsDesc_VideoFormat;
+        if (titleRes == R.string.NM_NM_FormatAudio) return R.string.NM_SettingsDesc_AudioFormat;
+        if (titleRes == R.string.NM_TA_Appear) return R.string.NM_TA_Appear_Desc;
+        if (titleRes == R.string.NM_TA_Cursor) return R.string.NM_TA_Cursor_Desc;
+        if (titleRes == R.string.NM_TA_Delete) return R.string.NM_TA_Delete_Desc;
+        if (titleRes == R.string.NM_TA_Spoiler) return R.string.NM_TA_Spoiler_Desc;
+        if (titleRes == R.string.NM_BAN_StatusLabel) return R.string.NM_SettingsDesc_BannerStatus;
+        if (titleRes == R.string.NM_BAN_ChangeGlobal) return R.string.NM_SettingsDesc_BannerGlobal;
+        if (titleRes == R.string.NM_BAN_SubmitModeration) return R.string.NM_SettingsDesc_BannerSubmit;
+        if (titleRes == R.string.NM_BAN_RefreshStatus) return R.string.NM_SettingsDesc_BannerRefresh;
+        if (titleRes == R.string.NM_BAN_PickLocal) return R.string.NM_SettingsDesc_BannerLocal;
+        if (titleRes == R.string.NM_BAN_DeleteLocal) return R.string.NM_SettingsDesc_BannerDelete;
+        if (titleRes == R.string.NM_BAN_AvatarBanner) return R.string.NM_SettingsDesc_BannerAvatar;
+        if (titleRes == R.string.NM_WSB_Enable) return R.string.NM_SettingsDesc_BypassEnable;
+        if (titleRes == R.string.NM_WSB_OpenProxySettings) return R.string.NM_SettingsDesc_BypassProxySettings;
+        if (titleRes == R.string.NM_WSB_VoIP_Enable) return R.string.NM_SettingsDesc_BypassCalls;
+        if (titleRes == R.string.NM_WSB_SuspendOnVpn) return R.string.NM_WSB_SuspendOnVpn_Desc;
+        if (titleRes == R.string.NM_CARDS_Enable) return R.string.NM_SettingsDesc_CardsEnable;
+        if (titleRes == R.string.NM_CARDS_InfiniteScroll) return R.string.NM_SettingsDesc_CardsInfinite;
+        if (titleRes == R.string.NM_CARDS_AutoScroll) return R.string.NM_SettingsDesc_CardsAutoScroll;
+        if (titleRes == R.string.NM_DBG_ShowAccounts) return R.string.NM_SettingsDesc_ShowAccounts;
+        if (titleRes == R.string.NM_DBG_OldTimeStyle) return R.string.NM_SettingsDesc_OldTime;
+        if (titleRes == R.string.NM_DBG_ReplacePunctuation) return R.string.NM_SettingsDesc_ReplacePunctuation;
+        if (titleRes == R.string.NM_DBG_EditTextFix) return R.string.NM_SettingsDesc_EditTextFix;
+        if (titleRes == R.string.NM_DBG_AudioSource) return R.string.NM_SettingsDesc_AudioSource;
+        if (titleRes == R.string.NM_DBG_HideVideoTimestamp) return R.string.NM_SettingsDesc_HideVideoTimestamp;
+        if (titleRes == R.string.NM_DBG_SendMaxQuality) return R.string.NM_SettingsDesc_MaxVideoQuality;
+        if (titleRes == R.string.NM_DBG_ShowRPCErrors) return R.string.NM_SettingsDesc_RpcErrors;
+        if (titleRes == R.string.NM_DBG_JacksonJSONProvider) return R.string.NM_SettingsDesc_JsonProvider;
+        if (titleRes == R.string.CP_MessageMenuItems) return R.string.NM_SettingsDesc_MenuItems;
+        if (titleRes == R.string.NM_Menu_Reorder) return R.string.NM_SettingsDesc_MenuOrder;
+        if (titleRes == R.string.CP_MessageMenu) return R.string.NM_SettingsSummaryMessageMenu;
+        if (titleRes == R.string.CP_Message_Filtering) return R.string.NM_SettingsSummaryMessageFilters;
+        if (titleRes == R.string.SaveForNotifications || titleRes == R.string.Reply
+                || titleRes == R.string.SaveToGallery || titleRes == R.string.NM_MI_CopyPhoto
+                || titleRes == R.string.NM_MI_CopyPhotoAsSticker || titleRes == R.string.SaveToDownloads
+                || titleRes == R.string.ShareFile || titleRes == R.string.NM_MI_ClearFromCache
+                || titleRes == R.string.Forward || titleRes == R.string.NM_MI_ForwardWoAuthorship
+                || titleRes == R.string.AvatarPreviewSearchMessages || titleRes == R.string.NM_MI_SaveToSaved
+                || titleRes == R.string.ReportChat || titleRes == R.string.NM_MI_JSON
+                || titleRes == R.string.NM_MI_ForwardWoCaption || titleRes == R.string.NM_MI_DownloadSticker
+                || titleRes == R.string.AccDescrCustomEmoji || titleRes == R.string.NM_MI_Details) {
+            return R.string.NM_SettingsDesc_MenuItemVisibility;
+        }
+        return 0;
     }
 
     private static void page(List<Entry> entries, int[] guid, int screen, int titleRes, int summaryRes, int iconRes) {

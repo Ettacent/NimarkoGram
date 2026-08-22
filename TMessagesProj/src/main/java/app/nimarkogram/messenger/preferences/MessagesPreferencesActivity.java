@@ -51,9 +51,11 @@ public class MessagesPreferencesActivity extends NimarkoUniversalPreferencesActi
     @Override
     public void fillItems(ArrayList<UItem> items, UniversalAdapter adapter) {
         items.add(UItem.asHeader(getString(R.string.NM_CP_Header_ChatView)));
-        items.add(asPlainSettingsRow(messageMenuRow, getString(R.string.CP_MessageMenu)));
+        items.add(asPlainSettingsRowWithSubtitle(messageMenuRow, getString(R.string.CP_MessageMenu),
+                getString(R.string.NM_SettingsSummaryMessageMenu)));
         items.add(asPlainSettingsRow(messageSizeRow, getString(R.string.CP_Messages_Size)));
-        items.add(asPlainSettingsRow(directShareRow, getString(R.string.DirectShare)));
+        items.add(asPlainSettingsRowWithSubtitle(directShareRow, getString(R.string.DirectShare),
+                getString(R.string.DirectShareInfo)));
         items.add(SettingsHelper.asSwitchCG(showForwardDateRow, getString(R.string.CP_ForwardMsgDate))
                 .setChecked(app.nimarkogram.messenger.NimarkoConfig.msgForwardDate)
         );
@@ -63,7 +65,8 @@ public class MessagesPreferencesActivity extends NimarkoUniversalPreferencesActi
         items.add(UItem.asShadow(null));
 
         items.add(UItem.asHeader(getString(R.string.ActionsChartTitle)));
-        items.add(asPlainSettingsRow(messageFilterRow, getString(R.string.CP_Message_Filtering)));
+        items.add(asPlainSettingsRowWithSubtitle(messageFilterRow, getString(R.string.CP_Message_Filtering),
+                getString(R.string.NM_SettingsSummaryMessageFilters)));
         items.add(asPlainSettingsRow(leftBottomBtnRow,
                 getString(R.string.CP_LeftBottomButtonAction), getLeftBottomButtonValue()));
         items.add(asPlainSettingsRow(doubleTapRow,

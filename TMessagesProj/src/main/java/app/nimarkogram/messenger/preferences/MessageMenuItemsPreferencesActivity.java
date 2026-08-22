@@ -6,7 +6,6 @@ import java.util.ArrayList;
 
 import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.R;
-import org.telegram.ui.Cells.TextCheckCell;
 import org.telegram.ui.Components.UItem;
 import org.telegram.ui.Components.UniversalAdapter;
 
@@ -143,8 +142,6 @@ public class MessageMenuItemsPreferencesActivity extends BasePreferencesActivity
 
     private void applyCheck(UItem item, View view, boolean value) {
         item.checked = value;
-        if (view instanceof TextCheckCell) {
-            ((TextCheckCell) view).setChecked(value);
-        }
+        updateCheckState(view, value);
     }
 }

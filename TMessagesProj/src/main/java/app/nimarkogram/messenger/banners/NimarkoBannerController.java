@@ -776,26 +776,26 @@ public final class NimarkoBannerController {
     }
 
     public boolean fetchStatus() {
-        return fetchStatus(scope());
+        return fetchStatus(scope()) == 200;
     }
 
-    private boolean fetchStatus(Scope scope) {
-        if (scope == null || scope.uid == 0L || !statusFetching.add(scope)) return false;
+    private int fetchStatus(Scope scope) {
+        if (scope == null || scope.uid == 0L || !statusFetching.add(scope)) return -1;
         final long requestRevision;
         synchronized (statusStateLock) {
             if (!isCurrentScope(scope)) {
                 statusFetching.remove(scope);
-                return false;
+                return -1;
             }
             statusActivityRevision++;
             requestRevision = statusRevision;
         }
         try {
             NimarkoBannerHttp.Status s = NimarkoBannerHttp.fetchStatus(scope.uid);
-            if (!s.ok) return false;
+            if (!s.ok) return s.httpCode == 200 ? -1 : s.httpCode;
             final String old;
             synchronized (statusStateLock) {
-                if (!statusRevisionMatches(scope, requestRevision)) return false;
+                if (!statusRevisionMatches(scope, requestRevision)) return -1;
                 statusEverFetched = true;
                 old = myStatus;
                 myStatus = s.status;
@@ -810,7 +810,7 @@ public final class NimarkoBannerController {
                 loadBannerAsync(ownKey);
             }
             if (!old.equals(myStatus)) invalidate();
-            return true;
+            return 200;
         } finally {
             statusFetching.remove(scope);
         }
@@ -905,6 +905,8 @@ public final class NimarkoBannerController {
                     uiErr(R.string.NM_BAN_IdError);
                 } else if (r.httpCode == 413) {
                     uiErr(R.string.NM_BAN_FileTooBig);
+                } else if (r.httpCode == 429) {
+                    uiErr(R.string.NM_BAN_RateLimited);
                 } else if (r.httpCode == 403) {
                     synchronized (statusStateLock) {
                         long committedRevision = finishStatusMutationLocked(operationScope, operationRevision);
@@ -942,7 +944,8 @@ public final class NimarkoBannerController {
         executor.submit(() -> {
             long my = operationScope.uid;
             if (my == 0 || operationRevision < 0L) { uiErr(R.string.NM_BAN_IdError); return; }
-            if (NimarkoBannerHttp.setHideAvatar(my, v)) {
+            int responseCode = NimarkoBannerHttp.setHideAvatar(my, v);
+            if (responseCode == 200) {
                 synchronized (statusStateLock) {
                     long committedRevision = finishStatusMutationLocked(operationScope, operationRevision);
                     if (committedRevision < 0L) return;
@@ -951,6 +954,8 @@ public final class NimarkoBannerController {
                     persistCurrentStatusLocked(operationScope, committedRevision);
                 }
                 uiOk(R.string.NM_BAN_HaUpdated);
+            } else if (responseCode == 429) {
+                uiErr(R.string.NM_BAN_RateLimited);
             } else {
                 uiErr(R.string.NM_BAN_HaError);
             }
@@ -963,9 +968,10 @@ public final class NimarkoBannerController {
         CacheKey ownKey = key(operationScope, operationScope.uid);
         usersNoBanner.remove(ownKey);
         executor.submit(() -> {
-            boolean refreshed = fetchStatus(operationScope);
+            int responseCode = fetchStatus(operationScope);
             reloadSettings();
-            if (refreshed) uiOk(R.string.NM_BAN_StatusUpdated);
+            if (responseCode == 200) uiOk(R.string.NM_BAN_StatusUpdated);
+            else if (responseCode == 429) uiErr(R.string.NM_BAN_RateLimited);
             else uiErr(R.string.NM_BAN_StatusRefreshFailed);
         });
     }

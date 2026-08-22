@@ -5,7 +5,7 @@
     <string name="NM_CP_Header_Interaction">Взаимодействие</string>
     <string name="NM_CP_Header_Media">Медиа</string>
     <string name="NM_CP_CenterTitleInChat">Заголовок чата по центру</string>
-    <string name="NM_CP_SnowflakesInChat">Снежинки в чате</string>
+    <string name="NM_CP_SnowflakesInChat">Снег в чате</string>
     <string name="NM_CP_WeekdayNearDate">День недели у даты</string>
     <string name="NM_CP_WeekdayNearDate_Desc">Показывает день недели рядом с датой в чате.</string>
     <string name="NM_CP_PreReformRussian">Дореформенная орфография</string>
@@ -807,6 +807,7 @@
     <string name="NM_BAN_PendingError">Заявка уже на модерации</string>
     <string name="NM_BAN_NoAccess">Нет доступа</string>
     <string name="NM_BAN_FileTooBig">Файл больше 8 МБ</string>
+    <string name="NM_BAN_RateLimited">Слишком много запросов. Попробуйте позже.</string>
     <string name="NM_BAN_InvalidFormat">Недопустимый формат</string>
     <string name="NM_BAN_Sending">Отправка на модерацию...</string>
     <string name="NM_BAN_SentOk">Отправлено на модерацию!</string>
@@ -1117,7 +1118,7 @@
     <string name="CP_Camera2Desc">С Camera2 не будут работать все функции, которые скрываются при включении Camera2.</string>
     <string name="CP_SystemCameraDesc">Позволяет получить доступ напрямую к системной камере (не применимо к видеосообщениям).</string>
     <!-- MAndP -->
-    <string name="NM_MP_DisablePremiumStatuses_Desc">Это отключит эмодзи-статусы везде, кроме бокового меню</string>
+    <string name="NM_MP_DisablePremiumStatuses_Desc">Скрывать Premium-статусы вне бокового меню</string>
     <string name="NM_ChooseFolderIcon">Выбрать иконку</string>
 
     <!-- ============================================================= -->

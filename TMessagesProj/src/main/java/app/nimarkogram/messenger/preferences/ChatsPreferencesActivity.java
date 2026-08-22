@@ -209,7 +209,7 @@ public class ChatsPreferencesActivity extends NimarkoUniversalPreferencesActivit
         items.add(UItem.asIntSlideView(1, 0, NimarkoConfig.hideKeyboardOnScrollIntensity, 10,
                 val -> val == 0 ? getString(R.string.VibrationDisabled) : String.valueOf(val),
                 NimarkoConfig::setHideKeyboardOnScrollIntensity).setId(hideKbdSliderRow));
-        items.add(UItem.asShadow(null));
+        items.add(UItem.asShadow(getString(R.string.NM_SettingsDesc_HideKeyboardOnScroll)));
 
         items.add(UItem.asHeader(getString(R.string.MessagesSettings)));
         items.add(SettingsHelper.asSwitchCG(pencilIconRow, getString(R.string.AP_ShowPencilIcon))
@@ -290,6 +290,7 @@ public class ChatsPreferencesActivity extends NimarkoUniversalPreferencesActivit
         items.add(UItem.asIntSlideView(1, 0, NimarkoConfig.videoSeekDuration, 25,
                 val -> val == 0 ? getString(R.string.NM_WSB_Status_Off) : String.valueOf(val),
                 NimarkoConfig::setVideoSeekDuration).setId(videoSeekSliderRow));
+        items.add(UItem.asShadow(getString(R.string.NM_SettingsDesc_VideoSeek)));
     }
 
     private void fillReactions(ArrayList<UItem> items) {

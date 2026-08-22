@@ -64,7 +64,7 @@ public abstract class BasePreferencesActivity extends BaseFragment {
         }
         final BasePreferencesActivity self = this;
         UniversalRecyclerView universalRecyclerView = new UniversalRecyclerView(this,
-                (Utilities.Callback2<ArrayList<UItem>, UniversalAdapter>) self::fillItems,
+                (Utilities.Callback2<ArrayList<UItem>, UniversalAdapter>) self::fillItemsWithDescriptions,
                 (UItem item, View v, Integer pos, Float fx, Float fy) -> self.onClick(item, v, pos, fx, fy),
                 (UItem item, View v, Integer pos, Float fx, Float fy) -> self.onLongClick(item, v, pos, fx, fy));
         this.listView = universalRecyclerView;
@@ -83,6 +83,11 @@ public abstract class BasePreferencesActivity extends BaseFragment {
     }
 
     public abstract void fillItems(ArrayList<UItem> arrayList, UniversalAdapter universalAdapter);
+
+    private void fillItemsWithDescriptions(ArrayList<UItem> items, UniversalAdapter adapter) {
+        fillItems(items, adapter);
+        NimarkoSettingsSearchIndex.applyDescriptions(this, items);
+    }
 
     public abstract String getTitle();
 

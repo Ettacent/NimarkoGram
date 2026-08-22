@@ -1,10 +1,10 @@
- 
 package app.nimarkogram.messenger.ui;
 
 import android.view.HapticFeedbackConstants;
 import android.view.View;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -23,7 +23,6 @@ public final class MessageMenuTweaks {
                                        ArrayList<Integer> options,
                                        ArrayList<Integer> icons) {
         if (items == null || options == null || icons == null) return;
-        
         for (int i = options.size() - 1; i >= 0; i--) {
             Integer optBoxed = options.get(i);
             if (optBoxed == null) continue;
@@ -46,7 +45,6 @@ public final class MessageMenuTweaks {
                     drop = !NimarkoConfig.showForward;
                     break;
                 default:
-                    
                     break;
             }
             if (drop) {
@@ -56,7 +54,23 @@ public final class MessageMenuTweaks {
             }
         }
 
+        swapMenuItems(items, options, icons, ChatActivity.OPTION_EDIT, ChatActivity.OPTION_DELETE);
+
         reorderMenuItems(items, options, icons);
+    }
+
+    private static void swapMenuItems(ArrayList<CharSequence> items,
+                                      ArrayList<Integer> options,
+                                      ArrayList<Integer> icons,
+                                      int firstOption,
+                                      int secondOption) {
+        if (items.size() != options.size() || options.size() != icons.size()) return;
+        int first = options.indexOf(firstOption);
+        int second = options.indexOf(secondOption);
+        if (first < 0 || second < 0 || first == second) return;
+        Collections.swap(items, first, second);
+        Collections.swap(options, first, second);
+        Collections.swap(icons, first, second);
     }
 
     public static void reorderMenuItems(ArrayList<CharSequence> items,
@@ -85,7 +99,6 @@ public final class MessageMenuTweaks {
             outOptions.add(options.get(idx));
             outIcons.add(icons.get(idx));
         }
-        
         for (int i = 0; i < n; i++) {
             if (taken[i]) continue;
             outItems.add(items.get(i));
@@ -128,7 +141,6 @@ public final class MessageMenuTweaks {
                     resourcesProvider
             );
         } catch (Throwable ignored) {
-            
             return false;
         }
     }
