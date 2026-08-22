@@ -11182,8 +11182,8 @@
     <string name="NM_PR_AuthenticationUnavailable_Desc">No biometric or device screen lock is available. Disable this protection setting?</string>
     <string name="NM_PR_AskBioOpenChats_Desc">Require device authentication before opening chats selected below.</string>
     <string name="NM_PR_AskBioOpenChats_Title">Select chats</string>
-    <string name="NM_PR_RequireBiometricsToDelete">Confirm chat deletion</string>
-    <string name="NM_PR_RequireBiometricsToDelete_Desc">Require device authentication before deleting a chat or clearing its history.</string>
+    <string name="NM_PR_RequireBiometricsToDelete">Confirm deletion</string>
+    <string name="NM_PR_RequireBiometricsToDelete_Desc">Require device authentication before deleting messages or chats and clearing history.</string>
     <string name="NM_PR_Header_Privacy">Privacy</string>
     <string name="NM_PR_Header_ChatProtection">Chat protection</string>
     <string name="NM_PR_HideProxy">Don\'t show proxy sponsor</string>

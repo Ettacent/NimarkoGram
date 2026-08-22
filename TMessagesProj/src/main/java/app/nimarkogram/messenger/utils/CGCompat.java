@@ -18,14 +18,22 @@ public final class CGCompat {
     private CGCompat() {}
 
     public static void runOrAskBiometricsBeforeDelete(Activity activity, Runnable action) {
-        runOrAsk(activity, NimarkoConfig.askPasscodeBeforeDelete, action);
+        runOrAsk(activity, UserConfig.selectedAccount, NimarkoConfig.askPasscodeBeforeDelete, action);
+    }
+
+    public static void runOrAskBiometricsBeforeDelete(Activity activity, int account, Runnable action) {
+        runOrAsk(activity, account, NimarkoConfig.askPasscodeBeforeDelete, action);
     }
 
     public static void runOrAskBeforeDestructive(Activity activity, Runnable action) {
-        runOrAsk(activity, NimarkoConfig.askPasscodeBeforeDelete, action);
+        runOrAsk(activity, UserConfig.selectedAccount, NimarkoConfig.askPasscodeBeforeDelete, action);
     }
 
-    private static void runOrAsk(Activity activity, boolean wantPrompt, Runnable action) {
+    public static void runOrAskBeforeDestructive(Activity activity, int account, Runnable action) {
+        runOrAsk(activity, account, NimarkoConfig.askPasscodeBeforeDelete, action);
+    }
+
+    private static void runOrAsk(Activity activity, int account, boolean wantPrompt, Runnable action) {
         if (action == null) return;
         if (!wantPrompt) {
             action.run();
@@ -34,7 +42,7 @@ public final class CGCompat {
         if (activity == null) return;
         if (!NimarkoBiometricPrompt.canAuthenticateConfigured()) return;
         try {
-            NimarkoBiometricPrompt.prompt(activity, action, null);
+            NimarkoBiometricPrompt.prompt(activity, account, action, null);
         } catch (Throwable t) {
             FileLog.e("Nimarko destructive authentication prompt failed closed", t);
         }
@@ -76,7 +84,7 @@ public final class CGCompat {
         if (activity == null) return;
         if (!NimarkoBiometricPrompt.canAuthenticateConfigured()) return;
         try {
-            NimarkoBiometricPrompt.prompt(activity, () -> {
+            NimarkoBiometricPrompt.prompt(activity, account, () -> {
                 NimarkoBiometricPrompt.markVerified(account, 0L, dialogId, 0);
                 onUnlocked.run();
             }, null);

@@ -7798,7 +7798,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             action.run();
         } else if (getParentActivity() != null) {
             app.nimarkogram.messenger.security.NimarkoBiometricPrompt.prompt(
-                    getParentActivity(), action, null);
+                    getParentActivity(), currentAccount, action, null);
         }
     }
 
@@ -8396,6 +8396,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             if (getParentActivity() != null) {
                 app.nimarkogram.messenger.security.NimarkoBiometricPrompt.prompt(
                         getParentActivity(),
+                        currentAccount,
                         action,
                         null
                 );

@@ -14,6 +14,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
 
+import app.nimarkogram.messenger.NimarkoConfig;
 import app.nimarkogram.messenger.plugins.PluginsController;
 
 final class NimarkoSettingsSearchIndex {
@@ -504,6 +505,11 @@ final class NimarkoSettingsSearchIndex {
             }
             if (entry.screen == SCREEN_GENERAL && entry.itemId == 3
                     && Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                continue;
+            }
+            if (entry.screen == SCREEN_PRIVACY
+                    && ((entry.itemId == 6 || entry.itemId == 11) && !NimarkoConfig.askBiometricsToOpenChat
+                    || entry.itemId == 14 && !NimarkoConfig.hideArchiveFromChatsList)) {
                 continue;
             }
             if (entry.matches(query)) {

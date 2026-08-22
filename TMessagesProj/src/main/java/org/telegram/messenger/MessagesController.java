@@ -1621,6 +1621,16 @@ public class MessagesController extends BaseController implements NotificationCe
         promoPsaMessage = mainPreferences.getString("promo_psa_message", null);
         promoPsaType = mainPreferences.getString("promo_psa_type", null);
         proxyDialogAddress = mainPreferences.getString("proxyDialogAddress", null);
+        if (NimarkoConfig.hideProxySponsor
+                && promoDialogId != 0
+                && promoDialogType == PROMO_TYPE_PROXY) {
+            promoDialogId = 0;
+            proxyDialogAddress = null;
+            mainPreferences.edit()
+                    .putLong("proxy_dialog", 0)
+                    .remove("proxyDialogAddress")
+                    .apply();
+        }
         venueSearchBot = mainPreferences.getString("venueSearchBot", "foursquare");
         storyVenueSearchBot = mainPreferences.getString("storyVenueSearchBot", "foursquare");
         gifSearchBot = mainPreferences.getString("gifSearchBot", "gif");
@@ -10859,7 +10869,9 @@ public class MessagesController extends BaseController implements NotificationCe
         String proxyAddress = preferences.getString("proxy_ip", "");
         String proxySecret = preferences.getString("proxy_secret", "");
         int removeCurrent = 0;
-        if (promoDialogId != 0 && promoDialogType == PROMO_TYPE_PROXY && proxyDialogAddress != null && !proxyDialogAddress.equals(proxyAddress + proxySecret)) {
+        if (promoDialogId != 0 && promoDialogType == PROMO_TYPE_PROXY
+                && (NimarkoConfig.hideProxySponsor
+                || proxyDialogAddress != null && !proxyDialogAddress.equals(proxyAddress + proxySecret))) {
             removeCurrent = 1;
         }
         lastCheckPromoId++;
@@ -11150,7 +11162,10 @@ public class MessagesController extends BaseController implements NotificationCe
     }
 
     public boolean isPromoDialog(long did, boolean checkLeft) {
-        return promoDialog != null && promoDialog.id == did && (!checkLeft || isLeftPromoChannel);
+        return !(NimarkoConfig.hideProxySponsor && promoDialogType == PROMO_TYPE_PROXY)
+                && promoDialog != null
+                && promoDialog.id == did
+                && (!checkLeft || isLeftPromoChannel);
     }
 
     private String getUserNameForTyping(TLRPC.User user) {

@@ -599,28 +599,6 @@ public class DialogStoriesCell extends FrameLayout implements NotificationCenter
         }
 
         ArrayList<TL_stories.PeerStories> allStories = type == TYPE_ARCHIVE ? storiesController.getHiddenList() : storiesController.getDialogListStories();
-        
-        if (type != TYPE_ARCHIVE && app.nimarkogram.messenger.NimarkoConfig.hideArchivedStories && allStories != null) {
-            ArrayList<TL_stories.PeerStories> hiddenList = storiesController.getHiddenList();
-            if (hiddenList != null && !hiddenList.isEmpty()) {
-                ArrayList<TL_stories.PeerStories> filteredStories = new ArrayList<>(allStories.size());
-                for (int k = 0; k < allStories.size(); k++) {
-                    TL_stories.PeerStories ps = allStories.get(k);
-                    boolean drop = false;
-                    long psId = DialogObject.getPeerDialogId(ps.peer);
-                    for (int j = 0; j < hiddenList.size(); j++) {
-                        if (DialogObject.getPeerDialogId(hiddenList.get(j).peer) == psId) {
-                            drop = true;
-                            break;
-                        }
-                    }
-                    if (!drop) {
-                        filteredStories.add(ps);
-                    }
-                }
-                allStories = filteredStories;
-            }
-        }
         for (int i = 0; i < allStories.size(); i++) {
             long dialogId = DialogObject.getPeerDialogId(allStories.get(i).peer);
             if (dialogId != UserConfig.getInstance(currentAccount).getClientUserId()) {

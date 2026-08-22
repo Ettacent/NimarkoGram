@@ -9317,6 +9317,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                 final int _ngAcc = currentAccount;
                 app.nimarkogram.messenger.security.NimarkoBiometricPrompt.prompt(
                         getParentActivity(),
+                        _ngAcc,
                         () -> {
                             app.nimarkogram.messenger.security.NimarkoBiometricPrompt.markVerified(_ngAcc, _ngPreviewUserId, _ngPreviewChatId, _ngPreviewEncId);
                             _ngDoPresentPreview.run();
@@ -9394,7 +9395,8 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
     }
 
     private boolean supportsArchivePull() {
-        return !onlySelect
+        return !NimarkoConfig.hideArchiveFromChatsList
+                && !onlySelect
                 && initialDialogsType == DIALOGS_TYPE_DEFAULT
                 && communityId == 0
                 && folderId == 0;
@@ -9970,6 +9972,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                                 && app.nimarkogram.messenger.utils.chats.NimarkoChatsPasswordHelper.askPasscodeBeforeDelete()) {
                             app.nimarkogram.messenger.security.NimarkoBiometricPrompt.prompt(
                                     getParentActivity(),
+                                    currentAccount,
                                     () -> showDialog(builder.create()),
                                     null
                             );

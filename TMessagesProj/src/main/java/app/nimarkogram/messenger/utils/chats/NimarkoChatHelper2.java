@@ -77,7 +77,7 @@ public final class NimarkoChatHelper2 {
         if (fragment.getParentActivity() == null) return;
         if (!NimarkoBiometricPrompt.canAuthenticateConfigured()) return;
         try {
-            NimarkoBiometricPrompt.prompt(fragment.getParentActivity(), action, null);
+            NimarkoBiometricPrompt.prompt(fragment.getParentActivity(), fragment.getCurrentAccount(), action, null);
         } catch (Throwable t) {
             FileLog.e("Nimarko forwarding authentication prompt failed closed", t);
         }

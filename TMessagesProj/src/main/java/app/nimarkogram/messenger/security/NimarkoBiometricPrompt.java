@@ -110,7 +110,6 @@ public class NimarkoBiometricPrompt {
 
             @Override
             public void onFailed() {
-                if (failCallback != null) failCallback.run();
             }
 
             @Override
@@ -377,7 +376,7 @@ public class NimarkoBiometricPrompt {
         int ttlSec = app.nimarkogram.messenger.NimarkoConfig.lockedChatsBiometricTtlSec;
         long effectiveTtlMs;
         if (ttlSec == 0) {
-            effectiveTtlMs = 500L;
+            effectiveTtlMs = 3_000L;
         } else if (ttlSec < 0) {
             effectiveTtlMs = Long.MAX_VALUE;
         } else {

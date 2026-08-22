@@ -11505,7 +11505,7 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
                 || (Build.VERSION.SDK_INT >= 17 && activity.isDestroyed())) {
             return;
         }
-        app.nimarkogram.messenger.utils.CGCompat.runOrAskBeforeDestructive(activity, () -> {
+        app.nimarkogram.messenger.utils.CGCompat.runOrAskBeforeDestructive(activity, currentAccount, () -> {
             if (parentActivity != activity || activity.isFinishing()
                     || (Build.VERSION.SDK_INT >= 17 && activity.isDestroyed())) {
                 return;

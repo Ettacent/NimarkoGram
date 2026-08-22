@@ -978,8 +978,8 @@
     <string name="EP_NavigationAnimationBezier">經典</string>
     <string name="EP_NavigationAnimationSpring">彈簧</string>
     <string name="EP_DownloadSpeedBoostExtreme">極限</string>
-    <string name="NM_PR_RequireBiometricsToDelete">確認刪除聊天</string>
-    <string name="NM_PR_RequireBiometricsToDelete_Desc">刪除聊天或清除聊天記錄前要求裝置身分驗證。</string>
+    <string name="NM_PR_RequireBiometricsToDelete">確認刪除</string>
+    <string name="NM_PR_RequireBiometricsToDelete_Desc">刪除訊息、聊天或清除聊天記錄前要求裝置身分驗證。</string>
     <string name="CP_MessageMenu">訊息選單</string>
     <string name="CP_Messages_Size">訊息氣泡大小</string>
     <string name="CP_TimeOnStick">隱藏聊天中貼圖上的時間</string>

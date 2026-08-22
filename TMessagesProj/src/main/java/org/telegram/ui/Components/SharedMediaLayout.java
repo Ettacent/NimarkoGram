@@ -4011,9 +4011,6 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
     }
 
     private MediaPage getMediaPage(int type) {
-        if (type == TAB_ARCHIVED_STORIES && app.nimarkogram.messenger.NimarkoConfig.hideArchivedStories) {
-            return null;
-        }
         for (int i = 0; i < mediaPages.length; i++) {
             if (mediaPages[i] != null && mediaPages[i].selectedType == type) {
                 return mediaPages[i];
@@ -6976,11 +6973,9 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
                 tabs.add(new Pair<>(TAB_STORIES, getString(R.string.ProfileBotPreviewTab)));
             }
         } else if (hasStories) {
-            final boolean hideArchivedStoriesTab = app.nimarkogram.messenger.NimarkoConfig.hideArchivedStories;
+            final boolean hideArchivedStoriesTab = shouldHideArchivedStoriesTab();
             if (isArchivedOnlyStoriesView()) {
-                if (!hideArchivedStoriesTab) {
-                    tabs.add(new Pair<>(TAB_ARCHIVED_STORIES, getString(R.string.ProfileArchivedStories)));
-                }
+                tabs.add(new Pair<>(TAB_ARCHIVED_STORIES, getString(R.string.ProfileArchivedStories)));
             } else {
                 if (!containsTab(tabs, TAB_STORIES)) {
                     tabs.add(new Pair<>(TAB_STORIES, getString(R.string.ProfileStories)));
@@ -10489,7 +10484,7 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
     }
 
     public int getStoriesCount(int tab) {
-        if (tab == TAB_ARCHIVED_STORIES && app.nimarkogram.messenger.NimarkoConfig.hideArchivedStories) {
+        if (tab == TAB_ARCHIVED_STORIES && shouldHideArchivedStoriesTab()) {
             return 0;
         }
         if (isAnyStoryPageType(tab)) {
@@ -10499,6 +10494,11 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
             }
         }
         return 0;
+    }
+
+    private boolean shouldHideArchivedStoriesTab() {
+        return app.nimarkogram.messenger.NimarkoConfig.hideArchivedStories
+                && !isArchivedOnlyStoriesView();
     }
 
     public String getBotPreviewsSubtitle(boolean edit) {

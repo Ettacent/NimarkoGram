@@ -1037,8 +1037,8 @@
     <string name="EP_NavigationAnimationSpring">Пружинная</string>
     <string name="EP_DownloadSpeedBoostExtreme">Экстра</string>
     <!-- Privacy -->
-    <string name="NM_PR_RequireBiometricsToDelete">Подтверждать удаление чатов</string>
-    <string name="NM_PR_RequireBiometricsToDelete_Desc">Запрашивать подтверждение устройства перед удалением чата или очисткой его истории.</string>
+    <string name="NM_PR_RequireBiometricsToDelete">Подтверждать удаление</string>
+    <string name="NM_PR_RequireBiometricsToDelete_Desc">Запрашивать подтверждение устройства перед удалением сообщений и чатов или очисткой истории.</string>
     <!-- Messages -->
     <string name="CP_MessageMenu">Меню сообщения</string>
     <string name="CP_Messages_Size">Размер облачка</string>

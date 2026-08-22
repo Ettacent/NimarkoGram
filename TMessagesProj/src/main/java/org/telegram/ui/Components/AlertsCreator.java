@@ -7714,7 +7714,7 @@ public class AlertsCreator {
         }
         if (!nmDeleteAlertBypassBiometric
                 && app.nimarkogram.messenger.NimarkoConfig.askPasscodeBeforeDelete) {
-            app.nimarkogram.messenger.utils.CGCompat.runOrAskBeforeDestructive(activity, () -> {
+            app.nimarkogram.messenger.utils.CGCompat.runOrAskBeforeDestructive(activity, fragment.getCurrentAccount(), () -> {
                 nmDeleteAlertBypassBiometric = true;
                 try {
                     createDeleteMessagesAlert(fragment, user, chat, encryptedChat, chatInfo, mergeDialogId,

@@ -30287,6 +30287,7 @@ public class ChatActivity extends BaseFragment implements
                     final int acc = currentAccount;
                     app.nimarkogram.messenger.security.NimarkoBiometricPrompt.prompt(
                             getParentActivity(),
+                            acc,
                             () -> app.nimarkogram.messenger.security.NimarkoBiometricPrompt.markVerified(acc, uid, cid, encId),
                             () -> { try { self.finishFragment(); } catch (Throwable ignored) {} }
                     );

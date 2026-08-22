@@ -15,6 +15,7 @@ import org.telegram.messenger.FileLog;
 import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.NotificationCenter;
 import org.telegram.messenger.R;
+import org.telegram.messenger.UserConfig;
 import org.telegram.ui.ActionBar.AlertDialog;
 import org.telegram.ui.Components.BulletinFactory;
 import org.telegram.ui.Components.IconBackgroundColors;
@@ -120,7 +121,11 @@ public class PrivacyPreferencesActivity extends BasePreferencesActivity {
         if (id == ID_HIDE_PROXY) {
             NimarkoConfig.toggleHideProxySponsor();
             applyCheck(item, view, NimarkoConfig.hideProxySponsor);
-            getMessagesController().checkPromoInfo(true);
+            for (int account = 0; account < UserConfig.MAX_ACCOUNT_COUNT; account++) {
+                if (UserConfig.getInstance(account).isClientActivated()) {
+                    org.telegram.messenger.MessagesController.getInstance(account).checkPromoInfo(true);
+                }
+            }
         } else if (id == ID_DELETE_ACCOUNT) {
             if (NimarkoConfig.askPasscodeBeforeDelete) {
                 runAfterAuthentication(() -> DeleteAccountDialog.showDeleteAccountDialog(this));
@@ -134,7 +139,11 @@ public class PrivacyPreferencesActivity extends BasePreferencesActivity {
         } else if (id == ID_HIDE_ARCHIVE_LIST) {
             NimarkoConfig.toggleHideArchiveFromChatsList();
             applyCheck(item, view, NimarkoConfig.hideArchiveFromChatsList);
-            getNotificationCenter().postNotificationName(NotificationCenter.dialogsNeedReload);
+            for (int account = 0; account < UserConfig.MAX_ACCOUNT_COUNT; account++) {
+                if (UserConfig.getInstance(account).isClientActivated()) {
+                    NotificationCenter.getInstance(account).postNotificationName(NotificationCenter.dialogsNeedReload);
+                }
+            }
             refreshItems();
         } else if (id == ID_OPEN_ARCHIVE) {
             NimarkoChatMenuInjector.openArchivedChats(this);

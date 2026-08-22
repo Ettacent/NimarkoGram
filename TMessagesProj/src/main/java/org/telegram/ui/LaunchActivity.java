@@ -3087,7 +3087,7 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
                                     LaunchActivity.dismissAllWeb();
                                 }
                             } else {
-                                app.nimarkogram.messenger.security.NimarkoBiometricPrompt.prompt(bf.getParentActivity(), () -> {
+                                app.nimarkogram.messenger.security.NimarkoBiometricPrompt.prompt(bf.getParentActivity(), _ngAcc, () -> {
                                     if (!isNavigationRequestCurrent(_ngAcc, intentNavigationGeneration)) {
                                         return;
                                     }
@@ -3152,7 +3152,7 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
                                 LaunchActivity.dismissAllWeb();
                             }
                         } else {
-                            app.nimarkogram.messenger.security.NimarkoBiometricPrompt.prompt(bf.getParentActivity(), () -> {
+                            app.nimarkogram.messenger.security.NimarkoBiometricPrompt.prompt(bf.getParentActivity(), _ngAcc, () -> {
                                 if (!isNavigationRequestCurrent(_ngAcc, intentNavigationGeneration)) {
                                     return;
                                 }
@@ -3186,7 +3186,7 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
                             LaunchActivity.dismissAllWeb();
                         }
                     } else {
-                        app.nimarkogram.messenger.security.NimarkoBiometricPrompt.prompt(bf.getParentActivity(), () -> {
+                        app.nimarkogram.messenger.security.NimarkoBiometricPrompt.prompt(bf.getParentActivity(), _ngAcc, () -> {
                             if (!isNavigationRequestCurrent(_ngAcc, intentNavigationGeneration)) {
                                 return;
                             }

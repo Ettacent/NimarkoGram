@@ -2585,9 +2585,6 @@ public class StoriesController {
 
     @Nullable
     private StoriesList getStoriesList(long dialogId, int type, int albumId, boolean createIfNotExist) {
-        if (type == StoriesList.TYPE_ARCHIVE && app.nimarkogram.messenger.NimarkoConfig.hideArchivedStories) {
-            return null;
-        }
         if (type == StoriesList.TYPE_ALBUMS && albumId > 0) {
             HashMap<Integer, StoriesList> map = storiesAlbumsLists.get(dialogId);
             if (map == null) {
