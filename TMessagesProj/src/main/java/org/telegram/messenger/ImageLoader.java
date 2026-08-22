@@ -85,7 +85,6 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Stream;
 import java.util.zip.GZIPInputStream;
@@ -1879,10 +1878,22 @@ public class ImageLoader {
         protected ArrayList<Integer> types = new ArrayList<>();
         private int decodeRetryCount;
 
+        private int indexOfImageReceiver(ImageReceiver imageReceiver, int type) {
+            for (int i = 0, size = imageReceiverArray.size(); i < size; i++) {
+                if (imageReceiverArray.get(i) == imageReceiver && types.get(i) == type) {
+                    return i;
+                }
+            }
+            return -1;
+        }
+
         public void addImageReceiver(ImageReceiver imageReceiver, String key, String filter, int type, int guid) {
-            int index = imageReceiverArray.indexOf(imageReceiver);
-            if (index >= 0 && Objects.equals(imageReceiverArray.get(index).getImageKey(), key)) {
+            int index = indexOfImageReceiver(imageReceiver, type);
+            if (index >= 0) {
                 imageReceiverGuidsArray.set(index, guid);
+                keys.set(index, key);
+                filters.set(index, filter);
+                imageLoadingByTag.put(imageReceiver.getTag(type), this);
                 updatePriority();
                 return;
             }
@@ -1895,36 +1906,40 @@ public class ImageLoader {
             updatePriority();
         }
 
-        public void replaceImageReceiver(ImageReceiver imageReceiver, String key, String filter, int type, int guid) {
-            int index = imageReceiverArray.indexOf(imageReceiver);
+        public boolean replaceImageReceiver(ImageReceiver imageReceiver, String key, String filter, int type, int guid) {
+            int index = indexOfImageReceiver(imageReceiver, type);
             if (index == -1) {
-                return;
-            }
-            if (types.get(index) != type) {
-                int nextIndex = imageReceiverArray.subList(index + 1, imageReceiverArray.size()).indexOf(imageReceiver);
-                if (nextIndex == -1) {
-                    return;
-                }
-                index += nextIndex + 1;
+                return false;
             }
             imageReceiverGuidsArray.set(index, guid);
             keys.set(index, key);
             filters.set(index, filter);
+            imageLoadingByTag.put(imageReceiver.getTag(type), this);
+            return true;
         }
 
-        public void setImageReceiverGuid(ImageReceiver imageReceiver, int guid) {
-            int index = imageReceiverArray.indexOf(imageReceiver);
+        public boolean setImageReceiverGuid(ImageReceiver imageReceiver, int type, int guid) {
+            int index = indexOfImageReceiver(imageReceiver, type);
             if (index == -1) {
-                return;
+                return false;
             }
             imageReceiverGuidsArray.set(index, guid);
+            return true;
         }
 
         public void removeImageReceiver(ImageReceiver imageReceiver) {
+            removeImageReceiver(imageReceiver, -1, false);
+        }
+
+        public void removeImageReceiver(ImageReceiver imageReceiver, int type) {
+            removeImageReceiver(imageReceiver, type, true);
+        }
+
+        private void removeImageReceiver(ImageReceiver imageReceiver, int requestedType, boolean matchType) {
             int currentMediaType = type;
             for (int a = 0; a < imageReceiverArray.size(); a++) {
                 ImageReceiver obj = imageReceiverArray.get(a);
-                if (obj == null || obj == imageReceiver) {
+                if (obj == null || obj == imageReceiver && (!matchType || types.get(a) == requestedType)) {
                     imageReceiverArray.remove(a);
                     imageReceiverGuidsArray.remove(a);
                     keys.remove(a);
@@ -2139,13 +2154,13 @@ public class ImageLoader {
         if (!isCurrentCacheImage(image)) {
             return;
         }
-        boolean retry = allowStickerRetry && isStickerCacheImage(image);
-        ArrayList<ImageReceiver> receivers = retry ? new ArrayList<>(image.imageReceiverArray) : null;
-        ArrayList<Integer> guids = retry ? new ArrayList<>(image.imageReceiverGuidsArray) : null;
-        ArrayList<String> keys = retry ? new ArrayList<>(image.keys) : null;
-        ArrayList<Integer> types = retry ? new ArrayList<>(image.types) : null;
+        boolean sticker = isStickerCacheImage(image);
+        ArrayList<ImageReceiver> receivers = sticker ? new ArrayList<>(image.imageReceiverArray) : null;
+        ArrayList<Integer> guids = sticker ? new ArrayList<>(image.imageReceiverGuidsArray) : null;
+        ArrayList<String> keys = sticker ? new ArrayList<>(image.keys) : null;
+        ArrayList<Integer> types = sticker ? new ArrayList<>(image.types) : null;
         image.setImageAndClear(null, null);
-        if (!retry || receivers == null) {
+        if (!sticker || receivers == null) {
             return;
         }
         AndroidUtilities.runOnUIThread(() -> {
@@ -2153,7 +2168,7 @@ public class ImageLoader {
             for (int i = 0; i < count; i++) {
                 ImageReceiver receiver = receivers.get(i);
                 if (receiver != null) {
-                    receiver.retryImageLoad(keys.get(i), types.get(i), guids.get(i));
+                    receiver.onImageLoadFailed(keys.get(i), types.get(i), guids.get(i), allowStickerRetry);
                 }
             }
         });
@@ -2887,6 +2902,12 @@ public class ImageLoader {
         smallImagesMemCache.remove(key);
     }
 
+    void removeAnimatedImage(String key, BitmapDrawable drawable) {
+        if (key != null && lottieMemCache.get(key) == drawable) {
+            lottieMemCache.remove(key);
+        }
+    }
+
     public boolean isInMemCache(String key, boolean animated) {
         if (animated) {
             return getFromLottieCache(key) != null;
@@ -3112,15 +3133,17 @@ public class ImageLoader {
                 CacheImage alreadyLoadingImage = imageLoadingByTag.get(finalTag);
                 if (alreadyLoadingImage != null) {
                     if (alreadyLoadingImage == alreadyLoadingCache) {
-                        alreadyLoadingImage.setImageReceiverGuid(imageReceiver, guid);
-                        added = true;
+                        added = alreadyLoadingImage.setImageReceiverGuid(imageReceiver, type, guid);
                     } else if (alreadyLoadingImage == alreadyLoadingUrl) {
                         if (alreadyLoadingCache == null) {
-                            alreadyLoadingImage.replaceImageReceiver(imageReceiver, key, filter, type, guid);
+                            added = alreadyLoadingImage.replaceImageReceiver(imageReceiver, key, filter, type, guid);
+                        } else {
+                            alreadyLoadingImage.removeImageReceiver(imageReceiver, type);
+                            alreadyLoadingCache.addImageReceiver(imageReceiver, key, filter, type, guid);
+                            added = true;
                         }
-                        added = true;
                     } else {
-                        alreadyLoadingImage.removeImageReceiver(imageReceiver);
+                        alreadyLoadingImage.removeImageReceiver(imageReceiver, type);
                     }
                 }
 

@@ -57,6 +57,12 @@ import java.util.List;
 
 public class ImageReceiver implements NotificationCenter.NotificationCenterDelegate, AnimatedEmojiSpan.InvalidateHolder {
 
+    private static final int LOAD_TYPE_COUNT = 4;
+    private static final int STICKER_LOAD_RETRY_LIMIT = 3;
+    private static final int STICKER_FIRST_FRAME_CHECK_LIMIT = 12;
+    private static final int STICKER_FIRST_FRAME_RECOVERY_LIMIT = 2;
+    private static final long STICKER_FIRST_FRAME_CHECK_DELAY = 750;
+
     List<ImageReceiver> preloadReceivers;
     private boolean allowCrossfadeWithImage = true;
     private boolean allowDrawWhileCacheGenerating;
@@ -229,9 +235,17 @@ public class ImageReceiver implements NotificationCenter.NotificationCenterDeleg
     private int currentAccount;
     private View parentView;
     private Runnable parentRunnable;
-    private Runnable failedLoadRetryRunnable;
-    private String failedLoadRetryKey;
-    private int failedLoadRetryCount;
+    private StickerLoadRecoveryState stickerLoadRecoveryState;
+
+    private static final class StickerLoadRecoveryState {
+        final Runnable[] retryRunnables = new Runnable[LOAD_TYPE_COUNT];
+        final String[] keys = new String[LOAD_TYPE_COUNT];
+        final int[] retryCounts = new int[LOAD_TYPE_COUNT];
+        final boolean[] exhausted = new boolean[LOAD_TYPE_COUNT];
+        final Runnable[] firstFrameRunnables = new Runnable[LOAD_TYPE_COUNT];
+        final int[] firstFrameChecks = new int[LOAD_TYPE_COUNT];
+        final int[] firstFrameRecoveries = new int[LOAD_TYPE_COUNT];
+    }
 
     private int param;
     private Object currentParentObject;
@@ -681,12 +695,22 @@ public class ImageReceiver implements NotificationCenter.NotificationCenterDeleg
             mediaKey = uniqKeyPrefix + mediaKey;
         }
 
-        if (mediaKey == null && currentImageKey != null && currentImageKey.equals(imageKey) || currentMediaKey != null && currentMediaKey.equals(mediaKey)) {
+        boolean sameImageRequest = mediaKey == null && currentImageKey != null && currentImageKey.equals(imageKey);
+        boolean sameMediaRequest = currentMediaKey != null && currentMediaKey.equals(mediaKey);
+        if (sameImageRequest || sameMediaRequest) {
             if (delegate != null) {
                 delegate.didSetImage(this, currentImageDrawable != null || currentThumbDrawable != null || staticThumbDrawable != null || currentMediaDrawable != null, currentImageDrawable == null && currentMediaDrawable == null, false);
             }
-            if (!canceledLoading) {
+            boolean retryExhausted = sameImageRequest && isFailedLoadRetryExhausted(imageKey, TYPE_IMAGE)
+                    || sameMediaRequest && isFailedLoadRetryExhausted(mediaKey, TYPE_MEDIA);
+            if (!canceledLoading && !retryExhausted) {
                 return;
+            }
+            if (sameImageRequest) {
+                resetFailedLoadRetry(TYPE_IMAGE);
+            }
+            if (sameMediaRequest) {
+                resetFailedLoadRetry(TYPE_MEDIA);
             }
         }
 
@@ -813,63 +837,249 @@ public class ImageReceiver implements NotificationCenter.NotificationCenterDeleg
         invalidate();
     }
 
-    void retryImageLoad(String key, int type, int guid) {
-        if (!attachedToWindow || key == null || currentGuid != guid || hasImageLoaded()) {
+    void onImageLoadFailed(String key, int type, int guid, boolean allowRetry) {
+        if (!isLoadableType(type) || key == null || currentGuid != guid) {
             return;
         }
-        String currentKey;
-        Drawable currentDrawable;
-        if (type == TYPE_THUMB) {
-            currentKey = currentThumbKey;
-            currentDrawable = currentThumbDrawable;
-        } else if (type == TYPE_MEDIA) {
-            currentKey = currentMediaKey;
-            currentDrawable = currentMediaDrawable;
-        } else {
-            currentKey = currentImageKey;
-            currentDrawable = currentImageDrawable;
-        }
+        String currentKey = getKeyForType(type);
+        Drawable currentDrawable = getDrawableForType(type);
         if (!key.equals(currentKey) || currentDrawable != null) {
             return;
         }
-        if (!key.equals(failedLoadRetryKey)) {
-            resetFailedLoadRetry();
-            failedLoadRetryKey = key;
-            failedLoadRetryCount = 0;
+        StickerLoadRecoveryState state = getStickerLoadRecoveryState();
+        if (!key.equals(state.keys[type])) {
+            resetFailedLoadRetry(type);
+            state.keys[type] = key;
         }
-        if (failedLoadRetryRunnable != null) {
+        if (!allowRetry) {
+            if (state.retryRunnables[type] != null) {
+                AndroidUtilities.cancelRunOnUIThread(state.retryRunnables[type]);
+                state.retryRunnables[type] = null;
+            }
+            state.exhausted[type] = true;
             return;
         }
-        if (failedLoadRetryCount >= 2) {
+        if (!attachedToWindow || state.retryRunnables[type] != null) {
+            return;
+        }
+        if (state.retryCounts[type] >= STICKER_LOAD_RETRY_LIMIT) {
+            state.exhausted[type] = true;
             return;
         }
         final int expectedGuid = currentGuid;
-        final long delay = failedLoadRetryCount++ == 0 ? 250 : 900;
-        failedLoadRetryRunnable = () -> {
-            failedLoadRetryRunnable = null;
-            if (!attachedToWindow || currentGuid != expectedGuid || hasImageLoaded()) {
-                return;
-            }
-            String activeKey = type == TYPE_THUMB ? currentThumbKey : type == TYPE_MEDIA ? currentMediaKey : currentImageKey;
-            if (key.equals(activeKey)) {
-                loadImage();
+        int retryCount = state.retryCounts[type]++;
+        final long delay = retryCount == 0 ? 250 : retryCount == 1 ? 900 : 2500;
+        Runnable retryRunnable = new Runnable() {
+            @Override
+            public void run() {
+                if (stickerLoadRecoveryState != state || state.retryRunnables[type] != this) {
+                    return;
+                }
+                state.retryRunnables[type] = null;
+                if (!attachedToWindow || currentGuid != expectedGuid || getDrawableForType(type) != null) {
+                    return;
+                }
+                String activeKey = getKeyForType(type);
+                if (key.equals(activeKey)) {
+                    loadImage();
+                }
             }
         };
-        AndroidUtilities.runOnUIThread(failedLoadRetryRunnable, delay);
+        state.retryRunnables[type] = retryRunnable;
+        AndroidUtilities.runOnUIThread(retryRunnable, delay);
+    }
+
+    private StickerLoadRecoveryState getStickerLoadRecoveryState() {
+        if (stickerLoadRecoveryState == null) {
+            stickerLoadRecoveryState = new StickerLoadRecoveryState();
+        }
+        return stickerLoadRecoveryState;
     }
 
     private void resetFailedLoadRetry() {
-        if (failedLoadRetryRunnable != null) {
-            AndroidUtilities.cancelRunOnUIThread(failedLoadRetryRunnable);
-            failedLoadRetryRunnable = null;
+        if (stickerLoadRecoveryState == null) {
+            return;
         }
-        failedLoadRetryKey = null;
-        failedLoadRetryCount = 0;
+        for (int type = 0; type < LOAD_TYPE_COUNT; type++) {
+            resetFailedLoadRetry(type);
+        }
+        stickerLoadRecoveryState = null;
     }
 
-    private void completeFailedLoadRetry(String key) {
-        if (key != null && key.equals(failedLoadRetryKey)) {
-            resetFailedLoadRetry();
+    private void resetFailedLoadRetry(int type) {
+        StickerLoadRecoveryState state = stickerLoadRecoveryState;
+        if (!isLoadableType(type) || state == null) {
+            return;
+        }
+        if (state.retryRunnables[type] != null) {
+            AndroidUtilities.cancelRunOnUIThread(state.retryRunnables[type]);
+            state.retryRunnables[type] = null;
+        }
+        state.keys[type] = null;
+        state.retryCounts[type] = 0;
+        state.exhausted[type] = false;
+        cancelStickerFirstFrameCheck(type, true);
+    }
+
+    private boolean isFailedLoadRetryExhausted(String key, int type) {
+        StickerLoadRecoveryState state = stickerLoadRecoveryState;
+        return state != null && isLoadableType(type) && state.exhausted[type] && key != null && key.equals(state.keys[type]);
+    }
+
+    private boolean isLoadableType(int type) {
+        return type == TYPE_IMAGE || type == TYPE_THUMB || type == TYPE_MEDIA;
+    }
+
+    private String getKeyForType(int type) {
+        if (type == TYPE_THUMB) {
+            return currentThumbKey;
+        } else if (type == TYPE_MEDIA) {
+            return currentMediaKey;
+        }
+        return currentImageKey;
+    }
+
+    private Drawable getDrawableForType(int type) {
+        if (type == TYPE_THUMB) {
+            return currentThumbDrawable;
+        } else if (type == TYPE_MEDIA) {
+            return currentMediaDrawable;
+        }
+        return currentImageDrawable;
+    }
+
+    private boolean isStickerRequest(int type) {
+        if (type != TYPE_IMAGE && type != TYPE_MEDIA) {
+            return false;
+        }
+        ImageLocation location = type == TYPE_MEDIA ? currentMediaLocation : currentImageLocation;
+        TLRPC.Document document = location != null ? location.document : null;
+        if (currentParentObject instanceof MessageObject) {
+            MessageObject messageObject = (MessageObject) currentParentObject;
+            if (messageObject.isDice() || !messageObject.isAnyKindOfSticker()) {
+                return false;
+            }
+            if (document == null) {
+                document = messageObject.getDocument();
+            }
+        }
+        return document != null && (MessageObject.isStickerDocument(document)
+                || MessageObject.isAnimatedStickerDocument(document, true)
+                || MessageObject.isVideoSticker(document));
+    }
+
+    private boolean isAnimatedDrawableReady(Drawable drawable) {
+        if (drawable instanceof AnimatedFileDrawable) {
+            return ((AnimatedFileDrawable) drawable).hasBitmap();
+        } else if (drawable instanceof RLottieDrawable) {
+            return ((RLottieDrawable) drawable).hasBitmap();
+        }
+        return true;
+    }
+
+    private void trackStickerFirstFrame(String key, int type, int guid, Drawable drawable) {
+        if (!isStickerRequest(type) || !(drawable instanceof AnimatedFileDrawable || drawable instanceof RLottieDrawable)) {
+            completeFailedLoadRetry(key, type);
+            return;
+        }
+        if (isAnimatedDrawableReady(drawable)) {
+            completeFailedLoadRetry(key, type);
+            return;
+        }
+        StickerLoadRecoveryState state = getStickerLoadRecoveryState();
+        if (!key.equals(state.keys[type])) {
+            resetFailedLoadRetry(type);
+            state.keys[type] = key;
+        }
+        cancelStickerFirstFrameCheck(type, false);
+        state.firstFrameChecks[type] = 0;
+        scheduleStickerFirstFrameCheck(state, key, type, guid, drawable);
+    }
+
+    private void scheduleStickerFirstFrameCheck(StickerLoadRecoveryState state, String key, int type, int guid, Drawable drawable) {
+        Runnable checkRunnable = new Runnable() {
+            @Override
+            public void run() {
+                if (stickerLoadRecoveryState != state || state.firstFrameRunnables[type] != this) {
+                    return;
+                }
+                state.firstFrameRunnables[type] = null;
+                if (!attachedToWindow || currentGuid != guid || !key.equals(getKeyForType(type)) || getDrawableForType(type) != drawable) {
+                    return;
+                }
+                if (isAnimatedDrawableReady(drawable)) {
+                    completeFailedLoadRetry(key, type);
+                    return;
+                }
+                if (!isVisible) {
+                    return;
+                }
+                if (currentOpenedLayerFlags != 0) {
+                    scheduleStickerFirstFrameCheck(state, key, type, guid, drawable);
+                    return;
+                }
+                boolean decoderFailed = drawable instanceof AnimatedFileDrawable
+                        && (((AnimatedFileDrawable) drawable).decoderFailed() || ((AnimatedFileDrawable) drawable).isRecycled());
+                if (decoderFailed || ++state.firstFrameChecks[type] >= STICKER_FIRST_FRAME_CHECK_LIMIT) {
+                    if (state.firstFrameRecoveries[type] < STICKER_FIRST_FRAME_RECOVERY_LIMIT) {
+                        state.firstFrameRecoveries[type]++;
+                        restartStickerFirstFrameLoad(key, type, drawable);
+                    } else {
+                        discardStickerFirstFrameDrawable(key, type, drawable);
+                        state.exhausted[type] = true;
+                    }
+                    return;
+                }
+                scheduleStickerFirstFrameCheck(state, key, type, guid, drawable);
+            }
+        };
+        state.firstFrameRunnables[type] = checkRunnable;
+        AndroidUtilities.runOnUIThread(checkRunnable, STICKER_FIRST_FRAME_CHECK_DELAY);
+    }
+
+    private void restartStickerFirstFrameLoad(String key, int type, Drawable drawable) {
+        cancelStickerFirstFrameCheck(type, false);
+        StickerLoadRecoveryState state = stickerLoadRecoveryState;
+        if (state != null) {
+            state.firstFrameChecks[type] = 0;
+        }
+        discardStickerFirstFrameDrawable(key, type, drawable);
+        if (attachedToWindow) {
+            loadImage();
+        }
+    }
+
+    private void discardStickerFirstFrameDrawable(String key, int type, Drawable drawable) {
+        if (drawable instanceof BitmapDrawable) {
+            ImageLoader.getInstance().removeAnimatedImage(key, (BitmapDrawable) drawable);
+        }
+        recycleBitmap(null, type);
+        if (type == TYPE_MEDIA) {
+            currentMediaKey = key;
+        } else {
+            currentImageKey = key;
+        }
+    }
+
+    private void cancelStickerFirstFrameCheck(int type, boolean resetRecoveries) {
+        StickerLoadRecoveryState state = stickerLoadRecoveryState;
+        if (!isLoadableType(type) || state == null) {
+            return;
+        }
+        if (state.firstFrameRunnables[type] != null) {
+            AndroidUtilities.cancelRunOnUIThread(state.firstFrameRunnables[type]);
+            state.firstFrameRunnables[type] = null;
+        }
+        state.firstFrameChecks[type] = 0;
+        if (resetRecoveries) {
+            state.firstFrameRecoveries[type] = 0;
+        }
+    }
+
+    private void completeFailedLoadRetry(String key, int type) {
+        StickerLoadRecoveryState state = stickerLoadRecoveryState;
+        if (state != null && isLoadableType(type) && key != null && key.equals(state.keys[type])) {
+            resetFailedLoadRetry(type);
         }
     }
 
@@ -2004,6 +2214,14 @@ public class ImageReceiver implements NotificationCenter.NotificationCenterDeleg
             if (animation != null) {
                 animation.setRoundRadius(roundRadius);
             }
+            if ((animation != null || lottieDrawable != null) && !animationNotReady && !drawInBackground) {
+                Drawable readyDrawable = animation != null ? animation : lottieDrawable;
+                if (readyDrawable == this.currentMediaDrawable) {
+                    completeFailedLoadRetry(currentMediaKey, TYPE_MEDIA);
+                } else if (readyDrawable == this.currentImageDrawable) {
+                    completeFailedLoadRetry(currentImageKey, TYPE_IMAGE);
+                }
+            }
             if ((animation != null || lottieDrawable != null) && !animationNotReady && !animationReadySent && !drawInBackground) {
                 animationReadySent = true;
                 if (delegate != null) {
@@ -2332,11 +2550,23 @@ public class ImageReceiver implements NotificationCenter.NotificationCenterDeleg
             return;
         }
         isVisible = value;
+        if (value) {
+            resumeStickerFirstFrameTracking(TYPE_IMAGE);
+            resumeStickerFirstFrameTracking(TYPE_MEDIA);
+        }
         if (invalidate) {
             invalidate();
             if (visibleInvalidate != null) {
                 visibleInvalidate.run();
             }
+        }
+    }
+
+    private void resumeStickerFirstFrameTracking(int type) {
+        String key = getKeyForType(type);
+        Drawable drawable = getDrawableForType(type);
+        if (key != null && drawable != null && !isAnimatedDrawableReady(drawable) && isStickerRequest(type)) {
+            trackStickerFirstFrame(key, type, currentGuid, drawable);
         }
     }
 
@@ -3096,7 +3326,6 @@ public class ImageReceiver implements NotificationCenter.NotificationCenterDeleg
                 previousAlpha = 1f;
             }
         }
-        completeFailedLoadRetry(key);
         if (delegate != null) {
             delegate.didSetImage(this, currentImageDrawable != null || currentThumbDrawable != null || staticThumbDrawable != null || currentMediaDrawable != null, currentImageDrawable == null && currentMediaDrawable == null, memCache);
         }
@@ -3134,6 +3363,7 @@ public class ImageReceiver implements NotificationCenter.NotificationCenterDeleg
             fileDrawable.setAllowDrawFramesWhileCacheGenerating(allowDrawWhileCacheGenerating);
             animationReadySent = false;
         }
+        trackStickerFirstFrame(key, type, guid, drawable);
         invalidate();
         return true;
     }
