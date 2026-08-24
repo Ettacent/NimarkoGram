@@ -27,6 +27,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import app.nimarkogram.messenger.NimarkoConfig;
+import ru.noties.jlatexmath.JLatexMathAndroid;
 import ru.noties.jlatexmath.JLatexMathDrawable;
 
 public class NimarkoLatexHelper {
@@ -50,6 +51,8 @@ public class NimarkoLatexHelper {
 
     private static final Object RENDER_LOCK = new Object();
     private static final LruCache<String, Bitmap> RENDER_CACHE = new LruCache<>(48);
+    private static volatile boolean latexInitialized;
+    private static volatile boolean latexUnavailable;
 
     public static CharSequence processLatex(CharSequence text, float textSize, int maxTextWidth, boolean preview) {
         if (!NimarkoConfig.latexRenderingEnabled) {
@@ -226,6 +229,7 @@ public class NimarkoLatexHelper {
     }
 
     private static JLatexMathDrawable buildDrawable(String formula, float size) {
+        if (!ensureLatexInitialized()) return null;
         try {
             synchronized (RENDER_LOCK) {
                 return JLatexMathDrawable.builder(formula)
@@ -234,8 +238,35 @@ public class NimarkoLatexHelper {
                         .padding(2)
                         .build();
             }
-        } catch (Exception e) {
+        } catch (LinkageError e) {
+            latexUnavailable = true;
+            FileLog.e("NimarkoLatex: renderer unavailable", e);
             return null;
+        } catch (RuntimeException e) {
+            FileLog.e("NimarkoLatex: formula render failed", e);
+            return null;
+        }
+    }
+
+    private static boolean ensureLatexInitialized() {
+        if (latexInitialized) return true;
+        if (latexUnavailable) return false;
+        synchronized (RENDER_LOCK) {
+            if (latexInitialized) return true;
+            if (latexUnavailable) return false;
+            try {
+                if (ApplicationLoader.applicationContext == null) return false;
+                JLatexMathAndroid.init(ApplicationLoader.applicationContext);
+                latexInitialized = true;
+                return true;
+            } catch (LinkageError e) {
+                latexUnavailable = true;
+                FileLog.e("NimarkoLatex: initialization failed", e);
+                return false;
+            } catch (RuntimeException e) {
+                FileLog.e("NimarkoLatex: initialization deferred", e);
+                return false;
+            }
         }
     }
 

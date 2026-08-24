@@ -82,6 +82,10 @@ public class ApplicationLoader extends Application {
     protected void attachBaseContext(Context base) {
         super.attachBaseContext(base);
         try {
+            ru.noties.jlatexmath.JLatexMathAndroid.init(base);
+        } catch (Throwable ignored) {
+        }
+        try {
             app.nimarkogram.messenger.NimarkoCrashHandler.install(base);
         } catch (Throwable ignored) {
         }
