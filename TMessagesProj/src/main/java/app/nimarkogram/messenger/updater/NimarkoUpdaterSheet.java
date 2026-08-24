@@ -36,6 +36,7 @@ import org.telegram.messenger.FileLog;
 import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.NotificationCenter;
 import org.telegram.messenger.R;
+import org.telegram.messenger.SharedConfig;
 import org.telegram.messenger.Utilities;
 import org.telegram.messenger.browser.Browser;
 import org.telegram.ui.ActionBar.BaseFragment;
@@ -49,6 +50,7 @@ import org.telegram.ui.Components.BulletinFactory;
 import org.telegram.ui.Components.CubicBezierInterpolator;
 import org.telegram.ui.Components.LayoutHelper;
 import org.telegram.ui.Components.LinkSpanDrawable;
+import org.telegram.ui.Components.RadialProgressView;
 import org.telegram.ui.Components.StickerImageView;
 import org.telegram.ui.Components.URLSpanNoUnderline;
 import org.telegram.ui.Stories.recorder.ButtonWithCounterView;
@@ -66,6 +68,9 @@ public class NimarkoUpdaterSheet extends BottomSheet implements NimarkoUpdater.D
     private boolean bindingDetached;
     private long downloadBindingToken;
     private ButtonWithCounterView downloadButton;
+    private int changelogGeneration;
+    private LinkSpanDrawable.LinksTextView changelogView;
+    private RadialProgressView changelogProgress;
 
     public NimarkoUpdaterSheet(Context context, Theme.ResourcesProvider resourcesProvider, boolean available, NimarkoUpdater.Update update) {
         super(context, false, resourcesProvider);
@@ -142,7 +147,12 @@ public class NimarkoUpdaterSheet extends BottomSheet implements NimarkoUpdater.D
             changelogHeader.setText(getString(R.string.UP_Changelog));
             contentLayout.addView(changelogHeader);
 
-            LinkSpanDrawable.LinksTextView changelogView = new LinkSpanDrawable.LinksTextView(context, resourcesProvider);
+            FrameLayout changelogContainer = new FrameLayout(context);
+            changelogContainer.setMinimumHeight(AndroidUtilities.dp(72));
+            contentLayout.addView(changelogContainer,
+                    LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
+
+            changelogView = new LinkSpanDrawable.LinksTextView(context, resourcesProvider);
             int textColor = Theme.getColor(Theme.key_windowBackgroundWhiteBlackText, resourcesProvider);
             int linkColor = Theme.getColor(Theme.key_windowBackgroundWhiteLinkText, resourcesProvider);
             changelogView.setTextColor(textColor);
@@ -154,9 +164,23 @@ public class NimarkoUpdaterSheet extends BottomSheet implements NimarkoUpdater.D
             changelogView.setMovementMethod(new AndroidUtilities.LinkMovementMethodMy());
             changelogView.setPadding(AndroidUtilities.dp(21), 0, AndroidUtilities.dp(21), AndroidUtilities.dp(16));
             String markdown = normalizeMarkdown(update.changelog);
-            CharSequence formatted = CHANGELOG_CACHE.get(new ChangelogCacheKey(markdown, ChangelogStyle.from(resourcesProvider)));
-            changelogView.setText(formatted != null ? formatted : markdown);
-            contentLayout.addView(changelogView, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
+            ChangelogStyle style = ChangelogStyle.from(resourcesProvider);
+            CharSequence formatted = CHANGELOG_CACHE.get(new ChangelogCacheKey(markdown, style));
+            if (formatted != null) {
+                changelogView.setText(formatted);
+            } else {
+                changelogView.setVisibility(View.INVISIBLE);
+                changelogProgress = new RadialProgressView(context, resourcesProvider);
+                changelogProgress.setSize(AndroidUtilities.dp(20));
+                changelogProgress.setUseSelfAlpha(true);
+                changelogContainer.addView(changelogProgress,
+                        LayoutHelper.createFrame(32, 32, Gravity.CENTER));
+            }
+            changelogContainer.addView(changelogView,
+                    LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, Gravity.TOP));
+            if (formatted == null) {
+                scheduleChangelogFormatting(rootLayout, context, markdown, style);
+            }
         }
 
         LinearLayout footerLayout = new LinearLayout(context);
@@ -251,10 +275,76 @@ public class NimarkoUpdaterSheet extends BottomSheet implements NimarkoUpdater.D
         setCustomView(rootLayout);
         setOnDismissListener(() -> {
             bindingDetached = true;
+            changelogGeneration++;
+            if (changelogView != null) changelogView.animate().cancel();
+            if (changelogProgress != null) changelogProgress.animate().cancel();
             long token = downloadBindingToken;
             downloadBindingToken = 0L;
             if (token != 0L) NimarkoUpdater.unbindDownloadUi(token);
         });
+    }
+
+    private void scheduleChangelogFormatting(View sheetRoot, Context context, String markdown, ChangelogStyle style) {
+        int generation = ++changelogGeneration;
+        Context appContext = context.getApplicationContext() != null
+                ? context.getApplicationContext() : context;
+        WeakReference<NimarkoUpdaterSheet> sheetRef = new WeakReference<>(this);
+        sheetRoot.postOnAnimation(() -> sheetRoot.postOnAnimation(() -> {
+            NimarkoUpdaterSheet sheet = sheetRef.get();
+            if (sheet == null || sheet.bindingDetached || generation != sheet.changelogGeneration) return;
+            Utilities.globalQueue.postRunnable(() -> {
+                CharSequence formatted = formatChangelog(appContext, style, markdown);
+                AndroidUtilities.runOnUIThread(() -> {
+                    NimarkoUpdaterSheet current = sheetRef.get();
+                    if (current == null || current.bindingDetached
+                            || generation != current.changelogGeneration) {
+                        return;
+                    }
+                    current.showFormattedChangelog(formatted, generation);
+                });
+            });
+        }));
+    }
+
+    private void showFormattedChangelog(CharSequence formatted, int generation) {
+        if (changelogView == null || bindingDetached || generation != changelogGeneration) return;
+        changelogView.setText(formatted);
+        changelogView.setAlpha(0f);
+        changelogView.setTranslationY(AndroidUtilities.dp(3));
+        changelogView.setVisibility(View.VISIBLE);
+        changelogView.postOnAnimation(() -> {
+            if (bindingDetached || generation != changelogGeneration || changelogView == null) return;
+            if (!SharedConfig.animationsEnabled()) {
+                changelogView.setAlpha(1f);
+                changelogView.setTranslationY(0f);
+                hideChangelogProgress(false);
+                return;
+            }
+            changelogView.animate()
+                    .alpha(1f)
+                    .translationY(0f)
+                    .setDuration(220)
+                    .setInterpolator(CubicBezierInterpolator.EASE_OUT_QUINT)
+                    .start();
+            hideChangelogProgress(true);
+        });
+    }
+
+    private void hideChangelogProgress(boolean animated) {
+        RadialProgressView progress = changelogProgress;
+        changelogProgress = null;
+        if (progress == null) return;
+        progress.animate().cancel();
+        if (!animated) {
+            progress.setVisibility(View.GONE);
+            return;
+        }
+        progress.animate()
+                .alpha(0f)
+                .setDuration(140)
+                .setInterpolator(CubicBezierInterpolator.DEFAULT)
+                .withEndAction(() -> progress.setVisibility(View.GONE))
+                .start();
     }
 
     private static CharSequence formatChangelog(Context context, ChangelogStyle style, String markdown) {
@@ -489,35 +579,7 @@ public class NimarkoUpdaterSheet extends BottomSheet implements NimarkoUpdater.D
         if (fragment == null || fragment.getParentActivity() == null || fragment.getContext() == null) {
             return;
         }
-        if (available && update != null && !TextUtils.isEmpty(update.changelog)) {
-            showWhenChangelogReady(fragment, update);
-            return;
-        }
         showPreparedAlert(fragment, available, update);
-    }
-
-    private static void showWhenChangelogReady(BaseFragment fragment, NimarkoUpdater.Update update) {
-        String markdown = normalizeMarkdown(update.changelog);
-        ChangelogStyle style = ChangelogStyle.from(fragment.getResourceProvider());
-        ChangelogCacheKey key = new ChangelogCacheKey(markdown, style);
-        if (CHANGELOG_CACHE.get(key) != null) {
-            showPreparedAlert(fragment, true, update);
-            return;
-        }
-        WeakReference<BaseFragment> fragmentRef = new WeakReference<>(fragment);
-        Context context = fragment.getContext();
-        Context appContext = context.getApplicationContext() != null ? context.getApplicationContext() : context;
-        Utilities.globalQueue.postRunnable(() -> {
-            formatChangelog(appContext, style, markdown);
-            AndroidUtilities.runOnUIThread(() -> {
-                BaseFragment current = fragmentRef.get();
-                if (current == null || current.isFinished
-                        || current.getParentActivity() == null || current.getContext() == null) {
-                    return;
-                }
-                showWhenChangelogReady(current, update);
-            });
-        });
     }
 
     private static void showPreparedAlert(BaseFragment fragment, boolean available, NimarkoUpdater.Update update) {
