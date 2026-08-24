@@ -240,6 +240,11 @@ public class UniversalAdapter extends AdapterWithDiffUtils {
         }
         boolean fromItemHadDivider = hasDivider(fromPosition);
         boolean toItemHadDivider = hasDivider(toPosition);
+        // notifyItemMoved has MOVE semantics (remove at from, insert at to), not swap semantics.
+        // ItemTouchHelper.chooseDropTarget can return a non-adjacent target (especially while
+        // auto-scrolling at an edge, when several items pass under the finger per frame), so a
+        // plain items.set()/set() swap desyncs the adapter data from RecyclerView's bookkeeping
+        // -> duplicated/garbled rows. Move the element to match the notification for any distance.
         UItem fromItem = items.remove(fromPosition);
         items.add(toPosition, fromItem);
         notifyItemMoved(fromPosition, toPosition);
@@ -397,6 +402,9 @@ public class UniversalAdapter extends AdapterWithDiffUtils {
                 } else {
                     view = new HeaderCell(context, resourcesProvider);
                 }
+                // NimarkoGram: keep section headers OUT of the rounded card — exteraGram-style. The section
+                // predicate (RecyclerListView.setSections) excludes TAG_NOT_SECTION views, so the header now
+                // floats as a plain label ABOVE the card instead of sitting inside it as a separate "облачко".
                 view.setTag(RecyclerListView.TAG_NOT_SECTION);
                 break;
             case VIEW_TYPE_ANIMATED_HEADER:
@@ -691,6 +699,8 @@ public class UniversalAdapter extends AdapterWithDiffUtils {
                         cell.setTextAndValueAndIcon(item.text, item.textValue, item.iconResId, divider);
                     }
                 }
+                // NimarkoGram: re-style the leading icon as a rounded gradient badge when requested. The text
+                // was already set above; setColorfulIcon only touches the imageView (badge + white glyph).
                 if (item.colorfulIcon && item.iconResId != 0) {
                     cell.setColorfulIcon(item.iconColorTop, item.iconColorBottom, item.iconResId);
                 }
@@ -717,16 +727,15 @@ public class UniversalAdapter extends AdapterWithDiffUtils {
                 break;
             case VIEW_TYPE_RADIO: {
                 DialogRadioCell radioCell = (DialogRadioCell) holder.itemView;
-                if (radioCell.itemId == item.id) {
-                    radioCell.setChecked(item.checked, true);
-                    radioCell.setEnabled(item.enabled, true);
-                } else {
-                    radioCell.setEnabled(item.enabled, false);
-                }
+                final boolean sameRadioItem = radioCell.itemId == item.id;
                 if (TextUtils.isEmpty(item.textValue)) {
                     radioCell.setText(item.text, item.checked, divider);
                 } else {
                     radioCell.setTextAndValue(item.text, item.textValue, item.checked, divider);
+                }
+                radioCell.setEnabled(item.enabled, sameRadioItem);
+                if (sameRadioItem) {
+                    radioCell.setChecked(item.checked, true);
                 }
                 radioCell.itemId = item.id;
                 break;
@@ -739,11 +748,18 @@ public class UniversalAdapter extends AdapterWithDiffUtils {
             }
             case VIEW_TYPE_TEXT_CHECK:
                 NotificationsCheckCell checkCell1 = (NotificationsCheckCell) holder.itemView;
+                // Parity with Cherrygram: force multiline layout regardless of explicit \n in subtext.
                 final boolean multiline = true;
+                checkCell1.setAnimationsEnabled(checkCell1.itemId == item.id);
                 checkCell1.setTextAndValueAndCheck(item.text, item.subtext, item.checked, 0, multiline, divider);
+                checkCell1.itemId = item.id;
                 break;
             case VIEW_TYPE_ICON_TEXT_CHECK:
-                ((NotificationsCheckCell) holder.itemView).setTextAndValueAndCheck(item.text, item.subtext, item.checked, divider);
+                // TODO: image
+                NotificationsCheckCell iconCheckCell = (NotificationsCheckCell) holder.itemView;
+                iconCheckCell.setAnimationsEnabled(iconCheckCell.itemId == item.id);
+                iconCheckCell.setTextAndValueAndCheck(item.text, item.subtext, item.checked, divider);
+                iconCheckCell.itemId = item.id;
                 break;
             case VIEW_TYPE_SHADOW_COLLAPSE_BUTTON:
             case VIEW_TYPE_SHADOW:
@@ -758,7 +774,7 @@ public class UniversalAdapter extends AdapterWithDiffUtils {
                         cell2.setFixedSize(0);
                         cell2.setText(item.text);
                     }
-                    if (item.accent) {
+                    if (item.accent) { // asCenterShadow
                         cell2.setTextGravity(Gravity.CENTER);
                         cell2.getTextView().setWidth(Math.min(HintView2.cutInFancyHalf(cell2.getText(), cell2.getTextView().getPaint()), AndroidUtilities.displaySize.x - dp(60)));
                         cell2.getTextView().setPadding(0, dp(17), 0, dp(17));
@@ -944,7 +960,7 @@ public class UniversalAdapter extends AdapterWithDiffUtils {
                 ProfileSearchCell profileCell = (ProfileSearchCell) holder.itemView;
                 Object object = item.object;
                 CharSequence s = "";
-                if (item.accent && object instanceof TLRPC.User && ((TLRPC.User) object).bot_active_users != 0) {
+                if (item.accent && object instanceof TLRPC.User && ((TLRPC.User) object).bot_active_users != 0) { // show bot mau
                     TLRPC.User user = (TLRPC.User) object;
                     if (user.bot_active_users != 0) {
                         s = LocaleController.formatPluralStringSpaced("BotUsers", user.bot_active_users);
@@ -981,6 +997,7 @@ public class UniversalAdapter extends AdapterWithDiffUtils {
                     title = chat.title;
                 } else if (object instanceof TLRPC.User) {
                     TLRPC.User user = (TLRPC.User) object;
+                    // add status text
                     title = UserObject.getUserName(user);
                 }
                 profileCell.allowBotOpenButton(item.locked, item.object2 instanceof Utilities.Callback ? (Utilities.Callback) item.object2 : null);
@@ -1029,6 +1046,8 @@ public class UniversalAdapter extends AdapterWithDiffUtils {
             case VIEW_TYPE_SWITCH:
             case VIEW_TYPE_EXPANDABLE_SWITCH:
                 TextCheckCell2 switchCell = (TextCheckCell2) holder.itemView;
+                // intValue controls the icon drawn inside the switch. It must
+                // not also turn every ordinary OFF switch red/pink.
                 switchCell.getCheckBox().setColors(item.red ? Theme.key_fill_RedNormal : Theme.key_switchTrack,
                     Theme.key_switchTrackChecked, Theme.key_windowBackgroundWhite, Theme.key_windowBackgroundWhite);
                 switchCell.getCheckBox().setDrawIconType(item.intValue);

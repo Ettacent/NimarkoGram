@@ -253,6 +253,12 @@ public class AndroidUtilities {
     public final static int REPLACING_TAG_TYPE_LINK_NBSP = 3;
     public final static int REPLACING_TAG_TYPE_UNDERLINE = 4;
 
+    /** Roboto Regular compatibility token. This source tree does not bundle rregular.ttf;
+     *  FontHelper handles the token explicitly and falls back to weight-400 sans-serif in
+     *  both system-font and bundled-font modes. The previous value "fonts/rmedium.ttf" caused it to match the
+     *  ROBOTO_MEDIUM branch and silently render every TYPEFACE_ROBOTO_REGULAR
+     *  caller (plugin cells, install bottom-sheet, safe-mode dialog, ...) in
+     *  sans-serif-medium — visibly bolder than upstream. */
     public final static String TYPEFACE_ROBOTO_REGULAR = "fonts/rregular.ttf";
     public final static String TYPEFACE_ROBOTO_MEDIUM = "fonts/rmedium.ttf";
     public final static String TYPEFACE_ROBOTO_EXTRA_BOLD = "fonts/rextrabold.ttf";
@@ -382,8 +388,8 @@ public class AndroidUtilities {
                             + "\\,\\;\\?\\&\\=]|(?:\\%[a-fA-F0-9]{2})){1,64}(?:\\:(?:[a-zA-Z0-9\\$\\-\\_"
                             + "\\.\\+\\!\\*\\'\\(\\)\\,\\;\\?\\&\\=]|(?:\\%[a-fA-F0-9]{2})){1,25})?\\@)?)?"
                             + "(?:" + DOMAIN_NAME + ")"
-                            + "(?:\\:\\d{1,5})?)"
-                            + "(\\/(?:(?:[" + GOOD_IRI_CHAR + "\\;\\/\\?\\:\\@\\&\\=\\#\\~"
+                            + "(?:\\:\\d{1,5})?)" // plus option port number
+                            + "(\\/(?:(?:[" + GOOD_IRI_CHAR + "\\;\\/\\?\\:\\@\\&\\=\\#\\~"  // plus option query params
                             + "\\-\\.\\+\\!\\*\\'\\(\\)\\,\\_])|(?:\\%[a-fA-F0-9]{2}))*)?"
                             + "(?:\\b|$)");
         } catch (Exception e) {
@@ -588,7 +594,7 @@ public class AndroidUtilities {
             index = startIndex;
         }
         SpannableStringBuilder spannableStringBuilder = new SpannableStringBuilder(str);
-        if ( index >= 0) {
+        if (/*runnable != null &&*/ index >= 0) {
             if (type == REPLACING_TAG_TYPE_LINK_NBSP) {
                 spannableStringBuilder.replace(index, index + len, AndroidUtilities.replaceMultipleCharSequence(" ", spannableStringBuilder.subSequence(index, index + len), " "));
             }
@@ -822,6 +828,9 @@ public class AndroidUtilities {
             span.useLinkPaintColor = link;
         }
 
+//        SpannableString leftArrow = new SpannableString("< ");
+//        leftArrow.setSpan(span, 0, 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+//        text = AndroidUtilities.replaceMultipleCharSequence("< ", text, leftArrow);
 
         SpannableString leftArrow = new SpannableString("<");
         leftArrow.setSpan(span, 0, 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
@@ -832,6 +841,13 @@ public class AndroidUtilities {
 
     public static void recycleBitmaps(List<Bitmap> bitmapToRecycle) {
         if (Build.VERSION.SDK_INT <= 23) {
+            // cause to crash:
+            // /system/lib/libskia.so (SkPixelRef::unlockPixels()+3)
+            // /system/lib/libskia.so (SkBitmap::freePixels()+14)
+            // /system/lib/libskia.so (SkBitmap::setPixelRef(SkPixelRef*, int, int)+50)
+            // /system/lib/libhwui.so (android::uirenderer::ResourceCache::recycleLocked(SkBitmap*)+30)
+            // /system/lib/libhwui.so (android::uirenderer::ResourceCache::recycle(SkBitmap*)+20)
+            // gc recycle it automatically
             return;
         }
         if (bitmapToRecycle != null && !bitmapToRecycle.isEmpty()) {
@@ -929,6 +945,15 @@ public class AndroidUtilities {
         removeFromParent(child, null);
     }
 
+    /**
+     * Removes {@code child} from its current parent and invokes
+     * {@code afterRemoval} once that parent no longer owns it.
+     *
+     * <p>Direct children of a window root must be detached after the current
+     * traversal on recent Android versions. Callers which intend to re-parent
+     * such a view must therefore do so from this callback instead of assuming
+     * that removal is always synchronous.</p>
+     */
     public static void removeFromParent(View child, Runnable afterRemoval) {
         if (child == null) {
             if (afterRemoval != null) {
@@ -954,6 +979,23 @@ public class AndroidUtilities {
         }
         ViewGroup parent = (ViewGroup) viewParent;
 
+        /*
+         * A window overlay is a direct child of the root/DecorView. Removing
+         * one anywhere in the current traversal can invalidate FrameLayout's
+         * cached child count, even when isInLayout() is already false by the
+         * time teardown reaches us. Hide it immediately so it cannot draw or
+         * intercept input, then cross both the next Choreographer frame and a
+         * subsequent main-loop post before detaching it. Keep ordinary
+         * re-parenting synchronous.
+         */
+        /*
+         * getRootView() also returns the topmost view of a completely detached
+         * hierarchy. Bottom sheets build such hierarchies off-window and then
+         * synchronously re-parent their RecyclerView/ActionBar children. Treating
+         * those containers as DecorView postpones removal and makes the immediate
+         * addView fail with "child already has a parent". A real window root is
+         * attached; an off-window construction root is not.
+         */
         final boolean isDirectWindowChild =
                 parent == child.getRootView() && parent.isAttachedToWindow();
         if (isDirectWindowChild) {
@@ -964,6 +1006,7 @@ public class AndroidUtilities {
                     parent.removeView(child);
                 }
                 if (afterRemoval != null && child.getParent() != parent) {
+                    // GONE was only a traversal guard, not persistent state.
                     child.setVisibility(previousVisibility);
                     afterRemoval.run();
                 }
@@ -972,6 +1015,8 @@ public class AndroidUtilities {
                 Choreographer.getInstance().postFrameCallback(
                         frameTimeNanos -> parent.post(removeIfStillOwned));
             } catch (Throwable t) {
+                // Choreographer is available on the main looper, but retain a
+                // frame-boundary fallback for unusual test/window contexts.
                 parent.postOnAnimation(() -> parent.post(removeIfStillOwned));
             }
         } else {
@@ -1076,6 +1121,7 @@ public class AndroidUtilities {
         }
         View currentView = view;
         while (currentView != parent) {
+            //fix strange offset inside view pager
             if (!(currentView.getParent() instanceof ViewPager)) {
                 pointPosition[0] += currentView.getX();
                 pointPosition[1] += currentView.getY();
@@ -1118,6 +1164,8 @@ public class AndroidUtilities {
                 countDownLatch.await();
                 break;
             } catch (InterruptedException e) {
+                // PixelCopy cannot be cancelled. Keep ownership of the bitmap
+                // until its callback completes, then restore the interrupt bit.
                 interrupted = true;
             }
         }
@@ -1354,6 +1402,7 @@ public class AndroidUtilities {
             s = new SpannableStringBuilder(s.toString().replace('─', ' '));
         }
         if (!TextUtils.isEmpty(s) && TextUtils.lastIndexOf(s, '_') == s.length() - 1) {
+            //fix infinity loop regex
             SpannableStringBuilder spannableStringBuilder = new SpannableStringBuilder(s.toString());
             s = spannableStringBuilder.replace(s.length() - 1, s.length(), "a");
         }
@@ -1388,12 +1437,12 @@ public class AndroidUtilities {
         return true;
     };
 
-    @Deprecated
+    @Deprecated // use addLinksSafe
     public static boolean addLinks(Spannable text, int mask) {
         return addLinks(text, mask, false);
     }
 
-    @Deprecated
+    @Deprecated // use addLinksSafe
     public static boolean addLinks(Spannable text, int mask, boolean internalOnly) {
         return addLinks(text, mask, internalOnly, true);
     }
@@ -1447,7 +1496,7 @@ public class AndroidUtilities {
         return success;
     }
 
-    @Deprecated
+    @Deprecated // use addLinksSafe
     public static boolean addLinks(Spannable text, int mask, boolean internalOnly, boolean removeOldReplacements) {
         if (text == null || containsUnsupportedCharacters(text.toString()) || mask == 0) {
             return false;
@@ -1538,6 +1587,14 @@ public class AndroidUtilities {
         }
     }
 
+    /**
+     * True if this IllegalArgumentException is the known draw-time ColorSpace crash — a Paint carrying a
+     * corrupted 64-bit ColorLong (invalid color-space id) fed into {@code Paint.setColor(long)} during
+     * {@code TextView.onDraw}, throwing {@code ColorSpace.get("Invalid ID: N")}. Two sources: broken wide-gamut
+     * ROMs, and a plugin hook that returns a bad ColorLong from a color/theme method. Custom root ViewGroups
+     * wrap {@code super.dispatchDraw}/{@code onDraw} and swallow ONLY this (skip a bad frame) — rethrow anything
+     * else so real bugs are never masked. Shared so every guarded surface (main frame, dialogs) uses one check.
+     */
     public static boolean isColorSpaceDrawCrash(IllegalArgumentException e) {
         if (e == null) {
             return false;
@@ -1951,6 +2008,7 @@ public class AndroidUtilities {
             if (pathString == null) {
                 return false;
             }
+            // Allow sending VoIP logs from cache/voip_logs
             if (pathString.matches(Pattern.quote(new File(ApplicationLoader.applicationContext.getCacheDir(), "voip_logs").getAbsolutePath()) + "/\\d+\\.log")) {
                 return false;
             }
@@ -2005,6 +2063,7 @@ public class AndroidUtilities {
                 }
             } catch (Exception e) {
                 pathString.replace("/./", "/");
+                //igonre
             }
         }
         if (pathString.endsWith(".attheme")) {
@@ -2493,6 +2552,11 @@ public class AndroidUtilities {
     }
 
     public static Typeface getTypeface(String assetPath) {
+        // NimarkoGram: mirror Cherrygram's AndroidUtilities.getTypeface verbatim —
+        // delegate to FontHelper so the user's "systemFonts" preference picks
+        // sans-serif-medium (weight 500) instead of the previous inline path
+        // that promoted every "medium" asset to weight 700 (visibly heavier
+        // than upstream Telegram and Cherrygram).
         synchronized (typefaceCache) {
             Typeface cached = typefaceCache.get(assetPath);
             if (cached != null) return cached;
@@ -2754,6 +2818,15 @@ public class AndroidUtilities {
 
                 FileLog.d("check dir " + (file == null ? null : file.getPath()) + " ");
                 if (file != null && (file.exists() || file.mkdirs()) && file.canWrite()) {
+//                    boolean canWrite = true;
+//                    try {
+//                        AndroidUtilities.createEmptyFile(new File(file, ".nomedia"));
+//                    } catch (Exception e) {
+//                        canWrite = false;
+//                    }
+//                    if (canWrite) {
+//                        return file;
+//                    }
                     return file;
                 } else if (file != null) {
                     FileLog.d("check dir file exist " + file.exists() + " can write " + file.canWrite());
@@ -2844,6 +2917,7 @@ public class AndroidUtilities {
             if (configuration == null) {
                 configuration = context.getResources().getConfiguration();
             }
+            // usingHardwareInput = false; just for test
             usingHardwareInput = configuration.keyboard != Configuration.KEYBOARD_NOKEYS && configuration.hardKeyboardHidden == Configuration.HARDKEYBOARDHIDDEN_NO;
             WindowManager manager = (WindowManager) context.getSystemService(Context.WINDOW_SERVICE);
             if (manager != null) {
@@ -3097,6 +3171,12 @@ public class AndroidUtilities {
     }
 
     public static boolean isTabletForce() {
+        // NimarkoGram: tabletMode override flows through here so every caller
+        // (cache, LaunchActivity.isTabletForce() checks, getWasTablet comparisons)
+        // sees the user's choice. Mirrors CherryGram's design.
+        //   TABLET_AUTO    = 0 (use OS resource flag)
+        //   TABLET_ENABLE  = 1 (force tablet)
+        //   TABLET_DISABLE = 2 (force phone)
         int mode = app.nimarkogram.messenger.NimarkoConfig.tabletMode;
         if (mode != app.nimarkogram.messenger.NimarkoConfig.TABLET_AUTO) {
             return mode == app.nimarkogram.messenger.NimarkoConfig.TABLET_ENABLE;
@@ -3128,7 +3208,7 @@ public class AndroidUtilities {
     }
 
     public static boolean isTablet() {
-        return isTabletInternal() ;
+        return isTabletInternal() /*&& !SharedConfig.forceDisableTabletMode*/;
     }
 
     public static boolean isFold() {
@@ -3185,6 +3265,18 @@ public class AndroidUtilities {
         }
     }
 
+    /*public static void clearCursorDrawable(EditText editText) {
+        if (editText == null) {
+            return;
+        }
+        try {
+            Field mCursorDrawableRes = TextView.class.getDeclaredField("mCursorDrawableRes");
+            mCursorDrawableRes.setAccessible(true);
+            mCursorDrawableRes.setInt(editText, 0);
+        } catch (Exception e) {
+            FileLog.e(e);
+        }
+    }*/
 
     private static Runnable unregisterRunnable;
     private static boolean hasCallPermissions = Build.VERSION.SDK_INT >= 23;
@@ -3661,6 +3753,8 @@ public class AndroidUtilities {
         if (view == null) {
             return;
         }
+        // NimarkoGram: springAnimation is now an int enum. When user picks "Classic" (1)
+        // we skip the spring shake and fall back to a lightweight callback-only path.
         if (!app.nimarkogram.messenger.NimarkoConfig.isSpringAnimationEnabled()) {
             if (endCallback != null) endCallback.run();
             return;
@@ -3690,6 +3784,54 @@ public class AndroidUtilities {
         springAnimation.start();
     }
 
+    /*public static String ellipsize(String text, int maxLines, int maxWidth, TextPaint paint) {
+        if (text == null || paint == null) {
+            return null;
+        }
+        int count;
+        int offset = 0;
+        StringBuilder result = null;
+        TextView
+        for (int a = 0; a < maxLines; a++) {
+            count = paint.breakText(text, true, maxWidth, null);
+            if (a != maxLines - 1) {
+                if (result == null) {
+                    result = new StringBuilder(count * maxLines + 1);
+                }
+                boolean foundSpace = false;
+                for (int c = count - 1; c >= offset; c--) {
+                    if (text.charAt(c) == ' ') {
+                        foundSpace = true;
+                        result.append(text.substring(offset, c - 1));
+                        offset = c - 1;
+                    }
+                }
+                if (!foundSpace) {
+                    offset = count;
+                }
+                text = text.substring(0, offset);
+            } else if (maxLines == 1) {
+                return text.substring(0, count);
+            } else {
+                result.append(text.substring(0, count));
+            }
+        }
+        return result.toString();
+    }*/
+
+    /*public static void turnOffHardwareAcceleration(Window window) {
+        if (window == null || Build.MODEL == null) {
+            return;
+        }
+        if (Build.MODEL.contains("GT-S5301") ||
+                Build.MODEL.contains("GT-S5303") ||
+                Build.MODEL.contains("GT-B5330") ||
+                Build.MODEL.contains("GT-S5302") ||
+                Build.MODEL.contains("GT-S6012B") ||
+                Build.MODEL.contains("MegaFon_SP-AI")) {
+            window.clearFlags(WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED);
+        }
+    }*/
 
     public static void appCenterLog(Throwable e) {
         ApplicationLoader.appCenterLog(e);
@@ -3984,6 +4126,9 @@ public class AndroidUtilities {
             File storageDir = getAlbumDir(secretChat);
             Date date = new Date();
             date.setTime(nextGeneratedMediaPathTime());
+            // CameraX, Camera2 and media preparation can request paths on
+            // different queues. SimpleDateFormat is mutable and cannot be
+            // shared safely between those callers.
             String timeStamp = new SimpleDateFormat("yyyyMMdd_HHmmss_SSS", Locale.US).format(date);
             return new File(storageDir, "VID_" + timeStamp + ".mp4");
         } catch (Exception e) {
@@ -4307,8 +4452,8 @@ public class AndroidUtilities {
                 } else {
                     AlertDialog.Builder builder = new AlertDialog.Builder(activity);
                     Map<String, Integer> colorsReplacement = new HashMap<>();
-                    colorsReplacement.put("info1.**", parentFragment.getThemedColor(Theme.key_dialogTopBackground));
-                    colorsReplacement.put("info2.**", parentFragment.getThemedColor(Theme.key_dialogTopBackground));
+                    colorsReplacement.put("info1", parentFragment.getThemedColor(Theme.key_dialogTopBackground));
+                    colorsReplacement.put("info2", parentFragment.getThemedColor(Theme.key_dialogTopBackground));
                     builder.setTopAnimation(R.raw.not_available, AlertsCreator.NEW_DENY_DIALOG_TOP_ICON_SIZE, false, parentFragment.getThemedColor(Theme.key_dialogTopBackground), colorsReplacement);
                     builder.setTopAnimationIsNew(true);
                     builder.setMessage(getString(R.string.IncorrectTheme));
@@ -4357,8 +4502,8 @@ public class AndroidUtilities {
                     }
                     AlertDialog.Builder builder = new AlertDialog.Builder(activity);
                     Map<String, Integer> colorsReplacement = new HashMap<>();
-                    colorsReplacement.put("info1.**", parentFragment.getThemedColor(Theme.key_dialogTopBackground));
-                    colorsReplacement.put("info2.**", parentFragment.getThemedColor(Theme.key_dialogTopBackground));
+                    colorsReplacement.put("info1", parentFragment.getThemedColor(Theme.key_dialogTopBackground));
+                    colorsReplacement.put("info2", parentFragment.getThemedColor(Theme.key_dialogTopBackground));
                     builder.setTopAnimation(R.raw.not_available, AlertsCreator.NEW_DENY_DIALOG_TOP_ICON_SIZE, false, parentFragment.getThemedColor(Theme.key_dialogTopBackground), colorsReplacement);
                     builder.setTopAnimationIsNew(true);
                     builder.setPositiveButton(getString(R.string.OK), null);
@@ -4444,6 +4589,10 @@ public class AndroidUtilities {
             f = FileLoader.getInstance(message.currentAccount).getPathToMessage(message.messageOwner);
         }
         String mimeType = message.type == MessageObject.TYPE_FILE || message.type == MessageObject.TYPE_TEXT ? message.getMimeType() : null;
+        // NimarkoGram file-hook dispatch: a plugin that registered a handler for
+        // this file's extension (base_plugin.add_file_hook) may intercept the open
+        // (e.g. show it in a custom viewer). If a handler consumes it, skip the
+        // default external-viewer open.
         try {
             if (com.chaquo.python.Python.isStarted() && f != null) {
                 com.chaquo.python.PyObject consumed = com.chaquo.python.Python.getInstance()
@@ -4968,7 +5117,7 @@ public class AndroidUtilities {
         return null;
     }
 
-    public static void fixGoogleMapsBug() {
+    public static void fixGoogleMapsBug() { //https://issuetracker.google.com/issues/154855417#comment301
         SharedPreferences googleBug = ApplicationLoader.applicationContext.getSharedPreferences("google_bug_154855417", Context.MODE_PRIVATE);
         if (!googleBug.contains("fixed")) {
             File corruptedZoomTables = new File(ApplicationLoader.getFilesDirFixed(), "ZoomTables.data");
@@ -4997,6 +5146,9 @@ public class AndroidUtilities {
         if (spanned) {
             final SpannableStringBuilder ssb = new SpannableStringBuilder();
             for (CharSequence piece : text) {
+                // If a piece is null, we append the string "null" for compatibility with the
+                // behavior of StringBuilder and the behavior of the concat() method in earlier
+                // versions of Android.
                 ssb.append(piece == null ? "null" : piece);
             }
             return new SpannedString(ssb);
@@ -5408,7 +5560,7 @@ public class AndroidUtilities {
         return ColorUtils.setAlphaComponent(color, (int) (Color.alpha(color) * k));
     }
 
-    public static float computeDampingRatio(float tension , float friction , float mass) {
+    public static float computeDampingRatio(float tension /* stiffness */, float friction /* damping */, float mass) {
         return friction / (2f * (float) Math.sqrt(mass * tension));
     }
 
@@ -5462,6 +5614,7 @@ public class AndroidUtilities {
     }
 
     private static char[] characters = new char[]{' ', ' ', '!', '"', '#', '%', '&', '\'', '(', ')', '*', ',', '-', '.', '/', ':', ';', '?', '@', '[', '\\', ']', '_', '{', '}', '¡', '§', '«', '¶', '·', '»', '¿', ';', '·', '՚', '՛', '՜', '՝', '՞', '՟', '։', '֊', '־', '׀', '׃', '׆', '׳', '״', '؉', '؊', '،', '؍', '؛', '؞', '؟', '٪', '٫', '٬', '٭', '۔', '܀', '܁', '܂', '܃', '܄', '܅', '܆', '܇', '܈', '܉', '܊', '܋', '܌', '܍', '߷', '߸', '߹', '࠰', '࠱', '࠲', '࠳', '࠴', '࠵', '࠶', '࠷', '࠸', '࠹', '࠺', '࠻', '࠼', '࠽', '࠾', '࡞', '।', '॥', '॰', '৽', '੶', '૰', '౷', '಄', '෴', '๏', '๚', '๛', '༄', '༅', '༆', '༇', '༈', '༉', '༊', '་', '༌', '།', '༎', '༏', '༐', '༑', '༒', '༔', '༺', '༻', '༼', '༽', '྅', '࿐', '࿑', '࿒', '࿓', '࿔', '࿙', '࿚', '၊', '။', '၌', '၍', '၎', '၏', '჻', '፠', '፡', '።', '፣', '፤', '፥', '፦', '፧', '፨', '᐀', '᙮', '᚛', '᚜', '᛫', '᛬', '᛭', '᜵', '᜶', '។', '៕', '៖', '៘', '៙', '៚', '᠀', '᠁', '᠂', '᠃', '᠄', '᠅', '᠆', '᠇', '᠈', '᠉', '᠊', '᥄', '᥅', '᨞', '᨟', '᪠', '᪡', '᪢', '᪣', '᪤', '᪥', '᪦', '᪨', '᪩', '᪪', '᪫', '᪬', '᪭', '᭚', '᭛', '᭜', '᭝', '᭞', '᭟', '᭠', '᯼', '᯽', '᯾', '᯿', '᰻', '᰼', '᰽', '᰾', '᰿', '᱾', '᱿', '᳀', '᳁', '᳂', '᳃', '᳄', '᳅', '᳆', '᳇', '᳓', '‐', '‑', '‒', '–', '—', '―', '‖', '‗', '‘', '’', '‚', '‛', '“', '”', '„', '‟', '†', '‡', '•', '‣', '․', '‥', '…', '‧', '‰', '‱', '′', '″', '‴', '‵', '‶', '‷', '‸', '‹', '›', '※', '‼', '‽', '‾', '‿', '⁀', '⁁', '⁂', '⁃', '⁅', '⁆', '⁇', '⁈', '⁉', '⁊', '⁋', '⁌', '⁍', '⁎', '⁏', '⁐', '⁑', '⁓', '⁔', '⁕', '⁖', '⁗', '⁘', '⁙', '⁚', '⁛', '⁜', '⁝', '⁞', '⁽', '⁾', '₍', '₎', '⌈', '⌉', '⌊', '⌋', '〈', '〉', '❨', '❩', '❪', '❫', '❬', '❭', '❮', '❯', '❰', '❱', '❲', '❳', '❴', '❵', '⟅', '⟆', '⟦', '⟧', '⟨', '⟩', '⟪', '⟫', '⟬', '⟭', '⟮', '⟯', '⦃', '⦄', '⦅', '⦆', '⦇', '⦈', '⦉', '⦊', '⦋', '⦌', '⦍', '⦎', '⦏', '⦐', '⦑', '⦒', '⦓', '⦔', '⦕', '⦖', '⦗', '⦘', '⧘', '⧙', '⧚', '⧛', '⧼', '⧽', '⳹', '⳺', '⳻', '⳼', '⳾', '⳿', '⵰', '⸀', '⸁', '⸂', '⸃', '⸄', '⸅', '⸆', '⸇', '⸈', '⸉', '⸊', '⸋', '⸌', '⸍', '⸎', '⸏', '⸐', '⸑', '⸒', '⸓', '⸔', '⸕', '⸖', '⸗', '⸘', '⸙', '⸚', '⸛', '⸜', '⸝', '⸞', '⸟', '⸠', '⸡', '⸢', '⸣', '⸤', '⸥', '⸦', '⸧', '⸨', '⸩', '⸪', '⸫', '⸬', '⸭', '⸮', '⸰', '⸱', '⸲', '⸳', '⸴', '⸵', '⸶', '⸷', '⸸', '⸹', '⸺', '⸻', '⸼', '⸽', '⸾', '⸿', '⹀', '⹁', '⹂', '⹃', '⹄', '⹅', '⹆', '⹇', '⹈', '⹉', '⹊', '⹋', '⹌', '⹍', '⹎', '⹏', '、', '。', '〃', '〈', '〉', '《', '》', '「', '」', '『', '』', '【', '】', '〔', '〕', '〖', '〗', '〘', '〙', '〚', '〛', '〜', '〝', '〞', '〟', '〰', '〽', '゠', '・', '꓾', '꓿', '꘍', '꘎', '꘏', '꙳', '꙾', '꛲', '꛳', '꛴', '꛵', '꛶', '꛷', '꡴', '꡵', '꡶', '꡷', '꣎', '꣏', '꣸', '꣹', '꣺', '꣼', '꤮', '꤯', '꥟', '꧁', '꧂', '꧃', '꧄', '꧅', '꧆', '꧇', '꧈', '꧉', '꧊', '꧋', '꧌', '꧍', '꧞', '꧟', '꩜', '꩝', '꩞', '꩟', '꫞', '꫟', '꫰', '꫱', '꯫', '﴾', '﴿', '︐', '︑', '︒', '︓', '︔', '︕', '︖', '︗', '︘', '︙', '︰', '︱', '︲', '︳', '︴', '︵', '︶', '︷', '︸', '︹', '︺', '︻', '︼', '︽', '︾', '︿', '﹀', '﹁', '﹂', '﹃', '﹄', '﹅', '﹆', '﹇', '﹈', '﹉', '﹊', '﹋', '﹌', '﹍', '﹎', '﹏', '﹐', '﹑', '﹒', '﹔', '﹕', '﹖', '﹗', '﹘', '﹙', '﹚', '﹛', '﹜', '﹝', '﹞', '﹟', '﹠', '﹡', '﹣', '﹨', '﹪', '﹫', '！', '＂', '＃', '％', '＆', '＇', '（', '）', '＊', '，', '－', '．', '／', '：', '；', '？', '＠', '［', '＼', '］', '＿', '｛', '｝', '｟', '｠', '｡', '｢', '｣', '､', '･'};
+    //private static String[] longCharacters = new String[] {"𐄀", "𐄁", "𐄂", "𐎟", "𐏐", "𐕯", "𐡗", "𐤟", "𐤿", "𐩐", "𐩑", "𐩒", "𐩓", "𐩔", "𐩕", "𐩖", "𐩗", "𐩘", "𐩿", "𐫰", "𐫱", "𐫲", "𐫳", "𐫴", "𐫵", "𐫶", "𐬹", "𐬺", "𐬻", "𐬼", "𐬽", "𐬾", "𐬿", "𐮙", "𐮚", "𐮛", "𐮜", "𐽕", "𐽖", "𐽗", "𐽘", "𐽙", "𑁇", "𑁈", "𑁉", "𑁊", "𑁋", "𑁌", "𑁍", "𑂻", "𑂼", "𑂾", "𑂿", "𑃀", "𑃁", "𑅀", "𑅁", "𑅂", "𑅃", "𑅴", "𑅵", "𑇅", "𑇆", "𑇇", "𑇈", "𑇍", "𑇛", "𑇝", "𑇞", "𑇟", "𑈸", "𑈹", "𑈺", "𑈻", "𑈼", "𑈽", "𑊩", "𑑋", "𑑌", "𑑍", "𑑎", "𑑏", "𑑛", "𑑝", "𑓆", "𑗁", "𑗂", "𑗃", "𑗄", "𑗅", "𑗆", "𑗇", "𑗈", "𑗉", "𑗊", "𑗋", "𑗌", "𑗍", "𑗎", "𑗏", "𑗐", "𑗑", "𑗒", "𑗓", "𑗔", "𑗕", "𑗖", "𑗗", "𑙁", "𑙂", "𑙃", "𑙠", "𑙡", "𑙢", "𑙣", "𑙤", "𑙥", "𑙦", "𑙧", "𑙨", "𑙩", "𑙪", "𑙫", "𑙬", "𑜼", "𑜽", "𑜾", "𑠻", "𑧢", "𑨿", "𑩀", "𑩁", "𑩂", "𑩃", "𑩄", "𑩅", "𑩆", "𑪚", "𑪛", "𑪜", "𑪞", "𑪟", "𑪠", "𑪡", "𑪢", "𑱁", "𑱂", "𑱃", "𑱄", "𑱅", "𑱰", "𑱱", "𑻷", "𑻸", "𑿿", "𒑰", "𒑱", "𒑲", "𒑳", "𒑴", "𖩮", "𖩯", "𖫵", "𖬷", "𖬸", "𖬹", "𖬺", "𖬻", "𖭄", "𖺗", "𖺘", "𖺙", "𖺚", "𖿢", "𛲟", "𝪇", "𝪈", "𝪉", "𝪊", "𝪋", "𞥞", "𞥟"};
     private static HashSet<Character> charactersMap;
 
     public static boolean isPunctuationCharacter(char ch) {
@@ -5471,6 +5624,7 @@ public class AndroidUtilities {
                 charactersMap.add(characters[a]);
             }
         }
+        //int len = longCharacters[0].length();
         return charactersMap.contains(ch);
     }
 
@@ -5542,6 +5696,7 @@ public class AndroidUtilities {
         }
     }
 
+    // Activity needs a smarter way to control it.
     public static void setLightNavigationBar(Activity activity, boolean enable) {
         if (activity != null) {
             setLightNavigationBar(activity.getWindow(), enable);
@@ -5549,12 +5704,14 @@ public class AndroidUtilities {
     }
 
 
+    // do not make public: Use setLightNavigationBar for activity or dialog.
     private static void setLightNavigationBar(Window window, boolean enable) {
         if (window != null) {
             setLightNavigationBar(window.getDecorView(), enable);
         }
     }
 
+    // do not use it: Use setLightNavigationBar for activity or dialog.
     public static void setLightNavigationBar(View view, boolean enable) {
         if (view != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             changeSetSystemUiVisibility(view, View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR, enable);
@@ -5770,6 +5927,7 @@ public class AndroidUtilities {
             builder.setSourceRectHint(null);
             builder.setAspectRatio(null);
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                //builder.setSeamlessResizeEnabled(true);
                 builder.setAutoEnterEnabled(false);
             }
 
@@ -6075,6 +6233,7 @@ public class AndroidUtilities {
         return (st > 0 || len < text.length()) ? text.subSequence(st, len) : text;
     }
 
+    // detect Error NO SPaCe left on device :(
     public static boolean isENOSPC(Exception e) {
         return (
                 Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP &&
@@ -6215,6 +6374,7 @@ public class AndroidUtilities {
         makingGlobalBlurBitmap = true;
 
         final List<View> finalViews = views;
+        //Utilities.themeQueue.postRunnable(() -> {
         try {
             int w;
             int h;
@@ -6259,18 +6419,26 @@ public class AndroidUtilities {
                 canvas.restore();
             }
             Utilities.stackBlurBitmap(bitmap, Math.max(amount, Math.max(w, h) / 180));
+//            AndroidUtilities.runOnUIThread(() -> {
                 onBitmapDone.run(bitmap);
+//            });
         } catch (OutOfMemoryError e) {
             FileLog.e(e);
+//            AndroidUtilities.runOnUIThread(() -> {
                 onBitmapDone.run(null);
+//            });
         } catch (Exception e) {
             FileLog.e(e);
+//            AndroidUtilities.runOnUIThread(() -> {
                 onBitmapDone.run(null);
+//            });
         } finally {
             makingGlobalBlurBitmap = false;
         }
+        //   });
     }
 
+    // rounds percents to be exact 100% in sum
     public static int[] roundPercents(float[] percents, int[] output) {
         if (percents == null) {
             throw new NullPointerException("percents or output is null");
@@ -6330,7 +6498,7 @@ public class AndroidUtilities {
 
     public static Pattern getURIParsePattern() {
         if (uriParse == null) {
-            uriParse = Pattern.compile("^(([^:/?#]+):)?(//([^/?#]*))?([^?#]*)(\\?([^#]*))?(#(.*))?");
+            uriParse = Pattern.compile("^(([^:/?#]+):)?(//([^/?#]*))?([^?#]*)(\\?([^#]*))?(#(.*))?"); // RFC 3986 B
         }
         return uriParse;
     }
@@ -6343,6 +6511,7 @@ public class AndroidUtilities {
         if (uri == null) {
             return null;
         }
+        // CVE-2017-13274
         Matcher matcher = getURIParsePattern().matcher(uri);
         if (matcher.matches()) {
             String authority = matcher.group(4);
@@ -6596,6 +6765,7 @@ public class AndroidUtilities {
     }
 
     public static void checkAndroidTheme(Context context, boolean open) {
+        // this hack is done to support prefers-color-scheme in webviews 🤦
         if (context == null) {
             return;
         }
@@ -6678,6 +6848,7 @@ public class AndroidUtilities {
     }
 
     public static void vibrateCursor(View view) {
+        // NimarkoGram: master disableVibration kill-switch.
         if (app.nimarkogram.messenger.NimarkoConfig.disableVibration) return;
         try {
             if (view == null || view.getContext() == null) return;
@@ -6688,15 +6859,17 @@ public class AndroidUtilities {
     }
 
     public static void vibrate(View view) {
+        // NimarkoGram: master disableVibration kill-switch.
         if (app.nimarkogram.messenger.NimarkoConfig.disableVibration) return;
         try {
             if (view == null || view.getContext() == null) return;
             if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return;
             if (!((Vibrator) view.getContext().getSystemService(Context.VIBRATOR_SERVICE)).hasAmplitudeControl()) return;
+            // NimarkoGram: vibrateInChats picks the haptic pattern.
             int hapticType;
             switch (app.nimarkogram.messenger.NimarkoConfig.vibrateInChats) {
                 case app.nimarkogram.messenger.NimarkoConfig.VIBRATE_DISABLE:
-                    return;
+                    return; // user opted-out at this granularity
                 case app.nimarkogram.messenger.NimarkoConfig.VIBRATE_CLICK:
                     hapticType = HapticFeedbackConstants.VIRTUAL_KEY;
                     break;
@@ -6954,12 +7127,18 @@ public class AndroidUtilities {
 
     public static void drawNavigationBarProtection(Canvas canvas, View view, int color, int navigationBarHeight, float alpha) {
         navbarProtactionPaint.setColor(Theme.multAlpha(color, alpha * AndroidUtilities.getNavigationBarThirdButtonsFactor(0, 0.75f, navigationBarHeight)));
+        // bug? : view.getY() is unnecessary
         canvas.drawRect(
                 0, view.getY() + view.getMeasuredHeight() - navigationBarHeight,
                 view.getMeasuredWidth(), view.getY() + view.getMeasuredHeight(), navbarProtactionPaint);
     }
 
 
+
+
+    /**
+     * Fix for Build.VERSION.SDK_INT < Build.VERSION_CODES.R
+     */
     @NonNull
     public static WindowInsets fixedDispatchApplyWindowInsets(@NonNull WindowInsets insets, ViewGroup view) {
         for (int a = 0, N = view.getChildCount(); a < N; a++) {
@@ -6968,6 +7147,8 @@ public class AndroidUtilities {
         }
         return insets;
     }
+
+
 
 
     public static void enableEdgeToEdge(Activity activity) {
@@ -6982,9 +7163,15 @@ public class AndroidUtilities {
         }
     }
 
+    /**
+     * From androidx.core:core:1.17.0
+     * todo: replace to WindowCompat.enableEdgeToEdge() when update
+     */
     public static void enableEdgeToEdge(@NonNull Window window) {
         Objects.requireNonNull(window);
 
+        // This triggers the initialization of the decor view here to prevent the attributes set by
+        // this method from getting overwritten by the initialization later.
         window.getDecorView();
 
         WindowCompat.setDecorFitsSystemWindows(window, false);
@@ -7013,6 +7200,7 @@ public class AndroidUtilities {
                     : WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES;
         }
     }
+
 
 
     public static Insets getDefaultWindowInsets(WindowInsetsCompat insets, boolean withIme) {
@@ -7154,6 +7342,7 @@ public class AndroidUtilities {
                                            String title, String description, boolean allDay) {
         final long beginMillis, endMillis;
         if (allDay) {
+            // normalize timestamp and set 1 day duration
 
             Calendar calendar = Calendar.getInstance();
             calendar.setTimeInMillis(timestampMillis);
@@ -7165,6 +7354,7 @@ public class AndroidUtilities {
             beginMillis = calendar.getTimeInMillis();
             endMillis = beginMillis + TimeUnit.DAYS.toMillis(1);
         } else {
+            // set 10 minutes duration by default
 
             beginMillis = timestampMillis;
             endMillis = beginMillis + TimeUnit.MINUTES.toMillis(10);

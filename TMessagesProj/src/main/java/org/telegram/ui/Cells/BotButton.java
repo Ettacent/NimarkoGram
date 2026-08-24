@@ -22,13 +22,12 @@ import app.nimarkogram.messenger.utils.ui.MonetHelper;
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.BotInlineKeyboard;
 import org.telegram.messenger.MessageObject;
-import org.telegram.messenger.MessagesController;
-import org.telegram.messenger.SendMessagesHelper;
 import org.telegram.messenger.SharedConfig;
 import org.telegram.messenger.Utilities;
+import org.telegram.messenger.utils.tlutils.TLKeyboardHelper;
 import org.telegram.tgnet.TLRPC;
+import org.telegram.tgnet.tl.TL_keyboard;
 import org.telegram.ui.ActionBar.Theme;
-import org.telegram.ui.ChatActivity;
 import org.telegram.ui.Components.AnimatedEmojiDrawable;
 import org.telegram.ui.Components.LoadingDrawable;
 import org.telegram.ui.Components.Text;
@@ -47,7 +46,7 @@ class BotButton {
     public int positionFlags;
     public Text title;
     @Nullable
-    public TLRPC.KeyboardButton button;
+    public TL_keyboard.KeyboardInlineButton button;
     @Nullable
     public BotInlineKeyboard.ButtonCustom buttonCustom;
     public BotInlineKeyboard.Button buttonImpl;
@@ -140,7 +139,9 @@ class BotButton {
                 semanticForegroundColor = contrastCacheForeground;
                 if (semanticForegroundColor != 0) {
                     buttonSurfaceColor = contrastCacheSurface;
-                    
+                    // The resolved surface replaces the translucent semantic
+                    // overlay only for Monet, guaranteeing stable contrast on
+                    // any OEM palette and chat wallpaper.
                     paint.setColor(buttonSurfaceColor);
                 }
             }
@@ -150,6 +151,18 @@ class BotButton {
         if (hasGradientService && (bgColor == BotInlineKeyboard.BackgroundColor.NONE || resourcesProvider != null && resourcesProvider.isDark())) {
             canvas.drawPath(path, Theme.chat_actionBackgroundGradientDarkenPaint);
         }
+
+//        boolean drawProgress = (button instanceof TLRPC.TL_keyboardButtonCallback_layer228 || button instanceof TLRPC.TL_keyboardButtonGame || button instanceof TLRPC.TL_keyboardButtonBuy_layer228 || button instanceof TLRPC.TL_keyboardButtonUrlAuth_layer228) && SendMessagesHelper.getInstance(currentAccount).isSendingCallback(currentMessageObject, button)
+//                || button instanceof TLRPC.TL_keyboardButtonRequestGeoLocation && SendMessagesHelper.getInstance(currentAccount).isSendingCurrentLocation(currentMessageObject, button)
+//                || button instanceof TLRPC.TL_keyboardButtonUrl && delegate != null && delegate.isProgressLoading(this, ChatActivity.PROGRESS_BOT_BUTTON) && delegate.getProgressLoadingBotButtonUrl(this) == button.url;
+//
+//        if (button.buttonCustom != null && currentMessageObject != null) {
+//            if (button.buttonCustom.id == BotInlineKeyboard.ButtonCustom.SUGGESTION_ACCEPT) {
+//                drawProgress |= MessagesController.getInstance(currentAccount).isSendingSuggestedMessageApproval(currentMessageObject.getDialogId(), currentMessageObject.getId(), true);
+//            } else if (button.buttonCustom.id == BotInlineKeyboard.ButtonCustom.SUGGESTION_DECLINE) {
+//                drawProgress |= MessagesController.getInstance(currentAccount).isSendingSuggestedMessageApproval(currentMessageObject.getDialogId(), currentMessageObject.getId(), false);
+//            }
+//        }
 
         canvas.save();
         canvas.clipPath(path);
@@ -230,11 +243,13 @@ class BotButton {
             titleColor = originalTitleColor;
         }
         title.draw(canvas, titleX, rect.centerY(), titleColor, isLocked ? 0.5f: 1f);
-        
+        // Text instances use the shared chat paint, so never leak a button's
+        // contrast correction into the following message or service element.
         title.paint.setColor(originalTitleColor);
         title.paint.linkColor = originalLinkColor;
         canvas.restore();
 
+        final TL_keyboard.TL_inlineButtonTypeUrl buttonTypeUrl = TLKeyboardHelper.getType(button, TL_keyboard.TL_inlineButtonTypeUrl.class);
         if (buttonCustom != null) {
             if (isLocked) {
                 final Drawable drawable = Theme.getThemeDrawable(Theme.key_drawable_botLock, resourcesProvider);
@@ -243,14 +258,14 @@ class BotButton {
                 drawable.draw(canvas);
             }
 
-        } else if (button instanceof TLRPC.TL_keyboardButtonWebView) {
+        } else if (TLKeyboardHelper.isButtonWebView(button)) {
             final Drawable drawable = Theme.getThemeDrawable(Theme.key_drawable_botWebView, resourcesProvider);
             final int x = (int) rect.right - dp(3) - drawable.getIntrinsicWidth();
             BaseCell.setDrawableBounds(drawable, x, rect.top + dp(3));
             drawable.draw(canvas);
-        } else if (button instanceof TLRPC.TL_keyboardButtonUrl) {
+        } else if (buttonTypeUrl != null) {
             final Drawable drawable;
-            if (LinkManager.isWebAppLink(button.url)) {
+            if (LinkManager.isWebAppLink(buttonTypeUrl.url)) {
                 drawable = Theme.getThemeDrawable(Theme.key_drawable_botWebView, resourcesProvider);
             } else if (isInviteButton) {
                 drawable = Theme.getThemeDrawable(Theme.key_drawable_botInvite, resourcesProvider);
@@ -260,12 +275,12 @@ class BotButton {
             int x = (int) rect.right - dp(3) - drawable.getIntrinsicWidth();
             BaseCell.setDrawableBounds(drawable, x, rect.top + dp(3));
             drawable.draw(canvas);
-        } else if (button instanceof TLRPC.TL_keyboardButtonSwitchInline || button instanceof TLRPC.TL_keyboardButtonRequestPeer) {
+        } else if (TLKeyboardHelper.isType(button, TL_keyboard.TL_inlineButtonTypeSwitchInline.class) || TLKeyboardHelper.isType(button, TL_keyboard.TL_buttonTypeRequestPeer.class)) {
             final Drawable drawable = Theme.getThemeDrawable(Theme.key_drawable_botInline, resourcesProvider);
             final int x = (int) rect.right - dp(3) - drawable.getIntrinsicWidth();
             BaseCell.setDrawableBounds(drawable, x, rect.top + dp(3));
             drawable.draw(canvas);
-        } else if (button instanceof TLRPC.TL_keyboardButtonBuy && drawBuyCard) {
+        } else if (TLKeyboardHelper.isType(button, TL_keyboard.TL_inlineButtonTypeBuy.class) && drawBuyCard) {
             final int x = (int) rect.right - dp(5) - Theme.chat_botCardDrawable.getIntrinsicWidth();
             BaseCell.setDrawableBounds(Theme.chat_botCardDrawable, x, rect.top + dp(4));
             Theme.chat_botCardDrawable.draw(canvas);

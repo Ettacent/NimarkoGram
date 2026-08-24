@@ -13,6 +13,7 @@ import android.util.LongSparseArray;
 import android.util.SparseBooleanArray;
 
 import org.telegram.tgnet.ConnectionsManager;
+import org.telegram.tgnet.TLObject;
 import org.telegram.tgnet.TLRPC;
 import org.telegram.ui.ChatActivity;
 import org.telegram.ui.Components.MessagePreviewView;
@@ -199,7 +200,10 @@ public class MessagePreviewParams {
         this.isSecret = secret;
         this.noforwards = secret || noforwards;
         this.monoforum = monoforum;
-        
+        // Per-operation forward choices are applied by ChatActivity when the
+        // concrete picker result is opened. Only the persistent preference is
+        // safe to seed here: process-global transient flags let two overlapping
+        // forward pickers overwrite each other.
         this.hideForwardSendersName = app.nimarkogram.messenger.NimarkoConfig.forwardWithoutAuthor;
         this.hideCaption = false;
     }
@@ -501,11 +505,23 @@ public class MessagePreviewParams {
             }
             if (header != null) {
                 message.fwd_from = header;
-                
+                // NimarkoGram (CG parity): preview the original send date when
+                // msgForwardDate is on, matching the send-time behaviour.
                 if (app.nimarkogram.messenger.NimarkoConfig.msgForwardDate && !messageObject.isForwarded()) {
                     message.fwd_from.date = messageObject.messageOwner.date;
                 }
                 message.flags |= TLRPC.MESSAGE_FLAG_FWD;
+            }
+
+            if (messageObject.isWelcomeAnchored()) {
+                message.id = messageObject.getEphemeralId();
+                if (message.fwd_from != null && message.fwd_from.from_id != null) {
+                    message.fwd_from.from_id = TLObject.deepCopy(messageObject.messageOwner.peer_id, TLRPC.Peer::TLdeserialize);
+                    final long dialogId = DialogObject.getPeerDialogId(messageObject.messageOwner.from_id);
+                    if (dialogId > 0) {
+                        message.via_bot_id = dialogId;
+                    }
+                }
             }
         }
 
@@ -527,7 +543,7 @@ public class MessagePreviewParams {
             }
         };
         previewMessage.previewForward = msgtype == 0;
-
+//        previewMessage.forceAvatar = msgtype == 1 && !message.out;
         previewMessage.preview = true;
         return previewMessage;
     }

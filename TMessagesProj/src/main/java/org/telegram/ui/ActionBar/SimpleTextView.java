@@ -284,7 +284,7 @@ public class SimpleTextView extends View implements Drawable.Callback {
             ellipsizeLeft = forceEllipsizeByGradientLeft;
         } else {
             ellipsizeLeft = false;
-
+//            ellipsizeLeft = getAlignment() == Layout.Alignment.ALIGN_NORMAL && LocaleController.isRTL || getAlignment() == Layout.Alignment.ALIGN_OPPOSITE && !LocaleController.isRTL;
         }
         if ((fadeEllpsizePaint == null || fadeEllpsizePaintWidth != dp(ellipsizeByGradientWidthDp) || ellipsizeByGradientLeft != ellipsizeLeft) && ellipsizeByGradient) {
             if (fadeEllpsizePaint == null) {
@@ -363,6 +363,16 @@ public class SimpleTextView extends View implements Drawable.Callback {
                 ? outsideRightDrawableTextClipInset : 0;
     }
 
+    /**
+     * Returns the start of the complete outside trailing-drawable block.
+     *
+     * The old implementation clamped each drawable's left edge separately.
+     * That does not constrain the drawable's right edge and lets the second
+     * badge extend beyond the measured title.  Treating both badges as one
+     * measured block keeps their spacing stable and makes the last pixel obey
+     * the view's trailing content edge.  A fitting title keeps the block next
+     * to the text; a marquee pins it to the reserved trailing slot.
+     */
     private int getOutsideRightDrawablesStartX(int textOffsetX) {
         final int slotsWidth = getOutsideRightDrawablesWidth();
         final int contentRight = Math.max(0, getMeasuredWidth() - paddingRight);
@@ -512,7 +522,10 @@ public class SimpleTextView extends View implements Drawable.Callback {
                     } else {
                         string = TextUtils.ellipsize(text, textPaint, width, TextUtils.TruncateAt.END);
                     }
-                     
+                    /*if (layout != null && TextUtils.equals(layout.getText(), string)) {
+                        calcOffset(width);
+                        return false;
+                    }*/
                     layout = new StaticLayout(string, 0, string.length(), textPaint, scrollNonFitText || ellipsizeByGradient ? dp(2000) : width + dp(8), getAlignment(), 1.0f, 0.0f, false);
                 }
 
@@ -568,10 +581,11 @@ public class SimpleTextView extends View implements Drawable.Callback {
             finalHeight = getPaddingTop() + textHeight + getPaddingBottom();
         }
         if (widthWrapContent) {
-
+//            textWidth = (int) Math.ceil(layout.getLineWidth(0));
             width = Math.min(width, getPaddingLeft() + textWidth + getPaddingRight() + minusWidth
                     + (leftDrawableOutside && leftDrawable != null ? leftDrawable.getIntrinsicWidth() + drawablePadding : 0)
                     + getOutsideRightDrawablesWidth());
+            width = Math.max(width, 0);
         }
         setMeasuredDimension(width, finalHeight);
 
@@ -752,7 +766,10 @@ public class SimpleTextView extends View implements Drawable.Callback {
             return false;
         }
         text = value;
-        
+        // A marquee draws a second copy while scrollingOffset is non-zero.
+        // Keeping the old offset when the text changes makes the replacement
+        // title appear twice until that obsolete marquee cycle completes.
+        // Every new value must start a fresh cycle from its natural position.
         scrollingOffset = 0;
         currentScrollDelay = SCROLL_DELAY_MS;
         lastUpdateTime = SystemClock.elapsedRealtime();
@@ -785,7 +802,12 @@ public class SimpleTextView extends View implements Drawable.Callback {
     }
 
     private boolean recreateLayoutMaybe() {
-        
+        // A wrap-content SimpleTextView derives its measured width from the
+        // current text and side drawables. Rebuilding only the StaticLayout
+        // leaves getMeasuredWidth() stale when either of them changes (most
+        // visible in ActionBar while a connection overlay removes/restores the
+        // premium emoji). Let the parent run a fresh measure/layout pass so the
+        // complete text+badge unit remains centred with its real width.
         if (widthWrapContent) {
             requestLayout();
             invalidate();
@@ -1012,7 +1034,8 @@ public class SimpleTextView extends View implements Drawable.Callback {
                 int dw = (int) (rightDrawable.getIntrinsicWidth() * rightDrawableScale);
                 int dh = (int) (rightDrawable.getIntrinsicHeight() * rightDrawableScale);
                 int x = textOffsetX + textWidth + drawablePadding + (int) -scrollingOffset + nextScrollX;
-                
+                // NimarkoGram: marquee branch must honour center/right offset like the non-scrolling
+                // path, else a centered title's right badge is drawn at the left (looks "behind" the text).
                 if ((gravity & Gravity.HORIZONTAL_GRAVITY_MASK) == Gravity.CENTER_HORIZONTAL ||
                         (gravity & Gravity.HORIZONTAL_GRAVITY_MASK) == Gravity.RIGHT) {
                     x += offsetX;
@@ -1286,7 +1309,7 @@ public class SimpleTextView extends View implements Drawable.Callback {
 
     private void clipOutSpoilers(Canvas canvas) {
         if (spoilers.isEmpty()) {
-            
+            // nothing to clip
             return;
         }
         path.rewind();
@@ -1433,6 +1456,11 @@ public class SimpleTextView extends View implements Drawable.Callback {
         recreateLayoutMaybe();
     }
 
+    /**
+     * Extra visual separation between text and a static outside trailing
+     * drawable. Compact containers which already reserve a measured drawable
+     * slot can set this to zero to avoid clipping the final glyph.
+     */
     public void setOutsideRightDrawableTextClipInset(int inset) {
         inset = Math.max(0, inset);
         if (outsideRightDrawableTextClipInset == inset) {
@@ -1446,6 +1474,7 @@ public class SimpleTextView extends View implements Drawable.Callback {
         leftDrawableOutside = outside;
     }
 
+    // right drawable is ellipsized with text
     public void setRightDrawableInside(boolean inside) {
         if (rightDrawableInside == inside) {
             return;
@@ -1453,6 +1482,7 @@ public class SimpleTextView extends View implements Drawable.Callback {
         rightDrawableInside = inside;
         recreateLayoutMaybe();
     }
+
 
     public boolean getRightDrawableOutside() {
         return rightDrawableOutside;
@@ -1467,6 +1497,9 @@ public class SimpleTextView extends View implements Drawable.Callback {
         sendAccessibilityEvent(android.view.accessibility.AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED);
     }
 
+    // NimarkoGram: slot-2 click listener for extera-style badges drawn in
+    // rightDrawable2. Hit-test uses the drawable's bounds (already set by the
+    // draw pass), so no extra fields are needed.
     private OnClickListener rightDrawable2OnClickListener;
     private boolean maybeClick2;
     public void setRightDrawable2OnClick(OnClickListener onClickListener) {

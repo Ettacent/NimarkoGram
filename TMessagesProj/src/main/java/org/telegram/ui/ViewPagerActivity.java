@@ -39,6 +39,7 @@ public abstract class ViewPagerActivity extends BaseFragment {
 
     abstract protected BaseFragment createBaseFragmentAt(int position);
 
+
     protected void onViewPagerScrollEnd() {
 
     }
@@ -46,6 +47,7 @@ public abstract class ViewPagerActivity extends BaseFragment {
     protected void onViewPagerTabAnimationUpdate(boolean manual) {
 
     }
+
 
     protected FrameLayout createContentView(Context context) {
         return new FrameLayout(context);
@@ -86,6 +88,10 @@ public abstract class ViewPagerActivity extends BaseFragment {
                     fragmentsArr.put(position, state);
                 }
 
+                // Defense in depth: getFragmentsCount()/createBaseFragmentAt() are kept consistent by the tab
+                // manager's CHATS invariant, so this should never be null — but a null here used to crash
+                // startup with an onFragmentCreate() NPE. Skip the bind gracefully instead of taking down the
+                // whole app if any future config/subclass ever returns null for a position.
                 if (fragment == null) {
                     FileLog.e("ViewPagerActivity: null fragment at position " + position + " (skipping bind)");
                     return;
@@ -98,7 +104,7 @@ public abstract class ViewPagerActivity extends BaseFragment {
 
                 fragment.setParentLayout(getParentLayout());
                 if (fragment.getFragmentView() == null) {
-                    fragment.createView(context);
+                    fragment.performCreateView(context);
                     fragment.setTitleOverlayText(titleOverlay, titleOverlayId, titleOverlayAction);
                 }
 
@@ -255,6 +261,8 @@ public abstract class ViewPagerActivity extends BaseFragment {
         return arrayList;
     }
 
+
+
     private float visibilityByParent = 0;
     private boolean isResumed;
     private boolean isFullyVisible;
@@ -360,6 +368,10 @@ public abstract class ViewPagerActivity extends BaseFragment {
         }
     }
 
+
+
+    /* * */
+
     protected static class FragmentState {
         public final @NonNull BaseFragment fragment;
         private boolean onCreateCalled;
@@ -376,7 +388,7 @@ public abstract class ViewPagerActivity extends BaseFragment {
             lastVisibility = newVisibility;
 
             final boolean isOpen = newVisibility > oldVisibility;
-            final boolean backward = false; 
+            final boolean backward = false; // todo: support backward
 
             if (!isResumed && visibilityByViewPage > 0 && parentIsResumed && fragment.fragmentView != null) {
                 fragment.onResume();

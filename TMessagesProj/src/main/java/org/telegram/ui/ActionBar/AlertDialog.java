@@ -191,6 +191,8 @@ public class AlertDialog extends Dialog implements Drawable.Callback, Notificati
     private boolean focusable;
 
     private boolean verticalButtons;
+    private boolean twoRowsButtonsWhenNeeded;
+    private boolean buttonsInTwoRows;
 
     private Runnable dismissRunnable = this::dismiss;
     private Runnable showRunnable = () -> {
@@ -225,7 +227,7 @@ public class AlertDialog extends Dialog implements Drawable.Callback, Notificati
     }
 
     protected boolean supportsNativeBlur() {
-        return false; 
+        return false; // Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && LaunchActivity.systemBlurEnabled;
     }
 
     public void redPositive() {
@@ -576,18 +578,21 @@ public class AlertDialog extends Dialog implements Drawable.Callback, Notificati
                     AndroidUtilities.rectTmp.set(getPaddingLeft(), getPaddingTop(), getMeasuredWidth() - getPaddingRight(), getMeasuredHeight() - getPaddingBottom());
                 }
 
+                // draw blur of background
                 float blurAlpha = blurPaintAlpha.set(blurPaint != null ? 1f : 0f);
                 if (blurPaint != null) {
                     blurPaint.setAlpha((int) (0xFF * blurAlpha));
                     canvas.drawRoundRect(AndroidUtilities.rectTmp, r, r, blurPaint);
                 }
 
+                // draw dim above blur
                 if (dimBlurPaint == null) {
                     dimBlurPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
                     dimBlurPaint.setColor(ColorUtils.setAlphaComponent(0xff000000, (int) (0xFF * dimAlpha)));
                 }
                 canvas.drawRoundRect(AndroidUtilities.rectTmp, r, r, dimBlurPaint);
 
+                // draw background
                 backgroundPaint.setColor(backgroundColor);
                 backgroundPaint.setAlpha((int) (backgroundPaint.getAlpha() * (blurAlpha * (blurOpacity - 1f) + 1f)));
                 canvas.drawRoundRect(AndroidUtilities.rectTmp, r, r, backgroundPaint);
@@ -612,7 +617,10 @@ public class AlertDialog extends Dialog implements Drawable.Callback, Notificati
             try {
                 super.dispatchDraw(canvas);
             } catch (IllegalArgumentException e) {
-                
+                // A dialog draws in its OWN window, so it never passes through LaunchActivity's dispatchDraw
+                // guard — mirror it here so the known ColorSpace draw crash (wide-gamut ROM or a plugin that
+                // fed a corrupted ColorLong into a TextView's Paint) only skips this frame instead of killing
+                // the app. This is exactly the reported AlertDialog "Invalid ID" trace. Rethrow anything else.
                 if (!AndroidUtilities.isColorSpaceDrawCrash(e)) {
                     throw e;
                 }
@@ -957,7 +965,13 @@ public class AlertDialog extends Dialog implements Drawable.Callback, Notificati
                     buttonsWidth += paint.measureText(neutralButtonText, 0, neutralButtonText.length()) + dp(12 + 12);
                 }
                 if (buttonsWidth > AndroidUtilities.displaySize.x - dp(64)) {
-                    verticalButtons = true;
+                    if (twoRowsButtonsWhenNeeded
+                            && positiveButtonText != null && negativeButtonText != null
+                            && negative2ButtonText != null && neutralButtonText != null) {
+                        buttonsInTwoRows = true;
+                    } else {
+                        verticalButtons = true;
+                    }
                 }
             }
             if (verticalButtons) {
@@ -971,6 +985,24 @@ public class AlertDialog extends Dialog implements Drawable.Callback, Notificati
                         int count = getChildCount();
                         View positiveButton = null;
                         int width = right - left;
+                        if (buttonsInTwoRows) {
+                            final View change = findViewWithTag(BUTTON_NEUTRAL);
+                            final View delete = findViewWithTag(BUTTON_NEGATIVE_2);
+                            final View cancel = findViewWithTag(BUTTON_NEGATIVE);
+                            final View ok = findViewWithTag(BUTTON_POSITIVE);
+                            final int start = getPaddingLeft();
+                            final int end = width - getPaddingRight();
+                            final int columnWidth = Math.max(0, (end - start - dp(8)) / 2);
+                            final int firstX = LocaleController.isRTL ? end - columnWidth : start;
+                            final int secondX = LocaleController.isRTL ? start : end - columnWidth;
+                            final int firstY = getPaddingTop();
+                            final int secondY = firstY + dp(44);
+                            if (change != null) change.layout(firstX, firstY, firstX + columnWidth, firstY + dp(40));
+                            if (delete != null) delete.layout(secondX, firstY, secondX + columnWidth, firstY + dp(40));
+                            if (cancel != null) cancel.layout(firstX, secondY, firstX + columnWidth, secondY + dp(40));
+                            if (ok != null) ok.layout(secondX, secondY, secondX + columnWidth, secondY + dp(40));
+                            return;
+                        }
                         for (int a = 0; a < count; a++) {
                             View child = getChildAt(a);
                             Integer tag = (Integer) child.getTag();
@@ -982,7 +1014,7 @@ public class AlertDialog extends Dialog implements Drawable.Callback, Notificati
                                     } else {
                                         child.layout(width - getPaddingRight() - child.getMeasuredWidth(), getPaddingTop(), width - getPaddingRight(), getPaddingTop() + child.getMeasuredHeight());
                                     }
-                                } else if (tag == Dialog.BUTTON_NEGATIVE || tag == AlertDialog.BUTTON_NEGATIVE_2) {
+                                } else if (tag == Dialog.BUTTON_NEGATIVE) {
                                     if (LocaleController.isRTL) {
                                         int x = getPaddingLeft();
                                         if (positiveButton != null) {
@@ -994,6 +1026,19 @@ public class AlertDialog extends Dialog implements Drawable.Callback, Notificati
                                         if (positiveButton != null) {
                                             x -= positiveButton.getMeasuredWidth() + dp(8);
                                         }
+                                        child.layout(x, getPaddingTop(), x + child.getMeasuredWidth(), getPaddingTop() + child.getMeasuredHeight());
+                                    }
+                                } else if (tag == AlertDialog.BUTTON_NEGATIVE_2) {
+                                    final View neutral = findViewWithTag(Dialog.BUTTON_NEUTRAL);
+                                    if (LocaleController.isRTL) {
+                                        final int x = neutral == null
+                                            ? width - getPaddingRight() - child.getMeasuredWidth()
+                                            : neutral.getLeft() - dp(8) - child.getMeasuredWidth();
+                                        child.layout(x, getPaddingTop(), x + child.getMeasuredWidth(), getPaddingTop() + child.getMeasuredHeight());
+                                    } else {
+                                        final int x = neutral == null
+                                            ? getPaddingLeft()
+                                            : neutral.getRight() + dp(8);
                                         child.layout(x, getPaddingTop(), x + child.getMeasuredWidth(), getPaddingTop() + child.getMeasuredHeight());
                                     }
                                 } else if (tag == Dialog.BUTTON_NEUTRAL) {
@@ -1026,6 +1071,18 @@ public class AlertDialog extends Dialog implements Drawable.Callback, Notificati
                         int totalWidth = 0;
                         int availableWidth = getMeasuredWidth() - getPaddingLeft() - getPaddingRight();
                         int count = getChildCount();
+                        if (buttonsInTwoRows) {
+                            final int childWidth = Math.max(0, (availableWidth - dp(8)) / 2);
+                            for (int a = 0; a < count; a++) {
+                                final View child = getChildAt(a);
+                                if (child.getTag() != null) {
+                                    child.measure(
+                                        MeasureSpec.makeMeasureSpec(childWidth, MeasureSpec.EXACTLY),
+                                        MeasureSpec.makeMeasureSpec(dp(40), MeasureSpec.EXACTLY));
+                                }
+                            }
+                            return;
+                        }
                         for (int a = 0; a < count; a++) {
                             View child = getChildAt(a);
                             if (child instanceof TextView && child.getTag() != null) {
@@ -1059,7 +1116,8 @@ public class AlertDialog extends Dialog implements Drawable.Callback, Notificati
             } else {
                 buttonsLayout.setPadding(dp(8), dp(8), dp(8), dp(8));
             }
-            containerView.addView(buttonsLayout, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 52));
+            containerView.addView(buttonsLayout, LayoutHelper.createLinear(
+                LayoutHelper.MATCH_PARENT, buttonsInTwoRows ? 96 : 52));
             if (topAnimationIsNew) {
                 buttonsLayout.setTranslationY(-dp(8));
             }
@@ -1196,7 +1254,7 @@ public class AlertDialog extends Dialog implements Drawable.Callback, Notificati
                     @Override
                     public void setTextColor(int color) {
                         super.setTextColor(color);
-                        setBackgroundDrawable(Theme.getRoundRectSelectorDrawable(dp(6), color));
+                        setBackgroundDrawable(Theme.getRoundRectSelectorDrawable(dp(20), color));
                     }
                 };
                 textView.setMinWidth(dp(64));
@@ -1208,12 +1266,12 @@ public class AlertDialog extends Dialog implements Drawable.Callback, Notificati
                 textView.setEllipsize(TextUtils.TruncateAt.END);
                 textView.setSingleLine(true);
                 textView.setText(negative2ButtonText.toString());
-                textView.setBackground(Theme.getRoundRectSelectorDrawable(dp(6), getThemedColor(dialogButtonColorKey)));
+                textView.setBackground(Theme.getRoundRectSelectorDrawable(dp(20), getThemedColor(dialogButtonColorKey)));
                 textView.setPadding(dp(12), 0, dp(12), 0);
                 if (verticalButtons) {
-                    buttonsLayout.addView(textView, 0, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 36, Gravity.FILL_HORIZONTAL));
+                    buttonsLayout.addView(textView, 0, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 40, Gravity.FILL_HORIZONTAL));
                 } else {
-                    buttonsLayout.addView(textView, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, 36, Gravity.TOP | Gravity.RIGHT));
+                    buttonsLayout.addView(textView, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, 40, Gravity.TOP | Gravity.RIGHT));
                 }
                 textView.setOnClickListener(v -> {
                     if (textView.isLoading()) return;
@@ -1237,7 +1295,7 @@ public class AlertDialog extends Dialog implements Drawable.Callback, Notificati
         WindowManager.LayoutParams params = new WindowManager.LayoutParams();
         params.copyFrom(window.getAttributes());
         if (needStarsBalance) {
-
+//            params.width = WindowManager.LayoutParams.MATCH_PARENT;
             params.height = WindowManager.LayoutParams.MATCH_PARENT;
             params.flags |= WindowManager.LayoutParams.FLAG_FULLSCREEN;
 
@@ -1747,6 +1805,11 @@ public class AlertDialog extends Dialog implements Drawable.Callback, Notificati
 
         public Builder forceVerticalButtons() {
             alertDialog.verticalButtons = true;
+            return this;
+        }
+
+        public Builder twoRowsButtonsWhenNeeded() {
+            alertDialog.twoRowsButtonsWhenNeeded = true;
             return this;
         }
 

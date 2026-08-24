@@ -11,10 +11,13 @@ import java.util.HashMap;
 
 public class ThemeColors {
 
-    public static final int TELEGRAM_COLOR = 0xFF229AF0;        
-    public static final int TELEGRAM_COLOR_TEXT = 0xFF298ACF;   
-    public static final int DEFAULT_BLACK_TEXT = 0xFF1A1D21;   
-    
+    public static final int TELEGRAM_COLOR = 0xFF229AF0;        // -14509328
+    public static final int TELEGRAM_COLOR_TEXT = 0xFF298ACF;   // -14054705
+    public static final int DEFAULT_BLACK_TEXT = 0xFF1A1D21;   // -15065823
+    // NimarkoGram brand color — matches the dominant red of ic_launcher
+    // (≈70% of icon pixels). Used in IntroActivity so the first-page logo
+    // composition (paper-plane silhouette over a circle) is tinted NG red
+    // instead of Telegram blue.
     public static final int NIMARKOGRAM_COLOR = 0xFFB22A2E;
 
     private static SparseArray<String> colorKeysMap;
@@ -114,7 +117,8 @@ public class ThemeColors {
         defaultColors[key_windowBackgroundWhiteBlueHeader] = TELEGRAM_COLOR_TEXT;
         defaultColors[key_windowBackgroundWhiteInputField] = 0xffdbdbdb;
         defaultColors[key_windowBackgroundWhiteInputFieldActivated] = TELEGRAM_COLOR;
-        
+        // NimarkoGram (CG parity): lighter off-track gray, matching Cherrygram's
+        // ThemeColors default (upstream Telegram uses 0xffa6adb3).
         defaultColors[key_switchTrack] = 0xffb0b5ba;
         defaultColors[key_switchTrackChecked] = TELEGRAM_COLOR;
         defaultColors[key_switchTrackBlue] = 0xff78828A;
@@ -174,6 +178,7 @@ public class ThemeColors {
         defaultColors[key_avatar_background2Pink] = 0xffD95574;
         defaultColors[key_avatar_backgroundGray] = 0xffA1ABB5;
 
+
         defaultColors[key_avatar_backgroundInProfileBlue] = 0xffffffff;
         defaultColors[key_avatar_backgroundActionBarBlue] = 0xfff5f5f5;
         defaultColors[key_avatar_subtitleInProfileBlue] = DEFAULT_BLACK_TEXT;
@@ -192,9 +197,9 @@ public class ThemeColors {
         defaultColors[key_actionBarDefaultIcon] = DEFAULT_BLACK_TEXT;
         defaultColors[key_actionBarActionModeDefault] = 0xffffffff;
         defaultColors[key_actionBarActionModeDefaultTop] = 0x10000000;
-        defaultColors[key_actionBarActionModeDefaultIcon] = DEFAULT_BLACK_TEXT; 
+        defaultColors[key_actionBarActionModeDefaultIcon] = DEFAULT_BLACK_TEXT; // key_windowBackgroundWhiteBlackText
         defaultColors[key_actionBarDefaultTitle] = DEFAULT_BLACK_TEXT;
-        defaultColors[key_actionBarDefaultSubtitle] = 0xff79817e;       
+        defaultColors[key_actionBarDefaultSubtitle] = 0xff79817e;       // key_windowBackgroundWhiteGrayText
         defaultColors[key_actionBarDefaultSelector] = 0x121a1d21;
         defaultColors[key_actionBarWhiteSelector] = 0x121a1d21;
         defaultColors[key_actionBarDefaultSearch] = DEFAULT_BLACK_TEXT;
@@ -210,7 +215,7 @@ public class ThemeColors {
         defaultColors[key_actionBarTabActiveText] = TELEGRAM_COLOR_TEXT;
         defaultColors[key_actionBarTabUnactiveText] = 0xff777c7f;
         defaultColors[key_actionBarTabLine] = TELEGRAM_COLOR_TEXT;
-        defaultColors[key_chats_tabUnreadActiveBackground] = 0xFF66ade1; 
+        defaultColors[key_chats_tabUnreadActiveBackground] = 0xFF66ade1; //TELEGRAM_COLOR_TEXT;
         defaultColors[key_chats_tabUnreadUnactiveBackground] = 0xffc5c9cc;
         defaultColors[key_actionBarTabSelector] = 0x121a1d21;
         defaultColors[key_actionBarBrowser] = 0xffffffff;
@@ -429,7 +434,8 @@ public class ThemeColors {
         defaultColors[key_chat_outFileProgress] = 0xffdaf5c3;
         defaultColors[key_chat_inFileProgressSelected] = 0xffcbeaf6;
         defaultColors[key_chat_outFileProgressSelected] = 0xffc5eca7;
-        
+        // NimarkoGram (CG parity): pinned blue for incoming-file name text,
+        // matching Cherrygram (upstream Telegram uses TELEGRAM_COLOR_TEXT).
         defaultColors[key_chat_inFileNameText] = 0xff4e9ad4;
         defaultColors[key_chat_outFileNameText] = 0xff55ab4f;
         defaultColors[key_chat_inFileInfoText] = 0xffa1aab3;
@@ -664,6 +670,38 @@ public class ThemeColors {
         defaultColors[key_chat_BlurAlphaSlow] = 0xC1000000;
         defaultColors[key_chat_editMediaButton] = 0xff1A9CFF;
 
+        defaultColors[key_chat_msgIvButtonDefaultIn] = 0xFFededed;
+        defaultColors[key_chat_msgIvButtonDefaultInPressed] = 0xFFededed;
+        defaultColors[key_chat_msgIvButtonDefaultInText] = DEFAULT_BLACK_TEXT;
+        defaultColors[key_chat_msgIvButtonPrimaryIn] = TELEGRAM_COLOR;
+        defaultColors[key_chat_msgIvButtonPrimaryInPressed] = TELEGRAM_COLOR;
+        defaultColors[key_chat_msgIvButtonPrimaryInText] = 0xFFf8fcff;
+        defaultColors[key_chat_msgIvButtonDangerIn] = 0xfff8eae9;
+        defaultColors[key_chat_msgIvButtonDangerInPressed] = 0xfff8eae9;
+        defaultColors[key_chat_msgIvButtonDangerInText] = 0xFFcc5049;
+        defaultColors[key_chat_msgIvButtonSuccessIn] = 0xffe8f4e4;
+        defaultColors[key_chat_msgIvButtonSuccessInPressed] = 0xffe8f4e4;
+        defaultColors[key_chat_msgIvButtonSuccessInText] = 0xff40a920;
+        defaultColors[key_chat_msgIvButtonDefaultInlineIn] = 0xffe9f3fa;
+        defaultColors[key_chat_msgIvButtonDefaultInlineInPressed] = 0xffe9f3fa;
+        defaultColors[key_chat_msgIvButtonDefaultInlineInText] = TELEGRAM_COLOR_TEXT;
+
+        defaultColors[key_chat_msgIvButtonDefaultOut] = 0xFFdcf4cb;
+        defaultColors[key_chat_msgIvButtonDefaultOutPressed] = 0xFFdcf4cb;
+        defaultColors[key_chat_msgIvButtonDefaultOutText] = 0xFF53ab49;
+        defaultColors[key_chat_msgIvButtonPrimaryOut] = 0xFF53ab49;
+        defaultColors[key_chat_msgIvButtonPrimaryOutPressed] = 0xFF53ab49;
+        defaultColors[key_chat_msgIvButtonPrimaryOutText] = 0xFFfafcf9;
+        defaultColors[key_chat_msgIvButtonDangerOut] = 0xFFeae9cb;
+        defaultColors[key_chat_msgIvButtonDangerOutPressed] = 0xFFeae9cb;
+        defaultColors[key_chat_msgIvButtonDangerOutText] = 0xffcc5049;
+        defaultColors[key_chat_msgIvButtonSuccessOut] = 0xFFdcf4cb;
+        defaultColors[key_chat_msgIvButtonSuccessOutPressed] = 0xFFdcf4cb;
+        defaultColors[key_chat_msgIvButtonSuccessOutText] = 0xFF40a920;
+        defaultColors[key_chat_msgIvButtonDefaultInlineOut] = 0xFFdcf4cb;
+        defaultColors[key_chat_msgIvButtonDefaultInlineOutPressed] = 0xFFdcf4cb;
+        defaultColors[key_chat_msgIvButtonDefaultInlineOutText] = 0xFF53ab49;
+
         defaultColors[key_statisticChartSignature] = 0x7f252529;
         defaultColors[key_statisticChartSignatureAlpha] = 0x7f252529;
         defaultColors[key_statisticChartHintLine] = 0x1a182D3B;
@@ -796,17 +834,32 @@ public class ThemeColors {
         defaultColors[key_starsGradient1] = 0xffFEC846;
         defaultColors[key_starsGradient2] = 0xffEC920A;
 
-        defaultColors[key_stories_circle1] = 0xFF2C9EFC; 
-        defaultColors[key_stories_circle2] = 0xFF2fc183; 
-        defaultColors[key_stories_circle_dialog1] = 0xFF2C9EFC; 
-        defaultColors[key_stories_circle_dialog2] = 0xFF2fc183; 
-        defaultColors[key_stories_circle_closeFriends1] = 0xFF81ce2d; 
-        defaultColors[key_stories_circle_closeFriends2] = 0xFF18bd36; 
+        defaultColors[key_stories_circle1] = 0xFF2C9EFC; // 0xFF39DF3C;
+        defaultColors[key_stories_circle2] = 0xFF2fc183; // 0xFF4DBBFF;
+        defaultColors[key_stories_circle_dialog1] = 0xFF2C9EFC; // 0xFF4AED55;
+        defaultColors[key_stories_circle_dialog2] = 0xFF2fc183; // 0xFF4DC3FF;
+        defaultColors[key_stories_circle_closeFriends1] = 0xFF81ce2d; // 0xFFC9EB38;
+        defaultColors[key_stories_circle_closeFriends2] = 0xFF18bd36; // 0xFF09C167;
         defaultColors[key_stories_circle_live1] = 0xFFFF6B5B;
         defaultColors[key_stories_circle_live2] = 0xFFFA4874;
 
         defaultColors[key_chat_inCodeBackground] = 0xff6F889E;
         defaultColors[key_chat_outCodeBackground] = 0x123c7503;
+        defaultColors[key_chat_inTableBackground] = 0xfff7f7f7;
+        defaultColors[key_chat_outTableBackground] = 0xffdef0cc;
+        defaultColors[key_chat_inTableBorder] = 0xffe0e0e0;
+        defaultColors[key_chat_outTableBorder] = 0xffc9dbb6;
+        defaultColors[key_chat_inDivider] = 0xffe5e5e5;
+        defaultColors[key_chat_outDivider] = 0x336eb969;
+        defaultColors[key_chat_inArticleCodeBackground] = 0xfff1f5f9;
+        defaultColors[key_chat_inArticleCodeScrollbarBackground] = 0xffe1e6eb;
+        defaultColors[key_chat_inArticleCodeScrollbar] = 0xffc5cdd5;
+        defaultColors[key_chat_outArticleCodeScrollbarBackground] = 0xffe4ebdc;
+        defaultColors[key_chat_outArticleCodeScrollbar] = 0xffccd5c2;
+        defaultColors[key_chat_inArticleDetailsArrow] = 0xff9ea4a8;
+        defaultColors[key_chat_outArticleDetailsArrow] = 0xff84a37b;
+        defaultColors[key_chat_inArticleDetailsLine] = 0xffd8d8d8;
+        defaultColors[key_chat_outArticleDetailsLine] = 0xffcbd8c5;
         defaultColors[key_code_keyword] = 0xFFE05356;
         defaultColors[key_code_operator] = 0xFF4DBBFF;
         defaultColors[key_code_constant] = 0xFF7F79F3;
@@ -822,8 +875,8 @@ public class ThemeColors {
 
         defaultColors[key_reactionStarSelector] = 0x40F0AB1F;
 
-        defaultColors[key_glass_defaultIcon] = 0x991B2227; 
-        defaultColors[key_glass_defaultText] = 0x991B2227; 
+        defaultColors[key_glass_defaultIcon] = 0x991B2227; //0xFF747875;
+        defaultColors[key_glass_defaultText] = 0x991B2227; //0xFF737876;
         defaultColors[key_glass_targetMainTabs] = 0xFFFFFFFF;
         defaultColors[key_glass_targetMainTopPanel] = 0xFFFFFFFF;
         defaultColors[key_glass_tabSelected] = 0xFF1a91e6;
@@ -1031,6 +1084,22 @@ public class ThemeColors {
         colorKeysMap.put(key_actionBarTabSelector, "actionBarTabSelector");
         colorKeysMap.put(key_table_background, "table_background");
         colorKeysMap.put(key_table_border, "table_border");
+        colorKeysMap.put(key_chat_inTableBackground, "chat_inTableBackground");
+        colorKeysMap.put(key_chat_outTableBackground, "chat_outTableBackground");
+        colorKeysMap.put(key_chat_inTableBorder, "chat_inTableBorder");
+        colorKeysMap.put(key_chat_outTableBorder, "chat_outTableBorder");
+        colorKeysMap.put(key_chat_inDivider, "chat_inDivider");
+        colorKeysMap.put(key_chat_outDivider, "chat_outDivider");
+        colorKeysMap.put(key_chat_inArticleCodeBackground, "chat_inArticleCodeBackground");
+        colorKeysMap.put(key_chat_outArticleCodeBackground, "chat_outArticleCodeBackground");
+        colorKeysMap.put(key_chat_inArticleCodeScrollbarBackground, "chat_inArticleCodeScrollbarBackground");
+        colorKeysMap.put(key_chat_inArticleCodeScrollbar, "chat_inArticleCodeScrollbar");
+        colorKeysMap.put(key_chat_outArticleCodeScrollbarBackground, "chat_outArticleCodeScrollbarBackground");
+        colorKeysMap.put(key_chat_outArticleCodeScrollbar, "chat_outArticleCodeScrollbar");
+        colorKeysMap.put(key_chat_inArticleDetailsArrow, "chat_inArticleDetailsArrow");
+        colorKeysMap.put(key_chat_outArticleDetailsArrow, "chat_outArticleDetailsArrow");
+        colorKeysMap.put(key_chat_inArticleDetailsLine, "chat_inArticleDetailsLine");
+        colorKeysMap.put(key_chat_outArticleDetailsLine, "chat_outArticleDetailsLine");
         colorKeysMap.put(key_actionBarDefaultArchived, "actionBarDefaultArchived");
         colorKeysMap.put(key_actionBarDefaultArchivedSelector, "actionBarDefaultArchivedSelector");
         colorKeysMap.put(key_actionBarDefaultArchivedIcon, "actionBarDefaultArchivedIcon");
@@ -1371,6 +1440,37 @@ public class ThemeColors {
         colorKeysMap.put(key_chat_BlurAlphaSlow, "chat_BlurAlphaSlow");
         colorKeysMap.put(key_chat_editMediaButton, "chat_editMediaButton");
 
+        colorKeysMap.put(key_chat_msgIvButtonDefaultIn, "chat_msgIvButtonDefaultIn");
+        colorKeysMap.put(key_chat_msgIvButtonDefaultInPressed, "chat_msgIvButtonDefaultInPressed");
+        colorKeysMap.put(key_chat_msgIvButtonDefaultInText, "chat_msgIvButtonDefaultInText");
+        colorKeysMap.put(key_chat_msgIvButtonPrimaryIn, "chat_msgIvButtonPrimaryIn");
+        colorKeysMap.put(key_chat_msgIvButtonPrimaryInPressed, "chat_msgIvButtonPrimaryInPressed");
+        colorKeysMap.put(key_chat_msgIvButtonPrimaryInText, "chat_msgIvButtonPrimaryInText");
+        colorKeysMap.put(key_chat_msgIvButtonDangerIn, "chat_msgIvButtonDangerIn");
+        colorKeysMap.put(key_chat_msgIvButtonDangerInPressed, "chat_msgIvButtonDangerInPressed");
+        colorKeysMap.put(key_chat_msgIvButtonDangerInText, "chat_msgIvButtonDangerInText");
+        colorKeysMap.put(key_chat_msgIvButtonSuccessIn, "chat_msgIvButtonSuccessIn");
+        colorKeysMap.put(key_chat_msgIvButtonSuccessInPressed, "chat_msgIvButtonSuccessInPressed");
+        colorKeysMap.put(key_chat_msgIvButtonSuccessInText, "chat_msgIvButtonSuccessInText");
+        colorKeysMap.put(key_chat_msgIvButtonDefaultInlineIn, "chat_msgIvButtonDefaultInlineIn");
+        colorKeysMap.put(key_chat_msgIvButtonDefaultInlineInPressed, "chat_msgIvButtonDefaultInlineInPressed");
+        colorKeysMap.put(key_chat_msgIvButtonDefaultInlineInText, "chat_msgIvButtonDefaultInlineInText");
+        colorKeysMap.put(key_chat_msgIvButtonDefaultOut, "chat_msgIvButtonDefaultOut");
+        colorKeysMap.put(key_chat_msgIvButtonDefaultOutPressed, "chat_msgIvButtonDefaultOutPressed");
+        colorKeysMap.put(key_chat_msgIvButtonDefaultOutText, "chat_msgIvButtonDefaultOutText");
+        colorKeysMap.put(key_chat_msgIvButtonPrimaryOut, "chat_msgIvButtonPrimaryOut");
+        colorKeysMap.put(key_chat_msgIvButtonPrimaryOutPressed, "chat_msgIvButtonPrimaryOutPressed");
+        colorKeysMap.put(key_chat_msgIvButtonPrimaryOutText, "chat_msgIvButtonPrimaryOutText");
+        colorKeysMap.put(key_chat_msgIvButtonDangerOut, "chat_msgIvButtonDangerOut");
+        colorKeysMap.put(key_chat_msgIvButtonDangerOutPressed, "chat_msgIvButtonDangerOutPressed");
+        colorKeysMap.put(key_chat_msgIvButtonDangerOutText, "chat_msgIvButtonDangerOutText");
+        colorKeysMap.put(key_chat_msgIvButtonSuccessOut, "chat_msgIvButtonSuccessOut");
+        colorKeysMap.put(key_chat_msgIvButtonSuccessOutPressed, "chat_msgIvButtonSuccessOutPressed");
+        colorKeysMap.put(key_chat_msgIvButtonSuccessOutText, "chat_msgIvButtonSuccessOutText");
+        colorKeysMap.put(key_chat_msgIvButtonDefaultInlineOut, "chat_msgIvButtonDefaultInlineOut");
+        colorKeysMap.put(key_chat_msgIvButtonDefaultInlineOutPressed, "chat_msgIvButtonDefaultInlineOutPressed");
+        colorKeysMap.put(key_chat_msgIvButtonDefaultInlineOutText, "chat_msgIvButtonDefaultInlineOutText");
+
         colorKeysMap.put(key_voipgroup_listSelector, "voipgroup_listSelector");
         colorKeysMap.put(key_voipgroup_inviteMembersBackground, "voipgroup_inviteMembersBackground");
         colorKeysMap.put(key_voipgroup_actionBar, "voipgroup_actionBar");
@@ -1644,6 +1744,7 @@ public class ThemeColors {
             return colorKeysStringMap.get(key);
         }
     }
+
 
     public static String getStringName(int currentKey) {
         if (colorKeysMap == null) {

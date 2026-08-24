@@ -67,11 +67,13 @@ import androidx.core.graphics.drawable.IconCompat;
 import com.google.common.collect.Lists;
 
 import org.telegram.messenger.support.LongSparseIntArray;
+import org.telegram.messenger.utils.tlutils.TLKeyboardHelper;
 import org.telegram.messenger.utils.tlutils.TlUtils;
 import org.telegram.messenger.voip.VoIPGroupNotification;
 import org.telegram.tgnet.ConnectionsManager;
 import org.telegram.tgnet.TLRPC;
 import org.telegram.tgnet.tl.TL_account;
+import org.telegram.tgnet.tl.TL_keyboard;
 import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.BubbleActivity;
 import org.telegram.ui.Components.AvatarDrawable;
@@ -312,7 +314,11 @@ public class NotificationsController extends BaseController implements Notificat
             }
             return key;
         }
-
+//        if (BuildVars.DEBUG_PRIVATE_VERSION) {
+//            if (Thread.currentThread() != Looper.getMainLooper().getThread()) {
+//                throw new IllegalStateException("Not on main thread!");
+//            }
+//        }
         long hash = dialog_id + ((long) topicId << 12);
         int index = sharedPrefCachedKeys.indexOfKey(hash);
         if (index >= 0) {
@@ -750,12 +756,19 @@ public class NotificationsController extends BaseController implements Notificat
             boolean changed = false;
             StoryNotification notification = storyPushMessagesDict.get(dialogId);
             if (notification != null) {
-
+//                if (notification.maxId <= maxId) {
                     storyPushMessagesDict.remove(dialogId);
                     storyPushMessages.remove(notification);
                     changed = true;
                     getMessagesStorage().deleteStoryPushMessage(dialogId);
-
+//                } else {
+//                    StoryNotification newNotification = new StoryNotification(dialogId, notification.localName, Math.max(notification.minId, maxId), Math.max(notification.maxId, maxId), notification.date);
+//                    storyPushMessagesDict.put(dialogId, newNotification);
+//                    storyPushMessages.remove(notification);
+//                    storyPushMessages.add(newNotification);
+//                    changed = true;
+//                    getMessagesStorage().putStoryPushMessage(newNotification);
+//                }
             }
             for (int i = 0; i < pushMessages.size(); ++i) {
                 MessageObject msg = pushMessages.get(i);
@@ -1175,11 +1188,11 @@ public class NotificationsController extends BaseController implements Notificat
                 long topicId = MessageObject.getTopicId(currentAccount, messageObject.messageOwner, getMessagesController().isForum(messageObject));
                 if (dialogId == openedDialogId && ApplicationLoader.isScreenOn && !messageObject.isStoryReactionPush && !messageObject.isOauthPush) {
                     if (!isFcm) {
-                        
+                        // NimarkoGram: CG parity — only play the in-chat sound when notificationSound isn't disabled.
                         if (NimarkoConfig.notificationSound != NimarkoConfig.NOTIF_SOUND_DISABLE) {
                             playInChatSound();
                         }
-                        
+                        // NimarkoGram: CG-style in-chat vibration when a new message arrives in the open chat.
                         if (!NimarkoConfig.disableVibration
                                 && NimarkoConfig.vibrateInChats != NimarkoConfig.VIBRATE_DISABLE) {
                             try {
@@ -1218,7 +1231,9 @@ public class NotificationsController extends BaseController implements Notificat
                         if (BuildVars.LOGS_ENABLED) {
                             FileLog.d("NotificationsController: process new messages, isGlobalNotificationsEnabled("+dialogId+", "+isChannel+", "+messageObject.isReactionPush+", "+messageObject.isStoryReactionPush+") = " + value);
                         }
-                         
+                        /*if (BuildVars.DEBUG_PRIVATE_VERSION && BuildVars.LOGS_ENABLED) {
+                            FileLog.d("global notify settings for " + dialog_id + " = " + value);
+                        }*/
                     } else {
                         value = notifyOverride != 2;
                     }
@@ -1399,6 +1414,7 @@ public class NotificationsController extends BaseController implements Notificat
                         forum = chat.forum;
                     }
                 }
+
 
                 boolean canAddValue;
                 if (!forum) {
@@ -1772,7 +1788,7 @@ public class NotificationsController extends BaseController implements Notificat
                             }
                         }
                     } catch (Exception e) {
-                        
+                        //ignore, no thread synchronizations for fast
                         FileLog.e(e, false);
                     }
                 } else {
@@ -2471,9 +2487,9 @@ public class NotificationsController extends BaseController implements Notificat
         if (messageObject != null && messageObject.didSpoilLoginCode()) {
             return stringBuilder.toString();
         }
-        
+        // NM_MF: layer ported CG spoiler entities so notification previews mask filtered keywords too.
         java.util.ArrayList<TLRPC.MessageEntity> entities = MessagesFilterHelper.INSTANCE.addSpoilerEntities(messageObject);
-        
+        // NM_PWD: also mask the entire body when the dialog is locked / encrypted-gated.
         entities = app.nimarkogram.messenger.utils.chats.NimarkoChatsPasswordHelper
                 .checkLockedChatsEntities(messageObject, entities);
         for (int i = 0; i < entities.size(); i++) {
@@ -3259,7 +3275,9 @@ public class NotificationsController extends BaseController implements Notificat
                 notifyOverride = 2;
             }
         }
-         
+        /*if (BuildVars.LOGS_ENABLED && BuildVars.DEBUG_VERSION) {
+            FileLog.d("notify override for " + dialog_id + " = " + notifyOverride);
+        }*/
         return notifyOverride;
     }
 
@@ -3354,7 +3372,9 @@ public class NotificationsController extends BaseController implements Notificat
                             }
                         });
                     }
-                    
+                    // NimarkoGram: pick resource based on user choice, and invalidate
+                    // the cached SoundPool entry when the choice changes at runtime so
+                    // the user doesn't keep hearing the previous variant.
                     int desiredSound = NimarkoConfig.notificationSound == NimarkoConfig.NOTIF_SOUND_IOS ? R.raw.sound_in_ios : R.raw.sound_in;
                     if (soundIn != 0 && lastLoadedInSoundRes != desiredSound) {
                         try { soundPool.unload(soundIn); } catch (Exception ignored) {}
@@ -3688,9 +3708,9 @@ public class NotificationsController extends BaseController implements Notificat
                     String id = channel.getId();
                     if (id.startsWith(keyStart)) {
                         int importance = channel.getImportance();
-                        if (importance != NotificationManager.IMPORTANCE_HIGH && importance != NotificationManager.IMPORTANCE_MAX) { 
+                        if (importance != NotificationManager.IMPORTANCE_HIGH && importance != NotificationManager.IMPORTANCE_MAX) { //TODO remove after some time, 7.3.0 bug fix
                             if (id.contains("_ia_")) {
-                                
+                                //do nothing
                             } else if (id.contains("_channels_")) {
                                 if (editor == null) {
                                     editor = getAccountInstance().getNotificationsSettings().edit();
@@ -3833,7 +3853,7 @@ public class NotificationsController extends BaseController implements Notificat
         boolean secretChat = !isDefault && DialogObject.isEncryptedDialog(dialogId);
         boolean shouldOverwrite = !isInApp && overwriteKey != null && preferences.getBoolean(overwriteKey, false);
 
-        int nosoundPatch = 2; 
+        int nosoundPatch = 2; // when changing code here about no-sound issues, make sure to increment this value
         String soundHash = Utilities.MD5(sound == null ? "NoSound" + nosoundPatch : sound.toString());
         if (soundHash != null && soundHash.length() > 5) {
             soundHash = soundHash.substring(0, 5);
@@ -3858,7 +3878,7 @@ public class NotificationsController extends BaseController implements Notificat
             if (isInApp) {
                 name = LocaleController.formatString(R.string.NotificationsChatInApp, name);
             }
-            
+            //TODO notifications
             key = (isInApp ? "org.telegram.keyia" : "org.telegram.key") + dialogId + "_" + topicId;
         }
         key += "_" + soundHash;
@@ -4092,7 +4112,7 @@ public class NotificationsController extends BaseController implements Notificat
             if (sound != null) {
                 notificationChannel.setSound(sound, builder.build());
             } else {
-                
+                // todo: deal with vendor messed up crash here later
                 notificationChannel.setSound(null, builder.build());
             }
             if (BuildVars.LOGS_ENABLED) {
@@ -4364,6 +4384,7 @@ public class NotificationsController extends BaseController implements Notificat
                 notifyDisabled = true;
             }
 
+            // NimarkoGram (CherryGram-derived): silence notifications from non-contacts
             if (NimarkoConfig.silenceNonContacts && userId != 0 && getContactsController().contactsDict.get(userId) == null) {
                 notifyDisabled = true;
             }
@@ -4549,7 +4570,7 @@ public class NotificationsController extends BaseController implements Notificat
             if (lastMessageObject != null && lastMessageObject.isOauthPush) {
                 intent.putExtra("oauth_url", lastMessageObject.localName);
             }
-            
+            //intent.setFlags(Intent.FLAG_ACTIVITY_CLEAR_TASK);
             if (lastMessageObject.isStoryReactionPush) {
                 intent.putExtra("storyId", Math.abs(lastMessageObject.getId()));
             } else if (lastMessageObject.isLiveStoryPush) {
@@ -4738,18 +4759,20 @@ public class NotificationsController extends BaseController implements Notificat
 
             boolean hasCallback = false;
             if (!AndroidUtilities.needShowPasscode() && !SharedConfig.isWaitingForPasscodeEnter && lastMessageObject.getDialogId() == 777000) {
-                if (lastMessageObject.messageOwner.reply_markup != null) {
-                    ArrayList<TLRPC.TL_keyboardButtonRow> rows = lastMessageObject.messageOwner.reply_markup.rows;
+                if (lastMessageObject.messageOwner.reply_markup instanceof TLRPC.TL_replyInlineMarkup) {
+                    final TLRPC.TL_replyInlineMarkup replyInlineMarkup = (TLRPC.TL_replyInlineMarkup) lastMessageObject.messageOwner.reply_markup;
+                    ArrayList<TL_keyboard.KeyboardInlineButtonRow> rows = replyInlineMarkup.rows;
                     for (int a = 0, size = rows.size(); a < size; a++) {
-                        TLRPC.TL_keyboardButtonRow row = rows.get(a);
+                        TL_keyboard.KeyboardInlineButtonRow row = rows.get(a);
                         for (int b = 0, size2 = row.buttons.size(); b < size2; b++) {
-                            TLRPC.KeyboardButton button = row.buttons.get(b);
-                            if (button instanceof TLRPC.TL_keyboardButtonCallback) {
+                            TL_keyboard.KeyboardInlineButton button = row.buttons.get(b);
+                            final TL_keyboard.TL_inlineButtonTypeCallback buttonTypeCallback = TLKeyboardHelper.getType(button, TL_keyboard.TL_inlineButtonTypeCallback.class);
+                            if (buttonTypeCallback != null) {
                                 Intent callbackIntent = new Intent(ApplicationLoader.applicationContext, NotificationCallbackReceiver.class);
                                 callbackIntent.putExtra("currentAccount", currentAccount);
                                 callbackIntent.putExtra("did", dialog_id);
-                                if (button.data != null) {
-                                    callbackIntent.putExtra("data", button.data);
+                                if (buttonTypeCallback.data != null) {
+                                    callbackIntent.putExtra("data", buttonTypeCallback.data);
                                 }
                                 callbackIntent.putExtra("mid", lastMessageObject.getId());
                                 mBuilder.addAction(0, button.text, PendingIntent.getBroadcast(ApplicationLoader.applicationContext, lastButtonId++, callbackIntent, PendingIntent.FLAG_MUTABLE | PendingIntent.FLAG_UPDATE_CURRENT));
@@ -5235,7 +5258,7 @@ public class NotificationsController extends BaseController implements Notificat
             StringBuilder text = new StringBuilder();
             String[] senderName = new String[1];
             boolean[] preview = new boolean[1];
-            ArrayList<TLRPC.TL_keyboardButtonRow> rows = null;
+            ArrayList<TL_keyboard.KeyboardInlineButtonRow> rows = null;
             int rowsMid = 0;
             if (dialogKey.story) {
                 ArrayList<String> names = new ArrayList<>();
@@ -5383,6 +5406,7 @@ public class NotificationsController extends BaseController implements Notificat
                         personCache.put(uid, person);
                     }
 
+
                     if (!DialogObject.isEncryptedDialog(dialogId)) {
                         boolean setPhoto = false;
                         if (preview[0] && Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && !((ActivityManager) ApplicationLoader.applicationContext.getSystemService(Context.ACTIVITY_SERVICE)).isLowRamDevice()) {
@@ -5465,7 +5489,7 @@ public class NotificationsController extends BaseController implements Notificat
                                     }, 20_000);
 
                                     if (!TextUtils.isEmpty(messageObject.caption)) {
-                                        
+                                        // NM_PWD: braille-mask captions for locked / encrypted dialog notifications.
                                         CharSequence captionPreview = messageObject.caption;
                                         if (captionPreview != null && captionPreview.toString().contains("$")) {
                                             captionPreview = app.nimarkogram.messenger.utils.NimarkoLatexHelper.cleanForPreview(captionPreview.toString());
@@ -5516,8 +5540,8 @@ public class NotificationsController extends BaseController implements Notificat
                         messagingStyle.addMessage(message, ((long) messageObject.messageOwner.date) * 1000, person);
                     }
 
-                    if (dialogId == 777000 && messageObject.messageOwner.reply_markup != null) {
-                        rows = messageObject.messageOwner.reply_markup.rows;
+                    if (dialogId == 777000 && messageObject.messageOwner.reply_markup instanceof TLRPC.TL_replyInlineMarkup) {
+                        rows = ((TLRPC.TL_replyInlineMarkup) messageObject.messageOwner.reply_markup).rows;
                         rowsMid = messageObject.getId();
                     }
                 }
@@ -5642,13 +5666,16 @@ public class NotificationsController extends BaseController implements Notificat
                 builder.setGroupAlertBehavior(NotificationCompat.GROUP_ALERT_SUMMARY);
             }
 
-            TLRPC.TL_keyboardButtonCopy copybutton = null;
-            if (lastMessageObject != null && lastMessageObject.messageOwner != null && lastMessageObject.messageOwner.reply_markup != null) {
-                TLRPC.ReplyMarkup reply_markup = lastMessageObject.messageOwner.reply_markup;
+            TL_keyboard.KeyboardInlineButton copybutton = null;
+            TL_keyboard.TL_inlineButtonTypeCopy copyButtonType = null;
+            if (lastMessageObject != null && lastMessageObject.messageOwner != null && lastMessageObject.messageOwner.reply_markup instanceof TLRPC.TL_replyInlineMarkup) {
+                TLRPC.TL_replyInlineMarkup reply_markup = (TLRPC.TL_replyInlineMarkup) lastMessageObject.messageOwner.reply_markup;
                 for (int i = 0; i < reply_markup.rows.size(); ++i) {
                     for (int j = 0; j < reply_markup.rows.get(i).buttons.size(); ++j) {
-                        if (reply_markup.rows.get(i).buttons.get(j) instanceof TLRPC.TL_keyboardButtonCopy) {
-                            copybutton = (TLRPC.TL_keyboardButtonCopy) reply_markup.rows.get(i).buttons.get(j);
+                        final TL_keyboard.KeyboardInlineButton keyboardButton = reply_markup.rows.get(i).buttons.get(j);
+                        copyButtonType = TLKeyboardHelper.getType(keyboardButton, TL_keyboard.TL_inlineButtonTypeCopy.class);
+                        if (copyButtonType != null) {
+                            copybutton = keyboardButton;
                             break;
                         }
                     }
@@ -5659,7 +5686,7 @@ public class NotificationsController extends BaseController implements Notificat
                 Intent copyIntent = new Intent(ApplicationLoader.applicationContext, CopyCodeReceiver.class);
                 copyIntent.addFlags(Intent.FLAG_INCLUDE_STOPPED_PACKAGES);
                 copyIntent.setAction("org.telegram.messenger.ACTION_COPY_CODE");
-                copyIntent.putExtra("text", copybutton.copy_text);
+                copyIntent.putExtra("text", copyButtonType.copy_text);
                 PendingIntent copyPendingIntent = PendingIntent.getBroadcast(ApplicationLoader.applicationContext, internalId, copyIntent, PendingIntent.FLAG_MUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
                 NotificationCompat.Action copyAction = new NotificationCompat.Action.Builder(R.drawable.msg_copy, copybutton.text, copyPendingIntent)
                         .setShowsUserInterface(false)
@@ -5673,7 +5700,7 @@ public class NotificationsController extends BaseController implements Notificat
                 if (!waitingForPasscode && !dialogKey.story && (lastMessageObject == null || !lastMessageObject.isStoryReactionPush)) {
                     builder.addAction(readAction);
                 }
-                
+                // NG: quick-react from the notification with the user's default reaction.
                 if (app.nimarkogram.messenger.NimarkoConfig.notificationReactions
                         && !waitingForPasscode && !dialogKey.story && maxId != 0
                         && (lastMessageObject == null || !lastMessageObject.isStoryReactionPush)) {
@@ -5681,7 +5708,9 @@ public class NotificationsController extends BaseController implements Notificat
                     if (dtReaction == null || dtReaction.isEmpty()) {
                         dtReaction = MediaDataController.getInstance(currentAccount).getDoubleTapReaction();
                     }
-                    
+                    // Premium guard (per-account): a non-Premium account can't send a custom/premium
+                    // emoji reaction. On a non-Premium account fall back to a standard reaction; if
+                    // none, drop the quick-react button.
                     if (dtReaction != null && dtReaction.startsWith("animated_")
                             && !UserConfig.getInstance(currentAccount).isPremium()) {
                         dtReaction = MediaDataController.getInstance(currentAccount).getDoubleTapReaction();
@@ -5697,10 +5726,13 @@ public class NotificationsController extends BaseController implements Notificat
                         reactIntent.putExtra("reaction", dtReaction);
                         reactIntent.putExtra("notification_id", internalId);
                         PendingIntent reactPendingIntent = PendingIntent.getBroadcast(ApplicationLoader.applicationContext, internalId, reactIntent, PendingIntent.FLAG_MUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
-                        
+                        // Render with Telegram's own emoji art (device font renders some glyphs broken).
+                        // For a custom emoji resolve its base emoji char; render to a bitmap action icon.
                         String reactEmojiChar;
                         if (dtReaction.startsWith("animated_")) {
-                            
+                            // Prefer the base emoji stored when the user picked it (reliable on a cold
+                            // push when the custom-emoji document isn't cached); fall back to a live
+                            // document lookup. Every premium emoji maps to a standard base emoji (alt).
                             reactEmojiChar = dtReaction.equals(app.nimarkogram.messenger.NimarkoConfig.getNotificationReaction(currentAccount))
                                     ? app.nimarkogram.messenger.NimarkoConfig.getNotificationReactionEmoji(currentAccount) : null;
                             if (reactEmojiChar == null || reactEmojiChar.isEmpty()) {
@@ -5745,15 +5777,16 @@ public class NotificationsController extends BaseController implements Notificat
             if (!AndroidUtilities.needShowPasscode(false) && !SharedConfig.isWaitingForPasscodeEnter) {
                 if (rows != null) {
                     for (int r = 0, rc = rows.size(); r < rc; r++) {
-                        TLRPC.TL_keyboardButtonRow row = rows.get(r);
+                        TL_keyboard.KeyboardInlineButtonRow row = rows.get(r);
                         for (int c = 0, cc = row.buttons.size(); c < cc; c++) {
-                            TLRPC.KeyboardButton button = row.buttons.get(c);
-                            if (button instanceof TLRPC.TL_keyboardButtonCallback) {
+                            TL_keyboard.KeyboardInlineButton button = row.buttons.get(c);
+                            final TL_keyboard.TL_inlineButtonTypeCallback buttonTypeCallback = TLKeyboardHelper.getType(button, TL_keyboard.TL_inlineButtonTypeCallback.class);
+                            if (buttonTypeCallback != null) {
                                 Intent callbackIntent = new Intent(ApplicationLoader.applicationContext, NotificationCallbackReceiver.class);
                                 callbackIntent.putExtra("currentAccount", currentAccount);
                                 callbackIntent.putExtra("did", dialogId);
-                                if (button.data != null) {
-                                    callbackIntent.putExtra("data", button.data);
+                                if (buttonTypeCallback.data != null) {
+                                    callbackIntent.putExtra("data", buttonTypeCallback.data);
                                 }
                                 callbackIntent.putExtra("mid", rowsMid);
                                 builder.addAction(0, button.text, PendingIntent.getBroadcast(ApplicationLoader.applicationContext, lastButtonId++, callbackIntent, PendingIntent.FLAG_MUTABLE | PendingIntent.FLAG_UPDATE_CURRENT));
@@ -5927,7 +5960,7 @@ public class NotificationsController extends BaseController implements Notificat
             return null;
         }
         final int sz = AndroidUtilities.dp(64);
-        
+        // TODO: cache that bitmap
         final Bitmap finalBitmap = Bitmap.createBitmap(sz, sz, Bitmap.Config.ARGB_8888);
         final Canvas canvas = new Canvas(finalBitmap);
         final Matrix matrix = new Matrix();
@@ -6072,7 +6105,7 @@ public class NotificationsController extends BaseController implements Notificat
             } else {
                 editor.putInt("notify2_" + NotificationsController.getSharedPrefKey(dialog_id, topicId), 0);
             }
-            
+            //TODO topic
             getMessagesStorage().setDialogFlags(dialog_id, 0);
             if (dialog != null) {
                 dialog.notify_settings = new TLRPC.TL_peerNotifySettings();
@@ -6183,7 +6216,7 @@ public class NotificationsController extends BaseController implements Notificat
         }
 
         getConnectionsManager().sendRequest(req, (response, error) -> {
-           
+           // FileLog.d("updateServerNotificationsSettings " + dialogId + " " + topicId + " error = " + error);
         });
     }
 

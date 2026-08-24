@@ -1,6 +1,34 @@
-/*
+/**
+ * This is the source code of Cherrygram for Android.
+ * It is licensed under GNU GPL v. 2 or later.
+ * You should have received a copy of the license in this archive (see LICENSE).
+ * Please, be respectful and credit the original author if you use this code.
+ *
  * Copyright github.com/arsLan4k1390, 2022-2026.
- * Licensed under GNU GPL v2 or later. See LICENSE.
+ *
+ * Ported into NimarkoGram (GPL-2.0):
+ *   - package renamed to app.nimarkogram.messenger.preferences
+ *   - CherrygramAppearanceConfig.INSTANCE.getX/setX → NimarkoConfig.* + toggle*
+ *   - R.string.CP_* / R.string.AP_ShowID → R.string.NM_MP_* + NM_AP_ShowID
+ *   - Constants.* inlined (CHERRY_EMOJI_ID -> 0 since NG ships no Cherry asset;
+ *     PROFILE_BACKGROUND_COLOR_ID_RED / REPLY_BACKGROUND_COLOR_ID kept as
+ *     literal palette indices)
+ *   - CGResourcesHelper.getDCName/getDCGeo inlined locally
+ *   - Extra.INSTANCE.getRegistrationDate / addBirthdayToCalendar are NOT
+ *     ported (CG ships them behind a closed gitlab pull; per task scope they
+ *     are dropped — image-click handlers become no-ops)
+ *   - FirebaseAnalyticsHelper.trackEventWithEmptyBundle dropped
+ *   - ProfileChannelCell.setCherry() → setNimarko() (sibling method added to
+ *     org.telegram.ui.Cells.ProfileChannelCell in this branch)
+ *   - ThemePreviewMessagesCell.TYPE_PEER_COLOR_CHERRY is not patched in;
+ *     when user lacks a custom emoji, the upstream TYPE_PEER_COLOR is used
+ *     instead (no default Cherry emoji injection)
+ *
+ * Inner-class layout (Page / ColoredActionBar / ProfilePreview) is preserved
+ * verbatim per task instruction ("either as inner classes or extracted top-
+ * level — your call").
+ *
+ * Original CG attribution header kept above per GPL-2.0.
  */
 
 package app.nimarkogram.messenger.preferences;
@@ -31,6 +59,7 @@ import androidx.annotation.NonNull;
 import androidx.core.content.ContextCompat;
 import androidx.core.graphics.ColorUtils;
 import androidx.recyclerview.widget.DefaultItemAnimator;
+import androidx.recyclerview.widget.DiffUtil;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
@@ -47,6 +76,7 @@ import org.telegram.messenger.UserObject;
 import org.telegram.tgnet.TLRPC;
 import org.telegram.ui.ActionBar.ActionBar;
 import org.telegram.ui.ActionBar.BaseFragment;
+import org.telegram.ui.ActionBar.MessageDrawable;
 import org.telegram.ui.ActionBar.SimpleTextView;
 import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.ActionBar.ThemeDescription;
@@ -96,8 +126,13 @@ public class MessagesAndProfilesPreferencesActivity extends BaseFragment {
     static final int SETTING_PROFILE_COLOR = 105;
     static final int SETTING_PROFILE_EMOJI = 106;
 
+    // Palette indices reused from CG Constants. These are upstream Telegram
+    // peer-color IDs — kept as literals to avoid copying CG's full Constants
+    // class for two integers.
     private static final int PROFILE_BACKGROUND_COLOR_ID_RED = 14;
     private static final int REPLY_BACKGROUND_COLOR_ID = 13;
+    // CG injects its branded "cherry" custom emoji here. NimarkoGram ships
+    // no equivalent custom emoji asset, so the fallback is "no override".
     private static final long NIMARKO_EMOJI_ID_FALLBACK = 0L;
 
     private FrameLayout contentView;
@@ -151,6 +186,8 @@ public class MessagesAndProfilesPreferencesActivity extends BaseFragment {
         int profilePreviewDivisorRow = -1;
         int profileBackgroundSwitchRow = -1;
         int profileEmojiSwitchRow = -1;
+
+        private final ArrayList<Integer> rowKeys = new ArrayList<>();
 
         private final int VIEW_TYPE_MESSAGE = 0;
         private final int VIEW_TYPE_HEADER = 1;
@@ -218,11 +255,20 @@ public class MessagesAndProfilesPreferencesActivity extends BaseFragment {
                     View view;
                     switch (viewType) {
                         case VIEW_TYPE_MESSAGE:
+                            // NG note: CG used TYPE_PEER_COLOR_CHERRY (1390) when the
+                            // user had no emoji set, to inject a default Cherry emoji
+                            // into the preview. NG drops that branch (no Cherry asset)
+                            // and always uses TYPE_PEER_COLOR.
                             ThemePreviewMessagesCell messagesCell = messagesCellPreview = new ThemePreviewMessagesCell(
                                     getContext(), parentLayout, ThemePreviewMessagesCell.TYPE_PEER_COLOR
                             );
                             messagesCell.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
                             messagesCell.fragment = MessagesAndProfilesPreferencesActivity.this;
+                            // NimarkoGram: TYPE_PEER_COLOR sample messages are built with notime=true
+                            // (link-preview look), so this page's preview shows NO bottom time. Here we
+                            // DO want the time visible so the "show time with seconds" toggle previews
+                            // correctly. Clear notime on THIS preview's cells only — PeerColorActivity /
+                            // ChannelColorActivity keep their time-less previews untouched.
                             try {
                                 for (org.telegram.ui.Cells.ChatMessageCell pc : messagesCell.getCells()) {
                                     if (pc != null && pc.getMessageObject() != null) {
@@ -343,6 +389,9 @@ public class MessagesAndProfilesPreferencesActivity extends BaseFragment {
                                     final int buttonColor = processColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlueHeader, getResourceProvider()));
                                     drawable.setColorFilter(new PorterDuffColorFilter(buttonColor, PorterDuff.Mode.MULTIPLY));
                                 }
+                                // NG note: CG opens Extra.INSTANCE.getRegistrationDate
+                                // on click — that helper lives in a closed gitlab pull,
+                                // so the click handler is intentionally a no-op here.
                                 detailCell.setImageClickListener(v -> {});
                             } else if (position == birthdayPreviewRow) {
                                 TLRPC.UserFull meFull = me != null
@@ -363,6 +412,8 @@ public class MessagesAndProfilesPreferencesActivity extends BaseFragment {
                                     final int buttonColor = processColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlueHeader, getResourceProvider()));
                                     drawable.setColorFilter(new PorterDuffColorFilter(buttonColor, PorterDuff.Mode.MULTIPLY));
                                 }
+                                // NG note: CG hooks Extra.INSTANCE.addBirthdayToCalendar
+                                // (closed pull). Click handler dropped.
                                 detailCell.setImageClickListener(v -> {});
                             } else if (position == businessHoursPreviewRow) {
                                 detailCell.textView.setTextColor(Theme.getColor(Theme.key_avatar_nameInMessageGreen, getResourceProvider()));
@@ -415,6 +466,11 @@ public class MessagesAndProfilesPreferencesActivity extends BaseFragment {
                     NimarkoConfig.toggleShowSeconds();
                     setSwitchChecked(view, NimarkoConfig.showSeconds);
                     LocaleController.getInstance().recreateFormatters();
+                    // Refresh the in-page sample preview immediately: force each preview
+                    // ChatMessageCell to fully rebuild (forceResetMessageObject -> re-runs
+                    // measureTime, which rebuilds currentTimeString via the now-changed
+                    // getFormatterDay()) so the sample message time switches to/from HH:mm:ss
+                    // right away. A plain invalidate() doesn't recompute the time string/width.
                     if (messagesCellPreview != null) {
                         for (ChatMessageCell previewCell : messagesCellPreview.getCells()) {
                             if (previewCell != null && previewCell.getMessageObject() != null) {
@@ -424,6 +480,12 @@ public class MessagesAndProfilesPreferencesActivity extends BaseFragment {
                             }
                         }
                     }
+                    // Defer the heavy rebuild so the switch toggle animation plays first
+                    // (an immediate rebuildAllFragmentViews recreates this row, killing it).
+                    // Broadcast reloadInterface so EVERY open fragment (chat/dialogs/profile)
+                    // recreates its cells and re-measures the now-wider HH:mm:ss time; otherwise
+                    // already-laid-out back-stack cells keep their stale HH:MM width and the
+                    // seconds get clipped at the bottom of the bubble until they rebind on scroll.
                     AndroidUtilities.runOnUIThread(() -> {
                         if (parentLayout != null) parentLayout.rebuildAllFragmentViews(true, true);
                         org.telegram.messenger.NotificationCenter.getGlobalInstance()
@@ -442,14 +504,18 @@ public class MessagesAndProfilesPreferencesActivity extends BaseFragment {
                         String tgPremium = NimarkoConfig.disablePremiumStatuses ? " | TG Premium" : "";
                         profilePage.profilePreview.subtitleView.setText(getString(R.string.Online) + tgPremium);
                     }
+                    // NG nick-truncation fix: setRightDrawable re-lays out the title against its STALE
+                    // measured width (widthWrapContent sized it for the previous badge state), so when the
+                    // status badge re-appears there's no room and the name ellipsizes to "Ett…". Force a real
+                    // re-measure so wrap-content re-expands to fit name + badge.
                     profilePage.profilePreview.titleView.requestLayout();
 
                     updateMessages();
                     if (type == PAGE_PROFILE) {
                         messagePage.updateMessages();
-                        messagePage.updateRows();
+                        messagePage.refreshPremiumStatusRow();
                     } else {
-                        profilePage.updateRows();
+                        profilePage.refreshPremiumStatusRow();
                     }
                 } else if (position == replyBackgroundSwitchRow) {
                     NimarkoConfig.toggleReplyBackground();
@@ -479,30 +545,28 @@ public class MessagesAndProfilesPreferencesActivity extends BaseFragment {
 
                     updateMessages();
                 } else if (position == channelPreviewRow) {
+                    // CG opened Constants.CG_CHANNEL_URL; NG has no equivalent
+                    // promo channel, so the mock preview is non-interactive.
                 } else if (position == channelPreviewSwitchRow) {
                     NimarkoConfig.toggleProfileChannelPreview();
                     setSwitchChecked(view, NimarkoConfig.profileChannelPreview);
 
                     profilePage.updateRows();
-                    if (parentLayout != null) parentLayout.rebuildAllFragmentViews(false, false);
                 } else if (position == showDcIdSwitchRow) {
                     NimarkoConfig.toggleShowIDDC();
                     setSwitchChecked(view, NimarkoConfig.showIDDC);
 
                     profilePage.updateRows();
-                    if (parentLayout != null) parentLayout.rebuildAllFragmentViews(false, false);
                 } else if (position == birthdayPreviewSwitchRow) {
                     NimarkoConfig.toggleProfileBirthDatePreview();
                     setSwitchChecked(view, NimarkoConfig.profileBirthDatePreview);
 
                     profilePage.updateRows();
-                    if (parentLayout != null) parentLayout.rebuildAllFragmentViews(false, false);
                 } else if (position == businessPreviewSwitchRow) {
                     NimarkoConfig.toggleProfileBusinessPreview();
                     setSwitchChecked(view, NimarkoConfig.profileBusinessPreview);
 
                     profilePage.updateRows();
-                    if (parentLayout != null) parentLayout.rebuildAllFragmentViews(false, false);
                 } else if (position == profileBackgroundSwitchRow) {
                     NimarkoConfig.toggleProfileBackgroundColor();
                     setSwitchChecked(view, NimarkoConfig.profileBackgroundColor);
@@ -604,7 +668,8 @@ public class MessagesAndProfilesPreferencesActivity extends BaseFragment {
         }
 
         private void updateRows() {
-            final int previousRowCount = rowCount;
+            final ArrayList<Integer> previousRows = new ArrayList<>(rowKeys);
+            rowKeys.clear();
             rowCount = 0;
             previewRow = messagePreviewDivisorRow = headerRow = -1;
             timeWithSecondsSwitchRow = premiumStatusSwitchRow = -1;
@@ -617,61 +682,105 @@ public class MessagesAndProfilesPreferencesActivity extends BaseFragment {
             profileBackgroundSwitchRow = profileEmojiSwitchRow = -1;
 
             if (type == PAGE_MESSAGE) {
-                previewRow = rowCount++;
-                messagePreviewDivisorRow = rowCount++;
-                headerRow = rowCount++;
-                timeWithSecondsSwitchRow = rowCount++;
+                previewRow = addRow(1);
+                messagePreviewDivisorRow = addRow(2);
+                headerRow = addRow(3);
+                timeWithSecondsSwitchRow = addRow(4);
 
-                premiumStatusSwitchRow = rowCount++;
-                replyBackgroundSwitchRow = rowCount++;
-                replyColorSwitchRow = rowCount++;
-                replyEmojiSwitchRow = rowCount++;
+                // premiumStatusSwitchRow is a static row — it is always present, so the
+                // old remove+insert here only produced a spurious change animation when
+                // toggling any other switch. Use notifyItemChanged if a refresh is needed.
+                premiumStatusSwitchRow = addRow(5);
+                replyBackgroundSwitchRow = addRow(6);
+                replyColorSwitchRow = addRow(7);
+                replyEmojiSwitchRow = addRow(8);
             }
             if (type == PAGE_PROFILE) {
+                // Channel preview
                 if (NimarkoConfig.profileChannelPreview) {
-                    channelPreviewRow = rowCount++;
-                    channelPreviewDivisorRow = rowCount++;
+                    channelPreviewRow = addRow(20);
+                    channelPreviewDivisorRow = addRow(21);
                 }
+                // Channel preview
 
                 if (NimarkoConfig.showIDDC
                         || NimarkoConfig.profileBirthDatePreview
                         || NimarkoConfig.profileBusinessPreview
                 ) {
-                    infoHeaderRow = rowCount++;
+                    infoHeaderRow = addRow(22);
                 }
 
+                // DC ID
                 if (NimarkoConfig.showIDDC) {
-                    idDcPreviewRow = rowCount++;
+                    idDcPreviewRow = addRow(23);
                 }
+                // DC ID
 
+                // Birth date preview
                 if (NimarkoConfig.profileBirthDatePreview) {
-                    birthdayPreviewRow = rowCount++;
+                    birthdayPreviewRow = addRow(24);
+                }
+                // Birth date preview
+
+                // Business preview
+                if (NimarkoConfig.profileBusinessPreview) {
+                    businessHoursPreviewRow = addRow(25);
                 }
 
                 if (NimarkoConfig.profileBusinessPreview) {
-                    businessHoursPreviewRow = rowCount++;
+                    businessLocationPreviewRow = addRow(26);
                 }
+                // Business preview
 
-                if (NimarkoConfig.profileBusinessPreview) {
-                    businessLocationPreviewRow = rowCount++;
-                }
-
-                profilePreviewDivisorRow = rowCount++;
-                headerRow = rowCount++;
-                channelPreviewSwitchRow = rowCount++;
-                showDcIdSwitchRow = rowCount++;
-                birthdayPreviewSwitchRow = rowCount++;
-                businessPreviewSwitchRow = rowCount++;
-                premiumStatusSwitchRow = rowCount++;
-                profileBackgroundSwitchRow = rowCount++;
-                profileEmojiSwitchRow = rowCount++;
+                profilePreviewDivisorRow = addRow(27);
+                headerRow = addRow(28);
+                channelPreviewSwitchRow = addRow(29);
+                showDcIdSwitchRow = addRow(30);
+                birthdayPreviewSwitchRow = addRow(31);
+                businessPreviewSwitchRow = addRow(32);
+                // premiumStatusSwitchRow is a static row — see PAGE_MESSAGE note above.
+                premiumStatusSwitchRow = addRow(33);
+                profileBackgroundSwitchRow = addRow(34);
+                profileEmojiSwitchRow = addRow(35);
             }
             if (listAdapter != null) {
-                if (previousRowCount == 0 && rowCount > 0) {
+                if (previousRows.isEmpty() && rowCount > 0) {
                     listAdapter.notifyItemRangeInserted(0, rowCount);
                 } else {
-                    listAdapter.notifyDataSetChanged();
+                    DiffUtil.calculateDiff(new DiffUtil.Callback() {
+                        @Override
+                        public int getOldListSize() {
+                            return previousRows.size();
+                        }
+
+                        @Override
+                        public int getNewListSize() {
+                            return rowKeys.size();
+                        }
+
+                        @Override
+                        public boolean areItemsTheSame(int oldItemPosition, int newItemPosition) {
+                            return previousRows.get(oldItemPosition).equals(rowKeys.get(newItemPosition));
+                        }
+
+                        @Override
+                        public boolean areContentsTheSame(int oldItemPosition, int newItemPosition) {
+                            return true;
+                        }
+                    }).dispatchUpdatesTo(listAdapter);
                 }
+            }
+        }
+
+        private int addRow(int key) {
+            int position = rowCount++;
+            rowKeys.add(key);
+            return position;
+        }
+
+        private void refreshPremiumStatusRow() {
+            if (listAdapter != null && premiumStatusSwitchRow >= 0) {
+                listAdapter.notifyItemChanged(premiumStatusSwitchRow);
             }
         }
 
@@ -753,7 +862,7 @@ public class MessagesAndProfilesPreferencesActivity extends BaseFragment {
 
     private Theme.ResourcesProvider parentResourcesProvider;
     private final SparseIntArray currentColors = new SparseIntArray();
-    private final Theme.MessageDrawable msgInDrawable, msgInDrawableSelected;
+    private final MessageDrawable msgInDrawable, msgInDrawableSelected;
 
     public MessagesAndProfilesPreferencesActivity() {
         super();
@@ -790,8 +899,8 @@ public class MessagesAndProfilesPreferencesActivity extends BaseFragment {
                 return Theme.ResourcesProvider.super.getPaint(paintKey);
             }
         };
-        msgInDrawable = new Theme.MessageDrawable(Theme.MessageDrawable.TYPE_TEXT, false, false, resourceProvider);
-        msgInDrawableSelected = new Theme.MessageDrawable(Theme.MessageDrawable.TYPE_TEXT, false, true, resourceProvider);
+        msgInDrawable = new MessageDrawable(MessageDrawable.TYPE_TEXT, false, false, resourceProvider);
+        msgInDrawableSelected = new MessageDrawable(MessageDrawable.TYPE_TEXT, false, true, resourceProvider);
     }
 
     @Override
@@ -963,6 +1072,8 @@ public class MessagesAndProfilesPreferencesActivity extends BaseFragment {
                     .scrollToSetting(initialSettingId));
         }
 
+        // NG note: CG calls FirebaseAnalyticsHelper.INSTANCE.trackEventWithEmptyBundle here.
+        // NimarkoGram ships no Firebase analytics, so the event tracking is dropped.
 
         return contentView;
     }
@@ -1193,6 +1304,9 @@ public class MessagesAndProfilesPreferencesActivity extends BaseFragment {
                 avatarDrawable.setInfo(0, getString(R.string.AppName), null);
                 imageReceiver.setImageBitmap(avatarDrawable);
             }
+            // NG: the status emoji drawable was created but never given any content, so the star next to the
+            // nick rendered as nothing. Feed it the user's custom emoji status if set, otherwise the default
+            // Telegram premium star — so toggling premium statuses back ON actually shows the star.
             try {
                 Long statusDocId = user != null ? UserObject.getEmojiStatusDocumentId(user.emoji_status) : null;
                 if (statusDocId != null && statusDocId != 0) {
@@ -1405,6 +1519,7 @@ public class MessagesAndProfilesPreferencesActivity extends BaseFragment {
         return false;
     }
 
+    // ---- DC name / geo (inlined from CG CGResourcesHelper.getDCName/getDCGeo) ----
 
     private static String getDCName(int dc) {
         switch (dc) {

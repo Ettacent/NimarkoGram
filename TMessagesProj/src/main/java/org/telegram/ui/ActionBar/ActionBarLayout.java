@@ -436,7 +436,12 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
         @Override
         public boolean dispatchTouchEvent(MotionEvent ev) {
             if (ev.getAction() == MotionEvent.ACTION_DOWN) {
+                /*final int bottomSheetHeight = isKeyboardVisible ? 0 : getBottomTabsHeight(true);
+                if (ev.getY() > getHeight() - bottomSheetHeight) {
+                    return false;
+                }*/
             }
+//            processMenuButtonsTouch(ev);
             boolean passivePreview = inPreviewMode && previewMenu == null;
             if ((passivePreview || transitionAnimationPreviewMode) && (ev.getActionMasked() == MotionEvent.ACTION_DOWN || ev.getActionMasked() == MotionEvent.ACTION_POINTER_DOWN)) {
                 return false;
@@ -485,6 +490,7 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
         }
 
         float lastY, startY;
+        // for menu buttons to be clicked by hover:
         private float pressX, pressY;
         private boolean allowToPressByHover;
         public void processMenuButtonsTouch(MotionEvent event) {
@@ -510,6 +516,7 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
                 allowToPressByHover = false;
             } else if (event.getAction() == MotionEvent.ACTION_MOVE || event.getAction() == MotionEvent.ACTION_UP) {
                 if (previewMenu != null && highlightActionButtons) {
+//                    movePreviewFragment(Math.min(pressY, AndroidUtilities.displaySize.y * .4f) - event.getY());
                     if (!allowToPressByHover && Math.sqrt(Math.pow(pressX - event.getX(), 2) + Math.pow(pressY - event.getY(), 2)) > dp(30)) {
                         allowToPressByHover = true;
                     }
@@ -525,6 +532,7 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
                                     if (shouldBeEnabled != enabled) {
                                         ripple.setState(shouldBeEnabled ? new int[]{android.R.attr.state_pressed, android.R.attr.state_enabled} : new int[]{});
                                         if (shouldBeEnabled) {
+                                            // NimarkoGram (CG parity): gate haptic on disableVibration flag.
                                             if (!app.nimarkogram.messenger.NimarkoConfig.disableVibration) {
                                                 AndroidUtilities.vibrateCursor(button);
                                             }
@@ -611,7 +619,7 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
             sheetFragment.setParentLayout(this);
             View fragmentView = sheetFragment.fragmentView;
             if (fragmentView == null) {
-                fragmentView = sheetFragment.createView(parentActivity);
+                fragmentView = sheetFragment.performCreateView(parentActivity);
             }
             if (fragmentView.getParent() != sheetContainer) {
                 AndroidUtilities.removeFromParent(fragmentView);
@@ -628,6 +636,7 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
     private BaseFragment newFragment;
     private BaseFragment oldFragment;
 
+    /* Contest */
     private ActionBarPopupWindow.ActionBarPopupWindowLayout previewMenu;
 
     private AnimatorSet currentAnimation;
@@ -651,8 +660,8 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
     private ArrayList<int[]> animateEndColors = new ArrayList<>();
 
     StartColorsProvider startColorsProvider = new StartColorsProvider();
-    public Theme.MessageDrawable messageDrawableOutStart;
-    public Theme.MessageDrawable messageDrawableOutMediaStart;
+    public MessageDrawable messageDrawableOutStart;
+    public MessageDrawable messageDrawableOutMediaStart;
     public ThemeAnimationSettings.onAnimationProgress animationProgressListener;
 
     private ArrayList<ArrayList<ThemeDescription>> themeAnimatorDescriptions = new ArrayList<>();
@@ -721,6 +730,9 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
             headerShadowDrawable = getResources().getDrawable(R.drawable.header_shadow).mutate();
         }
 
+        // NimarkoGram (CG parity): when actionbar crossfade is active we must opt-out of
+        // the default FrameLayout willNotDraw optimisation and pre-create the MenuDrawable
+        // so the draw() override that crossfades both action bars is reliably invoked.
         if (USE_ACTIONBAR_CROSSFADE) {
             setWillNotDraw(false);
             menuDrawable = new MenuDrawable(MenuDrawable.TYPE_DEFAULT);
@@ -813,7 +825,7 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
             sheetFragment.setParentLayout(this);
             View fragmentView = sheetFragment.fragmentView;
             if (fragmentView == null) {
-                fragmentView = sheetFragment.createView(parentActivity);
+                fragmentView = sheetFragment.performCreateView(parentActivity);
             }
             if (fragmentView.getParent() != sheetContainer) {
                 AndroidUtilities.removeFromParent(fragmentView);
@@ -871,6 +883,7 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
             lastFragment = fragmentsStack.get(fragmentsStack.size() - 1);
         }
         if (lastFragment != null && !lastFragment.isSupportEdgeToEdge() && storyViewerAttached()) {
+            //remeasure only storyViewer if keyboard visibility changed
             int keyboardHeight = measureKeyboardHeight();
             lastFragment.setKeyboardHeightFromParent(keyboardHeight);
             super.onMeasure(widthMeasureSpec, MeasureSpec.makeMeasureSpec(MeasureSpec.getSize(heightMeasureSpec) + keyboardHeight, MeasureSpec.EXACTLY));
@@ -1001,6 +1014,7 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
             } else {
                 progress = value / containerView.getMeasuredWidth();
             }
+            // NimarkoGram: drive swipeProgress for actionbarCrossfade (CG parity).
             if (app.nimarkogram.messenger.NimarkoConfig.actionbarCrossfade) {
                 swipeProgress = MathUtils.clamp(progress, 0f, 1f);
                 invalidateActionBars();
@@ -1016,6 +1030,10 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
                     currFragment.setNavigationBarColor(ColorUtils.blendARGB(currNavigationBarColor, prevNavigationBarColor, ratio));
                 }
             }
+            // NimarkoGram: the per-fragment status-bar overlay blend that used to live here was DROPPED — 12.9.0
+            // removed the whole slide-time setStatusBarColor block (and the LIGHT/DARK_STATUS_BAR_OVERLAY
+            // constants + SharedConfig.noStatusBar it relied on), moving status-bar handling to edge-to-edge.
+            // Following upstream; our NG refinement is moot with the block gone.
         }
     }
 
@@ -1026,6 +1044,25 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
 
     @Override
     public void onResume() {
+//        if (transitionAnimationInProgress) {
+//            if (currentAnimation != null) {
+//                currentAnimation.cancel();
+//                currentAnimation = null;
+//            }
+//            if (animationRunnable != null) {
+//                AndroidUtilities.cancelRunOnUIThread(animationRunnable);
+//                animationRunnable = null;
+//            }
+//            if (waitingForKeyboardCloseRunnable != null) {
+//                AndroidUtilities.cancelRunOnUIThread(waitingForKeyboardCloseRunnable);
+//                waitingForKeyboardCloseRunnable = null;
+//            }
+//            if (onCloseAnimationEndRunnable != null) {
+//                onCloseAnimationEnd();
+//            } else if (onOpenAnimationEndRunnable != null) {
+//                onOpenAnimationEnd();
+//            }
+//        }
         if (!fragmentsStack.isEmpty()) {
             BaseFragment lastFragment = fragmentsStack.get(fragmentsStack.size() - 1);
             lastFragment.onResume();
@@ -1064,6 +1101,10 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
 
     @Override
     public void requestDisallowInterceptTouchEvent(boolean disallowIntercept) {
+        // A child may ask us not to intercept while the edge gesture is still pending. Honor that
+        // request, but never tear down a swipe which ActionBarLayout has already intercepted: the
+        // old onTouchEvent(null) path only cleared the tracking flags and left both containers at
+        // their current translations, permanently stranding the page between two fragments.
         if (disallowIntercept && maybeStartTracking && !startedTracking) {
             clearPendingSlideTracking();
         }
@@ -1202,7 +1243,13 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
 
         if (translationX != 0 || overrideWidthOffset != -1) {
             int widthOffset = overrideWidthOffset != -1 ? overrideWidthOffset : width - translationX;
+            // NimarkoGram (CG parity): when crossfade is active, shift the shadow/scrim down by
+            // the action bar height so they don't paint over the bar currently crossfading.
             int top = getTop(widthOffset, (float) width);
+            // NimarkoGram: taper shadow/scrim toward 0 over the last dp(20) of cancel-back so the
+            // back-gesture shadow fades out smoothly instead of snapping when translationX hits 0.
+            // Without this factor, the inner `if (translationX != 0)` guard clips the shadow off
+            // abruptly at the end of a cancel animation -- very visible on the white theme.
             final float edgeTaper = overrideWidthOffset != -1
                     ? 1f
                     : MathUtils.clamp(translationX / (float) dp(20), 0f, 1f);
@@ -1388,6 +1435,8 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
         containerViewBack.setVisibility(View.INVISIBLE);
         setInnerTranslationX(0f);
         swipeProgress = 0f;
+        // NimarkoGram (CG parity): drop any lingering crossfade ratios after the
+        // swipe finishes so the next swipe / present doesn't inherit stale alpha.
         if (USE_ACTIONBAR_CROSSFADE) {
             invalidateActionBars();
         }
@@ -1430,6 +1479,7 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
         }
     }
 
+    /** Clears a gesture which has not yet been intercepted, without touching visible containers. */
     private void clearPendingSlideTracking() {
         maybeStartTracking = false;
         startedTrackingPointerId = -1;
@@ -1442,6 +1492,11 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
         checkNeedRebuild();
     }
 
+    /**
+     * Ends an interrupted touch stream deterministically. Once the page has started moving we
+     * settle it back through the regular transition path so fragment lifecycle and visibility are
+     * restored together. A missing pointer/CANCEL must never leave a translated live container.
+     */
     private void cancelActiveSlideTracking() {
         maybeStartTracking = false;
         startedTrackingPointerId = -1;
@@ -1471,8 +1526,9 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
         BaseFragment lastFragment = fragmentsStack.get(fragmentsStack.size() - 2);
         View fragmentView = lastFragment.fragmentView;
         if (fragmentView == null) {
-            fragmentView = lastFragment.createView(parentActivity);
+            fragmentView = lastFragment.performCreateView(parentActivity);
             if (fragmentView != null && lastFragment.isSupportEdgeToEdge() && lastFragment.drawEdgeNavigationBar()) {
+                // NimarkoGram (CG L1326): strip haptic feedback when disableVibration on.
                 if (app.nimarkogram.messenger.NimarkoConfig.disableVibration) {
                     app.nimarkogram.messenger.utils.VibrateUtils.disableHapticFeedback(fragmentView);
                 }
@@ -1516,6 +1572,8 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
         currentFragment.prepareFragmentToSlide(true, true);
         lastFragment.prepareFragmentToSlide(false, true);
 
+        // NimarkoGram (CG parity): reset crossfade progress at the start of a new swipe
+        // so the first frame doesn't inherit a leftover value from a previous animation.
         if (USE_ACTIONBAR_CROSSFADE) {
             swipeProgress = 0f;
             invalidateActionBars();
@@ -1528,6 +1586,8 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
             if (fragmentsStack.size() > 1 && allowSwipe()) {
                 final int action = ev == null ? -1 : ev.getActionMasked();
                 if (ev != null && action == MotionEvent.ACTION_DOWN) {
+                    // A new stream is also a recovery boundary for an OEM stream which never
+                    // delivered its terminal event. Settle the old page before accepting it.
                     if (startedTracking) {
                         cancelActiveSlideTracking();
                         return true;
@@ -1546,6 +1606,10 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
                         velocityTracker.clear();
                     }
                 } else if (ev != null && action == MotionEvent.ACTION_MOVE) {
+                    // requestDisallowInterceptTouchEvent(true) deliberately clears a
+                    // *pending* edge swipe. If a child later allows interception again
+                    // during the same stream, MOVE arrives without an edge owner. It is
+                    // not an interrupted back gesture and must stay with the child.
                     if (!maybeStartTracking && !startedTracking) {
                         return false;
                     }
@@ -1615,6 +1679,8 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
                     }
                     final int releasedPointerId = ev.getPointerId(actionIndex);
                     if (releasedPointerId != startedTrackingPointerId) {
+                        // A secondary finger was lifted; the edge pointer continues owning the
+                        // gesture. Raw getAction() used to lose this distinction on some devices.
                         if (velocityTracker != null) {
                             velocityTracker.addMovement(ev);
                         }
@@ -1727,8 +1793,14 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
         }
     }
 
+    // NimarkoGram: CG parity — drives both panels + swipeProgress during predictive back.
     private void updateTransitionProgress(float dx, float progress, boolean backAnimation) {
         containerView.setTranslationX(dx);
+        // NimarkoGram: this method is the PREDICTIVE-back driver (onBackProgress) — dx here is only a small
+        // ~15% peek of the gesture. Keep innerTranslationX pinned (the original 1f). Feeding the peek dx made
+        // the back-swipe scrim treat the predictive preview as a real swipe and slam to full dim = the broken
+        // predictive animation. The spring RELEASE path sets the live innerTranslationX in its own update
+        // listener, so the back-swipe scrim fix does NOT need this method to do it.
         setInnerTranslationX(1f);
 
         if (shouldUseSpringAnimationForStack() && containerViewBack != null) {
@@ -1782,6 +1854,7 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
         float distToMove;
         boolean overrideTransition = currentFragment.shouldOverrideSlideTransition(false, backAnimation);
 
+        // NimarkoGram: CG Spring back-end animation (verbatim port, GPL-2.0).
         if (shouldUseSpringAnimationForStack()) {
             FloatValueHolder valueHolder = new FloatValueHolder((x / containerView.getMeasuredWidth()) * SPRING_MULTIPLIER);
             final SpringAnimation springAnimation;
@@ -1819,6 +1892,11 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
                 } else {
                     if (getBackgroundFragment() != null) getBackgroundFragment().onTransitionAnimationProgress(true, 1f - progress);
                 }
+                // NimarkoGram: do NOT call updateTransitionProgress() here. This listener already drives both
+                // panels, swipeProgress and the fragment progress callbacks above, AND sets the LIVE
+                // innerTranslationX (line above) that the back-swipe scrim reads. updateTransitionProgress is
+                // the PREDICTIVE-back driver and pins innerTranslationX to 1f — calling it here clobbered that
+                // live value (re-introducing the mid-release dim flash) and double-fired the progress callbacks.
             };
             DynamicAnimation.OnAnimationEndListener endListener = (animation, canceled, value, velocity) -> {
                 if (animation == slideTransitionSpring) {
@@ -1984,6 +2062,7 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
         }
     }
 
+    /** A lost OEM frame/end callback must not leave the live page between fragments forever. */
     private void armSlideTransitionTimeout(SpringAnimation springAnimation, boolean backAnimation, BaseFragment ownerFragment) {
         cancelSlideTransitionTimeout();
         final long ownerEpoch = navigationEpoch;
@@ -2020,6 +2099,13 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
         }
     }
 
+    /**
+     * A preview transition owns an input-blocking container until its completion callback runs.
+     * DynamicAnimation normally invokes its end listener, but replacing/cancelling the shared
+     * navigation spring can retire that listener. Cover both opening and closing so neither an
+     * unfinished transitionAnimationPreviewMode nor an invisible closing preview can freeze the
+     * main content.
+     */
     private void armPreviewTransitionTimeout(boolean opening) {
         cancelPreviewTransitionTimeout();
         final long ownerEpoch = navigationEpoch;
@@ -2057,9 +2143,17 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
         }
     }
 
+    /**
+     * Invalidates every callback that captured the previous stack and cancels
+     * navigation-owned animators without running their completion logic.
+     */
     private void cancelNavigationAnimationsForStackReset() {
         navigationEpoch++;
 
+        // Retire navigation ownership before cancel(). AnimatorSet cancellation
+        // propagates to child custom animators synchronously; those children can
+        // invoke their completion callback from onAnimationCancel/onAnimationEnd.
+        // They must observe an already-retired transition and therefore no-op.
         onCloseAnimationEndRunnable = null;
         onOpenAnimationEndRunnable = null;
         transitionAnimationInProgress = false;
@@ -2144,6 +2238,9 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
         invalidateActionBars();
     }
 
+    /**
+     * Lets a delayed custom transition verify that this layout still owns it.
+     */
     public boolean ownsCurrentTransitionAnimation(Animator animation) {
         return transitionAnimationInProgress && currentAnimation == animation;
     }
@@ -2280,6 +2377,7 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
                 armPreviewTransitionTimeout(open);
             }
         }
+        // NimarkoGram: CG Spring layout animation (verbatim port, GPL-2.0).
         if (shouldUseSpringAnimationForTransition()) {
             if (USE_ACTIONBAR_CROSSFADE) {
                 swipeProgress = open ? 1f : 0f;
@@ -2373,6 +2471,9 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
                 currentSpringUpdateListener = null;
                 currentSpringEndListener = null;
                 if (canceled) {
+                    // External cancellation while this spring still owns the transition must run
+                    // the same lifecycle/preview cleanup as a natural end. Internal cancellations
+                    // retire currentSpringAnimation before cancel(), so they do not enter here.
                     onAnimationEndCheck(true);
                     setInnerTranslationX(0);
                     return;
@@ -2601,8 +2702,9 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
         fragment.setParentLayout(this);
         View fragmentView = fragment.fragmentView;
         if (fragmentView == null) {
-            fragmentView = fragment.createView(parentActivity);
+            fragmentView = fragment.performCreateView(parentActivity);
             if (fragmentView != null && fragment.isSupportEdgeToEdge() && fragment.drawEdgeNavigationBar()) {
+                // NimarkoGram (CG L2163): strip haptic feedback when disableVibration on.
                 if (app.nimarkogram.messenger.NimarkoConfig.disableVibration) {
                     app.nimarkogram.messenger.utils.VibrateUtils.disableHapticFeedback(fragmentView);
                 }
@@ -2650,6 +2752,7 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
             }
             if (menu != null) {
                 layoutParams.bottomMargin += menuHeight + dp(8);
+//                layoutParams.topMargin += AndroidUtilities.dp(32);
             }
             layoutParams.rightMargin = layoutParams.leftMargin = dp(8);
         } else {
@@ -2744,6 +2847,8 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
         }
 
         if (needAnimation || preview) {
+            // Opening and closing completions are mutually exclusive. Retire a stale close
+            // callback before installing the owner of this transition.
             onCloseAnimationEndRunnable = null;
             if (useAlphaAnimations && fragmentsStack.size() == 1) {
                 presentFragmentInternalRemoveOld(removeLast, currentFragment);
@@ -3002,8 +3107,9 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
     private void attachView(BaseFragment fragment) {
         View fragmentView = fragment.fragmentView;
         if (fragmentView == null) {
-            fragmentView = fragment.createView(parentActivity);
+            fragmentView = fragment.performCreateView(parentActivity);
             if (fragmentView != null && fragment.isSupportEdgeToEdge() && fragment.drawEdgeNavigationBar()) {
+                // NimarkoGram (CG L2537): strip haptic feedback when disableVibration on.
                 if (app.nimarkogram.messenger.NimarkoConfig.disableVibration) {
                     app.nimarkogram.messenger.utils.VibrateUtils.disableHapticFeedback(fragmentView);
                 }
@@ -3040,8 +3146,9 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
     private void attachViewTo(BaseFragment fragment, int position) {
         View fragmentView = fragment.fragmentView;
         if (fragmentView == null) {
-            fragmentView = fragment.createView(parentActivity);
+            fragmentView = fragment.performCreateView(parentActivity);
             if (fragmentView != null && fragment.isSupportEdgeToEdge() && fragment.drawEdgeNavigationBar()) {
+                // NimarkoGram (CG L2575): strip haptic feedback when disableVibration on.
                 if (app.nimarkogram.messenger.NimarkoConfig.disableVibration) {
                     app.nimarkogram.messenger.utils.VibrateUtils.disableHapticFeedback(fragmentView);
                 }
@@ -3124,6 +3231,7 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
         layoutParams.height = LayoutHelper.MATCH_PARENT;
         fragment.fragmentView.setLayoutParams(layoutParams);
 
+        // NimarkoGram: CG Spring expandPreview animation (verbatim port, GPL-2.0).
         if (USE_SPRING_ANIMATION && !isCommunityDialogsFragment(fragment)) {
             final View view = fragment.fragmentView;
             previewExpandView = view;
@@ -3172,6 +3280,7 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
             springAnimation.addUpdateListener(updateListener);
             springAnimation.addEndListener(endListener);
             springAnimation.start();
+            // NimarkoGram (CG L2690): only haptic when disableVibration is off.
             if (!app.nimarkogram.messenger.NimarkoConfig.disableVibration) {
                 try {
                     performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);
@@ -3216,6 +3325,7 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
             }
         });
         animatorSet.start();
+        // NimarkoGram (CG L2713): only haptic when disableVibration is off.
         if (!app.nimarkogram.messenger.NimarkoConfig.disableVibration) {
             try {
                 performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);
@@ -3249,6 +3359,9 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
     }
 
     public void closeLastFragment(boolean animated, boolean forceNoAnimation) {
+        // A preview may be dismissed while its opening spring is still running (fast release,
+        // biometric/window transition, or an OEM-delivered CANCEL). Finish the opening lifecycle
+        // first so the closing transition cannot orphan its callback or invisible touch layer.
         if (transitionAnimationInProgress && transitionAnimationPreviewMode && onOpenAnimationEndRunnable != null) {
             onAnimationEndCheck(true);
         }
@@ -3278,8 +3391,9 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
             previousFragment.setParentLayout(this);
             View fragmentView = previousFragment.fragmentView;
             if (fragmentView == null) {
-                fragmentView = previousFragment.createView(parentActivity);
+                fragmentView = previousFragment.performCreateView(parentActivity);
                 if (fragmentView != null && previousFragment.isSupportEdgeToEdge() && previousFragment.drawEdgeNavigationBar()) {
+                    // NimarkoGram (CG L2775): strip haptic feedback when disableVibration on.
                     if (app.nimarkogram.messenger.NimarkoConfig.disableVibration) {
                         app.nimarkogram.messenger.utils.VibrateUtils.disableHapticFeedback(fragmentView);
                     }
@@ -3332,6 +3446,8 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
             }
 
             if (needAnimation) {
+                // A close transition supersedes every pending open completion. Keeping both lets
+                // a later animation execute lifecycle code for an already removed preview.
                 onOpenAnimationEndRunnable = null;
                 transitionAnimationStartTime = System.currentTimeMillis();
                 transitionAnimationInProgress = true;
@@ -3342,7 +3458,11 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
                     if (previewMenu != null) {
                         ViewGroup parent = (ViewGroup) previewMenu.getParent();
                         if (parent != null) {
+                            //ViewGroup grandparent = (ViewGroup) parent.getParent();
                             parent.removeView(previewMenu);
+                            /*if (grandparent != null) {
+                                grandparent.removeView(parent);
+                            }*/
                         }
                     }
                     if (inPreviewMode || transitionAnimationPreviewMode) {
@@ -3469,8 +3589,9 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
         previousFragment.setParentLayout(this);
         View fragmentView = previousFragment.fragmentView;
         if (fragmentView == null) {
-            fragmentView = previousFragment.createView(parentActivity);
+            fragmentView = previousFragment.performCreateView(parentActivity);
             if (fragmentView != null && previousFragment.isSupportEdgeToEdge() && previousFragment.drawEdgeNavigationBar()) {
+                // NimarkoGram (CG L2966): strip haptic feedback when disableVibration on.
                 if (app.nimarkogram.messenger.NimarkoConfig.disableVibration) {
                     app.nimarkogram.messenger.utils.VibrateUtils.disableHapticFeedback(fragmentView);
                 }
@@ -3662,6 +3783,10 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
             animateSetThemeAfterAnimation = settings.theme;
             animateSetThemeNightAfterAnimation = settings.nightTheme;
             animateSetThemeAccentIdAfterAnimation = settings.accentId;
+            // Preserve the caller's complete apply decision when a theme animation is
+            // deferred by a fragment transition. ChatActivity deliberately sets
+            // applyTheme=false for per-chat colors; keeping only applyTrulyTheme made
+            // the deferred pass apply the default day/night theme globally.
             animateSetThemeAfterAnimationApply = settings.applyTheme && settings.applyTrulyTheme;
             if (onCancelled != null) {
                 onCancelled.run();
@@ -3689,9 +3814,9 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
                     startAnimation = true;
                     if (settings.resourcesProvider != null) {
                         if (messageDrawableOutStart == null) {
-                            messageDrawableOutStart = new Theme.MessageDrawable(Theme.MessageDrawable.TYPE_TEXT, true, false, startColorsProvider);
+                            messageDrawableOutStart = new MessageDrawable(MessageDrawable.TYPE_TEXT, true, false, startColorsProvider);
                             messageDrawableOutStart.isCrossfadeBackground = true;
-                            messageDrawableOutMediaStart = new Theme.MessageDrawable(Theme.MessageDrawable.TYPE_MEDIA, true, false, startColorsProvider);
+                            messageDrawableOutMediaStart = new MessageDrawable(MessageDrawable.TYPE_MEDIA, true, false, startColorsProvider);
                             messageDrawableOutMediaStart.isCrossfadeBackground = true;
                         }
                         startColorsProvider.saveColors(settings.resourcesProvider);
@@ -3820,6 +3945,9 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
                 settings.theme.setCurrentAccentId(settings.accentId);
                 Theme.saveThemeAccents(settings.theme, true, false, true, false);
             }
+            // Theme files and dynamic Monet palettes require file parsing and may
+            // verify/copy bundled assets. Keep that work off the render thread for
+            // every switch, not only for callers which happened to pass a callback.
             Theme.applyThemeInBackground(settings.theme, settings.nightTheme, next, () -> {
                 if (onCancelled != null) {
                     onCancelled.run();
@@ -3875,6 +4003,11 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
         rebuildAllFragmentViewsNow(last, showLastAfter);
     }
 
+    /**
+     * Coalesced rebuild used by icon-pack changes. Only the newest generation
+     * survives, and it is never allowed to clear fragment views while an
+     * interactive back gesture or its settle animation owns the containers.
+     */
     public void rebuildAllFragmentViewsForIconPack(long generation) {
         if (generation <= appliedIconPackRebuildGeneration
                 || generation < pendingIconPackRebuildGeneration) {
@@ -3963,11 +4096,13 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
         if (pendingIconPackRebuildGeneration > appliedIconPackRebuildGeneration) {
             appliedIconPackRebuildGeneration = pendingIconPackRebuildGeneration;
             pendingIconPackRebuildGeneration = Long.MIN_VALUE;
+            // A full icon rebuild subsumes any older generic rebuild request.
             rebuildAfterAnimation = false;
             rebuildAllFragmentViewsNow(true, true);
         } else if (rebuildAfterAnimation) {
             final boolean last = rebuildLastAfterAnimation;
             final boolean showLastAfter = showLastAfterAnimation;
+            // Clear before executing: a reentrant deferral must remain queued.
             rebuildAfterAnimation = false;
             rebuildAllFragmentViews(last, showLastAfter);
         } else if (animateThemeAfterAnimation) {
@@ -4023,12 +4158,12 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
     }
 
     @Override
-    public Theme.MessageDrawable getMessageDrawableOutStart() {
+    public MessageDrawable getMessageDrawableOutStart() {
         return messageDrawableOutStart;
     }
 
     @Override
-    public Theme.MessageDrawable getMessageDrawableOutMediaStart() {
+    public MessageDrawable getMessageDrawableOutMediaStart() {
         return messageDrawableOutMediaStart;
     }
 
@@ -4158,6 +4293,9 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
     };
 
     public void checkBlackScreen(String action) {
+//        if (!BuildVars.DEBUG_VERSION) {
+//            return;
+//        }
         if (BuildVars.DEBUG_VERSION) {
             lastActions.add(0, action + " " + fragmentsStack.size());
             if (lastActions.size() > 20) {
@@ -4277,12 +4415,16 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
     }
 
 
+
     @Override
     public void addView(View child, int index, ViewGroup.LayoutParams params) {
         super.addView(child, index, params);
         if (lastWindowInsetsCompat != null) {
             dispatchApplyWindowInsetsInternal(child, lastWindowInsetsCompat);
         }
+        // if (bottomSheetTabs != null && indexOfChild(bottomSheetTabs) < getChildCount() - 1) {
+        //    bottomSheetTabs.bringToFront();
+        // }
     }
 
     private @Nullable WindowInsetsCompat lastWindowInsetsCompat;
@@ -4376,9 +4518,11 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
         return WindowInsetsCompat.CONSUMED;
     }
 
+    /** NimarkoGram start (actionbarCrossfade + Spring runtime, ported verbatim from Cherrygram, GPL-2.0) */
     private float swipeProgress;
     private MenuDrawable menuDrawable;
 
+    // Spring animation infrastructure (CG parity).
     private SpringAnimation currentSpringAnimation;
     private DynamicAnimation.OnAnimationUpdateListener currentSpringUpdateListener;
     private DynamicAnimation.OnAnimationEndListener currentSpringEndListener;
@@ -4510,6 +4654,9 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
         }
     }
 
+    // NimarkoGram (CG parity): when the actionbar crossfades both fragments the layer-shadow
+    // and dim scrim must be pushed below the action bar so they don't paint over the
+    // crossfading bar itself. Returns 0 outside crossfade so non-crossfade paths are unaffected.
     private int getTop(int widthOffset, float width) {
         int top = 0;
         if (isActionBarInCrossfade()) {
@@ -4524,4 +4671,5 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
         }
         return top;
     }
+    /** NimarkoGram finish */
 }

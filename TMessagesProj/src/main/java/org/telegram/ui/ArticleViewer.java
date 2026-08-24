@@ -247,7 +247,7 @@ import java.util.Stack;
 import java.util.WeakHashMap;
 import java.util.concurrent.atomic.AtomicReference;
 
-import ru.noties.jlatexmath.JLatexMathDrawable;
+import org.telegram.ui.iv.Latex;
 
 public class ArticleViewer extends IArticleViewer implements NotificationCenter.NotificationCenterDelegate {
 
@@ -386,8 +386,16 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
     private FrameLayout containerView;
     private WebActionBar actionBar;
     private AddressBarList addressBarList;
+//    private FrameLayout headerView;
+//    private SimpleTextView titleTextView;
+//    private LineProgressView lineProgressView;
     private Runnable lineProgressTickRunnable;
+//    private ImageView backButton;
+//    private ActionBarMenuItem menuButton;
+//    private ActionBarMenuItem collapseButton;
+//    private FrameLayout menuContainer;
     private ContextProgressView progressView;
+//    private BackDrawable backDrawable;
     private Dialog visibleDialog;
     private Paint backgroundPaint;
     private Drawable layerShadowDrawable;
@@ -397,6 +405,12 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
     private AnimatorSet runAfterKeyboardClose;
     private boolean keyboardVisible;
 
+//    private FrameLayout searchContainer;
+//    private ImageView clearButton;
+//    private EditTextBoldCursor searchField;
+//    private boolean animateClear = true;
+//    private boolean ignoreOnTextChange;
+//    private View searchShadow;
 
     private float searchPanelTranslation;
     private FrameLayout searchPanel;
@@ -406,6 +420,9 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
 
     private FrameLayout bulletinContainer;
     public PageLayout[] pages;
+//    private RecyclerListView[] listView;
+//    private LinearLayoutManager[] layoutManager;
+//    private WebpageAdapter[] adapter;
 
     private AnimatorSet pageSwitchAnimation;
 
@@ -823,7 +840,12 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
                 anchor = "";
             }
             if (index == 0 || url.toLowerCase().contains(webPageUrl)) {
+//                if (TextUtils.isEmpty(anchor)) {
+//                    pages[0].layoutManager.scrollToPositionWithOffset(0, 0);
+//                    checkScrollAnimated();
+//                } else {
                     scrollToAnchor(anchor, true);
+//                }
                 isAnchor = true;
             }
         } else {
@@ -1072,6 +1094,8 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
             } else {
                 setMeasuredDimension(widthSize, heightSize);
             }
+//            menuButton.setAdditionalYOffset(-(currentHeaderHeight - dp(56)) / 2 + (Build.VERSION.SDK_INT < 21 ? AndroidUtilities.statusBarHeight : 0));
+//            collapseButton.setAdditionalYOffset(-(currentHeaderHeight - dp(56)) / 2 + (Build.VERSION.SDK_INT < 21 ? AndroidUtilities.statusBarHeight : 0));
             if (sheet == null) {
                 keyboardVisible = heightSize < AndroidUtilities.displaySize.y - dp(100);
             }
@@ -1504,6 +1528,7 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
             if (checkingForLongPress && windowView != null) {
                 checkingForLongPress = false;
                 if (pressedLink != null) {
+                    // NimarkoGram: gate haptic on disableVibration.
                     if (!app.nimarkogram.messenger.NimarkoConfig.disableVibration) {
                         try {
                             windowView.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS, HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING);
@@ -1522,11 +1547,13 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
                         textSelectionHelper.trySelect(pressedLinkOwnerView);
                     }
                     if (textSelectionHelper.isInSelectionMode() && !app.nimarkogram.messenger.NimarkoConfig.disableVibration) {
+                        // NimarkoGram: gate haptic on disableVibration.
                         try {
                             windowView.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS, HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING);
                         } catch (Exception ignored) {}
                     }
                 } else if (pressedLinkOwnerLayout != null && pressedLinkOwnerView != null) {
+                    // NimarkoGram: gate haptic on disableVibration.
                     if (!app.nimarkogram.messenger.NimarkoConfig.disableVibration) {
                         try {
                             windowView.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS, HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING);
@@ -2002,9 +2029,11 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
                     ObjectAnimator.ofFloat(pages[0], View.TRANSLATION_X, AndroidUtilities.displaySize.x, 0)
                 );
             } else if (order == -1) {
+//                pages[0].setAlpha(1.0f);
                 pages[0].setTranslationX(0.0f);
                 pageSwitchAnimation.playTogether(
-                    ObjectAnimator.ofFloat(pages[1], View.TRANSLATION_X, 0, AndroidUtilities.displaySize.x)
+                    ObjectAnimator.ofFloat(pages[1], View.TRANSLATION_X, 0, AndroidUtilities.displaySize.x)//,
+//                    ObjectAnimator.ofFloat(pages[1], View.ALPHA, 1.0f, 0.0f)
                 );
             }
             pageSwitchAnimation.setDuration(320);
@@ -2810,6 +2839,7 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
             } else if ((flags & TEXT_FLAG_ITALIC) != 0) {
                 paint.setTypeface(typefaceItalic);
             } else if ((flags & TEXT_FLAG_MONO) != 0) {
+                //change nothing
             } else {
                 paint.setTypeface(typefaceNormal);
             }
@@ -2830,6 +2860,10 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
     private static Paint preformattedBackgroundPaint;
     private static Paint quoteLinePaint;
 
+    // Draws one or more vertical blockquote lines on the left of any block cell.
+    // Decoded from block.quoteLevels: bit i set => draw a line at layer i (padx + i*14 dp).
+    // Legacy fallback: when quoteLevels==0 but level>0 (e.g. embedPost children), draws a single
+    // line at padx so existing behavior is preserved.
     public static void drawQuoteLines(Canvas canvas, IArticleViewer parent, TL_iv.PageBlock block, int height) {
         if (block == null || parent == null || quoteLinePaint == null) return;
         final int padxDp = parent.padx();
@@ -3105,28 +3139,12 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
             final TL_iv.textMath textLatex = (TL_iv.textMath) richText;
             if (textLatex.bitmap == null && !textLatex.tried) {
                 textLatex.tried = true;
-                try {
-                    final JLatexMathDrawable drawable =
-                            JLatexMathDrawable.builder(textLatex.source)
-                                    .textSize(AndroidUtilities.dp(20))
-                                    .build();
-                    final int w = drawable.getIntrinsicWidth();
-                    final int h = drawable.getIntrinsicHeight();
-                    if (w > 0 && h > 0) {
-                        final Bitmap bm = Bitmap.createBitmap(w, h, Bitmap.Config.ALPHA_8);
-                        drawable.setBounds(0, 0, w, h);
-                        drawable.draw(new Canvas(bm));
-                        textLatex.w = w;
-                        textLatex.h = h;
-                        try {
-                            textLatex.depth = drawable.icon().getIconDepth();
-                        } catch (Throwable t) {
-                            FileLog.e(t);
-                        }
-                        textLatex.bitmap = bm;
-                    }
-                } catch (Exception e) {
-                    FileLog.e(e);
+                final Latex r = Latex.render(textLatex.source, AndroidUtilities.dp(20), true);
+                if (r != null) {
+                    textLatex.w = r.width;
+                    textLatex.h = r.height;
+                    textLatex.depth = r.depth;
+                    textLatex.bitmap = r.bitmap;
                 }
             }
             if (textLatex.bitmap == null) {
@@ -4123,6 +4141,10 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
 
     @Override
     public void didReceivedNotification(int id, int account, Object... args) {
+        // Notifications can be queued while ChatActivity is animating and
+        // delivered after this viewer starts closing. They can also arrive
+        // while PageLayout constructors are still running. In either case
+        // there is no attached article cell which needs an update.
         final PageLayout[] currentPages = pages;
         if (!notificationsRegistered || account != notificationsAccount || currentPages == null) {
             return;
@@ -4254,6 +4276,8 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
     private WindowVisibilityManager.Controller activityVisibilityController;
 
     public void setParentActivity(Activity activity, BaseFragment fragment) {
+        // Do not receive player/emoji callbacks while the two PageLayout
+        // instances below are being rebuilt.
         unregisterNotificationObservers();
         if (activityVisibilityController != null) {
             activityVisibilityController.destroy();
@@ -4859,6 +4883,71 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
 
             return true;
         });
+//        actionBar.forwardButton.setOnLongClickListener(v -> {
+//            if (pages[0] == null) return false;
+//            final BotWebViewContainer.MyWebView webView = pages[0].getWebView();
+//            if (webView == null) return false;
+//            final WebBackForwardList history = webView.copyBackForwardList();
+//            final int currentIndex = history.getCurrentIndex();
+//            if (history.getSize() - (currentIndex + 1) <= 0) return false;
+//
+//            ItemOptions options = ItemOptions.makeOptions(sheet != null ? sheet.windowView : windowView, v);
+//            final int textColor = AndroidUtilities.computePerceivedBrightness(pages[0].getBackgroundColor()) >= .721f ? Color.BLACK : Color.WHITE;
+//            final int subtextColor = Theme.multAlpha(textColor, .65f);
+//
+//            for (int i = currentIndex + 1; i < history.getSize(); ++i) {
+//                WebHistoryItem item = history.getItemAtIndex(i);
+//                final int index = i;
+//                options.add(item.getTitle(), () -> {
+//                    for (int j = 0; j < (index - currentIndex); ++j) webView.goForward();
+//                });
+//                ActionBarMenuSubItem menuItem = options.getLast();
+//                if (menuItem != null) {
+//                    menuItem.setSubtext(item.getUrl());
+//                    Bitmap bitmap = webView.getFavicon(item.getUrl());
+//                    if (bitmap == null) {
+//                        bitmap = item.getFavicon();
+//                    }
+//                    final Bitmap finalBitmap = bitmap;
+//                    final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
+//                    menuItem.setTextAndIcon(item.getTitle(), 0, new Drawable() {
+//                        @Override
+//                        public void draw(@NonNull Canvas canvas) {
+//                            if (finalBitmap != null) {
+//                                canvas.save();
+//                                canvas.translate(getBounds().left, getBounds().top);
+//                                canvas.scale(getBounds().width() / (float) finalBitmap.getWidth(), getBounds().height() / (float) finalBitmap.getHeight());
+//                                canvas.drawBitmap(finalBitmap, 0, 0, paint);
+//                                canvas.restore();
+//                            }
+//                        }
+//                        @Override
+//                        public void setColorFilter(@Nullable ColorFilter colorFilter) {}
+//                        @Override
+//                        public void setAlpha(int alpha) {}
+//                        @Override
+//                        public int getIntrinsicHeight() {
+//                            return dp(24);
+//                        }
+//                        @Override
+//                        public int getIntrinsicWidth() {
+//                            return dp(24);
+//                        }
+//                        @Override
+//                        public int getOpacity() {
+//                            return PixelFormat.TRANSPARENT;
+//                        }
+//                    });
+//                    menuItem.setColors(textColor, textColor);
+//                    menuItem.setSubtextColor(subtextColor);
+//                }
+//            }
+//            options.setScrimViewBackground(Theme.createCircleDrawable(dp(40), actionBar.getBackgroundColor()));
+//            options.setBackgroundColor(pages[0].getBackgroundColor());
+//            checkScrollAnimated(options::show);
+//
+//            return true;
+//        });
 
         actionBar.setMenuListener(id -> {
             if (pages[0].isArticle() && pages[0].adapter.currentPage == null || parentActivity == null) {
@@ -5020,7 +5109,13 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
 
         actionBar.forwardButton.setOnClickListener(v -> {
             if (sheet != null) {
+//                if (pages[0].hasForwardButton()) {
+//                    if (pages[0].getWebView() != null) {
+//                        pages[0].getWebView().goForward();
+//                    }
+//                } else {
                     sheet.dismiss(true);
+//                }
             }
         });
 
@@ -5122,6 +5217,11 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
         if (MessagesController.getInstance(currentAccount).getTranslateController().isContextTranslateEnabled()) {
             textSelectionHelper.setOnTranslate((text, fromLang, toLang, onAlertDismiss) -> {
                 TranslateAlert2.showAlert(parentActivity, parentFragment, currentAccount, fromLang, toLang, text, null, false, null, onAlertDismiss);
+//                final TranslateAlert3 alert =
+//                    new TranslateAlert3(parentActivity, parentFragment != null ? parentFragment.getResourceProvider() : getResourcesProvider())
+//                        .setText(fromLang, text);
+//                alert.setOnDismissListener(onAlertDismiss);
+//                alert.show();
             });
         }
         textSelectionHelper.layoutManager = pages[0].layoutManager;
@@ -5157,6 +5257,10 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
         });
         backgroundPaint.setColor(getThemedColor(Theme.key_iv_background));
         updatePaintColors(this);
+        // Register only after both PageLayout objects and their list views are
+        // fully constructed. PageLayout's constructor can synchronously touch
+        // media state, so subscribing before this point exposes a half-filled
+        // pages[] array to delayed NotificationCenter callbacks.
         registerNotificationObservers();
     }
 
@@ -5283,6 +5387,17 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
     }
 
     private void updateWindowLayoutParamsForSearch() {
+        /*try {
+            WindowManager wm = (WindowManager) parentActivity.getSystemService(Context.WINDOW_SERVICE);
+            if (searchContainer.getTag() != null) {
+                windowLayoutParams.softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE;
+            } else {
+                windowLayoutParams.softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_PAN;
+            }
+            wm.updateViewLayout(windowView, windowLayoutParams);
+        } catch (Exception e) {
+            FileLog.e(e);
+        }*/
     }
 
     private void updateSearchButtons() {
@@ -5659,7 +5774,11 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
             windowView.setInnerTranslationX(0);
 
             pages[0].scrollToTop(false);
+            //        if (first) {
             setCurrentHeaderHeight(dp(56));
+            //        } else {
+            //            checkScrollAnimated();
+            //        }
         }
 
         boolean scrolledToAnchor;
@@ -5764,6 +5883,7 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
                 try {
                     wm.removeView(windowView);
                 } catch (Exception e) {
+                    //ignore
                 }
             }
             try {
@@ -5773,6 +5893,7 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
                 if (Build.VERSION.SDK_INT >= 28) {
                     windowLayoutParams.layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES;
                 }
+                //windowLayoutParams.softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_PAN;
                 windowView.setFocusable(false);
                 containerView.setFocusable(false);
                 wm.addView(windowView, windowLayoutParams);
@@ -5800,6 +5921,23 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
                 }
             } else {
                 if (progress != null) {
+                    // feature: to show progress before opening webview
+//                    BotWebViewContainer.MyWebView webView = pages[0].getWebView();
+//                    if (webView != null) {
+//                        boolean[] cancelled = new boolean[] { false };
+//                        progress.onCancel(() -> {
+//                            cancelled[0] = true;
+//                            sheet.dismissInstant();
+//                        });
+//                        progress.init();
+//                        webView.whenPageLoaded(() -> {
+//                            progress.end();
+//                            if (!cancelled[0]) {
+//                                AndroidUtilities.runOnUIThread(sheet::show, 80);
+//                            }
+//                        }, 1200);
+//                        return true;
+//                    }
                 }
                 sheet.show();
             }
@@ -5864,15 +6002,31 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
             progressViewAnimation = new AnimatorSet();
             if (show) {
                 progressView.setVisibility(View.VISIBLE);
+//                menuContainer.setEnabled(false);
                 progressViewAnimation.playTogether(
+//                        ObjectAnimator.ofFloat(menuButton, View.SCALE_X, 0.1f),
+//                        ObjectAnimator.ofFloat(menuButton, View.SCALE_Y, 0.1f),
+//                        ObjectAnimator.ofFloat(menuButton, View.ALPHA, 0.0f),
+//                        ObjectAnimator.ofFloat(collapseButton, View.SCALE_X, 0.1f),
+//                        ObjectAnimator.ofFloat(collapseButton, View.SCALE_Y, 0.1f),
+//                        ObjectAnimator.ofFloat(collapseButton, View.ALPHA, 0.0f),
                         ObjectAnimator.ofFloat(progressView, View.SCALE_X, 1.0f),
                         ObjectAnimator.ofFloat(progressView, View.SCALE_Y, 1.0f),
                         ObjectAnimator.ofFloat(progressView, View.ALPHA, 1.0f));
             } else {
+//                menuButton.setVisibility(View.VISIBLE);
+//                collapseButton.setVisibility(View.VISIBLE);
+//                menuContainer.setEnabled(true);
                 progressViewAnimation.playTogether(
                         ObjectAnimator.ofFloat(progressView, View.SCALE_X, 0.1f),
                         ObjectAnimator.ofFloat(progressView, View.SCALE_Y, 0.1f),
-                        ObjectAnimator.ofFloat(progressView, View.ALPHA, 0.0f)
+                        ObjectAnimator.ofFloat(progressView, View.ALPHA, 0.0f)//,
+//                        ObjectAnimator.ofFloat(menuButton, View.SCALE_X, 1.0f),
+//                        ObjectAnimator.ofFloat(menuButton, View.SCALE_Y, 1.0f),
+//                        ObjectAnimator.ofFloat(menuButton, View.ALPHA, 1.0f),
+//                        ObjectAnimator.ofFloat(collapseButton, View.SCALE_X, 1.0f),
+//                        ObjectAnimator.ofFloat(collapseButton, View.SCALE_Y, 1.0f),
+//                        ObjectAnimator.ofFloat(collapseButton, View.ALPHA, 1.0f)
                 );
             }
             progressViewAnimation.addListener(new AnimatorListenerAdapter() {
@@ -5882,6 +6036,8 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
                         if (!show) {
                             progressView.setVisibility(View.INVISIBLE);
                         } else {
+//                            menuButton.setVisibility(View.INVISIBLE);
+//                            collapseButton.setVisibility(View.INVISIBLE);
                         }
                     }
                 }
@@ -6149,7 +6305,7 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
                     BotGuardHelper.getInstance(currentAccount).openGuardBotWebApp(-channel.id,
                         resultWebView.bot_id, resultWebView.query_id);
                 });
-                hasJoinMessage = true;
+                hasJoinMessage = true; // do not generate join message
             }
 
             if (!hasJoinMessage) {
@@ -6326,16 +6482,6 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
         public static boolean isVideo(TL_iv.RichMessage richMessage, TL_iv.PageBlock block) {
             if (block instanceof TL_iv.pageBlockVideo) {
                 TLRPC.Document document = getDocumentWithId(richMessage, ((TL_iv.pageBlockVideo) block).video_id);
-                if (BuildVars.LOGS_ENABLED) {
-                    StringBuilder attrs = new StringBuilder();
-                    if (document != null) {
-                        for (TLRPC.DocumentAttribute a : document.attributes) attrs.append(a.getClass().getSimpleName()).append(",");
-                    }
-                    FileLog.d("[richmedia] WebPageUtils.isVideo video_id=" + ((TL_iv.pageBlockVideo) block).video_id
-                        + (document == null
-                            ? " doc=NOT_FOUND documents.size=" + richMessage.documents.size()
-                            : " doc=" + document.id + " mime=" + document.mime_type + " attrs=[" + attrs + "] isVideoDocument=" + MessageObject.isVideoDocument(document) + " isGifDocument=" + MessageObject.isGifDocument(document)));
-                }
                 if (document != null) {
                     return MessageObject.isVideoDocument(document);
                 }
@@ -6762,8 +6908,10 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
                 if (!pageBlockBlockquoteBlocks.blocks.isEmpty()) {
                     final int parentLayer = Math.max(0, block.level);
                     final int parentQuoteLevels = block.quoteLevels;
+                    // If nothing enclosing wrote block.bottom yet, this is the outermost quote — trim the
+                    // last leaf so the line gets a rounded end.
                     final boolean parentBottom = (block.quoteLevels == 0 && block.level <= 0) || block.bottom;
-                    block.level = -1;
+                    block.level = -1; // skip drawing the wrapper itself
                     final int size = pageBlockBlockquoteBlocks.blocks.size();
                     for (int b = 0; b < size; b++) {
                         TL_iv.PageBlock innerBlock = pageBlockBlockquoteBlocks.blocks.get(b);
@@ -7729,6 +7877,7 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
     }
 
     public static interface IBlock {
+        // returns -1 if not sure (then takes full 0 as left and getWidth() as right)
         public int getBoundLeft();
         public int getBoundRight();
         public int getLastLineBoundRight();
@@ -7812,6 +7961,10 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
 
         @Override
         protected boolean drawChild(Canvas canvas, View child, long drawingTime) {
+            // TODO: pass pinchToZoomHelper in IArticleViewer
+//            if (child == aspectRationContainer && pinchToZoomHelper.isInOverlayModeFor(this)) {
+//                return true;
+//            }
             return super.drawChild(canvas, child, drawingTime);
         }
 
@@ -7834,7 +7987,7 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
             } else {
                 currentDocument = null;
             }
-            isGif = MessageObject.isVideoDocument(currentDocument) || MessageObject.isGifDocument(currentDocument);
+            isGif = MessageObject.isVideoDocument(currentDocument) || MessageObject.isGifDocument(currentDocument)/* && currentBlock.autoplay*/;
             isFirst = first;
             channelCell.setVisibility(INVISIBLE);
             updateButtonState(false);
@@ -7872,10 +8025,17 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
 
         @Override
         public boolean onTouchEvent(MotionEvent event) {
+            // TODO: pass pinchToZoomHelper in IArticleViewer
+//            if (pinchToZoomHelper.checkPinchToZoom(event, this, imageView, aspectRationContainer, textureView, null)) {
+//                return true;
+//            }
             float x = event.getX();
             float y = event.getY();
             if (channelCell.getVisibility() == VISIBLE && y > channelCell.getTranslationY() && y < channelCell.getTranslationY() + dp(39)) {
                 if (adapter != null && adapter.channelBlock != null && event.getAction() == MotionEvent.ACTION_UP) {
+                    // TODO
+                    // MessagesController.getInstance(parent.getCurrentAccount()).openByUserName(ChatObject.getPublicUsername(adapter.channelBlock.channel), parentFragment, 2);
+                    // close(false, true);
                 }
                 return true;
             }
@@ -8049,7 +8209,10 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
             if (!imageView.hasBitmapImage() || imageView.getCurrentAlpha() != 1.0f) {
                 canvas.drawRect(imageView.getDrawRegion(), photoBackgroundPaint);
             }
+            // TODO
+//            if (!pinchToZoomHelper.isInOverlayModeFor(this)) {
                 imageView.draw(canvas);
+//            }
             int count = 0;
             if (captionLayout != null) {
                 canvas.save();
@@ -8068,9 +8231,12 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
             drawQuoteLines(canvas, parent, currentBlock, getMeasuredHeight());
             super.onDraw(canvas);
 
+            // TODO
+//            if (!pinchToZoomHelper.isInOverlayModeFor(this)) {
                 if (imageView.getVisible()) {
                     radialProgress.draw(canvas);
                 }
+//            }
         }
 
         private int getIconForCurrentState() {
@@ -8159,6 +8325,8 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
                 buttonState = -1;
                 radialProgress.setIcon(getIconForCurrentState(), false, animated);
             } else if (buttonState == 3) {
+                // TODO
+//                openPhoto(currentBlock, adapter);
             }
         }
 
@@ -8231,6 +8399,9 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
             if (currentDocument == null || parent.videoPlayer != null) {
                 return;
             }
+//            if (!firstFrameRendered) {
+//                textureView.setAlpha(0f);
+//            }
             parent.videoPlayer = new VideoPlayerHolderBase() {
                 @Override
                 public boolean needRepeat() {
@@ -9621,6 +9792,8 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
                 public boolean onInterceptTouchEvent(MotionEvent ev) {
                     boolean intercept = super.onInterceptTouchEvent(ev);
                     if (tableLayout.getMeasuredWidth() > getMeasuredWidth() - dp(36) && intercept) {
+                        // TODO
+//                        parent.windowView.requestDisallowInterceptTouchEvent(true);
                     }
                     return intercept;
                 }
@@ -10330,6 +10503,8 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
                         outRect.bottom = -h;
                     }
 
+                    //outRect.top = outRect.left = 0;
+                    //outRect.bottom = outRect.right = AndroidUtilities.dp(2);
                 }
             });
 
@@ -10398,6 +10573,7 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
                         case 0: {
                             BlockPhotoCell cell = (BlockPhotoCell) holder.itemView;
                             cell.groupPosition = group.positions.get(pageBlock);
+                            // TODO
                             cell.setBlock((TL_iv.pageBlockPhoto) pageBlock, parentAdapter.currentPage.cached_page, null, false, true);
                             break;
                         }
@@ -12651,10 +12827,17 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
 
         @Override
         public boolean onTouchEvent(MotionEvent event) {
+            // TODO
+//            if (pinchToZoomHelper.checkPinchToZoom(event, this, imageView, null, null, null)) {
+//                return true;
+//            }
             float x = event.getX();
             float y = event.getY();
             if (channelCell.getVisibility() == VISIBLE && y > channelCell.getTranslationY() && y < channelCell.getTranslationY() + dp(39)) {
                 if (adapter != null && adapter.channelBlock != null && event.getAction() == MotionEvent.ACTION_UP) {
+                    // TODO
+//                    MessagesController.getInstance(parent.getCurrentAccount()).openByUserName(ChatObject.getPublicUsername(adapter.channelBlock.channel), parentFragment, 2);
+//                    close(false, true);
                 }
                 return true;
             }
@@ -12811,6 +12994,7 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
                 if (!isFirst && currentType == 0 && currentBlock.level <= 0) {
                     height += dp(8);
                 }
+                // TODO
                 boolean nextIsChannel = parentBlock instanceof TL_iv.pageBlockCover && adapter != null && adapter.blocks != null && adapter.blocks.size() > 1 && adapter.blocks.get(1) instanceof TL_iv.pageBlockChannel;
                 if (currentType != 2 && !nextIsChannel) {
                     height += dp(8);
@@ -12841,10 +13025,13 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
             if (!imageView.hasBitmapImage() || imageView.getCurrentAlpha() != 1.0f) {
                 canvas.drawRect(imageView.getImageX(), imageView.getImageY(), imageView.getImageX2(), imageView.getImageY2(), photoBackgroundPaint);
             }
+            // TODO
+//            if (!pinchToZoomHelper.isInOverlayModeFor(this)) {
                 imageView.draw(canvas);
                 if (imageView.getVisible()) {
                     radialProgress.draw(canvas);
                 }
+//            }
             if (!TextUtils.isEmpty(currentBlock.url) && !(currentPhoto instanceof WebInstantView.WebPhoto)) {
                 int x = getMeasuredWidth() - dp(11 + 24);
                 int y = (int) (imageView.getImageY() + dp(11));
@@ -12882,6 +13069,7 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
             if (currentPhotoObject == null) return;
             if (buttonState == 0) {
                 radialProgress.setProgress(0, animated);
+                // TODO
                 imageView.setImage(ImageLocation.getForPhoto(currentPhotoObject, currentPhoto), currentFilter, ImageLocation.getForPhoto(currentPhotoObjectThumb, currentPhoto), currentThumbFilter, currentPhotoObject.size, null, currentPage, 1);
                 buttonState = 1;
                 radialProgress.setIcon(getIconForCurrentState(), true, animated);
@@ -13943,6 +14131,9 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
             scrollView = new HorizontalScrollView(context) {
                 @Override
                 public boolean onInterceptTouchEvent(MotionEvent ev) {
+//                    if (textContainer.getMeasuredWidth() > getMeasuredWidth()) {
+//                        windowView.requestDisallowInterceptTouchEvent(true);
+//                    }
                     return super.onInterceptTouchEvent(ev);
                 }
 
@@ -14239,22 +14430,10 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
             imageView.setLayoutParams(new FrameLayout.LayoutParams(0, 0));
             width = dp(2 * parent.padx());
             if (block != null) {
-                try {
-                    final JLatexMathDrawable drawable =
-                        JLatexMathDrawable.builder(block.source)
-                            .textSize(dp(20))
-                            .build();
-                    final int w = drawable.getIntrinsicWidth();
-                    final int h = drawable.getIntrinsicHeight();
-                    if (w > 0 && h > 0) {
-                        final Bitmap bm = Bitmap.createBitmap(w, h, Bitmap.Config.ALPHA_8);
-                        drawable.setBounds(0, 0, w, h);
-                        drawable.draw(new Canvas(bm));
-                        imageView.setImageBitmap(bm);
-                        imageView.setLayoutParams(new FrameLayout.LayoutParams(width = w + dp(2 * parent.padx()), h));
-                    }
-                } catch (Exception e) {
-                    FileLog.e(e);
+                final Latex r = Latex.render(block.source, dp(20), false);
+                if (r != null) {
+                    imageView.setImageBitmap(r.bitmap);
+                    imageView.setLayoutParams(new FrameLayout.LayoutParams(width = r.width + dp(2 * parent.padx()), r.height));
                 }
             }
         }
@@ -14706,7 +14885,7 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
 
     @Override
     public Theme.ResourcesProvider getResourcesProvider() {
-        return null;
+        return null; // sheet != null ? sheet.resourcesProvider : null;
     }
 
     public boolean isFirstArticle() {
@@ -14731,11 +14910,12 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
             if (isFirstArticle() || pagesStack.size() > 1) {
                 final float backButton = lerp(pages[0].hasBackButton() || pagesStack.size() > 1 ? 1f : 0, pages[1].hasBackButton() || pagesStack.size() > 2 ? 1f : 0, page1Alpha);
                 actionBar.backButtonDrawable.setRotation(1f - backButton, false);
-                actionBar.forwardButtonDrawable.setState(false);
+                actionBar.forwardButtonDrawable.setState(false); // pages[0].hasForwardButton());
                 actionBar.setBackButtonCached(backButton > .5f);
             } else {
-                actionBar.forwardButtonDrawable.setState(false);
-                actionBar.setBackButtonCached(false);
+//                actionBar.backButtonDrawable.setRotation(1f - backButton, false);
+                actionBar.forwardButtonDrawable.setState(false); // pages[0].hasForwardButton());
+                actionBar.setBackButtonCached(false); // backButton > .5f);
             }
             actionBar.setHasForward(pages[0].hasForwardButton());
             actionBar.setIsLocal(pages[0].isLocal());
@@ -14902,7 +15082,7 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
                         if (isFirstArticle() || pagesStack.size() > 1) {
                             actionBar.backButtonDrawable.setRotation(backButton || pagesStack.size() > 1 ? 0 : 1, true);
                             actionBar.setBackButtonCached(backButton || pagesStack.size() > 1);
-                            actionBar.forwardButtonDrawable.setState(false);
+                            actionBar.forwardButtonDrawable.setState(false); // hasForwardButton());
                         } else {
                             actionBar.setBackButtonCached(false);
                             actionBar.forwardButtonDrawable.setState(false);
@@ -15057,6 +15237,7 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
                 updatePages();
             });
             swipeContainer.setTopActionBarOffsetY(dp(sheet != null && !sheet.halfSize() ? 0 : 56) + AndroidUtilities.statusBarHeight);
+//            swipeContainer.setIsKeyboardVisible(obj -> windowView.getKeyboardHeight() >= dp(20));
             addView(swipeContainer, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT));
 
             cleanup();
@@ -15304,6 +15485,23 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
             progress = Utilities.clamp01(progress + delta);
             if (isArticle()) {
                 return;
+//                if (adapter.itemHeights == null) return;
+//                int row = 0;
+//                int offset = (int) (progress * Math.max(1, adapter.fullHeight - listView.getHeight()));
+//                while (offset >= 0 && row < adapter.getItemCount()) {
+//                    offset -= adapter.itemHeights[row];
+//                    row++;
+//                }
+//                overrideProgress = progress;
+//                layoutManager.scrollToPositionWithOffset(row + 1, offset);
+//                listView.invalidate();
+//                textSelectionHelper.onParentScrolled();
+//                if (sheet != null) {
+//                    sheet.windowView.invalidate();
+//                } else if (windowView != null) {
+//                    windowView.invalidate();
+//                }
+//                updatePages();
             } else if (isWeb()) {
                 BotWebViewContainer.MyWebView webView = webViewContainer.getWebView();
                 if (webView == null) return;

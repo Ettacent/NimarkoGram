@@ -130,8 +130,12 @@ public class VideoPlayer implements Player.Listener, VideoListener, AnalyticsLis
         void onError(VideoPlayer player, Exception e);
         void onVideoSizeChanged(int width, int height, int unappliedRotationDegrees, float pixelWidthHeightRatio);
         void onRenderedFirstFrame();
-        void onSurfaceTextureUpdated(SurfaceTexture surfaceTexture);
-        boolean onSurfaceDestroyed(SurfaceTexture surfaceTexture);
+        default void onSurfaceTextureUpdated(SurfaceTexture surfaceTexture) {
+
+        }
+        default boolean onSurfaceDestroyed(SurfaceTexture surfaceTexture) {
+            return false;
+        }
         default void onRenderedFirstFrame(EventTime eventTime) {
 
         }
@@ -232,11 +236,6 @@ public class VideoPlayer implements Player.Listener, VideoListener, AnalyticsLis
         this.looper = looper;
     }
 
-    private EGLContext eglParentContext;
-    public void setEGLContext(EGLContext ctx) {
-        eglParentContext = ctx;
-    }
-
     private void ensurePlayerCreated() {
         DefaultLoadControl loadControl;
         if (isStory) {
@@ -270,16 +269,17 @@ public class VideoPlayer implements Player.Listener, VideoListener, AnalyticsLis
                 factory = new DefaultRenderersFactory(ApplicationLoader.applicationContext);
             }
             factory.setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER);
-            
+            // NG: when the primary (hardware) decoder can't init a format — e.g. H.264 4K@60 High L5.2,
+            // which many mobile AVC decoders top out below (they support 4K only via HEVC) — ExoPlayer
+            // would otherwise fail with a decoder-init error and the video just wouldn't play. Enabling
+            // fallback lets it drop to the next decoder in the list (the platform software AVC decoder),
+            // so such clips still play instead of showing a black/dead frame.
             factory.setEnableDecoderFallback(true);
             ExoPlayer.Builder builder = new ExoPlayer.Builder(ApplicationLoader.applicationContext).setRenderersFactory(factory)
                     .setTrackSelector(trackSelector)
                     .setLoadControl(loadControl);
             if (looper != null) {
                 builder.setLooper(looper);
-            }
-            if (eglParentContext != null) {
-                builder.eglContext = eglParentContext;
             }
             player = builder.build();
 
@@ -489,7 +489,7 @@ public class VideoPlayer implements Player.Listener, VideoListener, AnalyticsLis
         return preferences.getBoolean(key, false);
     }
 
-    public static final int QUALITY_AUTO = -1; 
+    public static final int QUALITY_AUTO = -1; // HLS
     private boolean autoIsOriginal = false;
     private int selectedQualityIndex = QUALITY_AUTO;
     private boolean currentStreamIsHls;
@@ -628,6 +628,42 @@ public class VideoPlayer implements Player.Listener, VideoListener, AnalyticsLis
                     }
                 }
 
+//                final MappingTrackSelector.MappedTrackInfo mapTrackInfo = trackSelector.getCurrentMappedTrackInfo();
+//                for (int renderIndex = 0; renderIndex < mapTrackInfo.getRendererCount(); ++renderIndex) {
+//                    final TrackGroupArray trackGroups = mapTrackInfo.getTrackGroups(renderIndex);
+//                    for (int groupIndex = 0; groupIndex < trackGroups.length; ++groupIndex) {
+//                        final TrackGroup trackGroup = trackGroups.get(groupIndex);
+//                        for (int trackIndex = 0; trackIndex < trackGroup.length; ++trackIndex) {
+//                            final Format format = trackGroup.getFormat(trackIndex);
+//                            int formatIndex;
+//                            try {
+//                                formatIndex = Integer.parseInt(format.id);
+//                            } catch (Exception e) {
+//                                formatIndex = -1;
+//                            }
+//                            if (formatIndex >= 0) {
+//                                int formatOrder = 0;
+//                                for (int j = 0; j < getQualitiesCount(); ++j) {
+//                                    final Quality q = getQuality(j);
+//                                    for (int i = 0; i < q.uris.size(); ++i){
+//                                        if (q.uris.get(i).m3u8uri != null) {
+//                                            if (formatOrder == formatIndex) {
+//                                                return j;
+//                                            }
+//                                            formatOrder++;
+//                                        }
+//                                    }
+//                                }
+//                            }
+//                            for (int j = 0; j < getQualitiesCount(); ++j) {
+//                                final Quality q = getQuality(j);
+//                                if (format.width == q.width && format.height == q.height) {
+//                                    return j;
+//                                }
+//                            }
+//                        }
+//                    }
+//                }
             } catch (Exception e) {
                 FileLog.e(e);
                 return -1;
@@ -704,7 +740,7 @@ public class VideoPlayer implements Player.Listener, VideoListener, AnalyticsLis
         boolean reset = false;
 
         videoQualityToSelect = quality;
-        if (quality == null) { 
+        if (quality == null) { // AUTO
             final Uri hlsManifest = makeManifest(videoQualities);
             final Quality original = getOriginalQuality();
             if (original != null && original.uris.size() == 1 && original.uris.get(0).isCached()) {
@@ -1076,6 +1112,16 @@ public class VideoPlayer implements Player.Listener, VideoListener, AnalyticsLis
                     qualities.add(new Quality(uri));
                 }
             }
+
+//            if (BuildVars.LOGS_ENABLED) {
+//                for (Quality q : qualities) {
+//                    FileLog.d("debug_loading_player: Quality "+q.p()+"p (" + q.width + "x" + q.height + ")" + (q.original ? " (source)" : "") + ":");
+//                    for (VideoUri uri : q.uris) {
+//                        FileLog.d("debug_loading_player: - video " + uri.width + "x" + uri.height + ", codec=" + uri.codec + ", bitrate=" + (int) (uri.bitrate*8) + ", doc#" + uri.docId + (uri.isCached() ? " (cached)" : "") + ", manifest#" + uri.manifestDocId + (uri.isManifestCached() ? " (cached)" : ""));
+//                    }
+//                }
+//                FileLog.d("debug_loading_player: ");
+//            }
 
             return qualities;
         }
@@ -1620,6 +1666,7 @@ public class VideoPlayer implements Player.Listener, VideoListener, AnalyticsLis
         return player != null && lastReportedPlaybackState == ExoPlayer.STATE_BUFFERING;
     }
 
+
     private boolean handleAudioFocus = false;
     public void handleAudioFocus(boolean handleAudioFocus) {
         this.handleAudioFocus = handleAudioFocus;
@@ -1862,6 +1909,7 @@ public class VideoPlayer implements Player.Listener, VideoListener, AnalyticsLis
 
         }
 
+
         long lastUpdateTime;
 
         @Override
@@ -1890,7 +1938,10 @@ public class VideoPlayer implements Player.Listener, VideoListener, AnalyticsLis
                 audioUpdateHandler.removeCallbacksAndMessages(null);
                 visualizerDelegate.onVisualizerUpdate(false, true, null);
                 return;
-
+//                len = MAX_BUFFER_SIZE;
+//                byte[] bytes = new byte[BUFFER_SIZE];
+//                buffer.get(bytes);
+//                byteBuffer.put(bytes, 0, BUFFER_SIZE);
             } else {
                 byteBuffer.put(buffer);
             }
@@ -1977,12 +2028,13 @@ public class VideoPlayer implements Player.Listener, VideoListener, AnalyticsLis
         return false;
     }
 
+
     public StoryEntry.HDRInfo getHDRStaticInfo(StoryEntry.HDRInfo hdrInfo) {
         if (hdrInfo == null) {
             hdrInfo = new StoryEntry.HDRInfo();
         }
         try {
-            MediaFormat mediaFormat = ((MediaCodecRenderer) player.getRenderer(0)).codecOutputMediaFormat;
+            MediaFormat mediaFormat = ((MediaCodecRenderer) player.getRenderer(0)).getCodecOutputMediaFormat();
             ByteBuffer byteBuffer = mediaFormat.getByteBuffer(MediaFormat.KEY_HDR_STATIC_INFO);
             byteBuffer.order(ByteOrder.LITTLE_ENDIAN);
             if (byteBuffer.get() == 0) {

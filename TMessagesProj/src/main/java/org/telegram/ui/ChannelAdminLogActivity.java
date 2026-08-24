@@ -71,9 +71,9 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.collection.LongSparseArray;
 import androidx.core.content.FileProvider;
-import androidx.recyclerview.widget.ChatListItemAnimator;
+import org.telegram.ui.recyclerview.ChatListItemAnimator;
 import androidx.recyclerview.widget.LinearLayoutManager;
-import androidx.recyclerview.widget.LinearSmoothScrollerCustom;
+import org.telegram.ui.recyclerview.LinearSmoothScrollerCustom;
 import androidx.recyclerview.widget.RecyclerView;
 
 import com.google.android.exoplayer2.ui.AspectRatioFrameLayout;
@@ -108,6 +108,7 @@ import org.telegram.messenger.utils.RectFMergeBounding;
 import org.telegram.tgnet.ConnectionsManager;
 import org.telegram.tgnet.TLRPC;
 import org.telegram.tgnet.Vector;
+import org.telegram.tgnet.tl.TL_keyboard;
 import org.telegram.ui.ActionBar.ActionBar;
 import org.telegram.ui.ActionBar.ActionBarMenu;
 import org.telegram.ui.ActionBar.ActionBarMenuItem;
@@ -123,6 +124,7 @@ import org.telegram.ui.ActionBar.ThemeDescription;
 import org.telegram.ui.Cells.ChatActionCell;
 import org.telegram.ui.Cells.ChatLoadingCell;
 import org.telegram.ui.Cells.ChatMessageCell;
+import org.telegram.ui.Cells.ChatMessageUnsupportedCell;
 import org.telegram.ui.Cells.ChatUnreadCell;
 import org.telegram.ui.Components.AdminLogFilterAlert2;
 import org.telegram.ui.Components.AlertsCreator;
@@ -145,7 +147,6 @@ import org.telegram.ui.Components.RecyclerListView;
 import org.telegram.ui.Components.ShareAlert;
 import org.telegram.ui.Components.SizeNotifierFrameLayout;
 import org.telegram.ui.Components.StickersAlert;
-import org.telegram.ui.Components.TopicsTabsView;
 import org.telegram.ui.Components.URLSpanMono;
 import org.telegram.ui.Components.URLSpanNoUnderline;
 import org.telegram.ui.Components.URLSpanReplacement;
@@ -156,7 +157,6 @@ import org.telegram.ui.Components.blur3.DownscaleScrollableNoiseSuppressor;
 import org.telegram.ui.Components.blur3.drawable.color.impl.BlurredBackgroundProviderImpl;
 import org.telegram.ui.Components.blur3.source.BlurredBackgroundSource;
 import org.telegram.ui.Components.blur3.source.BlurredBackgroundSourceBitmap;
-import org.telegram.ui.Components.blur3.source.BlurredBackgroundSourceColor;
 import org.telegram.ui.Components.blur3.source.BlurredBackgroundSourceRenderNode;
 import org.telegram.ui.Components.blur3.source.BlurredBackgroundSourceWrapped;
 import org.telegram.ui.Components.chat.ViewPositionWatcher;
@@ -189,6 +189,7 @@ public class ChannelAdminLogActivity extends BaseFragment implements Notificatio
     private final ReferenceList<View> glassAttachedViews = new ReferenceList<>();
     private final @Nullable DownscaleScrollableNoiseSuppressor scrollableViewNoiseSuppressor;
     private final int recommendedAdditionalSizeY;
+
 
     protected TLRPC.Chat currentChat;
 
@@ -223,6 +224,7 @@ public class ChannelAdminLogActivity extends BaseFragment implements Notificatio
     private float contentPanTranslation;
     private float contentPanTranslationT;
     private long activityResumeTime;
+
 
     public static int lastStableId = 10;
 
@@ -668,7 +670,7 @@ public class ChannelAdminLogActivity extends BaseFragment implements Notificatio
                 newFilteredMessages.add(message);
             }
             if (thisMessageDeletedBy != nextMessageDeletedBy && !currentDeleteGroup.isEmpty()) {
-                boolean wasKeyboard = message.messageOwner.reply_markup != null && !(message.messageOwner.reply_markup.rows.isEmpty());
+                boolean wasKeyboard = message.messageOwner.reply_markup instanceof TLRPC.TL_replyInlineMarkup && !(((TLRPC.TL_replyInlineMarkup) message.messageOwner.reply_markup).rows.isEmpty());
                 int index = newFilteredMessages.size();
                 ArrayList<MessageObject> separatedFirstActions = new ArrayList<>();
                 for (int j = currentDeleteGroup.size() - 1; j >= 0; j--) {
@@ -690,7 +692,7 @@ public class ChannelAdminLogActivity extends BaseFragment implements Notificatio
                         setupExpandButton(lastMessage, currentDeleteGroup.size() - 1);
                         newFilteredMessages.add(lastMessage);
                     }
-                    if (wasKeyboard != (lastMessage.messageOwner.reply_markup != null && !(lastMessage.messageOwner.reply_markup.rows.isEmpty()))) {
+                    if (wasKeyboard != (lastMessage.messageOwner.reply_markup instanceof TLRPC.TL_replyInlineMarkup && !(((TLRPC.TL_replyInlineMarkup) lastMessage.messageOwner.reply_markup).rows.isEmpty()))) {
                         lastMessage.forceUpdate = true;
                         chatAdapter.notifyItemChanged(index + (wasKeyboard ? currentDeleteGroup.size() - 1 : 0));
                         chatAdapter.notifyItemChanged(index + (wasKeyboard ? currentDeleteGroup.size() - 1 : 0) + 1);
@@ -789,15 +791,18 @@ public class ChannelAdminLogActivity extends BaseFragment implements Notificatio
             return;
         }
         if (count <= 0) {
-            if (msg.messageOwner.reply_markup != null) {
-                msg.messageOwner.reply_markup.rows.clear();
+            if (msg.messageOwner.reply_markup instanceof TLRPC.TL_replyInlineMarkup) {
+                ((TLRPC.TL_replyInlineMarkup) msg.messageOwner.reply_markup).rows.clear();
+            }
+            if (msg.messageOwner.reply_markup instanceof TLRPC.TL_replyKeyboardMarkup) {
+                ((TLRPC.TL_replyKeyboardMarkup) msg.messageOwner.reply_markup).rows.clear();
             }
         } else {
             TLRPC.TL_replyInlineMarkup markup = new TLRPC.TL_replyInlineMarkup();
             msg.messageOwner.reply_markup = markup;
-            TLRPC.TL_keyboardButtonRow row = new TLRPC.TL_keyboardButtonRow();
+            TL_keyboard.KeyboardInlineButtonRow row = new TL_keyboard.TL_keyboardInlineButtonRow();
             markup.rows.add(row);
-            TLRPC.TL_keyboardButton button = new TLRPC.TL_keyboardButton();
+            TL_keyboard.TL_keyboardInlineButton button = new TL_keyboard.TL_keyboardInlineButton();
             button.text = LocaleController.formatPluralString("EventLogExpandMore", count);
             row.buttons.add(button);
         }
@@ -949,7 +954,10 @@ public class ChannelAdminLogActivity extends BaseFragment implements Notificatio
                     searchWas = false;
                     loadMessages(true);
                 }
-                 
+                /*highlightMessageId = Integer.MAX_VALUE;
+                updateVisibleRows();
+                scrollToLastMessage(false);
+                */
                 updateBottomOverlay();
             }
 
@@ -964,7 +972,7 @@ public class ChannelAdminLogActivity extends BaseFragment implements Notificatio
                 searchWas = true;
                 searchQuery = editText.getText().toString();
                 loadMessages(true);
-                
+                //updateSearchButtons(0, 0, 0);
             }
         });
         searchItem.setSearchFieldHint(getString(R.string.Search));
@@ -1056,7 +1064,8 @@ public class ChannelAdminLogActivity extends BaseFragment implements Notificatio
                 final int navigationBarColor = wallpaperBitmapProvider.getNavigationBarColor(source);
                 final float brightness = AndroidUtilities.computePerceivedBrightness(navigationBarColor);
                 final boolean isDark = brightness <= 0.9f;
-                
+                // shouldHaveLightNavigationBarIcons = isDark;
+
                 navbarContentSourceWallpaper.setSource(source);
                 if (chatActivityFadeView != null) {
                     chatActivityFadeView.invalidate();
@@ -1197,6 +1206,12 @@ public class ChannelAdminLogActivity extends BaseFragment implements Notificatio
 
             @Override
             public boolean drawChild(Canvas canvas, View child, long drawingTime) {
+                if (child instanceof ChatMessageUnsupportedCell) {
+                    canvas.save();
+                    canvas.translate(child.getX(), child.getY());
+                    ((ChatMessageUnsupportedCell) child).drawBackground(canvas);
+                    canvas.restore();
+                }
                 boolean result = super.drawChild(canvas, child, drawingTime);
                 if (child instanceof ChatMessageCell) {
                     ChatMessageCell chatMessageCell = (ChatMessageCell) child;
@@ -1215,6 +1230,7 @@ public class ChannelAdminLogActivity extends BaseFragment implements Notificatio
                             ViewHolder holder = chatListView.getChildViewHolder(child);
                             p = holder.getAdapterPosition();
 
+
                             if (p >= 0) {
                                 int nextPosition;
 
@@ -1228,6 +1244,7 @@ public class ChannelAdminLogActivity extends BaseFragment implements Notificatio
                             }
                         }
                         float tx = chatMessageCell.getSlidingOffsetX() + chatMessageCell.getCheckBoxTranslation();
+
 
                         int y = (int) child.getY() + chatMessageCell.getLayoutHeight();
                         int maxY = chatListView.getMeasuredHeight() - chatListView.getPaddingBottom();
@@ -1252,6 +1269,7 @@ public class ChannelAdminLogActivity extends BaseFragment implements Notificatio
                                     int prevPosition;
 
                                     prevPosition = p - 1;
+
 
                                     holder = chatListView.findViewHolderForAdapterPosition(prevPosition);
                                     if (holder != null) {
@@ -1538,6 +1556,30 @@ public class ChannelAdminLogActivity extends BaseFragment implements Notificatio
         searchContainer.setClickable(true);
         searchContainer.setPadding(0, dp(3), 0, 0);
         contentView.addView(searchContainer, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, 51, Gravity.BOTTOM));
+
+        /*searchUpButton = new ImageView(context);
+        searchUpButton.setScaleType(ImageView.ScaleType.CENTER);
+        searchUpButton.setImageResource(R.drawable.msg_go_up);
+        searchUpButton.setColorFilter(new PorterDuffColorFilter(Theme.getColor(Theme.key_chat_searchPanelIcons), PorterDuff.Mode.MULTIPLY));
+        searchContainer.addView(searchUpButton, LayoutHelper.createFrame(48, 48));
+        searchUpButton.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                MessagesSearchQuery.searchMessagesInChat(null, dialog_id, mergeDialogId, classGuid, 1);
+            }
+        });
+
+        searchDownButton = new ImageView(context);
+        searchDownButton.setScaleType(ImageView.ScaleType.CENTER);
+        searchDownButton.setImageResource(R.drawable.msg_go_down);
+        searchDownButton.setColorFilter(new PorterDuffColorFilter(Theme.getColor(Theme.key_chat_searchPanelIcons), PorterDuff.Mode.MULTIPLY));
+        searchContainer.addView(searchDownButton, LayoutHelper.createFrame(48, 48, Gravity.LEFT | Gravity.TOP, 48, 0, 0, 0));
+        searchDownButton.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                MessagesSearchQuery.searchMessagesInChat(null, dialog_id, mergeDialogId, classGuid, 2);
+            }
+        });*/
 
         searchCalendarButton = new ImageView(context);
         searchCalendarButton.setScaleType(ImageView.ScaleType.CENTER);
@@ -2585,7 +2627,10 @@ public class ChannelAdminLogActivity extends BaseFragment implements Notificatio
         boolean foundTextureViewMessage = false;
         for (int a = 0; a < count; a++) {
             View view = chatListView.getChildAt(a);
-            if (view instanceof ChatMessageCell) {
+            if (view instanceof ChatMessageUnsupportedCell) {
+                ChatMessageUnsupportedCell unsupportedCell = (ChatMessageUnsupportedCell) view;
+                unsupportedCell.setVisiblePart(view.getY() + actionBar.getMeasuredHeight() - contentView.getBackgroundTranslationY(), contentView.getBackgroundSizeY());
+            } else if (view instanceof ChatMessageCell) {
                 ChatMessageCell messageCell = (ChatMessageCell) view;
                 int top = messageCell.getTop();
                 int bottom = messageCell.getBottom();
@@ -2818,6 +2863,17 @@ public class ChannelAdminLogActivity extends BaseFragment implements Notificatio
         }
     }
 
+//    private void removeMessageObject(MessageObject messageObject) {
+//        int index = messages.indexOf(messageObject);
+//        if (index == -1) {
+//            return;
+//        }
+//        messages.remove(index);
+//        if (chatAdapter != null) {
+//            chatAdapter.notifyItemRemoved(chatAdapter.messagesStartRow + messages.size() - index - 1);
+//        }
+//    }
+
     public class ChatActivityAdapter extends RecyclerView.Adapter {
 
         private Context mContext;
@@ -2901,6 +2957,19 @@ public class ChannelAdminLogActivity extends BaseFragment implements Notificatio
                             return false;
                         }
                         return ChatObject.isForum(currentChat);
+                    }
+
+                    @Override
+                    public void didPressAppUpdateButton() {
+                        if (ApplicationLoader.isStandaloneBuild()) {
+                            if (LaunchActivity.instance != null) {
+                                LaunchActivity.instance.checkAppUpdate(true, null);
+                            }
+                        } else if (BuildVars.isHuaweiStoreApp()) {
+                            Browser.openUrl(getContext(), BuildVars.HUAWEI_STORE_URL);
+                        } else {
+                            Browser.openUrl(getContext(), BuildVars.PLAYSTORE_APP_URL);
+                        }
                     }
 
                     @Override
@@ -3239,7 +3308,7 @@ public class ChannelAdminLogActivity extends BaseFragment implements Notificatio
                     }
 
                     @Override
-                    public void didPressBotButton(ChatMessageCell cell, TLRPC.KeyboardButton button) {
+                    public void didPressBotButton(ChatMessageCell cell, TL_keyboard.KeyboardButtonProto button) {
                         MessageObject messageObject = cell.getMessageObject();
                         if (expandedEvents.contains(messageObject.eventId)) {
                             expandedEvents.remove(messageObject.eventId);
@@ -3257,7 +3326,8 @@ public class ChannelAdminLogActivity extends BaseFragment implements Notificatio
                     @Override
                     public void onInitializeAccessibilityNodeInfo(AccessibilityNodeInfo info) {
                         super.onInitializeAccessibilityNodeInfo(info);
-                        
+                        // if alpha == 0, then visibleToUser == false, so we need to override it
+                        // to keep accessibility working correctly
                         info.setVisibleToUser(true);
                     }
                 };
@@ -3377,6 +3447,23 @@ public class ChannelAdminLogActivity extends BaseFragment implements Notificatio
                 });
             } else if (viewType == 2) {
                 view = new ChatUnreadCell(mContext, null);
+            } else if (viewType == 10) {
+                ChatMessageUnsupportedCell cell = new ChatMessageUnsupportedCell(mContext, resourceProvider);
+                cell.setDelegate(new ChatMessageCell.ChatMessageCellDelegate() {
+                    @Override
+                    public void didPressAppUpdateButton() {
+                        if (ApplicationLoader.isStandaloneBuild()) {
+                            if (LaunchActivity.instance != null) {
+                                LaunchActivity.instance.checkAppUpdate(true, null);
+                            }
+                        } else if (BuildVars.isHuaweiStoreApp()) {
+                            Browser.openUrl(getContext(), BuildVars.HUAWEI_STORE_URL);
+                        } else {
+                            Browser.openUrl(getContext(), BuildVars.PLAYSTORE_APP_URL);
+                        }
+                    }
+                });
+                view = cell;
             } else {
                 view = new ChatLoadingCell(mContext, contentView, null);
             }
@@ -3900,6 +3987,7 @@ public class ChannelAdminLogActivity extends BaseFragment implements Notificatio
                     highlightMessageId = object.getRealId();
                 }
 
+//                chatAdapter.updateRowsSafe();
                 int position = chatAdapter.messagesStartRow + filteredMessages.indexOf(object);
 
                 updateVisibleRows();
@@ -3927,7 +4015,7 @@ public class ChannelAdminLogActivity extends BaseFragment implements Notificatio
 
                     if (found) {
                         int yOffset = getScrollOffsetForMessage(view.getHeight()) - offsetY;
-                        int scrollY = (int) (view.getTop() -  yOffset);
+                        int scrollY = (int) (view.getTop() - /*chatListViewPaddingTop - */yOffset);
                         int maxScrollOffset = chatListView.computeVerticalScrollRange() - chatListView.computeVerticalScrollOffset() - chatListView.computeVerticalScrollExtent();
                         if (maxScrollOffset < 0) {
                             maxScrollOffset = 0;
@@ -3936,7 +4024,7 @@ public class ChannelAdminLogActivity extends BaseFragment implements Notificatio
                             scrollY = maxScrollOffset;
                         }
                         if (scrollY != 0) {
-
+//                            scrollByTouch = false;
                             chatListView.smoothScrollBy(0, scrollY);
                             chatListView.setOverScrollMode(RecyclerListView.OVER_SCROLL_NEVER);
                         }
@@ -3948,14 +4036,17 @@ public class ChannelAdminLogActivity extends BaseFragment implements Notificatio
                     chatScrollHelperCallback.scrollTo = object;
                     chatScrollHelperCallback.lastBottom = false;
                     chatScrollHelperCallback.lastItemOffset = yOffset;
-
+//                    chatScrollHelperCallback.lastPadding = (int) chatListViewPaddingTop;
                     chatScrollHelper.setScrollDirection(scrollDirection);
                     chatScrollHelper.scrollToPosition(chatScrollHelperCallback.position = position, chatScrollHelperCallback.offset = yOffset, chatScrollHelperCallback.bottom = false, true);
-
+//                    canShowPagedownButton = true;
+//                    updatePagedownButtonVisibility(true);
                 }
             }
         }
-
+//        returnToMessageId = fromMessageId;
+//        returnToLoadIndex = loadIndex;
+//        needSelectFromMessageId = select;
     }
 
     private boolean wasManualScroll;
@@ -4007,9 +4098,23 @@ public class ChannelAdminLogActivity extends BaseFragment implements Notificatio
         }
         int lastVisibleItem = RecyclerView.NO_POSITION;
         int top = 0;
-
+//        if (!wasManualScroll && unreadMessageObject != null) {
+//            int n = chatListView.getChildCount();
+//            for (int i = 0; i < n; i++) {
+//                View child = chatListView.getChildAt(i);
+//                if (child instanceof ChatMessageCell && ((ChatMessageCell) child).getMessageObject() == unreadMessageObject) {
+//                    int unreadMessageIndex =  messages.indexOf(unreadMessageObject);
+//                    if (unreadMessageIndex >= 0) {
+//                        lastVisibleItem = chatAdapter.messagesStartRow + messages.indexOf(unreadMessageObject);
+//                        top =  getScrollingOffsetForView(child);
+//                    }
+//                    break;
+//                }
+//            }
+//        }
         int count = chatListView.getChildCount();
-
+//        MessageObject editingMessageObject = chatActivityEnterView != null ? chatActivityEnterView.getEditingMessageObject() : null;
+//        long linkedChatId = chatInfo != null ? chatInfo.linked_chat_id : 0;
         for (int a = 0; a < count; a++) {
             View view = chatListView.getChildAt(a);
             if (view instanceof ChatMessageCell) {
@@ -4023,7 +4128,15 @@ public class ChannelAdminLogActivity extends BaseFragment implements Notificatio
                 if (actionBar.isActionModeShowed()) {
                     highlightMessageQuoteFirst = false;
                     highlightMessageQuote = null;
-
+//                    cell.setCheckBoxVisible(threadMessageObjects == null || !threadMessageObjects.contains(messageObject), true);
+//                    int idx = messageObject.getDialogId() == dialog_id ? 0 : 1;
+//                    if (selectedMessagesIds[idx].indexOfKey(messageObject.getId()) >= 0) {
+//                        setCellSelectionBackground(messageObject, cell, idx, true);
+//                        selected = true;
+//                    } else {
+//                        cell.setDrawSelectionBackground(false);
+//                        cell.setChecked(false, false, true);
+//                    }
                     disableSelection = true;
                 } else {
                     cell.setDrawSelectionBackground(false);
@@ -4031,6 +4144,15 @@ public class ChannelAdminLogActivity extends BaseFragment implements Notificatio
                     cell.setChecked(false, false, true);
                 }
 
+//                if ((!cell.getMessageObject().deleted || cell.linkedChatId != linkedChatId) && !suppressUpdateMessageObject) {
+//                    cell.setIsUpdating(true);
+//                    cell.linkedChatId = chatInfo != null ? chatInfo.linked_chat_id : 0;
+//                    cell.setMessageObject(cell.getMessageObject(), cell.getCurrentMessagesGroup(), cell.isPinnedBottom(), cell.isPinnedTop());
+//                    cell.setIsUpdating(false);
+//                }
+//                if (cell != scrimView) {
+//                    cell.setCheckPressed(!disableSelection, disableSelection && selected);
+//                }
                 cell.setHighlighted(highlightMessageId != Integer.MAX_VALUE && messageObject != null && messageObject.getRealId() == highlightMessageId);
                 if (highlightMessageId != Integer.MAX_VALUE) {
                     startMessageUnselect();
@@ -4064,12 +4186,13 @@ public class ChannelAdminLogActivity extends BaseFragment implements Notificatio
         BulletinFactory.of(this).createSimpleBulletin(R.raw.error, getString(R.string.QuoteNotFound)).show(true);
     }
 
+
     private ChatMessageCell dummyMessageCell;
     private int getScrollOffsetForMessage(MessageObject object) {
         return getScrollOffsetForMessage(getHeightForMessage(object, !TextUtils.isEmpty(highlightMessageQuote))) - scrollOffsetForQuote(object);
     }
     private int getScrollOffsetForMessage(int messageHeight) {
-        return (int) Math.max(-dp(2), (chatListView.getMeasuredHeight() -  messageHeight) / 2);
+        return (int) Math.max(-dp(2), (chatListView.getMeasuredHeight() - /*blurredViewBottomOffset - chatListViewPaddingTop - */messageHeight) / 2);
     }
 
     private int scrollOffsetForQuote(MessageObject object) {
@@ -4084,7 +4207,19 @@ public class ChannelAdminLogActivity extends BaseFragment implements Notificatio
         int offsetY;
         CharSequence text;
         ArrayList<MessageObject.TextLayoutBlock> textLayoutBlocks;
-
+//        if (object.getGroupId() != 0) {
+//            MessageObject.GroupedMessages group = getGroup(object.getGroupId());
+//            if (dummyMessageCell == null || dummyMessageCell.computedCaptionLayout == null || group == null || group.captionMessage == null) {
+//                if (dummyMessageCell != null) {
+//                    dummyMessageCell.computedGroupCaptionY = 0;
+//                    dummyMessageCell.computedCaptionLayout = null;
+//                }
+//                return 0;
+//            }
+//            offsetY = dummyMessageCell.computedGroupCaptionY;
+//            text = group.captionMessage.caption;
+//            textLayoutBlocks = dummyMessageCell.computedCaptionLayout.textLayoutBlocks;
+//        } else
         if (!TextUtils.isEmpty(object.caption) && dummyMessageCell != null && dummyMessageCell.captionLayout != null) {
             offsetY = (int) dummyMessageCell.captionY;
             text = object.caption;
@@ -4146,6 +4281,7 @@ public class ChannelAdminLogActivity extends BaseFragment implements Notificatio
         return contentView.getKeyboardHeight() > dp(20);
     }
 
+
     private int scrollCallbackAnimationIndex;
 
     private final ChatScrollCallback chatScrollHelperCallback = new ChatScrollCallback();
@@ -4163,24 +4299,27 @@ public class ChannelAdminLogActivity extends BaseFragment implements Notificatio
         public void onStartAnimation() {
             super.onStartAnimation();
             scrollCallbackAnimationIndex = getNotificationCenter().setAnimationInProgress(scrollCallbackAnimationIndex, allowedNotificationsDuringChatListAnimations);
-
+//            if (pinchToZoomHelper.isInOverlayMode()) {
+//                pinchToZoomHelper.finishZoom();
+//            }
         }
 
         @Override
         public void onEndAnimation() {
             if (scrollTo != null) {
-
+//                chatAdapter.updateRowsSafe();
                 int lastItemPosition = chatAdapter.messagesStartRow + filteredMessages.indexOf(scrollTo);
                 if (lastItemPosition >= 0) {
-                    chatLayoutManager.scrollToPositionWithOffset(lastItemPosition, (int) (lastItemOffset + lastPadding ), lastBottom);
+                    chatLayoutManager.scrollToPositionWithOffset(lastItemPosition, (int) (lastItemOffset + lastPadding/* - chatListViewPaddingTop*/), lastBottom);
                 }
             } else {
-
+//                chatAdapter.updateRowsSafe();
                 chatLayoutManager.scrollToPositionWithOffset(position, offset, bottom);
             }
             scrollTo = null;
             checkTextureViewPosition = true;
-            
+            // chatListView.getOnScrollListener().onScrolled(chatListView, 0, chatScrollHelper.getScrollDirection() == RecyclerAnimationScrollHelper.SCROLL_DIRECTION_DOWN ? 1 : -1);
+
             updateVisibleRows();
 
             AndroidUtilities.runOnUIThread(() -> getNotificationCenter().onAnimationFinish(scrollCallbackAnimationIndex));
@@ -4247,6 +4386,7 @@ public class ChannelAdminLogActivity extends BaseFragment implements Notificatio
         }
     }
 
+
     @Override
     public boolean isSupportEdgeToEdge() {
         return true;
@@ -4256,6 +4396,7 @@ public class ChannelAdminLogActivity extends BaseFragment implements Notificatio
     public boolean drawEdgeNavigationBar() {
         return false;
     }
+
 
     private OnPostDrawView invalidateBlurredSourcesView;
 
@@ -4285,7 +4426,7 @@ public class ChannelAdminLogActivity extends BaseFragment implements Notificatio
         }
 
         if (BitwiseUtils.hasFlag(flags, BLUR_INVALIDATE_FLAG_CLIP)) {
-        
+        //    invalidateClipRectForBackgroundAndChatList();
         }
 
         if (BitwiseUtils.hasFlag(flags, BLUR_INVALIDATE_FLAG_POSITIONS)) {
@@ -4293,6 +4434,7 @@ public class ChannelAdminLogActivity extends BaseFragment implements Notificatio
             scrollableViewNoiseSuppressor.setupRenderNodes(glassDrawablesPositionsMerged, glassDrawablesPositionsCount);
         }
 
+        //if (BitwiseUtils.hasFlag(flags, BLUR_INVALIDATE_FLAG_POSITIONS | BLUR_INVALIDATE_FLAG_SCROLL)) {
         final boolean hasChanges = scrollableViewNoiseSuppressor.invalidateResultRenderNodes(contentView::drawList, contentView.getWidth(), contentView.getHeight());
         if (hasChanges) {
             if (glassBackgroundSourceRenderNode != null) {
@@ -4307,6 +4449,7 @@ public class ChannelAdminLogActivity extends BaseFragment implements Notificatio
             invalidateAllGlassAttachedViews();
         }
 
+        //}
     }
 
     private int getMergedVisibleBlurredPositions(List<RectF> positions) {
@@ -4319,7 +4462,9 @@ public class ChannelAdminLogActivity extends BaseFragment implements Notificatio
             position.top = Math.max(chatListView.getY(), position.top);
             position.right = androidx.core.math.MathUtils.clamp(position.right, 0, maxX);
             position.bottom = Math.min(chatListView.getY() + chatListView.getMeasuredHeight(), position.bottom);
-             
+            /*if (drawDebug) {
+                ((Canvas) null).drawRect(position, Theme.DEBUG_GREEN_STROKE);
+            }*/
         }
 
         return mergedPositionsCount;
@@ -4364,6 +4509,9 @@ public class ChannelAdminLogActivity extends BaseFragment implements Notificatio
         }
     }
 
+
+
+
     private final RectF tmpViewRectF = new RectF();
     private boolean quickRejectChild(View child, @Nullable RectF position) {
         if (position == null || chatListView == null || child == null) {
@@ -4400,6 +4548,15 @@ public class ChannelAdminLogActivity extends BaseFragment implements Notificatio
                     continue;
                 }
 
+                /*
+                if (child instanceof ChatMessageUnsupportedCell) {
+                    blurCanvas.save();
+                    blurCanvas.translate(child.getX(), child.getY());
+                    ((ChatMessageUnsupportedCell) child).drawBackground(blurCanvas);
+                    blurCanvas.restore();
+                    chatListView.drawChild(blurCanvas, child, drawingTime);
+                } else
+                */
                 if (child instanceof ChatMessageCell) {
                     blurCanvas.save();
                     blurCanvas.translate(child.getX(), child.getY());

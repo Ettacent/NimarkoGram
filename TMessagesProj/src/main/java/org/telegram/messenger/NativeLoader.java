@@ -87,7 +87,9 @@ public class NativeLoader {
             } catch (Error e) {
                 FileLog.e(e);
             }
-            
+            // Extraction succeeding does not mean the library was accepted by
+            // the linker. Let the caller continue to its final fallback when
+            // System.load failed instead of reporting a false success.
             return nativeLoaded;
         } catch (Exception e) {
             FileLog.e(e);
@@ -130,6 +132,20 @@ public class NativeLoader {
             }
 
             String folder = getAbiFolder();
+
+            /*File destFile = getNativeLibraryDir(context);
+            if (destFile != null) {
+                destFile = new File(destFile, LIB_SO_NAME);
+                if (destFile.exists()) {
+                    try {
+                        System.loadLibrary(LIB_NAME);
+                        nativeLoaded = true;
+                        return;
+                    } catch (Error e) {
+                        FileLog.e(e);
+                    }
+                }
+            }*/
 
             File destDir = new File(context.getFilesDir(), "lib");
             destDir.mkdirs();
@@ -206,10 +222,8 @@ public class NativeLoader {
         return folder;
     }
 
-    private static native void init(String path, boolean enable);
-
     public static boolean loaded() {
         return nativeLoaded;
     }
-    
+    //public static native void crash();
 }

@@ -102,6 +102,10 @@ public class AvatarDrawable extends Drawable {
     public static final int AVATAR_TYPE_STARS = 26;
     public static final int AVATAR_TYPE_SUGGESTION = 27;
 
+    /**
+     * Matches {@link org.telegram.ui.Components.AvatarConstructorFragment#defaultColors}
+     * but reordered to preserve color tints.
+     */
     public static final int[][] advancedGradients = new int[][]{
             new int[]{0xFFF64884, 0xFFEF5B41, 0xFFF6A730, 0xFFFF7742},
             new int[]{0xFFF5694E, 0xFFF5772C, 0xFFFFD412, 0xFFFFA743},
@@ -163,13 +167,13 @@ public class AvatarDrawable extends Drawable {
         float[] tempHSV = Theme.getTempHsv(5);
         Color.colorToHSV(color, tempHSV);
         final int hue = (int) tempHSV[0];
-        if (hue >= 345 || hue < 29) return 0; 
-        if (hue < 67) return 1; 
-        if (hue < 140) return 3; 
-        if (hue < 199) return 4; 
-        if (hue < 234) return 5; 
-        if (hue < 301) return 2; 
-        return 6; 
+        if (hue >= 345 || hue < 29) return 0; // red
+        if (hue < 67) return 1; // orange
+        if (hue < 140) return 3; // green
+        if (hue < 199) return 4; // cyan
+        if (hue < 234) return 5; // blue
+        if (hue < 301) return 2; // violet
+        return 6; // pink
     }
 
     public static int getColorIndex(long id) {
@@ -442,7 +446,8 @@ public class AvatarDrawable extends Drawable {
                 color2 = getThemedColor(Theme.keys_avatar_background2[getColorIndex(id)]);
             }
         }
-        needApplyColorAccent = id == 5; 
+        needApplyColorAccent = id == 5; // Tinting manually set blue color
+
 
         avatarType = AVATAR_TYPE_NORMAL;
         drawDeleted = false;
@@ -587,7 +592,8 @@ public class AvatarDrawable extends Drawable {
                 AndroidUtilities.rectTmp.set(0, 0, size, size);
                 canvas.drawRoundRect(AndroidUtilities.rectTmp, roundRadius, roundRadius, backgroundPaint);
             } else {
-                
+                // NG avatar-corners: letter avatars follow the global setting so they
+                // match photo avatars (a circle at max, rounded-square below it).
                 int avc = app.nimarkogram.messenger.NimarkoConfig.getAvatarCorners(size, true);
                 AndroidUtilities.rectTmp.set(0, 0, size, size);
                 canvas.drawRoundRect(AndroidUtilities.rectTmp, avc, avc, backgroundPaint);
@@ -603,16 +609,16 @@ public class AvatarDrawable extends Drawable {
                 canvas.drawCircle(size / 2.0f, size / 2.0f, size / 2.0f * archivedAvatarProgress, backgroundPaint);
                 if (Theme.dialogs_archiveAvatarDrawableRecolored) {
                     Theme.dialogs_archiveAvatarDrawable.beginApplyLayerColors();
-                    Theme.dialogs_archiveAvatarDrawable.setLayerColor("Arrow1.**", Theme.getNonAnimatedColor(Theme.key_avatar_backgroundArchived));
-                    Theme.dialogs_archiveAvatarDrawable.setLayerColor("Arrow2.**", Theme.getNonAnimatedColor(Theme.key_avatar_backgroundArchived));
+                    Theme.dialogs_archiveAvatarDrawable.setLayerColor("Arrow1", Theme.getNonAnimatedColor(Theme.key_avatar_backgroundArchived));
+                    Theme.dialogs_archiveAvatarDrawable.setLayerColor("Arrow2", Theme.getNonAnimatedColor(Theme.key_avatar_backgroundArchived));
                     Theme.dialogs_archiveAvatarDrawable.commitApplyLayerColors();
                     Theme.dialogs_archiveAvatarDrawableRecolored = false;
                 }
             } else {
                 if (!Theme.dialogs_archiveAvatarDrawableRecolored) {
                     Theme.dialogs_archiveAvatarDrawable.beginApplyLayerColors();
-                    Theme.dialogs_archiveAvatarDrawable.setLayerColor("Arrow1.**", color);
-                    Theme.dialogs_archiveAvatarDrawable.setLayerColor("Arrow2.**", color);
+                    Theme.dialogs_archiveAvatarDrawable.setLayerColor("Arrow1", color);
+                    Theme.dialogs_archiveAvatarDrawable.setLayerColor("Arrow2", color);
                     Theme.dialogs_archiveAvatarDrawable.commitApplyLayerColors();
                     Theme.dialogs_archiveAvatarDrawableRecolored = true;
                 }

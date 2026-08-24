@@ -1,7 +1,5 @@
 apply plugin: 'com.android.application'
-if (file('agconnect-services.json').isFile()) {
-    apply plugin: 'com.huawei.agconnect'
-}
+apply plugin: 'com.huawei.agconnect'
 
 repositories {
     mavenCentral()
@@ -51,14 +49,23 @@ android {
         coreLibraryDesugaringEnabled true
     }
 
+    androidResources {
+        localeFilters += ["en", "ar", "de", "es", "it", "ko", "nl", "pt-rBR", "ru", "uk"]
+    }
+
     signingConfigs {
+        debug {
+            storeFile file("../TMessagesProj/config/release.keystore")
+            storePassword RELEASE_STORE_PASSWORD
+            keyAlias RELEASE_KEY_ALIAS
+            keyPassword RELEASE_KEY_PASSWORD
+        }
+
         release {
-            if (rootProject.ext.hasReleaseSigning) {
-                storeFile rootProject.file(rootProject.ext.releaseSigning.storeFile)
-                storePassword rootProject.ext.releaseSigning.storePassword
-                keyAlias rootProject.ext.releaseSigning.keyAlias
-                keyPassword rootProject.ext.releaseSigning.keyPassword
-            }
+            storeFile file("../TMessagesProj/config/release.keystore")
+            storePassword RELEASE_STORE_PASSWORD
+            keyAlias RELEASE_KEY_ALIAS
+            keyPassword RELEASE_KEY_PASSWORD
         }
     }
 
@@ -141,7 +148,7 @@ android {
         externalNativeBuild {
             cmake {
                 version '3.10.2'
-                arguments '-DANDROID_STL=c++_static', '-DANDROID_PLATFORM=android-21' 
+                arguments '-DANDROID_STL=c++_static', '-DANDROID_PLATFORM=android-21' //, '-DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON'
             }
         }
     }
@@ -156,6 +163,4 @@ android {
     }
 }
 
-if (file('google-services.json').isFile()) {
-    apply plugin: 'com.google.gms.google-services'
-}
+apply plugin: 'com.google.gms.google-services'

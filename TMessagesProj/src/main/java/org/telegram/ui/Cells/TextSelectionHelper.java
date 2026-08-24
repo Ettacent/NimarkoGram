@@ -300,6 +300,7 @@ public abstract class TextSelectionHelper<Cell extends TextSelectionHelper.Selec
                 textY = maybeTextY;
 
                 selectedView = newView;
+                // NimarkoGram: gate haptic on disableVibration.
                 if (!app.nimarkogram.messenger.NimarkoConfig.disableVibration) {
                     try {
                         textSelectionOverlay.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS, HapticFeedbackConstants.FLAG_IGNORE_VIEW_SETTING);
@@ -672,6 +673,7 @@ public abstract class TextSelectionHelper<Cell extends TextSelectionHelper.Selec
 
     }
 
+    //fast way hide floating action mode for long time
     private final Runnable hideActionsRunnable = new Runnable() {
         @Override
         public void run() {
@@ -699,6 +701,11 @@ public abstract class TextSelectionHelper<Cell extends TextSelectionHelper.Selec
         if (popupWindow != null) {
             popupWindow.dismiss();
         }
+    }
+
+    public void hideActionsMenu() {
+        AndroidUtilities.cancelRunOnUIThread(showActionsRunnable);
+        hideActions();
     }
 
     public TextSelectionOverlay getOverlayView(Context context) {

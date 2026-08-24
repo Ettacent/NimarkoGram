@@ -20,6 +20,7 @@ import android.graphics.Paint;
 import android.graphics.drawable.Drawable;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Trace;
 import android.text.TextUtils;
 import android.view.Menu;
 import android.view.MotionEvent;
@@ -93,6 +94,9 @@ public abstract class BaseFragment {
     private PreviewDelegate previewDelegate;
     protected Theme.ResourcesProvider resourceProvider;
     private boolean isFullyVisible;
+//    public ArrayList<StoryViewer> storyViewerStack;
+//    public ArrayList<BotWebViewAttachedSheet> botsStack;
+//
     public ArrayList<AttachedSheet> sheetsStack;
 
     public static interface AttachedSheet {
@@ -255,7 +259,23 @@ public abstract class BaseFragment {
         this.fragmentView = fragmentView;
     }
 
-    public View createView(Context context) {
+    public View performCreateView(Context context) {
+        if (!BuildConfig.DEBUG_PRIVATE_VERSION) {
+            return createView(context);
+        }
+
+        final String className = getClass().getSimpleName();
+        final String sectionNameBase = "Fragment#createView#";
+        final String sectionName = TextUtils.isEmpty(className) ? sectionNameBase : (sectionNameBase + className);
+        Trace.beginSection(sectionName);
+        try {
+            return createView(context);
+        } finally {
+            Trace.endSection();
+        }
+    }
+
+    protected View createView(Context context) {
         return null;
     }
 
@@ -292,6 +312,9 @@ public abstract class BaseFragment {
     }
 
     public boolean isActionBarCrossfadeEnabled() {
+        // NimarkoGram: ported from Cherrygram (GPL-2.0). Active only when both spring
+        // animation and the actionbarCrossfade pref are enabled, the story viewer
+        // isn't attached, and the action bar isn't in action-mode (CG parity).
         if (app.nimarkogram.messenger.NimarkoConfig.isSpringAnimationEnabled()
                 && app.nimarkogram.messenger.NimarkoConfig.actionbarCrossfade) {
             if (getLastStoryViewer() != null && getLastStoryViewer().attachedToParent()) {
@@ -358,6 +381,9 @@ public abstract class BaseFragment {
         updateSheetsVisibility();
     }
 
+    // Recursively drop click/long-click listeners so a plugin dynamic_proxy listener that captured this
+    // fragment can no longer be reached from the (dying) view tree, breaking the Java<->Python JNI cycle.
+    // Only called from clearViews() on genuine teardown. Best-effort; never throws.
     private static void nmClearClickListenersDeep(android.view.View v) {
         if (v == null) {
             return;
@@ -379,6 +405,9 @@ public abstract class BaseFragment {
     public void setParentFragment(BaseFragment fragment) {
         setParentLayout(fragment.parentLayout);
         fragmentView = createView(parentLayout.getView().getContext());
+        // NimarkoGram (CG parity): when the user disabled vibration, recursively
+        // mute haptic feedback on every child of this fragment's view so framework
+        // gestures don't bypass our per-callsite guards.
         if (fragmentView != null && app.nimarkogram.messenger.NimarkoConfig.disableVibration) {
             app.nimarkogram.messenger.utils.VibrateUtils.disableHapticFeedback(fragmentView);
         }
@@ -525,6 +554,18 @@ public abstract class BaseFragment {
             }
         }
 
+        // NimarkoGram leak fix (verified via hprof): a Chaquopy plugin can set a dynamic_proxy OnClickListener
+        // on an action-bar menu item whose Python closure captures the fragment itself. The Java proxy holds a
+        // JNI global to its Python peer and the closure holds a JNI global back to the fragment -> a cross-
+        // runtime cycle that NEITHER GC collects. A plugin that re-injects on every fragment generation (e.g.
+        // status_adder's action-bar status button) leaks a fresh uncollectable fragment tree each destroy
+        // (heap dump: 25 DialogsActivity + 83 ChatActivity pinned forever -> ~475k Paint/RectF/Path + 1.5GB
+        // native). On the genuine destroy path (onFragmentDestroy, not the theme-rebuild clearViews), the tree
+        // is still built, so clearing click listeners across the action bar severs the View->proxy edge and the
+        // cycle collapses -> the tree becomes GC-eligible. Covers never-clicked injected buttons a click/detach
+        // hook would miss. Scoped to the actionBar only: it is created per-fragment and never reused, so this
+        // can't break a fragment that caches/reuses its fragmentView (e.g. LoginActivity). Safe: the fragment
+        // is finished and its action bar will never dispatch a click again.
         try { nmClearClickListenersDeep(actionBar); } catch (Throwable ignored) {}
     }
 
@@ -1115,6 +1156,9 @@ public abstract class BaseFragment {
         return Theme.getThemeDrawable(key);
     }
 
+    /**
+     * @return If this fragment should have light status bar even if it's disabled in debug settings
+     */
     public boolean hasForceLightStatusBar() {
         return false;
     }
@@ -1145,6 +1189,7 @@ public abstract class BaseFragment {
             if (activity != null) {
                 Window window = activity.getWindow();
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && window != null && window.getNavigationBarColor() != color) {
+                    // window.setNavigationBarColor(color);
                 }
             }
         }
@@ -1348,6 +1393,10 @@ public abstract class BaseFragment {
 
     public void setTitleOverlayText(String title, int titleId, Runnable action) {
         if (actionBar != null) {
+            // NimarkoGram: pass gilroy=true so the connection-state overlay
+            // ("Connecting...", "Updating...", etc.) preserves Gilroy ExtraBold
+            // and doesn't flicker back to AndroidUtilities.bold() when shown/cleared
+            // over a folder title also set with gilroy=true (CG-parity).
             actionBar.setTitleOverlayText(title, titleId, true, action);
         }
     }
@@ -1446,6 +1495,7 @@ public abstract class BaseFragment {
 
     @Deprecated
     public boolean isSupportEdgeToEdge() {
+        // warn: overridden method must return a constant
         return false;
     }
 

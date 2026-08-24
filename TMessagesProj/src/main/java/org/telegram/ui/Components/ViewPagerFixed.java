@@ -856,6 +856,7 @@ public class ViewPagerFixed extends FrameLayout {
 
     }
 
+
     public boolean checkTabsAnimationInProgress() {
         if (tabsAnimationInProgress) {
             boolean cancel = false;
@@ -876,7 +877,7 @@ public class ViewPagerFixed extends FrameLayout {
             }
             onTabAnimationUpdate(true);
             if (cancel) {
-                
+                //showScrollbars(true);
                 if (tabsAnimation != null) {
                     tabsAnimation.cancel();
                     tabsAnimation = null;
@@ -991,6 +992,7 @@ public class ViewPagerFixed extends FrameLayout {
         adapter.bindView(viewPages[0], currentPosition, viewTypes[0]);
         addView(viewPages[0]);
         viewPages[0].setVisibility(View.VISIBLE);
+
 
         int newId = viewPages[0].getTag() == null ? 0 : (int) viewPages[0].getTag();
         if (newId == oldId) {
@@ -1403,6 +1405,7 @@ public class ViewPagerFixed extends FrameLayout {
                     textPaint.setColor(Theme.getColor(key, resourcesProvider));
                 }
 
+
                 int counterWidth;
                 int countWidth;
                 String counterText;
@@ -1422,7 +1425,7 @@ public class ViewPagerFixed extends FrameLayout {
 
                 tabWidth = currentTab.titleWidth + (countWidth != 0 ? countWidth + dp(6 * (counterText != null ? 1.0f : editingStartAnimationProgress)) : 0);
                 int textX = (getMeasuredWidth() - tabWidth) / 2;
-                if (currentTab.title == null && currentText != null || !currentTab.title.equals(currentText)) {
+                if (currentTab.title == null && currentText != null || !TextUtils.equals(currentTab.title, currentText)) {
                     currentText = currentTab.title = Emoji.replaceEmoji(currentTab.title, textPaint.getFontMetricsInt(), false);
                     if (this.text != null) {
                         this.text.detach();
@@ -1804,6 +1807,7 @@ public class ViewPagerFixed extends FrameLayout {
             animatingIndicator = true;
             setEnabled(false);
 
+
             if (delegate != null) {
                 delegate.onPageSelected(position, scrollingForward);
             }
@@ -2055,7 +2059,7 @@ public class ViewPagerFixed extends FrameLayout {
                             indicatorX = (int) AndroidUtilities.lerp(lastDrawnIndicatorX, indicatorX, indicatorProgress2);
                             indicatorWidth = (int) AndroidUtilities.lerp(lastDrawnIndicatorW, indicatorWidth, indicatorProgress2);
                         }
-                        
+                        // NimarkoGram (CG parity): hollow stroke variant for the bubble-style selector.
                         if (app.nimarkogram.messenger.NimarkoConfig.tabStyleStroke) {
                             selectorDrawable.setStroke(AndroidUtilities.dp(1), Theme.getColor(activeTextColorKey, resourcesProvider));
                             selectorDrawable.setColor(ColorUtils.setAlphaComponent(Theme.getColor(tabLineColorKey), 50));
@@ -2395,6 +2399,7 @@ public class ViewPagerFixed extends FrameLayout {
         }
         return null;
     }
+
 
     public void setAllowDisallowInterceptTouch(boolean allowDisallowInterceptTouch) {
         this.allowDisallowInterceptTouch = allowDisallowInterceptTouch;

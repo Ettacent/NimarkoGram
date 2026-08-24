@@ -158,6 +158,10 @@ public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayou
     private boolean isHidden;
 
     private AnimatorSet cameraInitAnimation;
+    // NG: widened from CameraViewInternal to BaseCameraView so the field can hold
+    // either the stock {@link CameraView} (via {@link CameraViewInternal}) or the
+    // CameraX-backed {@link app.nimarkogram.messenger.camera.NimarkoCameraXView}.
+    // Branching done in showCamera() on NimarkoConfig.cameraType == CAMERA_X.
     protected app.nimarkogram.messenger.camera.BaseCameraView cameraView;
     private final CameraViewItemDecoration cameraViewItemDecoration;
     private TextView recordTime;
@@ -177,9 +181,21 @@ public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayou
     private Runnable videoRecordRunnable;
     private DecelerateInterpolator interpolator = new DecelerateInterpolator(1.5f);
     private FrameLayout cameraPanel;
+    // NimarkoGram: extera-style "Hide Camera Tile" floating-icon overlay.
+    // Stays in parentAlert.getContainer() at the location of the (now
+    // omitted) camera tile cell. Position synced with cameraView via
+    // setTranslationX/Y everywhere cameraView is moved.
     public android.widget.FrameLayout cameraIcon;
+    // NG: Cherrygram never hides the camera tile — keeps upstream Telegram
+    // behaviour where the camera button is a normal cell at position 0 of the
+    // photo grid. User explicitly asked to remove the extera-style floating
+    // cameraIcon overlay: "плавающую камеру убрать, в черриграме её нет".
+    // Flipped to false so the adapter renders the camera tile in-grid; the
+    // cameraIcon FrameLayout overlay declared above is still constructed but
+    // immediately hidden via setVisibility(GONE) below so nothing floats.
     private static final boolean HIDE_CAMERA_TILE = false;
     private final boolean disableAttachCamera = app.nimarkogram.messenger.NimarkoConfig.disableAttachCamera;
+    // Outer-class camera glyph (shared with the cameraIcon overlay below).
     private Drawable nimarkoCameraGlyph;
     private Drawable getNimarkoCameraGlyph() {
         if (nimarkoCameraGlyph == null) {
@@ -189,6 +205,9 @@ public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayou
     }
     private ShutterButton shutterButton;
     private ZoomControlView zoomControlView;
+    // NimarkoGram: CG-style lock animation view shown beside the shutter
+    // button while the user holds-to-record. Slide-up gesture commits the
+    // recording-locked state (mirrors CG ChatAttachAlertPhotoLayout).
     private LockAnimationView lockAnimationView;
     private AnimatorSet zoomControlAnimation;
     private Runnable zoomControlHideRunnable;
@@ -209,6 +228,7 @@ public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayou
     private boolean mediaEnabled;
     private boolean videoEnabled;
     private boolean photoEnabled;
+    private boolean includeVideosInGallery;
     private boolean documentsEnabled;
 
     private float pinchStartDistance;
@@ -229,8 +249,17 @@ public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayou
     private int itemsPerRow = 3;
 
     private boolean deviceHasGoodCamera;
+    /** Per-layout fallback after CameraX capability/bind failure; keeps the user's saved preference intact. */
     private boolean cameraXFallbackToStock;
+    // NG CG-port: latched by onPause() when CameraX is the active backend so
+    // checkCamera() can re-bind the lifecycle after a permission round-trip.
     private boolean needRebindCamera = false;
+    // NG CG-port: maps device orientation to Surface.ROTATION_* and forwards
+    // to NimarkoCameraXView.setOrientation() so CameraX rotates captured
+    // JPEGs to match the user's hold orientation. Stock CameraView already
+    // gets rotation via CameraSession.updateRotation() — only the CameraX
+    // backend needs this manual wiring. Enabled when the camera view is
+    // created in showCamera(), disabled in hideCamera()/onPause().
     private OrientationEventListener cameraOrientationListener;
     private boolean galleryAdaptersUpdatePosted;
     private final Runnable galleryAdaptersUpdateRunnable = new Runnable() {
@@ -812,6 +841,7 @@ public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayou
     public ChatAttachAlertPhotoLayout(ChatAttachAlert alert, Context context, boolean forceDarkTheme, boolean needCamera, Theme.ResourcesProvider resourcesProvider) {
         super(alert, context, resourcesProvider);
         this.forceDarkTheme = forceDarkTheme;
+        // NimarkoGram: keep the inline camera tile (extera pattern)
         this.needCamera = needCamera;
         NotificationCenter.getGlobalInstance().addObserver(this, NotificationCenter.albumsDidLoad);
         NotificationCenter.getGlobalInstance().addObserver(this, NotificationCenter.cameraInitied);
@@ -844,6 +874,7 @@ public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayou
         dropDown.setTypeface(AndroidUtilities.bold());
         dropDownDrawable = context.getResources().getDrawable(R.drawable.ic_arrow_drop_down).mutate();
         dropDownDrawable.setColorFilter(new PorterDuffColorFilter(getThemedColor(Theme.key_dialogTextBlack), PorterDuff.Mode.MULTIPLY));
+        // dropDown.setCompoundDrawablePadding(dp(2));
         dropDown.setPadding(0, 0, dp(10), 0);
         dropDownContainer.addView(dropDown, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, Gravity.CENTER_VERTICAL, 16, 0, 0, 0));
 
@@ -897,7 +928,11 @@ public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayou
         gridView.setFastScrollVisible(true);
         gridView.getFastScroll().setAlpha(0f);
         gridView.getFastScroll().usePadding = false;
-        gridView.getFastScroll().topOffset = ActionBar.getCurrentActionBarHeight();
+        gridView.getFastScroll().topOffset = ActionBar.getCurrentActionBarHeight(); // + AndroidUtilities.statusBarHeight;
+        // NimarkoGram: extera "Hide Camera Tile" — adapter built without
+        // camera item, so the photo grid starts with the first real photo.
+        // The camera-icon overlay (cameraIcon) is added separately in
+        // showCamera() at the would-be tile location.
         gridView.setAdapter(adapter = new PhotoAttachAdapter(context, !HIDE_CAMERA_TILE && needCamera && !disableAttachCamera));
         gridView.addItemDecoration(cameraViewItemDecoration = new CameraViewItemDecoration(gridView));
         adapter.createCache();
@@ -972,6 +1007,12 @@ public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayou
         layoutManager.setSpanSizeLookup(new GridLayoutManager.SpanSizeLookup() {
             @Override
             public int getSpanSize(int position) {
+                // NG: the adapter's needCamera is forced to false (no in-grid
+                // camera/permission cell at position 0), so the upstream
+                // `noCameraPermissions && position == 0` full-width branch and
+                // the matching position-- shift no longer apply — keeping them
+                // made position 0 a regular photo claim a full grid row, leaving
+                // the next two slots blank when camera permission was denied.
                 if (position == adapter.itemsCount - 1 || noGalleryPermissions && position == 0) {
                     return layoutManager.getSpanCount();
                 }
@@ -983,6 +1024,11 @@ public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayou
             if (!mediaEnabled || parentAlert.destroyed) {
                 return;
             }
+            // NimarkoGram fix: the camera tile only exists in the main gallery
+            // album, so this +1 (compensating the disabled camera tile) must be
+            // gated on that album — otherwise inside a specific folder the
+            // uncompensated +1 selects the NEXT photo/video instead of the
+            // tapped one (the matching position-- below is also main-album only).
             if (needCamera && disableAttachCamera && selectedAlbumEntry == galleryAlbumEntry) position++;
             BaseFragment fragment = parentAlert.baseFragment;
             if (fragment == null) {
@@ -994,11 +1040,22 @@ public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayou
             if (view instanceof GalleryEmptyView) {
                 return;
             }
+            // NG: short-tap on the camera-tile position opens the in-app
+            // camera. With HIDE_CAMERA_TILE the adapter holds a photo at
+            // position 0, but the floating cameraIcon overlay sits exactly
+            // on top of it — user expectations follow the overlay's visual,
+            // not the photo underneath. Long-press already does this via
+            // setOnItemLongClickListener; short-tap was opening the photo
+            // (user report: "иконка камеры просто не открывает камеру, но
+            // если долго жму то открывается"). Match the long-press path.
             if (HIDE_CAMERA_TILE && needCamera && position == 0
                     && selectedAlbumEntry == galleryAlbumEntry) {
                 openCameraByClick();
                 return;
             }
+            // NimarkoGram: extera-style position bump. Adapter no longer has
+            // the camera tile at position 0, so shift up so the rest of the
+            // dispatching matches the original positions.
             if (HIDE_CAMERA_TILE && needCamera) {
                 position++;
             }
@@ -1216,6 +1273,10 @@ public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayou
         progressView.setTextSize(16);
         addView(progressView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
 
+        // NimarkoGram: the FAB overlay was removed — the standard inline
+        // camera tile (cell index 0 in the photo grid) acts as the camera
+        // button, exactly like extera. needCamera stays at the
+        // caller-supplied value and lazy=true is set in showCamera().
 
         if (loading) {
             progressView.showProgress();
@@ -1286,6 +1347,8 @@ public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayou
                     cx3 = cx / 2 - dp(17);
                     cy3 = cy2 = getMeasuredHeight() / 2 - dp(13);
                 }
+                // NimarkoGram: optionally center switch & flash buttons under the shutter
+                // for a tidier landscape-style camera HUD.
                 if (app.nimarkogram.messenger.NimarkoConfig.centerCameraControlButtons && getMeasuredWidth() != dp(126)) {
                     cx2 = cx + dp(80);
                     cx3 = cx - dp(80);
@@ -1326,6 +1389,8 @@ public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayou
                 return;
             }
             openPhotoViewer(null, false, false);
+            // NG CG-port: CameraController routes through CameraSession which
+            // doesn't exist on the CameraX backend; skip for that path.
             if (!isCameraXBackend()) {
                 CameraController.getInstance().stopPreview(cameraView.getCameraSessionObject());
             }
@@ -1342,6 +1407,8 @@ public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayou
             showZoomControls(true, true);
         });
 
+        // NimarkoGram: CG-style lock-recording overlay. Hidden until the
+        // user long-presses the shutter button to start a video recording.
         lockAnimationView = new LockAnimationView(context);
         lockAnimationView.setVisibility(GONE);
         lockAnimationView.setAlpha(0.0f);
@@ -1373,6 +1440,11 @@ public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayou
                     BulletinFactory.of(cameraView, resourcesProvider).createErrorBulletin(LocaleController.getString(R.string.GlobalAttachVideoRestricted)).show();
                     return false;
                 }
+                // NG: CameraX video-capture теперь реализован (VideoCapture<Recorder>
+                // в NimarkoCameraXView.recordVideo). Раньше тут стоял ранний
+                // `return false` для CameraX — из-за него удержание кнопки на «Нажмите
+                // для фото, удерживайте для видео» вообще не запускало запись. Убрано,
+                // чтобы длинное нажатие дошло до recordVideo и писало видео.
                 if (Build.VERSION.SDK_INT >= 23) {
                     if (getContext().checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
                         requestingPermissions = true;
@@ -1398,6 +1470,8 @@ public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayou
                     AndroidUtilities.runOnUIThread(videoRecordRunnable, 1000);
                 };
                 AndroidUtilities.lockOrientation(baseFragment.getParentActivity());
+                // NG CG-port: shared finished-recording callback so the two
+                // backends emit identical PhotoEntry objects.
                 final File recordingFile = outputFile;
                 final boolean recordingFrontFacing = cameraView.isFrontface();
                 org.telegram.messenger.camera.CameraController.VideoTakeCallback onVideoSaved = (thumbPath, duration) -> {
@@ -1438,6 +1512,9 @@ public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayou
                     if (outputFile == recordingFile) outputFile = null;
                     openPhotoViewer(photoEntry, false, false);
                 };
+                // NimarkoGram: CG-style lock-recording hint. Reveal as soon
+                // as recording starts; the slide-up gesture handler below
+                // animates the lock progress and snaps to locked.
                 lockAnimationView.setVisibility(View.VISIBLE);
                 lockAnimationView.animate().alpha(1f).setDuration(200).start();
                 lockAnimationView.setCurrentMove(0);
@@ -1445,6 +1522,10 @@ public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayou
                 if (!isCameraXBackend()) {
                     CameraController.getInstance().recordVideo(cameraView.getCameraSessionObject(), outputFile, parentAlert.avatarPicker != 0, onVideoSaved, () -> AndroidUtilities.runOnUIThread(videoRecordRunnable, 1000), (CameraView) cameraView);
                 } else {
+                    // CameraX path: NimarkoCameraXView.recordVideo() writes to
+                    // outputFile via VideoCapture<Recorder> and surfaces a thumb
+                    // + duration through onStop on finalize. Start the recording
+                    // timer the same way the stock path does (1s tick).
                     AndroidUtilities.runOnUIThread(videoRecordRunnable, 1000);
                     cameraView.recordVideo(outputFile, parentAlert.avatarPicker != 0, (thumbPath, duration) -> onVideoSaved.onFinishVideoRecording(thumbPath, duration));
                 }
@@ -1459,7 +1540,9 @@ public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayou
                 File cancelledFile = outputFile;
                 outputFile = null;
                 resetRecordState();
+                // NimarkoGram: CG-parity — fade out the lock-recording hint.
                 lockAnimationView.animate().alpha(0f).setDuration(200).start();
+                // NG CG-port: route to the active backend.
                 if (!cameraX) {
                     if (cancelledFile != null) cancelledFile.delete();
                     CameraController.getInstance().stopVideoRecording(cameraView.getCameraSession(), true);
@@ -1470,6 +1553,8 @@ public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayou
 
             @Override
             public void shutterReleased() {
+                // NG CG-port: stock path requires CameraSession; CameraX path
+                // doesn't have one. Gate the null-check on the active backend.
                 final boolean isCameraX = isCameraXBackend();
                 if (takingPhoto || cameraView == null) return;
                 if (!isCameraX && cameraView.getCameraSession() == null) return;
@@ -1479,6 +1564,7 @@ public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayou
                 }
                 if (shutterButton.getState() == ShutterButton.State.RECORDING) {
                     resetRecordState();
+                    // NimarkoGram: CG-parity — fade out the lock-recording hint.
                     lockAnimationView.animate().alpha(0f).setDuration(200).start();
                     if (!isCameraX) {
                         CameraController.getInstance().stopVideoRecording(cameraView.getCameraSession(), false);
@@ -1515,6 +1601,9 @@ public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayou
                         openPhotoViewer(photoEntry, sameTakePictureOrientation, false);
                     });
                 } else {
+                    // CameraX path: ImageCapture saves the JPEG directly to
+                    // disk. Mirror the stock callback shape (orientation int
+                    // from EXIF, then PhotoEntry → photoViewer).
                     takingPhoto = true;
                     cameraView.takePicture(cameraFile, success -> {
                         takingPhoto = false;
@@ -1560,6 +1649,11 @@ public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayou
                     showZoomControls(true, true);
                     float ratio = -val2 / dp(200);
                     zoomControlView.setZoom(ratio, true);
+                    // NimarkoGram: CG-parity — also drive the lock-recording
+                    // hint while the user slides up during an active video
+                    // recording. setCurrentMove animates the lock progress,
+                    // setLocked snaps to the locked state once the gesture
+                    // crosses the threshold (mirrors CG L1547/L1549).
                     if (shutterButton.getState() == ShutterButton.State.RECORDING) {
                         if (ratio >= 1.0f) {
                             lockAnimationView.setLocked(true);
@@ -1613,6 +1707,9 @@ public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayou
                 if (flashAnimationInProgress || cameraView == null || !cameraView.isInited() || !cameraOpened) {
                     return;
                 }
+                // NG CG-port: BaseCameraView surface — stock path reads from
+                // CameraSession (peek+set semantics), CameraX path advances
+                // its own internal cycle via setNextFlashMode().
                 final String current;
                 final String next;
                 if (!isCameraXBackend()) {
@@ -1693,6 +1790,7 @@ public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayou
     }
 
 
+
     private void requestGalleryPermission() {
         try {
             if (Build.VERSION.SDK_INT >= 33) {
@@ -1718,12 +1816,20 @@ public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayou
 
     private void openCameraByClick() {
         if (SharedConfig.inappCamera) {
+            // NG: with HIDE_CAMERA_TILE, the camera tile is removed from the
+            // adapter so the gridView's checkCamera() / showCamera() flow may
+            // not have run by the time the user taps the floating cameraIcon.
+            // Force-init cameraView first so openCamera() doesn't early-return
+            // on `cameraView == null` (silent fail — user sees nothing).
             if (cameraView == null) {
                 showCamera();
             }
             if (cameraView != null) {
                 openCamera(true);
             } else if (parentAlert.delegate != null) {
+                // showCamera() refused (no permission / cameraOpened flag /
+                // parentAlert paused). Last-resort: hand off to the delegate's
+                // system-camera intent so the user gets SOMETHING when tapping.
                 parentAlert.delegate.didPressedButton(0, false, true, 0, 0, 0, parentAlert.isCaptionAbove(), false, 0);
             }
         } else {
@@ -1941,7 +2047,7 @@ public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayou
 
     private int maxCount() {
         if (parentAlert.baseFragment instanceof ChatActivity && ((ChatActivity) parentAlert.baseFragment).getChatMode() == ChatActivity.MODE_QUICK_REPLIES) {
-            return parentAlert.baseFragment.getMessagesController().quickReplyMessagesLimit - ((ChatActivity) parentAlert.baseFragment).messages.size();
+            return parentAlert.baseFragment.getMessagesController().config.quickReplyMessagesLimit.get() - ((ChatActivity) parentAlert.baseFragment).messages.size();
         }
         return Integer.MAX_VALUE;
     }
@@ -2263,6 +2369,7 @@ public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayou
                 zoomControlView.setZoom(0.0f, false);
                 cameraZoom = 0.0f;
                 cameraView.setZoom(0.0f);
+                // NG CG-port: stock-only CameraController.startPreview path.
                 if (!isCameraXBackend()) {
                     CameraController.getInstance().startPreview(cameraView.getCameraSessionObject());
                 }
@@ -2351,6 +2458,7 @@ public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayou
                     zoomControlView.setZoom(0.0f, false);
                     cameraZoom = 0.0f;
                     cameraView.setZoom(0.0f);
+                    // NG CG-port: stock-only CameraController.startPreview path.
                     if (!isCameraXBackend()) {
                         CameraController.getInstance().startPreview(cameraView.getCameraSession());
                     }
@@ -2621,6 +2729,12 @@ public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayou
                 } else if (app.nimarkogram.messenger.camera.CameraXUtils.isCurrentCameraCameraX()
                         && !cameraXFallbackToStock
                         && app.nimarkogram.messenger.camera.NimarkoCameraXView.hasGoodCamera(getContext())) {
+                    // NG CG-port: when the user picked CAMERA_X in the camera
+                    // type selector, defer the "good camera" check to
+                    // {@link NimarkoCameraXView#hasGoodCamera(Context)} — the
+                    // stock {@link CameraController#initCamera} probe targets
+                    // the legacy Camera1/Camera2 path and would mis-report on
+                    // CameraX-only configurations.
                     deviceHasGoodCamera = app.nimarkogram.messenger.camera.NimarkoCameraXView.hasGoodCamera(getContext());
                 } else {
                     if (app.nimarkogram.messenger.camera.CameraXUtils.isCurrentCameraCameraX()) cameraXFallbackToStock = true;
@@ -2632,6 +2746,8 @@ public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayou
             } else if (app.nimarkogram.messenger.camera.CameraXUtils.isCurrentCameraCameraX()
                     && !cameraXFallbackToStock
                     && app.nimarkogram.messenger.camera.NimarkoCameraXView.hasGoodCamera(getContext())) {
+                // NG CG-port: pre-23 fast-path for CameraX backend (no
+                // runtime-permission gate to traverse).
                 deviceHasGoodCamera = app.nimarkogram.messenger.camera.NimarkoCameraXView.hasGoodCamera(getContext());
             } else {
                 if (app.nimarkogram.messenger.camera.CameraXUtils.isCurrentCameraCameraX()) cameraXFallbackToStock = true;
@@ -2647,6 +2763,13 @@ public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayou
         if (!parentAlert.destroyed && parentAlert.isShowing() && deviceHasGoodCamera && parentAlert.getBackDrawable().getAlpha() != 0 && !cameraOpened) {
             showCamera();
         }
+        // NG CG-port: CameraX provider can lose its lifecycle binding when the
+        // host activity goes through a config-change while the attach alert is
+        // open. {@link #onPause()} flips {@code needRebindCamera = true} so the
+        // next {@link #checkCamera(boolean)} re-binds the use-cases via the
+        // backend's {@link BaseCameraView#rebind()} hook. Stock CameraView
+        // implements rebind() as a no-op; only NimarkoCameraXView actually
+        // re-runs {@link androidx.camera.lifecycle.ProcessCameraProvider#bindToLifecycle}.
         if (isCameraXBackend()
                 && cameraOpened && needRebindCamera && cameraView != null) {
             cameraView.rebind();
@@ -2773,8 +2896,12 @@ public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayou
         }
     }
 
+    public void setIncludeVideosInGallery(boolean includeVideosInGallery) {
+        this.includeVideosInGallery = includeVideosInGallery;
+    }
+
     private boolean shouldLoadAllMedia() {
-        return !parentAlert.isPhotoPicker && (parentAlert.baseFragment instanceof ChatActivity || parentAlert.storyMediaPicker || parentAlert.avatarPicker == 2);
+        return includeVideosInGallery || !parentAlert.isPhotoPicker && (parentAlert.baseFragment instanceof ChatActivity || parentAlert.storyMediaPicker || parentAlert.avatarPicker == 2);
     }
 
     public void showCamera() {
@@ -2789,8 +2916,15 @@ public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayou
             return;
         }
         if (cameraView == null) {
-            final boolean lazy = true;
+            final boolean lazy = true; // Yippe: hard-disable instant camera preview tile
             final boolean frontface = isCameraFrontfaceBeforeEnteringEditMode != null ? isCameraFrontfaceBeforeEnteringEditMode : parentAlert.openWithFrontFaceCamera;
+            // NG CG-port: route to the CameraX backend when the user picked
+            // CAMERA_X in NimarkoCameraTypeSelector + the device passes the
+            // CameraX support gate. Otherwise stick with the stock backend so
+            // existing record-video / take-picture paths (which depend on
+            // {@link CameraController} + {@link CameraSessionWrapper}) keep
+            // working. CAMERA_SYSTEM is already early-returned in checkCamera()
+            // before we get here.
             final boolean useCameraX = app.nimarkogram.messenger.camera.CameraXUtils.isCurrentCameraCameraX()
                     && !cameraXFallbackToStock
                     && app.nimarkogram.messenger.camera.NimarkoCameraXView.hasGoodCamera(getContext());
@@ -2802,6 +2936,9 @@ public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayou
                         new app.nimarkogram.messenger.camera.NimarkoCameraXView(getContext(), frontface);
                 cameraView = cameraXView;
                 cameraXView.setCameraFailureCallback(() -> fallbackToStockCamera(cameraXView));
+                // NG CG-port: feed device-orientation deltas into NimarkoCameraXView
+                // so saved JPEGs are right-side-up regardless of activity orientation.
+                // Re-enabled each showCamera() because hideCamera() disables it.
                 if (cameraOrientationListener == null) {
                     cameraOrientationListener = new OrientationEventListener(getContext()) {
                         @Override
@@ -2829,6 +2966,9 @@ public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayou
             } else {
                 cameraView = new CameraViewInternal(getContext(), frontface, lazy);
             }
+            //if (lazy) {
+            //    cameraView.setThumbDrawable(cameraViewItemDecoration.placeholderDrawable);
+            //}
             final app.nimarkogram.messenger.camera.BaseCameraView createdCameraView = cameraView;
             createdCameraView.setRecordFile(AndroidUtilities.generateVideoPath(parentAlert.baseFragment instanceof ChatActivity && ((ChatActivity) parentAlert.baseFragment).isSecretChat()));
             createdCameraView.setFocusable(true);
@@ -2862,6 +3002,11 @@ public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayou
                 }
             }, 100);
             parentAlert.getContainer().addView(createdCameraView, 1, new FrameLayout.LayoutParams(itemSize, itemSize));
+            // NimarkoGram: extera-style camera icon overlay. Sits on top of
+            // the cameraView at the would-be tile location, draws the
+            // static camera glyph centered. When HIDE_CAMERA_TILE is on,
+            // cameraView is lazy (no live preview), so this icon is what
+            // the user actually sees and taps.
             if (cameraIcon == null) {
                 cameraIcon = new FrameLayout(getContext()) {
                     @Override
@@ -2887,6 +3032,13 @@ public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayou
                 };
                 cameraIcon.setWillNotDraw(false);
                 cameraIcon.setClipChildren(true);
+                // NG: the extera-style camera icon overlay sits on top of the
+                // photo grid at the camera-tile location. With HIDE_CAMERA_TILE
+                // on, the adapter no longer has a camera-tile row, so taps that
+                // landed on the icon were passing through to the photo cell
+                // underneath (user tapped camera, got photo selection). Wire
+                // the icon's own click to openCameraByClick — mirrors the
+                // gridView item-click L987/L1113 paths for the legacy tile.
                 cameraIcon.setOnClickListener(v -> openCameraByClick());
                 cameraIcon.setClickable(true);
             }
@@ -2899,6 +3051,11 @@ public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayou
                     if (parentAlert.destroyed || cameraView != createdCameraView) {
                         return;
                     }
+                    // NG CG-port: stock path keeps the original CameraSession
+                    // peek-without-mutate logic; CameraX path uses a fixed
+                    // 3-mode cycle (auto/on/off) so we know "next" is always
+                    // distinct from "current" — show the flash toggle iff the
+                    // device reports a flash unit.
                     final String current = createdCameraView.getCurrentFlashMode();
                     final String next;
                     if (createdCameraView.getCameraSession() != null) {
@@ -2981,6 +3138,7 @@ public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayou
         }
         if (!cameraOpened) {
             cameraView.setTranslationX(cameraViewLocation[0]);
+            // cameraView.setTranslationY(cameraViewLocation[1] + currentPanTranslationY);
             if (cameraIcon != null) {
                 cameraIcon.setTranslationX(cameraViewLocation[0]);
                 cameraIcon.setTranslationY(cameraViewLocation[1] + cameraViewOffsetY + currentPanTranslationY);
@@ -2992,6 +3150,8 @@ public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayou
         if (!deviceHasGoodCamera || cameraView == null) {
             return;
         }
+        // NG CG-port: stop forwarding orientation events while no CameraX
+        // view is bound; showCamera() flips it back on if needed.
         if (cameraOrientationListener != null) {
             cameraOrientationListener.disable();
         }
@@ -3020,6 +3180,9 @@ public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayou
             return;
         }
         try {
+            // NG CG-port: stock backend gives us a TextureView; CameraX backend
+            // doesn't — fall back to BaseCameraView.getBitmap() (PreviewView's
+            // own pixel snapshot) which is functionally equivalent.
             TextureView textureView = cameraView.getTextureView();
             Bitmap bitmap = textureView != null ? textureView.getBitmap() : cameraView.getBitmap();
             if (bitmap != null) {
@@ -3315,6 +3478,9 @@ public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayou
             cameraViewW = (int) endWidth;
             cameraViewH = (int) endHeight;
             final float s = fromScale * (1f - value) + value;
+            // NG CG-port: CameraX backend doesn't expose a TextureView (uses
+            // PreviewView). Scale the whole BaseCameraView instead — visually
+            // the same effect since PreviewView fills its parent.
             TextureView tv = cameraView.getTextureView();
             if (tv != null) {
                 tv.setScaleX(s);
@@ -3340,6 +3506,8 @@ public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayou
         } else {
             cameraViewW = (int) startWidth;
             cameraViewH = (int) startHeight;
+            // NG CG-port: TextureView missing on CameraX backend; scale the
+            // BaseCameraView itself as a visual equivalent (no-op when scale=1).
             TextureView tv2 = cameraView.getTextureView();
             if (tv2 != null) {
                 tv2.setScaleX(1f);
@@ -3435,6 +3603,10 @@ public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayou
                 }
 
                 int containerHeight = parentAlert.getSheetContainer().getMeasuredHeight();
+                // NG: bind the camera tile bottom to the ACTUAL bottom panel. The inner buttonsRecyclerView keeps
+                // its ~70dp measured height even when its WRAPPER is hidden (story / avatar picker), so the old
+                // unconditional subtraction reserved a phantom 70dp band and the camera stayed over-tall with no
+                // panel. When the wrapper isn't visible, reserve 0 → the tile reaches the container bottom.
                 int bottomPanelHeight = parentAlert.buttonsRecyclerViewWrapper != null
                         && parentAlert.buttonsRecyclerViewWrapper.getVisibility() == View.VISIBLE
                         ? parentAlert.buttonsRecyclerView.getMeasuredHeight()
@@ -3477,6 +3649,7 @@ public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayou
         if (cameraView != null) {
             if (!cameraOpened) {
                 cameraView.setTranslationX(cameraViewLocation[0]);
+                // cameraView.setTranslationY(cameraViewLocation[1] + currentPanTranslationY);
                 if (cameraIcon != null) {
                     cameraIcon.setTranslationX(cameraViewLocation[0]);
                     cameraIcon.setTranslationY(cameraViewLocation[1] + cameraViewOffsetY + currentPanTranslationY);
@@ -3737,7 +3910,7 @@ public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayou
             }
         } else if (id == open_in) {
             try {
-                if (parentAlert.baseFragment instanceof ChatActivity || parentAlert.avatarPicker == 2) {
+                if (shouldLoadAllMedia()) {
                     Intent videoPickerIntent = new Intent();
                     videoPickerIntent.setType("video/*");
                     videoPickerIntent.setAction(Intent.ACTION_GET_CONTENT);
@@ -3787,7 +3960,7 @@ public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayou
     }
 
     private int getTopScrollOffset() {
-        return dp(7) + ActionBar.getCurrentActionBarHeight() + listAdditionalH;
+        return dp(7) + ActionBar.getCurrentActionBarHeight() + listAdditionalH; // + AndroidUtilities.statusBarHeight;
     }
 
     @Override
@@ -3996,6 +4169,7 @@ public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayou
         }
         NotificationCenter.getGlobalInstance().removeObserver(this, NotificationCenter.cameraInitied);
         NotificationCenter.getGlobalInstance().removeObserver(this, NotificationCenter.albumsDidLoad);
+        // NG CG-port: make sure the orientation listener doesn't outlive the layout.
         if (cameraOrientationListener != null) {
             cameraOrientationListener.disable();
             cameraOrientationListener = null;
@@ -4010,6 +4184,7 @@ public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayou
         if (!requestingPermissions) {
             if (cameraView != null && shutterButton.getState() == ShutterButton.State.RECORDING) {
                 resetRecordState();
+                // NG CG-port: route to the active backend.
                 if (!isCameraXBackend()) {
                     CameraController.getInstance().stopVideoRecording(cameraView.getCameraSession(), false);
                 } else {
@@ -4026,6 +4201,9 @@ public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayou
                 shutterButton.setState(ShutterButton.State.DEFAULT, true);
             }
             requestingPermissions = false;
+            // NG CG-port: mark the CameraX provider as needing a re-bind once
+            // the permission dialog returns and {@link #checkCamera(boolean)}
+            // runs again. Stock backend ignores the flag (rebind() is a no-op).
             needRebindCamera = true;
         }
     }
@@ -4065,7 +4243,7 @@ public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayou
 
     @Override
     public int getButtonsHideOffset() {
-        return super.getButtonsHideOffset() + ActionBar.getCurrentActionBarHeight();
+        return super.getButtonsHideOffset() + ActionBar.getCurrentActionBarHeight(); // + AndroidUtilities.statusBarHeight;
     }
 
     @Override
@@ -4294,6 +4472,9 @@ public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayou
             if (cameraView != null && !isCameraXBackend()) {
                 CameraController.getInstance().stopPreview(cameraView.getCameraSessionObject());
             }
+            // NG CG-port: CameraX backend uses lifecycle-based pause via
+            // {@link NimarkoCameraXView}'s LifecycleOwner — no explicit
+            // stopPreview call needed.
         } catch (Exception e) {
             FileLog.e(e);
         }
@@ -4313,6 +4494,21 @@ public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayou
     }
 
     private void onPhotoEditModeChanged(boolean isEditMode) {
+//        if (needCamera && !noCameraPermissions) {
+//            if (isEditMode) {
+//                if (cameraView != null) {
+//                    isCameraFrontfaceBeforeEnteringEditMode = cameraView.isFrontface();
+//                    hideCamera(true);
+//                }
+//            } else {
+//                afterCameraInitRunnable = () -> {
+//                    pauseCameraPreview();
+//                    afterCameraInitRunnable = null;
+//                    isCameraFrontfaceBeforeEnteringEditMode = null;
+//                };
+//                showCamera();
+//            }
+//        }
     }
 
     public void pauseCamera(boolean pause) {
@@ -4323,6 +4519,11 @@ public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayou
                     hideCamera(true);
                 }
             } else {
+//                afterCameraInitRunnable = () -> {
+//                    pauseCameraPreview();
+//                    afterCameraInitRunnable = null;
+//                    isCameraFrontfaceBeforeEnteringEditMode = null;
+//                };
                 showCamera();
             }
         }
@@ -4372,6 +4573,9 @@ public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayou
         } else {
             itemsPerRow = 3;
         }
+        //
+        // LayoutParams layoutParams = (LayoutParams) getLayoutParams();
+        // layoutParams.topMargin = ActionBar.getCurrentActionBarHeight();
 
         listAdditionalH = AndroidUtilities.navigationBarHeight + dp(48);
         FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) gridView.getLayoutParams();
@@ -4393,7 +4597,7 @@ public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayou
             contentSize = rows * itemSize + (rows - 1) * dp(GAP);
         }
 
-        final int insetsTop = ActionBar.getCurrentActionBarHeight();
+        final int insetsTop = ActionBar.getCurrentActionBarHeight(); // + AndroidUtilities.statusBarHeight;
         final int insetsBottom = AndroidUtilities.navigationBarHeight;
 
         int newSize = Math.max(0, availableHeight - contentSize - insetsTop - insetsBottom - dp(12) + dp(6));
@@ -4666,6 +4870,9 @@ public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayou
 
         public PhotoAttachAdapter(Context context, boolean camera) {
             mContext = context;
+            // NimarkoGram: same as outer constructor — force-disable the
+            // inline camera tile here too, otherwise the adapter still
+            // renders cell index 0 as a camera viewfinder when camera==true.
             needCamera = false;
         }
 
@@ -4739,7 +4946,7 @@ public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayou
                     return;
                 }
                 if (selectedPhotos.size() + 1 > maxCount()) {
-                    BulletinFactory.of(parentAlert.sizeNotifierFrameLayout, resourcesProvider).createErrorBulletin(AndroidUtilities.replaceTags(LocaleController.formatPluralString("BusinessRepliesToastLimit", parentAlert.baseFragment.getMessagesController().quickReplyMessagesLimit))).show();
+                    BulletinFactory.of(parentAlert.sizeNotifierFrameLayout, resourcesProvider).createErrorBulletin(AndroidUtilities.replaceTags(LocaleController.formatPluralString("BusinessRepliesToastLimit", parentAlert.baseFragment.getMessagesController().config.quickReplyMessagesLimit.get()))).show();
                     return;
                 }
                 boolean added = !selectedPhotos.containsKey(photoEntry.imageId);
@@ -5046,7 +5253,7 @@ public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayou
                 return 0;
             }
             float childTop = firstChild.getTop();
-            float listH = listView.getMeasuredHeight() - ActionBar.getCurrentActionBarHeight();
+            float listH = listView.getMeasuredHeight() - ActionBar.getCurrentActionBarHeight(); // - AndroidUtilities.statusBarHeight;;
             float scrollY = (firstPosition / parentCount) * cellHeight - childTop;
             return Utilities.clamp(scrollY / (((float) cellCount) * cellHeight - listH), 1f, 0f);
         }
@@ -5082,7 +5289,7 @@ public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayou
 
         @Override
         public void getPositionForScrollProgress(RecyclerListView listView, float progress, int[] position) {
-            int topH = ActionBar.getCurrentActionBarHeight();
+            int topH = ActionBar.getCurrentActionBarHeight(); // + AndroidUtilities.statusBarHeight;
 
             int viewHeight = listView.getChildAt(0).getMeasuredHeight();
             int totalHeight = (int) (Math.ceil(getTotalItemsCount() / (float) itemsPerRow) * viewHeight);

@@ -93,7 +93,7 @@ import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
 import androidx.recyclerview.widget.ItemTouchHelper;
 import androidx.recyclerview.widget.LinearLayoutManager;
-import androidx.recyclerview.widget.LinearSmoothScrollerCustom;
+import org.telegram.ui.recyclerview.LinearSmoothScrollerCustom;
 import androidx.recyclerview.widget.RecyclerView;
 import androidx.viewpager.widget.ViewPager;
 
@@ -281,6 +281,7 @@ import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 
 import app.nimarkogram.messenger.NimarkoConfig;
+import app.nimarkogram.messenger.utils.chats.NimarkoChatMenuInjector;
 import app.nimarkogram.messenger.utils.folders.NimarkoFoldersHelper;
 
 import me.vkryl.android.animator.BoolAnimator;
@@ -334,6 +335,11 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
     private final WindowInsetsStateHolder windowInsetsStateHolder = new WindowInsetsStateHolder(this::checkInsets);
 
     private boolean canShowFilterTabsView;
+    /**
+     * A newly selected account hydrates filters and dialogs independently.
+     * Keep its folder strip off-screen until both cache loads have completed,
+     * otherwise folder icons/counters visibly pop in and resize the capsules.
+     */
     private boolean filterTabsBootstrapPending = true;
     private boolean dialogsLifecycleDestroyed;
     private final Runnable filterTabsBootstrapTimeout = this::finishFilterTabsBootstrap;
@@ -424,6 +430,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                 if (view != null) {
                     float offset = view.getTop() - listView.getPaddingTop();
                     if (!hasStories) {
+                        //  offset += tabsTranslation;
                     } else {
                         tabsTranslation = 0;
                     }
@@ -521,7 +528,12 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
     }
 
     private FragmentSearchField fragmentSearchField;
+    // NimarkoGram: when the home search bar is hidden (hideSearchBar), the info cards that normally live in
+    // the search field have no home — show them as a compact capsule in the action bar's free space instead.
     private app.nimarkogram.messenger.infocards.InfoCardStripView homeInfoCards;
+    // Fade+scale the home capsule in/out (via its visibilityFactor) instead of snapping visibility, so it
+    // returns SMOOTHLY when the search closes (back from search with hideSearchBar on). homeInfoCardsShown is the
+    // last-applied show state, to fire the transition only once.
     private boolean homeInfoCardsShown = false;
     private ValueAnimator homeInfoCardsAnimator;
     private SearchTextWatcher fragmentSearchFieldWatcher;
@@ -741,6 +753,11 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
     private TLRPC.ChatFull communityFull;
     private ChatAvatarContainer communityHeaderContainer;
 
+    /**
+     * Nested dialog lists have their own navigation chrome.  Treating them as
+     * the home list makes NimarkoGram's home-only search/header customisations
+     * change their top inset while a transition is running.
+     */
     public boolean isNestedDialogList() {
         return communityId != 0 || folderId != 0;
     }
@@ -751,6 +768,9 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
 
     @Override
     public boolean isActionBarCrossfadeEnabled() {
+        // Archive and Community already own a complete ActionBar. Drawing the
+        // parent list's bar as a second crossfade layer leaves "NimarkoGram"
+        // above the nested title after resume/reconnect or an interrupted back.
         return !isNestedDialogList() && super.isActionBarCrossfadeEnabled();
     }
 
@@ -798,6 +818,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
     private float progressToActionMode;
     private ValueAnimator actionBarColorAnimator;
 
+    //
     private float storiesYOffset;
     private float tabsYOffset;
     private float scrollAdditionalOffset;
@@ -810,6 +831,9 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
     private Long statusDrawableGiftId;
     private Drawable logoDrawable;
     private AnimatedEmojiDrawable.SwapAnimatedEmojiDrawable statusDrawable;
+    // NimarkoGram: remembered default action-bar title (logo + AppName ssb) so the
+    // folderNameInHeader feature can swap to a folder name and animate back when
+    // returning to the All-Chats tab. Set when the default title is first installed.
     private CharSequence actionBarDefaultTitle;
     private AnimatedStatusView animatedStatusView;
     public RightSlidingDialogContainer rightSlidingDialogContainer;
@@ -1140,12 +1164,29 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             }
             updateContextViewPosition();
             updateStoriesViewAlpha(storiesAlpha);
-            positionHomeInfoCards();
+            positionHomeInfoCards(); // keep the home info-cards capsule glued below the (scrolling) header
             super.dispatchDraw(canvas);
             if (communityId == 0 || progressToActionMode > 0) {
                 drawHeaderShadow(canvas, top + actionBarHeight);
             }
 
+            /*if (fragmentContextView != null && fragmentContextView.isCallStyle()) {
+                canvas.save();
+                canvas.translate(fragmentContextView.getX(), fragmentContextView.getY());
+                if (slideFragmentProgress != 1f) {
+                    if (slideFragmentLite) {
+                        canvas.translate((-1) * dp(slideAmplitudeDp) * (1f - slideFragmentProgress), 0);
+                    } else {
+                        final float s = 1f - 0.05f * (1f - slideFragmentProgress);
+                        canvas.translate((-dp(4)) * (1f - slideFragmentProgress), 0);
+                        canvas.scale(s, 1f, 0, fragmentContextView.getY());
+                    }
+                }
+                fragmentContextView.setDrawOverlay(true);
+                fragmentContextView.draw(canvas);
+                fragmentContextView.setDrawOverlay(false);
+                canvas.restore();
+            }*/
             if (blurredView != null && blurredView.getVisibility() == View.VISIBLE) {
                 if (blurredView.getAlpha() != 1f) {
                     if (blurredView.getAlpha() != 0) {
@@ -1326,6 +1367,9 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                     if (child != fragmentSearchField && child != dialogStoriesCell && child != searchTabsAndFiltersLayout) {
                         childTop += dp(SEARCH_FIELD_HEIGHT);
                     }
+                    //if (rightSlidingDialogContainer != null && rightSlidingDialogContainer.hasFragment() && (child == searchTabsView || child == filtersView)) {
+                    //    childTop -= dp(SEARCH_FIELD_HEIGHT);
+                    //}
                     if (hasStories && child == fragmentSearchField) {
                         childTop += dp(DialogStoriesCell.HEIGHT_IN_DP);
                     }
@@ -1333,6 +1377,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                         dialogStoriesCell.getPremiumHint().layout(childLeft, childTop - dp(24 + 8 + 22) + height, childLeft + width, childTop - dp(24 + 8 + 22) + height + dialogStoriesCell.getPremiumHint().getMeasuredHeight());
                     }
                     if (child == searchTabsAndFiltersLayout) {
+                        // childTop -= dp(4);
                     }
                     if (child == fragmentSearchField) {
                         childTop += dp(2);
@@ -1344,6 +1389,12 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                 } else if (child instanceof ViewPage) {
                     childTop = 0;
                 } else if (child == topPanelLayout || child == topBubblesFadeView || child == filterTabsView) {
+                    // NimarkoGram: when foldersAtBottom is on, filterTabsView is added
+                    // with Gravity.BOTTOM (see createView L5252). The BOTTOM branch of
+                    // the verticalGravity switch already anchors childTop to the bottom
+                    // edge; adding actionBar+searchField offset on top of that pushes
+                    // the strip OFF SCREEN (was the v27 "tabs still at top / invisible"
+                    // bug). Only apply the top-anchored offset for TOP-gravity tabs.
                     if (!(child == filterTabsView && foldersAtBottom())) {
                         childTop += actionBar.getMeasuredHeight();
                         childTop += getSearchFieldReservedHeight();
@@ -1997,6 +2048,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                 lastDrawSelectorY = Integer.MIN_VALUE;
             }
 
+            //undrawing views
             if (animationSupportViewsByDialogId != null) {
                 float maxUndrawTop = Integer.MIN_VALUE;
                 float maxUndrawBottom = Integer.MAX_VALUE;
@@ -2169,6 +2221,11 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                 if (parentPage.dialogsType == DIALOGS_TYPE_DEFAULT && hasHiddenArchive()) {
                     ignoreLayout = true;
                     LinearLayoutManager layoutManager = (LinearLayoutManager) getLayoutManager();
+                    // NG (empty archive band peeking at the top when folders/tabs are present): scrollYOffset does
+                    // NOT account for the top-padding GROWTH this measure pass (lastListPadding = the pre-change
+                    // padding from onLayout, t = the new padding that now includes the filter-tabs height). Without
+                    // compensating, position 1 lands too low and the hidden archive (position 0) is left peeking as
+                    // an empty, text-less, clickable band. Tuck it fully by subtracting the padding delta.
                     int archiveOffset = (int) scrollYOffset;
                     if (lastListPadding > 0 && t > lastListPadding) {
                         archiveOffset -= (t - lastListPadding);
@@ -2181,6 +2238,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             super.onMeasure(widthSpec, heightSpec);
             if (!onlySelect) {
                 if (appliedPaddingTop != t && viewPages != null && viewPages.length > 1 && !startedTracking && (tabsAnimation == null || !tabsAnimation.isRunning()) && !tabsAnimationInProgress && (filterTabsView == null || !filterTabsView.isAnimatingIndicator())) {
+//                    viewPages[1].setTranslationX(viewPages[0].getMeasuredWidth());
                 }
             }
         }
@@ -2281,6 +2339,8 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                                             canReadCount = dialog.unread_count > 0 || dialog.unread_mark ? 1 : 0;
                                             performSelectedDialogsAction(selectedDialogs, read, true, false);
                                         } else if (SharedConfig.getChatSwipeAction(currentAccount) == SwipeGestureSettingsView.SWIPE_GESTURE_MUTE) {
+                                            // NimarkoGram (CG parity): when discussInsteadOfMute is on and the dialog is a
+                                            // channel with a linked discussion group, open that group instead of muting.
                                             boolean ngDiscussHandled = false;
                                             if (app.nimarkogram.messenger.NimarkoConfig.discussInsteadOfMute
                                                     || app.nimarkogram.messenger.NimarkoFeatureHooks.isDiscussInsteadOfMute()) {
@@ -2356,6 +2416,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                                 }
                                 if (!canShowHiddenArchive) {
                                     canShowHiddenArchive = true;
+                                    // NimarkoGram (CG parity): disableVibration suppresses the archive-reveal tap.
                                     if (!app.nimarkogram.messenger.NimarkoConfig.disableVibration) {
                                         try {
                                             performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP, HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING);
@@ -2428,7 +2489,10 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                 return;
             }
             int maxTop = Integer.MAX_VALUE;
-            int padding = 0;
+            int padding = 0;//getPaddingTop();
+//            if (hasStories) {
+//                padding -= AndroidUtilities.dp(DialogStoriesCell.HEIGHT_IN_DP);
+//            }
             for (int i = 0; i < anchorListView.getChildCount(); i++) {
                 View child = anchorListView.getChildAt(i);
                 if (child instanceof DialogCell) {
@@ -2462,6 +2526,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                         }
                     }
                 }
+               // if (!backward) {
                     DialogsAdapter adapter = (DialogsAdapter) getAdapter();
                     int p = adapter.findDialogPosition(anchorView.getDialogId());
                     int offset = (int) (anchorView.getTop() - getPaddingTop());
@@ -2470,10 +2535,12 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                     }
                     if (backward) {
                         offset += getSearchFieldReservedHeight();
+                        // offset += canShowFilterTabsView ? dp(50) : 0;
                     }
                     if (p >= 0) {
                         ((LinearLayoutManager) getLayoutManager()).scrollToPositionWithOffset(p, offset);
                     }
+               // }
             }
         }
 
@@ -2550,6 +2617,9 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                     swipeFolderBack = false;
                     swipingFolder = (canSwipeBack && !DialogObject.isFolderDialogId(dialogCell.getDialogId())) || (SharedConfig.archiveHidden && DialogObject.isFolderDialogId(dialogCell.getDialogId()));
                     if (folderId == 1) {
+                        // NimarkoGram (CG parity): allow right-swipe inside the Archive folder to
+                        // unarchive a dialog when unarchiveOnSwipe is on. Without the flag the cell
+                        // stays non-slidable, matching upstream Telegram behaviour.
                         if (app.nimarkogram.messenger.NimarkoConfig.unarchiveOnSwipe
                                 && !DialogObject.isFolderDialogId(dialogCell.getDialogId())) {
                             dialogCell.setSliding(true);
@@ -2934,6 +3004,8 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         searchAnimatorGeneration++;
         super.onFragmentCreate();
 
+        // NimarkoGram (CG parity): when message-filters are on AND the "hide blocked"
+        // sub-toggle is set, prime the blocked-peers list so first-render filtering works.
         if (app.nimarkogram.messenger.NimarkoConfig.enableMsgFilters
                 && app.nimarkogram.messenger.NimarkoConfig.msgFiltersHideFromBlocked) {
             getMessagesController().getBlockedPeers(false);
@@ -2975,6 +3047,9 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             allowBots = arguments.getBoolean("allowBots", true);
             closeFragment = arguments.getBoolean("closeFragment", true);
             allowGlobalSearch = arguments.getBoolean("allowGlobalSearch", true);
+            // NimarkoGram: only honour the hasMainTabs argument when the user keeps the
+            // main bottom tabs visible. With showMainTabs off the host doesn't host any
+            // tabs bar, so we must not reserve room for one (mirrors CG L2811).
             if (NimarkoConfig.showMainTabs) {
                 hasMainTabs = arguments.getBoolean("hasMainTabs", false);
             } else {
@@ -3005,11 +3080,16 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             currentConnectionState = getConnectionsManager().getConnectionState();
 
             globalObserversGroup.add(NotificationCenter.emojiLoaded);
-            globalObserversGroup.add(NotificationCenter.customTitleUpdated);
-            globalObserversGroup.add(NotificationCenter.pluginMenuItemsUpdated);
+            globalObserversGroup.add(NotificationCenter.customTitleUpdated);   // NimarkoGram: live custom-title refresh
+            globalObserversGroup.add(NotificationCenter.pluginMenuItemsUpdated); // C5: rebuild the open overflow popup when plugins register/unregister
             if (!onlySelect) {
                 globalObserversGroup.add(NotificationCenter.closeSearchByActiveAction);
                 globalObserversGroup.add(NotificationCenter.proxySettingsChanged);
+                // NimarkoGram: info-cards master toggle / active-set flip. Fragment-scoped (not view-bound)
+                // so it is delivered even while the info-cards settings screen is presented on top and this
+                // fragment's view is detached. Handler re-runs checkUi_searchFieldVisibility() so the home
+                // capsule (and the search-field strip's host) refresh the moment the toggle is enabled,
+                // WITHOUT a client restart.
                 globalObserversGroup.add(NotificationCenter.infoCardsLayoutChanged);
                 observersGroup.add(NotificationCenter.filterSettingsUpdated);
                 observersGroup.add(NotificationCenter.dialogsUnreadCounterChanged);
@@ -3040,6 +3120,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                 .add(NotificationCenter.forceImportContactsStart)
                 .add(NotificationCenter.userEmojiStatusUpdated)
                 .add(NotificationCenter.currentUserPremiumStatusChanged)
+                // NimarkoGram: CG search-field visibility toggle.
                 .add(NotificationCenter.cgUpdateSearchFiledVisibility);
 
             globalObserversGroup.add(NotificationCenter.didSetPasscode);
@@ -3094,8 +3175,20 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         }
 
         BirthdayController.getInstance(currentAccount).check();
+        // NimarkoGram: reserve the MainTabs strip height (72dp nav / 64dp FAB) ONLY when the real
+        // main-tabs bar is actually shown. hasMainTabs is already forced false when showMainTabs is
+        // off, so it is the single correct gate. The bottom folder strip (foldersAtBottom) is a
+        // SEPARATE 50dp Gravity.BOTTOM view — it reserves its own 50dp below (list padding + the FAB
+        // add right after), NOT the 72dp MainTabs height. (Previously the !showMainTabs branch
+        // over-reserved 72dp/64dp for that 50dp strip → the folder strip floated above the nav bar
+        // with an empty gap and the FAB sat 14dp too high.)
         additionNavigationBarHeight = hasMainTabs ? dp(MAIN_TABS_HEIGHT_WITH_MARGINS) : 0;
         additionFloatingButtonOffset = hasMainTabs ? dp(DialogsActivity.MAIN_TABS_HEIGHT + DialogsActivity.MAIN_TABS_MARGIN) : 0;
+        // NG: when filter tabs sit at the bottom, the floating "new chat" + "stories camera" buttons
+        // must clear that strip — add its real 50dp height. Needed in BOTH cases: stacked on top of
+        // the MainTabs reservation (showMainTabs on), and as the only bottom chrome when the MainTabs
+        // bar is hidden (showMainTabs off, where the reservation above is 0). list-padding adds the
+        // strip's 50dp separately, so additionNavigationBarHeight stays 0 here (no double-count).
         if (foldersAtBottom()) {
             additionFloatingButtonOffset += dp(SEARCH_TABS_HEIGHT);
         }
@@ -3179,6 +3272,9 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         }
         statusDrawable.setColor(getThemedColor(Theme.key_profile_verifiedBackground));
         if (statusWasEmpty != statusDrawable.isEmpty()) {
+            // The wrapper object is unchanged, but its visible width is not.
+            // Re-measure the wrap-content title so text plus status remains a
+            // single correctly centred visual group.
             actionBar.requestLayout();
         }
         if (animatedStatusView != null) {
@@ -3258,6 +3354,8 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             searchAnimatorNotificationsLocked = true;
             notificationsLocker.lock();
         }
+        // Transfer the single outstanding lock to the newest animation. If an
+        // old cancel callback is delivered late, it cannot unlock this owner.
         searchAnimatorNotificationsOwner = generation;
     }
 
@@ -3416,14 +3514,25 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                 AndroidUtilities.showKeyboard(fragmentSearchField.editText);
             }, 100);
 
-        });
-        if (app.nimarkogram.messenger.NimarkoConfig.hideArchiveFromChatsList
-                && !isArchive() && initialDialogsType != DIALOGS_TYPE_FORWARD) {
-            searchItem.setOnLongClickListener(v -> {
-                app.nimarkogram.messenger.utils.chats.NimarkoChatMenuInjector.openArchivedChats(this);
-                return true;
+            /*
+            AnimatorSet animatorSet = new AnimatorSet();
+            animatorSet.playTogether(ObjectAnimator.ofFloat(this, SCROLL_Y, hasStories ? -dp(DialogStoriesCell.HEIGHT_IN_DP) : 0));
+            animatorSet.setInterpolator(CubicBezierInterpolator.DEFAULT);
+            animatorSet.setDuration(250);
+            animatorSet.addListener(new AnimatorListenerAdapter() {
+                @Override
+                public void onAnimationEnd(Animator animation) {
+                    super.onAnimationEnd(animation);
+                    showSearch(true, false, true);
+                    fragmentSearchFieldWatcher.toggleSearch(true);
+                    fragmentSearchField.editText.requestFocus();
+                    AndroidUtilities.showKeyboard(fragmentSearchField.editText);
+                }
             });
-        }
+            animatorSet.start();
+            */
+        });
+        searchItem.setOnLongClickListener(v -> openHiddenArchiveFromSearch());
         if (initialDialogsType == DIALOGS_TYPE_ADD_USERS_TO || isArchive() && getDialogsArray(currentAccount, initialDialogsType, folderId, false).isEmpty()) {
             searchItem.setVisibility(View.GONE);
         }
@@ -3456,6 +3565,9 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             updateProxyButton(false, false);
         }
 
+        // Info cards belong only to the home chat-list search.  Supplying them
+        // to a nested community search changed its right inset/measure and made
+        // the supposedly simple search cloud asymmetric.
         final boolean searchWithInfoCards = initialDialogsType == DIALOGS_TYPE_DEFAULT
                 && folderId == 0 && communityId == 0;
         fragmentSearchField = new FragmentSearchField(context, resourceProvider, searchWithInfoCards) {
@@ -3591,7 +3703,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
 
             @Override
             public boolean canToggleSearch() {
-                return !actionBar.isActionModeShowed() && databaseMigrationHint == null;
+                return !actionBar.isActionModeShowed() && databaseMigrationHint == null;// && !rightSlidingDialogContainer.hasFragment();
             }
         }));
         fragmentSearchField.setSearchFiltersListener(new FragmentSearchField.SearchFiltersListener() {
@@ -3682,8 +3794,15 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                 updateUnreadBackBadge();
             }
             if (folderId != 0) {
+                // NimarkoGram CG-parity (CG DialogsActivity L3476): explicit gilroy=true
+                // so the Archive folder title renders in Gilroy ExtraBold like the main
+                // chat-list title set at L3564.
                 actionBar.setTitle(getString(R.string.ArchivedChats), null, true);
             } else if (communityId != 0) {
+                // Communities are chat surfaces, so use the exact same title/avatar
+                // container as ChatActivity. This makes the Chats setting
+                // "Center chat title" apply here as well and lets ActionBar size a
+                // compact glass island around the real visual group.
                 actionBar.setAllowOverlayTitle(false);
                 communityHeaderContainer = new ChatAvatarContainer(context, this, false, resourceProvider);
                 communityHeaderContainer.setGlassMode();
@@ -3698,6 +3817,8 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                 }
                 communityHeaderContainer.setOnClickListener(v -> {
                     ProfileActivity profile = ProfileActivity.of(-communityId);
+                    // The list header has no ChatActivity source rect. A direct
+                    // profile transition avoids the stale copied-title layer.
                     profile.setPlayProfileAnimation(0);
                     presentFragment(profile);
                 });
@@ -3710,9 +3831,21 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             } else {
                 statusDrawable = new AnimatedEmojiDrawable.SwapAnimatedEmojiDrawable(null, dp(26));
                 statusDrawable.center = true;
+                // NimarkoGram: upstream draws an ImageSpan over R.drawable.telegram_logo_2
+                // which is a vector path that spells out the word "Telegram". For NG we
+                // want the actual app name to render as plain text, so we skip the
+                // ImageSpan and let the SpannableStringBuilder show the localised
+                // R.string.AppName ("NimarkoGram") directly.
+                // NG: custom main-screen title overrides the app name when set.
                 SpannableStringBuilder ssb = new SpannableStringBuilder(
                         app.nimarkogram.messenger.NimarkoConfig.resolveMainTitle(getString(R.string.AppName)));
                 actionBarDefaultTitle = ssb;
+                // NG: explicit gilroy=true so the initial chat-list title renders in Gilroy
+                // ExtraBold (weight 800), same as the per-folder titles set via the swipe/
+                // tab-click handlers below (L1549/L3705/L7016). Without this the 2-arg
+                // overload routes through gilroy=false → regular weight 500, which the
+                // connecting overlay then briefly fixes (its gilroy=true path) before
+                // clearing — perceived as a "bold flicker" on connect/disconnect.
                 actionBar.setTitle(ssb, statusDrawable, true);
                 updateStatus(UserConfig.getInstance(currentAccount).getCurrentUser(), false);
             }
@@ -3720,23 +3853,14 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                 actionBar.setSupportsHolidayImage(true);
             }
         }
-        if (
-                NimarkoConfig.hideArchiveFromChatsList
-                && (searchItem != null || fragmentSearchField != null && fragmentSearchField.editText != null)
-                && !isArchive() && initialDialogsType != DIALOGS_TYPE_FORWARD
-        ) {
-            if (searchItem != null) searchItem.setOnLongClickListener(v -> {
-                app.nimarkogram.messenger.utils.chats.NimarkoChatMenuInjector.openArchivedChats(this);
-                return true;
-            });
-            if (fragmentSearchField != null && fragmentSearchField.editText != null) fragmentSearchField.editText.setOnLongClickListener(v -> {
-                app.nimarkogram.messenger.utils.chats.NimarkoChatMenuInjector.openArchivedChats(this);
-                return true;
-            });
+        if (fragmentSearchField != null && fragmentSearchField.editText != null) {
+            fragmentSearchField.editText.setOnLongClickListener(v -> openHiddenArchiveFromSearch());
         }
+        //if (!onlySelect || initialDialogsType == DIALOGS_TYPE_FORWARD) {
             actionBar.setAddToContainer(false);
             actionBar.setCastShadows(false);
             actionBar.setClipContent(true);
+        //}
         actionBar.setTitleActionRunnable(() -> {
             if (initialDialogsType != DIALOGS_TYPE_WIDGET) {
                 hideFloatingButton(false);
@@ -3834,8 +3958,18 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                     if (!tab.isDefault && (tab.id < 0 || tab.id >= dialogFilters.size())) {
                         return;
                     }
+                    // NimarkoGram (CG parity): folderNameInHeader — when switching folders via tab
+                    // click, crossfade the action-bar title to the folder name (default tab
+                    // restores the logo+AppName + premium status drawable). When the flag is
+                    // OFF we snap-reset to the default title to clear any stale folder name
+                    // from a previous toggle.
                     if (actionBar != null) {
                         if (app.nimarkogram.messenger.NimarkoConfig.folderNameInHeader) {
+                            // NG: in TAB_TYPE_ICON mode tab.title is empty — fall back to the
+                            // default title to avoid passing "" to setTitleAnimatedX which
+                            // later crashes holiday-drawable getTextBounds().
+                            // CG-parity: prefer `realTitle` because tabMode=ICON forces
+                            // `title` to "" while `realTitle` still holds the folder name.
                             CharSequence newTitle;
                             if (tab.isDefault) {
                                 newTitle = actionBarDefaultTitle;
@@ -3846,6 +3980,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                             } else {
                                 newTitle = actionBarDefaultTitle;
                             }
+                            // Bug-3 fix: 250ms crossfade felt sluggish on tab tap; CG/Telegram default is near-instant.
                             actionBar.setTitleAnimatedX(newTitle, tab.isDefault ? statusDrawable : null, forward, 80, true);
                         } else {
                             actionBar.setTitle(actionBarDefaultTitle, statusDrawable, true);
@@ -3892,6 +4027,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
 
                 @Override
                 public int getTabCounter(int tabId) {
+                    // NimarkoGram: tabsNoUnread global suppresses ALL folder badges.
                     if (initialDialogsType == DIALOGS_TYPE_FORWARD || app.nimarkogram.messenger.NimarkoConfig.tabsNoUnread) {
                         return 0;
                     }
@@ -3905,6 +4041,8 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                         }
                         raw = getMessagesController().getDialogFilters().get(tabId).unreadCount;
                     }
+                    // Per-folder badge mode: NUMBER -> raw, DOT/HIDDEN -> 0 (caller renders
+                    // a dot separately via NimarkoFoldersHelper.shouldShowDot if needed).
                     return app.nimarkogram.messenger.utils.folders.NimarkoFoldersHelper.filterTabCounter(tabId, raw);
                 }
 
@@ -4077,6 +4215,8 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             avatarDrawable.setTextSize(dp(12));
 
             BackupImageView imageView = new BackupImageView(context);
+            // NimarkoGram: the top-right account-switcher avatar stays a full circle (like official Telegram),
+            // it deliberately does NOT follow the avatarCorners setting — per user request.
             imageView.setRoundRadius(dp(18));
             switchItem.addView(imageView, LayoutHelper.createFrame(36, 36, Gravity.CENTER));
             switchItem.setOnClickListener(this::openAccountSelector);
@@ -4244,6 +4384,10 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         ContentView contentView = new ContentView(context);
         fragmentView = contentView;
         if (communityId != 0 || onlySelect) {
+            // Selection fragments are pushed over the existing chat list. Give
+            // them an opaque first frame so the source list (most visibly its
+            // archive row) cannot bleed through while the new list is being
+            // measured and its folder tabs are bootstrapped.
             contentView.setBackgroundColor(getThemedColor(Theme.key_windowBackgroundWhite));
             iBlur3SourceColor.setColor(getThemedColor(Theme.key_windowBackgroundWhite));
         }
@@ -4318,6 +4462,12 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                 @Override
                 public void onRemoveStarting(RecyclerView.ViewHolder item) {
                     super.onRemoveStarting(item);
+                    // A normal dialog REMOVE at the top must never reveal the
+                    // hidden archive. That transition belongs exclusively to
+                    // a completed pull gesture. Treating every REMOVE as an
+                    // archive reveal leaves HIDDEN/SHOWED and pullProgress out
+                    // of sync, producing the transparent "expanded" row seen
+                    // after forwarding.
                     final boolean removingShownArchive = supportsArchivePull()
                             && viewPage.archivePullViewState == ARCHIVE_ITEM_STATE_SHOWED
                             && item.itemView instanceof DialogCell
@@ -4432,7 +4582,10 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                     if (hasStories && !rightSlidingDialogContainer.hasFragment() && !fixScrollYAfterArchiveOpened) {
                         pTop -= dp(DialogStoriesCell.HEIGHT_IN_DP);
                     }
-                    boolean hasHiddenArchive = !fixScrollYAfterArchiveOpened && viewPage.dialogsType == DIALOGS_TYPE_DEFAULT && !onlySelect && folderId == 0 && communityId == 0 && getMessagesController().hasHiddenArchive() && viewPage.archivePullViewState == ARCHIVE_ITEM_STATE_HIDDEN;
+                    boolean hasHiddenArchive = !fixScrollYAfterArchiveOpened
+                            && viewPage.dialogsType == DIALOGS_TYPE_DEFAULT
+                            && hasHiddenArchive()
+                            && viewPage.archivePullViewState == ARCHIVE_ITEM_STATE_HIDDEN;
                     if ((hasHiddenArchive || (hasStories && !rightSlidingDialogContainer.hasFragment())) && dy < 0) {
                         viewPage.listView.setOverScrollMode(View.OVER_SCROLL_ALWAYS);
                         int currentPosition = viewPage.layoutManager.findFirstVisibleItemPosition();
@@ -4534,6 +4687,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                             if (canShowHiddenArchive != canShowInternal) {
                                 canShowHiddenArchive = canShowInternal;
                                 if (viewPage.archivePullViewState == ARCHIVE_ITEM_STATE_HIDDEN) {
+                                    // NimarkoGram (CG parity): disableVibration suppresses the archive-reveal tap.
                                     if (!app.nimarkogram.messenger.NimarkoConfig.disableVibration) {
                                         try {
                                             viewPage.listView.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP, HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING);
@@ -5582,6 +5736,9 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         dialogStoriesCell.setActionBar(actionBar);
         dialogStoriesCell.setMenuItemsOffset(isArchive() ? dp(68) : dpf2(16.66f));
         dialogStoriesCell.allowGlobalUpdates = false;
+        // NimarkoGram: mirror the resolved custom main title into the stories brand slot so the collapsed
+        // stories header shows the custom title (not raw AppName) on scroll-with-stories. Main list only
+        // (folderId 0); actionBarDefaultTitle is already resolveMainTitle at this point.
         if (folderId == 0 && actionBarDefaultTitle != null) {
             dialogStoriesCell.setBrandTitle(actionBarDefaultTitle);
         }
@@ -5594,8 +5751,10 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             MessagesController.getInstance(currentAccount).getSavedReactionTags(0);
         }
 
+        //if (!onlySelect || initialDialogsType == DIALOGS_TYPE_FORWARD) {
             final FrameLayout.LayoutParams layoutParams = LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT);
             contentView.addView(actionBar, layoutParams);
+        //}
         if (!onlySelect) {
             animatedStatusView = new AnimatedStatusView(context, 20, 60);
             contentView.addView(animatedStatusView, LayoutHelper.createFrame(20, 20, Gravity.LEFT | Gravity.TOP));
@@ -5603,10 +5762,17 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         if (fragmentSearchField != null) {
             contentView.addView(fragmentSearchField, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, 48, Gravity.TOP, 7, -2, 7, 0));
         }
+        // NimarkoGram: a fallback home for the info cards when the search bar is hidden. Placed BELOW the
+        // action bar (never inside it — the toolbar hosts the search/menu icons and transient indicators
+        // like the download-speed item, so the action bar's free space is not ours to take), right-aligned,
+        // as a compact capsule over the top of the chat list. Visibility + Y are driven from
+        // checkUi_searchFieldVisibility so it only shows in the idle home list with hideSearchBar on.
         if (!onlySelect && initialDialogsType == DIALOGS_TYPE_DEFAULT && folderId == 0 && communityId == 0) {
             homeInfoCards = new app.nimarkogram.messenger.infocards.InfoCardStripView(context, resourceProvider);
-            homeInfoCards.setOpaqueCards(true);
-            homeInfoCards.setVisibilityFactor(0f);
+            homeInfoCards.setOpaqueCards(true); // floats over the chat list -> flat cards must be opaque
+            homeInfoCards.setVisibilityFactor(0f); // start hidden (factor 0 => alpha 0 + GONE); fades in via checkUi
+            // v7276 placement: the strip is added DIRECTLY to contentView, right-aligned, WRAP width. Its
+            // visibility + Y are driven from checkUi_searchFieldVisibility / positionHomeInfoCards.
             contentView.addView(homeInfoCards, LayoutHelper.createFrame(
                     LayoutHelper.WRAP_CONTENT, 40,
                     Gravity.TOP | (LocaleController.isRTL ? Gravity.LEFT : Gravity.RIGHT),
@@ -5620,6 +5786,8 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
 
         if (hasMainTabs) {
             actionBar.getTitlesContainer().setTranslationX(dp(4));
+            // NimarkoGram CG-parity (CG DialogsActivity L5374): explicit gilroy=true so
+            // the lazy-created tab title text view uses Gilroy ExtraBold typeface.
             actionBar.setTitleColor(getThemedColor(Theme.key_telegram_color_dialogsLogo), true);
         }
 
@@ -5636,6 +5804,9 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                 @Override
                 public void setAlpha(float alpha) {
                     super.setAlpha(alpha);
+                    // A preview blur must only own input while the preview is actually visible.
+                    // Nested MainTabs transitions do not always deliver an exact final progress
+                    // value to this child fragment, so View.VISIBLE alone is not a safe input gate.
                     setClickable(alpha > 0.01f
                             && parentLayout != null
                             && parentLayout.isInPreviewMode());
@@ -5646,6 +5817,8 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
 
                 @Override
                 public boolean onTouchEvent(MotionEvent event) {
+                    // If a closing preview left this zero-alpha overlay attached, release the
+                    // same DOWN to the dialogs list instead of requiring a MainTabs tap first.
                     if (parentLayout == null || !parentLayout.isInPreviewMode()) {
                         teardownChatPreviewUi();
                         return false;
@@ -5666,6 +5839,27 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         }
 
         actionBarDefaultPaint.setColor(getThemedColor(Theme.key_windowBackgroundWhite));
+        /*
+        if (inPreviewMode) {
+            final TLRPC.User currentUser = getUserConfig().getCurrentUser();
+            avatarContainer = new ChatAvatarContainer(actionBar.getContext(), null, false, resourceProvider);
+            avatarContainer.setTitle(UserObject.getUserName(currentUser));
+            avatarContainer.setSubtitle(LocaleController.formatUserStatus(currentAccount, currentUser));
+            avatarContainer.setUserAvatar(currentUser, true);
+            avatarContainer.setOccupyStatusBar(false);
+            avatarContainer.setLeftPadding(dp(10));
+            actionBar.addView(avatarContainer, 0, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, LayoutHelper.MATCH_PARENT, Gravity.TOP | Gravity.LEFT, 0, 0, 40, 0));
+            floatingButton3.imageView.setVisibility(View.INVISIBLE);
+            actionBar.setOccupyStatusBar(false);
+            actionBar.setBackgroundColor(getThemedColor(Theme.key_windowBackgroundWhite));
+            if (fragmentContextViewWrapper != null) {
+                AndroidUtilities.removeFromParent(fragmentContextViewWrapper);
+            }
+            if (fragmentLocationContextViewWrapper != null) {
+                AndroidUtilities.removeFromParent(fragmentLocationContextViewWrapper);
+            }
+        }
+        */
 
         searchIsShowed = false;
 
@@ -5691,6 +5885,11 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         if (communityId == 0) {
             actionBar.setDrawBlurBackground(contentView);
         } else {
+            // DialogsActivity content starts below the ActionBar, unlike the
+            // chat wallpaper. A transparent bar therefore exposes the window's
+            // black decor behind the glass islands in dark/light custom themes.
+            // Keep a solid page-colour underlay and let setupGlass draw only the
+            // three floating islands above it.
             actionBar.setBackgroundColor(getThemedColor(Theme.key_windowBackgroundWhite));
             actionBar.setActionModeColor(getThemedColor(Theme.key_actionBarActionModeDefault));
         }
@@ -5860,6 +6059,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         contentView.addView(rightSlidingDialogContainer, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT));
 
         dialogsActivityStatusLayout = new DialogsActivityStatusLayout(context);
+        // contentView.addView(dialogsActivityStatusLayout, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, Gravity.TOP));
 
         if (topPanelLayout != null) {
             contentView.addView(topPanelLayout, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, Gravity.TOP, 0, -14, 0, 0));
@@ -5907,6 +6107,11 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
 
         ViewCompat.setOnApplyWindowInsetsListener(fragmentView, this::onApplyWindowInsets);
         blur3_InvalidateBlur();
+        // Building chat paints, drawables and emoji resources can take a noticeable
+        // slice of the UI thread on a cold start.  They only need to be ready before
+        // the first chat is opened, so let the dialogs screen publish its first frame
+        // before warming them up.  Two animation posts guarantee that this does not
+        // get folded back into the initial traversal on devices with a busy main loop.
         final View chatResourceWarmupHost = fragmentView;
         chatResourceWarmupHost.postOnAnimation(() -> chatResourceWarmupHost.postOnAnimation(
                 () -> Theme.createChatResources(context, false)));
@@ -5988,8 +6193,10 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                     int s = scrollY - actionBarHeightNoSearch;
                     if (s < h / 2) {
                         viewPage.scroller.smoothScrollBy(-s);
+                        // viewPage.listView.smoothScrollBy(0, -s);
                     } else {
                         viewPage.scroller.smoothScrollBy(h - s);
+                        // viewPage.listView.smoothScrollBy(0, h - s);
                     }
                     return true;
                 }
@@ -5999,8 +6206,10 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
 
                 if (p < dialogStoriesCell.K) {
                     viewPage.scroller.smoothScrollBy(-scrollY);
+                    // viewPage.listView.smoothScrollBy(0, -scrollY);
                 } else {
                     viewPage.scroller.smoothScrollBy(actionBarHeightNoSearch - scrollY);
+                    // viewPage.listView.smoothScrollBy(0, actionBarHeightNoSearch - scrollY);
                 }
                 return true;
             }
@@ -6844,7 +7053,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         }
         float totalOffset;
         if (hasStories) {
-            totalOffset = scrollYOffset  +
+            totalOffset = scrollYOffset /* * (1f - searchAnimationProgress) */ +
                     storiesHeight * (1f - searchAnimationProgress) +
                     searchTabsHeight * searchAnimationProgress + tabsYOffset;
         } else {
@@ -6889,7 +7098,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             topBubblesFadeView.setPosition(s, Math.min(dp(40), topPanelsHeight + filtersTabHeight - s));
             topBubblesFadeView.setAlpha(Math.max(filtersTabVisibility, topPanelsVisibility));
         }
-        positionHomeInfoCards();
+        positionHomeInfoCards(); // panels just moved — keep the capsule below the now-playing bar
     }
 
     private void updateFiltersView(boolean showMediaFilters, ArrayList<Object> users, ArrayList<FiltersView.DateData> dates, boolean archive, boolean animated) {
@@ -6957,6 +7166,8 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         fragmentSearchField.addSearchFilter(filter);
         fragmentSearchField.editText.getText().clear();
 
+        // actionBar.setSearchFilter(filter);
+        // actionBar.setSearchFieldText("");
         updateFiltersView(true, null, null, false, true);
     }
 
@@ -6987,6 +7198,8 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             return;
         }
         final ActionBarMenu actionMode = actionBar.createActionMode(false, tag);
+        // actionMode.setBackgroundColor(Color.TRANSPARENT);
+        // actionMode.drawBlur = false;
 
         if (hasMainTabs) {
             actionModeCloseView = new ImageView(getContext());
@@ -7100,6 +7313,9 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             localSelectedDialogFilters[otherIndex] = null;
         }
         if (filter != null) {
+            // Build this selector's forward-only list without touching the
+            // process-wide selectedDialogFilter slots used by the main chats
+            // screen underneath it.
             getMessagesController().updateFilterDialogs(filter);
         }
     }
@@ -7168,6 +7384,10 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                 if (initialDialogsType == DIALOGS_TYPE_FORWARD
                         && !initialDialogFilterApplied
                         && initialDialogFilterId != 0) {
+                    // ChatActivity carries the server-side filter id, while
+                    // FilterTabsView uses the filter's current array index as
+                    // its transient tab id. Resolve it on the fresh list so a
+                    // folder reorder cannot select a different category.
                     for (int i = 0; i < filters.size(); i++) {
                         MessagesController.DialogFilter filter = filters.get(i);
                         if (filter != null && filter.id == initialDialogFilterId && !filter.isDefault()) {
@@ -7175,6 +7395,10 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                             break;
                         }
                     }
+                    // A non-authoritative cache may be incomplete on a cold
+                    // account. Keep the request pending until the source is
+                    // found or dialogFiltersLoaded confirms that the final
+                    // list really does not contain it.
                     initialDialogFilterApplied = requestedForwardTabId >= 0
                             || getMessagesController().dialogFiltersLoaded;
                 }
@@ -7193,7 +7417,9 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                 filterTabsView.removeTabs();
                 for (int a = 0, N = filters.size(); a < N; a++) {
                     if (filters.get(a).isDefault()) {
+                        // NimarkoGram: tabsHideAllChats removes the "All Chats" folder tab.
                         if (!app.nimarkogram.messenger.NimarkoConfig.tabsHideAllChats) {
+                            // NimarkoGram: pass emoticon for CG-parity folder-tab icon rendering.
                             filterTabsView.addTab(a, 0, LocaleController.getString(R.string.FilterAllChats), null, false, true, filters.get(a).locked, filters.get(a).emoticon);
                         }
                     } else {
@@ -7232,13 +7458,20 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                 if (requestedForwardTabId >= 0
                         && filterTabsView.hasTab(requestedForwardTabId)
                         && !filterTabsView.isLocked(requestedForwardTabId)) {
+                    // Apply before the bootstrap reveal, avoiding a visible
+                    // "All chats" frame followed by a folder jump.
                     filterTabsView.selectTabWithId(requestedForwardTabId, 1f);
                     viewPages[0].selectedType = requestedForwardTabId;
                     updateCurrentTab = true;
                 }
                 if (!filterTabsBootstrapPending) {
+                    // Reveal only after the adapter data and final tab widths
+                    // have been committed.
                     updateFilterTabsVisibility(animated);
                 } else {
+                    // Local storage normally completes within the same frame.
+                    // Never leave the strip hidden indefinitely if an empty
+                    // cache falls through to an unavailable network.
                     AndroidUtilities.cancelRunOnUIThread(filterTabsBootstrapTimeout);
                     AndroidUtilities.runOnUIThread(filterTabsBootstrapTimeout, 250);
                 }
@@ -7253,6 +7486,8 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                     if (coldStartTab != null) {
                         CharSequence desiredTitle;
                         if (app.nimarkogram.messenger.NimarkoConfig.folderNameInHeader && !coldStartTab.isDefault) {
+                            // NG: TAB_TYPE_ICON forces title="" — prefer realTitle (CG-parity),
+                            // then fall back to title, then the cached default.
                             if (coldStartTab.realTitle != null && coldStartTab.realTitle.length() > 0) {
                                 desiredTitle = coldStartTab.realTitle;
                             } else if (coldStartTab.title != null && coldStartTab.title.length() > 0) {
@@ -7308,10 +7543,14 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
 
                 filterTabsView.resetTabId();
 
+                // NimarkoGram (CG parity): when the filter strip disappears (only the default
+                // tab is left), restore the action-bar title. If folderNameInHeader is on we
+                // crossfade animate; otherwise we snap to the default to clear any stale name.
                 if (actionBar != null && actionBarDefaultTitle != null) {
                     CharSequence current = actionBar.getTitle();
                     if (current == null || !actionBarDefaultTitle.toString().contentEquals(current)) {
                         if (app.nimarkogram.messenger.NimarkoConfig.folderNameInHeader) {
+                            // Bug-3 fix: 250ms crossfade felt sluggish on restore; CG/Telegram default is near-instant.
                             actionBar.setTitleAnimatedX(actionBarDefaultTitle, statusDrawable, false, 80, true);
                         } else {
                             actionBar.setTitle(actionBarDefaultTitle, statusDrawable, true);
@@ -7342,6 +7581,11 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         }
     }
 
+    /**
+     * Filters and dialog counters are loaded by separate storage tasks. Once
+     * both are ready, refresh counters without item animations and reveal the
+     * already measured strip in one frame.
+     */
     private void completeFilterTabsBootstrapIfReady() {
         if (!filterTabsBootstrapPending
                 || !getMessagesController().dialogFiltersLoaded
@@ -7413,6 +7657,9 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         blur3_InvalidateBlur();
         normalizeCommunityHeaderGlassState();
         updateUnreadBackBadge();
+        // The archive can itself be the top protected surface while the host
+        // Activity stays resumed. Re-evaluate FLAG_SECURE on fragment changes,
+        // not only in LaunchActivity.onResume().
         LaunchActivity.invalidateNimarkoSecureFlag();
         if (dialogStoriesCell != null) {
             dialogStoriesCell.onResume();
@@ -7436,6 +7683,9 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         if (searchViewPager != null) {
             searchViewPager.onResume();
         }
+        // NimarkoGram: returning from the info-cards settings screen (where the master toggle may have just
+        // been enabled) must re-evaluate the capsule's visibility gate even if the infoCardsLayoutChanged
+        // post was delayed by a transition animation lock. checkUi self-guards when there is no search field.
         checkUi_searchFieldVisibility();
         final boolean tosAccepted;
         if (!afterSignup) {
@@ -7593,6 +7843,8 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             AndroidUtilities.requestAdjustResize(getParentActivity(), classGuid);
         }
         if (searchIsShowed) {
+            // Refresh the visible search rows without mask=0, which would schedule
+            // a second full model rebuild for the dialogs page we just refreshed.
             updateVisibleRows(MessagesController.UPDATE_MASK_ALL, false);
         }
         updateProxyButton(false, true);
@@ -7729,7 +7981,9 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             int actionBarHeight = ActionBar.getCurrentActionBarHeight();
             if (scrollY != 0 && scrollY != actionBarHeight) {
                 if (scrollY < actionBarHeight / 2) {
+            //        setScrollY(0);
                 } else if (viewPages[0].listView.canScrollVertically(1)) {
+            //        setScrollY(-actionBarHeight);
                 }
             }
         }
@@ -7747,6 +8001,9 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
     @Override
     public void onBecomeFullyVisible() {
         super.onBecomeFullyVisible();
+        // The parent MainTabs fragment is the authoritative lifecycle owner when a chat preview
+        // closes. Clear the child overlay here even if its fractional transition never reached
+        // exactly 1f and therefore skipped this child's onTransitionAnimationEnd callback.
         if ((parentLayout == null || !parentLayout.isInPreviewMode())
                 && blurredView != null && blurredView.getVisibility() == View.VISIBLE) {
             teardownChatPreviewUi();
@@ -8043,6 +8300,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                             rightSlidingDialogContainer.setVisibility(View.GONE);
                         }
                     } else {
+                        // searchItem.collapseSearchFilters();
                         whiteActionBar = false;
                         if (searchViewPager != null) {
                             searchViewPager.setVisibility(View.GONE);
@@ -8050,6 +8308,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                         if (fragmentSearchField != null){
                             fragmentSearchField.clearSearchFilters();
                         }
+                        //searchItem.clearSearchFilters();
                         if (searchViewPager != null) {
                             searchViewPager.clear();
                         }
@@ -8146,7 +8405,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
 
     public boolean onlyDialogsAdapter() {
         int dialogsCount = getMessagesController().getTotalDialogsCount();
-        return onlySelect ||  dialogsCount <= 10 && !hasStories;
+        return onlySelect || /*searchViewPager != null && !searchViewPager.dialogsSearchAdapter.hasRecentSearch() ||*/ dialogsCount <= 10 && !hasStories;
     }
 
     private void updateFilterTabsVisibility(boolean animated) {
@@ -8166,6 +8425,12 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         progress = Utilities.clamp01(progress);
         searchAnimationProgress = progress;
         if (communityId != 0 && actionBar != null) {
+            // Community search is a standalone FragmentSearchField with its
+            // own liquid-glass drawable.  Expanding the ActionBar title island
+            // underneath it produced two overlapping pills with different
+            // radii and vertical bounds.  Fade the three header islands with
+            // the exact same progress and leave the search field as the only
+            // owner of the visible background.
             actionBar.setSearchFactor(0f);
             actionBar.setGlassAlpha(1f - progress);
         }
@@ -8219,12 +8484,17 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             return;
         }
         if (communityHeaderContainer != null) {
+            // Keep the centre-island owner registered after navigation reattach.
             actionBar.setChatAvatarContainer(communityHeaderContainer);
         }
         if (searchAnimator != null && searchAnimator.isRunning()) {
+            // Keep a legitimate in-flight transition, but sanitize its value.
             setSearchAnimationProgress(searchAnimationProgress, false);
             return;
         }
+        // Animator cancellation (backgrounding, navigation, live theme change)
+        // used to leave the three ActionBar islands at a fractional/zero alpha
+        // even though the search UI had already settled to its boolean state.
         animatorSearchVisible.setValue(searchIsShowed, false);
         checkUi_communityAvatarImageVisibility();
         setSearchAnimationProgress(searchIsShowed ? 1f : 0f, false);
@@ -8427,6 +8697,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                 } else if (!str.equals("section")) {
                     NewContactBottomSheet activity = new NewContactBottomSheet(DialogsActivity.this, getContext());
                     activity.setInitialPhoneNumber(str, true);
+//                    presentFragment(activity);
                     activity.show();
                 }
             } else if (obj instanceof ContactsController.Contact) {
@@ -8517,6 +8788,12 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                     searchObject = null;
                 }
             }
+            // Telegram 12.9's two-column forum container duplicates the whole dialogs
+            // list during its transition. On phones that copy cannot stay aligned with
+            // NimarkoGram's configurable search/header/tabs and hidden archive row,
+            // producing a sideways/downward jump and a ghost archive. Keep the useful
+            // split view on compatible tablet layouts; phones use the regular fragment
+            // stack, whose lifecycle and back navigation are deterministic.
             boolean canOpenInRightSlidingView = AndroidUtilities.isTablet()
                     && !LocaleController.isRTL
                     && !searching
@@ -8593,6 +8870,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                             args.putBoolean("isSubscriberSuggestions", !ChatObject.canManageMonoForum(currentAccount, chat));
 
                             ChatActivity activity = new ChatActivity(args);
+//                            ForumUtilities.applyTopic(activity, MessagesStorage.TopicKey.of(-chat.id, getMessagesController().getForumLastTopicId(chat.id)));
                             presentFragment(highlightFoundQuote(activity, msg));
                         } else if (ChatObject.areTabsEnabled(chat)) {
                             ChatActivity activity = new ChatActivity(args);
@@ -8819,6 +9097,14 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             } else {
                 return false;
 
+                /*
+                ArrayList<TLRPC.Dialog> dialogs = getDialogsArray(currentAccount, dialogsType, folderId, dialogsListFrozen);
+                position = dialogsAdapter.fixPosition(position);
+                if (position < 0 || position >= dialogs.size()) {
+                    return false;
+                }
+                dialog = dialogs.get(position);
+                */
             }
 
 
@@ -8909,6 +9195,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
     public boolean showChatPreview(DialogCell cell) {
         final boolean isCommunityCell = cell.isDialogCommunity();
         if (isCommunityCell) {
+        //    return false;
         }
 
         if (cell.isDialogFolder()) {
@@ -9276,10 +9563,15 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             if (previewPresented) {
                 parentLayout.setHighlightActionButtons(true);
             } else {
+                // prepareBlurBitmap() runs before presentation.  A rejected presentation must
+                // synchronously roll it back; no transition callback exists on this branch.
                 teardownChatPreviewUi();
             }
             return previewPresented;
         } else if (getMessagesController().checkCanOpenChat(args, DialogsActivity.this)) {
+            // NimarkoGram: CG parity — gate the chat-preview behind a biometric prompt when the
+            // target dialog is in LockedChats or is an encrypted chat with the matching toggle.
+            // Mirrors CG DialogsActivity line ~8788 (shouldRequireBiometrics(userID, chatID, encID)).
             final Bundle _ngPreviewArgs = args;
             final long _ngPreviewUserId = _ngPreviewArgs.getLong("user_id");
             final long _ngPreviewChatId = _ngPreviewArgs.getLong("chat_id");
@@ -9324,6 +9616,9 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                         },
                         null
                 );
+                // The biometric dialog itself consumed this long press. The preview is presented
+                // asynchronously only after authentication, so keep the gesture handled while the
+                // RecyclerListView independently terminates its touch latch on UP/CANCEL.
                 return true;
             } else {
                 _ngDoPresentPreview.run();
@@ -9343,6 +9638,9 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         NimarkoFoldersHelper.updateFoldersOffset(this, onlySelect);
 
         if (floatingButtonStories != null) {
+            // NG: when the user disabled stories via NimarkoConfig.hideStories the
+            // stories-camera floating button must stay hidden even if the geometric
+            // isVisible gate would normally show it (e.g. on the main chat list).
             boolean storiesFabVisible = isVisible && !app.nimarkogram.messenger.NimarkoConfig.hideStories;
             floatingButtonStories.setButtonVisible(storiesFabVisible, animated);
         }
@@ -9371,6 +9669,8 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
 
     public boolean storiesEnabled = !app.nimarkogram.messenger.NimarkoConfig.hideStories;
     private void updateStoriesPosting() {
+        // NimarkoGram: hideStories forces the stories row off regardless of
+        // server-side capability.
         final boolean storiesEnabled = !app.nimarkogram.messenger.NimarkoConfig.hideStories
                 && getMessagesController().storiesEnabled();
         if (this.storiesEnabled != storiesEnabled) {
@@ -9402,6 +9702,16 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                 && folderId == 0;
     }
 
+    private boolean openHiddenArchiveFromSearch() {
+        if (!NimarkoConfig.hideArchiveFromChatsList
+                || isArchive()
+                || initialDialogsType == DIALOGS_TYPE_FORWARD) {
+            return false;
+        }
+        NimarkoChatMenuInjector.openArchivedChats(this);
+        return true;
+    }
+
     public boolean hasHiddenArchive() {
         return supportsArchivePull() && getMessagesController().hasHiddenArchive();
     }
@@ -9412,6 +9722,13 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
 
     private void checkAnimationFinished() {
         AndroidUtilities.runOnUIThread(() -> {
+//            if (viewPages != null && folderId != 0 && (frozenDialogsList == null || frozenDialogsList.isEmpty())) {
+//                for (int a = 0; a < viewPages.length; a++) {
+//                    viewPages[a].listView.setEmptyView(null);
+//                    viewPages[a].progressView.setVisibility(View.INVISIBLE);
+//                }
+//                finishFragment();
+//            }
             setDialogsListFrozen(false);
             updateDialogIndices();
         }, 300);
@@ -9551,7 +9868,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
     }
 
     private void resetScroll() {
-        if (scrollYOffset == 0 || hasStories ) {
+        if (scrollYOffset == 0 || hasStories /*&& !ALLOW_SCROLL_SEARCH*/) {
             return;
         }
 
@@ -9968,6 +10285,9 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                             hideActionMode(false);
                         });
                         builder.setNegativeButton(LocaleController.getString(R.string.Cancel), null);
+                        // NimarkoGram: CG parity — gate the PSA delete dialog behind a biometric
+                        // prompt when askPasscodeBeforeDelete is enabled. Mirrors CG DialogsActivity
+                        // line ~9371 (getChatsPasswordHelper().askPasscodeBeforeDelete()).
                         if (getParentActivity() != null
                                 && app.nimarkogram.messenger.utils.chats.NimarkoChatsPasswordHelper.askPasscodeBeforeDelete()) {
                             app.nimarkogram.messenger.security.NimarkoBiometricPrompt.prompt(
@@ -11074,10 +11394,20 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             return;
         }
         if (id == NotificationCenter.infoCardsLayoutChanged) {
+            // NimarkoGram: the info-cards master toggle (or active set) just changed. Re-evaluate the host
+            // visibility gate so the home capsule flips GONE->VISIBLE (and the search-field strip's host
+            // re-measures) without a client restart. Each strip rebuilds its OWN pills via its
+            // onAttachedToWindow / didReceivedNotification(infoCardsLayoutChanged); this owns only the host.
+            // Safe while detached: checkUi self-guards (fragmentSearchField==null) and only sets visibility
+            // flags, which persist until the view re-attaches and rebuilds the pills.
             checkUi_searchFieldVisibility();
             return;
         }
         if (id == NotificationCenter.pluginMenuItemsUpdated) {
+            // C5: a plugin registered/unregistered (or the engine finished loading)
+            // while the overflow popup is open — dismiss and rebuild it so the
+            // injected plugin rows appear/relabel/disappear without reopening
+            // (mirror ChatActivity's pluginMenuItemsUpdated observer).
             try {
                 if (nimarkoOpenItemOptions != null && nimarkoOpenItemOptions.isShown()) {
                     nimarkoOpenItemOptions.dismiss();
@@ -11101,6 +11431,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                 }
                 boolean isUnread = filter != null && (filter.flags & MessagesController.DIALOG_FILTER_FLAG_EXCLUDE_READ) != 0;
                 if (slowedReloadAfterDialogClick && isUnread) {
+                    // in unread tab dialogs reload too instantly removes dialog from folder after clicking on it
                     AndroidUtilities.runOnUIThread(() -> {
                         if (!isCurrentViewPage(viewPage)) {
                             return;
@@ -11327,10 +11658,15 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             }
         } else if (id == NotificationCenter.dialogFiltersUpdated) {
             updateFilterTabs(true, true);
+            // NimarkoGram: when folderNameInHeader toggle flips while on a non-default
+            // tab, the actionBar title was stuck on the previous value. Refresh it
+            // here so the toggle takes effect immediately without tab change.
             if (actionBar != null && actionBarDefaultTitle != null && filterTabsView != null && viewPages != null && viewPages[0] != null) {
                 FilterTabsView.Tab currentTab = filterTabsView.findTabById(viewPages[0].selectedType);
                 if (currentTab != null) {
                     if (app.nimarkogram.messenger.NimarkoConfig.folderNameInHeader && !currentTab.isDefault) {
+                        // NG: TAB_TYPE_ICON yields empty currentTab.title — prefer
+                        // realTitle (CG-parity), then fall back to title, then default.
                         CharSequence newTitle;
                         if (currentTab.realTitle != null && currentTab.realTitle.length() > 0) {
                             newTitle = currentTab.realTitle;
@@ -11346,6 +11682,9 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                 }
             }
         } else if (id == NotificationCenter.customTitleUpdated) {
+            // NimarkoGram: custom main-title changed in settings — recompute the cached default title and
+            // re-apply it live (layout-independent, unlike the old rebuildAllFragmentViews path which skipped
+            // DialogsActivity on tablet/split-layout). Respect folderNameInHeader on non-default tabs.
             if (!onlySelect && folderId == 0 && communityId == 0 && actionBar != null) {
                 actionBarDefaultTitle = new SpannableStringBuilder(
                         app.nimarkogram.messenger.NimarkoConfig.resolveMainTitle(getString(R.string.AppName)));
@@ -11364,6 +11703,9 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                 } else {
                     actionBar.setTitle(actionBarDefaultTitle, statusDrawable, true);
                 }
+                // NimarkoGram: also push the new title into the stories brand slot so the collapsed stories
+                // header (revealed on scroll-with-stories) stays in sync. The brand slot mirrors the no-folder
+                // main title; folder names live only in the ActionBar title, not the brand.
                 if (dialogStoriesCell != null) {
                     dialogStoriesCell.setBrandTitle(actionBarDefaultTitle);
                 }
@@ -11497,6 +11839,8 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         } else if (id == NotificationCenter.activeAuctionsUpdated) {
             updateDialogsHint();
         } else if (id == NotificationCenter.cgUpdateSearchFiledVisibility) {
+            // NG: react to hideSearchBar toggle — force layout refresh so the
+            // search field collapses / re-expands immediately (CG parity).
             invalidateScrollY = true;
             if (viewPages != null) {
                 for (ViewPage page : viewPages) {
@@ -11633,8 +11977,8 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
     }
 
     public static final int DIALOGS_TYPE_DEFAULT = 0;
-    public static final int DIALOGS_TYPE_BOT_SHARE = 1;
-    public static final int DIALOGS_TYPE_ADD_USERS_TO = 2;
+    public static final int DIALOGS_TYPE_BOT_SHARE = 1; // selecting group to write with inline bot query, including sharing a game
+    public static final int DIALOGS_TYPE_ADD_USERS_TO = 2; // Chats + My channels + My groups
     public static final int DIALOGS_TYPE_FORWARD = 3;
     public static final int DIALOGS_TYPE_USERS_ONLY = 4;
     public static final int DIALOGS_TYPE_CHANNELS_ONLY = 5;
@@ -11643,8 +11987,8 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
     public static final int DIALOGS_TYPE_FOLDER2 = 8;
     public static final int DIALOGS_TYPE_BLOCK = 9;
     public static final int DIALOGS_TYPE_WIDGET = 10;
-    public static final int DIALOGS_TYPE_IMPORT_HISTORY_GROUPS = 11;
-    public static final int DIALOGS_TYPE_IMPORT_HISTORY_USERS = 12;
+    public static final int DIALOGS_TYPE_IMPORT_HISTORY_GROUPS = 11; // groups only
+    public static final int DIALOGS_TYPE_IMPORT_HISTORY_USERS = 12; // users only
     public static final int DIALOGS_TYPE_IMPORT_HISTORY = 13;
     public static final int DIALOGS_TYPE_START_ATTACH_BOT = 14;
     public static final int DIALOGS_TYPE_BOT_REQUEST_PEER = 15;
@@ -11886,6 +12230,23 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             if (viewPages[b].getVisibility() != View.VISIBLE || viewPages[b].dialogsAdapter.getDialogsListIsFrozen()) {
                 continue;
             }
+//            ArrayList<TLRPC.Dialog> dialogs = getDialogsArray(currentAccount, viewPages[b].dialogsType, folderId, false);
+//            int count = viewPages[b].listView.getChildCount();
+//            for (int a = 0; a < count; a++) {
+//                View child = viewPages[b].listView.getChildAt(a);
+//                if (child instanceof DialogCell) {
+//                    DialogCell dialogCell = (DialogCell) child;
+//                    TLRPC.Dialog dialog = getMessagesController().dialogs_dict.get(dialogCell.getDialogId());
+//                    if (dialog == null) {
+//                        continue;
+//                    }
+//                    int index = dialogs.indexOf(dialog);
+//                    if (index < 0) {
+//                        continue;
+//                    }
+//                 //   dialogCell.setDialogIndex(index);
+//                }
+//            }
             viewPages[b].updateList(false);
         }
     }
@@ -12689,6 +13050,14 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                 updateStatus(UserConfig.getInstance(currentAccount).getCurrentUser(), false);
             }
 
+//            if (scrimPopupWindowItems != null) {
+//                for (int a = 0; a < scrimPopupWindowItems.length; a++) {
+//                    if (scrimPopupWindowItems[a] != null) {
+//                        scrimPopupWindowItems[a].setColors(getThemedColor(Theme.key_actionBarDefaultSubmenuItem), getThemedColor(Theme.key_actionBarDefaultSubmenuItemIcon));
+//                        scrimPopupWindowItems[a].setSelectorColor(getThemedColor(Theme.key_dialogButtonSelector));
+//                    }
+//                }
+//            }
             if (dialogsHintCell != null) {
                 dialogsHintCell.setBackground(Theme.getSelectorDrawable(false));
             }
@@ -12733,6 +13102,9 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             blur3_InvalidateBlur();
             if (communityId != 0 && fragmentView != null) {
                 fragmentView.setBackgroundColor(getThemedColor(Theme.key_windowBackgroundWhite));
+                // The community header is made of discrete glass islands; an
+                // opaque full-width ActionBar background reconnects them into
+                // the old rectangular toolbar after a live theme switch.
                 actionBar.setBackground(null);
                 actionBar.setActionModeColor(getThemedColor(Theme.key_actionBarActionModeDefault));
                 if (communityHeaderContainer != null) {
@@ -12811,6 +13183,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         }
 
         arrayList.add(new ThemeDescription(actionBar, ThemeDescription.FLAG_AB_AM_ITEMSCOLOR, null, null, null, null, Theme.key_actionBarActionModeDefaultIcon));
+        //arrayList.add(new ThemeDescription(actionBar, ThemeDescription.FLAG_AB_AM_BACKGROUND, null, null, null, null, Theme.key_actionBarActionModeDefault));
         arrayList.add(new ThemeDescription(actionBar, ThemeDescription.FLAG_AB_AM_TOPBACKGROUND, null, null, null, null, Theme.key_actionBarActionModeDefaultTop));
         arrayList.add(new ThemeDescription(actionBar, ThemeDescription.FLAG_AB_AM_SELECTORCOLOR, null, null, null, null, Theme.key_actionBarActionModeDefaultSelector));
         arrayList.add(new ThemeDescription(selectedDialogsCountTextView, ThemeDescription.FLAG_TEXTCOLOR, null, null, null, null, Theme.key_actionBarActionModeDefaultIcon));
@@ -13119,6 +13492,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             arrayList.add(new ThemeDescription(commentView, ThemeDescription.FLAG_TEXTCOLOR, new Class[]{ChatActivityEnterView.class}, new String[]{"messageEditText"}, null, null, null, Theme.key_chat_messagePanelText));
             arrayList.add(new ThemeDescription(commentView, ThemeDescription.FLAG_CURSORCOLOR, new Class[]{ChatActivityEnterView.class}, new String[]{"messageEditText"}, null, null, null, Theme.key_chat_messagePanelCursor));
             arrayList.add(new ThemeDescription(commentView, ThemeDescription.FLAG_HINTTEXTCOLOR, new Class[]{ChatActivityEnterView.class}, new String[]{"messageEditText"}, null, null, null, Theme.key_chat_messagePanelHint));
+//            arrayList.add(new ThemeDescription(commentView, ThemeDescription.FLAG_IMAGECOLOR, new Class[]{ChatActivityEnterView.class}, new String[]{"sendButton"}, null, null, null, Theme.key_chat_messagePanelSend));
         }
 
         arrayList.add(new ThemeDescription(null, 0, null, null, null, cellDelegate, Theme.key_windowBackgroundWhiteBlackText));
@@ -13231,6 +13605,9 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             if (actionBar != null) {
                 actionBar.setLayerType(View.LAYER_TYPE_HARDWARE, null);
             }
+//            if (dialogStoriesCell != null) {
+//                dialogStoriesCell.setLayerType(View.LAYER_TYPE_HARDWARE, null);
+//            }
             if (fragmentView != null) {
                 ((ViewGroup) fragmentView).setClipChildren(false);
                 fragmentView.requestLayout();
@@ -13265,6 +13642,8 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         if (SharedConfig.getDevicePerformanceClass() <= SharedConfig.PERFORMANCE_CLASS_LOW && !BuildVars.DEBUG_PRIVATE_VERSION) {
             return;
         }
+        // NimarkoGram: springAnimation == SPRING_CLASSIC skips the spring animator and
+        // animates the slide-back via the classic translation progress instead.
         if (isSlideBackTransition && slideBackTransitionAnimator == null
                 && app.nimarkogram.messenger.NimarkoConfig.springAnimation == app.nimarkogram.messenger.NimarkoConfig.SPRING_CLASSIC) {
             setSlideTransitionProgress(progress);
@@ -13395,6 +13774,10 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         return true;
     }
 
+    // NimarkoGram: helpers consumed by {@link MainTabsActivity#canScrollInternal} when
+    // OpenSettingsBySwipe is enabled and the main tabs bar is hidden. Mirrors CG's
+    // {@code DialogsActivity.getFilterTabsView()/getRightSlidingProgress()/searching}
+    // exposure without leaking the private fields.
     public boolean isFirstFilterTab() {
         return filterTabsView == null || filterTabsView.isFirstTab();
     }
@@ -13410,6 +13793,9 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         if (StoryRecorder.isVisible() || (getLastStoryViewer() != null && getLastStoryViewer().isFullyVisible())) {
             animated = false;
         }
+        // NimarkoGram: hideStories forces the stories row off. Don't early-return —
+        // we must still run the flip-to-hidden path so a previously-visible cell
+        // collapses when the toggle is flipped on at runtime.
         final boolean hideStories = app.nimarkogram.messenger.NimarkoConfig.hideStories;
         boolean onlySelfStories = !hideStories && !isArchive() && getStoriesController().hasOnlySelfStories();
         boolean newVisibility;
@@ -13605,8 +13991,14 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             @Override
             protected boolean onBackProgress(float progress) {
                 return false;
+//                setSearchAnimationProgress(1f - progress, true);
+//                return true;
             }
 
+//            @Override
+//            protected void onBack() {
+//                actionBar.onSearchFieldVisibilityChanged(searchItem.toggleSearch(false));
+//            }
 
             @Override
             protected boolean includeDownloads() {
@@ -14280,6 +14672,9 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         }
     }
 
+    // C5: handle to the currently open overflow popup so the
+    // pluginMenuItemsUpdated observer can dismiss + rebuild it live when a
+    // plugin registers/unregisters menu items (mirror ChatActivity).
     private ItemOptions nimarkoOpenItemOptions;
 
     private void showItemOptions() {
@@ -14382,6 +14777,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             presentFragment(new GroupCreateActivity(args));
         });
         io.add(R.drawable.outline_saved_24, getString(R.string.SavedMessages), () -> {
+            // NG: honour the custom-chat-for-saved-messages setting (CG parity).
             Bundle args = new Bundle();
             long savedId = app.nimarkogram.messenger.utils.chats.NimarkoChatHelper2
                     .getCustomChatID(UserConfig.getInstance(currentAccount).getClientUserId());
@@ -14392,6 +14788,9 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             }
             presentFragment(new ChatActivity(args));
         });
+        // NimarkoGram: CG-parity drawer shortcuts (Archived / Calls / Scan QR /
+        // New Channel / Buy a Gift / Proxy Settings). Each row is internally
+        // gated; see NimarkoChatMenuInjector for per-row CG-derived conditions.
         app.nimarkogram.messenger.utils.chats.NimarkoChatMenuInjector.injectArchived(io, this);
         app.nimarkogram.messenger.utils.chats.NimarkoChatMenuInjector.injectCalls(io, this);
         app.nimarkogram.messenger.utils.chats.NimarkoChatMenuInjector.injectScanQR(io, this);
@@ -14425,6 +14824,9 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                 }
             }
         }
+        // NimarkoGram: CG-parity. Settings entry is unconditional (CG keeps it
+        // outside the showCallsTab gate) and routes to MainPreferencesActivity —
+        // the NG settings hub — instead of the stock Telegram SettingsActivity.
         io.add(R.drawable.msg_settings_solar, getString(R.string.Settings), () -> {
             presentFragment(new app.nimarkogram.messenger.preferences.MainPreferencesActivity());
         });
@@ -14441,6 +14843,12 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
 
             final String proxyAddress = preferences.getString("proxy_ip", "");
             final boolean proxyEnabled = preferences.getBoolean("proxy_enabled", false);
+            // NG: hide the proxy entry once the user is actually connected
+            // through it — keeping it around just adds clutter to the
+            // overflow once the proxy has done its job. Still shown while
+            // the connection is being established (so the user can abort
+            // or pick a different proxy), and for users in blocked
+            // countries who haven't enabled one yet.
             final boolean connected = currentConnectionState == ConnectionsManager.ConnectionStateConnected
                     || currentConnectionState == ConnectionsManager.ConnectionStateUpdating;
             final boolean proxyVisible = proxyEnabled && !TextUtils.isEmpty(proxyAddress) && !connected
@@ -14452,6 +14860,10 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             }
         }
 
+        // NimarkoGram: inject plugin-registered menu items (DRAWER_MENU + MAIN_MENU + CHAT_ACTION_MENU)
+        // into the chat-list overflow popup. DialogsActivity uses ItemOptions
+        // not ActionBarMenuItem.toggleSubMenu, so the dynamic Pine hook in
+        // ApplicationLoader doesn't catch it — explicit inject here.
         try {
             final java.util.Map<String, Object> nimarkoCtx = new java.util.HashMap<>();
             nimarkoCtx.put("fragment", "DialogsActivity");
@@ -14470,13 +14882,20 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             if (!nimarkoItems.isEmpty()) {
                 io.addGap();
                 java.util.Set<String> seen = new java.util.HashSet<>();
+                // Controller already pre-filtered via checkCondition; skip duplicate eval.
                 for (final app.nimarkogram.messenger.plugins.hooks.MenuItemRecord rec : nimarkoItems) {
                     if (rec == null || android.text.TextUtils.isEmpty(rec.text)) continue;
+                    // C4: dedupe by stable plugin identity (pluginId:itemId), not the
+                    // visible label — two plugins may share a caption (mirror ChatActivity).
                     final String key = rec.pluginId + ":" + rec.itemId;
                     if (!seen.add(key)) continue;
+                    // C12: consistent neutral fallback drawable across all item sites.
                     int iconRes = rec.iconResId != 0 ? rec.iconResId : R.drawable.msg_plugins;
                     io.add(iconRes, rec.text.toString(), () -> {
                         try {
+                            // C3: re-check the owning plugin is still active right
+                            // before crossing into Python — the menu was built when
+                            // the popup opened and the plugin may have been disabled.
                             if (!app.nimarkogram.messenger.plugins.PluginsController.getInstance().isPluginActive(rec.pluginId)) {
                                 return;
                             }
@@ -14539,6 +14958,11 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             }
         }
 
+        // NimarkoGram: when foldersAtBottom is on, filterTabsView is anchored to the
+        // contentView bottom edge with bottomMargin=0 (see createView ~L5260). The
+        // contentView extends behind both the system nav bar inset and the host's
+        // MainTabs strip, so we must push the tabs up by navigationBarHeight +
+        // additionNavigationBarHeight to sit ABOVE both. Mirrors the undoView loop.
         if (filterTabsView != null && foldersAtBottom()) {
             final int filterTabsBottomMargin = navigationBarHeight + additionNavigationBarHeight;
             final ViewGroup.MarginLayoutParams ftLp = (ViewGroup.MarginLayoutParams) filterTabsView.getLayoutParams();
@@ -14555,6 +14979,8 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         return WindowInsetsCompat.CONSUMED;
     }
 
+
+    /* Animations */
 
     @Override
     public void onFactorChanged(int id, float factor, float fraction, FactorAnimator callee) {
@@ -14688,7 +15114,9 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
     }
 
     private void checkUi_topPanelVisible() {
-        final float factor = 1f;
+        //final float factor1 = 1f - animatorSearchVisible.getFloatValue();
+        // final float factor2 = 1f - getRightSlidingProgress();
+        final float factor = 1f; // factor1; // * factor2;
 
         if (topPanelLayout != null) {
             final float s = lerp(0.98f, 1f, factor);
@@ -14703,6 +15131,15 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
     private void checkUi_searchPagesPaddings(boolean doNotRequestLayout) {
         if (searchViewPager != null && actionBar != null) {
             final int bottom = AndroidUtilities.navigationBarHeight;
+            // NimarkoGram: the call bar (topPanelLayout) layout childTop in ContentView.onLayout adds
+            // getSearchFieldReservedHeight() (see L1310). Under hideSearchBar that reserved term collapses
+            // dp(SEARCH_FIELD_HEIGHT) -> 0, so the call bar rides up by SEARCH_FIELD_HEIGHT during open search,
+            // while this padding (which carries no reserved-field term and is calibrated for the reserved=48
+            // call-bar position) does not follow. That left a flat dp(48) empty band under the call bar.
+            // Pull the search-results top up by exactly the collapsed reserved amount, scaled by how much the
+            // call bar is actually present (its totalVisibility), so the no-call case (visibility 0) and the
+            // hideSearchBar-off case (where the delta dp(48)-getSearchFieldReservedHeight() is already 0) are
+            // left untouched.
             final float callBarVisibility = topPanelLayout != null
                 ? topPanelLayout.getMetadata().getTotalVisibility()
                 : 0f;
@@ -14774,12 +15211,23 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         fragmentSearchField.setVisibility(alpha > 0 ? View.VISIBLE : View.GONE);
         animatorSearchButtonVisible.setValue(alpha <= 0.01f, true);
 
+        // NimarkoGram: home info-cards capsule — visible only when the search field (and thus its own cards)
+        // is hidden in the idle home list with hideSearchBar on. Position itself is computed in
+        // positionHomeInfoCards() (also called every dispatchDraw frame so it tracks the header on scroll).
         if (homeInfoCards != null) {
             final boolean show = app.nimarkogram.messenger.infocards.InfoCardsConfig.isEnabled()
                     && hideHomeSearchField
                     && alpha <= 0.01f
                     && actionModeVisible <= 0.01f
                     && getRightSlidingProgress() <= 0.01f;
+            // Is the capsule ACTUALLY in the visual state our `show` flag claims? A ValueAnimator is paused by
+            // Android while the app is backgrounded; if `show` flipped to false right before we were paused, the
+            // fade-out could be frozen mid-way (or the end-state lost), leaving the strip faded/GONE while
+            // homeInfoCardsShown still reads its pre-pause value. On resume `show == homeInfoCardsShown` then
+            // skips the transition block forever and the capsule stays invisible until an unrelated search
+            // toggle re-runs this — exactly the "capsule gone after a long background, back only via search" bug.
+            // Treat a desynced state (we think shown, but it's faded/GONE, and nothing is animating) as a
+            // transition so it self-heals.
             final boolean actuallyVisible = homeInfoCards.getVisibility() == View.VISIBLE
                     && homeInfoCards.getVisibilityFactor() > 0.99f;
             final boolean idle = homeInfoCardsAnimator == null || !homeInfoCardsAnimator.isRunning();
@@ -14791,9 +15239,14 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                     homeInfoCardsAnimator = null;
                 }
                 if (show) {
+                    // Appearing (e.g. back from a channel/global search with hideSearchBar on): make it visible
+                    // and re-sync to the shared active card BEFORE fading, so it never flashes a stale card.
                     homeInfoCards.setVisibility(View.VISIBLE);
                     homeInfoCards.syncToActiveCard();
                 }
+                // FADE+scale via the strip's visibilityFactor instead of snapping. setVisibilityFactor already
+                // alpha-fades, scales lerp(0.6,1) and flips the view GONE once the factor reaches ~0, so the
+                // disappear end-state is handled for free.
                 homeInfoCardsAnimator = ValueAnimator.ofFloat(homeInfoCards.getVisibilityFactor(), show ? 1f : 0f);
                 homeInfoCardsAnimator.addUpdateListener(a -> homeInfoCards.setVisibilityFactor((float) a.getAnimatedValue()));
                 homeInfoCardsAnimator.setDuration(220);
@@ -14804,6 +15257,14 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         }
     }
 
+    /**
+     * Anchor the home info-cards capsule just below the WHOLE top chrome (action bar, then stories, then the
+     * folder tabs when those are at the top), using each view's REAL on-screen bottom — {@code getY()}
+     * includes the translationY the header scrolls with, so the capsule tracks the tabs frame-perfectly and
+     * sits BELOW the folders, not above them. {@code max(...)} clamps it to the action bar bottom so it never
+     * slides over the toolbar when the header collapses on scroll. No hardcoded heights → correct on
+     * phone / tablet / landscape / split. Called from checkUi and every dispatchDraw frame.
+     */
     private void positionHomeInfoCards() {
         if (homeInfoCards == null || homeInfoCards.getVisibility() != View.VISIBLE) {
             return;
@@ -14823,6 +15284,12 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                 && filterTabsView.getVisibility() == View.VISIBLE && filterTabsView.getMeasuredHeight() > 0) {
             y = Math.max(y, filterTabsView.getY() + filterTabsView.getMeasuredHeight());
         }
+        // The now-playing music bar (and the location-sharing bar) live in topPanelLayout, which is drawn
+        // ABOVE the capsule in z-order and shares its top-of-list region. When no tabs/stories sit above the
+        // capsule, the panel lands at the same Y and covers it. Drop the capsule below the visible panels:
+        // topPanelLayout.getY() is the panel view top, dp21 is its paddingTop, getTotalHeight() the animated
+        // bar height. getAnimatedHeightWithPadding scales by panel visibility, so this collapses to a no-op
+        // (and the gate skips it) when nothing is playing.
         if (topPanelLayout != null && topPanelLayout.getMetadata() != null
                 && topPanelLayout.getMetadata().getTotalVisibility() > 0.01f) {
             float panelBottom = topPanelLayout.getY()
@@ -14907,6 +15374,9 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         final float factor3 = 1f - animatorDoneButtonVisible.getFloatValue();
         float factor = 0f;
 
+        // NimarkoGram: hide the action-bar magnifier when search lives in the bottom
+        // tabs row (showSearchInTabs && showMainTabs) — duplicate entry points otherwise.
+        // Forward picker and archive folder still need the icon (mirrors CG L13815).
         if (shouldShowSearchIcon()) {
             factor = factor0 * factor1 * factor2 * factor3;
         }
@@ -14918,6 +15388,10 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
     }
 
     private boolean shouldShowSearchIcon() {
+        // NG: always show the top-right magnifier — NG MainTabs is a fixed 4-tab
+        // layout without CG's in-tabs search button, so there is no duplicate to gate.
+        // The earlier showSearchInTabs gate accidentally hid the icon when the flag
+        // defaulted to true (no UI toggle in NG to flip it back).
         return true;
     }
 
@@ -14929,6 +15403,8 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         return communityId;
     }
 
+
+    /* Blur */
 
     private ViewPositionWatcher viewPositionWatcher;
 
@@ -14953,6 +15429,15 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         iBlur3Positions.add(iBlur3PositionMainTabs);
     }
 
+    // NimarkoGram: read NimarkoConfig live each access. The previous `final` capture
+    // went stale when the user toggled the flag from FoldersPreferencesActivity —
+    // rebuildAllFragmentViews clears views but does NOT re-run field initializers,
+    // so any code path that read this captured value (blur3_InvalidateBlur,
+    // onFragmentCreate offsets) used the wrong value until app restart.
+    // NG (bug: in the forward picker the bottom comment/send bar overlapped the bottom folder strip —
+    // both fight for the screen bottom). In DIALOGS_TYPE_FORWARD the bottom is owned by the comment bar,
+    // so treat foldersAtBottom as OFF there → the folder tabs stay at the TOP (stock layout, no overlap).
+    // Single source of truth: every foldersAtBottom branch in this fragment routes through here.
     private boolean foldersAtBottom() { return NimarkoConfig.foldersAtBottom && initialDialogsType != DIALOGS_TYPE_FORWARD; }
 
     public FilterTabsView getFilterTabsView() {
@@ -15044,6 +15529,9 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             return navigationBarHeight + dp(12 + 48 + 12);
         } else {
             int padding = navigationBarHeight + additionNavigationBarHeight;
+            // NimarkoGram: foldersAtBottom anchors filterTabsView to the bottom edge,
+            // sitting above MainTabs / nav bar. Reserve its 36 + 7 + 7 dp so the last
+            // chat row isn't hidden under the strip.
             if (filterTabsView != null && filterTabsView.getVisibility() == View.VISIBLE && foldersAtBottom()) {
                 padding += dp(36 + 7 + 7);
             }
@@ -15113,7 +15601,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
     }
 
     private void drawHeaderShadow(Canvas canvas, int sy) {
-        if (parentLayout == null || actionBar == null ) {
+        if (parentLayout == null || actionBar == null /*|| !actionBar.getCastShadows()*/) {
             return;
         }
 
@@ -15129,6 +15617,18 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             headerShadowY = sy;
             headerShadowAlpha = 1f;
         }
+        /*
+        if (searchAnimationProgress > 0) {
+            if (searchAnimationProgress < 1) {
+                int a = Theme.dividerPaint.getAlpha();
+                Theme.dividerPaint.setAlpha((int) (a * searchAnimationProgress));
+                canvas.drawLine(0, y, getMeasuredWidth(), y, Theme.dividerPaint);
+                Theme.dividerPaint.setAlpha(a);
+            } else {
+                canvas.drawLine(0, y, getMeasuredWidth(), y, Theme.dividerPaint);
+            }
+        }
+        */
         if (headerShadowAlpha > 0 && headerShadowAlphaBase > 0 && headerShadowY > 0 && parentLayout != null) {
             final int shadowAlpha = (int) (255 * headerShadowAlpha * headerShadowAlphaBase);
             parentLayout.drawHeaderShadow(canvas, shadowAlpha, headerShadowY);
