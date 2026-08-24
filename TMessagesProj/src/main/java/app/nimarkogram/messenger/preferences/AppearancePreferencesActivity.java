@@ -425,7 +425,7 @@ public class AppearancePreferencesActivity extends NimarkoUniversalPreferencesAc
 
     private String getIconPackValueText()  {
         return switch (app.nimarkogram.messenger.NimarkoConfig.iconReplacement) {
-            case NimarkoConfig.ICON_REPLACE_SOLAR -> getString(R.string.AP_IconReplacement_Solar);
+            case NimarkoConfig.ICON_REPLACE_SOLAR -> getString(R.string.NM_IconPack_SolarTitle);
             case NimarkoConfig.ICON_REPLACE_LIQUID_GLASS -> getString(R.string.NM_IconPack_LiquidTitle);
             case NimarkoConfig.ICON_REPLACE_PLUMPY -> getString(R.string.NM_IconPack_PlumpyTitle);
             default -> getString(R.string.Default);

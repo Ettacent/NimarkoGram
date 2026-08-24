@@ -1219,6 +1219,8 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
 
             valueView = new TextView(context);
             valueView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 16);
+            valueView.setSingleLine(true);
+            valueView.setEllipsize(TextUtils.TruncateAt.END);
             if (LocaleController.isRTL) {
                 addView(valueView, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, Gravity.CENTER_VERTICAL, 20, 0, 0, 0));
                 addView(textLayout, LayoutHelper.createLinear(0, LayoutHelper.WRAP_CONTENT, 1, Gravity.CENTER_VERTICAL | Gravity.FILL_HORIZONTAL, 20, 0, mini ? 12 : 18, 0));
@@ -1289,6 +1291,7 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
         protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
             int width = MeasureSpec.makeMeasureSpec(
                     MeasureSpec.getSize(widthMeasureSpec), MeasureSpec.EXACTLY);
+            valueView.setMaxWidth(Math.min(dp(144), MeasureSpec.getSize(widthMeasureSpec) * 2 / 5));
             if (mini || !twoLines) {
                 super.onMeasure(width, MeasureSpec.makeMeasureSpec(dp(mini ? 44 : 50), MeasureSpec.EXACTLY));
                 return;

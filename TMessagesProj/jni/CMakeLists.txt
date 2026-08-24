@@ -5,7 +5,30 @@ set(CMAKE_C_FLAGS "-w -std=c11 -DANDROID -D_LARGEFILE_SOURCE=1 -Wno-error=implic
 set(CMAKE_ASM_FLAGS "${CFLAGS} -x assembler-with-cpp")
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -ffunction-sections -fdata-sections -fvisibility=hidden -flto=full")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -ffunction-sections -fdata-sections -fvisibility=hidden -fvisibility-inlines-hidden -flto=full")
-set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -flto=full -Wl,--strip-debug -Wl,--gc-sections -Wl,--icf=safe -Wl,-Bsymbolic -Wl,--exclude-libs,ALL")
+
+set(TMESSAGES_LINKER_FLAGS
+        -flto=full
+        -Wl,--strip-debug
+        -Wl,--gc-sections
+        -Wl,--icf=safe
+        -Wl,-Bsymbolic
+        -Wl,--exclude-libs=libtgvoip.a
+        -Wl,--exclude-libs=libtgcalls.a
+        -Wl,--exclude-libs=libtgcalls_tp.a
+        -Wl,--exclude-libs=libtgnet.a
+        -Wl,--exclude-libs=libtlottie.a
+        -Wl,--exclude-libs=libsqlite.a
+        -Wl,--exclude-libs=libswscale.a
+        -Wl,--exclude-libs=libavformat.a
+        -Wl,--exclude-libs=libavcodec.a
+        -Wl,--exclude-libs=libavutil.a
+        -Wl,--exclude-libs=libswresample.a
+        -Wl,--exclude-libs=libvpx.a
+        -Wl,--exclude-libs=libdav1d.a
+        -Wl,--exclude-libs=libssl.a
+        -Wl,--exclude-libs=libcrypto.a
+        -Wl,--exclude-libs=libtde2e.a
+        -Wl,--exclude-libs=libtdutils.a)
 
 if (${ANDROID_ABI} STREQUAL "armeabi-v7a" OR ${ANDROID_ABI} STREQUAL "arm64-v8a")
     enable_language(ASM)
@@ -256,6 +279,7 @@ target_include_directories(${NATIVE_LIB} PUBLIC
 
 target_link_options(${NATIVE_LIB} PRIVATE "-Wl,-z,max-page-size=16384")
 target_link_options(${NATIVE_LIB} PRIVATE "-Wl,-z,common-page-size=16384")
+target_link_options(${NATIVE_LIB} PRIVATE ${TMESSAGES_LINKER_FLAGS})
 target_link_options(${NATIVE_LIB} PRIVATE "-Wl,--version-script=${CMAKE_CURRENT_SOURCE_DIR}/exports.map")
 target_link_libraries(${NATIVE_LIB}
         -Wl,--whole-archive rnnoise openh264 voipandroid -Wl,--no-whole-archive
