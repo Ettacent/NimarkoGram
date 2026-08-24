@@ -1,9 +1,25 @@
 import org.gradle.nativeplatform.platform.internal.DefaultNativePlatform
 
 apply plugin: 'com.android.library'
-
+// NimarkoGram additions for ported extera (Kotlin + Python interop).
+// kotlin-kapt removed: Room *_Impl.java files were pre-generated during decompile,
+// so we don't need RoomProcessor at compile time.
 apply plugin: 'kotlin-android'
 apply plugin: 'com.chaquo.python'
+apply plugin: 'org.telegram.lottie-meta'
+apply plugin: 'idea'
+
+idea {
+    module {
+        excludeDirs += [
+            file('jni/third_party'),
+            file('jni/ffmpeg'),
+            file('jni/tlottie'),
+            file('jni/boringssl'),
+            file('jni/sqlite')
+        ]
+    }
+}
 
 repositories {
     mavenCentral()
@@ -22,10 +38,12 @@ configurations.all {
 
 dependencies {
     implementation 'androidx.core:core:1.16.0'
-    
+    // Material Components — exteraGram bundles this (v1.13.0); plugins reflect widgets like
+    // com.google.android.material.progressindicator.CircularProgressIndicator via Chaquopy jclass.
+    // AppCompat theme is sufficient (ProgressIndicator styles don't set enforceMaterialTheme).
     implementation 'com.google.android.material:material:1.13.0'
     implementation 'androidx.palette:palette:1.0.0'
-    implementation 'com.caverock:androidsvg-aar:1.4'   
+    implementation 'com.caverock:androidsvg-aar:1.4'   // renders custom .icons pack SVGs (viewBox offset / <g transform>) like exteraGram
     implementation 'androidx.exifinterface:exifinterface:1.3.6'
     implementation 'androidx.dynamicanimation:dynamicanimation:1.0.0'
     implementation "androidx.sharetarget:sharetarget:1.2.0"
@@ -34,6 +52,7 @@ dependencies {
 
     implementation 'com.google.android.gms:play-services-cast-framework:21.4.0'
     implementation "androidx.mediarouter:mediarouter:1.7.0"
+    implementation 'com.google.zxing:core:3.5.4'
 
     implementation 'androidx.car.app:app:1.4.0'
     implementation 'androidx.car.app:app-projected:1.4.0'
@@ -42,7 +61,6 @@ dependencies {
     compileOnly 'org.checkerframework:checker-qual:2.5.2'
     compileOnly 'org.checkerframework:checker-compat-qual:2.5.0'
     implementation 'com.google.firebase:firebase-messaging:22.0.0'
-    implementation 'com.google.firebase:firebase-config:21.0.1'
     implementation 'com.google.firebase:firebase-datatransport:18.1.0'
     implementation 'com.google.firebase:firebase-appindexing:20.0.0'
     implementation 'com.google.android.gms:play-services-maps:18.1.0'
@@ -71,10 +89,15 @@ dependencies {
     implementation "io.noties.markwon:ext-tables:4.6.2"
     implementation "io.noties.markwon:html:4.6.2"
     implementation "io.noties.markwon:inline-parser:4.6.2"
-    implementation "io.noties.markwon:ext-latex:4.6.2"
+    implementation("io.noties.markwon:ext-latex:4.6.2") {
+        exclude group: 'ru.noties', module: 'jlatexmath-android'
+    }
+    api project(':jlatexmath')
+
+//    implementation 'com.google.mlkit:translate:17.0.3'
 
     constraints {
-        
+        // NimarkoGram: bumped 1.8.0 -> 1.9.0 to align with kotlin-gradle-plugin 1.9.0.
         implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk7:1.9.0") {
             because("kotlin-stdlib-jdk7 is now a part of kotlin-stdlib")
         }
@@ -86,36 +109,65 @@ dependencies {
 
     coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.5'
 
+    // ---- NimarkoGram (ported extera) ----
+    // Kotlin stdlib pinned to 1.9.0 (matches buildscript classpath).
     implementation 'org.jetbrains.kotlin:kotlin-stdlib-jdk8:1.9.0'
-    
+    // Pine xposed-style hooks (used by extera plugins.xposed). We keep the 0.3.0 AAR for its Java classes,
+    // Pine hook engine, rebuilt from canyie/pine @0.3.0 sources (see /root/pine-build) instead of the maven AAR
+    // for TWO reasons: (1) 16KB-page alignment — the stock 0.3.0 .so is 4KB-aligned and fails to load on
+    // 16KB-page Android 15/16 devices, crashing the plugin engine; our jni/<abi>/libpine.so is built with
+    // -Wl,-z,max-page-size=16384. (2) A Java-side guard in Pine.handleCall that turns Pine 0.3.0's arm64
+    // receiver/arg mis-read (Method.invoke "Expected receiver of type X, but got byte[]" during a draw hook)
+    // from a hard UI-thread crash into a skipped call with a default result. The patched classes ship in
+    // libs/pine-core-16kb.jar; the matching 16KB .so is in jni/ (packagingOptions.pickFirst below). Same public
+    // ABI, so the ColorOS trampoline guards in PineAdapter/XposedBridge are unaffected.
     implementation files('libs/pine-core-16kb.jar')
-    
+    // LSPosed HiddenApiBypass — Pine.disableHiddenApiPolicy does NOT cover
+    // Chaquopy's JNI-based constructor enumeration on Android 13+: the
+    // protected @hide Intent(Parcel) ctor still gets resolved by the
+    // reflection cache and triggers NoSuchMethodError during overload-pick.
+    // setHiddenApiExemptions("L") permits all @hide APIs regardless of the
+    // calling domain, restoring constructor enumeration for plugins.
+    // 6.1 is the current stable implementation. Unlike the old 4.3 build it
+    // includes the latest ART/Unsafe compatibility fixes used on Android 15/16.
     implementation 'org.lsposed.hiddenapibypass:hiddenapibypass:6.1'
-    
+    // NimarkoGram: pine:enhances:0.1.0 not on mavenCentral — dropped (extera plugins.xposed will reflect on core only).
+    // MVEL expression engine (extera plugins engine).
     implementation 'org.mvel:mvel2:2.5.2.Final'
-    
+    // Coil for NowPlaying album-art async loading.
     implementation 'io.coil-kt:coil:2.5.0'
-    
+    // Gson — extera api uses it heavily. Note: TG already pulls gson 2.11.0;
+    // explicit pin keeps extera api/dto contract stable at 2.10.1 semantics.
     implementation 'com.google.code.gson:gson:2.10.1'
-    
+    // Jackson — NimarkoJsonBottomSheet's "Switch to Jackson" toggle uses ObjectMapper
+    // for pretty-printing the TLRPC.Message when NimarkoConfig.jacksonJSON_Provider
+    // is on (default off). Mirrors CG's JsonBottomSheet behaviour.
     implementation 'com.fasterxml.jackson.core:jackson-databind:2.17.2'
-    
+    // Room — extera api/db. (kapt processor disabled; we use the pre-generated *_Impl.java.)
+    // Note: 2.7.0+ for SQLiteConnection / EntityInsertAdapter API surface used by ported _Impl files.
     implementation 'androidx.room:room-runtime:2.7.0'
     implementation 'androidx.sqlite:sqlite:2.5.0'
 
+    // ---- NimarkoGram Phase 2 (re-port: restored 144 extera files) ----
+    // Retrofit (extera api/network/ApiService is a Retrofit interface).
     implementation 'com.squareup.retrofit2:retrofit:2.9.0'
     implementation 'com.squareup.retrofit2:converter-gson:2.9.0'
-    
+    // OkHttp logging interceptor (ported network code references it).
     implementation 'com.squareup.okhttp3:logging-interceptor:4.12.0'
-    
+    // LinkedIn DexMaker (extera plugins/utils/ClassProxy uses com.android.dx.* for runtime dex gen;
+    // dexmaker repackages those classes under the same com.android.dx namespace).
     implementation 'com.linkedin.dexmaker:dexmaker:2.28.3'
-    
+    // kotlinx coroutines (many ported kotlin classes use them).
     implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3'
-    
+    // kotlinx serialization (some api/dto files use it).
     implementation 'org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.0'
-    
+    // WorkManager (extera api/worker/SyncWorker).
     implementation 'androidx.work:work-runtime-ktx:2.9.0'
 
+    // ---- NimarkoGram CameraX backend ----
+    // Keep every CameraX artifact on the same stable release. Concurrent
+    // controllers are bound while inactive and activated only after the full
+    // pair is registered, which is required for eager OEM camera services.
     def camerax_version = '1.6.1'
     implementation "androidx.camera:camera-camera2:$camerax_version"
     implementation "androidx.camera:camera-core:$camerax_version"
@@ -123,20 +175,6 @@ dependencies {
     implementation "androidx.camera:camera-video:$camerax_version"
     implementation "androidx.camera:camera-view:$camerax_version"
 
-    implementation "io.noties.markwon:core:4.6.2"
-    implementation "io.noties.markwon:ext-strikethrough:4.6.2"
-    implementation "io.noties.markwon:ext-tables:4.6.2"
-    implementation "io.noties.markwon:html:4.6.2"
-    implementation "io.noties.markwon:inline-parser:4.6.2"
-    implementation "io.noties.markwon:ext-latex:4.6.2"
-}
-
-def isWindows = String.valueOf(DefaultNativePlatform.currentOperatingSystem.toFamilyName() == OperatingSystemFamily.WINDOWS)
-def privateValue = rootProject.ext.privateConfig
-def configString = rootProject.ext.buildConfigString
-def telegramApiId = privateValue('TELEGRAM_API_ID', '0')
-if (!telegramApiId.matches('[0-9]+')) {
-    telegramApiId = '0'
 }
 
 android {
@@ -146,6 +184,7 @@ android {
 
     sourceSets.main.jniLibs.srcDirs = ['./jni/']
 
+    // Our 16KB-aligned jni/<abi>/libpine.so wins over the 4KB one bundled in the Pine 0.3.0 AAR.
     packagingOptions {
         pickFirst 'lib/**/libpine.so'
     }
@@ -163,7 +202,7 @@ android {
     }
 
     compileOptions {
-        
+        // NimarkoGram: bumped 1.8 -> 17 to match kotlinOptions jvmTarget (extera Kotlin code).
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
 
@@ -172,31 +211,30 @@ android {
 
     kotlinOptions {
         jvmTarget = '17'
-        
+        // NG: suppress Kotlin metadata version-check errors from transitive
+        // dependencies (androidx.credentials-1.6.0-alpha04, recaptcha-18.7.1)
+        // which ship with Kotlin 2.1.0 metadata. NG uses Kotlin 1.9.0 — the
+        // older compiler can't READ the newer metadata blocks but the actual
+        // bytecode is JVM-17 compatible. -Xskip-metadata-version-check tells
+        // kotlinc to treat unreadable metadata as opaque rather than erroring.
         freeCompilerArgs += '-Xskip-metadata-version-check'
     }
 
+
     defaultConfig {
-        buildConfigField "int", "TELEGRAM_API_ID", telegramApiId
-        buildConfigField "String", "TELEGRAM_API_HASH", configString(privateValue('TELEGRAM_API_HASH'))
-        buildConfigField "String", "GOOGLE_AUTH_CLIENT_ID", configString(privateValue('GOOGLE_AUTH_CLIENT_ID'))
-        buildConfigField "String", "GOOGLE_SAFETYNET_KEY", configString(privateValue('GOOGLE_SAFETYNET_KEY'))
-        buildConfigField "String", "HUAWEI_APP_ID", configString(privateValue('HUAWEI_APP_ID'))
-        buildConfigField "String", "NIMARKO_UPDATE_ENDPOINT", configString(privateValue('NIMARKO_UPDATE_ENDPOINT'))
-        buildConfigField "String", "NIMARKO_MEDIA_API_URL", configString(privateValue('NIMARKO_MEDIA_API_URL'))
-        buildConfigField "String", "NIMARKO_API_BASE_URL", configString(privateValue('NIMARKO_API_BASE_URL'))
-        buildConfigField "String", "NIMARKO_BANNER_API_URL", configString(privateValue('NIMARKO_BANNER_API_URL'))
-        buildConfigField "String", "NIMARKO_BANNER_PLACEHOLDER_URL", configString(privateValue('NIMARKO_BANNER_PLACEHOLDER_URL'))
-        buildConfigField "String", "NIMARKO_INFOCARD_RATES_URL", configString(privateValue('NIMARKO_INFOCARD_RATES_URL'))
-        buildConfigField "String", "NIMARKO_ASIA_RELAY_HOST", configString(privateValue('NIMARKO_ASIA_RELAY_HOST'))
-        buildConfigField "String", "NIMARKO_SUPPORT_URL", configString(privateValue('NIMARKO_SUPPORT_URL'))
-        buildConfigField "String", "NIMARKO_TRUSTED_PLUGIN_IDS", configString(privateValue('NIMARKO_TRUSTED_PLUGIN_IDS'))
-        
+        // NimarkoGram: lowered to 23 so apksigner verifies v1 (>=24 spec
+        // skips v1 entirely → Play Protect treated APK as "modern-only"
+        // and hard-blocked on Android 16). Chaquopy minSdk note was a
+        // soft preference; actual native libs work on 23 fine.
         minSdkVersion 24
         targetSdkVersion 35
 
+        // NimarkoGram: hybrid — build BOTH arm64-v8a (modern) AND armeabi-v7a (old devices) so a
+        // single APK runs everywhere. CMake compiles the full native set for each ABI; prebuilt
+        // static libs (ffmpeg/boringssl/tde2e) ship both. (Was arm64-only.)
         ndk {
-            
+            // Fast dev iteration: pass -PngArm64Only to build arm64-v8a alone (skips the armeabi-v7a
+            // native pass, ~halving CMake time). Release stays hybrid for old-device coverage.
             if (project.hasProperty('ngArm64Only')) {
                 abiFilters 'arm64-v8a'
             } else {
@@ -211,7 +249,7 @@ android {
         externalNativeBuild {
             cmake {
                 version '3.22.1'
-                arguments '-DANDROID_STL=c++_static', '-DANDROID_PLATFORM=android-24' 
+                arguments '-DANDROID_STL=c++_static', '-DANDROID_PLATFORM=android-24' //, '-DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON'
             }
         }
     }
@@ -230,11 +268,11 @@ android {
             buildConfigField "boolean", "DEBUG_VERSION", "true"
             buildConfigField "boolean", "DEBUG_PRIVATE_VERSION", "true"
             buildConfigField "boolean", "BUNDLE", "false"
-            buildConfigField "boolean", "BUILD_HOST_IS_WINDOWS", isWindows
             buildConfigField "int", "VERSION_NUM", "0"
         }
 
         HA_private {
+            matchingFallbacks = ['release']
             jniDebuggable false
             minifyEnabled true
             multiDexEnabled true
@@ -246,11 +284,11 @@ android {
             buildConfigField "boolean", "DEBUG_VERSION", "true"
             buildConfigField "boolean", "DEBUG_PRIVATE_VERSION", "true"
             buildConfigField "boolean", "BUNDLE", "false"
-            buildConfigField "boolean", "BUILD_HOST_IS_WINDOWS", isWindows
             buildConfigField "int", "VERSION_NUM", "1"
         }
 
         HA_public {
+            matchingFallbacks = ['release']
             jniDebuggable false
             minifyEnabled true
             multiDexEnabled true
@@ -262,11 +300,11 @@ android {
             buildConfigField "boolean", "DEBUG_VERSION", "true"
             buildConfigField "boolean", "DEBUG_PRIVATE_VERSION", "false"
             buildConfigField "boolean", "BUNDLE", "false"
-            buildConfigField "boolean", "BUILD_HOST_IS_WINDOWS", isWindows
             buildConfigField "int", "VERSION_NUM", "4"
         }
 
         HA_hardcore {
+            matchingFallbacks = ['release']
             jniDebuggable false
             minifyEnabled true
             multiDexEnabled true
@@ -278,11 +316,11 @@ android {
             buildConfigField "boolean", "DEBUG_VERSION", "true"
             buildConfigField "boolean", "DEBUG_PRIVATE_VERSION", "true"
             buildConfigField "boolean", "BUNDLE", "false"
-            buildConfigField "boolean", "BUILD_HOST_IS_WINDOWS", isWindows
             buildConfigField "int", "VERSION_NUM", "5"
         }
 
         standalone {
+            matchingFallbacks = ['release']
             jniDebuggable false
             minifyEnabled true
             multiDexEnabled true
@@ -294,7 +332,6 @@ android {
             buildConfigField "boolean", "DEBUG_VERSION", "false"
             buildConfigField "boolean", "DEBUG_PRIVATE_VERSION", "false"
             buildConfigField "boolean", "BUNDLE", "false"
-            buildConfigField "boolean", "BUILD_HOST_IS_WINDOWS", isWindows
             buildConfigField "int", "VERSION_NUM", "6"
         }
 
@@ -311,7 +348,6 @@ android {
             buildConfigField "boolean", "DEBUG_VERSION", "false"
             buildConfigField "boolean", "DEBUG_PRIVATE_VERSION", "false"
             buildConfigField "boolean", "BUNDLE", "false"
-            buildConfigField "boolean", "BUILD_HOST_IS_WINDOWS", isWindows
             buildConfigField "int", "VERSION_NUM", "7"
         }
     }
@@ -319,9 +355,13 @@ android {
     namespace 'org.telegram.messenger'
 }
 
+// Chaquopy reads settings at apply-time, so this block may sit before or
+// after the android closure.
 chaquopy {
     defaultConfig {
-        
+        // Python 3.11 is the newest runtime in this project which supports
+        // both release ABIs (arm64-v8a and armeabi-v7a). Python 3.13 would
+        // silently make a combined ARM64 + ARMv7 release impossible.
         version = "3.11"
         def nimarkoBuildPython = System.getenv("NIMARKO_BUILD_PYTHON")
         if (!nimarkoBuildPython) {
@@ -333,27 +373,36 @@ chaquopy {
         }
         buildPython(nimarkoBuildPython ?: "python3.11")
         pip {
-            
+            // Higher build-number ARM64 wheels compiled with
+            // -Wl,-z,max-page-size=16384. For ARMv7, pip ignores these
+            // incompatible wheels and keeps using Chaquopy's official ones.
             options "--find-links", "${project.projectDir}/python-wheels/arm64-v8a"
             install "requests==2.31.0"
             install "certifi"
             install "urllib3"
             install "mpmath"
             install "tinydb"
-            
+            // Bundled so plugins can import them without declaring (exteraGram
+            // ships these in its runtime, and plugins like UiTweaks do
+            // `from packaging.version import Version` / `import humanize`
+            // without listing them in __requirements__).
             install "packaging"
             install "humanize"
             install "typing_extensions"
-            
+            // Pillow (import name PIL) — exteraGram bundles it; some plugins do
+            // `from PIL import ...`. Chaquopy ships prebuilt native wheels for it.
             install "Pillow"
-            
+            // Native packages with Chaquopy prebuilt Android wheels. These cannot
+            // be installed by the on-device resolver (Chaquopy can't load .so at
+            // runtime), so they MUST be bundled here to be importable.
             install "lxml"
             install "numpy==1.26.2"
             install "cryptography==42.0.8"
             install "pycryptodome"
             install "regex==2023.10.3"
             install "PyYAML"
-            
+            // Pure-python helpers bundled for convenience so plugins can import
+            // them without declaring (and without a network round-trip on install).
             install "beautifulsoup4"
             install "soupsieve"
             install "markupsafe"
@@ -361,6 +410,7 @@ chaquopy {
         }
     }
 }
+
 
 def getProps(String propName) {
     def propsFile = rootProject.file('local.properties')
@@ -372,6 +422,14 @@ def getProps(String propName) {
         return "";
     }
 }
+// NimarkoGram: google-services plugin intentionally NOT applied on the
+// library module. Its namespace is `org.telegram.messenger` (changing that
+// would re-package every R.java import across the codebase) which has no
+// matching client in our Firebase project nimarkogram-3a6f7. The plugin is
+// applied on `:TMessagesProj_AppStandalone` instead — that module's
+// applicationId override `app.nimarkogram.messenger` matches our JSON and
+// generates the runtime FirebaseApp config the final APK actually uses.
+// apply plugin: 'com.google.gms.google-services'
 
 task checkVisibility {
     doFirst {

@@ -34,6 +34,7 @@ import org.telegram.ui.Components.LayoutHelper;
 import org.telegram.ui.Components.Switch;
 
 public class NotificationsCheckCell extends FrameLayout {
+    public int itemId = -1;
 
     private TextView textView;
     private AnimatedTextView valueTextView;
@@ -82,7 +83,8 @@ public class NotificationsCheckCell extends FrameLayout {
         textView.setSingleLine(true);
         textView.setGravity((LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT) | Gravity.CENTER_VERTICAL);
         textView.setEllipsize(TextUtils.TruncateAt.END);
-        
+        // NG: when the title wraps (subtitled / multiline rows), break by WHOLE WORDS with no hyphenation —
+        // a long label must move the last word to the next line, never split mid-word with a hyphen.
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
             textView.setBreakStrategy(android.text.Layout.BREAK_STRATEGY_SIMPLE);
             textView.setHyphenationFrequency(android.text.Layout.HYPHENATION_FREQUENCY_NONE);
@@ -133,7 +135,9 @@ public class NotificationsCheckCell extends FrameLayout {
     protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
         if (isMultiline) {
             final int w = MeasureSpec.getSize(widthMeasureSpec);
-            
+            // NG: measure the (possibly 2-line, word-wrapped) title first, then drop the subtitle to sit just
+            // below it — so a wrapped title never overlaps the description. One-line titles are unaffected
+            // (subtitle lands ~where it did before). The cell auto-sizes (UNSPECIFIED) to fit the new height.
             measureChildWithMargins(textView, MeasureSpec.makeMeasureSpec(w, MeasureSpec.EXACTLY), 0,
                     MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED), 0);
             android.view.ViewGroup.MarginLayoutParams titleLp = (android.view.ViewGroup.MarginLayoutParams) textView.getLayoutParams();
@@ -184,7 +188,9 @@ public class NotificationsCheckCell extends FrameLayout {
 
     public void setMultiline(boolean multiline) {
         isMultiline = multiline;
-        
+        // NG: in subtitled (multiline) mode let the TITLE wrap to up to 2 lines instead of ellipsizing on one
+        // line — long labels (e.g. "Custom chat for Saved Messages") were cut off as "Custom chat for Saved…".
+        // onMeasure drops the subtitle just below the (now possibly 2-line) title so they never overlap.
         if (multiline) {
             textView.setSingleLine(false);
             textView.setMaxLines(2);

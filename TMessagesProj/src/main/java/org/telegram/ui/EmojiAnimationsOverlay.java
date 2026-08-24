@@ -12,6 +12,7 @@ import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 import org.telegram.messenger.AndroidUtilities;
+import org.telegram.messenger.BuildVars;
 import org.telegram.messenger.Emoji;
 import org.telegram.messenger.EmojiData;
 import org.telegram.messenger.FileLoader;
@@ -73,7 +74,7 @@ public class EmojiAnimationsOverlay implements NotificationCenter.NotificationCe
     private final static HashSet<String> excludeEmojiFromPack = new HashSet<>();
 
     static {
-        
+        // 1️⃣, 2️⃣, 3️⃣... etc
         excludeEmojiFromPack.add("\u0030\u20E3");
         excludeEmojiFromPack.add("\u0031\u20E3");
         excludeEmojiFromPack.add("\u0032\u20E3");
@@ -135,6 +136,7 @@ public class EmojiAnimationsOverlay implements NotificationCenter.NotificationCe
         drawingObjects.clear();
     }
 
+
     public void clear() {
         for (int i = 0; i < drawingObjects.size(); i++) {
             drawingObjects.get(i).imageReceiver.onDetachedFromWindow();
@@ -183,6 +185,7 @@ public class EmojiAnimationsOverlay implements NotificationCenter.NotificationCe
             inited = true;
         }
     }
+
 
     @Override
     public void didReceivedNotification(int id, int account, Object... args) {
@@ -273,6 +276,11 @@ public class EmojiAnimationsOverlay implements NotificationCenter.NotificationCe
         draw(canvas, null, null);
     }
 
+    /**
+     * Draw every effect except the message currently owned by an external
+     * presentation surface. Other chats rows keep animating normally while
+     * the selected photo/sticker is guaranteed to have a single pixel owner.
+     */
     public void draw(Canvas canvas, MessageObject suppressedMessage,
             MessageObject.GroupedMessages suppressedGroup) {
         if (!drawingObjects.isEmpty()) {
@@ -399,7 +407,11 @@ public class EmojiAnimationsOverlay implements NotificationCenter.NotificationCe
                 } else {
                     isDone = (drawingObject.wasPlayed && drawingObject.imageReceiver.getLottieAnimation() != null && drawingObject.imageReceiver.getLottieAnimation().getCurrentFrame() >= drawingObject.imageReceiver.getLottieAnimation().getFramesCount() - 2);
                 }
-                
+                // NG (chat/input freeze): an effect whose lottie doc failed to load or was evicted from cache
+                // (getLottieAnimation()==null) never satisfies isDone, so draw()'s unconditional contentLayout
+                // .invalidate() below would repaint the WHOLE chat + input every frame forever (only cleared by
+                // re-entering the chat). Bound it: drop such an object after a short grace, plus a hard cap for
+                // any other stuck state. Legit effects carry a non-null lottie and drain via isDone in ~1-3 s.
                 long nmNow = System.currentTimeMillis();
                 if (drawingObject.startTime == 0) drawingObject.startTime = nmNow;
                 long nmElapsed = nmNow - drawingObject.startTime;
@@ -481,7 +493,7 @@ public class EmojiAnimationsOverlay implements NotificationCenter.NotificationCe
     }
 
     public boolean onTapItem(ChatMessageCell view, ChatActivity chatActivity, boolean userTapped) {
-        
+        // NimarkoGram: respect "Disable premium-sticker animation".
         if (app.nimarkogram.messenger.NimarkoConfig.disablePremStickAnim) {
             return false;
         }
@@ -792,17 +804,19 @@ public class EmojiAnimationsOverlay implements NotificationCenter.NotificationCe
                 drawingObject.isOut = isOutOwner;
                 drawingObject.imageReceiver.setAllowStartAnimation(true);
                 drawingObject.imageReceiver.setAllowLottieVibration(sendTap);
+                final boolean pcache = SharedConfig.getDevicePerformanceClass() <= SharedConfig.PERFORMANCE_CLASS_AVERAGE || !BuildVars.DEBUG_VERSION;
                 int w;
                 if (videoSize == null) {
                     w = getFilterWidth();
                     Integer lastIndex = lastAnimationIndex.get(document.id);
                     int currentIndex = (lastIndex == null ? 0 : lastIndex) + 1;
                     lastAnimationIndex.put(document.id, currentIndex);
-                    
+                    //currentIndex = currentIndex % 4;
+
                     ImageLocation imageLocation = ImageLocation.getForDocument(document);
                     drawingObject.imageReceiver.setUniqKeyPrefix(currentIndex + "_" + drawingObject.messageId + "_");
 
-                    drawingObject.imageReceiver.setImage(imageLocation, w + "_" + w + "_pcache", null, "tgs", set, 1);
+                    drawingObject.imageReceiver.setImage(imageLocation, w + "_" + w + (pcache ? "_pcache" : ""), null, "tgs", set, 1);
                     drawingObject.imageReceiver.setDelegate(new ImageReceiver.ImageReceiverDelegate() {
                         @Override
                         public void didSetImage(ImageReceiver imageReceiver, boolean set, boolean thumb, boolean memCache) {
@@ -832,7 +846,7 @@ public class EmojiAnimationsOverlay implements NotificationCenter.NotificationCe
                         drawingObject.imageReceiver.setUniqKeyPrefix(currentIndex + "_" + drawingObject.messageId + "_");
                     }
                     drawingObject.document = document;
-                    drawingObject.imageReceiver.setImage(ImageLocation.getForDocument(videoSize, document), w + "_" + w + "_pcache", null, "tgs", set, 1);
+                    drawingObject.imageReceiver.setImage(ImageLocation.getForDocument(videoSize, document), w + "_" + w + (pcache ? "_pcache" : ""), null, "tgs", set, 1);
                 }
 
                 drawingObject.imageReceiver.setLayerNum(Integer.MAX_VALUE);
@@ -1034,18 +1048,22 @@ public class EmojiAnimationsOverlay implements NotificationCenter.NotificationCe
         }
         MessageObject messageObject = null;
 
+
         float imageH = widgetView.getMeasuredHeight();
         float imageW = widgetView.getMeasuredWidth();
         View parent = (View) widgetView.getParent();
         if (imageW > parent.getWidth() * 0.5f) {
             imageH = imageW = parent.getWidth() * 0.4f;
         }
+//        if (imageH <= 0 || imageW <= 0) {
+//            return false;
+//        }
 
         emoji = unwrapEmoji(emoji);
 
         int viewId = widgetView.hashCode();
         TLRPC.Document viewDocument = null;
-        boolean isOutOwner = widgetView.getTranslationX() > contentLayout.getMeasuredWidth() / 2f;
+        boolean isOutOwner = widgetView.getTranslationX() > contentLayout.getMeasuredWidth() / 2f;//view.getMessageObject().isOutOwner();
         if (visibleReaction.emojicon != null && createDrawingObject(emoji, viewId, viewDocument, messageObject, -1, false, false, imageW, imageH, isOutOwner)) {
             if (!drawingObjects.isEmpty()) {
                 DrawingObject drawingObject = drawingObjects.get(drawingObjects.size() - 1);
@@ -1137,7 +1155,7 @@ public class EmojiAnimationsOverlay implements NotificationCenter.NotificationCe
         boolean isOut;
         boolean removing;
         float removeProgress;
-        long startTime; 
+        long startTime; // NG: wall-clock of first draw — used to force-remove a stuck (null-lottie) effect
         int messageId;
         boolean hasMessageIdentity;
         int messageAccount;
@@ -1175,7 +1193,13 @@ public class EmojiAnimationsOverlay implements NotificationCenter.NotificationCe
                 loadingProgress = 1f;
             }
             float cachingProgress = 1f;
-
+//            if (imageReceiver.getLottieAnimation() != null) {
+//                RLottieDrawable drawable = imageReceiver.getLottieAnimation();
+//                cachingProgress = drawable.getGeneratingCacheProgress();
+//                if (cachingProgress < 0) {
+//                    return -2;
+//                }
+//            }
             return .15f + .55f * loadingProgress + .30f * cachingProgress * loadingProgress;
         }
 

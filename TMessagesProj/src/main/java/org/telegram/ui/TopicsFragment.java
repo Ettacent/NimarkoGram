@@ -54,7 +54,7 @@ import androidx.core.view.WindowInsetsCompat;
 import androidx.recyclerview.widget.DefaultItemAnimator;
 import androidx.recyclerview.widget.ItemTouchHelper;
 import androidx.recyclerview.widget.LinearLayoutManager;
-import androidx.recyclerview.widget.LinearSmoothScrollerCustom;
+import org.telegram.ui.recyclerview.LinearSmoothScrollerCustom;
 import androidx.recyclerview.widget.RecyclerView;
 
 import org.telegram.messenger.AccountInstance;
@@ -156,6 +156,9 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
 
     @Override
     public boolean isActionBarCrossfadeEnabled() {
+        // This fragment animates its own glass identity island. Letting
+        // ActionBarLayout manually draw it a second time duplicates the
+        // title/avatar over profile and interrupted back transitions.
         return false;
     }
 
@@ -369,6 +372,10 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
         if (chatId != 0L) {
             TLRPC.Dialog dialog = messagesController.getDialog(-chatId);
             if (dialog != null) {
+                // Dialog flags are kept in sync with ChatFull and persisted by
+                // MessagesStorage. For a normal tap the dialog is already in
+                // memory, so do not block the UI thread on a redundant SQLite
+                // read before the navigation animation can even start.
                 return dialog.view_forum_as_messages
                         ? new ChatActivity(args)
                         : new TopicsFragment(args);
@@ -436,6 +443,9 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
             protected boolean drawChild(Canvas canvas, View child, long drawingTime) {
                 if (child == actionBar && !isInPreviewMode()) {
                     int y = (int) (actionBar.getY() + getActionBarFullHeight());
+                    // The forum header uses the same floating liquid-glass islands
+                    // as ChatActivity. A full-width shadow underneath would visually
+                    // reconnect the islands into the old solid toolbar.
                     if (searchAnimationProgress > 0) {
                         if (searchAnimationProgress < 1) {
                             int a = Theme.dividerPaint.getAlpha();
@@ -588,6 +598,10 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
                     if (iBlur3SourceGlassFrosted != null && !iBlur3SourceGlassFrosted.inRecording()) {
                         if (iBlur3SourceGlassFrosted.needUpdateDisplayList(width, height) || iBlur3Invalidated) {
                             final Canvas c = iBlur3SourceGlassFrosted.beginRecording(width, height);
+                            // Captured RecyclerView children do not cover the
+                            // elastic gap above the first row. Seed the source
+                            // with the real page colour so transparent pixels
+                            // never become a black slab under the glass header.
                             c.drawColor(getThemedColor(Theme.key_windowBackgroundWhite));
                             scrollableViewNoiseSuppressor.draw(c, DownscaleScrollableNoiseSuppressor.DRAW_FROSTED_GLASS);
                             iBlur3SourceGlassFrosted.endRecording();
@@ -871,8 +885,16 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
 
                 }
             });
+            // The complete identity island (avatar + title) fades while search is
+            // expanded, so there is no avatar left to reserve 56dp for.  Keeping
+            // the old forum padding shifted the hint/cursor far to the right and
+            // left a conspicuous empty area at the start of the search pill.
+            // Match ChatActivity's compact inset inside the glass search island.
             searchItem.setSearchPaddingStart(7);
             searchItem.setSearchFieldHint(getString(R.string.Search));
+            // The field keeps the standard ActionBar search palette.  The
+            // former window/player/chat keys belonged to three unrelated
+            // surfaces and produced mismatched colours on custom themes.
         }
         other = menu.addItem(0, R.drawable.ic_ab_other, themeDelegate);
         other.setContentDescription(getString(R.string.AccDescrMoreOptions));
@@ -927,6 +949,9 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
                 true);
         iBlur3Capture = new ViewGroupPartRenderer(recyclerListView, parentDialogsActivity != null ? (ViewGroup) parentDialogsActivity.getFragmentView() : contentView, recyclerListView::drawChild);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && scrollableViewNoiseSuppressor != null) {
+            // Match ChatActivity's event-driven blur pipeline. Rebuilding the
+            // capture from dispatchDraw made every unrelated animation frame
+            // walk and hash the visible topic cells.
             invalidateBlurredSourcesView = new OnPostDrawView(context, true, flags -> blur3_UpdateBlur());
             contentView.addView(invalidateBlurredSourcesView);
         }
@@ -1058,6 +1083,9 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
                 }
                 final long previousSelectedTopic = selectedTopicForTablet;
                 selectedTopicForTablet = topicId;
+                // Selection does not mutate the topic dataset. Rebuilding the
+                // complete list and running DiffUtil here delayed navigation
+                // just to repaint the old and new selected rows.
                 notifyTopicSelectionChanged(previousSelectedTopic);
                 notifyTopicSelectionChanged(selectedTopicForTablet);
             }
@@ -1100,6 +1128,10 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
                         && !hiddenShown
                         && (itemAnimator == null || !itemAnimator.isRunning())
                         && !TopicsFragment.this.recyclerListView.isArchiveSettleAnimationRunning()) {
+                    // A hidden General row does not always produce a DiffUtil
+                    // move. In that case afterAnimateMoveImpl is never called,
+                    // so release the manually drawn swipe copy when the
+                    // vertical close animation settles.
                     finishGeneralTopicMoving();
                 }
             }
@@ -1180,6 +1212,13 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
                 }
 
                 if (recyclerListView.getViewOffset() != 0 && dy > 0 && isDragging) {
+                    // Consume the elastic pull offset first. If this MOVE also
+                    // crosses zero, pass the remaining distance upward with
+                    // the original positive sign. The old code assigned the
+                    // negative temporary offset to measuredDy, reversing the
+                    // list for one frame when the finger changed direction;
+                    // General's text and its pull background then moved on
+                    // opposite sides of the floating header.
                     float currentOffset = recyclerListView.getViewOffset();
                     float consumedOffset = Math.min(currentOffset, dy);
                     recyclerListView.setViewsOffset(currentOffset - consumedOffset);
@@ -1260,8 +1299,17 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
                             && pullViewState == ARCHIVE_ITEM_STATE_HIDDEN
                             && firstView == null
                             && consumedDy < dy) {
+                        // Once General is fully hidden, an unconsumed upward
+                        // drag must not start an EdgeEffect. BlurredRecyclerView
+                        // intentionally relaxes its top clip while an edge is
+                        // active, which exposed the detached General holder
+                        // behind the floating forum header.
                         recyclerListView.setOverScrollMode(View.OVER_SCROLL_NEVER);
                     }
+                    // RecyclerView must be told about the distance consumed by
+                    // the translated overscroll as well as the real layout
+                    // scroll. Otherwise it treats that portion as unconsumed,
+                    // feeds it into EdgeEffect and desynchronizes the next MOVE.
                     recyclerListView.trackHiddenGeneralPull(
                             isDragging, dy, generalRevealBeforeScroll, viewOffsetBeforeScroll);
                     if (dy > 0 && translatedDy > 0) {
@@ -1301,6 +1349,10 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
                     if (!TopicsFragment.this.recyclerListView.isArchiveSettleAnimationRunning()) {
                         disableActionBarScrolling = false;
                     }
+                    // Padding/top-panel changes can reposition children without
+                    // a meaningful scroll delta. Snapshot the real geometry at
+                    // gesture start so the first MOVE is compared only with the
+                    // user's movement.
                     int firstVisibleItem = layoutManager.findFirstVisibleItemPosition();
                     if (firstVisibleItem != RecyclerView.NO_POSITION) {
                         View firstView = layoutManager.findViewByPosition(firstVisibleItem);
@@ -1336,6 +1388,11 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
                         goingDown = firstVisibleItem > prevPosition;
                     }
 
+                    // Initial anchoring, group-call padding and archive-settle
+                    // layouts also dispatch onScrolled(). They must not hide the
+                    // create-topic FAB. Only a real user drag/fling may change
+                    // its scroll visibility, and the first callback establishes
+                    // a baseline instead of comparing position 1 against zero.
                     if (changed && scrollUpdated
                             && scrollingManually
                             && !disableActionBarScrolling) {
@@ -1458,6 +1515,16 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
                 if (child == searchTabsView && isInPreviewMode()) {
                     int y = (int) (searchTabsView.getY() + searchTabsView.getMeasuredHeight());
                     getParentLayout().drawHeaderShadow(canvas, (int) (255 * searchAnimationProgress), y);
+//                    if (searchAnimationProgress > 0) {
+//                        if (searchAnimationProgress < 1) {
+//                            int a = Theme.dividerPaint.getAlpha();
+//                            Theme.dividerPaint.setAlpha((int) (a * searchAnimationProgress));
+//                            canvas.drawLine(0, y, getMeasuredWidth(), y, Theme.dividerPaint);
+//                            Theme.dividerPaint.setAlpha(a);
+//                        } else {
+//                            canvas.drawLine(0, y, getMeasuredWidth(), y, Theme.dividerPaint);
+//                        }
+//                    }
                 }
                 return super.drawChild(canvas, child, drawingTime);
             }
@@ -1489,6 +1556,11 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
         topPanelLayout.addOnLayoutChangeListener((v, left, top, right, bottom,
                                                   oldLeft, oldTop, oldRight, oldBottom) -> {
             if (bottom - top != oldBottom - oldTop) {
+                // AnimatedLinearLayout's metadata callback follows animation
+                // frames, but an already-active group call can populate the
+                // wrapper during its very first layout without producing such
+                // a frame. Apply that measured height immediately; otherwise
+                // the topics list keeps paddingTop=0 until the first scroll.
                 blur3_InvalidateBlur();
                 checkUi_listViewPadding();
                 if (recyclerListView != null) {
@@ -1526,6 +1598,10 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
             topPanelLayout.setCallFragmentContextView(fragmentContextView);
         }
 
+        // An already-running voice chat can become visible while the first
+        // layout pass is being prepared. Reconcile the measured panel inset
+        // before that frame reaches the screen; otherwise the topics are
+        // drawn at y=0 once and only jump below the panel after a touch/scroll.
         topPanelLayout.getViewTreeObserver().addOnPreDrawListener(new ViewTreeObserver.OnPreDrawListener() {
             @Override
             public boolean onPreDraw() {
@@ -1663,6 +1739,9 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
         if (iBlur3SourceColor != null) {
             iBlur3SourceColor.setColor(getThemedColor(Theme.key_windowBackgroundWhite));
         }
+        // The API 31+ source RenderNodes contain an explicit themed base fill.
+        // Re-record them on a live theme change; updating only the fallback
+        // color source leaves the previous light/dark fill cached.
         iBlur3Invalidated = true;
         if (contentView != null) {
             contentView.setBackgroundColor(getThemedColor(Theme.key_windowBackgroundWhite));
@@ -1785,6 +1864,12 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
         @Override
         public void captureCalculateHash(IBlur3Hash builder, RectF position) {
             super.captureCalculateHash(builder, position);
+            // RecyclerListView hashes child display lists, not their transient
+            // translation. The forum's elastic reveal moves every row through
+            // viewOffset without a normal RecyclerView scroll, so include that
+            // geometry (and animated call-panel padding) explicitly. This keeps
+            // the glass source moving continuously instead of updating in one
+            // abrupt jump when the first real scroll event arrives.
             builder.addF(viewOffset);
             builder.add(getPaddingTop());
             builder.addF(topPanelAnimatedInset);
@@ -1825,6 +1910,8 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
                     || offsetAfter > offsetBefore + epsilon)) {
                 hiddenGeneralPulledThisGesture = true;
             } else if (dy > 0 && revealAfter <= epsilon && offsetAfter <= epsilon) {
+                // The finger returned through the hidden anchor. Releasing now
+                // is an ordinary list scroll and must not start archive settle.
                 hiddenGeneralPulledThisGesture = false;
             }
         }
@@ -1890,12 +1977,20 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
             int screenClipSave = canvas.save();
             canvas.clipRect(0, getScreenContentClipTop(), getMeasuredWidth(),
                     getMeasuredHeight() + additionalClipBottom);
+            // DiffUtil may temporarily expose old and rebound General holders.
+            // Only the still-attached swiped holder may own the manual draw pass.
             View generalTopicView = isAttachedGeneralTopicView(generalTopicViewMoving)
                     ? generalTopicViewMoving : null;
             if (generalTopicView != null) {
                 canvas.save();
                 int generalTopicClipTop = getGeneralTopicClipTop();
                 if (generalTopicClipTop != 0) {
+                    // BlurredRecyclerView applies this clip inside its own
+                    // dispatchDraw. The manually drawn General cell is drawn
+                    // before that call. Unlike regular rows, hidden General
+                    // must also stay below animated top panels (group call,
+                    // pending requests), whose height is part of paddingTop
+                    // but not blurTopPadding.
                     canvas.clipRect(0, generalTopicClipTop, getMeasuredWidth(), getMeasuredHeight() + additionalClipBottom);
                 }
                 canvas.translate(generalTopicView.getLeft(), generalTopicView.getY());
@@ -1955,18 +2050,34 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
         }
 
         private int getGeneralTopicClipTop() {
+            // BlurredRecyclerView clips ordinary content only at the fixed
+            // action-bar blur boundary so it remains available as a glass
+            // source. General is a hidden pull-to-reveal row, therefore it
+            // must use the real content boundary including every animated
+            // top-panel inset.
             return hiddenCount > 0
                     ? Math.max(blurTopPadding, getPaddingTop())
                     : blurTopPadding;
         }
 
         private int getScreenContentClipTop() {
+            // BlurredRecyclerView normally drops this clip while an EdgeEffect
+            // is active. The forum pull gesture intentionally toggles that
+            // state, which made rows and the hidden-topic fill flash beneath
+            // the floating glass header. Keep the final screen pass clipped;
+            // blur capture still calls drawChild() directly with
+            // alwaysDrawChild and therefore retains its full source.
             return Math.max(blurTopPadding, getPaddingTop());
         }
 
         private int getPullForegroundClipTop() {
             int clipTop = getScreenContentClipTop();
             if (actionBar != null && actionBar.getVisibility() == View.VISIBLE) {
+                // recyclerListView is shifted upward by blurTopPadding while
+                // ActionBar is positioned in contentView coordinates.
+                // Convert the floating header's bottom into list coordinates
+                // so archivePullDownBackground never becomes an opaque slab
+                // behind the glass islands.
                 clipTop = Math.max(clipTop, actionBar.getBottom() - getTop());
             }
             return clipTop;
@@ -2161,6 +2272,13 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
                     stopScroll();
                     waitingForScrollFinished = true;
 
+                    // toggleShowTopic/updateTopicsList run immediately after
+                    // this call and may move/rebind the General row. Wait for
+                    // that layout and any DiffUtil move, then close it by its
+                    // real on-screen height.
+                    // The old immediate scrollToPositionWithOffset(1, 0)
+                    // teleported every row and made the list appear to fly
+                    // behind the floating ActionBar island.
                     AndroidUtilities.doOnPreDraw(this, () -> {
                         Runnable settleGeneralTopic = () -> {
                             if (animationGeneration != archiveVisibilityAnimationGeneration
@@ -2209,6 +2327,10 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
                     dialogCell.resetPinnedArchiveState();
                     dialogCell.invalidate();
                 }
+                // updateTopicsList() is called immediately after this method
+                // and may finish without a move animation. Release the manual
+                // General-row owner after that layout in both cases, otherwise
+                // a stale holder can survive until the next pull gesture.
                 AndroidUtilities.doOnPreDraw(this, () -> {
                     Runnable finishMovingGeneral = () -> {
                         if (animationGeneration == archiveVisibilityAnimationGeneration && hiddenShown) {
@@ -2273,8 +2395,17 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
                     int height = (int) (AndroidUtilities.dp(
                             SharedConfig.useThreeLinesLayout ? 78 : 72)
                             * PullForegroundDrawable.SNAP_HEIGHT);
+                    // Use the visual position only for deciding whether the
+                    // threshold was reached. The elastic translation is
+                    // animated back to zero separately, so including it in the
+                    // RecyclerView scroll distance moves General twice and
+                    // leaves stale pull progress for the next gesture.
                     int visualDiff = Math.round(
                             view.getY() - pTop + view.getMeasuredHeight());
+                    // Keep the sign: after an upward drag General may finish a
+                    // few pixels above the hidden anchor. Clamping that value
+                    // to zero skipped the settle animation, then the final
+                    // scrollToPositionWithOffset snapped the whole list down.
                     int layoutOffset = view.getBottom() - pTop;
                     long pullingTime = startArchivePullingTime == 0 ? 0
                             : System.currentTimeMillis() - startArchivePullingTime;
@@ -2314,6 +2445,9 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
                         }
                     });
                 } else if (getViewOffset() != 0f) {
+                    // A translated child may already be considered off-screen
+                    // by LayoutManager. Still settle and clear the gesture so
+                    // the next upward drag cannot resurrect its clipped text.
                     animateArchiveSettle(0, () -> {
                         scrollToGeneralTopicAnchor(false);
                         resetHiddenGeneralPullGesture();
@@ -2348,6 +2482,8 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
         dialogInsertFinished = 0;
         dialogChangeFinished = 0;
         AndroidUtilities.runOnUIThread(() -> {
+//            setDialogsListFrozen(false);
+//            updateDialogIndices();
         });
     }
 
@@ -2577,6 +2713,10 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
             other.setVisibility(View.VISIBLE);
             actionBar.checkMenuItemsWidth();
         } else {
+            // Remove the old menu island at the beginning of the morph.  Its
+            // icon is already faded by ActionBarMenuItem; keeping the view in
+            // layout until onAnimationEnd made the search pill change width a
+            // second time after it had visually settled.
             other.setVisibility(View.GONE);
             actionBar.checkMenuItemsWidth();
             AndroidUtilities.requestAdjustResize(getParentActivity(), classGuid);
@@ -2595,6 +2735,8 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
                 }
             }
         });
+        // Match ChatActivity's liquid-glass search morph so content, field and
+        // both rounded edges arrive together on every refresh rate.
         searchAnimator.setDuration(320);
         searchAnimator.setInterpolator(CubicBezierInterpolator.EASE_OUT_QUINT);
         searchAnimator.start();
@@ -2624,6 +2766,8 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
         int color2 = getThemedColor(Theme.key_actionBarActionModeDefaultSelector);
         actionBar.setItemsBackgroundColor(ColorUtils.blendARGB(color1, color2, searchAnimationProgress), false);
 
+        // Fade the complete identity island; fading only text left its avatar
+        // floating above the expanded search field.
         avatarContainer.setAlpha(1f - value);
         if (searchTabsView != null) {
             searchTabsView.setAlpha(value);
@@ -2712,6 +2856,9 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
                 if (inPreviewMode) {
                     ((View) fragmentView.getParent()).invalidate();
                 }
+                // Keep the forum identity visible while selection actions
+                // appear on the right. The action mode deliberately has no
+                // numeric counter, so there is nothing to draw over the avatar.
                 actionBar.showActionMode(true);
                 NotificationCenter.getGlobalInstance().postNotificationName(NotificationCenter.needCheckSystemBarColors);
                 Iterator<Integer> iterator = selectedTopics.iterator();
@@ -2841,6 +2988,8 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
             actionMode.setBackgroundColor(Color.TRANSPARENT);
             actionMode.drawBlur = false;
         }
+        // Flexible empty space keeps the action buttons on the right without
+        // replacing the forum avatar/title with a selected-items number.
         View actionModeSpacer = new View(actionMode.getContext());
         actionMode.addView(actionModeSpacer,
                 LayoutHelper.createLinear(0, LayoutHelper.MATCH_PARENT, 1.0f, 72, 0, 0, 0));
@@ -3164,6 +3313,10 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
             return;
         }
         emojiPickerPreloadScheduled = true;
+        // The picker data isn't required to render the topic list. Starting
+        // all emoji/status/category preloads from onFragmentCreate competes
+        // with the first layout and the navigation animation, which is most
+        // visible in forums containing many custom topic icons.
         AndroidUtilities.runOnUIThread(emojiPickerPreloadRunnable, 250);
     }
 
@@ -3190,6 +3343,7 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
         if (ChatObject.isChannel(chatLocal)) {
             getMessagesController().startShortPoll(chatLocal, classGuid, false);
         }
+        //TODO remove when server start send in get diff
         String settingsPreloadKey = currentAccount + ":" + chatId;
         boolean shouldPreloadSettings;
         synchronized (settingsPreloadLock) {
@@ -4167,6 +4321,7 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
                 Item item = new Item(FILTER_TYPE);
                 item.filterIndex = 0;
                 items.add(item);
+//                items.add(new Item(DOWNLOADS_TYPE));
                 item = new Item(FILTER_TYPE);
                 item.filterIndex = 1;
                 items.add(item);
@@ -4200,6 +4355,7 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
                         @Override
                         public void onScrolled(@NonNull RecyclerView recyclerView, int dx, int dy) {
                             super.onScrolled(recyclerView, dx, dy);
+//                                fragmentView.invalidateBlur();
                         }
                     });
                     downloadsContainer.setUiCallback(MessagesSearchContainer.this);
@@ -4212,6 +4368,7 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
                         @Override
                         public void onScrolled(@NonNull RecyclerView recyclerView, int dx, int dy) {
                             super.onScrolled(recyclerView, dx, dy);
+//                                fragmentView.invalidateBlur();
                         }
                     });
                     return filteredSearchView;
@@ -4264,6 +4421,7 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
             }
             args.putInt("message_id", messageObject.getId());
             TopicsFragment.this.presentFragment(new ChatActivity(args));
+//                showActionMode(false);
         }
 
         private ArrayList<MessageObject> selectedItems = new ArrayList<>();
@@ -4331,6 +4489,7 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
                 searchRunnable = null;
             }
 
+//            AndroidUtilities.updateViewVisibilityAnimated(TopicsFragment.this.searchContainer, !TextUtils.isEmpty(searchString), 1f, true);
 
             messagesIsLoading = false;
             canLoadMore = false;
@@ -4346,6 +4505,7 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
                     }
                 }
                 updateRows();
+                // emptyView.showProgress(true, true);
                 return;
             } else {
                 updateRows();
@@ -4370,6 +4530,7 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
 
                 if (!searchResultTopics.isEmpty()) {
                     isLoading = false;
+                    //   emptyView.showProgress(isLoading, true);
                     itemsEnterAnimator.showItemsAnimated(0);
                 }
 
@@ -4398,6 +4559,17 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
                 req.offset_id = searchResultMessages.get(searchResultMessages.size() - 1).getId();
             }
             messagesIsLoading = true;
+//            if (query.equals(lastMessagesSearchString) && !searchResultMessages.isEmpty()) {
+//                MessageObject lastMessage = searchResultMessages.get(searchResultMessages.size() - 1);
+//                req.offset_id = lastMessage.getId();
+//                req.offset_rate = nextSearchRate;
+//                long id = MessageObject.getPeerId(lastMessage.messageOwner.peer_id);
+//                req.offset_peer = MessagesController.getInstance(currentAccount).getInputPeer(id);
+//            } else {
+//                req.offset_rate = 0;
+//                req.offset_id = 0;
+//                req.offset_peer = new TLRPC.TL_inputPeerEmpty();
+//            }
             ConnectionsManager.getInstance(currentAccount).sendRequest(req, (response, error) -> AndroidUtilities.runOnUIThread(() -> {
                 if (searchString.equals(this.searchString)) {
                     int oldRowCount = rowCount;
@@ -4585,8 +4757,12 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
     private void normalizeHeaderGlassState() {
         if (actionBar != null) {
             if (avatarContainer != null) {
+                // Rebind defensively after ActionBar/container detach-reattach.
+                // The centre drawable deliberately has no fallback owner.
                 actionBar.setChatAvatarContainer(avatarContainer);
             }
+            // A completed/interrupted ProfileActivity transition may leave the
+            // Topics glass hidden while its title children are visible.
             actionBar.setSkipDrawChild(false);
             actionBar.setGlassAlpha(1f);
             if (searchAnimator == null || !searchAnimator.isRunning()) {
@@ -4612,6 +4788,9 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
     @Override
     public void prepareFragmentToSlide(boolean topFragment, boolean beginSlide) {
         if (!topFragment && beginSlide) {
+            // ProfileActivity leaves the source glass at alpha=0 while fully
+            // open. Restore it before ActionBarLayout exposes this fragment for
+            // an interactive/predictive back gesture, not after the gesture.
             normalizeHeaderGlassState();
             isSlideBackTransition = true;
             setFragmentIsSliding(true);
@@ -4621,6 +4800,10 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
             setFragmentIsSliding(false);
             setSlideTransitionProgress(1f);
             if (!topFragment && actionBar != null) {
+                // ActionBarLayout immediately hides the lower container when a
+                // gesture is cancelled, so keeping its stable visible endpoint
+                // cannot leak below the profile. More importantly, a later
+                // non-interactive return cannot inherit alpha=0.
                 actionBar.setGlassAlpha(1f);
             }
         }
@@ -5026,6 +5209,9 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
         return WindowInsetsCompat.CONSUMED;
     }
 
+
+
+    /* Blur */
 
     private final @Nullable DownscaleScrollableNoiseSuppressor scrollableViewNoiseSuppressor;
     private final @Nullable BlurredBackgroundSourceRenderNode iBlur3SourceGlassFrosted;

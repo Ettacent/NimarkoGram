@@ -107,6 +107,13 @@ public class Emoji {
         }
     }
 
+    /**
+     * NimarkoGram: render a standard emoji to a Bitmap SYNCHRONOUSLY (for notification icons,
+     * where the device font renders some glyphs broken). Loads + alpha-masks the atlas page on
+     * the calling thread if needed (mirrors {@link #loadEmoji}), so it never paints the async
+     * placeholder. Returns null if the code isn't a known emoji or the atlas can't be read.
+     * Call off the UI thread.
+     */
     public static Bitmap renderEmojiToBitmapSync(CharSequence code, int sizePx) {
         try {
             DrawableInfo info = getDrawableInfo(code);
@@ -450,6 +457,7 @@ public class Emoji {
                 b = getBounds();
             }
 
+            // NimarkoGram: render system emoji typeface when systemEmoji flag is on.
             if (app.nimarkogram.messenger.NimarkoConfig.systemEmoji) {
                 String emoji = fixEmoji(EmojiData.data[info.page][info.emojiIndex]);
                 textPaint.setTypeface(app.nimarkogram.messenger.utils.ui.FontHelper.getSystemEmojiTypeface());
@@ -771,7 +779,7 @@ public class Emoji {
             } catch (Exception e) {
                 FileLog.e(e);
             }
-            if ((Build.VERSION.SDK_INT < 23 || Build.VERSION.SDK_INT >= 29)  && (i + 1) >= limitCount) {
+            if ((Build.VERSION.SDK_INT < 23 || Build.VERSION.SDK_INT >= 29)/* && !BuildVars.DEBUG_PRIVATE_VERSION*/ && (i + 1) >= limitCount) {
                 break;
             }
         }
@@ -848,7 +856,7 @@ public class Emoji {
             } catch (Exception e) {
                 FileLog.e(e);
             }
-            if ((Build.VERSION.SDK_INT < 23 || Build.VERSION.SDK_INT >= 29)  && (i + 1) >= limitCount) {
+            if ((Build.VERSION.SDK_INT < 23 || Build.VERSION.SDK_INT >= 29)/* && !BuildVars.DEBUG_PRIVATE_VERSION*/ && (i + 1) >= limitCount) {
                 break;
             }
         }
@@ -860,6 +868,8 @@ public class Emoji {
         public float scale = 1f;
         public int size = AndroidUtilities.dp(20);
         public String emoji;
+        private boolean preserveFontMetrics;
+        private int minimumLineHeight;
 
         public EmojiSpan(Drawable d, int verticalAlignment, Paint.FontMetricsInt original) {
             super(d, verticalAlignment);
@@ -887,8 +897,24 @@ public class Emoji {
             }
         }
 
+        public EmojiSpan setPreserveFontMetrics(boolean preserveFontMetrics) {
+            this.preserveFontMetrics = preserveFontMetrics;
+            return this;
+        }
+
+        public EmojiSpan setMinimumLineHeight(int minimumLineHeight) {
+            this.minimumLineHeight = minimumLineHeight;
+            return this;
+        }
+
         @Override
         public int getSize(Paint paint, CharSequence text, int start, int end, Paint.FontMetricsInt fm) {
+            final boolean preserveMetrics = preserveFontMetrics && fm != null;
+            final int originalTop = preserveMetrics ? fm.top : 0;
+            final int originalAscent = preserveMetrics ? fm.ascent : 0;
+            final int originalDescent = preserveMetrics ? fm.descent : 0;
+            final int originalBottom = preserveMetrics ? fm.bottom : 0;
+            final int originalLeading = preserveMetrics ? fm.leading : 0;
             if (fm == null) {
                 fm = new Paint.FontMetricsInt();
             }
@@ -905,6 +931,14 @@ public class Emoji {
                 fm.leading = 0;
                 fm.descent = w - offset;
 
+                if (preserveMetrics) {
+                    fm.top = originalTop;
+                    fm.ascent = originalAscent;
+                    fm.descent = originalDescent;
+                    fm.bottom = originalBottom;
+                    fm.leading = originalLeading;
+                    expandFontMetrics(fm, minimumLineHeight);
+                }
                 return sz;
             } else {
                 if (fm != null) {
@@ -917,8 +951,30 @@ public class Emoji {
                 if (getDrawable() != null) {
                     getDrawable().setBounds(0, 0, scaledSize, scaledSize);
                 }
+                if (preserveMetrics) {
+                    fm.top = originalTop;
+                    fm.ascent = originalAscent;
+                    fm.descent = originalDescent;
+                    fm.bottom = originalBottom;
+                    fm.leading = originalLeading;
+                    expandFontMetrics(fm, minimumLineHeight);
+                }
                 return scaledSize;
             }
+        }
+
+        private static void expandFontMetrics(Paint.FontMetricsInt fm, int minimumHeight) {
+            final int currentHeight = fm.descent - fm.ascent;
+            if (minimumHeight <= currentHeight) {
+                return;
+            }
+            final int extra = minimumHeight - currentHeight;
+            final int above = (extra + 1) / 2;
+            final int below = extra - above;
+            fm.ascent -= above;
+            fm.descent += below;
+            fm.top = Math.min(fm.top, fm.ascent);
+            fm.bottom = Math.max(fm.bottom, fm.descent);
         }
 
         public boolean drawn;

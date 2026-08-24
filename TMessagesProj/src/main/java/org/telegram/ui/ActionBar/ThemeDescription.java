@@ -246,7 +246,7 @@ public class ThemeDescription {
                     ((ScamDrawable) drawablesToUpdate[a]).setColor(color);
                 } else if (drawablesToUpdate[a] instanceof RLottieDrawable) {
                     if (lottieLayerName != null) {
-                        ((RLottieDrawable) drawablesToUpdate[a]).setLayerColor(lottieLayerName + ".**", color);
+                        ((RLottieDrawable) drawablesToUpdate[a]).setLayerColor(lottieLayerName, color);
                     }
                 } else if (drawablesToUpdate[a] instanceof CombinedDrawable) {
                     if ((changeFlags & FLAG_BACKGROUNDFILTER) != 0) {
@@ -405,6 +405,7 @@ public class ThemeDescription {
                         ((ImageView) viewToInvalidate).setColorFilter(new PorterDuffColorFilter(color, PorterDuff.Mode.MULTIPLY));
                     }
                 } else if (viewToInvalidate instanceof BackupImageView) {
+                    //((BackupImageView) viewToInvalidate).setResourceImageColorFilter(new PorterDuffColorFilter(color, PorterDuff.Mode.MULTIPLY));
                 } else if (viewToInvalidate instanceof SimpleTextView) {
                     SimpleTextView textView = (SimpleTextView) viewToInvalidate;
                     textView.setSideDrawablesColor(color);
@@ -468,6 +469,9 @@ public class ThemeDescription {
         }
         if (listClasses != null) {
             if (viewToInvalidate instanceof RecyclerListView) {
+                // Attached children still animate below. Detached holders only need
+                // the final colour; clearing and walking the pool for every theme
+                // key on every animation frame is pure frame-time overhead.
                 if (!Theme.isAnimatingColor()) {
                     updateCachedRecyclerViews(color);
                 }
@@ -591,7 +595,7 @@ public class ThemeDescription {
                                     ((View) object).invalidate();
                                 }
                                 if (lottieLayerName != null && object instanceof RLottieImageView) {
-                                    ((RLottieImageView) object).setLayerColor(lottieLayerName + ".**", color);
+                                    ((RLottieImageView) object).setLayerColor(lottieLayerName, color);
                                 }
                                 if ((changeFlags & FLAG_USEBACKGROUNDDRAWABLE) != 0 && object instanceof View) {
                                     object = ((View) object).getBackground();

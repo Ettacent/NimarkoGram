@@ -32,6 +32,7 @@ import android.text.Spanned;
 import android.view.Gravity;
 import android.view.MotionEvent;
 import android.view.View;
+import android.view.ViewGroup;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
@@ -477,6 +478,7 @@ public final class NimarkoQuoteCreator {
         private final LinearLayout rootView;
         private final ScrollView scrollView;
         private final FrameLayout previewFrame;
+        private final int maxPreviewHeight;
         private final int reservedPreviewHeight;
         private final ButtonWithCounterView sendButton;
         private final ButtonWithCounterView saveButton;
@@ -488,6 +490,9 @@ public final class NimarkoQuoteCreator {
         private volatile int previewGeneration;
         private int previewBuildStartedGeneration;
         private boolean previewReady;
+        private int settledPreviewWidth = -1;
+        private int settledPreviewHeight = -1;
+        private int stablePreviewLayoutFrames;
         private boolean exporting;
         private boolean saving;
         private volatile boolean dismissed;
@@ -581,6 +586,10 @@ public final class NimarkoQuoteCreator {
 
             previewFrame = new FrameLayout(context);
             previewFrame.setPadding(AndroidUtilities.dp(14), AndroidUtilities.dp(4), AndroidUtilities.dp(14), AndroidUtilities.dp(10));
+            maxPreviewHeight = Math.min(
+                    AndroidUtilities.dp(560),
+                    Math.round(AndroidUtilities.displaySize.y * 0.60f)
+            );
             reservedPreviewHeight = estimatePreviewHeight(messages);
             previewFrame.setMinimumHeight(reservedPreviewHeight);
             scrollView.setOnScrollChangeListener(
@@ -709,6 +718,12 @@ public final class NimarkoQuoteCreator {
                 card.setScaleX(1f);
                 card.setScaleY(1f);
                 card.setVisibility(View.INVISIBLE);
+                card.addOnLayoutChangeListener((view, left, top, right, bottom,
+                                                oldLeft, oldTop, oldRight, oldBottom) -> {
+                    if (previewReady && bitmapPreview == null && !dismissed) {
+                        syncPreviewViewportHeight(card);
+                    }
+                });
                 quoteCard = card;
                 previewFrame.addView(card, 0, cardLayoutParams());
                 previewFrame.postOnAnimation(() -> buildPreviewStep(generation));
@@ -754,9 +769,29 @@ public final class NimarkoQuoteCreator {
             if (!isPreviewBuildValid(generation) || quoteCard != card) return;
             card.setStaticMediaActive(true);
             boolean pending = card.hasPendingStaticPreviewMedia();
+            boolean presentationReady = card.isPresentationReady();
+            if (presentationReady) {
+                int width = card.getMeasuredWidth();
+                int height = card.getMeasuredHeight();
+                if (width == settledPreviewWidth && height == settledPreviewHeight) {
+                    stablePreviewLayoutFrames++;
+                } else {
+                    settledPreviewWidth = width;
+                    settledPreviewHeight = height;
+                    stablePreviewLayoutFrames = 0;
+                }
+                if (syncPreviewViewportHeight(card)
+                        && SystemClock.uptimeMillis() < deadline) {
+                    previewFrame.postOnAnimation(
+                            () -> waitForPreviewMedia(generation, card, deadline, frame + 1)
+                    );
+                    return;
+                }
+            }
             if ((frame < MEDIA_PREVIEW_SETTLE_MIN_FRAMES
-                    || !card.isPresentationReady()
-                    || pending)
+                    || !presentationReady
+                    || pending
+                    || stablePreviewLayoutFrames < 1)
                     && SystemClock.uptimeMillis() < deadline) {
                 previewFrame.postOnAnimation(
                         () -> waitForPreviewMedia(generation, card, deadline, frame + 1)
@@ -766,11 +801,35 @@ public final class NimarkoQuoteCreator {
             long pixels = (long) card.getWidth() * card.getHeight();
             boolean snapshotCandidate = pixels > MAX_LIVE_PREVIEW_PIXELS
                     && !card.requiresLivePreview();
-            if (pending || !card.isPresentationReady() || !snapshotCandidate) {
+            if (pending || !presentationReady || !snapshotCandidate) {
                 completePreview(generation, card);
             } else {
                 createBitmapPreview(generation, card);
             }
+        }
+
+        private boolean syncPreviewViewportHeight(QuoteCardView card) {
+            int cardHeight = card.getMeasuredHeight();
+            if (cardHeight <= 0) return false;
+            int desiredHeight = Math.min(
+                    maxPreviewHeight,
+                    Math.max(
+                            AndroidUtilities.dp(180),
+                            cardHeight + previewFrame.getPaddingTop() + previewFrame.getPaddingBottom()
+                    )
+            );
+            ViewGroup.LayoutParams layoutParams = scrollView.getLayoutParams();
+            boolean changed = previewFrame.getMinimumHeight() != 0
+                    || layoutParams == null
+                    || layoutParams.height != desiredHeight;
+            if (!changed) return false;
+            previewFrame.setMinimumHeight(0);
+            if (layoutParams != null) {
+                layoutParams.height = desiredHeight;
+                scrollView.setLayoutParams(layoutParams);
+            }
+            rootView.requestLayout();
+            return true;
         }
 
         private void createBitmapPreview(int generation, QuoteCardView card) {
@@ -1174,8 +1233,7 @@ public final class NimarkoQuoteCreator {
                         chatActivity.getChatMode(),
                         exportedAsDocument,
                         null,
-                        chatActivity.quickReplyShortcut,
-                        chatActivity.getQuickReplyId(),
+                        chatActivity.getMessageChatSendParams(),
                         0,
                         0,
                         chatActivity.getSendMonoForumPeerId(),

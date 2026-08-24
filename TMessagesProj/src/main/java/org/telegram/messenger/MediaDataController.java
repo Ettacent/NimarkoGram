@@ -67,6 +67,7 @@ import org.telegram.tgnet.TLRPC;
 import org.telegram.tgnet.Vector;
 import org.telegram.tgnet.tl.TL_account;
 import org.telegram.tgnet.tl.TL_bots;
+import org.telegram.tgnet.tl.TL_ephemeral;
 import org.telegram.tgnet.tl.TL_iv;
 import org.telegram.tgnet.tl.TL_update;
 import org.telegram.ui.ActionBar.BaseFragment;
@@ -204,6 +205,7 @@ public class MediaDataController extends BaseController {
                 }
                 serializedData.cleanup();
             } catch (Exception e) {
+                //igonre
             }
         }
         loadRepliesOfDraftReplies(replyMessageOwners);
@@ -1310,6 +1312,7 @@ public class MediaDataController extends BaseController {
         });
     }
 
+    /** Index-addressed variant used by the plugin engine to render pack icons (Nimarko parity). */
     public void setPlaceholderImageByIndex(final BackupImageView backupImageView, String setName, final int index, final String filter) {
         TLRPC.TL_inputStickerSetShortName inputStickerSet = new TLRPC.TL_inputStickerSetShortName();
         inputStickerSet.short_name = setName;
@@ -2204,8 +2207,18 @@ public class MediaDataController extends BaseController {
                     if (gif) {
                         recentGifs = documents;
                     } else if (type == TYPE_FAVE) {
+                        // Favorites are authoritative server state. Merging old
+                        // local entries here resurrected stickers the user had
+                        // removed on another device (or in another session).
                         recentStickers[type] = documents;
                     } else {
+                        // NG: server-side stickers_recent_limit (≈30) often
+                        // sits below the user's local NimarkoConfig.recentStickersAmplifier
+                        // cap (10–50). Plain overwrite would clamp the user's
+                        // local history to ~30. Merge instead: server's
+                        // freshest-first list goes first; any locally-tracked
+                        // entries that aren't in the server response get
+                        // appended at the tail, total bounded by amplifier+1.
                         int cap = app.nimarkogram.messenger.NimarkoConfig.recentStickersAmplifier + 1;
                         ArrayList<TLRPC.Document> merged = new ArrayList<>(documents);
                         if (merged.size() < cap && recentStickers[type] != null) {
@@ -2247,6 +2260,7 @@ public class MediaDataController extends BaseController {
         });
         loadHash[type] = calcStickersHash(stickerSets[type]);
         getNotificationCenter().postNotificationName(NotificationCenter.stickersDidLoad, type, forceUpdateUi);
+        //loadStickers(type, false, true);
     }
 
     public void calcNewHash(int type) {
@@ -2339,7 +2353,7 @@ public class MediaDataController extends BaseController {
                             data.reuse();
                         }
                         date = cursor.intValue(2);
-                        hash = cursor.longValue(3);
+                        hash = cursor.longValue(3); // calcFeaturedStickersHash(emoji, newStickerArray);
                         premium = cursor.intValue(4) == 1;
                     }
                 } catch (Throwable e) {
@@ -2882,7 +2896,7 @@ public class MediaDataController extends BaseController {
                 req.stickerset = inputStickerSetShortName;
             }
             getConnectionsManager().sendRequest(req, (response, error) -> AndroidUtilities.runOnUIThread(() -> {
-                if (BuildConfig.DEBUG && error != null) {
+                if (BuildConfig.DEBUG && error != null) { //supress test backend warning
                     return;
                 }
                 if (response instanceof TLRPC.TL_messages_stickerSet) {
@@ -3383,6 +3397,9 @@ public class MediaDataController extends BaseController {
         }
     }
 
+    /**
+     * @param toggle 0 - remove, 1 - archive, 2 - add
+     */
     public void toggleStickerSet(Context context, TLObject stickerSetObject, int toggle, BaseFragment baseFragment, boolean showSettings, boolean showTooltip) {
         toggleStickerSet(context, stickerSetObject, toggle, baseFragment, showSettings, showTooltip, null, true);
     }
@@ -3508,6 +3525,7 @@ public class MediaDataController extends BaseController {
         if (messages_stickerSet == null) {
             return;
         }
+//        TLRPC.StickerSet stickerSet = messages_stickerSet.set;
 
         int type1 = TYPE_IMAGE;
         if (messages_stickerSet.set.masks) {
@@ -3618,6 +3636,9 @@ public class MediaDataController extends BaseController {
         }
     }
 
+    /**
+     * @param toggle 0 - uninstall, 1 - archive, 2 - unarchive
+     */
     public void toggleStickerSets(ArrayList<TLRPC.StickerSet> stickerSetList, int type, int toggle, BaseFragment baseFragment, boolean showSettings) {
         int stickerSetListSize = stickerSetList.size();
         ArrayList<TLRPC.InputStickerSet> inputStickerSets = new ArrayList<>(stickerSetListSize);
@@ -3687,6 +3708,7 @@ public class MediaDataController extends BaseController {
             baseFragment.showDialog(alert.create());
         }
     }
+    //---------------- STICKERS END ----------------
 
     private int reqId;
     private int mergeReqId;
@@ -3980,6 +4002,9 @@ public class MediaDataController extends BaseController {
                     req.saved_reaction.add(reaction.toTLReaction());
                     req.flags |= 8;
                 }
+                // NimarkoGram: CG parity — honor user-selected search filter (Photos / Videos /
+                // Files / etc.) instead of always Empty. Mirrors CG MediaDataController line ~3918
+                // (req.filter = ChatsHelper2.INSTANCE.getSearchFilterType()).
                 req.filter = app.nimarkogram.messenger.utils.chats.NimarkoChatHelper2.getSearchFilterType();
                 mergeReqId = getConnectionsManager().sendRequest(req, (response, error) -> AndroidUtilities.runOnUIThread(() -> {
                     if (lastMergeDialogId == mergeDialogId) {
@@ -4065,6 +4090,9 @@ public class MediaDataController extends BaseController {
             req.saved_reaction.add(reaction.toTLReaction());
             req.flags |= 8;
         }
+        // NimarkoGram: CG parity — honor user-selected search filter (Photos / Videos / Files /
+        // etc.) instead of always Empty. Mirrors CG MediaDataController line ~4003
+        // (req.filter = ChatsHelper2.INSTANCE.getSearchFilterType()).
         req.filter = app.nimarkogram.messenger.utils.chats.NimarkoChatHelper2.getSearchFilterType();
         lastSearchQuery = query;
         long queryWithDialogFinal = queryWithDialog;
@@ -4170,6 +4198,7 @@ public class MediaDataController extends BaseController {
     public String getLastSearchQuery() {
         return lastSearchQuery;
     }
+    //---------------- MESSAGE SEARCH END ----------------
 
 
     public final static int MEDIA_PHOTOVIDEO = 0;
@@ -5008,6 +5037,7 @@ public class MediaDataController extends BaseController {
             AndroidUtilities.runOnUIThread(() -> getNotificationCenter().postNotificationName(NotificationCenter.musicDidLoad, dialogId, arrayListBegin, arrayListEnd));
         });
     }
+    //---------------- MEDIA END ----------------
 
     public ArrayList<TLRPC.TL_topPeer> hints = new ArrayList<>();
     public ArrayList<TLRPC.TL_topPeer> inlineBots = new ArrayList<>();
@@ -5819,6 +5849,7 @@ public class MediaDataController extends BaseController {
                         try {
                             canvas.setBitmap(null);
                         } catch (Exception e) {
+                            //don't promt, this will crash on 2.x
                         }
                         bitmap = result;
                     }
@@ -5979,6 +6010,7 @@ public class MediaDataController extends BaseController {
     public boolean canCreateAttachedMenuBotShortcut(long botId) {
         return true;
     }
+    //---------------- SEARCH END ----------------
 
     private static Comparator<TLRPC.MessageEntity> entityComparator = (entity1, entity2) -> {
         if (entity1.offset > entity2.offset) {
@@ -6191,6 +6223,7 @@ public class MediaDataController extends BaseController {
         getMessagesStorage().getStorageQueue().postRunnable(() -> {
             try {
                 getMessagesStorage().getDatabase().beginTransaction();
+                //SQLitePreparedStatement state = getMessagesStorage().getDatabase().executeFast("UPDATE chat_pinned_v2 SET data = ? WHERE uid = ? AND mid = ?");
                 SQLitePreparedStatement state = getMessagesStorage().getDatabase().executeFast("REPLACE INTO chat_pinned_v2 VALUES(?, ?, ?)");
                 for (int a = 0, N = arrayList.size(); a < N; a++) {
                     TLRPC.Message message = arrayList.get(a);
@@ -6610,9 +6643,9 @@ public class MediaDataController extends BaseController {
                             }
                         }
                         if (!ephemeralIds.isEmpty()) {
-                            ArrayList<TLRPC.EphemeralMessage> ephemeralMessages = getMessagesStorage().getEphemeralMessagesInternal(dialogId, ephemeralIds);
+                            ArrayList<TL_ephemeral.EphemeralMessage> ephemeralMessages = getMessagesStorage().getEphemeralMessagesInternal(dialogId, ephemeralIds);
                             if (ephemeralMessages != null) {
-                                for (TLRPC.EphemeralMessage ephemeralMessage : ephemeralMessages) {
+                                for (TL_ephemeral.EphemeralMessage ephemeralMessage : ephemeralMessages) {
                                     TLRPC.Message convetedEphemeralMessage = EphemeralMessagesHelper.convertEphemeralToFakeDefault(ephemeralMessage);
                                     MessagesStorage.addUsersAndChatsFromMessage(convetedEphemeralMessage, usersToLoad, chatsToLoad, null);
                                     result.add(convetedEphemeralMessage);
@@ -7021,7 +7054,9 @@ public class MediaDataController extends BaseController {
     }
 
     public static void addTextStyleRuns(MessageObject msg, Spannable text) {
+        // NM_MF: wrap msg.entities with CG-style spoiler entities derived from MessageFilters.
         ArrayList<TLRPC.MessageEntity> ents = MessagesFilterHelper.INSTANCE.addSpoilerEntities(msg);
+        // NM_PWD: overlay full-body spoiler for locked / encrypted dialogs.
         ents = app.nimarkogram.messenger.utils.chats.NimarkoChatsPasswordHelper.checkLockedChatsEntities(msg, ents);
         addTextStyleRuns(ents, msg.messageText, text, -1);
     }
@@ -7031,7 +7066,9 @@ public class MediaDataController extends BaseController {
     }
 
     public static void addTextStyleRuns(MessageObject msg, Spannable text, int allowedFlags) {
+        // NM_MF: wrap msg.entities with CG-style spoiler entities derived from MessageFilters.
         ArrayList<TLRPC.MessageEntity> ents = MessagesFilterHelper.INSTANCE.addSpoilerEntities(msg);
+        // NM_PWD: overlay full-body spoiler for locked / encrypted dialogs.
         ents = app.nimarkogram.messenger.utils.chats.NimarkoChatsPasswordHelper.checkLockedChatsEntities(msg, ents);
         addTextStyleRuns(ents, msg.messageText, text, allowedFlags);
     }
@@ -7496,6 +7533,25 @@ public class MediaDataController extends BaseController {
                         s.removeSpan(spansUrl[b]);
                     }
                 }
+//
+//                AndroidUtilities.doSafe(() -> Linkify.addLinks(s, Linkify.PHONE_NUMBERS));
+//                spansUrl = s.getSpans(0, message[0].length(), URLSpan.class);
+//                if (spansUrl != null && spansUrl.length > 0) {
+//                    if (entities == null) {
+//                        entities = new ArrayList<>();
+//                    }
+//                    for (int b = 0; b < spansUrl.length; b++) {
+//                        if (spansUrl[b] instanceof URLSpanReplacement || spansUrl[b] instanceof URLSpanUserMention) {
+//                            continue;
+//                        }
+//                        TLRPC.TL_messageEntityTextUrl entity = new TLRPC.TL_messageEntityTextUrl();
+//                        entity.offset = spannable.getSpanStart(spansUrl[b]);
+//                        entity.length = Math.min(spannable.getSpanEnd(spansUrl[b]), message[0].length()) - entity.offset;
+//                        entity.url = spansUrl[b].getURL();
+//                        entities.add(entity);
+//                        s.removeSpan(spansUrl[b]);
+//                    }
+//                }
             }
         }
 
@@ -7510,6 +7566,7 @@ public class MediaDataController extends BaseController {
             }
         }
 
+        // trim again in case some whitespace inside tags
         while (cs.length() > 0 && (cs.charAt(0) == '\n' || cs.charAt(0) == ' ')) {
             cs = cs.subSequence(1, cs.length());
             for (int i = 0; i < entities.size(); ++i) {
@@ -7596,12 +7653,14 @@ public class MediaDataController extends BaseController {
             String gr = m.group(1);
             boolean allowEntity = true;
             if (cs instanceof Spannable) {
+                // check if it is inside a link: do not convert __ ** to styles inside links
                 URLSpan[] spansUrl = ((Spannable) cs).getSpans(m.start() - offset, m.end() - offset, URLSpan.class);
                 if (spansUrl != null && spansUrl.length > 0) {
                     allowEntity = false;
                 }
             }
             if (allowEntity) {
+                // check if it is inside a code block: do not convert __ ** || to styles inside code
                 for (int i = 0; i < entities.size(); ++i) {
                     final TLRPC.MessageEntity entity = entities.get(i);
                     if (entity instanceof TLRPC.TL_messageEntityPre || entity instanceof TLRPC.TL_messageEntityCode) {
@@ -7641,6 +7700,7 @@ public class MediaDataController extends BaseController {
         }
     }
 
+    //---------------- MESSAGES END ----------------
 
     private LongSparseArray<Integer> draftsFolderIds = new LongSparseArray<>();
     private LongSparseArray<LongSparseArray<TLRPC.DraftMessage>> drafts = new LongSparseArray<>();
@@ -8035,6 +8095,9 @@ public class MediaDataController extends BaseController {
             if (threads != null) {
                 replyToMessage = threads.get(threadId);
             }
+//            if (replyToMessage == null || replyToMessage.id != draft.reply_to.reply_to_msg_id || !MessageObject.peersEqual(draft.reply_to.reply_to_peer_id, replyToMessage.peer_id)) {
+//                replyToMessage = null;
+//            }
         } else if (draft != null && draft.reply_to == null) {
             replyToMessage = null;
         }
@@ -8066,6 +8129,9 @@ public class MediaDataController extends BaseController {
                 FileLog.e(e);
             }
         }
+        // Keep draft + reply changes in one transaction and move the disk write
+        // off the main thread. SharedPreferences still updates its in-memory map
+        // before apply() returns, so immediate readers preserve commit semantics.
         editor.apply();
         if (fromServer && (threadId == 0 || getMessagesController().isForum(dialogId))) {
             if (draft != null && draft.reply_to != null && draft.reply_to.reply_to_msg_id != 0 && (replyToMessage == null || replyToMessage.reply_to instanceof TLRPC.TL_messageReplyHeader && replyToMessage.replyMessage == null)) {
@@ -8242,6 +8308,7 @@ public class MediaDataController extends BaseController {
         inTransaction = false;
     }
 
+    //---------------- DRAFT END ----------------
 
     private HashMap<String, TL_bots.BotInfo> botInfos = new HashMap<>();
     private LongSparseArray<ArrayList<TLRPC.Message>> botDialogKeyboards = new LongSparseArray<>();
@@ -8695,6 +8762,9 @@ public class MediaDataController extends BaseController {
         return null;
     }
 
+    //---------------- BOT END ----------------
+
+    //---------------- EMOJI START ----------------
 
     public static class KeywordResult {
         public KeywordResult() {
@@ -9409,9 +9479,10 @@ public class MediaDataController extends BaseController {
         }
     }
 
+    //---------------- EMOJI END ----------------
 
     public ArrayList<TLRPC.EmojiStatus> getDefaultEmojiStatuses() {
-        final int type = 1;
+        final int type = 1; // default
         if (!emojiStatusesFromCacheFetched[type]) {
             fetchEmojiStatuses(type, true);
         } else if (emojiStatuses[type] == null || emojiStatusesFetchDate[type] != null && (System.currentTimeMillis() / 1000 - emojiStatusesFetchDate[type]) > 60 * 30) {
@@ -9421,7 +9492,7 @@ public class MediaDataController extends BaseController {
     }
 
     public ArrayList<TLRPC.EmojiStatus> getDefaultChannelEmojiStatuses() {
-        final int type = 2;
+        final int type = 2; // default channel
         if (!emojiStatusesFromCacheFetched[type]) {
             fetchEmojiStatuses(type, true);
         } else if (emojiStatuses[type] == null || emojiStatusesFetchDate[type] != null && (System.currentTimeMillis() / 1000 - emojiStatusesFetchDate[type]) > 60 * 30) {
@@ -9431,7 +9502,7 @@ public class MediaDataController extends BaseController {
     }
 
     public ArrayList<TLRPC.EmojiStatus> getRecentEmojiStatuses() {
-        final int type = 0;
+        final int type = 0; // recent
         if (!emojiStatusesFromCacheFetched[type]) {
             fetchEmojiStatuses(type, true);
         } else if (emojiStatuses[type] == null || emojiStatusesFetchDate[type] != null && (System.currentTimeMillis() / 1000 - emojiStatusesFetchDate[type]) > 60 * 30) {
@@ -9441,7 +9512,7 @@ public class MediaDataController extends BaseController {
     }
 
     public ArrayList<TLRPC.EmojiStatus> clearRecentEmojiStatuses() {
-        final int type = 0;
+        final int type = 0; // recent
         if (emojiStatuses[type] != null) {
             emojiStatuses[type].clear();
         }
@@ -9455,7 +9526,7 @@ public class MediaDataController extends BaseController {
     }
 
     public void pushRecentEmojiStatus(TLRPC.EmojiStatus status) {
-        final int type = 0;
+        final int type = 0; // recent
         if (emojiStatuses[type] != null) {
             if (status instanceof TLRPC.TL_emojiStatus) {
                 long documentId = ((TLRPC.TL_emojiStatus) status).document_id;
@@ -9472,6 +9543,7 @@ public class MediaDataController extends BaseController {
             }
 
             TL_account.TL_emojiStatuses statuses = new TL_account.TL_emojiStatuses();
+            // todo: calc hash
             statuses.hash = emojiStatusesHash[type];
             statuses.statuses = emojiStatuses[type];
             updateEmojiStatuses(type, statuses);

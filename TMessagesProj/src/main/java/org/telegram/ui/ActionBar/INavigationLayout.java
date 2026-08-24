@@ -78,9 +78,11 @@ public interface INavigationLayout {
     void onActionModeFinished(Object mode);
     void startActivityForResult(Intent intent, int requestCode);
 
-    Theme.MessageDrawable getMessageDrawableOutStart();
-    Theme.MessageDrawable getMessageDrawableOutMediaStart();
+    // TODO: Migrate them to be out of navigation layout
+    MessageDrawable getMessageDrawableOutStart();
+    MessageDrawable getMessageDrawableOutMediaStart();
 
+    // TODO: Make something like FieldsContainer and put them there?
     List<BackButtonMenu.PulledDialog> getPulledDialogs();
     void setPulledDialogs(List<BackButtonMenu.PulledDialog> pulledDialogs);
 
@@ -118,21 +120,30 @@ public interface INavigationLayout {
     }
 
     default void setBackgroundView(View backgroundView) {
-        
+        // Not always required
     }
 
     default void setUseAlphaAnimations(boolean useAlphaAnimations) {
-        
+        // Not always required
     }
 
+    /**
+     * @deprecated Should be replaced with {@link INavigationLayout#rebuildFragments(int)}
+     */
     @Deprecated
     default void rebuildLogout() {
-        
+        // No-op usually, can contain hackfixes
     }
 
+    /**
+     * @deprecated Should be replaced with {@link INavigationLayout#rebuildFragments(int)}
+     */
     @Deprecated
     default void showLastFragment() {}
 
+    /**
+     * @deprecated Should be replaced with {@link INavigationLayout#rebuildFragments(int)}
+     */
     @Deprecated
     default void rebuildAllFragmentViews(boolean last, boolean showLastAfter) {}
 
@@ -219,6 +230,9 @@ public interface INavigationLayout {
         init(stack);
     }
 
+    /**
+     * @deprecated This method was replaced with {@link INavigationLayout#setFragmentStack(List)}
+     */
     @Deprecated
     default void init(List<BaseFragment> stack) {
         throw new RuntimeException("Neither setFragmentStack(...) or init(...) were overriden!");
@@ -236,7 +250,9 @@ public interface INavigationLayout {
     }
 
     default boolean presentFragment(BaseFragment fragment) {
-        
+        // NimarkoGram (CG L255 / L278): biometric gate when opening a locked
+        // chat or the archive folder. shouldRequireBiometrics* are no-ops if
+        // the user hasn't turned the flag on, so the fast path is unaffected.
         if (fragment instanceof ChatActivity
                 && (app.nimarkogram.messenger.NimarkoConfig.askBiometricsToOpenChat
                     || app.nimarkogram.messenger.NimarkoConfig.askBiometricsToOpenEncrypted)) {
@@ -300,9 +316,12 @@ public interface INavigationLayout {
         return presentFragment(new NavigationParams(fragment).setPreview(true).setMenuView(menuView));
     }
 
+    /**
+     * @deprecated You should use {@link INavigationLayout.NavigationParams} for advanced params
+     */
     @Deprecated
     default boolean presentFragment(BaseFragment fragment, boolean removeLast, boolean forceWithoutAnimation, boolean check, boolean preview) {
-        
+        // NimarkoGram (CG L321): biometric gate for ChatActivity on deprecated overload.
         if (!(fragment instanceof ChatActivity) || check) {
             return presentFragment(new NavigationParams(fragment).setRemoveLast(removeLast).setNoAnimation(forceWithoutAnimation).setCheckPresentFromDelegate(check).setPreview(preview));
         }
@@ -333,9 +352,12 @@ public interface INavigationLayout {
         return presentFragment(new NavigationParams(fragment).setRemoveLast(removeLast).setNoAnimation(forceWithoutAnimation).setCheckPresentFromDelegate(check).setPreview(preview));
     }
 
+    /**
+     * @deprecated You should use {@link INavigationLayout.NavigationParams} for advanced params
+     */
     @Deprecated
     default boolean presentFragment(BaseFragment fragment, boolean removeLast, boolean forceWithoutAnimation, boolean check, boolean preview, ActionBarPopupWindow.ActionBarPopupWindowLayout menuView) {
-        
+        // NimarkoGram (CG L368): biometric gate for ChatActivity on deprecated overload with menuView.
         if (!(fragment instanceof ChatActivity)) {
             return presentFragment(new NavigationParams(fragment).setRemoveLast(removeLast).setNoAnimation(forceWithoutAnimation).setCheckPresentFromDelegate(check).setPreview(preview).setMenuView(menuView));
         }
@@ -398,6 +420,9 @@ public interface INavigationLayout {
             return needPresentFragment(params.fragment, params.removeLast, params.noAnimation, layout);
         }
 
+        /**
+         * @deprecated You should override {@link INavigationLayoutDelegate#needPresentFragment(INavigationLayout, NavigationParams)} for more fields
+         */
         default boolean needPresentFragment(BaseFragment fragment, boolean removeLast, boolean forceWithoutAnimation, INavigationLayout layout) {
             return true;
         }

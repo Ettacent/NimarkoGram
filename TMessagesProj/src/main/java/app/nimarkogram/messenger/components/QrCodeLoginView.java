@@ -15,7 +15,7 @@ import android.view.View;
 import android.widget.TextView;
 
 import com.google.zxing.EncodeHintType;
-import com.google.zxing.qrcode.QRCodeWriter;
+import org.telegram.messenger.TelegramQRCodeWriter;
 import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel;
 
 import org.telegram.messenger.AndroidUtilities;
@@ -33,6 +33,30 @@ import org.telegram.ui.Components.SlideView;
 
 import java.util.HashMap;
 
+/**
+ * NimarkoGram port of exteraGram's {@code QrCodeLoginView} — the login "scan QR code"
+ * slide that renders an animated QR matrix (with finder patterns, centre logo,
+ * crossfade + scan-line transition between the loading animation and the real code).
+ *
+ * <p>This is the REAL, self-contained implementation built against Android + the
+ * org.telegram.* runtime and the bundled zxing encoder. The exteraGram-compat alias
+ * {@code com.exteragram.messenger.components.QrCodeLoginView} merely extends this and
+ * keeps the public API identical.
+ *
+ * <p>Source note: this was reconstructed from the exteraGram decompile
+ * (r8 map id 7e3e082b…). The decompiler dropped the body of
+ * {@code QrRenderView.onDraw(Canvas)}; it has been faithfully reconstructed from the
+ * surrounding field semantics (crossfade masks, scan-line, content-bitmap alpha,
+ * loading lottie). Behaviour matches the original: while no link / no encoded bitmap
+ * is available the loading lottie is shown; once a bitmap is ready it crossfades in
+ * with a directional scan-line wipe.
+ *
+ * <p>String references ({@code R.string.LoginQrTitle}, {@code LoginQrSubtitle}) and the
+ * raw resources ({@code R.raw.qr_matrix}, {@code R.raw.qr_logo}) are kept verbatim from
+ * the exteraGram original. The raw assets are already present in this tree; the two
+ * login strings are exteraGram-added strings that must exist in the string resources
+ * for this to link (see report).
+ */
 public abstract class QrCodeLoginView extends SlideView {
     private final QrRenderView qrRenderView;
     private final TextView subtitleView;
@@ -278,7 +302,7 @@ public abstract class QrCodeLoginView extends SlideView {
             map.put(EncodeHintType.MARGIN, 0);
             int iMax = (Math.max(1, i / 37) * 37) + 32;
             try {
-                bitmapEncode = new QRCodeWriter().encode(str, iMax, iMax, map, null, 0.75f, 0, -16777216);
+                bitmapEncode = new TelegramQRCodeWriter().encode(str, iMax, iMax, map, null, 0.75f, 0, -16777216);
             } catch (Exception e) {
                 FileLog.e(e);
                 bitmapEncode = null;
@@ -414,12 +438,15 @@ public abstract class QrCodeLoginView extends SlideView {
                 return;
             }
 
+            // Round-rect clip for the whole QR area (matches the white card the matrix sits on).
             float radius = AndroidUtilities.dp(12.0f);
             this.clipPath.rewind();
             this.clipPath.addRoundRect(new RectF(0, 0, width, height), radius, radius, Path.Direction.CW);
 
             float alpha = this.contentBitmapAlpha.set(this.contentBitmap != null ? 1.0f : 0.0f);
 
+            // Loading layer (lottie matrix + finder patterns + logo). Visible while the real
+            // code is absent or still fading in.
             if (this.loadingVisible && alpha < 1.0f) {
                 canvas.save();
                 canvas.clipPath(this.clipPath);
@@ -438,6 +465,7 @@ public abstract class QrCodeLoginView extends SlideView {
 
             float scanLineHeight = AndroidUtilities.dp(this.crossfadeWidthDp);
 
+            // Draw the outgoing (old) bitmap with its directional mask, fading out.
             if (hasOld && alpha < 1.0f) {
                 int layer = canvas.saveLayer(0, 0, width, height, null);
                 drawBitmapFitted(canvas, this.oldContentBitmap, width, height);
@@ -449,6 +477,7 @@ public abstract class QrCodeLoginView extends SlideView {
                 canvas.restoreToCount(layer);
             }
 
+            // Draw the incoming (new) bitmap with its directional mask, fading in.
             if (hasNew) {
                 int layer = canvas.saveLayer(0, 0, width, height, null);
                 drawBitmapFitted(canvas, this.contentBitmap, width, height);

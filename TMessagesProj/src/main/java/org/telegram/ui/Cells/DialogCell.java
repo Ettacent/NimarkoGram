@@ -642,6 +642,8 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
     private boolean drawPremium;
     private final View emojiStatusView;
     private final AnimatedEmojiDrawable.SwapAnimatedEmojiDrawable emojiStatus;
+    // Per-cell guard for plugin badge: dedupe the SwapAnimatedEmojiDrawable
+    // rebind when the same badge fires again on UPDATE_MASK_EMOJI_STATUS.
     private long lastNimarkoMaskDocId = 0L;
     private final AnimatedEmojiDrawable.SwapAnimatedEmojiDrawable botVerification;
 
@@ -1063,7 +1065,7 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
             int paddingStart = dp(messagePaddingStart - (useForceThreeLines || SharedConfig.useThreeLinesLayout ? 29 : 27));
             int x, y;
             if (inPreviewMode) {
-                x = dp(8);
+                x = dp(8);//LocaleController.isRTL ? (right - left) - paddingStart : paddingStart;
                 y = (getMeasuredHeight() - checkBox.getMeasuredHeight()) >> 1;
             } else {
                 x = LocaleController.isRTL ? (right - left) - paddingStart : paddingStart;
@@ -1143,6 +1145,7 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
             } else {
                 continue;
             }
+            // NM_PWD: braille-mask archived-folder preview titles when the archive lock is on.
             title = app.nimarkogram.messenger.utils.chats.NimarkoChatsPasswordHelper.replaceStringToSpoilers(title);
             if (builder.length() > 0) {
                 builder.append(", ");
@@ -1171,6 +1174,7 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
     private CharSequence formatCommunityDialogNames() {
         final MessagesController messagesController = MessagesController.getInstance(currentAccount);
         ArrayList<TLRPC.Dialog> dialogs = messagesController.getDialogsByCommunity(-currentDialogId);
+        // currentDialogFolderDialogsCount = dialogs.size();
         SpannableStringBuilder builder = new SpannableStringBuilder();
         for (int a = 0, N = dialogs.size(); a < N; a++) {
             TLRPC.Dialog dialog = dialogs.get(a);
@@ -1230,6 +1234,7 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
     int thumbSize;
 
 
+    // BADGE_SIZE = BADGE_TEXT_PADDING * 2 + BADGE_TEXT_MIN_WIDTH;
     private static final float BADGE_SIZE = 20.666f;
     private static final float BADGE_TEXT_PADDING = 6.333f;
     private static final float BADGE_TEXT_MIN_WIDTH = 8f;
@@ -1314,9 +1319,11 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
 
         int messageFormatType;
         if ((!useForceThreeLines && !SharedConfig.useThreeLinesLayout || currentDialogFolderId != 0) || isForumCell() || hasTags()) {
+            //1 - "%2$s: \u2068%1$s\u2069";
             messageFormatType = 1;
             hasNameInMessage = true;
         } else {
+            //2 - "\u2068%1$s\u2069";
             messageFormatType = 2;
             hasNameInMessage = false;
         }
@@ -1501,6 +1508,11 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
                         } else {
                             drawVerified = !forbidVerified && chat.verified;
                             drawBotVerified = !forbidVerified && chat.bot_verification_icon != 0;
+                            // NG: when a recycled row binds to a chat without an emoji
+                            // status, the previous binding's particles state persists on
+                            // emojiStatus.SwapAnimatedEmojiDrawable. Explicitly clear it
+                            // so search / recycler-view rows don't keep showing badge
+                            // sparkles on plain chats.
                             emojiStatus.setParticles(false, false);
                         }
                     } else if (user != null) {
@@ -1529,12 +1541,19 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
                                 emojiStatus.setParticles(false, false);
                             }
                         } else {
+                            // NG: non-premium user binding on a recycled row — clear
+                            // particles state so search / list cells don't show stray
+                            // badge sparkles inherited from the previous binding.
                             emojiStatus.setParticles(false, false);
                         }
                     }
                     if (dialogBotVerificationIcon != 0 && drawBotVerified) {
                         botVerification.set(dialogBotVerificationIcon, false);
                     }
+                    // NimarkoGram: probe the badge for the dialog owner. NO
+                    // Saved-Messages exclusion — achievement-style plugins
+                    // push badges at the user's own id and need them visible
+                    // on the Saved Messages row too.
                     try {
                         org.telegram.tgnet.TLObject badgeTarget = user != null ? user : chat;
                         app.nimarkogram.messenger.api.dto.BadgeDTO nimarkoBadge =
@@ -1545,10 +1564,20 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
                             emojiStatus.center = LocaleController.isRTL;
                             emojiStatus.set(nimarkoBadge.getDocumentId(), false);
                             emojiStatus.setParticles(true, false);
+                            // NimarkoGram: kill the chat's bot-verification
+                            // emoji when our badge wins — otherwise both
+                            // render side-by-side on channels like "Фумошка"
+                            // that have both bot_verification_icon and a
+                            // nimarko badge.
                             drawBotVerified = false;
                             drawVerified = false;
                             botVerification.set((Drawable) null, false);
                         } else {
+                            // NG: defensive clear — particles must be OFF for any
+                            // user/chat without an NG badge AND without a collectible
+                            // emoji status. User reported still seeing sparkles in
+                            // search results for badgeless users (recycler view leak
+                            // through the SwapAnimatedEmojiDrawable particle flag).
                             boolean hasCollectibleEmojiStatus =
                                     (user != null && DialogObject.isEmojiStatusCollectible(user.emoji_status))
                                     || (chat != null && DialogObject.isEmojiStatusCollectible(chat.emoji_status));
@@ -1937,11 +1966,16 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
                                             if (message != null) {
                                                 message.spoilLoginCode();
                                             }
+                                            // NimarkoGram: CG parity — when the chat is in LockedChats or is an encrypted dialog,
+                                            // overlay the locked-chats entity mask (spoiler+strike) on the caption preview
+                                            // instead of the regular keyword spoilers. Mirrors CG DialogCell line ~1791
+                                            // (parentFragment.getChatsPasswordHelper().isChatLocked/.isEncryptedChat).
                                             if (parentFragment != null
                                                     && (app.nimarkogram.messenger.utils.chats.NimarkoChatsPasswordHelper.isChatLocked(message)
                                                         || app.nimarkogram.messenger.utils.chats.NimarkoChatsPasswordHelper.isEncryptedChat(message))) {
                                                 MediaDataController.addTextStyleRuns(app.nimarkogram.messenger.utils.chats.NimarkoChatsPasswordHelper.checkLockedChatsEntities(message), message.caption, msgBuilder, TextStyleSpan.FLAG_STYLE_SPOILER | TextStyleSpan.FLAG_STYLE_STRIKE);
                                             } else {
+                                                // NM_MF: layer ported CG keyword spoilers over the caption preview.
                                                 MediaDataController.addTextStyleRuns(MessagesFilterHelper.INSTANCE.addSpoilerEntities(message, message.caption, message.messageOwner.entities), message.caption, msgBuilder, TextStyleSpan.FLAG_STYLE_SPOILER | TextStyleSpan.FLAG_STYLE_STRIKE);
                                             }
                                             MediaDataController.addAnimatedEmojiSpans(message.messageOwner.entities, msgBuilder, currentMessagePaint == null ? null : currentMessagePaint.getFontMetricsInt());
@@ -2425,6 +2459,10 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
             if (ellipsizeWidth < 0) {
                 ellipsizeWidth = 0;
             }
+            // A dialog title must never consume the preview line. Custom
+            // emoji and highlighted names are Spannables, so sanitizing only
+            // String instances still allowed an embedded newline to create a
+            // second visual line.
             nameString = AndroidUtilities.replaceNewLines(nameString);
             CharSequence nameStringFinal = nameString;
             if (nameLayoutEllipsizeByGradient) {
@@ -2767,6 +2805,7 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
 
         try {
             CharSequence messageStringFinal;
+            // Removing links and bold spans to get rid of underlining and boldness
             if (messageString instanceof Spannable) {
                 Spannable messageStringSpannable = (Spannable) messageString;
                 for (Object span : messageStringSpannable.getSpans(0, messageStringSpannable.length(), Object.class)) {
@@ -2916,6 +2955,8 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
                     widthpx = Math.ceil(nameLayout.getLineWidth(0));
                     if (nameLayoutEllipsizeByGradient) {
                         widthpx = Math.min(nameWidth, widthpx);
+//                        widthpx -= dp(36);
+//                        left += dp(36);
                     }
                     if (widthpx < nameWidth) {
                         nameLeft -= (nameWidth - widthpx);
@@ -2991,15 +3032,19 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
         SpannableStringBuilder spannableStringBuilder = new SpannableStringBuilder();
         switch (messageFormatType) {
             case 1:
+                //"%2$s: \u2068%1$s\u2069"
                 spannableStringBuilder.append(s2).append(": \u2068").append(s1).append("\u2069");
                 break;
             case 2:
+                //"\u2068%1$s\u2069"
                 spannableStringBuilder.append("\u2068").append(s1).append("\u2069");
                 break;
             case 3:
+                //"%2$s: %1$s"
                 spannableStringBuilder.append(s2).append(": ").append(s1);
                 break;
             case 4:
+                //"%1$s"
                 spannableStringBuilder.append(s1);
                 break;
         }
@@ -3367,12 +3412,21 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
                 }
                 if ((mask & MessagesController.UPDATE_MASK_EMOJI_STATUS) != 0) {
                     long dialogBotVerificationIcon = 0;
+                    // NimarkoGram: probe badge FIRST and let it short-circuit
+                    // the original premium/emoji-status assignment for this
+                    // bind. Otherwise the cell flashes premium-star → badge
+                    // on every emoji-status mask update (user reported as
+                    // "duplicating / disappearing" badges on channels).
                     app.nimarkogram.messenger.api.dto.BadgeDTO nimarkoBadgeMask = null;
                     try {
                         org.telegram.tgnet.TLObject t = user != null ? user : chat;
                         nimarkoBadgeMask = app.nimarkogram.messenger.badges.BadgesController.getInstance().i(t);
                         if (nimarkoBadgeMask != null && nimarkoBadgeMask.getDocumentId() == 0L) nimarkoBadgeMask = null;
                     } catch (Throwable ignored) {}
+                    // Per-cell guard: skip the expensive emojiStatus.set+setParticles
+                    // chain when this exact badge already rendered for this cell.
+                    // Saves N visible cells × SwapAnimatedEmojiDrawable rebind on
+                    // every UPDATE_MASK_EMOJI_STATUS broadcast.
                     long _nimarkoMaskDoc = nimarkoBadgeMask != null ? nimarkoBadgeMask.getDocumentId() : 0L;
                     boolean _nimarkoMaskSame = (_nimarkoMaskDoc != 0L) && (_nimarkoMaskDoc == lastNimarkoMaskDocId);
                     lastNimarkoMaskDocId = _nimarkoMaskDoc;
@@ -3429,6 +3483,8 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
                         }
                         botVerification.set((Drawable) null, animated);
                     }
+                    // (Badge handling now inline above as the first branch in
+                    // both the user and chat blocks — no double-set.)
                 }
                 if (isDialogCell || isTopic) {
                     if ((mask & MessagesController.UPDATE_MASK_USER_PRINT) != 0) {
@@ -3532,7 +3588,9 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
                 }
 
                 if (!continueUpdate) {
+                    //if (invalidate) {
                         invalidate();
+                   // }
                     return requestLayout;
                 }
             }
@@ -3730,8 +3788,10 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
             if (drawMonoforumAvatar) {
                 avatarRadius = 1;
             } else if (drawCommunityAvatar) {
+                // NG: community cards keep the upstream rounded-square radius (distinct UI element, not user avatar corners).
                 avatarRadius = dp(12);
             } else {
+                // NG: honour the user's avatarCorners preference for both forum-style and regular chat avatars.
                 final boolean forumLike = chat != null && chat.forum && currentDialogFolderId == 0 && !useFromUserAsAvatar || !isSavedDialog && user != null && user.self && MessagesController.getInstance(currentAccount).savedViewAsChats;
                 avatarRadius = app.nimarkogram.messenger.NimarkoConfig.getAvatarCornersForChat(56, forumLike);
             }
@@ -3755,7 +3815,9 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
                 countAnimator.cancel();
             }
         }
+       // if (invalidate) {
             invalidate();
+       // }
         if (isForumCell() != oldIsForumCell) {
             requestLayout = true;
         }
@@ -3802,6 +3864,7 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
         if (isSliding && !swipeCanceled) {
             boolean prevValue = drawRevealBackground;
             drawRevealBackground = Math.abs(translationX) >= getMeasuredWidth() * 0.45f;
+            // NG: disableVibration gate on the reveal-background haptic (CG parity, DialogCell:3576).
             if (prevValue != drawRevealBackground && archiveHidden == SharedConfig.archiveHidden && !app.nimarkogram.messenger.NimarkoConfig.disableVibration) {
                 try {
                     performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP, HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING);
@@ -3858,6 +3921,8 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
         final float archivePullProgress = archivedChatsDrawable != null ? archivedChatsDrawable.getPullProgress() : 1f;
         if (clipArchive) {
             canvas.save();
+            // canvas.saveLayerAlpha(0, 0, getMeasuredWidth(), getMeasuredHeight(), (int)(255 * archivePullProgress), Canvas.ALL_SAVE_FLAG);
+            // canvas.translate(0, -translateY - rightFragmentOffset);
 
             canvas.clipRect(0, getMeasuredHeight() * (1f - archivePullProgress), getMeasuredWidth(), getMeasuredHeight());
         }
@@ -3966,14 +4031,14 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
                 canvas.drawRect(tx - dp(8), 0, getMeasuredWidth(), getMeasuredHeight(), Theme.dialogs_pinnedPaint);
                 if (currentRevealProgress == 0) {
                     if (Theme.dialogs_archiveDrawableRecolored) {
-                        Theme.dialogs_archiveDrawable.setLayerColor("Arrow.**", Theme.getNonAnimatedColor(Theme.key_chats_archiveBackground));
+                        Theme.dialogs_archiveDrawable.setLayerColor("Arrow", Theme.getNonAnimatedColor(Theme.key_chats_archiveBackground));
                         Theme.dialogs_archiveDrawableRecolored = false;
                     }
                     if (Theme.dialogs_hidePsaDrawableRecolored) {
                         Theme.dialogs_hidePsaDrawable.beginApplyLayerColors();
-                        Theme.dialogs_hidePsaDrawable.setLayerColor("Line 1.**", Theme.getNonAnimatedColor(Theme.key_chats_archiveBackground));
-                        Theme.dialogs_hidePsaDrawable.setLayerColor("Line 2.**", Theme.getNonAnimatedColor(Theme.key_chats_archiveBackground));
-                        Theme.dialogs_hidePsaDrawable.setLayerColor("Line 3.**", Theme.getNonAnimatedColor(Theme.key_chats_archiveBackground));
+                        Theme.dialogs_hidePsaDrawable.setLayerColor("Line 1", Theme.getNonAnimatedColor(Theme.key_chats_archiveBackground));
+                        Theme.dialogs_hidePsaDrawable.setLayerColor("Line 2", Theme.getNonAnimatedColor(Theme.key_chats_archiveBackground));
+                        Theme.dialogs_hidePsaDrawable.setLayerColor("Line 3", Theme.getNonAnimatedColor(Theme.key_chats_archiveBackground));
                         Theme.dialogs_hidePsaDrawable.commitApplyLayerColors();
                         Theme.dialogs_hidePsaDrawableRecolored = false;
                     }
@@ -3994,14 +4059,14 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
                 canvas.restore();
 
                 if (!Theme.dialogs_archiveDrawableRecolored) {
-                    Theme.dialogs_archiveDrawable.setLayerColor("Arrow.**", Theme.getNonAnimatedColor(Theme.key_chats_archivePinBackground));
+                    Theme.dialogs_archiveDrawable.setLayerColor("Arrow", Theme.getNonAnimatedColor(Theme.key_chats_archivePinBackground));
                     Theme.dialogs_archiveDrawableRecolored = true;
                 }
                 if (!Theme.dialogs_hidePsaDrawableRecolored) {
                     Theme.dialogs_hidePsaDrawable.beginApplyLayerColors();
-                    Theme.dialogs_hidePsaDrawable.setLayerColor("Line 1.**", Theme.getNonAnimatedColor(Theme.key_chats_archivePinBackground));
-                    Theme.dialogs_hidePsaDrawable.setLayerColor("Line 2.**", Theme.getNonAnimatedColor(Theme.key_chats_archivePinBackground));
-                    Theme.dialogs_hidePsaDrawable.setLayerColor("Line 3.**", Theme.getNonAnimatedColor(Theme.key_chats_archivePinBackground));
+                    Theme.dialogs_hidePsaDrawable.setLayerColor("Line 1", Theme.getNonAnimatedColor(Theme.key_chats_archivePinBackground));
+                    Theme.dialogs_hidePsaDrawable.setLayerColor("Line 2", Theme.getNonAnimatedColor(Theme.key_chats_archivePinBackground));
+                    Theme.dialogs_hidePsaDrawable.setLayerColor("Line 3", Theme.getNonAnimatedColor(Theme.key_chats_archivePinBackground));
                     Theme.dialogs_hidePsaDrawable.commitApplyLayerColors();
                     Theme.dialogs_hidePsaDrawableRecolored = true;
                 }
@@ -4065,9 +4130,11 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
         if (currentDialogFolderId != 0 && (!SharedConfig.archiveHidden || archiveBackgroundProgress != 0)) {
             Theme.dialogs_pinnedPaint.setColor(AndroidUtilities.getOffsetColor(0, Theme.getColor(Theme.key_chats_pinnedOverlay, resourcesProvider), archiveBackgroundProgress, 1.0f));
             Theme.dialogs_pinnedPaint.setAlpha((int) (Theme.dialogs_pinnedPaint.getAlpha() * (1f - rightFragmentOpenedProgress)));
+            // canvas.drawRect(-xOffset, 0, getMeasuredWidth(), getMeasuredHeight() - translateY, Theme.dialogs_pinnedPaint);
         } else if (getIsPinned() || drawPinBackground) {
             Theme.dialogs_pinnedPaint.setColor(Theme.getColor(Theme.key_chats_pinnedOverlay, resourcesProvider));
             Theme.dialogs_pinnedPaint.setAlpha((int) (Theme.dialogs_pinnedPaint.getAlpha() * (1f - rightFragmentOpenedProgress)));
+            //canvas.drawRect(-xOffset, 0, getMeasuredWidth(), getMeasuredHeight() - translateY, Theme.dialogs_pinnedPaint);
         }
         canvas.restore();
 
@@ -4108,9 +4175,11 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
                 if (currentDialogFolderId != 0 && (!SharedConfig.archiveHidden || archiveBackgroundProgress != 0)) {
                     Theme.dialogs_pinnedPaint.setColor(AndroidUtilities.getOffsetColor(0, Theme.getColor(Theme.key_chats_pinnedOverlay, resourcesProvider), archiveBackgroundProgress, 1.0f));
                     Theme.dialogs_pinnedPaint.setAlpha((int) (Theme.dialogs_pinnedPaint.getAlpha() * (1f - rightFragmentOpenedProgress)));
+                    // canvas.drawRoundRect(rect, cornersRadius, cornersRadius, Theme.dialogs_pinnedPaint);
                 } else if (getIsPinned() || drawPinBackground) {
                     Theme.dialogs_pinnedPaint.setColor(Theme.getColor(Theme.key_chats_pinnedOverlay, resourcesProvider));
                     Theme.dialogs_pinnedPaint.setAlpha((int) (Theme.dialogs_pinnedPaint.getAlpha() * (1f - rightFragmentOpenedProgress)));
+                    // canvas.drawRoundRect(rect, cornersRadius, cornersRadius, Theme.dialogs_pinnedPaint);
                 }
                 canvas.restore();
             }
@@ -4465,6 +4534,10 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
                     botVerification.draw(canvas);
                 }
             }
+            // NimarkoGram: extera-style — hide the muted-bell glyph next to
+            // the dialog name. The right side of the row is reserved for
+            // badges / emoji-status only. (Upstream 12.9.0 expression preserved
+            // in the disabled branch: drawUnmute || dialogMuted || isHiddenInCommunity.)
             boolean drawMuted = false;
             if (false && dialogsType != 2 && (drawUnmute || dialogMuted || isHiddenInCommunity || dialogMutedProgress > 0) && !drawVerified && drawScam == 0) {
                 if (drawMuted && dialogMutedProgress != 1f) {
@@ -4688,6 +4761,12 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
                             thumbImage[i].getImageX2(),
                             thumbImage[i].getImageY2()
                     );
+                    //canvas.drawRoundRect(
+                    //        AndroidUtilities.rectTmp,
+                    //        thumbImage[i].getRoundRadius()[0],
+                    //        thumbImage[i].getRoundRadius()[1],
+                    //        thumbBackgroundPaint
+                    //);
                     thumbImage[i].draw(canvas);
                     if (drawSpoiler[i]) {
                         if (thumbPath == null) {
@@ -4763,6 +4842,7 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
                     avatarImage.getCenterX(), avatarImage.getCenterY(), dp(48));
                 avatarImage.draw(canvas);
             } else {
+                // Suppress archive previews while that surface is protected.
                 storyParams.drawHiddenStoriesAsSegments = (isShareToStoryCell || currentDialogFolderId != 0)
                         && !app.nimarkogram.messenger.NimarkoConfig.askBiometricsToOpenArchive;
                 int s = storyParams.forceState;
@@ -6028,11 +6108,16 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
                 if (message != null) {
                     message.spoilLoginCode();
                 }
+                // NimarkoGram: CG parity — when the chat is in LockedChats or is an encrypted dialog,
+                // overlay the locked-chats entity mask (spoiler+strike) on the dialog-list preview
+                // instead of the regular keyword spoilers. Mirrors CG DialogCell line ~5708
+                // (parentFragment.getChatsPasswordHelper().isChatLocked/.isEncryptedChat).
                 if (parentFragment != null
                         && (app.nimarkogram.messenger.utils.chats.NimarkoChatsPasswordHelper.isChatLocked(message)
                             || app.nimarkogram.messenger.utils.chats.NimarkoChatsPasswordHelper.isEncryptedChat(message))) {
                     MediaDataController.addTextStyleRuns(app.nimarkogram.messenger.utils.chats.NimarkoChatsPasswordHelper.checkLockedChatsEntities(message), mess, msgBuilder, TextStyleSpan.FLAG_STYLE_SPOILER | TextStyleSpan.FLAG_STYLE_STRIKE);
                 } else {
+                    // NM_MF: layer ported CG keyword spoilers over the dialog-list preview.
                     MediaDataController.addTextStyleRuns(MessagesFilterHelper.INSTANCE.addSpoilerEntities(message, mess, message.messageOwner != null ? message.messageOwner.entities : null), mess, msgBuilder, TextStyleSpan.FLAG_STYLE_SPOILER | TextStyleSpan.FLAG_STYLE_STRIKE);
                 }
                 if (message != null && message.messageOwner != null) {

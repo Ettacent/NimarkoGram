@@ -22,6 +22,7 @@ import android.app.Activity;
 import android.app.ActivityManager;
 import android.app.Dialog;
 import android.app.PictureInPictureParams;
+import android.app.PictureInPictureUiState;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
@@ -86,8 +87,6 @@ import androidx.core.content.pm.ShortcutManagerCompat;
 import androidx.core.graphics.ColorUtils;
 import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
-import androidx.core.view.WindowCompat;
-import androidx.core.view.WindowInsetsCompat;
 
 import com.google.android.gms.common.api.Status;
 import com.google.common.primitives.Longs;
@@ -393,6 +392,7 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
     }
 
     private FrameMetricsOverlayView frameMetricsOverlayView;
+    // private RefreshRateController refreshRateController;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -446,11 +446,20 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
         flagSecureReason.attach();
 
         super.onCreate(savedInstanceState);
+        // NimarkoGram: the launch animation is an AnimatedVectorDrawable (splash_plane_avd) wired as the
+        // system windowSplashScreenAnimatedIcon — the OS auto-plays it on the splash (like official
+        // Telegram), so no custom exit-listener / overlay is needed here (which previously caused the swap).
+        // NimarkoGram: pin the window to sRGB (default colour mode). Some ROMs (e.g. the reported
+        // PHY110 / "Android 36") auto-promote the window to wide colour gamut when a wide-gamut surface
+        // such as the Stories camera attaches; their TextView.onDraw then calls Paint.setColor(long) with a
+        // sign-extended int colour and crashes in ColorSpace.get ("Invalid ID: 30"). Forcing the default
+        // (sRGB) colour mode keeps the int-colour path — Telegram's UI never needs wide gamut.
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
             try {
                 getWindow().setColorMode(android.content.pm.ActivityInfo.COLOR_MODE_DEFAULT);
             } catch (Throwable ignore) {}
         }
+        // NimarkoGram (CG parity): force edge-to-edge layout when the experimental flag is on.
         if (app.nimarkogram.messenger.NimarkoConfig.edgeToEdgeMode) {
             try {
                 androidx.core.view.WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
@@ -719,6 +728,8 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
         }
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            // NimarkoGram: subscribe to overlay changes so Monet themes refresh when the
+            // user changes wallpaper / dynamic-colour source. Matches CG MonetHelper flow.
             app.nimarkogram.messenger.utils.ui.MonetHelper.registerReceiver(this);
             getWindow().getDecorView().addOnAttachStateChangeListener(new View.OnAttachStateChangeListener() {
                         @Override
@@ -747,6 +758,8 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
         BackupAgent.requestBackup();
 
         RestrictedLanguagesSelectActivity.checkRestrictedLanguages(false);
+        // NimarkoGram: optionally disable Android 14 predictive-back gesture by registering
+        // a plain back-invoked callback (no animation) instead of the OnBackAnimationCallback.
         if (Build.VERSION.SDK_INT >= 34 && app.nimarkogram.messenger.NimarkoConfig.predictiveBack) {
             if (onBackAnimationCallback == null) {
                 onBackAnimationCallback =  new OnBackAnimationCallback() {
@@ -863,6 +876,9 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
             );
         }
 
+        //if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+        //    refreshRateController = new RefreshRateController(this);
+        //}
         checkFrameMetrics();
     }
 
@@ -1142,6 +1158,7 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
                     if (currentFragment.getParentLayout() instanceof ActionBarLayout) {
                         ActionBarLayout actionBarLayout1 = (ActionBarLayout) currentFragment.getParentLayout();
                         if (actionBarLayout1.getSheetFragment(false) != null && actionBarLayout1.getSheetFragment(false).getLastSheet() != null) {
+//                            BaseFragment sheetFragment = actionBarLayout1.getSheetFragment(false);
                             BaseFragment.AttachedSheet sheet = actionBarLayout1.getSheetFragment(false).getLastSheet();
                             if (sheet.isShown()) {
                                 enable = sheet.isAttachedLightStatusBar();
@@ -1162,7 +1179,7 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && checkNavigationBar && (!useCurrentFragment || currentFragment == null || !currentFragment.isInPreviewMode())) {
                 int color = currentFragment != null && useCurrentFragment ? currentFragment.getNavigationBarColor() : Theme.getColor(Theme.key_windowBackgroundGray, null, true);
 
-                int mode = 0;
+                int mode = 0; // 0 - default, 1 - light, 2 - dark
                 if (currentFragment instanceof ChatActivity) {
                     ChatActivity chatActivity = (ChatActivity) currentFragment;
                     mode = chatActivity.isShouldHaveLightNavigationBarIcons() ? 2 : 1;
@@ -1216,7 +1233,11 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
         ConnectionsManager.getInstance(currentAccount).setAppPaused(true, false);
         UserConfig.selectedAccount = account;
         UserConfig.getInstance(0).saveConfig(false);
+        // NimarkoGram: the new account may live on a different DC (e.g. RU DC2 <-> asian DC5), so re-decide
+        // the relay region for the process-global bypass rather than keeping the previous account's pick.
         app.nimarkogram.messenger.wsbypass.RelayRegion.invalidate();
+        // Keep both independently-issued relay credentials warm for the newly selected account. The calls are
+        // single-flight and no-op while their existing credential is still fresh.
         AndroidUtilities.runOnUIThread(() ->
                 app.nimarkogram.messenger.wsbypass.WsRelayAuth.prefetchAsync(account), 500);
         AndroidUtilities.runOnUIThread(() ->
@@ -1224,6 +1245,8 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
 
         checkCurrentAccount();
         NotificationCenter.getGlobalInstance().postNotificationName(NotificationCenter.activeAccountChanged, account);
+        // NimarkoGram: refetch the new account's banner status now (selectedAccount already committed above),
+        // otherwise B's own server banner stays hidden until the 5-min status loop tick.
         try { app.nimarkogram.messenger.banners.NimarkoBannerController.getInstance().onAccountSwitched(); } catch (Throwable ignored) {}
         if (AndroidUtilities.isTablet()) {
             layersActionBarLayout.removeAllFragments();
@@ -1241,6 +1264,12 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
         } else {
             actionBarLayout.removeFragmentFromStack(0);
         }
+        // Bitmap-backed icon packs may still be warming their folder glyphs.
+        // Never wait for that cache on the main thread: on packs with many
+        // replacements this used to turn an account switch into a visible
+        // micro-freeze. The wrapper is thread-safe and any first-frame miss can
+        // be resolved normally while the finite set continues warming in the
+        // global queue.
         Resources switchResources = getResources();
         if (switchResources instanceof app.nimarkogram.messenger.icons.NimarkoIconResources) {
             ((app.nimarkogram.messenger.icons.NimarkoIconResources) switchResources)
@@ -1550,11 +1579,16 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
         if (UserSelectorBottomSheet.handleIntent(intent, progress)) {
             return true;
         }
+        // NimarkoGram: tapping the OTA download notification opens the app on the update sheet (progress /
+        // install / cancel) so the user never has to force-kill to retry. Doesn't consume the intent.
         if (intent != null && intent.getBooleanExtra("nm_open_update", false)) {
             intent.removeExtra("nm_open_update");
             AndroidUtilities.runOnUIThread(() -> {
                 try {
                     org.telegram.ui.ActionBar.BaseFragment last = actionBarLayout != null ? actionBarLayout.getLastFragment() : null;
+                    // lastUpdate is a process-lifetime static; after a low-memory kill it's null even
+                    // though the notification (and its persisted Update fields) survived. Rehydrate it
+                    // from prefs so the deep-link still opens the sheet instead of doing nothing.
                     app.nimarkogram.messenger.updater.NimarkoUpdater.Update update =
                             app.nimarkogram.messenger.updater.NimarkoUpdater.getOrRestoreLastUpdate();
                     if (last != null && update != null) {
@@ -1574,6 +1608,7 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
                 PhotoViewer.getInstance().closePhoto(false, true);
             }
             StoryRecorder.destroyInstance();
+//            dismissAllWeb();
         }
         if (webviewShareAPIDoneListener != null) {
             webviewShareAPIDoneListener.run(true);
@@ -2304,6 +2339,7 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
                                                 if (data.getQuery() != null) {
                                                     isBoost = data.getQuery().equals("boost");
                                                 }
+//                                                storyId = Utilities.parseInt(data.getQueryParameter("story"));
                                                 if (threadId == 0) {
                                                     threadId = null;
                                                 }
@@ -2685,6 +2721,10 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
                                             url.startsWith("tg:restart") || url.startsWith("tg://restart") || url.startsWith("tg:reboot") || url.startsWith("tg://reboot") ||
                                             url.startsWith("tg://nimarko_")
                                     ) {
+                                        // NG port of CG DeeplinkHelper dispatch (Cherrygram-main/.../core/helpers/DeeplinkHelper.java).
+                                        // CG-server endpoints (donate / support / about / updater / username-limits / stars / premium)
+                                        // intentionally dropped — NG has no remote backend or premium flavour, so those slugs would
+                                        // dead-end. Settings nav + restart are kept and "cg_" was renamed to "nimarko_".
                                         url = url.replace("tg://", "//t.me/").replace("tg:", "//t.me/");
                                         data = Uri.parse(url);
                                         app.nimarkogram.messenger.utils.NimarkoDeeplinkHelper.processDeepLink(data, getSafeLastFragment(), fragment -> {
@@ -2762,6 +2802,7 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
                                         data = Uri.parse(url);
                                         newContactName = data.getQueryParameter("name");
 
+                                        // use getQueryParameters to keep the "+" sign
                                         List<String> phoneParams = data.getQueryParameters("phone");
                                         if (phoneParams != null && phoneParams.size() > 0) {
                                             newContactPhone = phoneParams.get(0);
@@ -2950,7 +2991,9 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
                 } else if (intent.getAction().equals("new_dialog")) {
                     open_new_dialog = 1;
                 } else if (intent.getAction().startsWith("com.tmessages.openchat")) {
+//                    Integer chatIdInt = intent.getIntExtra("chatId", 0);
                     long chatId = intent.getLongExtra("chatId", 0);
+//                    Integer userIdInt = intent.getIntExtra("userId", 0);
                     long[] storyDialogIds = intent.getLongArrayExtra("storyDialogIds");
                     int storyId = intent.getIntExtra("storyId", -1);
                     long userId = intent.getLongExtra("userId", 0);
@@ -2999,6 +3042,7 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
                         } else if (storyDialogIds != null) {
                             NotificationCenter.getInstance(intentAccount[0]).postNotificationName(NotificationCenter.closeChats);
                             push_story_dids = storyDialogIds;
+//                            push_story_id = intent.getIntExtra("storyId", 0);
                             showDialogsList = true;
                         } else if (chatId != 0) {
                             NotificationCenter.getInstance(intentAccount[0]).postNotificationName(NotificationCenter.closeChats);
@@ -3075,6 +3119,7 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
                     }
                     if (mainFragmentsStack.isEmpty() || MessagesController.getInstance(intentAccount[0]).checkCanOpenChat(args, mainFragmentsStack.get(mainFragmentsStack.size() - 1))) {
                         ChatActivity fragment = new ChatActivity(args);
+                        // NG-SECURITY: gate push deeplink → locked user chat behind biometric prompt.
                         BaseFragment bf = mainFragmentsStack.isEmpty() ? null : mainFragmentsStack.get(mainFragmentsStack.size() - 1);
                         if (bf != null && bf.getParentActivity() != null
                                 && app.nimarkogram.messenger.utils.chats.NimarkoChatsPasswordHelper.isChatLocked(intentAccount[0], push_user_id)
@@ -3095,7 +3140,7 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
                                     if (bf.presentFragment(new INavigationLayout.NavigationParams(fragment).setNoAnimation(true))) {
                                         LaunchActivity.dismissAllWeb();
                                     }
-                                });
+                                }, null);
                             }
                             pushOpened = true;
                         } else {
@@ -3140,6 +3185,7 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
                             return true;
                         }
                     }
+                    // NG-SECURITY: gate push deeplink → locked group/channel chat behind biometric prompt.
                     BaseFragment bf = mainFragmentsStack.isEmpty() ? null : mainFragmentsStack.get(mainFragmentsStack.size() - 1);
                     if (bf != null && bf.getParentActivity() != null
                             && app.nimarkogram.messenger.utils.chats.NimarkoChatsPasswordHelper.isChatLocked(intentAccount[0], -Math.abs(push_chat_id))
@@ -3160,7 +3206,7 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
                                 if (bf.presentFragment(new INavigationLayout.NavigationParams(fragment).setNoAnimation(true))) {
                                     LaunchActivity.dismissAllWeb();
                                 }
-                            });
+                            }, null);
                         }
                         pushOpened = true;
                     } else {
@@ -3174,6 +3220,7 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
                 Bundle args = new Bundle();
                 args.putInt("enc_id", push_enc_id);
                 ChatActivity fragment = new ChatActivity(args);
+                // NG-SECURITY: gate push deeplink → encrypted-chat behind biometric prompt.
                 BaseFragment bf = mainFragmentsStack.isEmpty() ? null : mainFragmentsStack.get(mainFragmentsStack.size() - 1);
                 if (bf != null && bf.getParentActivity() != null
                         && app.nimarkogram.messenger.utils.chats.NimarkoChatsPasswordHelper.isEncryptedChat(push_enc_id, intentAccount[0])
@@ -3194,7 +3241,7 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
                             if (bf.presentFragment(new INavigationLayout.NavigationParams(fragment).setNoAnimation(true))) {
                                 LaunchActivity.dismissAllWeb();
                             }
-                        });
+                        }, null);
                     }
                     pushOpened = true;
                 } else {
@@ -3262,7 +3309,7 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
                 }
             } else if (open_settings == 7 || open_settings == 8 || open_settings == 9) {
                 CharSequence bulletinText = null;
-                boolean can = BuildVars.DEBUG_PRIVATE_VERSION;
+                boolean can = BuildVars.DEBUG_PRIVATE_VERSION; // TODO: check source
                 if (!can) {
                     bulletinText = "Locked in release.";
                 } else if (open_settings == 7) {
@@ -3398,6 +3445,7 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
                     fragment.setInitialPhoneNumber(PhoneFormat.stripExceptNumbers(newContactPhone, true), false);
                 }
                 fragment.show();
+               // getActionBarLayout().presentFragment(new INavigationLayout.NavigationParams(fragment).setNoAnimation(true));
                 if (AndroidUtilities.isTablet()) {
                     actionBarLayout.rebuildFragments(INavigationLayout.REBUILD_FLAG_REBUILD_LAST);
                     rightActionBarLayout.rebuildFragments(INavigationLayout.REBUILD_FLAG_REBUILD_LAST);
@@ -3424,6 +3472,7 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
                                     fragment.setInitialName(names[0], names.length > 1 ? names[1] : null);
                                 }
                                 fragment.show();
+                                //lastFragment.presentFragment(fragment);
                             })
                             .setNegativeButton(LocaleController.getString(R.string.Cancel), null)
                             .create();
@@ -4663,6 +4712,7 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
                             args.putBoolean("allowGroups", botChat != null);
                             args.putBoolean("allowChannels", botChannel != null);
                             final String botHash = TextUtils.isEmpty(botChat) ? (TextUtils.isEmpty(botChannel) ? null : botChannel) : botChat;
+//                            args.putString("addToGroupAlertString", LocaleController.formatString("AddToTheGroupAlertText", R.string.AddToTheGroupAlertText, UserObject.getUserName(user), "%1$s"));
                             DialogsActivity fragment = new DialogsActivity(args);
                             fragment.setDelegate((fragment12, dids, message1, param, notify, scheduleDate, scheduleRepeatPeriod, topicsFragment) -> {
                                 long did = dids.get(0).dialogId;
@@ -5723,6 +5773,7 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
                             return;
                         }
                         SharedPrefsHelper.setWebViewConfirmShown(currentAccount, user.id, true);
+//                        if (AndroidUtilities.isTablet() || true) {
                             BotWebViewSheet sheet = new BotWebViewSheet(LaunchActivity.this, lastFragment != null ? lastFragment.getResourceProvider() : null);
                             sheet.setWasOpenedByLinkIntent(openedTelegram);
                             sheet.setDefaultFullsize(!botCompact);
@@ -5736,6 +5787,22 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
                             if (botApp.inactive || forceNotInternalForApps) {
                                 sheet.showJustAddedBulletin();
                             }
+//                        } else {
+//                            BaseFragment fragment = lastFragment;
+//                            if (fragment.getParentLayout() instanceof ActionBarLayout) {
+//                                fragment = ((ActionBarLayout) fragment.getParentLayout()).getSheetFragment();
+//                            }
+//                            BotWebViewAttachedSheet sheet = fragment.createBotViewer();
+//                            sheet.setWasOpenedByLinkIntent(openedTelegram);
+//                            sheet.setDefaultFullsize(!botCompact);
+//                            sheet.setNeedsContext(false);
+//                            sheet.setParentActivity(LaunchActivity.this);
+//                            sheet.requestWebView(fragment, props);
+//                            sheet.show();
+//                            if (botApp.inactive || forceNotInternalForApps) {
+//                                sheet.showJustAddedBulletin();
+//                            }
+//                        }
                     };
 
                     if (ignoreInactive) {
@@ -6046,6 +6113,7 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
                 if (user != null && (!user.self || allowSelf)) {
                     foundContacts.add(contact);
                 } else {
+                    // disable search by name
                     userName = null;
                 }
             }
@@ -6554,7 +6622,7 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
                             }
                             ArrayList<String> arrayList = new ArrayList<>();
                             arrayList.add(videoPath);
-                            SendMessagesHelper.prepareSendingDocuments(accountInstance, arrayList, arrayList, null, captionToSend, null, did, replyToMsg, replyToMsg, null, null, null, notify, scheduleDate, null, null, 0, 0, false, 0);
+                            SendMessagesHelper.prepareSendingDocuments(accountInstance, arrayList, arrayList, null, captionToSend, null, did, replyToMsg, replyToMsg, null, null, null, notify, scheduleDate, null, null, 0, false, 0);
                         } else if (photoPathsArray != null && photoPathsArray.size() > 0 && !photosEditorOpened) {
                             if (sendingText != null && sendingText.length() <= 1024 && photoPathsArray.size() == 1) {
                                 CharSequence[] m = new CharSequence[] { sendingText };
@@ -6562,7 +6630,7 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
                                 photoPathsArray.get(0).caption = m[0].toString();
                                 sendingText = null;
                             }
-                            SendMessagesHelper.prepareSendingMedia(accountInstance, photoPathsArray, did, replyToMsg, replyToMsg, null, null, false, photoPathsArray.size() > 1, null, notify, scheduleDate, scheduleRepeatPeriod, 0, false, null, null, 0, 0, false, 0, 0, null);
+                            SendMessagesHelper.prepareSendingMedia(accountInstance, photoPathsArray, did, replyToMsg, replyToMsg, null, null, false, photoPathsArray.size() > 1, null, notify, scheduleDate, scheduleRepeatPeriod, 0, false, null, null, 0, false, 0, 0, null);
                         }
                     } else {
                         if (videoPath != null) {
@@ -6572,7 +6640,7 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
                             }
                             ArrayList<String> arrayList = new ArrayList<>();
                             arrayList.add(videoPath);
-                            SendMessagesHelper.prepareSendingDocuments(accountInstance, arrayList, arrayList, null, captionToSend, null, did, replyToMsg, replyToMsg, null, null, null, notify, scheduleDate, null, null, 0, 0, false, 0);
+                            SendMessagesHelper.prepareSendingDocuments(accountInstance, arrayList, arrayList, null, captionToSend, null, did, replyToMsg, replyToMsg, null, null, null, notify, scheduleDate, null, null, 0, false, 0);
                         }
                         if (photoPathsArray != null && !photosEditorOpened) {
                             if (sendingText != null && sendingText.length() <= 1024 && photoPathsArray.size() == 1) {
@@ -6581,7 +6649,7 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
                                 photoPathsArray.get(0).caption = m[0].toString();
                                 sendingText = null;
                             }
-                            SendMessagesHelper.prepareSendingMedia(accountInstance, photoPathsArray, did, replyToMsg, replyToMsg, null, null, false, photoPathsArray.size() > 1, null, notify, scheduleDate, scheduleRepeatPeriod, 0, false, null, null, 0, 0, false, 0, 0, null);
+                            SendMessagesHelper.prepareSendingMedia(accountInstance, photoPathsArray, did, replyToMsg, replyToMsg, null, null, false, photoPathsArray.size() > 1, null, notify, scheduleDate, scheduleRepeatPeriod, 0, false, null, null, 0, false, 0, 0, null);
                         }
                     }
                     if (documentsPathsArray != null || documentsUrisArray != null) {
@@ -6589,7 +6657,7 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
                             captionToSend = sendingText;
                             sendingText = null;
                         }
-                        SendMessagesHelper.prepareSendingDocuments(accountInstance, documentsPathsArray, documentsOriginalPathsArray, documentsUrisArray, captionToSend, documentsMimeType, did, replyToMsg, replyToMsg, null, null, null, notify, scheduleDate, null, null, 0, 0, false, 0);
+                        SendMessagesHelper.prepareSendingDocuments(accountInstance, documentsPathsArray, documentsOriginalPathsArray, documentsUrisArray, captionToSend, documentsMimeType, did, replyToMsg, replyToMsg, null, null, null, notify, scheduleDate, null, null, 0, false, 0);
                     }
                     if (voicePath != null) {
                         File file = new File(voicePath);
@@ -6884,10 +6952,17 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
     @Override
     protected void onPause() {
         super.onPause();
+        // NimarkoGram plugin engine event hook.
         try {
             app.nimarkogram.messenger.plugins.PluginsController.getInstance()
                     .executeOnAppEvent(app.nimarkogram.messenger.plugins.PluginsConstants.APP_PAUSE);
         } catch (Throwable ignored) {}
+        // NimarkoGram: extend "Auto pause video" to MediaController-driven
+        // playback — voice messages + round videos. Telegram keeps these
+        // playing under MusicPlayerService when the app is backgrounded,
+        // which surprises users who toggled "Auto pause video" expecting
+        // everything video-ish to stop. Music intentionally excluded so
+        // the upstream foreground-service music UX stays intact.
         try {
             if (app.nimarkogram.messenger.NimarkoConfig.autoPauseVideo) {
                 MediaController mc = MediaController.getInstance();
@@ -6902,6 +6977,10 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
         pipActivityHandler.onPause();
         NotificationCenter.getGlobalInstance().postNotificationName(NotificationCenter.stopAllHeavyOperations, 4096);
         ApplicationLoader.mainInterfacePaused = true;
+        // NimarkoGram: pause the banner video/blur worker when the app backgrounds — onAppPause had NO caller,
+        // so a video banner kept ExoPlayer decoding + the blur worker grabbing bitmaps while backgrounded.
+        // ALWAYS invoke (null/no-op safe) regardless of the feature toggle, so a banner that was live when
+        // the user switched the feature OFF still gets paused on background instead of leaking.
         try { app.nimarkogram.messenger.banners.NimarkoBannerRenderer.getInstance().onAppPause(); } catch (Throwable ignore) {}
         int account = currentAccount;
         Utilities.stageQueue.postRunnable(() -> {
@@ -6941,6 +7020,9 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
             VoIPFragment.onPause();
         }
         SpoilerEffect2.pause(true);
+        //if (refreshRateController != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+        //    refreshRateController.stop();
+        //}
     }
 
     private boolean isStarted;
@@ -6961,7 +7043,12 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
     @Override
     protected void onStop() {
         super.onStop();
+        // NimarkoGram SECURITY (H1): clear all biometric "recently verified" tokens when the app is
+        // genuinely no longer visible (onStop, NOT onPause — onPause fires on transient excursions like the
+        // photo picker / share sheet and would wrongly wipe the configurable locked-chats TTL grace). So
+        // locked chats / archive / delete re-prompt after real backgrounding while in-session grace survives.
         try { app.nimarkogram.messenger.security.NimarkoBiometricPrompt.onAppBackgrounded(); } catch (Throwable ignore) {}
+        // NimarkoGram plugin engine event hook.
         try {
             app.nimarkogram.messenger.plugins.PluginsController.getInstance()
                     .executeOnAppEvent(app.nimarkogram.messenger.plugins.PluginsConstants.APP_STOP);
@@ -6988,6 +7075,12 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
         pipActivityHandler.setPictureInPictureParams(params);
     }
 
+    @Override
+    public void onPictureInPictureUiStateChanged(@NonNull PictureInPictureUiState pipState) {
+        super.onPictureInPictureUiStateChanged(pipState);
+        pipActivityHandler.onPictureInPictureUiStateChanged(pipState);
+    }
+
     @RequiresApi(api = Build.VERSION_CODES.O)
     @Override
     public void onPictureInPictureModeChanged(boolean isInPictureInPictureMode, @NonNull Configuration newConfig) {
@@ -7011,7 +7104,7 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
                 PhotoViewer.getPipInstance().destroyPhotoViewer();
             }
             if (PhotoViewer.hasInstance()) {
-                PhotoViewer.getInstance().closePhoto(false, false);
+                PhotoViewer.getInstance().closePhoto(false, false); //destroyPhotoViewer();
             }
         }
     }
@@ -7020,9 +7113,12 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
 
     @Override
     protected void onDestroy() {
+        // Invalidate any posted icon-pack cache/rebuild callback before fragment
+        // teardown starts; an old activity must never rebuild a replacement stack.
         nmIconReloadGeneration.incrementAndGet();
         navigationRequestGeneration.incrementAndGet();
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            // Match the registration in onCreate above.
             app.nimarkogram.messenger.utils.ui.MonetHelper.unregisterReceiver(this);
         }
         isActive = false;
@@ -7136,11 +7232,13 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
     protected void onResume() {
         super.onResume();
         if (flagSecureReason != null) flagSecureReason.invalidate();
+        // NimarkoGram plugin engine event hook.
         try {
             app.nimarkogram.messenger.plugins.PluginsController.getInstance()
                     .executeOnAppEvent(app.nimarkogram.messenger.plugins.PluginsConstants.APP_RESUME);
         } catch (Throwable ignored) {}
         isResumed = true;
+        // NimarkoGram: OTA auto-check once per launch (gated on "Check on launch").
         try {
             AndroidUtilities.runOnUIThread(() ->
                     app.nimarkogram.messenger.updater.NimarkoUpdater.checkOnLaunch(LaunchActivity.getLastFragment()), 2500);
@@ -7154,10 +7252,16 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
             Theme.checkAutoNightThemeConditions();
         }
         checkWasMutedByAdmin(true);
+        //FileLog.d("UI resume time = " + (SystemClock.elapsedRealtime() - ApplicationLoader.startTime));
         NotificationCenter.getGlobalInstance().postNotificationName(NotificationCenter.startAllHeavyOperations, 4096);
         MediaController.getInstance().setFeedbackView(feedbackView = actionBarLayout.getView(), true);
         ApplicationLoader.mainInterfacePaused = false;
+        // Keep pause/resume delivery symmetrical. The banner setting can still be loading while
+        // LaunchActivity resumes; gating this callback used to leave the singleton permanently
+        // paused even after the feature became enabled.
         try { app.nimarkogram.messenger.banners.NimarkoBannerRenderer.getInstance().onAppResume(); } catch (Throwable ignore) {}
+        // NimarkoGram: clear ws-bypass fail/blacklist backoff and restart a dead listener after a
+        // network change (Wi-Fi<->cellular/doze/VPN). This is the only caller of onAppResume().
         try { app.nimarkogram.messenger.wsbypass.NimarkoWsBypassController.getInstance().onAppResume(); } catch (Throwable ignore) {}
         MessagesController.getInstance(currentAccount).sortDialogsAfterResume();
         showLanguageAlert(false);
@@ -7232,8 +7336,12 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
         }
 
         if (MessagesController.getInstance(currentAccount).hasSetupEmailSuggestion()) {
+            // Re-check if the user updated their email from another client
             MessagesController.getInstance(currentAccount).checkPromoInfo(true);
         }
+        //if (refreshRateController != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+        //    refreshRateController.start();
+        //}
     }
 
     private boolean isNimarkoProtectedScreenVisible() {
@@ -7407,8 +7515,8 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
             builder.setTitle(LocaleController.getString(R.string.AppName));
             if (fragment != null) {
                 Map<String, Integer> colorsReplacement = new HashMap<>();
-                colorsReplacement.put("info1.**", fragment.getThemedColor(Theme.key_dialogTopBackground));
-                colorsReplacement.put("info2.**", fragment.getThemedColor(Theme.key_dialogTopBackground));
+                colorsReplacement.put("info1", fragment.getThemedColor(Theme.key_dialogTopBackground));
+                colorsReplacement.put("info2", fragment.getThemedColor(Theme.key_dialogTopBackground));
                 builder.setTopAnimation(R.raw.not_available, AlertsCreator.NEW_DENY_DIALOG_TOP_ICON_SIZE, false, fragment.getThemedColor(Theme.key_dialogTopBackground), colorsReplacement);
                 builder.setTopAnimationIsNew(true);
             }
@@ -8669,6 +8777,10 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
                     && !mainFragmentsStack.isEmpty()
                     && (!PhotoViewer.hasInstance() || !PhotoViewer.getInstance().isVisible())
                     && event.getRepeatCount() == 0) {
+                // NimarkoGram (CG parity): when playVideoOnVolume is enabled,
+                // pressing a volume key while the focused chat has a visible
+                // inline video should start playing it instead of just changing
+                // the stream volume. Mirrors CG LaunchActivity#dispatchKeyEvent.
                 BaseFragment fragment = mainFragmentsStack.get(mainFragmentsStack.size() - 1);
                 if (fragment instanceof ChatActivity && !BaseFragment.hasSheets(fragment)) {
                     if (((ChatActivity) fragment).maybePlayVisibleVideo()) {
@@ -8978,6 +9090,7 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
         return null;
     }
 
+    // last fragment that is not finishing itself
     public static <T extends BaseFragment> T findFragment(Class<T> clazz) {
         if (BubbleActivity.instance != null && BubbleActivity.instance.actionBarLayout != null) {
             return BubbleActivity.instance.actionBarLayout.findFragment(clazz);
@@ -8991,6 +9104,7 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
         return null;
     }
 
+    // last fragment that is not finishing itself
     public static BaseFragment getSafeLastFragment() {
         if (BubbleActivity.instance != null && BubbleActivity.instance.actionBarLayout != null) {
             return BubbleActivity.instance.actionBarLayout.getSafeLastFragment();
@@ -9072,7 +9186,7 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
             }
             if (storyItem != null) {
                 storyItem.dialogId = dialogId;
-                BaseFragment lastFragment = getLastFragment();
+                BaseFragment lastFragment = getLastFragment(); //IncludeMainTabs();
                 if (lastFragment == null) {
                     return;
                 }
@@ -9114,7 +9228,7 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
             }
             if (storyItem != null && list != null) {
                 storyItem.dialogId = dialogId;
-                BaseFragment lastFragment = getLastFragment();
+                BaseFragment lastFragment = getLastFragment(); //IncludeMainTabs();
                 if (lastFragment == null) {
                     return;
                 }
@@ -9149,7 +9263,7 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
                 }
                 if (storyItem1 != null) {
                     storyItem1.dialogId = dialogId;
-                    BaseFragment lastFragment = getLastFragment();
+                    BaseFragment lastFragment = getLastFragment(); //IncludeMainTabs();
                     if (lastFragment == null) {
                         return;
                     }
@@ -9182,8 +9296,44 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
                 break;
             }
         }
+//        NotificationsController.getInstance(currentAccount).processIgnoreStories();
+//        List<BaseFragment> fragments = actionBarLayout.getFragmentStack();
+//        DialogsActivity dialogsActivity = null;
+//        for (int i = fragments.size() - 1; i >= 0; --i) {
+//            BaseFragment fragment = fragments.get(i);
+//            if (fragment instanceof DialogsActivity && (!((DialogsActivity) fragment).isArchive() || onlyArchived) && ((DialogsActivity) fragment).getType() == DialogsActivity.DIALOGS_TYPE_DEFAULT) {
+//                dialogsActivity = (DialogsActivity) fragment;
+//                break;
+//            } else {
+//                fragment.removeSelfFromStack(true);
+//            }
+//        }
+//        if (dialogsActivity != null) {
+//            if (drawerLayoutContainer != null) {
+//                drawerLayoutContainer.closeDrawer(true);
+//            }
+//            if (onlyArchived) {
+//                MessagesController.getInstance(dialogsActivity.getCurrentAccount()).getStoriesController().loadHiddenStories();
+//            } else {
+//                MessagesController.getInstance(dialogsActivity.getCurrentAccount()).getStoriesController().loadStories();
+//            }
+//            if (dialogsActivity.rightSlidingDialogContainer.hasFragment()) {
+//                dialogsActivity.rightSlidingDialogContainer.finishPreview();
+//            }
+//            if (onlyArchived && !dialogsActivity.isArchive()) {
+//                Bundle args = new Bundle();
+//                args.putInt("folderId", 1);
+//                presentFragment(dialogsActivity = new DialogsActivity(args));
+//            }
+//            final DialogsActivity dialogsActivity1 = dialogsActivity;
+//            dialogsActivity1.scrollToTop(false, false);
+//            AndroidUtilities.runOnUIThread(() -> {
+//                dialogsActivity1.scrollToTop(true, true);
+//            }, 500);
+//            return;
+//        }
 
-        BaseFragment lastFragment = getLastFragment();
+        BaseFragment lastFragment = getLastFragment(); //IncludeMainTabs();
         if (lastFragment == null) {
             return;
         }
@@ -9310,9 +9460,11 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
             if (currentRipple == null || currentRipple.view != parent) {
                 currentRipple = new SuperRipple(parent);
             }
-        }
-
-
+        }/* else if (Build.VERSION.SDK_INT >= 26) {
+            if (currentRipple == null || currentRipple.view != parent) {
+                currentRipple = new SuperRippleFallback(parent);
+            }
+        }*/
         if (currentRipple != null) {
             currentRipple.animate(x, y, intensity);
         }
@@ -9327,6 +9479,17 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
         return pipActivityController;
     }
 
+    // ------------------------------------------------------------------
+    // NimarkoGram icon-pack runtime (ported from CG LaunchActivity)
+    //
+    // Activity#getResources() is the single chokepoint through which every
+    // Telegram subsystem (Theme, ActionBar, custom drawables, vector fillers)
+    // loads its bitmaps. By returning a NimarkoIconResources wrapper we get
+    // automatic Solar-icon swapping with zero per-call-site edits.
+    // ------------------------------------------------------------------
+    // C12: volatile + double-checked locking. getResources() is called from background threads (drawable
+    // loads, inflaters), and a non-volatile check-then-act let two threads each construct a wrapper and
+    // publish half-initialised state. Publish exactly one instance under nmIconResourcesLock.
     private volatile app.nimarkogram.messenger.icons.NimarkoIconResources nmIconResources = null;
     private volatile AssetManager nmIconAssetManager = null;
     private final Object nmIconResourcesLock = new Object();
@@ -9350,6 +9513,7 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
         return local;
     }
 
+    /** Called by {@code AppearancePreferencesActivity} after the user flips icon packs. */
     public void reloadResources() {
         final app.nimarkogram.messenger.icons.NimarkoIconResources resources = nmIconResources;
         if (resources == null) {
@@ -9364,7 +9528,10 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
                 return;
             }
             try {
-                org.telegram.messenger.ApplicationLoader.reloadAppIconResources();
+                org.telegram.messenger.ApplicationLoader.reloadAppIconResources();   // re-skin the app-level wrapper too
+                // createCommonResources() short-circuits on its one-shot guard (if dividerPaint == null),
+                // so a plain re-call is a no-op and the static avatarDrawables keep the OLD pack's glyphs.
+                // Reset the guard first (UI thread, synchronous) so its body actually reloads them.
                 org.telegram.ui.ActionBar.Theme.dividerPaint = null;
                 org.telegram.ui.ActionBar.Theme.createCommonResources(this);
                 org.telegram.ui.ActionBar.Theme.reloadAllResources(this);
@@ -9398,6 +9565,10 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
     private void checkDecorViewVisibility() {
         Window window = getWindow();
         if (window != null) {
+            // warn: do not use decorView.setVisibility because it causes bugs on some devices
+            // this is likely a problem on Android 13 and earlier, but requires further investigation.
+            //View decorView = window.getDecorView();
+            //decorView.setVisibility(reasonsToHideDecorView > 0 && !isInPictureInPictureMode ? View.GONE : View.VISIBLE);
         }
     }
 

@@ -28,6 +28,7 @@ import androidx.annotation.RequiresApi;
 import androidx.core.graphics.ColorUtils;
 import androidx.core.math.MathUtils;
 
+import org.telegram.messenger.utils.RadiiUtils;
 import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.Components.blur3.Blur3HashImpl;
 import org.telegram.ui.Components.blur3.drawable.color.BlurredBackgroundColorProvider;
@@ -187,6 +188,10 @@ public abstract class BlurredBackgroundDrawable extends Drawable {
         return source;
     }
 
+
+
+    /* Colors */
+
     protected BlurredBackgroundColorProvider colorProvider;
     protected int shadowColor, backgroundColor, strokeColorTop, strokeColorBottom, strokeColorFull;
 
@@ -208,7 +213,11 @@ public abstract class BlurredBackgroundDrawable extends Drawable {
 
         backgroundColor = colorProvider.getBackgroundColor();
         shadowColor = colorProvider.getShadowColor();
-        
+        // NG (extera-port "GlareOnElements"): when ON, draw two halo halves
+        // (top brighter, bottom subtler) like Liquid Glass. When OFF, fall
+        // back to a single uniform `strokeColorFull` stroke (extera parity —
+        // their `useFullStroke` branch). Zero `strokeColorTop/Bottom` so the
+        // halo halves are skipped in drawStrokeInternalIfNeeded.
         if (app.nimarkogram.messenger.NimarkoConfig.glareOnElements) {
             strokeColorTop = colorProvider.getStrokeColorTop();
             strokeColorBottom = colorProvider.getStrokeColorBottom();
@@ -220,6 +229,9 @@ public abstract class BlurredBackgroundDrawable extends Drawable {
         }
     }
 
+
+
+    /* Bound Props */
     private static final float[] tmpRadii = new float[8];
     protected final Props boundProps = new Props();
 
@@ -245,7 +257,7 @@ public abstract class BlurredBackgroundDrawable extends Drawable {
         public final Path strokePathBottom = new Path();
 
         public void build() {
-            radiiAreSame = radiiAreSame(radii);
+            radiiAreSame = RadiiUtils.radiiAreSame(radii);
 
             boundsWithPadding.set(bounds);
             boundsWithPadding.inset(padding, padding);
@@ -319,6 +331,10 @@ public abstract class BlurredBackgroundDrawable extends Drawable {
         }
     }
 
+
+
+    /* Outline */
+
     private ViewOutlineProvider viewOutlineProvider;
 
     public ViewOutlineProvider getViewOutlineProvider() {
@@ -341,7 +357,7 @@ public abstract class BlurredBackgroundDrawable extends Drawable {
 
     private static Path tmpPath = new Path();
     protected static void getOutline(Outline outline, Rect rect, float[] radii) {
-        final boolean radiiAreSame = radiiAreSame(radii);
+        final boolean radiiAreSame = RadiiUtils.radiiAreSame(radii);
 
         if (radiiAreSame) {
             outline.setRoundRect(rect, Math.min(radii[0], Math.min(rect.width(), rect.height()) / 2f));
@@ -358,16 +374,6 @@ public abstract class BlurredBackgroundDrawable extends Drawable {
             );
             outline.setConvexPath(tmpPath);
         }
-    }
-
-    private static boolean radiiAreSame(float[] radii) {
-        return radii[0] == radii[1]
-            && radii[0] == radii[2]
-            && radii[0] == radii[3]
-            && radii[0] == radii[4]
-            && radii[0] == radii[5]
-            && radii[0] == radii[6]
-            && radii[0] == radii[7];
     }
 
     protected int alpha = 255;
@@ -392,6 +398,8 @@ public abstract class BlurredBackgroundDrawable extends Drawable {
         return PixelFormat.TRANSLUCENT;
     }
 
+
+
     public static void drawStroke(
         Canvas canvas,
         float left, float top, float right, float bottom,
@@ -406,7 +414,8 @@ public abstract class BlurredBackgroundDrawable extends Drawable {
         final float strokeHalf = strokeWidth / 2f;
 
         if (isTop) {
-            
+            // float topLeft, float topRight, float bottomRight, float bottomLeft
+
             if (radiiAreSame) {
                 canvas.save();
                 if (canvas.clipRect(left, top, right, MathUtils.clamp(top + radii[0] * 2, top, bottom))) {
@@ -531,6 +540,7 @@ public abstract class BlurredBackgroundDrawable extends Drawable {
         inAppKeyboardOptimization = true;
     }
 
+
     protected float shadowLayerRadius;
     protected float shadowLayerDx;
     protected float shadowLayerDy;
@@ -550,6 +560,10 @@ public abstract class BlurredBackgroundDrawable extends Drawable {
         boundProps.strokeWidthTop = strokeWidthTop;
         boundProps.strokeWidthBottom = strokeWidthBottom;
     }
+
+
+
+    /* Universal */
 
     protected void drawSource(Canvas canvas, BlurredBackgroundSource source) {
         if (boundProps.boundsWithPadding.isEmpty()) {
@@ -581,7 +595,13 @@ public abstract class BlurredBackgroundDrawable extends Drawable {
     private final Paint backgroundBitmapFill = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint shadowPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Matrix bitmapShaderMatrix = new Matrix();
-     
+    /*
+     * BitmapShader already holds its Bitmap strongly, so a WeakReference does not
+     * reduce the lifetime of the bitmap here. More importantly, the old final
+     * WeakReference was created with null and was never updated: every draw looked
+     * like a bitmap change and allocated a fresh native BitmapShader. Keep the
+     * identity explicitly and rebuild only when the source really changes.
+     */
     private @Nullable Bitmap bitmapInShader;
     private @Nullable BitmapShader bitmapShader;
 
@@ -589,6 +609,7 @@ public abstract class BlurredBackgroundDrawable extends Drawable {
         shadowPaint.setColor(0);
         backgroundBitmapPaint.setFilterBitmap(true);
     }
+
 
     private void drawSourceAny(Canvas canvas, BlurredBackgroundSource source) {
         if (alpha == 0) {
@@ -702,7 +723,10 @@ public abstract class BlurredBackgroundDrawable extends Drawable {
     }
 
     private void drawStrokeInternalIfNeeded(Canvas canvas) {
-        
+        // NG (extera-port "GlareOnElements" fallback): when glare is OFF the
+        // provider supplies a single full-stroke colour to draw a clean
+        // uniform outline using the top path (full perimeter of the rounded
+        // rect). This matches extera's `useFullStroke` branch.
         final int strokeColorFull = Theme.multAlpha(this.strokeColorFull, alpha / 255f);
         if (Color.alpha(strokeColorFull) > 0) {
             paintStrokeFill.setColor(strokeColorFull);
@@ -729,6 +753,7 @@ public abstract class BlurredBackgroundDrawable extends Drawable {
             return;
         }
 
+        // todo: move from drawableRenderNode
     }
 
     private final RectF cmpRectF1 = new RectF();
@@ -750,6 +775,15 @@ public abstract class BlurredBackgroundDrawable extends Drawable {
         position.set(boundProps.boundsWithPadding);
         position.offset(sourceOffsetX, sourceOffsetY);
     }
+
+
+
+
+    /* * */
+
+    //private static final Map<Long, NinePatchDrawable> ninePatchDrawablesPool = new MapMaker()
+    //    .weakValues()
+    //    .makeMap();
 
     private final Blur3HashImpl ninePatchHashBuilder = new Blur3HashImpl();
     private final Rect ninePatchDrawablePadding = new Rect();
@@ -800,9 +834,10 @@ public abstract class BlurredBackgroundDrawable extends Drawable {
                         canvas.drawPath(path, paint);
                     }
 
+
                     if (withStroke) {
                         final float[] radii = Arrays.copyOf(boundProps.radii, 8);
-                        final boolean radiiAreSame = radiiAreSame(radii);
+                        final boolean radiiAreSame = RadiiUtils.radiiAreSame(radii);
                         final float radiusMax = Math.min(rect.width(), rect.height()) / 2f;
                         final Paint strokePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
 

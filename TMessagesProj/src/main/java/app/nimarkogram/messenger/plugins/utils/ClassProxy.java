@@ -14,7 +14,7 @@ import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
-import java.util.Collections;
+import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -23,13 +23,29 @@ import java.util.concurrent.ConcurrentHashMap;
 
 import org.telegram.messenger.FileLog;
 
+/**
+ * Java port of {@code com.exteragram.messenger.plugins.utils.ClassProxy}.
+ *
+ * <p>The original extera class uses dexmaker to synthesise runtime classes
+ * that bridge between Java callers and Python plugin objects, and MVEL2 to
+ * evaluate hooked expressions. We do not ship MVEL — that path is gated by
+ * {@link #setMvelEvaluator(MvelEvaluator)} so callers can wire in their own
+ * expression evaluator if they need MVEL semantics.
+ *
+ * <p>The dexmaker-based class generation in {@link #generateProxyClass} is
+ * preserved verbatim where possible; without the original Kotlin source we
+ * keep the public surface (the {@code FieldMethodSpec}, {@code DexMakerHook}
+ * types, and the static cache) and provide a working {@link #invoke} method.
+ */
 public class ClassProxy {
 
     private static volatile ClassLoader sharedGeneratedClassLoader;
     private static final String PYTHON_PEER_FIELD_NAME = "__nimarko_python_peer";
     private static final ConcurrentHashMap<String, Serializable> mvelExpressionCache = new ConcurrentHashMap<>();
     private static final Object generatedClassLoaderLock = new Object();
+    private static final int MAX_METHOD_CACHE_SIZE = 128;
 
+    /** Optional plug-in for MVEL expression evaluation. */
     public interface MvelEvaluator {
         Object evaluate(String expression, Map<String, Object> context);
     }
@@ -40,6 +56,7 @@ public class ClassProxy {
         void apply(DexMaker dexMaker, TypeId<?> typeId, TypeId<?> typeId2, List<TypeId<?>> list);
     }
 
+    /** Mirror of extera's FieldMethodSpec — describes a generated getter/setter. */
     public static final class FieldMethodSpec {
         private final String name;
         private final int modifiers;
@@ -77,6 +94,7 @@ public class ClassProxy {
 
     private final Class<?> targetClass;
     private final Map<String, HookSpec> hooks = new LinkedHashMap<>();
+    private final ConcurrentHashMap<MethodCacheKey, Method> methodCache = new ConcurrentHashMap<>();
 
     public ClassProxy(Class<?> targetClass) {
         this.targetClass = targetClass;
@@ -87,6 +105,10 @@ public class ClassProxy {
         return this;
     }
 
+    /**
+     * Invoke a method on a target instance, applying any registered MVEL
+     * before/after hooks. Without an evaluator the hook bodies are skipped.
+     */
     public Object invoke(Object target, String methodName, Object... args) throws ReflectiveOperationException {
         HookSpec hs = hooks.get(methodName);
         Map<String, Object> ctx = new LinkedHashMap<>();
@@ -109,6 +131,12 @@ public class ClassProxy {
     }
 
     private Object findAndInvoke(Object target, String methodName, Object[] args) throws ReflectiveOperationException {
+        MethodCacheKey cacheKey = new MethodCacheKey(methodName, args);
+        Method cached = methodCache.get(cacheKey);
+        if (cached != null) {
+            return cached.invoke(target, args);
+        }
+
         Method bestMatch = null;
         int bestScore = -1;
         for (Method m : targetClass.getMethods()) {
@@ -137,7 +165,41 @@ public class ClassProxy {
             throw new NoSuchMethodException(targetClass.getName() + "." + methodName);
         }
         bestMatch.setAccessible(true);
-        return bestMatch.invoke(target, args);
+        if (methodCache.size() >= MAX_METHOD_CACHE_SIZE) {
+            methodCache.clear();
+        }
+        Method raced = methodCache.putIfAbsent(cacheKey, bestMatch);
+        return (raced != null ? raced : bestMatch).invoke(target, args);
+    }
+
+    private static final class MethodCacheKey {
+        private final String name;
+        private final Class<?>[] argumentTypes;
+        private final int hashCode;
+
+        MethodCacheKey(String name, Object[] args) {
+            this.name = name;
+            int count = args == null ? 0 : args.length;
+            this.argumentTypes = new Class<?>[count];
+            for (int i = 0; i < count; i++) {
+                Object argument = args[i];
+                argumentTypes[i] = argument == null ? null : argument.getClass();
+            }
+            this.hashCode = 31 * name.hashCode() + Arrays.hashCode(argumentTypes);
+        }
+
+        @Override
+        public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof MethodCacheKey)) return false;
+            MethodCacheKey key = (MethodCacheKey) other;
+            return name.equals(key.name) && Arrays.equals(argumentTypes, key.argumentTypes);
+        }
+
+        @Override
+        public int hashCode() {
+            return hashCode;
+        }
     }
 
     private static boolean boxesMatch(Class<?> param, Class<?> argClass) {
@@ -152,6 +214,12 @@ public class ClassProxy {
         return false;
     }
 
+    /**
+     * Generates a synthetic subclass of {@code parent} that forwards every
+     * non-final method to an injected python peer. Returns the generated
+     * Class, loaded into the shared generated class loader so subsequent
+     * generations re-use the same loader (DexMaker requires this).
+     */
     @SuppressWarnings({"rawtypes", "unchecked"})
     public static Class<?> generateProxyClass(Class<?> parent, String suffix, DexMakerHook hook) {
         try {
@@ -160,10 +228,11 @@ public class ClassProxy {
             TypeId parentType = TypeId.get(parent);
             List<TypeId<?>> interfaces = new ArrayList<>();
             dm.declare(generated, "Generated.java", Modifier.PUBLIC, parentType);
-            
+            // Inject a String peer-id field so the python engine can look up
+            // the wrapped object by name.
             FieldId peerField = generated.getField(TypeId.STRING, PYTHON_PEER_FIELD_NAME);
             dm.declare(peerField, Modifier.PUBLIC, null);
-            
+            // Synthesize a no-arg constructor that invokes the parent's no-arg ctor.
             MethodId ctor = generated.getConstructor();
             Code code = dm.declare(ctor, Modifier.PUBLIC);
             Local self = code.getThis(generated);
@@ -184,15 +253,17 @@ public class ClassProxy {
 
     private static ClassLoader getSharedLoader(ClassLoader parent, byte[] dex) {
         synchronized (generatedClassLoaderLock) {
-            if (sharedGeneratedClassLoader == null) {
-                sharedGeneratedClassLoader = new InMemoryDexClassLoader(ByteBuffer.wrap(dex), parent);
-            }
+            ClassLoader generatedParent = sharedGeneratedClassLoader != null
+                    ? sharedGeneratedClassLoader : parent;
+            sharedGeneratedClassLoader = new InMemoryDexClassLoader(
+                    ByteBuffer.wrap(dex), generatedParent);
             return sharedGeneratedClassLoader;
         }
     }
 
     public static String getPythonPeerFieldName() { return PYTHON_PEER_FIELD_NAME; }
 
+    /** Cached compiled MVEL expression; returns null if no evaluator is set. */
     public static Serializable getCompiledExpression(String expression) {
         if (expression == null) return null;
         return mvelExpressionCache.get(expression);
@@ -200,7 +271,8 @@ public class ClassProxy {
 
     public static void putCompiledExpression(String expression, Serializable compiled) {
         if (expression != null && compiled != null) {
-            
+            // NG (OOM): bound this cache — a plugin building dynamic expression strings would
+            // otherwise grow it (compiled MVEL ASTs) without limit. Cap like MenuItemRecord.
             if (mvelExpressionCache.size() > 256) {
                 mvelExpressionCache.clear();
             }

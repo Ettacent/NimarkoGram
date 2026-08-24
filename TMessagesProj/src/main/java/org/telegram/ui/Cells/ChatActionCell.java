@@ -96,6 +96,7 @@ import org.telegram.messenger.utils.tlutils.TlUtils;
 import org.telegram.tgnet.ConnectionsManager;
 import org.telegram.tgnet.TLObject;
 import org.telegram.tgnet.TLRPC;
+import org.telegram.tgnet.tl.TL_keyboard;
 import org.telegram.tgnet.tl.TL_payments;
 import org.telegram.tgnet.tl.TL_stars;
 import org.telegram.tgnet.tl.TL_stories;
@@ -185,6 +186,8 @@ public class ChatActionCell extends BaseCell implements DownloadController.FileD
     public void didReceivedNotification(int id, int account, Object... args) {
         if (id == NotificationCenter.startSpoilers) {
             setSpoilersSuppressed(false);
+        } else if (id == NotificationCenter.emojiLoaded) {
+            invalidate();
         } else if (id == NotificationCenter.stopSpoilers) {
             setSpoilersSuppressed(true);
         } else if (id == NotificationCenter.didUpdatePremiumGiftStickers || id == NotificationCenter.starGiftsLoaded || id == NotificationCenter.didUpdateTonGiftStickers) {
@@ -239,7 +242,7 @@ public class ChatActionCell extends BaseCell implements DownloadController.FileD
         default void needOpenUserProfile(long uid) {
         }
 
-        default void didPressBotButton(MessageObject messageObject, TLRPC.KeyboardButton button) {
+        default void didPressBotButton(MessageObject messageObject, TL_keyboard.KeyboardButtonProto button) {
         }
 
         default void didPressReplyMessage(ChatActionCell cell, int id) {
@@ -536,6 +539,7 @@ public class ChatActionCell extends BaseCell implements DownloadController.FileD
         starParticlesDrawable.init();
     }
 
+    /** Makes this cell a side-effect-free visual clone. */
     public void setDelegate(ChatActionCellDelegate delegate) {
         this.delegate = delegate;
     }
@@ -612,6 +616,11 @@ public class ChatActionCell extends BaseCell implements DownloadController.FileD
 
         botButtons.clear();
         botInlineButtons = null;
+        /*
+        botButtonsByData.clear();
+        botButtonsByPosition.clear();
+        botButtonsLayout = null;
+        */
         accessibilityText = null;
         boolean messageIdChanged = currentMessageObject == null || currentMessageObject.stableId != messageObject.stableId;
         if (currentMessageObject != null) {
@@ -1168,6 +1177,7 @@ public class ChatActionCell extends BaseCell implements DownloadController.FileD
         NotificationCenter.getInstance(currentAccount).removeObserver(this, NotificationCenter.didUpdateTonGiftStickers);
         NotificationCenter.getInstance(currentAccount).removeObserver(this, NotificationCenter.starGiftsLoaded);
         NotificationCenter.getInstance(currentAccount).removeObserver(this, NotificationCenter.diceStickersDidLoad);
+        NotificationCenter.getGlobalInstance().removeObserver(this, NotificationCenter.emojiLoaded);
         avatarStoryParams.onDetachFromWindow();
 
         transitionParams.onDetach();
@@ -1201,6 +1211,7 @@ public class ChatActionCell extends BaseCell implements DownloadController.FileD
         NotificationCenter.getInstance(currentAccount).addObserver(this, NotificationCenter.didUpdateTonGiftStickers);
         NotificationCenter.getInstance(currentAccount).addObserver(this, NotificationCenter.starGiftsLoaded);
         NotificationCenter.getInstance(currentAccount).addObserver(this, NotificationCenter.diceStickersDidLoad);
+        NotificationCenter.getGlobalInstance().addObserver(this, NotificationCenter.emojiLoaded);
 
         if (currentMessageObject != null && currentMessageObject.type == MessageObject.TYPE_SUGGEST_PHOTO) {
             setMessageObject(currentMessageObject, true);
@@ -1604,6 +1615,7 @@ public class ChatActionCell extends BaseCell implements DownloadController.FileD
         } else if (currentMessageObject.messageOwner.action instanceof TLRPC.TL_messageActionStarGift) {
             final TLRPC.TL_messageActionStarGift action = (TLRPC.TL_messageActionStarGift) currentMessageObject.messageOwner.action;
             if (action.forceIn) return;
+//            StarsIntroActivity.showActionGiftSheet(getContext(), currentAccount, currentMessageObject.getDialogId(), currentMessageObject.isOutOwner(), currentMessageObject.messageOwner.date, currentMessageObject.getId(), action, themeDelegate);
             new StarGiftSheet(getContext(), currentAccount, currentMessageObject.getDialogId(), themeDelegate)
                 .set(currentMessageObject)
                 .show();
@@ -1665,6 +1677,26 @@ public class ChatActionCell extends BaseCell implements DownloadController.FileD
                 }
             } else if (url.startsWith("game")) {
                 delegate.didPressReplyMessage(this, currentMessageObject.getReplyMsgId());
+                /*TLRPC.KeyboardButton gameButton = null;
+                MessageObject messageObject = currentMessageObject.replyMessageObject;
+                if (messageObject != null && messageObject.messageOwner.reply_markup != null) {
+                    for (int a = 0; a < messageObject.messageOwner.reply_markup.rows.size(); a++) {
+                        TLRPC.TL_keyboardButtonRow row = messageObject.messageOwner.reply_markup.rows.get(a);
+                        for (int b = 0; b < row.buttons.size(); b++) {
+                            TLRPC.KeyboardButton button = row.buttons.get(b);
+                            if (button instanceof TLRPC.TL_keyboardButtonGame && button.game_id == currentMessageObject.messageOwner.action.game_id) {
+                                gameButton = button;
+                                break;
+                            }
+                        }
+                        if (gameButton != null) {
+                            break;
+                        }
+                    }
+                }
+                if (gameButton != null) {
+                    delegate.didPressBotButton(messageObject, gameButton);
+                }*/
             } else if (url.startsWith("http")) {
                 Browser.openUrl(getContext(), url);
             } else {
@@ -1997,7 +2029,7 @@ public class ChatActionCell extends BaseCell implements DownloadController.FileD
         if (messageObject.type == MessageObject.TYPE_COMMUNITY_CHANGED) {
             imageSize = dp(52);
         } else if (messageObject.type == MessageObject.TYPE_SUGGEST_PHOTO || isNewStyleButtonLayout()) {
-            imageSize = dp(78);
+            imageSize = dp(78);//Math.max(, (int) (stickerSize * 0.7f));
         }
         if (isMessageActionSuggestedPostApproval() || messageObject.type == MessageObject.TYPE_GIFT_OFFER_REJECTED || messageObject.type == MessageObject.TYPE_SHARING_OFFER) {
             imageSize = 0;
@@ -2825,6 +2857,7 @@ public class ChatActionCell extends BaseCell implements DownloadController.FileD
                 long dialogId = messageObject.messageOwner.media.user_id;
                 avatarStoryParams.storyId = messageObject.messageOwner.media.id;
                 StoriesUtilities.drawAvatarWithStory(dialogId, canvas, imageReceiver, avatarStoryParams);
+             //   imageReceiver.draw(canvas);
             } else {
                 imageReceiver.draw(canvas);
             }
@@ -3987,8 +4020,8 @@ public class ChatActionCell extends BaseCell implements DownloadController.FileD
         canvas.restore();
 
         if (topicSeparator != null) {
-            final float alpha = getAlpha();
-            final float top = 0;
+            final float alpha = getAlpha(); // transitionParams.ignoreAlpha ? timeAlpha : getAlpha();
+            final float top = 0;//- topicSeparatorTopPadding + (getTopicSeparatorTopPadding() - topicSeparatorTopPadding);;
             if (themeDelegate != null) {
                 themeDelegate.applyServiceShaderMatrix(getMeasuredWidth(), backgroundHeight, viewTranslationX, viewTop + top);
             } else {

@@ -31,7 +31,6 @@ import android.graphics.Path;
 import android.graphics.PorterDuff;
 import android.graphics.PorterDuffColorFilter;
 import android.graphics.Rect;
-import android.graphics.RectF;
 import android.graphics.Region;
 import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.Drawable;
@@ -88,9 +87,7 @@ import org.telegram.messenger.ChatObject;
 import org.telegram.messenger.ContactsController;
 import org.telegram.messenger.DialogObject;
 import org.telegram.messenger.Emoji;
-import org.telegram.messenger.FileLoader;
 import org.telegram.messenger.FileLog;
-import org.telegram.messenger.ImageLocation;
 import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.MessageObject;
 import org.telegram.messenger.MessagesController;
@@ -114,6 +111,7 @@ import org.telegram.tgnet.SerializedData;
 import org.telegram.tgnet.TLObject;
 import org.telegram.tgnet.TLRPC;
 import org.telegram.tgnet.tl.TL_account;
+import org.telegram.tgnet.tl.TL_ephemeral;
 import org.telegram.tgnet.tl.TL_phone;
 import org.telegram.tgnet.tl.TL_stars;
 import org.telegram.tgnet.tl.TL_update;
@@ -446,7 +444,7 @@ public class AlertsCreator {
                 }
             }
         } else if (request instanceof TLRPC.TL_messages_sendMessage ||
-                request instanceof TLRPC.TL_ephemeral_sendMessage ||
+                request instanceof TL_ephemeral.TL_sendMessage ||
                 request instanceof TLRPC.TL_messages_sendMedia ||
                 request instanceof TLRPC.TL_messages_sendInlineBotResult ||
                 request instanceof TLRPC.TL_messages_forwardMessages ||
@@ -457,8 +455,8 @@ public class AlertsCreator {
                 dialogId = DialogObject.getPeerDialogId(((TLRPC.TL_messages_sendMessage) request).peer);
             } else if (request instanceof TLRPC.TL_messages_sendMedia) {
                 dialogId = DialogObject.getPeerDialogId(((TLRPC.TL_messages_sendMedia) request).peer);
-            } else if (request instanceof TLRPC.TL_ephemeral_sendMessage) {
-                dialogId = DialogObject.getPeerDialogId(((TLRPC.TL_ephemeral_sendMessage) request).peer);
+            } else if (request instanceof TL_ephemeral.TL_sendMessage) {
+                dialogId = DialogObject.getPeerDialogId(((TL_ephemeral.TL_sendMessage) request).peer);
             } else if (request instanceof TLRPC.TL_messages_sendInlineBotResult) {
                 dialogId = DialogObject.getPeerDialogId(((TLRPC.TL_messages_sendInlineBotResult) request).peer);
             } else if (request instanceof TLRPC.TL_messages_forwardMessages) {
@@ -808,8 +806,8 @@ public class AlertsCreator {
         AlertDialog.Builder builder = new AlertDialog.Builder(context);
         builder.setTitle(title);
         Map<String, Integer> colorsReplacement = new HashMap<>();
-        colorsReplacement.put("info1.**", Theme.getColor(Theme.key_dialogTopBackground, resourcesProvider));
-        colorsReplacement.put("info2.**", Theme.getColor(Theme.key_dialogTopBackground, resourcesProvider));
+        colorsReplacement.put("info1", Theme.getColor(Theme.key_dialogTopBackground, resourcesProvider));
+        colorsReplacement.put("info2", Theme.getColor(Theme.key_dialogTopBackground, resourcesProvider));
         builder.setTopAnimation(R.raw.not_available, AlertsCreator.NEW_DENY_DIALOG_TOP_ICON_SIZE, false, Theme.getColor(Theme.key_dialogTopBackground, resourcesProvider), colorsReplacement);
         builder.setTopAnimationIsNew(true);
         builder.setPositiveButton(LocaleController.getString(R.string.Close), null);
@@ -1775,6 +1773,12 @@ public class AlertsCreator {
         urlView.setMaxLines(5);
         urlView.setEllipsize(TextUtils.TruncateAt.END);
         urlView.setPadding(dp(14), dp(12), dp(14), dp(12));
+        /*
+        urlView.setOnClickListener(v -> {
+            open.run();
+            if (dialog[0] != null) dialog[0].dismiss();
+        });
+        */
 
         final GradientDrawable urlBackground = new GradientDrawable();
         urlBackground.setCornerRadius(dp(22));
@@ -2046,6 +2050,19 @@ public class AlertsCreator {
         }
 
         messageTextView.setText(replaceTags(message));
+        /*if (chat != null) {
+            if (TextUtils.isEmpty(title)) {
+                messageTextView.setText(AndroidUtilities.replaceTags(LocaleController.formatString("ImportToChatNoTitle", R.string.ImportToChatNoTitle, chat.title)));
+            } else {
+                messageTextView.setText(AndroidUtilities.replaceTags(LocaleController.formatString("ImportToChat", R.string.ImportToChat, title, chat.title)));
+            }
+        } else {
+            if (TextUtils.isEmpty(title)) {
+                messageTextView.setText(AndroidUtilities.replaceTags(LocaleController.formatString("ImportToUserNoTitle", R.string.ImportToUserNoTitle, ContactsController.formatName(user.first_name, user.last_name))));
+            } else {
+                messageTextView.setText(AndroidUtilities.replaceTags(LocaleController.formatString("ImportToUser", R.string.ImportToUser, title, ContactsController.formatName(user.first_name, user.last_name))));
+            }
+        }*/
 
         builder.setPositiveButton(LocaleController.getString(R.string.Import), (dialogInterface, i) -> {
             if (onProcessRunnable != null) {
@@ -2852,7 +2869,7 @@ public class AlertsCreator {
                 }
             }
         }
-        builder.setPositiveButton(actionText, (dialogInterface, i) -> app.nimarkogram.messenger.utils.CGCompat.runOrAskBeforeDestructive(fragment.getParentActivity(), () -> {
+        builder.setPositiveButton(actionText, (dialogInterface, i) -> app.nimarkogram.messenger.utils.CGCompat.runOrAskBeforeDestructive(fragment.getParentActivity(), fragment.getCurrentAccount(), () -> {
             if (!clearingCache && !second && !secret) {
                 if (UserObject.isUserSelf(user)) {
                     createClearOrDeleteDialogAlert(fragment, clear, true, chat, user, false, checkDeleteForAll, deleteForAll[0], canDeleteHistory, onProcessRunnable, resourcesProvider);
@@ -3052,7 +3069,7 @@ public class AlertsCreator {
         String actionText = canDeleteHistory ? LocaleController.getString("Delete", R.string.Delete)
                 : canClearCacheCount != 0 ? LocaleController.getString("ClearHistoryCache", R.string.ClearHistoryCache)
                 : LocaleController.getString("ClearHistory", R.string.ClearHistory);
-        builder.setPositiveButton(actionText, (dialogInterface, i) -> app.nimarkogram.messenger.utils.CGCompat.runOrAskBeforeDestructive(fragment.getParentActivity(), () -> {
+        builder.setPositiveButton(actionText, (dialogInterface, i) -> app.nimarkogram.messenger.utils.CGCompat.runOrAskBeforeDestructive(fragment.getParentActivity(), fragment.getCurrentAccount(), () -> {
             if (onProcessRunnable != null) {
                 onProcessRunnable.run(deleteForAll[0]);
             }
@@ -3165,7 +3182,7 @@ public class AlertsCreator {
         if (chat != null && canDeleteHistory && ChatObject.isPublic(chat) && !ChatObject.isChannelAndNotMegaGroup(chat)) {
             deleteText = LocaleController.getString(R.string.ClearForAll);
         }
-        builder.setPositiveButton(deleteText, (dialogInterface, i) -> app.nimarkogram.messenger.utils.CGCompat.runOrAskBeforeDestructive(fragment.getParentActivity(), () -> {
+        builder.setPositiveButton(deleteText, (dialogInterface, i) -> app.nimarkogram.messenger.utils.CGCompat.runOrAskBeforeDestructive(fragment.getParentActivity(), fragment.getCurrentAccount(), () -> {
             onProcessRunnable.run(deleteForAll[0]);
         }));
         builder.setNegativeButton(LocaleController.getString(R.string.Cancel), null);
@@ -5243,7 +5260,7 @@ public class AlertsCreator {
     }
 
 
-    private static final int FMT_DATE_MONTH_PICKER_HALF_SIZE = 12 * 10;
+    private static final int FMT_DATE_MONTH_PICKER_HALF_SIZE = 12 * 10; // 10 years
 
     public static BottomSheet.Builder createFormattedDatePickerDialog(Context context, final FormattedDatePickerDelegate datePickerDelegate, final Runnable cancelRunnable, Theme.ResourcesProvider resourcesProvider) {
         if (context == null) {
@@ -5384,6 +5401,7 @@ public class AlertsCreator {
             protected void dispatchDraw(@NonNull Canvas canvas) {
                 super.dispatchDraw(canvas);
                 final float cy = getHeight() / 2f;
+                // sep1.draw(canvas, hourPicker.getX() - dp(50), cy, 0.75f);
                 sep2.draw(canvas, minutePicker.getX() - dp(50), cy);
             }
         };
@@ -5407,9 +5425,27 @@ public class AlertsCreator {
         minutePicker.setOnValueChangedListener(onValueChangeListener);
 
 
+
         final boolean[] canceled = {true};
 
         int[] flagArr = new int[1];
+        /*
+        if (BuildConfig.DEBUG_PRIVATE_VERSION) {
+            String[] flagsStr = {"relative", "short_time", "long_time", "short_date", "long_date", "day_of_week"};
+            for (int a = 0; a < flagsStr.length; a++) {
+                final int flag = a;
+                final CheckBoxCell cell = new CheckBoxCell(context, 1, resourcesProvider);
+                cell.setBackground(Theme.getSelectorDrawable(false));
+                cell.setText(flagsStr[a], "", false, false);
+                container.addView(cell, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 48));
+                cell.setOnClickListener(v -> {
+                    CheckBoxCell cell12 = (CheckBoxCell) v;
+                    cell12.setChecked(!cell12.isChecked(), true);
+                    flagArr[0] = BitwiseUtils.setFlag(flagArr[0], 1 << flag, cell12.isChecked());
+                });
+            }
+        }
+        */
 
         buttonTextView.setPadding(dp(34), 0, dp(34), 0);
         buttonTextView.setRound();
@@ -7699,6 +7735,7 @@ public class AlertsCreator {
         void didPressedNewCard();
     }
 
+    /** NimarkoGram: re-entrancy guard for the biometric-before-delete prompt. */
     private static boolean nmDeleteAlertBypassBiometric = false;
 
     public static void createDeleteMessagesAlert(BaseFragment fragment, TLRPC.User user, TLRPC.Chat chat, TLRPC.EncryptedChat encryptedChat, TLRPC.ChatFull chatInfo, long mergeDialogId, MessageObject selectedMessage, SparseArray<MessageObject>[] selectedMessages, MessageObject.GroupedMessages selectedGroup, int topicId, int mode, TLRPC.ChannelParticipant[] channelParticipants, Runnable onDelete, Runnable hideDim, Theme.ResourcesProvider resourcesProvider) {
@@ -7712,6 +7749,9 @@ public class AlertsCreator {
         if (activity == null) {
             return;
         }
+        // NimarkoGram: require authentication before showing the delete dialog.
+        // The centralized gate fails closed if no configured authenticator or
+        // usable Activity exists, or if constructing/showing the prompt throws.
         if (!nmDeleteAlertBypassBiometric
                 && app.nimarkogram.messenger.NimarkoConfig.askPasscodeBeforeDelete) {
             app.nimarkogram.messenger.utils.CGCompat.runOrAskBeforeDestructive(activity, fragment.getCurrentAccount(), () -> {
@@ -7887,6 +7927,8 @@ public class AlertsCreator {
             }
         }
 
+        // NimarkoGram (CG parity): default the delete-for-all checkbox to the user's
+        // saved preference so they don't have to re-check it each time.
         final boolean[] deleteForAll = {app.nimarkogram.messenger.NimarkoConfig.deleteForAll};
         boolean canRevokeInbox = user != null && MessagesController.getInstance(currentAccount).canRevokePmInbox;
         int revokeTimeLimit;
@@ -8030,6 +8072,7 @@ public class AlertsCreator {
                     cell.setText(LocaleController.getString(R.string.DeleteMessagesOption), "", false, false);
                 }
                 cell.setPadding(LocaleController.isRTL ? dp(16) : dp(8), 0, LocaleController.isRTL ? dp(8) : dp(16), 0);
+                // NimarkoGram: optionally pre-check the "delete for all" box.
                 if (app.nimarkogram.messenger.NimarkoConfig.deleteForAll) {
                     deleteForAll[0] = true;
                     cell.setChecked(true, false);
@@ -8085,6 +8128,8 @@ public class AlertsCreator {
                 FrameLayout frameLayout = new FrameLayout(activity);
                 CheckBoxCell cell = new CheckBoxCell(activity, 1, resourcesProvider);
                 cell.setBackgroundDrawable(Theme.getSelectorDrawable(false));
+                // NimarkoGram (CG parity): show the checkbox pre-checked when the user
+                // has opted into "delete for all" by default.
                 if (canDeleteInbox) {
                     cell.setText(LocaleController.formatString("DeleteMessagesOptionAlso", R.string.DeleteMessagesOptionAlso, UserObject.getFirstName(user)), "", app.nimarkogram.messenger.NimarkoConfig.deleteForAll, false);
                 } else if (chat != null && (hasNotOut || myMessagesCount == count)) {
@@ -8093,6 +8138,7 @@ public class AlertsCreator {
                     cell.setText(LocaleController.getString(R.string.DeleteMessagesOption), "", false, false);
                 }
                 cell.setPadding(LocaleController.isRTL ? dp(16) : dp(8), 0, LocaleController.isRTL ? dp(8) : dp(16), 0);
+                // NimarkoGram: optionally pre-check the "delete for all" box.
                 if (app.nimarkogram.messenger.NimarkoConfig.deleteForAll) {
                     deleteForAll[0] = true;
                     cell.setChecked(true, false);
@@ -8769,6 +8815,7 @@ public class AlertsCreator {
         popupWindow.showAsDropDown(anchorView, offsetX, offsetY);
 
         popupLayout.updateRadialSelectors();
+//        popupWindow.startAnimation();
         ActionBarPopupWindow.startAnimation(popupLayout);
 
         popupLayout.setOnTouchListener((v, event) -> {
@@ -9162,6 +9209,7 @@ public class AlertsCreator {
                     MessagesController.getInstance(currentAccount).putUsers(r.users, false);
                     MessagesController.getInstance(currentAccount).putChats(r.chats, false);
                     if (LaunchActivity.instance == null) {
+//                        creatingCall = false;
                         button.setLoading(false);
                         return;
                     }

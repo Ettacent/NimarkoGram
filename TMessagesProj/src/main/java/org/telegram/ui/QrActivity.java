@@ -67,7 +67,7 @@ import androidx.recyclerview.widget.LinearSmoothScroller;
 import androidx.recyclerview.widget.RecyclerView;
 
 import com.google.zxing.EncodeHintType;
-import com.google.zxing.qrcode.QRCodeWriter;
+import org.telegram.messenger.TelegramQRCodeWriter;
 import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel;
 
 import org.telegram.messenger.AndroidUtilities;
@@ -109,10 +109,9 @@ import org.telegram.ui.Components.FlickerLoadingView;
 import org.telegram.ui.Components.HideViewAfterAnimation;
 import org.telegram.ui.Components.LayoutHelper;
 import org.telegram.ui.Components.MotionBackgroundDrawable;
-import org.telegram.ui.Components.RLottieDiceDrawable;
+import org.telegram.ui.Components.RLottieNative;
 import org.telegram.ui.Components.RLottieDrawable;
 import org.telegram.ui.Components.RLottieImageView;
-import org.telegram.ui.Components.RLottieNative;
 import org.telegram.ui.Components.RecyclerListView;
 import org.telegram.ui.Components.StaticLayoutEx;
 import org.telegram.ui.Components.ThemeSmallPreviewView;
@@ -472,6 +471,9 @@ public class QrActivity extends BaseFragment {
             });
         }, 25);
 
+        // Some presentation paths do not report a transition callback. Keep the
+        // expensive QR initialization out of the first frames, but never leave it
+        // deferred indefinitely.
         AndroidUtilities.runOnUIThread(() -> {
             if (fragmentView != null && !openTransitionFinished) {
                 onQrOpenTransitionFinished();
@@ -733,7 +735,7 @@ public class QrActivity extends BaseFragment {
 
         float duration = 1f;
         if (patternAlphaAnimator != null) {
-
+//            from = (float) patternAlphaAnimator.getAnimatedValue();
             duration *= Math.max(.5f, 1f - (float) patternAlphaAnimator.getAnimatedValue());
             patternAlphaAnimator.cancel();
         }
@@ -794,7 +796,7 @@ public class QrActivity extends BaseFragment {
                 }
                 currMotionDrawable.setBackgroundAlpha(progress);
                 currMotionDrawable.setPatternAlpha(progress);
-
+//                currMotionDrawable.setAlpha((int) (255f * progress));
                 if (newQrColors != null) {
                     int color1 = ColorUtils.blendARGB(prevQrColors[0], newQrColors[0], progress);
                     int color2 = ColorUtils.blendARGB(prevQrColors[1], newQrColors[1], progress);
@@ -925,6 +927,7 @@ public class QrActivity extends BaseFragment {
         }, 500);
     }
 
+
     public static void openCameraScanActivity(BaseFragment fragment) {
         final int currentAccount = fragment.getCurrentAccount();
         CameraScanActivity.showAsSheet(fragment, false, CameraScanActivity.TYPE_QR, new CameraScanActivity.CameraScanActivityDelegate() {
@@ -1000,6 +1003,7 @@ public class QrActivity extends BaseFragment {
         return themeDescriptions;
     }
 
+
     private class ThemeResourcesProvider implements Theme.ResourcesProvider {
 
         private SparseIntArray colors;
@@ -1013,6 +1017,7 @@ public class QrActivity extends BaseFragment {
             return colors != null ? colors.get(key) : Theme.getColor(key);
         }
     }
+
 
     private static class QrView extends View {
 
@@ -1143,7 +1148,7 @@ public class QrActivity extends BaseFragment {
                 float xCenter = getWidth() / 2f, yCenter = top + (getWidth()) / 2f - padding;
                 int imageSize = Math.round((size - 32) / 4.65f / multiple) * multiple / 2;
                 canvas.drawCircle(xCenter, yCenter, imageSize * .75f, bitmapGradientPaint);
-                QRCodeWriter.drawSideQuads(canvas, padding, top, bitmapGradientPaint, 7, multiple, 16, size, .75f, radii, true);
+                TelegramQRCodeWriter.drawSideQuads(canvas, padding, top, bitmapGradientPaint, 7, multiple, 16, size, .75f, radii, true);
                 if (!logoCenterSet && centerChangedListener != null) {
                     centerChangedListener.onCenterChanged((int) (xCenter - imageSize * 0.75f), (int) (yCenter - imageSize * 0.75f), (int) (xCenter + imageSize * 0.75f), (int) (yCenter + imageSize * 0.75f));
                     logoCenterSet = true;
@@ -1398,7 +1403,7 @@ public class QrActivity extends BaseFragment {
             HashMap<EncodeHintType, Object> hints = new HashMap<>();
             hints.put(EncodeHintType.ERROR_CORRECTION, ErrorCorrectionLevel.M);
             hints.put(EncodeHintType.MARGIN, 0);
-            QRCodeWriter writer = new QRCodeWriter();
+            TelegramQRCodeWriter writer = new TelegramQRCodeWriter();
             int version;
             for (version = 3; version < 5; ++version) {
                 try {
@@ -1406,7 +1411,7 @@ public class QrActivity extends BaseFragment {
                     qrBitmap = writer.encode(link, qrBitmapSize, qrBitmapSize, hints, null, 0.75f, backgroundColor, qrColor);
                     imageSize = writer.getImageSize();
                 } catch (Exception e) {
-                    
+                    // ignore
                 }
                 if (qrBitmap != null) {
                     break;
@@ -1498,6 +1503,7 @@ public class QrActivity extends BaseFragment {
             }
         }
     }
+
 
     private class ThemeListViewController implements NotificationCenter.NotificationCenterDelegate {
 
@@ -1660,6 +1666,7 @@ public class QrActivity extends BaseFragment {
             darkThemeView.setVisibility(View.INVISIBLE);
             rootLayout.addView(darkThemeView, LayoutHelper.createFrame(44, 44, Gravity.TOP | Gravity.END, 0, -2, 7, 0));
 
+
             progressView = new FlickerLoadingView(context, fragment.getResourceProvider());
             progressView.setVisibility(View.VISIBLE);
             rootLayout.addView(progressView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, 104, Gravity.START, 0, 44, 0, 0));
@@ -1705,6 +1712,7 @@ public class QrActivity extends BaseFragment {
             shareButton.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 15);
             shareButton.setTypeface(AndroidUtilities.bold());
             rootLayout.addView(shareButton);
+
 
             if (UserConfig.getInstance(currentAccount).getClientUserId() == userId) {
                 scanButtonWrap = new LinearLayout(context);
@@ -1994,12 +2002,16 @@ public class QrActivity extends BaseFragment {
         void onItemSelected(EmojiThemes theme, int position);
     }
 
+
+
+
     private Insets insets = Insets.NONE;
 
     @NonNull
     private WindowInsetsCompat onApplyWindowInsets(@NonNull View v, @NonNull WindowInsetsCompat insets) {
         this.insets = AndroidUtilities.getDefaultWindowInsets(insets, false);
         fragmentView.requestLayout();
+
 
         return WindowInsetsCompat.CONSUMED;
     }

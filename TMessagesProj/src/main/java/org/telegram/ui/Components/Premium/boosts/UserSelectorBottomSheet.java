@@ -30,7 +30,7 @@ import android.widget.TextView;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.recyclerview.widget.DefaultItemAnimator;
-import androidx.recyclerview.widget.LinearSmoothScrollerCustom;
+import org.telegram.ui.recyclerview.LinearSmoothScrollerCustom;
 import androidx.recyclerview.widget.RecyclerView;
 
 import org.telegram.messenger.AndroidUtilities;
@@ -287,7 +287,12 @@ public class UserSelectorBottomSheet extends BottomSheetWithRecyclerListView imp
         if (selectorAdapter != null) {
             selectorAdapter.setNeedChecks2(needChecks());
         }
-
+//        if (birthdays != null && !birthdays.today.isEmpty() && type == TYPE_PREMIUM) {
+//            for (TLRPC.User user : birthdays.today) {
+//                selectedIds.add(user.id);
+//                allSelectedObjects.put(user.id, user);
+//            }
+//        }
         this.userId = userId;
         if (userId != 0 && !selectedIds.contains(userId)) {
             TLRPC.User user = MessagesController.getInstance(currentAccount).getUser(userId);
@@ -1118,6 +1123,7 @@ public class UserSelectorBottomSheet extends BottomSheetWithRecyclerListView imp
         tonDays = days;
         updateItems(false, true);
     }
+
 
     @Override
     protected CharSequence getTitle() {

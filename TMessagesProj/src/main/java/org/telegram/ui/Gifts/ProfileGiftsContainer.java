@@ -323,6 +323,10 @@ public class ProfileGiftsContainer extends FrameLayout implements NotificationCe
                     }
                     final int fromPosition = viewHolder.getAdapterPosition();
                     final int toPosition = target.getAdapterPosition();
+                    // Adapter positions include the tabs/header spacer and can
+                    // also include loading/footer rows. Resolve the actual
+                    // gift indices by object identity instead of forwarding UI
+                    // positions into the model list.
                     final int fromGiftIndex = list.indexOf(fromGift);
                     final int toGiftIndex = list.indexOf(toGift);
                     if (fromGiftIndex < 0 || toGiftIndex < 0 || fromGiftIndex == toGiftIndex) {
@@ -698,7 +702,7 @@ public class ProfileGiftsContainer extends FrameLayout implements NotificationCe
                         .setOnGiftUpdatedListener(() -> {
                             update(false);
                         })
-                        .setOnBoughtGift((boughtGift, dialogId) -> {
+                        .setOnBoughtGift((boughtGift, dialogId, fragmentsImmediately) -> {
                             list.gifts.remove(userGift);
                             update(true);
 
@@ -1287,6 +1291,7 @@ public class ProfileGiftsContainer extends FrameLayout implements NotificationCe
             currentMenu.show();
             return true;
         });
+//        tabsView.setBackgroundColor(backgroundColor);
         addView(tabsView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, 42, Gravity.TOP));
 
         BlurredBackgroundSourceColor source = new BlurredBackgroundSourceColor();
@@ -1300,6 +1305,7 @@ public class ProfileGiftsContainer extends FrameLayout implements NotificationCe
         ScaleStateListAnimator.apply(button2, .02f, 1.2f);
 
         buttonContainer = new FrameLayout(context);
+        // buttonContainer.setVisibility(INVISIBLE);
 
         FrameLayout.LayoutParams lp = LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, 60, Gravity.FILL_HORIZONTAL | Gravity.BOTTOM);
         lp.bottomMargin += AndroidUtilities.navigationBarHeight;
@@ -1389,7 +1395,7 @@ public class ProfileGiftsContainer extends FrameLayout implements NotificationCe
 
         button.setVisibility(canSwitchNotify() ? View.GONE : View.VISIBLE);
         checkboxLayout.setVisibility(canSwitchNotify() ? View.VISIBLE : View.GONE);
-        buttonContainerHeightDp = 60;
+        buttonContainerHeightDp = 60;//canSwitchNotify() ? 50 : 10 + 48 + 10;
 
         addView(bulletinContainer, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, 200, Gravity.FILL_HORIZONTAL | Gravity.BOTTOM));
 
@@ -1620,7 +1626,7 @@ public class ProfileGiftsContainer extends FrameLayout implements NotificationCe
 
             button.setVisibility(canSwitchNotify() ? View.GONE : View.VISIBLE);
             checkboxLayout.setVisibility(canSwitchNotify() ? View.VISIBLE : View.GONE);
-            buttonContainerHeightDp = 60;
+            buttonContainerHeightDp = 60; // canSwitchNotify() ? 50 : 10 + 48 + 10;
             if (list.chat_notifications_enabled != null) {
                 checkbox.setChecked(list.chat_notifications_enabled, true);
             }
@@ -1631,7 +1637,7 @@ public class ProfileGiftsContainer extends FrameLayout implements NotificationCe
         } else if (id == NotificationCenter.updateInterfaces) {
             button.setVisibility(canSwitchNotify() ? View.GONE : View.VISIBLE);
             checkboxLayout.setVisibility(canSwitchNotify() ? View.VISIBLE : View.GONE);
-            buttonContainerHeightDp = 60;
+            buttonContainerHeightDp = 60; //canSwitchNotify() ? 50 : 10 + 48 + 10;
             setVisibleHeight(visibleHeight);
         }
     }
@@ -1836,6 +1842,8 @@ public class ProfileGiftsContainer extends FrameLayout implements NotificationCe
     }
 
     public void updateColors() {
+//        setBackgroundColor(backgroundColor = Theme.getColor(Theme.key_windowBackgroundGray, resourcesProvider));
+//        tabsView.setBackgroundColor(backgroundColor);
         button.updateColors();
         button.setBackground(Theme.createRoundRectDrawable(dp(19), processColor(Theme.getColor(Theme.key_featuredStickers_addButton, resourcesProvider))));
         View[] pages = viewPager.getViewPages();

@@ -106,11 +106,13 @@ import org.telegram.messenger.UserObject;
 import org.telegram.messenger.Utilities;
 import org.telegram.messenger.VideoEditedInfo;
 import org.telegram.messenger.browser.Browser;
+import org.telegram.messenger.utils.tlutils.TLKeyboardHelper;
 import org.telegram.tgnet.ConnectionsManager;
 import org.telegram.tgnet.SerializedData;
 import org.telegram.tgnet.TLObject;
 import org.telegram.tgnet.TLRPC;
 import org.telegram.tgnet.tl.TL_bots;
+import org.telegram.tgnet.tl.TL_keyboard;
 import org.telegram.ui.ActionBar.ActionBar;
 import org.telegram.ui.ActionBar.ActionBarLayout;
 import org.telegram.ui.ActionBar.ActionBarMenuSubItem;
@@ -492,6 +494,7 @@ public abstract class BotWebViewContainer extends FrameLayout implements Notific
                 FileLog.e(e);
             }
 
+            // Hackfix text on some Xiaomi devices
             settings.setTextSize(WebSettings.TextSize.NORMAL);
 
             File databaseStorage = new File(ApplicationLoader.getFilesDirFixed(), "webview_database");
@@ -510,6 +513,7 @@ public abstract class BotWebViewContainer extends FrameLayout implements Notific
             webView.onPause();
         }
 
+        // We can't use javascript interface because of minSDK 16, it can be exploited because of reflection access
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN_MR1) {
             if (bot) {
                 if (proxy instanceof BotWebViewProxy) {
@@ -568,6 +572,7 @@ public abstract class BotWebViewContainer extends FrameLayout implements Notific
             if (!focusable) {
                 setDescendantFocusability(FOCUS_BLOCK_DESCENDANTS);
                 BotWebViewContainer.this.setFocusable(false);
+//                webView.setFocusable(false);
                 if (webView != null) {
                     webView.setDescendantFocusability(FOCUS_BLOCK_DESCENDANTS);
                     webView.clearFocus();
@@ -576,6 +581,7 @@ public abstract class BotWebViewContainer extends FrameLayout implements Notific
             } else {
                 setDescendantFocusability(FOCUS_BEFORE_DESCENDANTS);
                 BotWebViewContainer.this.setFocusable(true);
+//                webView.setFocusable(true);
                 if (webView != null) {
                     webView.setDescendantFocusability(FOCUS_BEFORE_DESCENDANTS);
                 }
@@ -611,6 +617,9 @@ public abstract class BotWebViewContainer extends FrameLayout implements Notific
 
     }
 
+    /**
+     * @return If this press was consumed
+     */
     public boolean onBackPressed() {
         if (webView == null) {
             return false;
@@ -832,7 +841,7 @@ public abstract class BotWebViewContainer extends FrameLayout implements Notific
         if (getParent() instanceof ChatAttachAlertBotWebViewLayout.WebViewSwipeContainer) {
             ChatAttachAlertBotWebViewLayout.WebViewSwipeContainer swipeContainer = (ChatAttachAlertBotWebViewLayout.WebViewSwipeContainer) getParent();
             if (swipeContainer.isFullSize()) {
-                return (int) (swipeContainer.getMeasuredHeight() - swipeContainer.getOffsetY()  + viewPortHeightOffset);
+                return (int) (swipeContainer.getMeasuredHeight() - swipeContainer.getOffsetY() /*- swipeContainer.getTopActionBarOffsetY()*/ + viewPortHeightOffset);
             }
         }
         return 0;
@@ -1095,6 +1104,10 @@ public abstract class BotWebViewContainer extends FrameLayout implements Notific
     }
 
     public void loadUrl(int currentAccount, String url) {
+        loadUrl(currentAccount, url, false);
+    }
+
+    public void loadUrl(int currentAccount, String url, boolean sameOrigin) {
         this.currentAccount = currentAccount;
         runWebViewStartWhenReady(currentAccount, () -> {
             isPageLoaded = false;
@@ -1396,6 +1409,15 @@ public abstract class BotWebViewContainer extends FrameLayout implements Notific
     private void onWebEventReceived(String type, String data) {
         if (bot) return;
         if (delegate == null) return;
+
+        if (trustedOrigin != null) {
+            final String origin = getOriginHost();
+            if (!TextUtils.equals(origin, trustedOrigin)) {
+                d("onWebEventReceived ignore " + type);
+                return;
+            }
+        }
+
         d("onWebEventReceived " + type + " " + data);
         switch (type) {
             case "actionBarColor":
@@ -1430,6 +1452,7 @@ public abstract class BotWebViewContainer extends FrameLayout implements Notific
                     x = jsonArray.optBoolean(0, true);
                     y = jsonArray.optBoolean(1, true);
                 } catch (Exception e) {}
+//                d("allowScroll " + x + " " + y);
                 if (getParent() instanceof ChatAttachAlertBotWebViewLayout.WebViewSwipeContainer) {
                     ChatAttachAlertBotWebViewLayout.WebViewSwipeContainer swipeContainer = (ChatAttachAlertBotWebViewLayout.WebViewSwipeContainer) getParent();
                     swipeContainer.allowThisScroll(x, y);
@@ -1488,9 +1511,20 @@ public abstract class BotWebViewContainer extends FrameLayout implements Notific
         }
     }
 
+    private String trustedOrigin;
+
+    public void setTrustedOrigin(String url) {
+        trustedOrigin = getOriginHost(url);
+    }
+
+
     public String getOriginHost() {
         if (webView == null) return null;
         final String url = webView.getUrl();
+        return getOriginHost(url);
+    }
+
+    public static String getOriginHost(String url) {
         if (url == null || url.isEmpty()) return null;
         final Uri uri = Uri.parse(url);
         final String scheme = uri.getScheme();
@@ -1518,6 +1552,13 @@ public abstract class BotWebViewContainer extends FrameLayout implements Notific
         if (webView == null || delegate == null) {
             d("onEventReceived " + eventType + ": no webview or delegate!");
             return;
+        }
+        if (trustedOrigin != null) {
+            final String origin = getOriginHost();
+            if (!TextUtils.equals(origin, trustedOrigin)) {
+                d("onEventReceived ignore " + eventType);
+                return;
+            }
         }
         d("onEventReceived " + eventType);
         switch (eventType) {
@@ -1625,6 +1666,7 @@ public abstract class BotWebViewContainer extends FrameLayout implements Notific
                             public void didReceivedNotification(int id, int account, Object... args) {
                                 if (id == NotificationCenter.onRequestPermissionResultReceived) {
                                     int requestCode = (int) args[0];
+                                    // String[] permissions = (String[]) args[1];
                                     int[] grantResults = (int[]) args[2];
 
                                     if (requestCode == REQUEST_CODE_QR_CAMERA_PERMISSION) {
@@ -2967,10 +3009,10 @@ public abstract class BotWebViewContainer extends FrameLayout implements Notific
                 req.bot = MessagesController.getInstance(currentAccount).getInputUser(botUser);
                 req.webapp_req_id = requestId;
                 ConnectionsManager.getInstance(currentAccount).sendRequestTyped(req, AndroidUtilities::runOnUIThread, (res, err) -> {
-                    if (res instanceof TLRPC.TL_keyboardButtonRequestPeer) {
-                        final TLRPC.TL_keyboardButtonRequestPeer btn = (TLRPC.TL_keyboardButtonRequestPeer) res;
-                        if (btn.peer_type instanceof TLRPC.TL_requestPeerTypeCreateBot) {
-                            final TLRPC.TL_requestPeerTypeCreateBot peerType = (TLRPC.TL_requestPeerTypeCreateBot) btn.peer_type;
+                    final TL_keyboard.TL_buttonTypeRequestPeer buttonTypeRequestPeer = TLKeyboardHelper.getType(res, TL_keyboard.TL_buttonTypeRequestPeer.class);
+                    if (buttonTypeRequestPeer != null) {
+                        if (buttonTypeRequestPeer.peer_type instanceof TLRPC.TL_requestPeerTypeCreateBot) {
+                            final TLRPC.TL_requestPeerTypeCreateBot peerType = (TLRPC.TL_requestPeerTypeCreateBot) buttonTypeRequestPeer.peer_type;
                             CreateBotAlert.show(getContext(), currentAccount, botUser, peerType, false, newBot -> {
                                 if (newBot == null) {
                                     notifyEvent("requested_chat_failed", obj("req_id", requestId));
@@ -2980,7 +3022,7 @@ public abstract class BotWebViewContainer extends FrameLayout implements Notific
                                 final TLRPC.TL_messages_sendBotRequestedPeer req2 = new TLRPC.TL_messages_sendBotRequestedPeer();
                                 req2.peer = MessagesController.getInputPeer(botUser);
                                 req2.webapp_req_id = requestId;
-                                req2.button_id = btn.button_id;
+                                req2.button_id = buttonTypeRequestPeer.button_id;
                                 req2.requested_peers.add(MessagesController.getInputPeer(newBot));
                                 ConnectionsManager.getInstance(currentAccount).sendRequestTyped(req2, AndroidUtilities::runOnUIThread, (updates, err2) -> {
                                     if (updates != null) {
@@ -3029,16 +3071,16 @@ public abstract class BotWebViewContainer extends FrameLayout implements Notific
                             }, resourcesProvider, BulletinFactory.of(this, resourcesProvider), true);
                             return;
                         }
-                        if (btn.peer_type instanceof TLRPC.TL_requestPeerTypeUser && btn.max_quantity > 1) {
-                            TLRPC.TL_requestPeerTypeUser peer_type = (TLRPC.TL_requestPeerTypeUser) btn.peer_type;
+                        if (buttonTypeRequestPeer.peer_type instanceof TLRPC.TL_requestPeerTypeUser && buttonTypeRequestPeer.max_quantity > 1) {
+                            TLRPC.TL_requestPeerTypeUser peer_type = (TLRPC.TL_requestPeerTypeUser) buttonTypeRequestPeer.peer_type;
                             final boolean[] sent = new boolean[1];
-                            final BottomSheet sheet = MultiContactsSelectorBottomSheet.open(peer_type.bot, peer_type.premium, btn.max_quantity, ids -> {
+                            final BottomSheet sheet = MultiContactsSelectorBottomSheet.open(peer_type.bot, peer_type.premium, buttonTypeRequestPeer.max_quantity, ids -> {
                                 if (ids != null && !ids.isEmpty()) {
                                     sent[0] = true;
                                     final TLRPC.TL_messages_sendBotRequestedPeer req2 = new TLRPC.TL_messages_sendBotRequestedPeer();
                                     req2.peer = MessagesController.getInstance(currentAccount).getInputPeer(botUser);
                                     req2.webapp_req_id = requestId;
-                                    req2.button_id = btn.button_id;
+                                    req2.button_id = buttonTypeRequestPeer.button_id;
                                     for (Long id : ids) {
                                         req2.requested_peers.add(MessagesController.getInstance(currentAccount).getInputPeer(id));
                                     }
@@ -3073,8 +3115,8 @@ public abstract class BotWebViewContainer extends FrameLayout implements Notific
                         args.putInt("dialogsType", DialogsActivity.DIALOGS_TYPE_BOT_REQUEST_PEER);
                         args.putLong("requestPeerBotId", botUser.id);
                         try {
-                            SerializedData buffer = new SerializedData(btn.peer_type.getObjectSize());
-                            btn.peer_type.serializeToStream(buffer);
+                            SerializedData buffer = new SerializedData(buttonTypeRequestPeer.peer_type.getObjectSize());
+                            buttonTypeRequestPeer.peer_type.serializeToStream(buffer);
                             args.putByteArray("requestPeerType", buffer.toByteArray());
                             buffer.cleanup();
                         } catch (Exception e) {
@@ -3097,7 +3139,7 @@ public abstract class BotWebViewContainer extends FrameLayout implements Notific
                                 final TLRPC.TL_messages_sendBotRequestedPeer req2 = new TLRPC.TL_messages_sendBotRequestedPeer();
                                 req2.peer = MessagesController.getInstance(currentAccount).getInputPeer(botUser);
                                 req2.webapp_req_id = requestId;
-                                req2.button_id = btn.button_id;
+                                req2.button_id = buttonTypeRequestPeer.button_id;
                                 HashSet<Long> dialogIds = new HashSet<>();
                                 for (MessagesStorage.TopicKey key : dids) {
                                     dialogIds.add(key.dialogId);
@@ -3664,10 +3706,20 @@ public abstract class BotWebViewContainer extends FrameLayout implements Notific
     }
 
     public interface WebViewScrollListener {
+        /**
+         * Called when WebView scrolls
+         *
+         * @param webView   WebView that scrolled
+         * @param dx        Delta X
+         * @param dy        Delta Y
+         */
         void onWebViewScrolled(WebView webView, int dx, int dy);
     }
 
     public interface Delegate {
+        /**
+         * Called when WebView requests to close itself
+         */
         void onCloseRequested(@Nullable Runnable callback);
 
         default void onInstantClose() { onCloseRequested(null); };
@@ -3677,12 +3729,29 @@ public abstract class BotWebViewContainer extends FrameLayout implements Notific
 
         default void onOrientationLockChanged(boolean locked) {}
 
+        /**
+         * Called when WebView requests to change closing behavior
+         *
+         * @param needConfirmation  If confirmation popup should be shown
+         */
         void onWebAppSetupClosingBehavior(boolean needConfirmation);
 
         void onWebAppSwipingBehavior(boolean allowSwiping);
 
+        /**
+         * Called when WebView requests to send custom data
+         *
+         * @param data  Custom data to send
+         */
         default void onSendWebViewData(String data) {}
 
+        /**
+         * Called when WebView requests to set action bar color
+         *
+         * @param colorKey  Color theme key
+         * @param color color
+         * @param isOverrideColor
+         */
         void onWebAppSetActionBarColor(int colorKey, int color, boolean isOverrideColor);
 
         default void onWebAppSetNavigationBarColor(int color) {};
@@ -3693,23 +3762,57 @@ public abstract class BotWebViewContainer extends FrameLayout implements Notific
         default void onEmojiStatusGranted(boolean granted) {}
         default void onEmojiStatusSet(TLRPC.Document document) {}
 
+        /**
+         * Called when WebView requests to set background color
+         *
+         * @param color New color
+         */
         void onWebAppSetBackgroundColor(int color);
 
+        /**
+         * Called when WebView requests to expand viewport
+         */
         void onWebAppExpand();
 
+        /**
+         * Called when web apps requests to switch to inline mode picker
+         *
+         * @param botUser Bot user
+         * @param query Inline query
+         * @param chatTypes Chat types
+         */
         void onWebAppSwitchInlineQuery(TLRPC.User botUser, String query, List<String> chatTypes);
 
+        /**
+         * Called when web app attempts to open invoice
+         *
+         * @param inputInvoice Invoice source
+         * @param slug      Invoice slug for the form
+         * @param response  Payment request response
+         */
         void onWebAppOpenInvoice(TLRPC.InputInvoice inputInvoice, String slug, TLObject response);
 
+        /**
+         * Setups main button
+         */
         void onSetupMainButton(boolean isVisible, boolean isActive, String text, long emojiId, int color, int textColor, boolean isProgressVisible, boolean hasShineEffect);
         void onSetupSecondaryButton(boolean isVisible, boolean isActive, String text, long emojiId, int color, int textColor, boolean isProgressVisible, boolean hasShineEffect, String position);
 
+        /**
+         * Sets back button enabled and visible
+         */
         void onSetBackButtonVisible(boolean visible);
 
         void onSetSettingsButtonVisible(boolean visible);
 
+        /**
+         * Called when WebView is ready (Called web_app_ready or page load finished)
+         */
         default void onWebAppReady() {}
 
+        /**
+         * @return If clipboard access is available to webapp
+         */
         default boolean isClipboardAvailable() {
 
             return false;
@@ -4339,6 +4442,9 @@ public abstract class BotWebViewContainer extends FrameLayout implements Notific
                     if (botWebViewContainer != null) {
                         botWebViewContainer.onURLChanged(dangerousUrl ? urlFallback : getUrl(), !canGoBack(), !canGoForward());
                     }
+//                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+//                        CookieManager.getInstance().flush();
+//                    }
                 }
 
                 @Override
@@ -4932,6 +5038,7 @@ public abstract class BotWebViewContainer extends FrameLayout implements Notific
                         d("onDownloadStart " + url + " " + userAgent + " " + contentDisposition + " " + mimeType + " " + contentLength);
                         try {
                             if (url.startsWith("blob:")) {
+                                // we can't get blob binary from webview :(
                                 return;
                             } else {
                                 final String filename = AndroidUtilities.escape(getFilename(url, contentDisposition, mimeType));
@@ -5038,6 +5145,7 @@ public abstract class BotWebViewContainer extends FrameLayout implements Notific
         public String getUrl() {
             if (currentWarning != null) return currentWarning.url;
             if (dangerousUrl) return urlFallback;
+//            if (errorShown) return lastUrl;
             return lastUrl = super.getUrl();
         }
 
@@ -5202,6 +5310,9 @@ public abstract class BotWebViewContainer extends FrameLayout implements Notific
             final String ourl = url;
             checkCachedMetaProperties(url);
             openedByUrl = url;
+//            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+//                CookieManager.getInstance().flush();
+//            }
             url = tonsite2magic(url);
             currentUrl = url;
             d("loadUrl " + url);

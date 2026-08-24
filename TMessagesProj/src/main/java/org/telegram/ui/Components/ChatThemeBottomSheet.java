@@ -775,6 +775,9 @@ public class ChatThemeBottomSheet extends BottomSheet implements NotificationCen
                 changeDayNightView.invalidate();
                 if (!changedNavigationBarColor && changeDayNightViewProgress > .5f) {
                     changedNavigationBarColor = true;
+                  //  fixNavigationBar(getThemedColor(Theme.key_windowBackgroundGray));
+//                    AndroidUtilities.setLightNavigationBar(getWindow(), !isDark);
+//                    AndroidUtilities.setNavigationBarColor(getWindow(), );
                 }
             }
         });
@@ -855,6 +858,23 @@ public class ChatThemeBottomSheet extends BottomSheet implements NotificationCen
             selectedItem = noThemeItem;
         }
 
+//        if (chatActivity.getCurrentUserInfo() != null && chatActivity.getCurrentUserInfo().wallpaper != null) {
+//            EmojiThemes wallpaperItem = EmojiThemes.createChatThemesDefault();
+//            wallpaperItem.wallpaper = chatActivity.getCurrentUserInfo().wallpaper;
+//            wallpaperItem.showAsDefaultStub = true;
+//            wallpaperItem.emoji = "\uD83C\uDFA8";
+//
+//            for (int i = 0; i < wallpaperItem.items.size(); i++) {
+//                EmojiThemes.ThemeItem item = wallpaperItem.items.get(i);
+//                item.inBubbleColor = Color.WHITE;//Theme.getDefaultColor(Theme.key_chat_inBubble);
+//                item.outBubbleColor = Color.GRAY;//Theme.getDefaultColor(Theme.key_chat_outBubble);
+//                item.outLineColor = Color.BLACK;
+//            }
+//            if (currentTheme == null || currentTheme.showAsDefaultStub) {
+//                currentTheme = wallpaperItem;
+//            }
+//            items.add(new ChatThemeItem(wallpaperItem));
+//        }
 
         boolean hasCurrentItem = false;
         ThemeKey currentThemeKey = currentTheme != null ? currentTheme.getThemeKey() : null;
@@ -946,10 +966,10 @@ public class ChatThemeBottomSheet extends BottomSheet implements NotificationCen
     }
 
     private void setDarkButtonColor(int color) {
-        darkThemeDrawable.setLayerColor("Sunny.**", color);
-        darkThemeDrawable.setLayerColor("Path.**", color);
-        darkThemeDrawable.setLayerColor("Path 10.**", color);
-        darkThemeDrawable.setLayerColor("Path 11.**", color);
+        darkThemeDrawable.setLayerColor("Sunny", color);
+        darkThemeDrawable.setLayerColor("Path", color);
+        darkThemeDrawable.setLayerColor("Path 10", color);
+        darkThemeDrawable.setLayerColor("Path 11", color);
     }
 
     private void setForceDark(boolean isDark, boolean playAnimation) {
@@ -1514,6 +1534,10 @@ public class ChatThemeBottomSheet extends BottomSheet implements NotificationCen
                 chatAttachButtonText.setText(LocaleController.getString(R.string.SetColorAsBackground));
                 chatAttachAlert.showLayout(chatAttachAlert.getPhotoLayout());
             }
+//            WallpapersListActivity wallpapersListActivity = new WallpapersListActivity(WallpapersListActivity.TYPE_ALL, chatActivity.getDialogId());
+//            chatActivity.presentFragment(wallpapersListActivity);
+//            chatAttachAlert.dismiss();
+//            dismiss();
         });
         chatAttachAlert.sizeNotifierFrameLayout.addView(chatAttachButton, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, Gravity.BOTTOM));
     }

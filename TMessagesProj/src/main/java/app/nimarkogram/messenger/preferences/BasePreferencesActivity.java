@@ -23,6 +23,7 @@ import org.telegram.ui.ActionBar.BackDrawable;
 import org.telegram.ui.ActionBar.BaseFragment;
 import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.Cells.CheckBoxCell;
+import org.telegram.ui.Cells.DialogRadioCell;
 import org.telegram.ui.Cells.NotificationsCheckCell;
 import org.telegram.ui.Cells.TextCell;
 import org.telegram.ui.Cells.TextCheckCell;
@@ -38,6 +39,11 @@ import org.telegram.ui.Components.UItem;
 import org.telegram.ui.Components.UniversalAdapter;
 import org.telegram.ui.Components.UniversalRecyclerView;
 
+/**
+ * NimarkoGram simplified base for preference screens. Original used many
+ * SettingsRegistry / share / restart helpers we don't need for the
+ * foundation build.
+ */
 public abstract class BasePreferencesActivity extends BaseFragment {
     protected LinearLayoutManager layoutManager;
     protected UniversalRecyclerView listView;
@@ -46,6 +52,9 @@ public abstract class BasePreferencesActivity extends BaseFragment {
     @Override
     public View createView(Context context) {
         initializeOptionStrings();
+        // CherryGram parity: animated morphing back arrow (matches
+        // UniversalFragment.createView L34 and every CG *PreferencesEntry).
+        // Replaces the older static R.drawable.ic_ab_back image.
         this.actionBar.setBackButtonDrawable(new BackDrawable(false));
         this.actionBar.setAllowOverlayTitle(false);
         this.actionBar.setTitle(getTitle());
@@ -68,6 +77,17 @@ public abstract class BasePreferencesActivity extends BaseFragment {
                 (UItem item, View v, Integer pos, Float fx, Float fy) -> self.onClick(item, v, pos, fx, fy),
                 (UItem item, View v, Integer pos, Float fx, Float fy) -> self.onLongClick(item, v, pos, fx, fy));
         this.listView = universalRecyclerView;
+        // MD3 island rendering — match Cherrygram's UniversalFragment 1:1
+        // (CG UniversalFragment.java lines 71-74, isMD3Enabled branch):
+        //   listView.setSections(true);
+        //   listView.adapter.setApplyBackground(false);
+        //   actionBar.setAdaptiveBackground(listView);
+        // Order matters — adapter background must be cleared before the
+        // adaptive background is installed so the first onDraw paints
+        // islands on the gradient, not over a stale white background.
+        // Keep the LinearLayoutManager that UniversalRecyclerView's ctor installed
+        // (it carries the getExtraLayoutSpace override needed for doNotDetachViews).
+        // Don't call setClipToPadding(false) here — CG leaves the default (true).
         universalRecyclerView.setSections(true);
         this.listView.adapter.setApplyBackground(false);
         this.actionBar.setAdaptiveBackground(this.listView);
@@ -77,6 +97,9 @@ public abstract class BasePreferencesActivity extends BaseFragment {
             this.listView.post(() -> scrollToItem(initialSearchItemId));
         }
         this.fragmentView = frameLayout;
+        // drawEdgeNavigationBar() is disabled so the system gesture indicator
+        // stays over the content without ActionBarLayout's dark gradient. Apply
+        // the bottom inset ourselves, as Telegram's SettingsActivity does.
         ViewCompat.setOnApplyWindowInsetsListener(frameLayout, this::onInsetsInternal);
         ViewCompat.requestApplyInsets(frameLayout);
         return frameLayout;
@@ -102,6 +125,11 @@ public abstract class BasePreferencesActivity extends BaseFragment {
 
     @Override
     public boolean drawEdgeNavigationBar() {
+        // Match Telegram's SettingsActivity: keep the list edge-to-edge and
+        // reserve its inset with padding, but do not let ActionBarLayout paint
+        // an extra opaque navigation-bar gradient over it. The Android gesture
+        // indicator then stays above the settings content without a separate
+        // dark strip/background.
         return false;
     }
 
@@ -202,6 +230,15 @@ public abstract class BasePreferencesActivity extends BaseFragment {
         }, getResourceProvider(), z);
     }
 
+    /**
+     * Mirrors CherryGram's CGBulletinCreator.createRestartBulletin — shows a
+     * lottie-info bulletin with a "Restart" action button that hands off to
+     * {@link AppRestartHelper#triggerRebirth(Context)} (which is the same
+     * trampoline-based restart used by the plugin engine watchdog).
+     *
+     * Called by preference rows that change a flag the app only reads at
+     * startup (e.g. systemFonts, springAnimation, snowflakes…).
+     */
     public void showRestartBulletin() {
         BulletinFactory.of(this).createSimpleBulletin(
                 R.raw.info,
@@ -229,11 +266,20 @@ public abstract class BasePreferencesActivity extends BaseFragment {
         this.listView.adapter.update(true);
     }
 
+    /**
+     * Mirrors CherryGram's SettingsHelper.updateCheckState — accepts either a
+     * {@link NotificationsCheckCell} (two-line CG-style subtitle row) or a
+     * {@link TextCheckCell} (single-line row). Activities now call this from
+     * their {@code onClick} handlers instead of casting only to TextCheckCell,
+     * which silently dropped the visual flip on subtitled rows.
+     */
     public static void updateCheckState(View view, boolean isChecked) {
         if (view instanceof NotificationsCheckCell) {
             ((NotificationsCheckCell) view).setChecked(isChecked);
         } else if (view instanceof TextCheckCell) {
             ((TextCheckCell) view).setChecked(isChecked);
+        } else if (view instanceof DialogRadioCell) {
+            ((DialogRadioCell) view).setChecked(isChecked, true);
         }
     }
 

@@ -53,6 +53,9 @@ final class NimarkoSettingsSearchIndex {
         final int pathFirstRes;
         final int pathSecondRes;
         final boolean featured;
+        private String indexedLocale;
+        private String normalizedSearchText;
+        private String transliteratedSearchText;
 
         Entry(int guid, int screen, int itemId, int titleRes, int summaryRes, int iconRes,
               int pathFirstRes, int pathSecondRes, boolean featured) {
@@ -82,9 +85,30 @@ final class NimarkoSettingsSearchIndex {
             return pathFirstRes == 0 ? null : new String[]{LocaleController.getString(pathFirstRes)};
         }
 
-        boolean matches(String query) {
-            if (TextUtils.isEmpty(query)) {
+        boolean matches(String normalizedQuery, String[] queryTokens) {
+            if (TextUtils.isEmpty(normalizedQuery)) {
                 return featured;
+            }
+            ensureSearchText();
+            for (String token : queryTokens) {
+                if (!token.isEmpty()
+                        && !normalizedSearchText.contains(token)
+                        && !transliteratedSearchText.contains(token)) {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        private void ensureSearchText() {
+            LocaleController.LocaleInfo localeInfo =
+                    LocaleController.getInstance().getCurrentLocaleInfo();
+            String locale = localeInfo != null
+                    ? localeInfo.shortName : Locale.getDefault().toLanguageTag();
+            if (TextUtils.equals(indexedLocale, locale)
+                    && normalizedSearchText != null
+                    && transliteratedSearchText != null) {
+                return;
             }
             StringBuilder text = new StringBuilder(title());
             if (summaryRes != 0) {
@@ -96,14 +120,11 @@ final class NimarkoSettingsSearchIndex {
             if (pathSecondRes != 0) {
                 text.append(' ').append(LocaleController.getString(pathSecondRes));
             }
-            String normalized = normalize(text.toString());
-            String transliterated = normalize(LocaleController.getInstance().getTranslitString(text.toString()));
-            for (String token : normalize(query).split("\\s+")) {
-                if (!token.isEmpty() && !normalized.contains(token) && !transliterated.contains(token)) {
-                    return false;
-                }
-            }
-            return true;
+            String source = text.toString();
+            normalizedSearchText = normalize(source);
+            transliteratedSearchText = normalize(
+                    LocaleController.getInstance().getTranslitString(source));
+            indexedLocale = locale;
         }
     }
 
@@ -499,6 +520,9 @@ final class NimarkoSettingsSearchIndex {
 
     static List<Entry> search(String query) {
         ArrayList<Entry> result = new ArrayList<>();
+        String normalizedQuery = normalize(query);
+        String[] queryTokens = TextUtils.isEmpty(normalizedQuery)
+                ? new String[0] : normalizedQuery.split("\\s+");
         for (Entry entry : ENTRIES) {
             if (entry.screen == SCREEN_PLUGINS && !PluginsController.isPluginEngineSupported()) {
                 continue;
@@ -512,7 +536,7 @@ final class NimarkoSettingsSearchIndex {
                     || entry.itemId == 14 && !NimarkoConfig.hideArchiveFromChatsList)) {
                 continue;
             }
-            if (entry.matches(query)) {
+            if (entry.matches(normalizedQuery, queryTokens)) {
                 result.add(entry);
             }
         }

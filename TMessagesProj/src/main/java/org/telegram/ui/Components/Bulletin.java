@@ -680,6 +680,7 @@ public class Bulletin {
         protected abstract void onHide();
     }
 
+    //region Offset Providers
     public static void addDelegate(BaseFragment fragment, @NonNull Delegate delegate) {
         if (fragment != null) {
             fragment.setBulletinDelegate(delegate);
@@ -760,7 +761,9 @@ public class Bulletin {
             return true;
         }
     }
+    //endregion
 
+    //region Layouts
     public abstract static class Layout extends FrameLayout {
 
         private final List<Callback> callbacks = new ArrayList<>();
@@ -974,6 +977,7 @@ public class Bulletin {
             }
         }
 
+        //region Callbacks
         public void addCallback(@NonNull Callback callback) {
             callbacks.add(callback);
         }
@@ -1036,7 +1040,9 @@ public class Bulletin {
             default void onExitTransitionEnd(@NonNull Layout layout) {
             }
         }
+        //endregion
 
+        //region Transitions
         @NonNull
         public Transition createTransition() {
             return new SpringTransition();
@@ -1263,6 +1269,7 @@ public class Bulletin {
         protected int getThemedColor(int key) {
             return Theme.getColor(key, resourcesProvider);
         }
+        //endregion
     }
 
     @SuppressLint("ViewConstructor")
@@ -1483,7 +1490,7 @@ public class Bulletin {
         public void setAnimation(int resId, int w, int h, String... layers) {
             imageView.setAnimation(resId, w, h);
             for (String layer : layers) {
-                imageView.setLayerColor(layer + ".**", textColor);
+                imageView.setLayerColor(layer, textColor);
             }
         }
 
@@ -1491,7 +1498,7 @@ public class Bulletin {
             imageView.setAutoRepeat(true);
             imageView.setAnimation(document, w, h);
             for (String layer : layers) {
-                imageView.setLayerColor(layer + ".**", textColor);
+                imageView.setLayerColor(layer, textColor);
             }
         }
 
@@ -1634,7 +1641,7 @@ public class Bulletin {
         public void setAnimation(int resId, int w, int h, String... layers) {
             imageView.setAnimation(resId, w, h);
             for (String layer : layers) {
-                imageView.setLayerColor(layer + ".**", textColor);
+                imageView.setLayerColor(layer, textColor);
             }
         }
 
@@ -1642,7 +1649,7 @@ public class Bulletin {
             imageView.setAutoRepeat(true);
             imageView.setAnimation(document, w, h);
             for (String layer : layers) {
-                imageView.setLayerColor(layer + ".**", textColor);
+                imageView.setLayerColor(layer, textColor);
             }
         }
 
@@ -1681,7 +1688,7 @@ public class Bulletin {
             linearLayout.setOrientation(LinearLayout.VERTICAL);
             addView(linearLayout, LayoutHelper.createFrameRelatively(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, Gravity.START | Gravity.CENTER_VERTICAL, 52, 8, 8, 8));
 
-            titleTextView = new AnimatedTextView(context, true, true, true);
+            titleTextView = new AnimatedTextView(context, true, true, true);// new LinkSpanDrawable.LinksTextView(context);
             titleTextView.setPadding(dp(4), 0, dp(4), 0);
             titleTextView.setTextColor(undoInfoColor);
             titleTextView.setTextSize(dp(14));
@@ -1715,7 +1722,7 @@ public class Bulletin {
         public void setAnimation(int resId, int w, int h, String... layers) {
             imageView.setAnimation(resId, w, h);
             for (String layer : layers) {
-                imageView.setLayerColor(layer + ".**", textColor);
+                imageView.setLayerColor(layer, textColor);
             }
         }
 
@@ -2028,7 +2035,7 @@ public class Bulletin {
         public void setAnimation(int resId, int w, int h, String... layers) {
             imageView.setAnimation(resId, w, h);
             for (String layer : layers) {
-                imageView.setLayerColor(layer + ".**", textColor);
+                imageView.setLayerColor(layer, textColor);
             }
         }
 
@@ -2036,7 +2043,7 @@ public class Bulletin {
             imageView.setAutoRepeat(true);
             imageView.setAnimation(document, w, h);
             for (String layer : layers) {
-                imageView.setLayerColor(layer + ".**", textColor);
+                imageView.setLayerColor(layer, textColor);
             }
         }
 
@@ -2181,7 +2188,9 @@ public class Bulletin {
             return textView.getText();
         }
     }
+    //endregion
 
+    //region Buttons
     @SuppressLint("ViewConstructor")
     public abstract static class Button extends FrameLayout implements Layout.Callback {
 
@@ -2323,6 +2332,7 @@ public class Bulletin {
         }
     }
 
+    // TODO: possibility of loading icon as well
     public void onLoaded(CharSequence text) {
         loaded = true;
         if (layout instanceof LoadingLayout) {
@@ -2331,6 +2341,7 @@ public class Bulletin {
         setCanHide(true);
     }
 
+    //endregion
 
     public static class EmptyBulletin extends Bulletin {
 
@@ -2446,6 +2457,8 @@ public class Bulletin {
         }
     }
 
+    // to make bulletin above everything
+    // use as BulletinFactory.of(BulletinWindow.make(context), resourcesProvider)...
     public static class BulletinWindow extends Dialog {
 
         public static BulletinWindowLayout make(Context context, Delegate delegate) {

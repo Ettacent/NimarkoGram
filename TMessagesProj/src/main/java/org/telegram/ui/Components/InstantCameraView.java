@@ -197,6 +197,11 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
     private boolean bothCameras;
     private Camera2Session[] camera2Sessions = new Camera2Session[2];
     private Camera2Session camera2SessionCurrent;
+    // Camera2Session.destroy(false) used to block until the camera thread had
+    // stopped. Its hardened implementation is deliberately asynchronous, so
+    // every close -> open transition must now be serialized explicitly.
+    // Generation guards keep a late onClosed callback from resurrecting a
+    // camera after the round-video view was closed or another transition won.
     private int nmCamera2SwitchGeneration;
     private volatile boolean nmCamera2SwitchPending;
     private boolean needDrawFlickerStub;
@@ -221,12 +226,19 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         if (!useCameraX || session == null) return;
         int index = videoMessagesHelper.getSessionIndex(session);
         if (index < 0 || index >= previewSize.length) return;
+        // SurfaceRequest reports the physical camera buffer. The round 1:1
+        // result is produced by Telegram's GL center crop, so replacing this
+        // rectangle with a logical square stretches 4:3 streams (notably on
+        // Pixel devices) instead of cropping them.
         previewSize[index] = new Size(Math.max(1, width), Math.max(1, height));
         CameraGLThread thread = cameraThread;
         if (thread != null) {
             boolean currentSession = session == videoMessagesHelper.getCurrentSession();
             if (currentSession && cameraXSingleSwitchAwaitingBind
                     && session.isFrontFacing() == isFrontface) {
+                // Do not apply the new lens mirror/rotation while the OES
+                // texture still contains the final frame of the old lens.
+                // Consume both atomically on the first replacement frame.
                 pendingCameraXSingleSession = session;
                 if (app.nimarkogram.messenger.NimarkoCameraLog.DEBUG) {
                     app.nimarkogram.messenger.NimarkoCameraLog.log(
@@ -244,12 +256,21 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             }
             if (currentSession) {
                 thread.setCurrentSession(session);
+                // A CameraX lens switch is asynchronous. Apply the requested
+                // torch only after this session actually became current.
                 updateFlash();
             }
+            // The inactive half of a dual session can resolve to a different
+            // aspect ratio. Keep geometry for both live surfaces up to date.
             thread.refreshPreviewGeometry();
         }
     }
 
+    /**
+     * Starts a real-frame deadline for each concurrent CameraX attempt. A
+     * successful bind is not enough: several OEM HALs, including OPPO builds,
+     * accept the graph but never fulfill a repeating preview request.
+     */
     public void onCameraXAttemptStarting(boolean dual) {
         if (app.nimarkogram.messenger.NimarkoCameraLog.DEBUG) app.nimarkogram.messenger.NimarkoCameraLog.log(
                 "InstantRound CX attempt dual=" + dual + " cancelled=" + cancelled
@@ -259,6 +280,11 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         nmCameraXActiveFrameObserved = false;
         nmCameraXFrameMask = 0;
         cameraReady = false;
+        // A concurrent graph can start producing rear frames before the
+        // logical camera has switched from its main physical sensor to the
+        // requested ultra-wide one. Apply the same bounded first-frame gate
+        // used by the single-camera path; otherwise dual mode visibly starts
+        // on 1x and jumps to the ultra-wide lens about a second later.
         cameraXInitialWideWaitActive = (!isFrontface || dual)
                 && app.nimarkogram.messenger.NimarkoConfig.startFromUltraWideCam;
         cameraXInitialWideWaitStartedMs = cameraXInitialWideWaitActive
@@ -291,6 +317,9 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             if (app.nimarkogram.messenger.NimarkoCameraLog.DEBUG) app.nimarkogram.messenger.NimarkoCameraLog.log(
                     "InstantRound CX watchdog: no active frame mask=" + nmCameraXFrameMask
                             + " surfaceIndex=" + surfaceIndex);
+            // Keep dual camera enabled on capable devices. First retry the
+            // same advertised pair at the conservative concurrent profile;
+            // only then collapse this recording to one camera.
             if (!videoMessagesHelper.retryCameraXDual(this)) {
                 videoMessagesHelper.fallbackCameraXDualToSingle(this);
             }
@@ -322,6 +351,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         }
     }
 
+    /** Invalidate the old graph deadline before its asynchronous close starts. */
     public void onCameraXTransitionStarting() {
         if (!useCameraX) return;
         nmCancelCameraXDualFrameWatchdog();
@@ -397,6 +427,12 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                     "   gl_FragColor = vec4(color.rgb, color.a * alpha);\n" +
                     "}\n";
 
+    /**
+     * Same transition shader as {@link #FRAGMENT_SCREEN_SHADER}, but for the
+     * GPU snapshot captured into a regular GL_TEXTURE_2D.  Keeping the effect
+     * in GL is important: a Bitmap/readback here stalls both the preview and
+     * the encoder exactly while CameraX is rebinding.
+     */
     private static final String FRAGMENT_SNAPSHOT_SHADER =
             "precision highp float;\n" +
                     "varying vec2 vTextureCoord;\n" +
@@ -435,17 +471,25 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
     private volatile boolean cameraXSingleSwitchAwaitingBind;
     private volatile app.nimarkogram.messenger.camera.NimarkoCameraXSurfaceSession
             pendingCameraXSingleSession;
+    // Preserve a switch tap made while an advertised dual graph has only one
+    // live stream. The intent is replayed after the surviving single CameraX
+    // stream has delivered a real frame.
     private boolean pendingCameraXSwitchAfterDualCollapse;
     private ValueAnimator dualCameraSwitchAnimator;
     private ValueAnimator cameraXVideoBlurAnimator;
     private Runnable cameraXVideoBlurTimeout;
     private volatile boolean cameraXVideoTransitionActive;
+    // Shared by both GL contexts so the transition is also encoded into the
+    // actual round video, instead of decorating only the TextureView preview.
     private volatile float cameraXSingleSwitchBlur;
     private volatile float cameraXSingleSwitchProgress;
     private volatile boolean cameraXSingleSwitchNewFrame;
     private boolean cameraXSingleSwitchFinishing;
     private long cameraXSingleSwitchWaitStartedMs;
     private boolean cameraXSingleSwitchZoomWaitLogged;
+    // CameraX may accept 0.6x before the logical rear graph actually moves
+    // from its main physical child to the ultra-wide child. Keep startup
+    // covered until CaptureResult confirms the requested lens.
     private final Object cameraXInitialWideWaitLock = new Object();
     private volatile boolean cameraXInitialWideWaitActive;
     private volatile long cameraXInitialWideWaitStartedMs;
@@ -455,6 +499,9 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
     private Runnable cameraXInitialWideTimeoutRunnable;
     private int cameraXInitialWideWaitGeneration;
     private boolean cameraXInitialWideWaitLogged;
+    // Created by CameraGLThread and consumed by both it and VideoRecorder.
+    // Their EGL contexts share objects, so this ID never crosses the CPU as
+    // pixels.  Volatile publication happens only after glFinish().
     private volatile int cameraXSingleSwitchSnapshot;
     private volatile int cameraXSingleSwitchSnapshotWidth;
     private volatile int cameraXSingleSwitchSnapshotHeight;
@@ -474,11 +521,16 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
     boolean isInPinchToZoomTouchMode;
     boolean maybePinchToZoomTouchMode;
 
+    // NimarkoGram: single-finger vertical drag-to-zoom for round video. Unlike
+    // the stock 2-finger pinch (which springs back to min on release), this sets
+    // a PERSISTENT zoom you keep recording at — drag up to zoom in, drag down to
+    // zoom out (onto the ultra-wide lens when the device exposes a <1.0x zoom
+    // ratio). Coexists with pinch; a second finger hands control to pinch.
     private boolean singleZoomMaybe;
     private boolean singleZoomActive;
     private float singleZoomStartY;
-    private float singleZoomStartRatio;
-    private float legacyZoom;
+    private float singleZoomStartRatio;   // CameraX/Camera2: ratio; legacy: 0..1
+    private float legacyZoom;             // persistent 0..1 for the legacy path
 
     private int pointerId1, pointerId2;
     private int textureViewSize;
@@ -489,14 +541,15 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
     private final static int audioSampleRate = 48000;
 
     private static final int[] ALLOW_BIG_CAMERA_WHITELIST = {
-            285904780,
-            -1394191079
+            285904780, // XIAOMI (Redmi Note 7)
+            -1394191079 // samsung a31
     };
     private boolean allowSendingWhileRecording;
 
     private final LinearLayout buttonsLayout;
     private final int buttonsSizePx;
 
+    // EV compensation for CameraX/Camera2, fixed to the standard right edge.
     private SlideControlView evControlView;
     private Runnable evControlHideRunnable;
 
@@ -506,7 +559,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         super(context);
         buttonsSizePx = dp(isNewDesign ? 24 : 28);
 
-        WRITE_TO_FILE_IN_BACKGROUND = false;
+        WRITE_TO_FILE_IN_BACKGROUND = false;//SharedConfig.deviceIsAboveAverage();
         this.resourcesProvider = resourcesProvider;
         parentView = delegate.getFragmentView();
         setWillNotDraw(false);
@@ -613,6 +666,11 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             if (bothCameras && useCameraX
                     && (!concurrentReady
                     || (nmCameraXFrameMask & (1 << (1 - surfaceIndex))) == 0)) {
+                // Do not animate and then silently lose the first tap. The old
+                // 720p->VGA retry also changed the crop here, making this look
+                // like a zoom on the front camera. Queue the intended facing,
+                // collapse the already half-dead pair now, and replay the tap
+                // after the single stream is genuinely visible.
                 pendingCameraXSwitchAfterDualCollapse =
                         !pendingCameraXSwitchAfterDualCollapse;
                 if (app.nimarkogram.messenger.NimarkoCameraLog.DEBUG) app.nimarkogram.messenger.NimarkoCameraLog.log(
@@ -626,11 +684,19 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                 switchCameraDrawable.start();
             }
             if (bothCameras && useCameraX) {
+                // Both OES streams are already alive. Their pixels are mixed
+                // directly by CameraGLThread; no screenshot, blur overlay,
+                // 3D flip, camera close or SurfaceTexture replacement occurs.
                 flipAnimationInProgress = true;
                 switchCamera();
                 return;
             }
             if (useCameraX && !bothCameras) {
+                // CameraX replaces the lens on this very same OES texture.  An
+                // oldCameraTexture crossfade therefore cannot work here: there
+                // is no second OES object.  Freeze the last transformed frame
+                // into a shared GL_TEXTURE_2D first, then rebind the lens and
+                // crossfade that snapshot to the first replacement frame.
                 flipAnimationInProgress = true;
                 cameraXSingleSwitchAwaitingBind = true;
                 cameraXSingleSwitchWaitStartedMs = SystemClock.elapsedRealtime();
@@ -699,6 +765,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         flashButton.setOnClickListener(v -> {
             flashing = !flashing;
             updateFlash();
+            // NimarkoGram (CG parity): consume one round-video flash hint per toggle.
             app.nimarkogram.messenger.NimarkoConfig.decrementVideoMessagesHintCount();
         });
         updateFlash();
@@ -765,6 +832,8 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             }
         }
 
+        // NimarkoGram: rear-cam torch intensity (0..100, default 100) applied via
+        // Android 13+ CameraManager.turnOnTorchWithStrengthLevel.
         final boolean rearTorchOn = flashing && !isFrontface && recording;
         final int rearTorchIntensity = 100;
         if (useCameraX) {
@@ -775,6 +844,12 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             }
         } else {
             if (cameraSession != null) {
+//                final String mode = (
+//                    (flashing && !isFrontface && recording) ?
+//                        (cameraSession.availableFlashModes != null && cameraSession.availableFlashModes.contains(Camera.Parameters.FLASH_MODE_TORCH) ? Camera.Parameters.FLASH_MODE_TORCH : Camera.Parameters.FLASH_MODE_ON) :
+//                        Camera.Parameters.FLASH_MODE_OFF
+//                );
+//                cameraSession.setCurrentFlashMode(mode);
                 cameraSession.setTorchEnabled(rearTorchOn, rearTorchIntensity);
             }
         }
@@ -905,7 +980,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
     }
 
     public void destroy(boolean async) {
-        nmCancelRoundFrameWatchdog();
+        nmCancelRoundFrameWatchdog();   // NimarkoGram: never let the no-frame watchdog fire after teardown
         nmCancelCameraXDualFrameWatchdog();
         nmCancelCamera2SwitchFrameWatchdog();
         ++nmCamera2SwitchGeneration;
@@ -939,6 +1014,8 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                 CameraController.getInstance().close(cameraSession, !async ? new CountDownLatch(1) : null, null);
             }
         }
+        // NimarkoGram: cancel pending EV auto-hide so it doesn't fire after the
+        // round-video panel is torn down (would NPE on a detached evControlView).
         if (evControlHideRunnable != null) {
             AndroidUtilities.cancelRunOnUIThread(evControlHideRunnable);
             evControlHideRunnable = null;
@@ -998,6 +1075,9 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         }
     }
 
+    // NimarkoGram: (re)show the round-video EV slider and arm its 5s auto-hide. The hide drops the view to
+    // GONE (not just alpha 0) so a faded-out slider never keeps stealing touches from the buttons row / preview
+    // underneath it. The view is reused across camera opens, so this also restores VISIBLE/alpha on each show.
     private void nmShowEvControl() {
         if (evControlView == null) {
             return;
@@ -1082,6 +1162,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         }
         switchCameraButton.setImageDrawable(switchCameraDrawable);
 
+        // NimarkoGram: the EV slider auto-hides to GONE after 5s; restore + re-arm it on each panel show.
         nmShowEvControl();
 
         textureOverlayView.animate().cancel();
@@ -1112,6 +1193,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             if (!useCameraX && !useCamera2) {
                 isFrontface = true;
             }
+            // NimarkoGram: round-video camera (front / rear / ask) resolved just before recording.
             isFrontface = app.nimarkogram.messenger.NimarkoConfig.pendingRoundFront;
             updateFlash();
             recordedTime = 0;
@@ -1155,6 +1237,9 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         }
 
         if (useCameraX) {
+            // The selected facing is always bound to CameraX surface 0 when a
+            // new round-video graph is created. Do not inherit slot 1 from a
+            // switch performed during the previous recording.
             surfaceIndex = 0;
             nmCameraXActiveFrameObserved = false;
             nmCameraXFrameMask = 0;
@@ -1173,7 +1258,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                         if (camera2Sessions[a] != null) {
                             final Camera2Session session = camera2Sessions[a];
                             session.setRecordingVideo(true);
-                            final int idx = a;
+                            final int idx = a;   // NimarkoGram: hybrid — logical for wide-angle, fall back to physical if it can't open
                             session.whenError(err -> nmHandleRoundCamError(
                                     idx, session, err == null ? -1 : err));
                             previewSize[a] = new Size(session.getPreviewWidth(), session.getPreviewHeight());
@@ -1182,11 +1267,19 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                 }
                 updateFlash();
                 camera2SessionCurrent = camera2Sessions[isFrontface ? 0 : 1];
+                // NimarkoGram: in dual mode the PRIMARY (big + recorded) camera is chosen by surfaceIndex,
+                // not by camera2SessionCurrent. It defaults to 0 (front) and was only ever changed by the
+                // flip button — so picking "Rear" from the chooser had no effect. Seed it from the choice
+                // (front surface = 0, rear surface = 1) before the GL thread starts.
                 surfaceIndex = isFrontface ? 0 : 1;
                 if (camera2SessionCurrent != null && camera2Sessions[isFrontface ? 1 : 0] == null) {
                     bothCameras = false;
                 }
                 if (camera2SessionCurrent == null) {
+                    // NimarkoGram: the SELECTED facing failed to open. The other index may still have opened —
+                    // bailing here without tearing it down leaks its tg_camera2 HandlerThread and keeps a view
+                    // reference alive through its whenError callback, which the next attempt reuses. Destroy
+                    // every surviving session and clear its previewSize before giving up.
                     for (int a = 0; a < camera2Sessions.length; ++a) {
                         if (camera2Sessions[a] != null) {
                             try { camera2Sessions[a].destroy(true); } catch (Throwable ignore) {}
@@ -1202,10 +1295,16 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                 if (camera2SessionCurrent == null) return;
                 final Camera2Session session = camera2SessionCurrent;
                 session.setRecordingVideo(true);
-                final int nmSlot = isFrontface ? 0 : 1;
+                final int nmSlot = isFrontface ? 0 : 1;   // NimarkoGram: hybrid — recover to a physical lens if the logical one can't open
                 session.whenError(err -> nmHandleRoundCamError(
                         nmSlot, session, err == null ? -1 : err));
                 previewSize[0] = new Size(session.getPreviewWidth(), session.getPreviewHeight());
+                // NimarkoGram: complement to whenError — a logical multi-camera can configure WITHOUT error yet
+                // never deliver a frame (or deliver too slowly to feed the encoder), so the circle silently never
+                // records. whenError only fires on an actual error, so this no-error/no-frame stall is otherwise
+                // unobserved. Arm a watchdog: if no real frame has been drawn (cameraReady still false) within
+                // ~1.8s on a LOGICAL session, persist roundCamLogicalDisabled and reopen on the physical main lens
+                // — exactly like the structural error path.
                 nmArmRoundFrameWatchdog();
             }
         }
@@ -1277,6 +1376,10 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                         CameraController.getInstance().close(cameraSession, null, null);
                     }
                 }
+                // CameraX teardown is asynchronous. Returning false transfers
+                // TextureView's output SurfaceTexture to CameraGLThread, which
+                // releases it only after CameraX returned all input surfaces
+                // and EGL was detached. Other paths retain framework ownership.
                 return !cameraXCloseOwnedByThread;
             }
 
@@ -1417,6 +1520,10 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                 videoEditedInfo.startTime = -1;
                 videoEditedInfo.endTime = -1;
             }
+            // NG (bug: round sometimes sent as plain video): InstantCameraView only ever produces round
+            // video messages. When the encoder has already finished by send-time we reach this direct-send
+            // branch with a fresh VideoEditedInfo whose roundVideo flag defaults to false, so the
+            // round-vs-video decision in SendMessagesHelper downgrades it to a rectangular video. Force it.
             videoEditedInfo.roundVideo = true;
             if (videoEditedInfo.needConvert()) {
                 file = null;
@@ -1574,24 +1681,51 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         cameraContainer.setImageReceiver(null);
     }
 
+    // NimarkoGram: create a round-video session preferring the LOGICAL (wide-angle) camera, but if that
+    // selection yields nothing usable on this device, remember it and fall back to a plain physical lens so the
+    // circle still records. This is the create-time half of the hybrid (handles a null/no-usable-size return);
+    // the runtime half is nmHandleRoundCamError, which catches open/configure failures that only surface async.
+    // NimarkoGram: capped capture height for the round-video circle. The round circle must NEVER honor the
+    // global Stories cameraResolution — on a logical multi-camera that selects the full-sensor square output
+    // (e.g. 2464x2464 for a 384px circle), which configures in ~5s and can stall frame delivery. Capping at
+    // ~720 (and never below 2x the encode size) makes chooseQualityAwareSize land on a small ~720x720 output
+    // so the logical lens configures fast and still drives the ultra-wide via its sub-1.0 zoom range.
     private static int nmRoundCaptureHeight(int roundVideoSize) {
+        // NimarkoGram: derive the round-video CAPTURE height from the user's round-quality picker
+        // (roundVideoSize: AUTO=384 / HD=512 / FHD=720), NOT the global Stories cameraResolution. Oversample
+        // ~2x for a clean GL downscale (clears the bilinear-shader 0.7 floor: 1024*0.7=717 >= 512), and cap at
+        // the legacy round ceiling (1200, the allowBigSizeCamera()? 1440 : 1200 non-big value, Samsung-safe) so
+        // a logical multi-camera never selects its 2464 full-sensor square. 384 -> 768, 512 -> 1024, 720 -> 1200.
         return Math.min(1200, Math.max(roundVideoSize, 2 * roundVideoSize));
     }
 
     private Camera2Session nmCreateRoundSession(boolean front) {
+        // NimarkoGram: pin the user's round-quality preset BEFORE deriving the session size. On the first
+        // cold-start round, mc.roundVideoSize still holds the server-injected round_video_encoding diameter
+        // (384); reading it raw would size the camera session for 384 while the encoder (startRecording re-reads
+        // getVideoMessagesResolutionPx) writes the user preset — a resolution desync on the very first circle.
         final MessagesController mc = MessagesController.getInstance(UserConfig.selectedAccount);
         mc.roundVideoSize = app.nimarkogram.messenger.NimarkoConfig.getVideoMessagesResolutionPx(512);
         final int size = mc.roundVideoSize;
         final int capH = nmRoundCaptureHeight(size);
         final boolean preferLogical = !app.nimarkogram.messenger.NimarkoConfig.roundCamLogicalDisabled && !nmRoundLogicalSlowThisSession;
-        Camera2Session s = Camera2Session.create(front, size, size, preferLogical, capH, true);
+        Camera2Session s = Camera2Session.create(front, size, size, preferLogical, capH, true);   // true: no JPEG still stream -> faster configure
         if (s == null && preferLogical) {
+            // The logical multi-camera produced no usable record size here — remember it and retry on the
+            // physical main lens (the one the legacy Camera1 path records with, id=0 / OIS).
             app.nimarkogram.messenger.NimarkoConfig.setRoundCamLogicalDisabled(true);
-            s = Camera2Session.create(front, size, size, false, capH, true);
+            s = Camera2Session.create(front, size, size, false, capH, true);   // physical retry, still no JPEG stream
         }
         return s;
     }
 
+    // NimarkoGram: round-video camera HYBRID error handler. The camera opens the LOGICAL multi-camera by
+    // default so the ultra-wide lens works (reached via its sub-1.0 zoom-ratio range). If that logical camera
+    // can't actually RECORD on this device — whether it refuses to open (ERROR_MAX_CAMERAS_IN_USE: it fuses
+    // several physical lenses past the concurrent-camera limit) or opens but can't configure the record stream
+    // (onConfigureFailed / closed device, both surfaced as code -1) — recover THIS recording onto a plain
+    // physical lens now, and for those structural failures remember it so every future round video opens a
+    // physical lens straight away with no ~3s open-block.
     private void nmHandleRoundCamError(final int slot, final Camera2Session expectedSession,
                                        final int errorCode) {
         if (expectedSession == null || cancelled) {
@@ -1604,6 +1738,10 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         Camera2Session s = expectedSession;
         final boolean wasLogical = s != null && s.isLogical();
         if (wasLogical && !app.nimarkogram.messenger.NimarkoConfig.roundCamLogicalDisabled) {
+            // Persist "logical can't record round video here" only for a STRUCTURAL failure — the framework
+            // refusing the fused camera (ERROR_MAX_CAMERAS_IN_USE) or our own open/configure/closed/no-size path
+            // (surfaced as code -1). A transient external grab (in-use/disabled/service) still recovers this
+            // recording onto a physical lens below, but leaves logical available for the next attempt.
             final boolean structural =
                     errorCode == android.hardware.camera2.CameraDevice.StateCallback.ERROR_MAX_CAMERAS_IN_USE
                     || errorCode == -1;
@@ -1618,6 +1756,11 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         fallbackToSingleCamera(slot, errorCode);
     }
 
+    // NimarkoGram: watchdog for the silent slow/no-frame logical-camera stall. Set true only on real frames
+    // (in onDraw, same as cameraReady). The runnable, if still pending, reopens on the physical lens.
+    // NimarkoGram: an AMBIGUOUS no-frame watchdog timeout demotes the logical lens for THIS app session only
+    // (in-memory, NOT persisted to disk) so a one-off slow cold start is retried next launch instead of
+    // permanently killing the ultra-wide. Only the STRUCTURAL error path (nmHandleRoundCamError) persists.
     private static volatile boolean nmRoundLogicalSlowThisSession;
     private Runnable nmRoundFrameWatchdog;
     private Runnable nmCamera2SwitchFrameWatchdog;
@@ -1626,13 +1769,26 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
     private int nmCameraXDualWatchdogGeneration;
     private volatile boolean nmCameraXActiveFrameObserved;
     private volatile int nmCameraXFrameMask;
+    // NimarkoGram: the window is armed at SETUP (covers TextureView attach + EGL + MediaCodec start, not just
+    // camera configure). With the capture capped to ~1024 (was the 2464 square that stalled ~5s) a healthy
+    // logical lens flips cameraReady in well under 1s and no-ops this; 2500ms leaves headroom for a cold/
+    // throttled-but-capable lens without falsely bumping it, and stays far below the old ~5s pathological stall.
     private static final long NM_ROUND_FRAME_TIMEOUT_MS = 2500;
     private static final long NM_CAMERAX_DUAL_FRAME_TIMEOUT_MS = 3500;
     private static final long NM_CAMERAX_INITIAL_WIDE_TIMEOUT_MS = 1450;
+    // Concurrent ColorOS graphs can negotiate the physical rear lens almost a
+    // second after both logical streams are already live. Keep extra headroom
+    // without delaying ordinary single-camera startup.
     private static final long NM_CAMERAX_DUAL_INITIAL_WIDE_TIMEOUT_MS = 2200;
+    // The physical CameraX rebind remains protected by the SurfaceRequest
+    // release barrier. These durations only control the GL cover around it;
+    // keeping the old 140 + 300 ms animation after the replacement frame was
+    // ready made single-camera flips feel substantially slower on ColorOS.
     private static final long NM_CAMERAX_SINGLE_BLUR_IN_MS = 100;
     private static final long NM_CAMERAX_SINGLE_REVEAL_MS = 180;
 
+    // NimarkoGram: arm the no-frame watchdog for the current round session. Only logical sessions are watched —
+    // a physical lens that stalls has no better fallback, and the timeout must not loop on it.
     private void nmArmRoundFrameWatchdog() {
         nmCancelRoundFrameWatchdog();
         final Camera2Session watched = camera2SessionCurrent;
@@ -1641,13 +1797,16 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         }
         nmRoundFrameWatchdog = () -> {
             nmRoundFrameWatchdog = null;
+            // Only recover if THIS logical session is still current, it never produced a frame, the user has not
+            // released the button, and logical isn't already disabled (a real error may have raced us).
             if (cancelled || cameraReady || bothCameras
                     || camera2SessionCurrent != watched
                     || camera2SessionCurrent == null || !camera2SessionCurrent.isLogical()
                     || app.nimarkogram.messenger.NimarkoConfig.roundCamLogicalDisabled || nmRoundLogicalSlowThisSession) {
                 return;
             }
-            nmRoundLogicalSlowThisSession = true;
+            // Slow/silent logical camera: treat exactly like the structural error path.
+            nmRoundLogicalSlowThisSession = true;   // session-only — NOT setRoundCamLogicalDisabled (that would be permanent on disk)
             nmReopenSinglePhysical();
         };
         AndroidUtilities.runOnUIThread(nmRoundFrameWatchdog, NM_ROUND_FRAME_TIMEOUT_MS);
@@ -1683,6 +1842,12 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         }
     }
 
+    /**
+     * Releases the cached cover even if an OEM stops producing rear frames
+     * before reporting the requested physical lens. This deadline is separate
+     * from the dual-graph watchdog: both streams may be alive while physical
+     * lens metadata is missing or delayed.
+     */
     private void nmArmCameraXInitialWideTimeout() {
         final int generation;
         final long timeoutMs = cameraXInitialWideWaitTimeoutMs;
@@ -1701,6 +1866,10 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                         }
                         cameraXInitialWideTimeoutRunnable = null;
                         cameraXInitialWideWaitActive = false;
+                        // A front-first dual session is already visible and
+                        // recording; its rear-lens deadline must not inject a
+                        // duplicate synthetic front frame. If the user has
+                        // switched to rear, redraw the last drained rear frame.
                         cameraXInitialWideTimeoutRenderPending = !isFrontface;
                         shouldRender = cameraXInitialWideTimeoutRenderPending;
                     }
@@ -1713,6 +1882,8 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                     }
                     CameraGLThread thread = cameraThread;
                     if (shouldRender && thread != null) {
+                        // Reuse the last drained rear texture; no updateTexImage
+                        // call is needed when the vendor stream has paused.
                         thread.requestRender(false, false);
                     }
                 }
@@ -1754,6 +1925,10 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                     "InstantRound CX first frame index=" + index + " mask="
                             + nmCameraXFrameMask + " active=" + surfaceIndex);
         }
+        // A concurrent graph is healthy only after both advertised cameras
+        // have produced real frames. Cancelling on the currently visible half
+        // allowed a dead secondary stream to masquerade as a ready dual graph
+        // until the first switch tap.
         if (bothCameras) {
             if ((nmCameraXFrameMask & 0b11) != 0b11) return;
         } else if (index != surfaceIndex) {
@@ -1764,6 +1939,12 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         AndroidUtilities.runOnUIThread(this::nmCancelCameraXDualFrameWatchdog);
     }
 
+    /**
+     * Holds the first logical-rear frames while they still come from the main
+     * physical sensor. ZoomState cannot be used as the sole signal: ColorOS
+     * reports the accepted 0.6x ratio before the capture graph switches its
+     * active physical camera.
+     */
     private boolean nmShouldHoldCameraXInitialWideFrame() {
         if (!cameraXInitialWideWaitActive) return false;
         app.nimarkogram.messenger.camera.NimarkoCameraXSurfaceSession session =
@@ -1772,6 +1953,10 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         long waitMs = SystemClock.elapsedRealtime()
                 - cameraXInitialWideWaitStartedMs;
         if (lensReady && !cameraXInitialWideConfirmedFrame) {
+            // CaptureResult and SurfaceTexture callbacks are independent. Keep
+            // one more rear frame after the HAL first reports the expected
+            // physical id, so the OES texture being revealed cannot still be
+            // the final frame from the main sensor.
             cameraXInitialWideConfirmedFrame = true;
             if (app.nimarkogram.messenger.NimarkoCameraLog.DEBUG) {
                 app.nimarkogram.messenger.NimarkoCameraLog.log(
@@ -1817,6 +2002,13 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         return true;
     }
 
+    /**
+     * The logical-camera watchdog above deliberately ignores physical lenses
+     * during normal startup. A lens switch is different: if its replacement
+     * produces no frame, leaving the encoder on the old texture forever is
+     * never a valid result. Watch every replacement (logical or physical) and
+     * retry once through the proven physical-camera path.
+     */
     private void nmArmCamera2SwitchFrameWatchdog(
             final int generation,
             final Camera2Session watched,
@@ -1835,6 +2027,8 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                     || camera2SessionCurrent != watched) {
                 return;
             }
+            // This retry is not re-armed: a permanently broken physical
+            // camera cannot be healed by an endless close/open loop.
             nmReopenSinglePhysical();
         };
         AndroidUtilities.runOnUIThread(nmCamera2SwitchFrameWatchdog, 4000L);
@@ -1847,10 +2041,11 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         }
     }
 
+    // NimarkoGram: reopen the single round-video camera on a PHYSICAL lens (used when the logical one failed).
     private void nmReopenSinglePhysical() {
         try {
             if (!useCamera2) return;
-            nmCancelRoundFrameWatchdog();
+            nmCancelRoundFrameWatchdog();   // NimarkoGram: the logical session is being torn down; stop watching it
             nmCancelCamera2SwitchFrameWatchdog();
             bothCameras = false;
             final int generation = ++nmPhysicalReopenGeneration;
@@ -1908,6 +2103,9 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         }
     }
 
+    // NimarkoGram: a dual round-video camera failed to open (e.g. ERROR_MAX_CAMERAS_IN_USE on a device that
+    // can't run two cameras at once). Collapse to a SINGLE camera using the surviving session — no black, no
+    // crash — remember the device can't do dual, and tell the user once via a bulletin. Runs on the UI thread.
     private void fallbackToSingleCamera(final int failedIndex, final int errorCode) {
         if (!useCamera2 || !bothCameras) {
             return;
@@ -1921,13 +2119,22 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         camera2SessionCurrent = (keep >= 0 && keep < camera2Sessions.length) ? camera2Sessions[keep] : null;
         isFrontface = (keep == 0);
         if (cameraThread != null) {
+            // NimarkoGram: pin the drawn/recorded surface to the survivor on the GL thread itself. We must NOT
+            // branch on the UI-visible surfaceIndex here — it's only mutated by the GL thread in DO_FLIP, and a
+            // flip may still be queued, so the UI could see a stale value and post a redundant/missing flip,
+            // leaving surfaceIndex on the destroyed slot (frozen/black recording). Post an authoritative,
+            // FIFO-ordered message that sets the absolute index after any pending DO_FLIP drains.
             cameraThread.setSurfaceIndex(keep);
             if (camera2SessionCurrent != null) {
-                cameraThread.setCurrentSession(camera2SessionCurrent);
-                nmArmRoundFrameWatchdog();
+                cameraThread.setCurrentSession(camera2SessionCurrent);   // fix rotation/flash for the survivor
+                nmArmRoundFrameWatchdog();   // NimarkoGram: surviving session may be LOGICAL — watch for a silent stall
             }
         }
         updateFlash();
+        // NimarkoGram: only PERSIST the "no dual on this device" flag for a genuine, structural incompatibility
+        // (the framework refused a second simultaneous camera). Any other/transient failure (in-use, service,
+        // disabled, configure-failed) collapses this recording to a single camera but leaves dual available for
+        // the next attempt — otherwise one transient hiccup killed dual round-video permanently.
         if (errorCode == android.hardware.camera2.CameraDevice.StateCallback.ERROR_MAX_CAMERAS_IN_USE) {
             DualCameraView.disableRoundDual();
         }
@@ -1946,6 +2153,11 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         if (useCameraX && bothCameras
                 && (!videoMessagesHelper.isConcurrentDualReady()
                 || (nmCameraXFrameMask & (1 << (1 - surfaceIndex))) == 0)) {
+            // Do not change the logical facing while the second live CameraX
+            // surface is still being attached or has not produced a real
+            // frame. In particular, do not fall
+            // back to a close/rebind cycle: the next tap will be an immediate
+            // GL-only switch as soon as the concurrent graph is ready.
             flipAnimationInProgress = false;
             if (app.nimarkogram.messenger.NimarkoCameraLog.DEBUG) app.nimarkogram.messenger.NimarkoCameraLog.log(
                     "InstantRound switch blocked: concurrent pair/frame not ready");
@@ -1953,6 +2165,11 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         }
         isFrontface = !isFrontface;
         if (useCameraX) {
+            // CameraX owns the SurfaceRequest replacement during a lens switch.
+            // Recreating Telegram's SurfaceTexture at the same time races that
+            // request and can leave the new camera bound to the released old
+            // surface. Keep the proven GL surface, rebind CameraX in place and
+            // only swap slots when both concurrent cameras already exist.
             videoMessagesHelper.switchCameraX(this);
             app.nimarkogram.messenger.camera.NimarkoCameraXSurfaceSession current =
                     videoMessagesHelper.getCurrentSession();
@@ -1963,6 +2180,9 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                 }
             }
             updateFlash();
+            // Both concurrent streams are already bound; a flip only changes
+            // the sampled GL slot and must not lock the switch button forever.
+            // A single-camera rebind becomes ready again on its first new frame.
             if (!bothCameras) {
                 cameraReady = false;
             }
@@ -1991,6 +2211,13 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         cameraThread.reinitForNewCamera();
     }
 
+    /**
+     * Switches a single Camera2 round-video stream without overlapping
+     * CameraDevice lifetimes. Several Xiaomi/Redmi HALs do not deliver frames
+     * (or report MAX_CAMERAS_IN_USE) when the opposite lens is opened before
+     * onClosed for the previous one. Audio then keeps recording while GL is
+     * left on the final old frame.
+     */
     private void nmSwitchSingleCamera2(final boolean targetFront) {
         ++nmPhysicalReopenGeneration;
         final int generation = ++nmCamera2SwitchGeneration;
@@ -2042,6 +2269,9 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                     replacement.getPreviewWidth(), replacement.getPreviewHeight());
             updateFlash();
 
+            // Rebuild slot 0 only after the old CameraDevice has reached
+            // onClosed. The GL thread preserves its final texture for the
+            // existing crossfade while the replacement starts producing data.
             expectedThread.reinitForNewCamera();
             nmArmRoundFrameWatchdog();
             nmArmCamera2SwitchFrameWatchdog(generation, replacement, expectedThread);
@@ -2132,6 +2362,9 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         cameraXVideoTransitionActive = true;
         cameraXSingleSwitchProgress = 0f;
         cameraXSingleSwitchNewFrame = false;
+        // Ease the old frame into the transition instead of enabling a full
+        // blur in one frame. The source is now an immutable GPU snapshot, not
+        // the OES texture CameraX is about to replace.
         cameraXVideoBlurAnimator = ValueAnimator.ofFloat(0f, 0.82f);
         cameraXVideoBlurAnimator.setDuration(NM_CAMERAX_SINGLE_BLUR_IN_MS);
         cameraXVideoBlurAnimator.setInterpolator(CubicBezierInterpolator.EASE_OUT);
@@ -2160,6 +2393,9 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                                 + " waitMs=" + (SystemClock.elapsedRealtime()
                                 - cameraXSingleSwitchWaitStartedMs));
             }
+            // Do not blend back to the stale OES frame if CameraX failed to
+            // produce a replacement frame.  Release the UI lock and let the
+            // normal session recovery path redraw whichever camera recovers.
             clearCameraXVideoTransition();
             cameraXSingleSwitchAwaitingBind = false;
             pendingCameraXSingleSession = null;
@@ -2266,11 +2502,14 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             if (app.nimarkogram.messenger.NimarkoCameraLog.DEBUG) app.nimarkogram.messenger.NimarkoCameraLog.log(
                     "InstantRound executing queued switch after dual collapse"
                             + " front=" + isFrontface + " surface=" + surfaceIndex);
+            // Let the current publication finish before the switch captures
+            // its transition snapshot from this newly visible frame.
             AndroidUtilities.runOnUIThread(
                     () -> switchCameraButton.performClick());
         }
     }
 
+    // Old Camera1 API
     @Deprecated
     private boolean initCamera() {
         if (useCameraX || useCamera2) {
@@ -2303,6 +2542,9 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         ArrayList<Size> previewSizes = selectedCamera.getPreviewSizes();
         ArrayList<Size> pictureSizes = selectedCamera.getPictureSizes();
 
+        // Keep Telegram's own sensor-aware size selection. A global aspect
+        // override made unrelated camera surfaces fight over 1:1/4:3/16:9 and
+        // was the source of stretched previews after switching lenses.
         previewSize[0] = chooseOptimalSize(previewSizes);
         pictureSize = chooseOptimalSize(pictureSizes);
         if (previewSize[0].mWidth != pictureSize.mWidth) {
@@ -2347,12 +2589,13 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         return true;
     }
 
-    @Deprecated
+    @Deprecated // used for old Camera1 API only
     private Size chooseOptimalSize(ArrayList<Size> previewSizes) {
         ArrayList<Size> sortedSizes = new ArrayList<>();
         boolean allowBigSizeCamera = allowBigSizeCamera();
         int maxVideoSize = allowBigSizeCamera ? 1440 : 1200;
         if (Build.MANUFACTURER.equalsIgnoreCase("Samsung")) {
+            //1440 lead to gl crashes on samsung s9
             maxVideoSize = 1200;
         }
         for (int i = 0; i < previewSizes.size(); i++) {
@@ -2387,7 +2630,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         return sortedSizes.get(0);
     }
 
-    @Deprecated
+    @Deprecated // used for old Camera1 API only
     private boolean allowBigSizeCamera() {
         if (SharedConfig.bigCameraForRound) {
             return true;
@@ -2408,7 +2651,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         return false;
     }
 
-    @Deprecated
+    @Deprecated // used for old Camera1 API only
     public static boolean allowBigSizeCameraDebug() {
         int devicePerformanceClass = Math.max(SharedConfig.getDevicePerformanceClass(), SharedConfig.getLegacyDevicePerformanceClass());
         if (devicePerformanceClass == SharedConfig.PERFORMANCE_CLASS_HIGH) {
@@ -2450,8 +2693,12 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                         return;
                     }
                     if (!bothCameras && index == 0) {
+                        // Single-camera startup and every camera switch use slot 0,
+                        // exactly like the established Camera1/Camera2 path.
                         videoMessagesHelper.createCameraX(this, surfaceTexture);
                     } else if (bothCameras && index == 1) {
+                        // In dual mode wait until both GL surfaces exist, then bind
+                        // them as one CameraX concurrent graph.
                         videoMessagesHelper.createCameraX(this,
                                 expectedThread.cameraSurface[0],
                                 expectedThread.cameraSurface[1]);
@@ -2464,6 +2711,16 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                     }
                 } else {
                     if (index == 1) return;
+                    // NimarkoGram: camera2SessionCurrent can be nulled between scheduling this UI-thread lambda
+                    // and its execution. The async error handler (nmHandleRoundCamError) and the no-frame
+                    // watchdog both tear the logical session down and reopen on a physical lens — and
+                    // nmReopenSinglePhysical() leaves camera2SessionCurrent == null when its physical create()
+                    // also fails ("circle stays black"). A stale createCamera lambda still queued from the
+                    // original setup / a prior reinit then dereferenced null here → the reported
+                    // Camera2Session.open NPE crash. Bail like the bothCameras branch above does: a successful
+                    // reopen issues its OWN reinitForNewCamera → createCamera → open() on the new session, so
+                    // the circle still starts; we only must not crash on the obsolete reference. Snapshot into
+                    // a local so setCurrentSession() and open() act on the exact same (non-null) session.
                     final Camera2Session session = camera2SessionCurrent;
                     if (session == null) {
                         return;
@@ -2625,7 +2882,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         private final int DO_REINIT_MESSAGE = 2;
         private final int DO_SETSESSION_MESSAGE = 3;
         private final int DO_FLIP = 4;
-        private final int DO_SET_SURFACE_INDEX = 5;
+        private final int DO_SET_SURFACE_INDEX = 5;   // NimarkoGram: authoritative absolute set of surfaceIndex (fallback to single)
         private final int DO_DUAL_SWITCH_BEGIN = 6;
         private final int DO_DUAL_SWITCH_PROGRESS = 7;
         private final int DO_DUAL_SWITCH_FINISH = 8;
@@ -2650,6 +2907,10 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         private int snapshotAlphaHandle;
         private int snapshotTexelSizeHandle;
         private int snapshotSwitchBlurHandle;
+        // Keep one retired shared texture alive for a full transition. An
+        // encoder message may still reference it after the UI accepted the
+        // next switch; deleting only the generation before that avoids a
+        // cross-context name race while bounding memory to two snapshots.
         private int retiredCameraXSingleSwitchSnapshot;
 
         private boolean recording;
@@ -3040,6 +3301,11 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                     GLES20.glDeleteTextures(1, cameraTexture, 1);
                     cameraTexture[1] = Integer.MIN_VALUE;
                 }
+                // Do not glDelete the shared snapshot here: encoder frame
+                // messages can still be queued and bind this name from their
+                // shared EGL context. The share group releases it when the
+                // encoder context is destroyed; a later switch explicitly
+                // replaces an already-retired snapshot.
                 if (snapshotProgram != 0) {
                     GLES20.glDeleteProgram(snapshotProgram);
                     snapshotProgram = 0;
@@ -3140,6 +3406,10 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             }
         }
 
+        // NimarkoGram: set surfaceIndex to an ABSOLUTE value on the GL thread (unlike DO_FLIP, which toggles).
+        // Posted through the same handler queue, so it always runs AFTER any pending DO_FLIP — used when
+        // collapsing a dual round video to its surviving single camera, where toggling from a UI-stale index
+        // could leave us pointed at the destroyed slot.
         public void setSurfaceIndex(int index) {
             Handler handler = getHandler();
             if (handler != null) {
@@ -3154,6 +3424,10 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                         (app.nimarkogram.messenger.camera.NimarkoCameraXSurfaceSession) session);
                 if (index >= 0) return index;
             } else if (session instanceof Camera2Session) {
+                // A normal single-camera Camera2 graph always binds the
+                // selected front/rear session to GL surface 0. Array indices
+                // describe lens facing, not the active GL slot. A collapsed
+                // dual graph keeps its survivor on surfaceIndex instead.
                 if (!bothCameras) {
                     return surfaceIndex;
                 }
@@ -3186,6 +3460,10 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             if (session instanceof app.nimarkogram.messenger.camera.NimarkoCameraXSurfaceSession) {
                 app.nimarkogram.messenger.camera.NimarkoCameraXSurfaceSession cameraXSession =
                         (app.nimarkogram.messenger.camera.NimarkoCameraXSurfaceSession) session;
+                // With an intermediate/effect Surface the camera transform is
+                // absent from SurfaceTexture, so mirror screen X after the
+                // explicit vertex rotation. Direct CameraX surfaces already
+                // carry that transform and must remain untouched here.
                 if (cameraXSession.isMirrored() && !cameraXSession.hasCameraTransform()) {
                     android.opengl.Matrix.multiplyMM(nmCameraXTransformScratch, 0,
                             nmCameraXMirrorMatrix, 0, matrix, 0);
@@ -3212,6 +3490,8 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                     dualVideoMVPMatrix[dualSwitchTo], 0, 16);
             dualVideoSwitchFrom = dualSwitchFrom;
             dualVideoSwitchTo = dualSwitchTo;
+            // Publish progress last: this volatile write makes all matrix and
+            // index writes above visible to the encoder thread.
             dualVideoSwitchProgress = dualSwitchProgress;
             dualVideoSwitching = true;
         }
@@ -3313,6 +3593,8 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                 GLES20.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, 0);
                 GLES20.glUseProgram(0);
 
+                // The encoder EGL context belongs to the same share group.
+                // Publish the texture only after all FBO writes are visible.
                 GLES20.glFinish();
                 if (retiredCameraXSingleSwitchSnapshot != 0
                         && retiredCameraXSingleSwitchSnapshot != previousSnapshot) {
@@ -3337,6 +3619,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                     GLES20.glDeleteTextures(1, texture, 0);
                 }
                 if (!success) {
+                    // Never animate a stale snapshot from an older switch.
                     if (retiredCameraXSingleSwitchSnapshot != 0
                             && retiredCameraXSingleSwitchSnapshot != previousSnapshot) {
                         GLES20.glDeleteTextures(1,
@@ -3417,6 +3700,12 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                     long lensWaitMs = SystemClock.elapsedRealtime()
                             - cameraXSingleSwitchWaitStartedMs;
                     boolean lensReady = pending.isInitialLensReady();
+                    // SurfaceTexture can receive frames from the main rear
+                    // sensor before ColorOS completes a requested 0.6x logical
+                    // lens change. Keep drawing the immutable old-camera
+                    // snapshot until CaptureResult identifies the real
+                    // ultra-wide physical camera. A bounded fallback prevents
+                    // incomplete vendor metadata from locking the UI.
                     if (!lensReady && lensWaitMs < 1450L) {
                         if (!cameraXSingleSwitchZoomWaitLogged) {
                             cameraXSingleSwitchZoomWaitLogged = true;
@@ -3440,6 +3729,8 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                         pendingCameraXSingleSession = null;
                         updateSessionMatrix(pending, 0);
                         currentSession = pending;
+                        // Apply the replacement lens aspect crop in the same GL
+                        // frame as its new rotation and mirror matrices.
                         rebuildTextureBuffer(0);
                         copyActiveMatrices(0);
                         cameraXSingleSwitchAwaitingBind = false;
@@ -3453,6 +3744,9 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                 publishDualVideoSwitch();
             }
 
+            // A callback from the inactive concurrent surface must never make
+            // us draw or feed the encoder from an active OES texture which has
+            // not produced its first frame yet.
             if (surfaceIndex < 0 || surfaceIndex >= cameraFrameAvailable.length
                     || !cameraFrameAvailable[surfaceIndex]) {
                 return;
@@ -3464,9 +3758,16 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                     || surfaceIndex == 1 && updateTexImage2;
             if (bothCameras && !activeCameraFrame && !dualSurfaceSwitching
                     && !initialWideTimeoutRender) {
+                // The inactive CameraX preview still has to be drained via
+                // updateTexImage(), but it must not trigger a second complete
+                // draw, EGL swap and encoder pass for every camera frame.
                 return;
             }
 
+            // Drain vendor warm-up frames, but do not draw them, fade the
+            // cached cover or feed them to the encoder. The first visible and
+            // recorded rear frame must already use the requested ultra-wide
+            // physical lens.
             if (!initialWideTimeoutRender && useCameraX && !isFrontface
                     && activeCameraFrame
                     && nmShouldHoldCameraXInitialWideFrame()) {
@@ -3492,7 +3793,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                 }
                 videoEncoder.startRecording(cameraFile, EGL14.eglGetCurrentContext());
                 recording = true;
-                legacyZoom = 0f;
+                legacyZoom = 0f; // each new round starts un-zoomed (legacy path)
                 updateFlash();
             }
 
@@ -3502,6 +3803,10 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                 videoEncoder.frameAvailable(cameraSurface[surfaceIndex], bothCameras ? surfaceIndex : cameraId, System.nanoTime());
             } else if (videoEncoder != null && recording && useCameraX && !bothCameras
                     && cameraXVideoTransitionActive) {
+                // CameraX stops producing frames while its single-camera graph
+                // is rebound. Animator-driven preview renders must also feed
+                // the encoder, otherwise the visible pre-switch transition is
+                // missing from the actual recorded round video.
                 videoEncoder.transitionFrameAvailable(cameraId, System.nanoTime());
             }
 
@@ -3518,8 +3823,14 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT);
             if (useCameraX && !bothCameras && cameraXVideoTransitionActive
                     && cameraXSingleSwitchSnapshot != 0) {
+                // The snapshot is already cropped, rotated and mirrored exactly
+                // as the last visible OES frame. It is the opaque base until a
+                // replacement frame arrives, then the new live OES frame is
+                // alpha-blended over it. The circular view itself never moves.
                 drawCameraXSnapshot(1f, cameraXSingleSwitchBlur);
                 if (cameraXSingleSwitchNewFrame) {
+                    // drawCameraXSnapshot uses another program/attribute set.
+                    // Restore the external-OES pipeline for the live frame.
                     GLES20.glUseProgram(drawProgram);
                     GLES20.glActiveTexture(GLES20.GL_TEXTURE0);
                     GLES20.glVertexAttribPointer(positionHandle, 3, GLES20.GL_FLOAT,
@@ -3532,10 +3843,19 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                 }
             } else if (dualSurfaceSwitching && dualSwitchFrom >= 0 && dualSwitchTo >= 0
                     && cameraFrameAvailable[dualSwitchTo]) {
+                // The old live stream is the opaque base. Drawing the target
+                // stream over it with source alpha produces an actual
+                // crossfade: target*p + old*(1-p), with no bitmap copy and no
+                // camera rebind at any point.
                 drawScreenCamera(dualSwitchFrom, 1f);
                 drawScreenCamera(dualSwitchTo, dualSwitchProgress);
             } else if ((useCameraX || useCamera2) && !bothCameras && oldCameraTexture[0] != 0
                     && oldTextureTextureBuffer != null && cameraTextureAlpha < 1f) {
+                // Crossfade the actual OES video frames, not the circular view.
+                // Each side keeps its own crop and transform, so a front/rear
+                // aspect change cannot produce a one-frame vertical size jump.
+                // Camera1 already has Telegram's stock 3D/bitmap transition;
+                // layering this crossfade over it changes the apparent height.
                 GLES20.glVertexAttribPointer(textureHandle, 2, GLES20.GL_FLOAT,
                         false, 8, oldTextureTextureBuffer);
                 GLES20.glUniformMatrix4fv(textureMatrixHandle, 1, false,
@@ -3567,6 +3887,11 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
 
             egl10.eglSwapBuffers(eglDisplay, eglSurface);
 
+            // Publishing preview readiness used to depend on a later encoder
+            // callback. Some OEM front cameras deliver one frame and pause
+            // while AE converges, leaving a correctly rendered circle hidden
+            // until the user switched lenses. A successful window swap is the
+            // strongest possible proof that a real camera frame is visible.
             if (useCameraX && !cameraReady && !cameraXSingleSwitchAwaitingBind) {
                 cameraReady = true;
                 if (app.nimarkogram.messenger.NimarkoCameraLog.DEBUG) app.nimarkogram.messenger.NimarkoCameraLog.log(
@@ -3630,6 +3955,10 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                     break;
                 }
                 case DO_REINIT_MESSAGE: {
+                    // NimarkoGram: single-camera reinit always rebuilds slot 0 only, so the draw/encoder must
+                    // sample slot 0. After a dual->single fallback on the REAR camera surfaceIndex was left at 1;
+                    // without this reset the next flip would keep reading the destroyed cameraSurface[1] and the
+                    // preview/recording would freeze/black out. DO_REINIT only runs in single context, so this is safe.
                     surfaceIndex = 0;
                     dualSurfaceSwitching = false;
                     dualVideoSwitching = false;
@@ -3641,6 +3970,8 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                     }
 
                     if (cameraSurface[0] != null) {
+                        // Preserve the exact last displayed texture transform
+                        // for the old-frame crossfade and encoder.
                         System.arraycopy(mSTMatrix, 0, moldSTMatrix, 0, 16);
                         System.arraycopy(mSTMatrix, 0, oldScreenSTMatrix, 0, 16);
                         System.arraycopy(mMVPMatrix, 0, oldScreenMVPMatrix, 0, 16);
@@ -3698,6 +4029,8 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                     break;
                 }
                 case DO_SET_SURFACE_INDEX: {
+                    // NimarkoGram: absolute, GL-thread-authoritative surfaceIndex set (fallback to single camera).
+                    // Runs after any queued DO_FLIP, so it pins us to the surviving slot regardless of prior flips.
                     surfaceIndex = inputMessage.arg1;
                     dualSurfaceSwitching = false;
                     dualVideoSwitching = false;
@@ -3715,6 +4048,10 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                     dualSwitchProgress = 0f;
                     dualSwitchTargetSession = inputMessage.obj;
                     updateSessionMatrix(dualSwitchTargetSession, dualSwitchTo);
+                    // Preserve CameraX's original zero-latency dual behaviour:
+                    // the active/encoded stream changes immediately. The
+                    // animation only blends the already-live old and new OES
+                    // textures on top of that commit; it never delays it.
                     surfaceIndex = dualSwitchTo;
                     currentSession = dualSwitchTargetSession;
                     copyActiveMatrices(surfaceIndex);
@@ -3814,6 +4151,10 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                 }
             };
             if (useCameraX) {
+                // CameraX owns each supplied Surface until SurfaceRequest's
+                // completion callback. Keep the GL thread and its
+                // SurfaceTextures alive until every active/retiring session
+                // has returned them; this never blocks the UI thread.
                 videoMessagesHelper.destroyCameraX(
                         InstantCameraView.this, enqueueShutdown);
             } else {
@@ -3869,6 +4210,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
     private static final int MSG_PAUSE_RECORDING = 4;
     private static final int MSG_RESUME_RECORDING = 5;
 
+    /** Immutable transition values attached to one encoder frame message. */
     private static final class CameraVideoFrameState {
         final Integer cameraId;
         final boolean singleCameraXTransition;
@@ -4219,6 +4561,11 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             }
 
             started = true;
+            // NG: re-read user's quality choices each recording so settings
+            // changes apply on next recording without restart. We pin both
+            // resolution AND bitrate locally — the server-side appConfig
+            // `round_video_encoding.{diameter,video_bitrate,audio_bitrate}`
+            // would otherwise overwrite our preferred values at login.
             MessagesController mc = MessagesController.getInstance(currentAccount);
             mc.roundVideoSize = app.nimarkogram.messenger.NimarkoConfig.getVideoMessagesResolutionPx(512);
             mc.roundVideoBitrate = app.nimarkogram.messenger.NimarkoConfig.videoMessagesBitrateKbps;
@@ -4233,6 +4580,12 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             videoWidth = resolution;
             videoHeight = resolution;
             videoBitrate = bitrate;
+            // Surface-input MediaCodec supports variable-frame-rate input: the
+            // timestamps decide the real cadence while KEY_FRAME_RATE is the
+            // intended upper operating rate. Match the CameraX 30-60 setting so
+            // genuine 60 fps frames are not discarded before muxing; a camera
+            // which dynamically falls back to 30 fps still produces a correct
+            // 30 fps file. Camera1/Camera2 keep Telegram's proven 30 fps path.
             frameRate = useCameraX
                     && app.nimarkogram.messenger.NimarkoConfig.cameraXFpsRange
                     == app.nimarkogram.messenger.NimarkoConfig.CameraXFpsRange30to60
@@ -4251,6 +4604,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                     try {
                         sync.wait();
                     } catch (InterruptedException ie) {
+                        // ignore
                     }
                 }
             }
@@ -4323,6 +4677,12 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                 zeroTimeStamps = 0;
             }
             long now = System.nanoTime();
+            // Never wall-clock-throttle real SurfaceTexture frames here.
+            // CameraX already negotiates the selected maximum and requestRender
+            // coalesces producer overload. The former 28 ms gate converted a
+            // perfectly valid 60 fps stream into 20-30 fps under normal callback
+            // jitter. Preserve the camera PTS and let the surface-input encoder
+            // handle the resulting variable frame rate.
             lastFrameSubmissionRealtimeNanos = now;
             prevTimestamp = timestamp;
             handler.sendMessage(handler.obtainMessage(MSG_VIDEOFRAME_AVAILABLE,
@@ -4334,6 +4694,9 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             synchronized (sync) {
                 if (!ready || handler == null) return;
             }
+            // Keep the frozen OES frame moving through the same encoder shader
+            // at roughly 30 fps while the blur value animates. Real camera
+            // frames always win and suppress a nearby synthetic one.
             long now = System.nanoTime();
             if (now - lastFrameSubmissionRealtimeNanos < 28_000_000L) return;
             lastFrameSubmissionRealtimeNanos = now;
@@ -4544,6 +4907,9 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             }
             if (cameraChanged || lastTimestamp == -1) {
                 if (currentTimestamp != 0 && !firstVideoFrameSincePause) {
+                    //real dt lead to asynchron aduio and video
+                    //surface may return wrong measured timestamp so big or negative
+                    // `\_(._.)_/`
                     long dtTimestamps = (timestampNanos - lastTimestamp);
                     long dtReal = System.nanoTime() - lastCommittedFrameRealtimeNanos;
                     if (dtTimestamps < 0 || Math.abs(dtReal - dtTimestamps) > 100_000_000) {
@@ -4811,6 +5177,26 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             } catch (Exception e) {
                 FileLog.e(e);
             }
+//            if (videoEncoder != null) {
+//                try {
+//                    videoEncoder.stop();
+//                    videoEncoder.release();
+//                    videoEncoder = null;
+//                } catch (Exception e) {
+//                    FileLog.e(e);
+//                }
+//            }
+//            if (audioEncoder != null) {
+//                try {
+//                    audioEncoder.stop();
+//                    audioEncoder.release();
+//                    audioEncoder = null;
+//
+//                    setBluetoothScoOn(false);
+//                } catch (Exception e) {
+//                    FileLog.e(e);
+//                }
+//            }
             if (mediaMuxer != null) {
                 if (WRITE_TO_FILE_IN_BACKGROUND) {
                     CountDownLatch countDownLatch = new CountDownLatch(1);
@@ -4835,6 +5221,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                     }
                 }
             }
+//            FileLoader.getInstance(currentAccount).cancelFileUpload(videoFile.getAbsolutePath(), false);
             AndroidUtilities.runOnUIThread(() -> {
                 videoEditedInfo = new VideoEditedInfo();
                 videoEditedInfo.roundVideo = true;
@@ -4884,16 +5271,6 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
 
                 @Override
                 public void onRenderedFirstFrame() {
-
-                }
-
-                @Override
-                public boolean onSurfaceDestroyed(SurfaceTexture surfaceTexture) {
-                    return false;
-                }
-
-                @Override
-                public void onSurfaceTextureUpdated(SurfaceTexture surfaceTexture) {
 
                 }
             });
@@ -5222,6 +5599,13 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             }
         }
 
+        /**
+         * Some selectable sources (VOICE_CALL/UPLINK/DOWNLINK and REMOTE_SUBMIX)
+         * require signature permissions. They can construct successfully and
+         * still fail at startRecording(), which used to abort the whole round
+         * encoder. Try the configured source first, then ordinary app-safe
+         * camera/mic sources.
+         */
         private AudioRecord createStartedAudioRecorder(int configuredSource, int bufferSize) {
             int[] sources = {configuredSource, MediaRecorder.AudioSource.CAMCORDER,
                     MediaRecorder.AudioSource.MIC, MediaRecorder.AudioSource.DEFAULT};
@@ -5279,6 +5663,9 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             format.setInteger(
                     MediaFormat.KEY_I_FRAME_INTERVAL, IFRAME_INTERVAL);
             if (highProfile) {
+                // Let the codec choose the level. Pinning AVCLevel31 made a
+                // number of otherwise capable vendor encoders reject the
+                // format even though they advertise High Profile support.
                 format.setInteger(
                         MediaFormat.KEY_PROFILE,
                         MediaCodecInfo.CodecProfileLevel.AVCProfileHigh);
@@ -5325,11 +5712,20 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                         || videoCapabilities.areSizeAndRateSupported(
                                 videoWidth, videoHeight, frameRate);
             } catch (Throwable error) {
+                // Vendor capability tables are not always complete. Let the
+                // real configure/start attempt decide; it has a guarded 30 fps
+                // fallback below.
                 FileLog.e("InstantCamera: unable to query AVC frame-rate support", error);
                 return true;
             }
         }
 
+        /**
+         * Keep the cleaner encoder profile used by the former working round
+         * camera, but never trust an OEM capability table blindly. A codec
+         * which advertises High Profile and still rejects it is recreated and
+         * configured with its platform default profile.
+         */
         private MediaCodec createConfiguredVideoEncoder() throws Exception {
             MediaCodec candidate = MediaCodec.createEncoderByType(VIDEO_MIME_TYPE);
             if (!supportsConfiguredFrameRate(candidate)) {
@@ -5400,6 +5796,10 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                     throw preferredError;
                 }
 
+                // Some OEM codecs advertise 512x512@60 and accept configure,
+                // but reject createInputSurface() or start() under current
+                // thermal/concurrent-camera load. Retry the complete codec
+                // lifecycle at Telegram's stable 30 fps baseline.
                 FileLog.e("InstantCamera: AVC " + requestedFrameRate
                         + " fps start failed, retrying " + DEFAULT_FRAME_RATE,
                         preferredError);
@@ -5520,7 +5920,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                     recordPlusTime = fromPause ? recordedTime : 0;
                     recordStartTime = System.currentTimeMillis();
                     recording = true;
-                    legacyZoom = 0f;
+                    legacyZoom = 0f; // each new round starts un-zoomed (legacy path)
                     updateFlash();
                     invalidate();
                     NotificationCenter.getInstance(currentAccount).postNotificationName(NotificationCenter.recordStarted, recordingGuid, false);
@@ -5686,6 +6086,12 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
 
             ByteBuffer[] encoderOutputBuffers = null;
             while (true) {
+                // At 60 fps the whole producer budget is 16.7 ms. Waiting up
+                // to 10 ms for an output buffer before every EGL submission
+                // can itself make the encoder miss alternate CameraX frames.
+                // Drain everything already available without blocking during
+                // recording; EOS still waits because every final sample must
+                // be collected before the muxer is closed.
                 long dequeueTimeoutUs = endOfStream || frameRate <= DEFAULT_FRAME_RATE
                         ? 10000L : 0L;
                 int encoderStatus = videoEncoder.dequeueOutputBuffer(
@@ -5906,11 +6312,12 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                     "   gl_FragColor = vec4(color * alpha, alpha);\n" +
                     "}\n";
         }
+        //apply bilinear filtering
         return "#extension GL_OES_EGL_image_external : require\n" +
                 "precision highp float;\n" +
-                "varying vec2 vTextureCoord;\n" +
-                "uniform vec2 resolution;\n" +
-                "uniform vec2 preview;\n" +
+                "varying vec2 vTextureCoord;\n" + //uv
+                "uniform vec2 resolution;\n" + //rendering texture
+                "uniform vec2 preview;\n" + //original texture size
                 "uniform float alpha;\n" +
 
                 "uniform samplerExternalOES sTexture;\n" +
@@ -6010,9 +6417,9 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         }
         return "#extension GL_OES_EGL_image_external : require\n" +
                 "precision highp float;\n" +
-                "varying vec2 vTextureCoord;\n" +
-                "uniform vec2 resolution;\n" +
-                "uniform vec2 preview;\n" +
+                "varying vec2 vTextureCoord;\n" + //uv
+                "uniform vec2 resolution;\n" + //rendering texture
+                "uniform vec2 preview;\n" + //original texture size
                 "uniform float alpha;\n" +
                 "uniform vec2 texelSize;\n" +
                 "uniform float switchBlur;\n" +
@@ -6123,6 +6530,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                 muteAnimation.setInterpolator(new DecelerateInterpolator());
                 muteAnimation.start();
             } else {
+                //baseFragment.checkRecordLocked(false);
             }
         }
 
@@ -6138,12 +6546,15 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                 pointerId1 = ev.getPointerId(0);
                 pointerId2 = ev.getPointerId(1);
                 isInPinchToZoomTouchMode = true;
+                // A second finger landed → pinch takes over; abandon single drag.
                 singleZoomMaybe = false;
                 singleZoomActive = false;
             }
             if (ev.getActionMasked() == MotionEvent.ACTION_DOWN) {
                 AndroidUtilities.rectTmp.set(cameraContainer.getX(), cameraContainer.getY(), cameraContainer.getX() + cameraContainer.getMeasuredWidth(), cameraContainer.getY() + cameraContainer.getMeasuredHeight());
                 maybePinchToZoomTouchMode = AndroidUtilities.rectTmp.contains(ev.getX(), ev.getY());
+                // Arm single-finger drag-to-zoom: only while recording, on the
+                // camera circle, and not during a spring-back animation.
                 if (maybePinchToZoomTouchMode && recording && finishZoomTransition == null) {
                     singleZoomMaybe = true;
                     singleZoomActive = false;
@@ -6186,7 +6597,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             }
         } else if (ev.getActionMasked() == MotionEvent.ACTION_MOVE && singleZoomMaybe
                 && !isInPinchToZoomTouchMode && ev.getPointerCount() == 1) {
-            float dy = singleZoomStartY - ev.getY();
+            float dy = singleZoomStartY - ev.getY(); // up = positive = zoom in
             if (!singleZoomActive && Math.abs(dy) > AndroidUtilities.dp(8)) {
                 singleZoomActive = true;
             }
@@ -6200,12 +6611,15 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                 isInPinchToZoomTouchMode = false;
                 finishZoom();
             }
+            // Single-finger zoom is PERSISTENT — just end the gesture, keep the
+            // zoom where the user left it.
             singleZoomMaybe = false;
             singleZoomActive = false;
         }
         return true;
     }
 
+    /** Current persistent zoom: ratio for camera2, 0..1 for the legacy path. */
     private float currentRoundZoomRatio() {
         if (useCameraX) {
             return videoMessagesHelper.getZoomRatio();
@@ -6215,6 +6629,10 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         return legacyZoom;
     }
 
+    /**
+     * Maps a vertical drag (px, up = positive) onto a persistent zoom. A full
+     * range sweep takes ~a 0.42×screen-height drag, which feels natural one-handed.
+     */
     private void applySingleDragZoom(float dyPx) {
         float travel = Math.max(AndroidUtilities.dp(160), getMeasuredHeight() * 0.42f);
         if (useCameraX) {
@@ -6250,6 +6668,11 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             float current = videoMessagesHelper.getZoomRatio();
             float min = videoMessagesHelper.getMinZoomRatio();
             float max = videoMessagesHelper.getMaxZoomRatio();
+            // CameraX exposes the rear logical camera's ultra-wide sensor as a
+            // sub-1x zoom range. Pinch used to spring back to the gesture's
+            // starting ratio here, immediately undoing a successful physical
+            // switch on OPPO devices. Keep the absolute ratio just like the
+            // one-finger zoom gesture and make it the base of the next pinch.
             float target = Math.max(min, Math.min(max, current));
             videoMessagesHelper.setZoomRatio(target);
             cameraXPinchStartRatio = target;

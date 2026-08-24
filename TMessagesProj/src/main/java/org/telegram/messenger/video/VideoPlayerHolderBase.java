@@ -21,6 +21,7 @@ import org.telegram.messenger.Utilities;
 import org.telegram.tgnet.TLRPC;
 import org.telegram.ui.Components.VideoPlayer;
 
+//used for player in background thread
 public class VideoPlayerHolderBase {
 
     public boolean paused;
@@ -198,6 +199,7 @@ public class VideoPlayerHolderBase {
                 videoPlayer.seekTo(position);
             }
 
+           // videoPlayer.setVolume(isInSilentMode ? 0 : 1f);
             AndroidUtilities.runOnUIThread(() -> initRunnable = null);
         });
     }
@@ -311,16 +313,6 @@ public class VideoPlayerHolderBase {
                     VideoPlayerHolderBase.this.onRenderedFirstFrame(frameToken);
                     runReadyListener(delegatePlayerGeneration, delegateMediaGeneration, frameToken);
                 }, surface != null ? 0 : surfaceView == null ? 16 : 32);
-            }
-
-            @Override
-            public void onSurfaceTextureUpdated(SurfaceTexture surfaceTexture) {
-
-            }
-
-            @Override
-            public boolean onSurfaceDestroyed(SurfaceTexture surfaceTexture) {
-                return false;
             }
         });
         player.setIsStory();
@@ -537,6 +529,7 @@ public class VideoPlayerHolderBase {
             }
             boolean playing = videoPlayer.isPlaying();
             if (enabled && !videoPlayer.createdWithAudioTrack()) {
+                //release and create new with audio track
                 videoPlayer.pause();
                 long position = videoPlayer.getCurrentPosition();
                 videoPlayer.releasePlayer(false);
@@ -555,6 +548,7 @@ public class VideoPlayerHolderBase {
                         videoPlayer.setTextureView(textureView);
                     }
                 }
+                //    videoPlayer.setTextureView(textureView);
                 videoPlayer.seekTo(position + 50);
                 if (playing && !prepared) {
                     videoPlayer.setPlayWhenReady(true);
@@ -579,6 +573,9 @@ public class VideoPlayerHolderBase {
             } else {
                 localProgress = currentPosition / (float) playerDuration;
             }
+//            if (localProgress < progress) {
+//                return progress;
+//            }
             progress = localProgress;
             if (!seeking) {
                 currentSeek = progress;
@@ -628,6 +625,10 @@ public class VideoPlayerHolderBase {
 
     }
 
+    /**
+     * Lets holders reject a decoder callback which was queued for an older
+     * binding before it reaches the UI thread.
+     */
     protected long getRenderedFrameToken() {
         return 0L;
     }
@@ -741,6 +742,7 @@ public class VideoPlayerHolderBase {
 
     private final Runnable betterSeek = () -> {
         if (videoPlayer != null) {
+//            videoPlayer.seekTo(lastBetterSeek, false);
         }
     };
 

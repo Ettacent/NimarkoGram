@@ -44,6 +44,7 @@ import org.telegram.tgnet.Vector;
 import org.telegram.tgnet.tl.TL_account;
 import org.telegram.tgnet.tl.TL_bots;
 import org.telegram.tgnet.tl.TL_communities;
+import org.telegram.tgnet.tl.TL_ephemeral;
 import org.telegram.tgnet.tl.TL_stories;
 import org.telegram.tgnet.tl.TL_update;
 import org.telegram.ui.ActionBar.Theme;
@@ -117,7 +118,7 @@ public class MessagesStorage extends BaseController {
         }
     }
 
-    public final static int LAST_DB_VERSION = 176;
+    public final static int LAST_DB_VERSION = 177;
     private boolean databaseMigrationInProgress;
     public boolean showClearDatabaseAlert;
 
@@ -127,6 +128,7 @@ public class MessagesStorage extends BaseController {
     public static final int FORUM_TYPE_BOT = 1 << 3;
 
     private final LongSparseIntArray dialogIsForumTyped = new LongSparseIntArray();
+
 
     public static MessagesStorage getInstance(int num) {
         MessagesStorage localInstance = Instance[num];
@@ -284,7 +286,9 @@ public class MessagesStorage extends BaseController {
         if (shmCacheFile != null) {
             size += shmCacheFile.length();
         }
-         
+        /*if (walCacheFile != null) {
+            size += walCacheFile.length();
+        }*/
         return size;
     }
 
@@ -370,10 +374,12 @@ public class MessagesStorage extends BaseController {
                     }
                 }
                 try {
-                    
+                    // NG (CG parity): folder emoticon column for already-installed DBs.
+                    // Safe-idempotent: ALTER fails silently if column already exists,
+                    // we just swallow the exception (existing rows get NULL emoticon).
                     database.executeFast("ALTER TABLE dialog_filter ADD COLUMN emoticon TEXT").stepThis().dispose();
                 } catch (Exception e) {
-                    
+                    // column already exists or other benign migration error
                 }
                 if (version < LAST_DB_VERSION) {
                     try {
@@ -418,8 +424,8 @@ public class MessagesStorage extends BaseController {
         }
 
         AndroidUtilities.runOnUIThread(() -> {
-            
-            showClearDatabaseAlert = false;
+            //TODO add progress view and uncomment
+            showClearDatabaseAlert = false;//getDatabaseSize() > 150 * 1024 * 1024;
             NotificationCenter.getInstance(currentAccount).postNotificationName(NotificationCenter.onDatabaseOpened);
         });
     }
@@ -751,6 +757,12 @@ public class MessagesStorage extends BaseController {
         database.executeFast("CREATE INDEX IF NOT EXISTS topic_date_idx_quick_replies_messages ON quick_replies_messages(topic_id, date);").stepThis().dispose();
         database.executeFast("CREATE INDEX IF NOT EXISTS reply_to_idx_quick_replies_messages ON quick_replies_messages(mid, reply_to_message_id);").stepThis().dispose();
         database.executeFast("CREATE INDEX IF NOT EXISTS idx_to_reply_quick_replies_messages ON quick_replies_messages(reply_to_message_id, mid);").stepThis().dispose();
+
+        database.executeFast("CREATE TABLE welcome_messages(mid INTEGER, dialog_id INTEGER, send_state INTEGER, date INTEGER, data BLOB, ttl INTEGER, replydata BLOB, reply_to_message_id INTEGER, PRIMARY KEY(mid, dialog_id))").stepThis().dispose();
+        database.executeFast("CREATE INDEX IF NOT EXISTS send_state_idx_welcome_messages ON welcome_messages(mid, send_state, date);").stepThis().dispose();
+        database.executeFast("CREATE INDEX IF NOT EXISTS dialog_date_idx_welcome_messages ON welcome_messages(dialog_id, date);").stepThis().dispose();
+        database.executeFast("CREATE INDEX IF NOT EXISTS reply_to_idx_welcome_messages ON welcome_messages(mid, reply_to_message_id);").stepThis().dispose();
+        database.executeFast("CREATE INDEX IF NOT EXISTS idx_to_reply_welcome_messages ON welcome_messages(reply_to_message_id, mid);").stepThis().dispose();
 
         database.executeFast("CREATE TABLE business_links(data BLOB, order_value INTEGER);").stepThis().dispose();
         database.executeFast("CREATE TABLE fact_checks(hash INTEGER PRIMARY KEY, data BLOB, expires INTEGER);").stepThis().dispose();
@@ -1444,12 +1456,14 @@ public class MessagesStorage extends BaseController {
                 database.executeFast("DELETE FROM saved_reaction_tags").stepThis().dispose();
                 database.executeFast("DELETE FROM business_replies").stepThis().dispose();
                 database.executeFast("DELETE FROM quick_replies_messages").stepThis().dispose();
+                database.executeFast("DELETE FROM welcome_messages").stepThis().dispose();
                 database.executeFast("DELETE FROM effects").stepThis().dispose();
                 database.executeFast("DELETE FROM app_config").stepThis().dispose();
                 database.executeFast("DELETE FROM star_gifts2").stepThis().dispose();
                 database.executeFast("DELETE FROM premium_promo").stepThis().dispose();
                 database.executeFast("DELETE FROM media_counts_v2").stepThis().dispose();
                 database.executeFast("DELETE FROM media_v4").stepThis().dispose();
+
 
                 cursor = database.queryFinalized("SELECT did FROM dialogs WHERE 1");
                 while (cursor.next()) {
@@ -1827,12 +1841,12 @@ public class MessagesStorage extends BaseController {
                             topics.add(topic);
 
                             NativeByteBuffer data2 = cursor.byteBufferValue(2);
-                            
+                            //if (data2 != null) {
                                 topic.topicStartMessage = TLRPC.Message.TLdeserialize(data2, data2.readInt32(false), false);
                                 if (data2 != null) {
                                     data2.reuse();
                                 }
-                           
+                           // }
                             topic.unread_count = cursor.intValue(3);
                             topic.read_inbox_max_id = cursor.intValue(4);
                             topic.unread_mentions_count = cursor.intValue(5);
@@ -1852,6 +1866,7 @@ public class MessagesStorage extends BaseController {
                 ArrayList<Long> chatsToLoad = new ArrayList<>();
                 LongSparseArray<SparseArray<ArrayList<TLRPC.Message>>> replyMessageOwners = new LongSparseArray<>();
                 LongSparseArray<ArrayList<Integer>> dialogReplyMessagesIds = new LongSparseArray<>();
+
 
                 if (topics != null && !topics.isEmpty()) {
                     SQLiteCursor cursor2 = database.queryFinalized("SELECT mid, data, replydata FROM messages_v2 WHERE uid = " + dialogId + " AND mid IN (" + TextUtils.join(",", topMessageIds) + ")");
@@ -2572,7 +2587,7 @@ public class MessagesStorage extends BaseController {
                     MessagesController.DialogFilter filter = new MessagesController.DialogFilter();
                     filter.id = filtersCursor.intValue(0);
                     filter.order = filtersCursor.intValue(1);
-                    filter.pendingUnreadCount = filter.unreadCount = -1;
+                    filter.pendingUnreadCount = filter.unreadCount = -1;//filtersCursor.intValue(2);
                     filter.flags = filtersCursor.intValue(3);
                     filter.name = filtersCursor.stringValue(4);
                     filter.color = filtersCursor.intValue(5);
@@ -2758,7 +2773,17 @@ public class MessagesStorage extends BaseController {
                 }
             }
             cursor.dispose();
- 
+/*
+            LongSparseIntArray monoForumUnreadCount = new LongSparseIntArray();
+            cursor = database.queryFinalized("SELECT DISTINCT forumChatId FROM saved_dialogs WHERE unread_count > 0");
+            while (cursor.next()) {
+                long dialogId = cursor.longValue(0);
+                if (isMonoForum(dialogId)) {
+                    monoForumUnreadCount.put(dialogId, 1);
+                }
+            }
+            cursor.dispose();
+*/
             cursor = database.queryFinalized("SELECT did, folder_id, unread_count, unread_count_i FROM dialogs WHERE unread_count > 0 OR flags > 0 UNION ALL " +
                     "SELECT did, folder_id, unread_count, unread_count_i FROM dialogs WHERE unread_count_i > 0");
             while (cursor.next()) {
@@ -2781,7 +2806,9 @@ public class MessagesStorage extends BaseController {
                 if (mentions > 0) {
                     dialogsWithMentions.put(did, mentions);
                 }
-                 
+                /*if (BuildVars.DEBUG_VERSION) {
+                    FileLog.d("unread chat " + did + " counters = " + unread + " and " + mentions);
+                }*/
                 dialogsByFolders.put(did, folderId);
                 if (DialogObject.isEncryptedDialog(did)) {
                     int encryptedChatId = DialogObject.getEncryptedChatId(did);
@@ -2899,7 +2926,15 @@ public class MessagesStorage extends BaseController {
                     chatsDict.put(chat.id, chat);
                 }
             }
-             
+            /*if (BuildVars.DEBUG_VERSION) {
+                for (int b = 0; b < 2; b++) {
+                    FileLog.d("contacts = " + contacts[b][0] + ", " + contacts[b][1]);
+                    FileLog.d("nonContacts = " + nonContacts[b][0] + ", " + nonContacts[b][1]);
+                    FileLog.d("groups = " + groups[b][0] + ", " + groups[b][1]);
+                    FileLog.d("channels = " + channels[b][0] + ", " + channels[b][1]);
+                    FileLog.d("bots = " + bots[b][0] + ", " + bots[b][1]);
+                }
+            }*/
             for (int a = 0, N = dialogFilters.size(); a < N + 2; a++) {
                 final boolean isFilter = a < N;
                 final boolean isMain = a == N;
@@ -3110,7 +3145,9 @@ public class MessagesStorage extends BaseController {
                         }
                     }
                     filter.pendingUnreadCount = unreadCount;
-                     
+                    /*if (BuildVars.DEBUG_VERSION) {
+                        FileLog.d("filter " + filter.name + " flags = " + filter.flags + " unread count = " + filter.pendingUnreadCount);
+                    }*/
                     if (apply) {
                         filter.unreadCount = unreadCount;
                     }
@@ -3164,7 +3201,9 @@ public class MessagesStorage extends BaseController {
             entitiesVector.serializeToStream(entitiesBuffer);
             state.bindByteBuffer(7, entitiesBuffer);
             state.bindInteger(8, filter.title_noanimate ? 1 : 0);
-            
+            // NG (CG parity): persist folder emoticon to SQLite. Without this the
+            // icon is only kept in MessagesController's in-memory cache and is
+            // wiped on next checkLoadedRemoteFilters merge / app restart.
             if (filter.emoticon != null) {
                 state.bindString(9, filter.emoticon);
             } else {
@@ -3315,7 +3354,10 @@ public class MessagesStorage extends BaseController {
                             changed = true;
                             filter.title_noanimate= newFilter.title_noanimate;
                         }
-                        
+                        // NG (CG parity): copy server-echoed emoticon into the cached
+                        // filter. Without this the icon is overwritten with null when
+                        // Telegram broadcasts the filter list back to us after our own
+                        // update — root cause of the "icon reverts on re-entry" bug.
                         if (!TextUtils.equals(filter.emoticon, newFilter.emoticon)) {
                             changed = true;
                             filter.emoticon = newFilter.emoticon;
@@ -3415,7 +3457,7 @@ public class MessagesStorage extends BaseController {
                             ArrayList<Long> toArray = c == 0 ? filter.alwaysShow : filter.neverShow;
 
                             if (c == 0) {
-                                
+                                // put pinned_peers into include_peers (alwaysShow)
                                 ArrayList<Long> pinnedArray = toPeerIds(newFilter.pinned_peers);
                                 for (int i = 0; i < pinnedArray.size(); ++i) {
                                     fromArray.remove(pinnedArray.get(i));
@@ -3711,6 +3753,7 @@ public class MessagesStorage extends BaseController {
 
         final boolean scheduled = mode == ChatActivity.MODE_SCHEDULED;
         final boolean quickReplies = mode == ChatActivity.MODE_QUICK_REPLIES;
+        final boolean welcomeMessages = mode == ChatActivity.MODE_WELCOME_MESSAGES;
         final long selfId = getUserConfig().getClientUserId();
 
         for (int b = 0, N2 = replyMessageOwners.size(); b < N2; b++) {
@@ -3727,7 +3770,9 @@ public class MessagesStorage extends BaseController {
                         continue;
                     }
                     boolean findInScheduled = i == 1;
-                    if (quickReplies) {
+                    if (welcomeMessages) {
+                        cursor = database.queryFinalized(String.format(Locale.US, "SELECT data, mid, date, dialog_id FROM welcome_messages WHERE mid IN(%s) AND dialog_id = %d", TextUtils.join(",", ids), dialogId));
+                    } else if (quickReplies) {
                         cursor = database.queryFinalized(String.format(Locale.US, "SELECT data, mid, date, topic_id FROM quick_replies_messages WHERE mid IN(%s) AND topic_id = %d", TextUtils.join(",", ids), dialogId));
                     } else if (findInScheduled) {
                         cursor = database.queryFinalized(String.format(Locale.US, "SELECT data, mid, date, uid FROM scheduled_messages_v2 WHERE mid IN(%s) AND uid = %d", TextUtils.join(",", ids), dialogId));
@@ -5130,12 +5175,14 @@ public class MessagesStorage extends BaseController {
                 state = database.executeFast("SELECT m.data, m.replydata, m.group_id FROM messages_v2 m INNER JOIN tag_message_id t ON m.mid = t.mid WHERE m.uid = ? AND t.tag = ?" + (!TextUtils.isEmpty(query) ? " AND t.text LIKE '%' || ? || '%'" : "") + (topic_id != 0 ? " AND topic_id = ? "  : "") + " ORDER BY m.mid DESC LIMIT ? OFFSET ?");
 
                 ArrayList<TLRPC.User> users = new ArrayList<>();
-
+//                ArrayList<TLRPC.User> encUsers = new ArrayList<>();
                 ArrayList<TLRPC.Chat> chats = new ArrayList<>();
                 ArrayList<Long> animatedEmojiToLoad = new ArrayList<>();
                 ArrayList<Long> usersToLoad = new ArrayList<>();
                 ArrayList<Long> chatsToLoad = new ArrayList<>();
                 ArrayList<TLRPC.Document> animatedEmoji = new ArrayList<>();
+//                LongSparseArray<SparseArray<ArrayList<TLRPC.Message>>> replyMessageOwners = new LongSparseArray<>();
+//                LongSparseArray<ArrayList<Integer>> dialogReplyMessagesIds = new LongSparseArray<>();
 
                 int pointer = 1;
                 state.bindLong(pointer++, selfId);
@@ -5207,6 +5254,8 @@ public class MessagesStorage extends BaseController {
                     }
                 }
                 cursor.dispose();
+
+//                loadReplyMessages(replyMessageOwners, dialogReplyMessagesIds, usersToLoad, chatsToLoad, false);
 
                 if (!usersToLoad.isEmpty()) {
                     getUsersInternal(usersToLoad, users);
@@ -5353,7 +5402,7 @@ public class MessagesStorage extends BaseController {
                         }
                     }
                 }
-                
+                // delete reactions
                 for (int j = 0; j < oldTags.size(); ++j) {
                     long hash = oldTags.keyAt(j);
                     ReactionsLayoutInBubble.VisibleReaction reaction = oldTags.valueAt(j);
@@ -5364,7 +5413,7 @@ public class MessagesStorage extends BaseController {
                         }
                     }
                 }
-                
+                // add new reactions
                 for (int j = 0; j < newTags.size(); ++j) {
                     long hash = newTags.keyAt(j);
                     ReactionsLayoutInBubble.VisibleReaction reaction = newTags.valueAt(j);
@@ -5402,7 +5451,7 @@ public class MessagesStorage extends BaseController {
                 }
             }
             boolean updated = false;
-            
+            // delete reactions
             for (int i = 0; i < oldTags.size(); ++i) {
                 long hash = oldTags.keyAt(i);
                 ReactionsLayoutInBubble.VisibleReaction reaction = oldTags.valueAt(i);
@@ -5410,7 +5459,7 @@ public class MessagesStorage extends BaseController {
                     updated = getMessagesController().updateSavedReactionTags(topic_id, reaction, false, false) || updated;
                 }
             }
-            
+            // add new reactions
             for (int i = 0; i < newTags.size(); ++i) {
                 long hash = newTags.keyAt(i);
                 ReactionsLayoutInBubble.VisibleReaction reaction = newTags.valueAt(i);
@@ -5886,6 +5935,13 @@ public class MessagesStorage extends BaseController {
         try {
             int minDate = Integer.MAX_VALUE;
 
+//                if (random_ids != null) {
+//                    AndroidUtilities.runOnUIThread(() -> {
+//                        markMessagesContentAsRead(dialogId, mids, 0, 0);
+//                        getNotificationCenter().postNotificationName(NotificationCenter.messagesReadContent, dialogId, mids);
+//                    });
+//                }
+
             ArrayList<Integer> mids = new ArrayList<>();
             if (messages.size() != 0) {
                 database.beginTransaction();
@@ -6045,10 +6101,14 @@ public class MessagesStorage extends BaseController {
                 if (read) {
                     if (b == 0) {
                         dialogsWithUnread.remove(did);
-                         
+                        /*if (BuildVars.DEBUG_VERSION) {
+                            FileLog.d("read remove = " + did);
+                        }*/
                     } else {
                         dialogsWithMentions.remove(did);
-                         
+                        /*if (BuildVars.DEBUG_VERSION) {
+                            FileLog.d("mention remove = " + did);
+                        }*/
                     }
                 } else {
                     if (dialogsWithMentions.indexOfKey(did) < 0 && dialogsWithUnread.indexOfKey(did) < 0) {
@@ -6056,10 +6116,14 @@ public class MessagesStorage extends BaseController {
                     }
                     if (b == 0) {
                         dialogsWithUnread.put(did, count);
-                         
+                        /*if (BuildVars.DEBUG_VERSION) {
+                            FileLog.d("read add = " + did);
+                        }*/
                     } else {
                         dialogsWithMentions.put(did, count);
-                         
+                        /*if (BuildVars.DEBUG_VERSION) {
+                            FileLog.d("mention add = " + did);
+                        }*/
                     }
                 }
 
@@ -6203,7 +6267,16 @@ public class MessagesStorage extends BaseController {
                 chatsDict.put(chat.id, chat);
             }
         }
-         
+        /*if (BuildVars.DEBUG_VERSION) {
+            for (int b = 0; b < 2; b++) {
+                FileLog.d("read = " + read + " contacts = " + contacts[b][0] + ", " + contacts[b][1]);
+                FileLog.d("read = " + read + " nonContacts = " + nonContacts[b][0] + ", " + nonContacts[b][1]);
+                FileLog.d("read = " + read + " groups = " + groups[b][0] + ", " + groups[b][1]);
+                FileLog.d("read = " + read + " channels = " + channels[b][0] + ", " + channels[b][1]);
+                FileLog.d("read = " + read + " bots = " + bots[b][0] + ", " + bots[b][1]);
+            }
+        }*/
+
         for (int a = 0, N = dialogFilters.size(); a < N + 2; a++) {
             final boolean isFilter = a < N;
             final boolean isMain = a == N;
@@ -6630,7 +6703,9 @@ public class MessagesStorage extends BaseController {
             }
             if (filter != null) {
                 filter.pendingUnreadCount = unreadCount;
-                 
+                /*if (BuildVars.DEBUG_VERSION) {
+                    FileLog.d("filter " + filter.name + " flags = " + flags + " read = " + read + " unread count = " + filter.pendingUnreadCount);
+                }*/
             } else if (a == N) {
                 pendingMainUnreadCount = unreadCount;
             } else if (isArchive) {
@@ -6670,6 +6745,7 @@ public class MessagesStorage extends BaseController {
         }
         return false;
     }
+
 
     private void updateDialogsWithReadMessagesInternal(ArrayList<Integer> messages, LongSparseIntArray inbox, LongSparseIntArray outbox, LongSparseArray<ArrayList<Integer>> mentions, LongSparseIntArray stillUnreadMessagesCount) {
         try {
@@ -7804,6 +7880,12 @@ public class MessagesStorage extends BaseController {
         return ref.get();
     }
 
+    /**
+     * Legacy plugin API: resolve a message by id only when that id is
+     * unambiguous in the local database. Channel message ids are scoped per
+     * channel, so returning an arbitrary duplicate could attribute a deletion
+     * to the wrong dialog; ambiguous matches deliberately return {@code null}.
+     */
     @Deprecated
     public TLRPC.Message getMessage(long msgId) {
         CountDownLatch countDownLatch = new CountDownLatch(1);
@@ -7841,7 +7923,8 @@ public class MessagesStorage extends BaseController {
                 countDownLatch.countDown();
             }
         };
-        
+        // Deletion hooks run inside storageQueue. Posting back to the same
+        // queue and awaiting would deadlock the database thread permanently.
         if (Thread.currentThread() == storageQueue) {
             lookup.run();
         } else {
@@ -7854,6 +7937,37 @@ public class MessagesStorage extends BaseController {
         }
         return ref.get();
     }
+
+    private TLRPC.Message getMessageInternal(long dialogId, long msgId) {
+        SQLiteCursor cursor = null;
+        TLRPC.Message result = null;
+        try {
+            cursor = database.queryFinalized("SELECT data FROM messages_v2 WHERE uid = " + dialogId + " AND mid = " + msgId + " LIMIT 1");
+            while (cursor.next()) {
+                NativeByteBuffer data = cursor.byteBufferValue(0);
+                if (data != null) {
+                    TLRPC.Message message = TLRPC.Message.TLdeserialize(data, data.readInt32(false), false);
+                    if (message != null) {
+                        message.readAttachPath(data, getUserConfig().clientUserId);
+                    }
+                    data.reuse();
+
+                    result = message;
+                }
+            }
+            cursor.dispose();
+            cursor = null;
+        } catch (Exception e) {
+            checkSQLException(e);
+        } finally {
+            if (cursor != null) {
+                cursor.dispose();
+            }
+        }
+        return result;
+    }
+
+
 
     public boolean hasInviteMeMessage(long chatId) {
         CountDownLatch countDownLatch = new CountDownLatch(1);
@@ -7907,7 +8021,7 @@ public class MessagesStorage extends BaseController {
                 if (data != null) {
                     info = TLRPC.ChatFull.TLdeserialize(data, data.readInt32(false), false);
                     data.reuse();
-                    
+                    // legacy groups already contain participants_count in TLRPC.Chat and not need to load chatfull
                     if (info instanceof TLRPC.TL_channelFull) {
                         result.put(id, participants_count);
                     }
@@ -8095,6 +8209,7 @@ public class MessagesStorage extends BaseController {
         return loadChatInfoInternal(chatId, isChannel, force, byChannelUsers, fromMessageId);
     }
 
+
     public void processPendingRead(long dialogId, int maxPositiveId, int maxNegativeId, int scheduledCount) {
         int maxDate = lastSavedDate;
         storageQueue.postRunnable(() -> {
@@ -8192,6 +8307,7 @@ public class MessagesStorage extends BaseController {
                     updateTopicsWithReadFromAllInternal(dialogId, oldMaxId, currentMaxId);
                 }
 
+                //TODO topics maybe read all topics when all messages read
                 if (prevUnreadCount != 0 && unreadCount == 0 && !isForum(dialogId, FORUM_TYPE_CHAT | FORUM_TYPE_BOT | FORUM_TYPE_DIRECT)) {
                     LongSparseIntArray dialogsToUpdate = new LongSparseIntArray();
                     dialogsToUpdate.put(dialogId, unreadCount);
@@ -8582,7 +8698,7 @@ public class MessagesStorage extends BaseController {
                             message.seq_out = cursor.intValue(8);
                             message.ttl = cursor.intValue(9);
                             if (message.media instanceof TLRPC.TL_messageMediaPaidMedia) {
-                                toDelete.add(message); 
+                                toDelete.add(message); // TODO: actually send again
                             } else {
                                 messages.add(message);
                             }
@@ -8885,6 +9001,7 @@ public class MessagesStorage extends BaseController {
         SQLiteCursor cursor = null;
         final boolean scheduled = mode == ChatActivity.MODE_SCHEDULED;
         final boolean quickReplies = mode == ChatActivity.MODE_QUICK_REPLIES;
+        final boolean welcomeMessages = mode == ChatActivity.MODE_WELCOME_MESSAGES;
         try {
             ArrayList<Long> usersToLoad = new ArrayList<>();
             ArrayList<Long> chatsToLoad = new ArrayList<>();
@@ -8960,6 +9077,62 @@ public class MessagesStorage extends BaseController {
                 }
                 cursor.dispose();
                 cursor = null;
+            } else if (welcomeMessages) {
+                isEnd = true;
+                cursor = database.queryFinalized("SELECT m.data, m.send_state, m.mid, m.date, m.replydata, m.ttl FROM welcome_messages as m WHERE m.dialog_id = ? ORDER BY m.mid DESC", dialogId);
+                while (cursor.next()) {
+                    NativeByteBuffer data = cursor.byteBufferValue(0);
+                    if (data != null) {
+                        TLRPC.Message message = TLRPC.Message.TLdeserialize(data, data.readInt32(false), false);
+                        message.send_state = cursor.intValue(1);
+                        message.id = cursor.intValue(2);
+                        if (message.id < 0) {
+                            continue;
+                        }
+                        if (message.id > 0 && message.send_state != 0 && message.send_state != 3) {
+                            message.send_state = 0;
+                        }
+                        if (dialogId == currentUserId) {
+                            message.out = true;
+                            message.unread = false;
+                        } else {
+                            message.unread = true;
+                        }
+                        message.readAttachPath(data, currentUserId);
+                        data.reuse();
+                        message.date = cursor.intValue(3);
+                        message.dialog_id = dialogId;
+                        message.ephemeralReceiverBotId = -1;
+                        if (message.ttl == 0) {
+                            message.ttl = cursor.intValue(5);
+                        }
+                        res.messages.add(message);
+
+                        addUsersAndChatsFromMessage(message, usersToLoad, chatsToLoad, animatedEmojiToLoad);
+
+                        if (message.reply_to != null && (message.reply_to.reply_to_msg_id != 0 || message.reply_to.reply_to_random_id != 0)) {
+                            if (!cursor.isNull(4)) {
+                                data = cursor.byteBufferValue(4);
+                                if (data != null) {
+                                    message.replyMessage = TLRPC.Message.TLdeserialize(data, data.readInt32(false), false);
+                                    message.replyMessage.readAttachPath(data, currentUserId);
+                                    data.reuse();
+                                    if (message.replyMessage != null) {
+                                        addUsersAndChatsFromMessage(message.replyMessage, usersToLoad, chatsToLoad, animatedEmojiToLoad);
+                                    }
+                                }
+                            }
+                            if (message.replyMessage == null) {
+                                if (message.reply_to.reply_to_msg_id != 0) {
+                                    addReplyMessages(message, replyMessageOwners, dialogReplyMessagesIds);
+                                }
+                            }
+                        }
+                    }
+                }
+                cursor.dispose();
+                cursor = null;
+
             } else if (quickReplies) {
                 isEnd = true;
                 if (threadMessageId != 0) {
@@ -9268,6 +9441,7 @@ public class MessagesStorage extends BaseController {
                                 }
                             }
                         }
+
 
                         boolean containMessage = max_id_query != 0;
                         if (containMessage) {
@@ -9672,12 +9846,21 @@ public class MessagesStorage extends BaseController {
                 }
 
                 if (withEphemeralMessages && dialogId < 0) {
-                    ArrayList<TLRPC.EphemeralMessage> ephemeralMessages = getEphemeralMessagesInternal(dialogId, threadMessageId);
-                    for (TLRPC.EphemeralMessage ephemeralMessage : ephemeralMessages) {
-                        TLRPC.Message convetedEphemeralMessage = EphemeralMessagesHelper.convertEphemeralToFakeDefault(ephemeralMessage);
-                        addUsersAndChatsFromMessage(convetedEphemeralMessage, usersToLoad, chatsToLoad, animatedEmojiToLoad);
-                        res.messages.add(convetedEphemeralMessage);
-                        messagesCount++;
+                    ArrayList<TL_ephemeral.EphemeralMessage> ephemeralMessages = getEphemeralMessagesInternal(dialogId, threadMessageId);
+                    if (ephemeralMessages != null && !ephemeralMessages.isEmpty()) {
+                        final SparseArray<Object> containedMessages = new SparseArray<>(res.messages.size());
+                        for (TLRPC.Message message : res.messages) {
+                            containedMessages.append(message.id, new Object());
+                        }
+                        for (TL_ephemeral.EphemeralMessage ephemeralMessage : ephemeralMessages) {
+                            TLRPC.Message convetedEphemeralMessage = EphemeralMessagesHelper.convertEphemeralToFakeDefault(ephemeralMessage);
+                            if (containedMessages.indexOfKey(convetedEphemeralMessage.id) >= 0) {
+                                continue;
+                            }
+                            addUsersAndChatsFromMessage(convetedEphemeralMessage, usersToLoad, chatsToLoad, animatedEmojiToLoad);
+                            res.messages.add(convetedEphemeralMessage);
+                            messagesCount++;
+                        }
                     }
                 }
 
@@ -9722,6 +9905,23 @@ public class MessagesStorage extends BaseController {
                 });
 
                 if (!DialogObject.isEncryptedDialog(dialogId)) {
+                    final SparseIntArray anchorBindings = ephemeralWelcomeAnchorsState.getAnchorBindings(dialogId);
+                    if (anchorBindings != null && anchorBindings.size() > 0) {
+                        for (int a = 0; a < res.messages.size(); a++) {
+                            TLRPC.Message message = res.messages.get(a);
+                            final int ephemeralMessageId = anchorBindings.get(message.id, -1);
+                            if (ephemeralMessageId != -1) {
+                                TL_ephemeral.EphemeralMessage ephemeralMessage = getEphemeralMessageInternal(dialogId, ephemeralMessageId);
+                                ephemeralMessage.via_bot_id = message.via_bot_id;
+                                if (ephemeralMessage != null) {
+                                    TLRPC.Message convetedEphemeralMessage = EphemeralMessagesHelper.convertEphemeralToFakeDefault(ephemeralMessage);
+                                    addUsersAndChatsFromMessage(convetedEphemeralMessage, usersToLoad, chatsToLoad, animatedEmojiToLoad);
+                                    res.messages.set(a, convetedEphemeralMessage);
+                                }
+                            }
+                        }
+                    }
+
                     if ((load_type == 3 || load_type == 4 || load_type == 2 && queryFromServer && !unreadCountIsLocal) && !res.messages.isEmpty()) {
                         if (!(minId <= max_id_query && maxId >= max_id_query)) {
                             usersToLoad.clear();
@@ -9839,10 +10039,16 @@ public class MessagesStorage extends BaseController {
         int mentionsUnreadFinal = mentions_unread;
         int countUnreadFinal = count_unread;
         int maxUnreadDateFinal = max_unread_date;
-         
+        /*if (!scheduled && mergeDialogId != 0 && res.messages.size() < count && isEnd && load_type == 2) { TODO fix if end not reached
+            Runnable runnable = getMessagesInternal(mergeDialogId, 0, count, Integer.MAX_VALUE, 0, 0, classGuid, 0, false, false, loadIndex);
+            return () -> {
+                getMessagesController().processLoadedMessages(res, dialogId, mergeDialogId, countQueryFinal, maxIdOverrideFinal, offset_date, true, classGuid, minUnreadIdFinal, lastMessageIdFinal, countUnreadFinal, maxUnreadDateFinal, load_type, isChannel, isEndFinal, scheduled, -loadIndex, queryFromServerFinal, mentionsUnreadFinal);
+                runnable.run();
+            };
+        } else {*/
         int finalMessagesCount = scheduled ? res.messages.size() : messagesCount;
         return () -> getMessagesController().processLoadedMessages(res, finalMessagesCount, dialogId, mergeDialogId, countQueryFinal, maxIdOverrideFinal, offset_date, true, classGuid, minUnreadIdFinal, lastMessageIdFinal, countUnreadFinal, maxUnreadDateFinal, load_type, isEndFinal, mode, threadMessageId, loadIndex, queryFromServerFinal, mentionsUnreadFinal, processMessages, isTopic, loaderLogger);
-        
+        //}
     }
 
     public void getAnimatedEmoji(String join, ArrayList<TLRPC.Document> documents) {
@@ -11533,7 +11739,7 @@ public class MessagesStorage extends BaseController {
             cursor = null;
 
             database.executeFast(String.format(Locale.US, "UPDATE messages_topics SET read_state = read_state | 1 WHERE uid = %d AND topic_id = %d AND mid <= %d AND read_state IN(0, 2) AND out = 0", dialogId, mid, readMaxId)).stepThis().dispose();
-            
+            //mark mentions as read
             database.executeFast(String.format(Locale.US, "UPDATE messages_topics SET read_state = read_state | 2 WHERE uid = %d AND topic_id = %d AND mid <= %d AND read_state IN(0, 1) AND out = 0", dialogId, mid, readMaxId)).stepThis().dispose();
 
             int unreadMentionsCount = -1;
@@ -11572,6 +11778,7 @@ public class MessagesStorage extends BaseController {
                 unreadMentionsCount = 0;
             }
 
+
             if (updateTopic) {
                 if (unreadMentionsCount >= 0) {
                     if (BuildVars.DEBUG_PRIVATE_VERSION && unreadMentionsCount > 0) {
@@ -11602,6 +11809,7 @@ public class MessagesStorage extends BaseController {
         }
     }
 
+    //if all topics read mark all dialog as read
     private void resetForumBadgeIfNeed(long dialogId) {
         SQLiteCursor cursor = null;
         try {
@@ -11737,6 +11945,22 @@ public class MessagesStorage extends BaseController {
     }
 
     private void putMessagesInternal(ArrayList<TLRPC.Message> messages, boolean withTransaction, boolean doNotUpdateDialogDate, int downloadMask, boolean ifNoLastMessage, int mode, long threadMessageId) {
+        if (messages != null) {
+            ArrayList<TL_ephemeral.EphemeralMessage> ephemeralMessages = null;
+            for (TLRPC.Message message : messages) {
+                if (MessageObject.isEphemeralAndNotWelcome(message) && message.id > 0) {
+                    final int topicId = (int) MessageObject.getTopicId(currentAccount, message, getForumTypeFlags(message.dialog_id));
+                    if (ephemeralMessages == null) {
+                        ephemeralMessages = new ArrayList<>();
+                        ephemeralMessages.add(EphemeralMessagesHelper.convertFakeDefaultToEphemeral(message, topicId));
+                    }
+                }
+            }
+            if (ephemeralMessages != null) {
+                putEphemeralMessages(ephemeralMessages, withTransaction);
+            }
+        }
+
         boolean databaseInTransaction = false;
         SQLitePreparedStatement state_messages = null;
         SQLitePreparedStatement state_messages_topic = null;
@@ -11755,7 +11979,9 @@ public class MessagesStorage extends BaseController {
         SQLiteCursor cursor = null;
         ArrayList<Pair<Long, Integer>> reportMessagesDelivery = null;
         try {
-            if (messages != null && !messages.isEmpty() && MessageObject.isQuickReply(messages.get(0))) {
+            if (messages != null && !messages.isEmpty() && MessageObject.isWelcomeMessage(messages.get(0))) {
+                mode = ChatActivity.MODE_WELCOME_MESSAGES;
+            } else if (messages != null && !messages.isEmpty() && MessageObject.isQuickReply(messages.get(0))) {
                 mode = ChatActivity.MODE_QUICK_REPLIES;
                 if (threadMessageId == 0) {
                     threadMessageId = MessageObject.getQuickReplyId(currentAccount, messages.get(0));
@@ -11785,8 +12011,73 @@ public class MessagesStorage extends BaseController {
             final boolean scheduled = mode == ChatActivity.MODE_SCHEDULED;
             final boolean saved = mode == ChatActivity.MODE_SAVED;
             final boolean quickReplies = mode == ChatActivity.MODE_QUICK_REPLIES;
+            final boolean welcomeMessages = mode == ChatActivity.MODE_WELCOME_MESSAGES;
             final long selfId = getUserConfig().getClientUserId();
-            if (scheduled) {
+            if (welcomeMessages) {
+                if (withTransaction) {
+                    database.beginTransaction();
+                    databaseInTransaction = true;
+                }
+
+                state_messages = database.executeFast("REPLACE INTO welcome_messages VALUES(?, ?, ?, ?, ?, ?, NULL, 0)");
+//                state_randoms = database.executeFast("REPLACE INTO randoms_v2 VALUES(?, ?, ?)");
+                ArrayList<Long> dialogsToUpdate = new ArrayList<>();
+
+                for (int a = 0; a < messages.size(); a++) {
+                    TLRPC.Message message = messages.get(a);
+                    if (message instanceof TLRPC.TL_messageEmpty) {
+                        continue;
+                    }
+                    fixUnsupportedMedia(message);
+
+                    state_messages.requery();
+                    int messageId = message.id;
+                    if (message.local_id != 0) {
+                        messageId = message.local_id;
+                    }
+                    MessageObject.normalizeFlags(message);
+                    NativeByteBuffer data = new NativeByteBuffer(message.getObjectSize());
+                    message.serializeToStream(data);
+
+                    long dialogId = MessageObject.getDialogId(message);
+
+                    if (dialogId != 0) {
+                        database.executeFast(String.format(Locale.ENGLISH, "DELETE FROM welcome_messages WHERE mid = %d AND dialog_id = %d", messageId, dialogId)).stepThis().dispose();
+                    }
+
+                    long did = MessageObject.getDialogId(message);
+                    state_messages.bindInteger(1, messageId);
+                    state_messages.bindLong(2, dialogId);
+                    state_messages.bindInteger(3, message.send_state);
+                    state_messages.bindInteger(4, message.date);
+                    state_messages.bindByteBuffer(5, data);
+                    state_messages.bindInteger(6, message.ttl);
+                    state_messages.step();
+
+//                    if (message.random_id != 0) {
+//                        state_randoms.requery();
+//                        state_randoms.bindLong(1, message.random_id);
+//                        state_randoms.bindInteger(2, messageId);
+//                        state_randoms.bindLong(3, message.dialog_id);
+//                        state_randoms.step();
+//                    }
+
+                    data.reuse();
+
+                    if (!dialogsToUpdate.contains(did)) {
+                        dialogsToUpdate.add(did);
+                    }
+                }
+                state_messages.dispose();
+                state_messages = null;
+//                state_randoms.dispose();
+//                state_randoms = null;
+
+                if (withTransaction) {
+                    database.commitTransaction();
+                    databaseInTransaction = false;
+                }
+            } else if (scheduled) {
                 if (withTransaction) {
                     database.beginTransaction();
                     databaseInTransaction = true;
@@ -11854,7 +12145,7 @@ public class MessagesStorage extends BaseController {
                 }
 
                 state_messages = database.executeFast("REPLACE INTO quick_replies_messages VALUES(?, ?, ?, ?, ?, ?, NULL, 0)");
-
+//                state_randoms = database.executeFast("REPLACE INTO randoms_v2 VALUES(?, ?, ?)");
                 ArrayList<Long> dialogsToUpdate = new ArrayList<>();
 
                 for (int a = 0; a < messages.size(); a++) {
@@ -11888,6 +12179,14 @@ public class MessagesStorage extends BaseController {
                     state_messages.bindInteger(6, message.ttl);
                     state_messages.step();
 
+//                    if (message.random_id != 0) {
+//                        state_randoms.requery();
+//                        state_randoms.bindLong(1, message.random_id);
+//                        state_randoms.bindInteger(2, messageId);
+//                        state_randoms.bindLong(3, message.dialog_id);
+//                        state_randoms.step();
+//                    }
+
                     data.reuse();
 
                     if (!dialogsToUpdate.contains(did)) {
@@ -11896,6 +12195,8 @@ public class MessagesStorage extends BaseController {
                 }
                 state_messages.dispose();
                 state_messages = null;
+//                state_randoms.dispose();
+//                state_randoms = null;
 
                 if (withTransaction) {
                     database.commitTransaction();
@@ -12378,7 +12679,12 @@ public class MessagesStorage extends BaseController {
                     if (message.action instanceof TLRPC.TL_messageEncryptedAction && !(message.action.encryptedAction instanceof TLRPC.TL_decryptedMessageActionSetMessageTTL || message.action.encryptedAction instanceof TLRPC.TL_decryptedMessageActionScreenshotMessages)) {
                         updateDialog = false;
                     } else if (message.out) {
-
+//                        cursor = database.queryFinalized(String.format(Locale.US, "SELECT mid, group_id FROM messages_v2 WHERE mid = %d AND uid = %d", messageId, message.dialog_id));
+//                        if (cursor.next()) {
+//                            updateDialog = false;
+//                        }
+//                        cursor.dispose();
+//                        cursor = null;
                     }
 
                     if (message.action instanceof TLRPC.TL_messageActionTopicCreate && !MessageObject.isOut(message)) {
@@ -13134,7 +13440,7 @@ public class MessagesStorage extends BaseController {
     }
 
     public void putMessages(ArrayList<TLRPC.Message> messages, boolean withTransaction, boolean useQueue, boolean doNotUpdateDialogDate, int downloadMask, boolean ifNoLastMessage, int mode, long threadMessageId) {
-        if (messages.size() == 0) {
+        if (messages == null || messages.isEmpty()) {
             return;
         }
         if (useQueue) {
@@ -13144,11 +13450,128 @@ public class MessagesStorage extends BaseController {
         }
     }
 
-    public void putEphemeralMessages(ArrayList<TLRPC.EphemeralMessage> messages, boolean withTransaction) {
+    public void processEphemeralMessages(ArrayList<TL_ephemeral.EphemeralMessage> messages, Runnable callback) {
+        if (messages == null || messages.isEmpty()) {
+            return;
+        }
+
+        executeInStorageQueue(() -> {
+            processEphemeralMessagesInternal(messages);
+            callback.run();
+        });
+    }
+
+    private void processEphemeralMessagesInternal(ArrayList<TL_ephemeral.EphemeralMessage> messages) {
+        for (TL_ephemeral.EphemeralMessage message: messages) {
+            if (message.top_msg_id != 0) {
+                continue;
+            }
+            if (!(message.reply_to instanceof TLRPC.TL_messageReplyHeader)) {
+                continue;
+            }
+
+            if (message.reply_to.reply_to_top_id != 0) {
+                message.reply_to.forum_topic = true;
+                message.top_msg_id = message.reply_to.reply_to_top_id;
+                message.flags |= TLObject.FLAG_1;
+                continue;
+            }
+            if (message.reply_to.reply_to_msg_id == 0) {
+                continue;
+            }
+
+            final long dialogId = DialogObject.getPeerDialogId(message.peer_id);
+            if (message.reply_to.reply_to_ephemeral) {
+                TL_ephemeral.EphemeralMessage reply = getEphemeralMessageInternal(dialogId, message.reply_to.reply_to_msg_id);
+                if (reply != null && reply.top_msg_id != 0) {
+                    message.reply_to.forum_topic = true;
+                    message.top_msg_id = reply.top_msg_id;
+                    message.flags |= TLObject.FLAG_1;
+                }
+            } else {
+                TLRPC.Message reply = getMessageInternal(dialogId, message.reply_to.reply_to_msg_id);
+                if (reply != null) {
+                    message.top_msg_id = (int) MessageObject.getTopicId(currentAccount, reply, getForumTypeFlags(dialogId));
+                    if (message.top_msg_id != 0) {
+                        message.reply_to.forum_topic = true;
+                        message.flags |= TLObject.FLAG_1;
+                    }
+                }
+            }
+        }
+        putEphemeralMessagesInternal(messages, true);
+    }
+
+    public void processEphemeralEditedMessages(ArrayList<TL_ephemeral.EphemeralMessage> messages, Runnable callback) {
+        if (messages == null || messages.isEmpty()) {
+            return;
+        }
+
+        executeInStorageQueue(() -> {
+            processEphemeralEditedMessagesInternal(messages);
+            callback.run();
+        });
+    }
+
+    private void processEphemeralEditedMessagesInternal(ArrayList<TL_ephemeral.EphemeralMessage> messages) {
+        for (TL_ephemeral.EphemeralMessage message: messages) {
+            if (message.top_msg_id != 0) {
+                continue;
+            }
+            final long dialogId = DialogObject.getPeerDialogId(message.peer_id);
+            final TL_ephemeral.EphemeralMessage prev = getEphemeralMessageInternal(dialogId, message.id);
+            if (prev != null && prev.top_msg_id != 0) {
+                message.top_msg_id = prev.top_msg_id;
+                if (message.reply_to != null) {
+                    message.reply_to.forum_topic = true;
+                }
+                message.flags |= TLObject.FLAG_1;
+            }
+        }
+        putEphemeralMessagesInternal(messages, true);
+    }
+
+    public void processAnchoredEphemeralMessages(ArrayList<TL_ephemeral.EphemeralMessage> messages, Runnable callback) {
+        if (messages == null || messages.isEmpty()) {
+            return;
+        }
+
+        executeInStorageQueue(() -> {
+            processAnchoredEphemeralMessagesInternal(messages);
+            callback.run();
+        });
+    }
+
+    private void processAnchoredEphemeralMessagesInternal(ArrayList<TL_ephemeral.EphemeralMessage> messages) {
+        for (TL_ephemeral.EphemeralMessage message: messages) {
+            final long dialogId = DialogObject.getPeerDialogId(message.peer_id);
+            final long fromId = DialogObject.getPeerDialogId(message.from_id);
+            final int anchorId = message.anchor_msg_id;
+
+            ephemeralWelcomeAnchorsState.put(dialogId, anchorId, message.id);
+
+            final TLRPC.Message realMessage = getMessageInternal(dialogId, anchorId);
+            if (realMessage != null) {
+                message.peer_id = realMessage.peer_id;
+                message.from_id = realMessage.from_id;
+                message.out = realMessage.out;
+                if (fromId > 0) {
+                    message.via_bot_id = fromId;
+                }
+            }
+        }
+        putEphemeralMessagesInternal(messages, true);
+    }
+
+
+    public void putEphemeralMessages(ArrayList<TL_ephemeral.EphemeralMessage> messages, boolean withTransaction) {
+        if (messages == null || messages.isEmpty()) {
+            return;
+        }
         executeInStorageQueue(() -> putEphemeralMessagesInternal(messages, withTransaction));
     }
 
-    private void putEphemeralMessagesInternal(ArrayList<TLRPC.EphemeralMessage> messages, boolean withTransaction) {
+    private void putEphemeralMessagesInternal(ArrayList<TL_ephemeral.EphemeralMessage> messages, boolean withTransaction) {
         SQLitePreparedStatement state = null;
         try {
             if (withTransaction) {
@@ -13157,11 +13580,15 @@ public class MessagesStorage extends BaseController {
 
             state = database.executeFast("INSERT OR REPLACE INTO ephemeral_messages (dialog_id, id, topic_id, date, data) VALUES (?, ?, ?, ?, ?);");
 
-            for (TLRPC.EphemeralMessage message : messages) {
+            for (TL_ephemeral.EphemeralMessage message : messages) {
+                if (message.welcome) {
+                    continue;
+                }
+
                 state.requery();
                 state.bindLong(1, DialogObject.getPeerDialogId(message.peer_id));
                 state.bindInteger(2, message.id);
-                state.bindInteger(3, 0); 
+                state.bindInteger(3, message.top_msg_id); // topic id
                 state.bindInteger(4, message.date);
                 state.bindTlObject(5, message);
                 state.step();
@@ -13187,11 +13614,50 @@ public class MessagesStorage extends BaseController {
         deleteEphemeralMessages(messagesMap, false);
     }
 
+    private final EphemeralMessagesHelper.WelcomeAnchorsState ephemeralWelcomeAnchorsState
+        = new EphemeralMessagesHelper.WelcomeAnchorsState();
+
     public void deleteEphemeralMessages(LongSparseArray<ArrayList<Integer>> messages, boolean withTransaction) {
-        executeInStorageQueue(() -> deleteEphemeralMessagesInternal(messages, withTransaction));
+        executeInStorageQueue(() -> {
+            LongSparseArray<ArrayList<TL_ephemeral.EphemeralMessage>> deletedMessages = deleteEphemeralMessagesInternal(messages, withTransaction);
+            final LongSparseArray<ArrayList<MessageObject>> removedAnchorMessages = new LongSparseArray<>();
+            for (int i = 0; i < deletedMessages.size(); i++) {
+                final long dialogId = deletedMessages.keyAt(i);
+                final ArrayList<TL_ephemeral.EphemeralMessage> deletedMessagesList = deletedMessages.valueAt(i);
+
+                ArrayList<MessageObject> messageObjects = null;
+                for (TL_ephemeral.EphemeralMessage ephemeralMessage : deletedMessagesList) {
+                    if (ephemeralMessage.anchor_msg_id != 0) {
+                        ephemeralWelcomeAnchorsState.remove(dialogId, ephemeralMessage.anchor_msg_id, ephemeralMessage.id);
+                    }
+
+                    if (ephemeralMessage.anchor_msg_id != 0) {
+                        final TLRPC.Message message = getMessageInternal(dialogId, ephemeralMessage.anchor_msg_id);
+                        if (message != null) {
+                            if (messageObjects == null) {
+                                messageObjects = new ArrayList<>();
+                                removedAnchorMessages.put(dialogId, messageObjects);
+                            }
+                            messageObjects.add(new MessageObject(currentAccount, message, true, true));
+                        }
+                    }
+                }
+            }
+
+            if (!removedAnchorMessages.isEmpty()) {
+                AndroidUtilities.runOnUIThread(() -> {
+                    for (int a = 0, N = removedAnchorMessages.size(); a < N; a++) {
+                        getNotificationCenter().postNotificationName(NotificationCenter.replaceMessagesObjects,
+                            removedAnchorMessages.keyAt(a),
+                            removedAnchorMessages.valueAt(a));
+                    }
+                });
+            }
+        });
     }
 
-    private void deleteEphemeralMessagesInternal(LongSparseArray<ArrayList<Integer>> messages, boolean withTransaction) {
+    private LongSparseArray<ArrayList<TL_ephemeral.EphemeralMessage>> deleteEphemeralMessagesInternal(LongSparseArray<ArrayList<Integer>> messages, boolean withTransaction) {
+        LongSparseArray<ArrayList<TL_ephemeral.EphemeralMessage>> deletedMessages = new LongSparseArray<>();
         SQLitePreparedStatement state = null;
         try {
             if (withTransaction) {
@@ -13207,6 +13673,11 @@ public class MessagesStorage extends BaseController {
                     continue;
                 }
 
+                ArrayList<TL_ephemeral.EphemeralMessage> deleted = getEphemeralMessagesInternal(dialogId, ids);
+                if (deleted != null) {
+                    deletedMessages.put(dialogId, deleted);
+                }
+
                 for (int j = 0; j < ids.size(); j++) {
                     state.requery();
                     state.bindLong(1, dialogId);
@@ -13219,10 +13690,10 @@ public class MessagesStorage extends BaseController {
                 long did = messages.keyAt(i);
                 ArrayList<Integer> ids = messages.valueAt(i);
                 getMediaDataController().clearBotKeyboard(TopicKey.of(did, 0), null);
-                for (int id : ids) {
-                    database.executeFast(String.format(Locale.US, "DELETE FROM bot_keyboard WHERE mid IN(%s) AND uid = %d", ids, did)).stepThis().dispose();
-                    database.executeFast(String.format(Locale.US, "DELETE FROM bot_keyboard_topics WHERE mid IN(%s) AND uid = %d", ids, did)).stepThis().dispose();
-                }
+
+                String idsj = TextUtils.join(",", ids);
+                database.executeFast(String.format(Locale.US, "DELETE FROM bot_keyboard WHERE mid IN(%s) AND uid = %d", idsj, did)).stepThis().dispose();
+                database.executeFast(String.format(Locale.US, "DELETE FROM bot_keyboard_topics WHERE mid IN(%s) AND uid = %d", idsj, did)).stepThis().dispose();
             }
 
             if (withTransaction) {
@@ -13235,14 +13706,15 @@ public class MessagesStorage extends BaseController {
                 state.dispose();
             }
         }
+        return deletedMessages;
     }
 
-    public void getEphemeralMessages(long dialogId, long topicId, Utilities.Callback<ArrayList<TLRPC.EphemeralMessage>> callback) {
+    public void getEphemeralMessages(long dialogId, long topicId, Utilities.Callback<ArrayList<TL_ephemeral.EphemeralMessage>> callback) {
         executeInStorageQueue(() -> AndroidUtilities.runOnUIThread(() -> callback.run(getEphemeralMessagesInternal(dialogId, topicId))));
     }
 
-    private ArrayList<TLRPC.EphemeralMessage> getEphemeralMessagesInternal(long dialogId, long topicId) {
-        ArrayList<TLRPC.EphemeralMessage> result = new ArrayList<>();
+    private ArrayList<TL_ephemeral.EphemeralMessage> getEphemeralMessagesInternal(long dialogId, long topicId) {
+        ArrayList<TL_ephemeral.EphemeralMessage> result = new ArrayList<>();
         SQLiteCursor cursor = null;
         try {
             int minDate = getConnectionsManager().getCurrentTime() - 2 * 24 * 60 * 60;
@@ -13255,8 +13727,8 @@ public class MessagesStorage extends BaseController {
                     minDate);
 
             while (cursor.next()) {
-                TLRPC.EphemeralMessage message = cursor.tlObjectValue(0, TLRPC.EphemeralMessage::TLdeserialize, false);
-                if (message != null) {
+                TL_ephemeral.EphemeralMessage message = cursor.tlObjectValue(0, TL_ephemeral.EphemeralMessage::TLdeserialize, false);
+                if (message != null && message.anchor_msg_id == 0) {
                     result.add(message);
                 }
             }
@@ -13271,8 +13743,41 @@ public class MessagesStorage extends BaseController {
         return result;
     }
 
-    public ArrayList<TLRPC.EphemeralMessage> getEphemeralMessagesInternal(long dialogId, ArrayList<Integer> ids) {
-        ArrayList<TLRPC.EphemeralMessage> result = new ArrayList<>();
+    private TL_ephemeral.EphemeralMessage getEphemeralMessageInternal(long dialogId, int messageId) {
+        TL_ephemeral.EphemeralMessage result = null;
+        SQLiteCursor cursor = null;
+        try {
+            cursor = database.queryFinalized(String.format(Locale.US,
+                "SELECT data FROM ephemeral_messages " +
+                        "WHERE dialog_id = %d AND id = %d",
+                dialogId, messageId));
+
+            if (cursor.next()) {
+                NativeByteBuffer data = cursor.byteBufferValue(0);
+                if (data != null) {
+                    TL_ephemeral.EphemeralMessage message =
+                            TL_ephemeral.EphemeralMessage.TLdeserialize(
+                                    data,
+                                    data.readInt32(false),
+                                    false);
+
+                    data.reuse();
+                    result = message;
+                }
+            }
+        } catch (Exception e) {
+            checkSQLException(e);
+        } finally {
+            if (cursor != null) {
+                cursor.dispose();
+            }
+        }
+
+        return result;
+    }
+
+    public ArrayList<TL_ephemeral.EphemeralMessage> getEphemeralMessagesInternal(long dialogId, ArrayList<Integer> ids) {
+        ArrayList<TL_ephemeral.EphemeralMessage> result = new ArrayList<>();
         if (ids == null || ids.isEmpty()) {
             return result;
         }
@@ -13292,8 +13797,8 @@ public class MessagesStorage extends BaseController {
                     continue;
                 }
 
-                TLRPC.EphemeralMessage message =
-                        TLRPC.EphemeralMessage.TLdeserialize(
+                TL_ephemeral.EphemeralMessage message =
+                        TL_ephemeral.EphemeralMessage.TLdeserialize(
                                 data,
                                 data.readInt32(false),
                                 false);
@@ -13315,6 +13820,7 @@ public class MessagesStorage extends BaseController {
         return result;
     }
 
+
     public void markMessageAsSendError(TLRPC.Message message, int _mode) {
         storageQueue.postRunnable(() -> {
             try {
@@ -13322,8 +13828,13 @@ public class MessagesStorage extends BaseController {
                 long messageId = message.id;
                 if (MessageObject.isQuickReply(message)) {
                     mode = ChatActivity.MODE_QUICK_REPLIES;
+                } else if (MessageObject.isWelcomeMessage(message)) {
+                    mode = ChatActivity.MODE_WELCOME_MESSAGES;
                 }
-                if (mode == ChatActivity.MODE_QUICK_REPLIES) {
+
+                if (mode == ChatActivity.MODE_WELCOME_MESSAGES) {
+                    database.executeFast(String.format(Locale.US, "UPDATE welcome_messages SET send_state = 2 WHERE mid = %d AND dialog_id = %d", messageId, MessageObject.getDialogId(message))).stepThis().dispose();
+                } else if (mode == ChatActivity.MODE_QUICK_REPLIES) {
                     database.executeFast(String.format(Locale.US, "UPDATE quick_replies_messages SET send_state = 2 WHERE mid = %d AND topic_id = %d", messageId, MessageObject.getQuickReplyId(currentAccount, message))).stepThis().dispose();
                 } else if (mode == ChatActivity.MODE_SCHEDULED) {
                     database.executeFast(String.format(Locale.US, "UPDATE scheduled_messages_v2 SET send_state = 2 WHERE mid = %d AND uid = %d", messageId, MessageObject.getDialogId(message))).stepThis().dispose();
@@ -13354,6 +13865,7 @@ public class MessagesStorage extends BaseController {
                             TLRPC.Message message = TLRPC.Message.TLdeserialize(data, data.readInt32(false), false);
                             message.readAttachPath(data, selfId);
                             data.reuse();
+
 
                         }
                     }
@@ -13481,6 +13993,19 @@ public class MessagesStorage extends BaseController {
                     cursor.dispose();
                 }
             }
+            try {
+                cursor = database.queryFinalized(String.format(Locale.US, "SELECT dialog_id FROM welcome_messages WHERE mid = %d LIMIT 1", oldMessageId));
+                if (cursor.next()) {
+                    did = cursor.longValue(0);
+                    scheduled = 3;
+                }
+            } catch (Exception e) {
+                checkSQLException(e);
+            } finally {
+                if (cursor != null) {
+                    cursor.dispose();
+                }
+            }
         }
 
         if (scheduled == -1 || scheduled == 1) {
@@ -13513,6 +14038,8 @@ public class MessagesStorage extends BaseController {
                     state = database.executeFast("UPDATE scheduled_messages_v2 SET send_state = 0, date = ? WHERE mid = ? AND uid = ?");
                 } else if (scheduled == 2) {
                     state = database.executeFast("UPDATE quick_replies_messages SET send_state = 0, date = ? WHERE mid = ? AND topic_id = ?");
+                } else if (scheduled == 3) {
+                    state = database.executeFast("UPDATE welcome_messages SET send_state = 0, date = ? WHERE mid = ? AND dialog_id = ?");
                 }
                 state.bindInteger(1, date);
                 state.bindInteger(2, newId);
@@ -13547,7 +14074,7 @@ public class MessagesStorage extends BaseController {
                     state.step();
 
                     state2 = database.executeFast("UPDATE messages_topics SET mid = ?, send_state = 0 WHERE mid = ? AND uid = ?");
-                    state2.bindInteger(1, newId);   
+                    state2.bindInteger(1, newId);   // state2.bindLong(2, topicId);
                     state2.bindInteger(2, oldMessageId);
                     state2.bindLong(3, did);
                     state2.step();
@@ -13662,6 +14189,25 @@ public class MessagesStorage extends BaseController {
                 } catch (Exception e) {
                     try {
                         database.executeFast(String.format(Locale.US, "DELETE FROM quick_replies_messages WHERE mid = %d AND topic_id = %d", oldMessageId, topicId)).stepThis().dispose();
+                    } catch (Exception e2) {
+                        checkSQLException(e2);
+                    }
+                } finally {
+                    if (state != null) {
+                        state.dispose();
+                    }
+                }
+            } else if (scheduled == 3) {
+                try {
+                    state = database.executeFast("UPDATE welcome_messages SET mid = ?, dialog_id = ?, send_state = 0 WHERE mid = ? AND dialog_id = ?");
+                    state.bindInteger(1, newId);
+                    state.bindInteger(2, newTopicId);
+                    state.bindInteger(3, oldMessageId);
+                    state.bindLong(4, dialogId);
+                    state.step();
+                } catch (Exception e) {
+                    try {
+                        database.executeFast(String.format(Locale.US, "DELETE FROM welcome_messages WHERE mid = %d AND dialog_id = %d", oldMessageId, dialogId)).stepThis().dispose();
                     } catch (Exception e2) {
                         checkSQLException(e2);
                     }
@@ -14062,11 +14608,41 @@ public class MessagesStorage extends BaseController {
             ArrayList<Long> dialogsIds = new ArrayList<>();
             final boolean scheduled = mode == ChatActivity.MODE_SCHEDULED;
             final boolean quickReplies = mode == ChatActivity.MODE_QUICK_REPLIES;
-            if (quickReplies) {
+            final boolean welcomeMessages = mode == ChatActivity.MODE_WELCOME_MESSAGES;
+            if (welcomeMessages) {
+                String ids = TextUtils.join(",", messages);
+                database.executeFast(String.format(Locale.US, "DELETE FROM welcome_messages WHERE mid IN(%s) AND dialog_id = %d", ids, dialogId)).stepThis().dispose();
+            } else if (quickReplies) {
                 String ids = TextUtils.join(",", messages);
 
+//                LongSparseArray<ArrayList<Long>> dialogsToUpdate = new LongSparseArray<>();
+//
+//                cursor = database.queryFinalized(String.format(Locale.US, "SELECT topic_id FROM quick_replies_messages WHERE mid IN(%s)", ids));
+//                try {
+//                    while (cursor.next()) {
+//                        long did = cursor.longValue(0);
+//                        long topic_id = cursor.longValue(1);
+//                        ArrayList<Long> topicIds = dialogsToUpdate.get(did);
+//                        if (topicIds == null) {
+//                            dialogsToUpdate.put(did, topicIds = new ArrayList<>());
+//                            topicIds.add(topic_id);
+//                        } else if (topicIds.contains(topic_id)) {
+//                            topicIds.add(topic_id);
+//                        }
+//                    }
+//                } catch (Exception e) {
+//                    checkSQLException(e);
+//                }
+//                cursor.dispose();
+//                cursor = null;
                 database.executeFast(String.format(Locale.US, "DELETE FROM quick_replies_messages WHERE mid IN(%s) AND topic_id = %d", ids, threadMessageId)).stepThis().dispose();
-
+//                for (int a = 0, N = dialogsToUpdate.size(); a < N; a++) {
+//                    long type = dialogsToUpdate.keyAt(a);
+//                    ArrayList<Long> topicIds = dialogsToUpdate.valueAt(a);
+//                    for (long topic_id : topicIds) {
+//                        broadcastQuickRepliesMessagesChange(type, topic_id);
+//                    }
+//                }
             } else if (scheduled) {
                 String ids = TextUtils.join(",", messages);
 
@@ -14228,7 +14804,7 @@ public class MessagesStorage extends BaseController {
                 cursor = null;
 
                 database.beginTransaction();
-                for (int i = 0; i < 4; i++) {
+                for (int i = 0; i < 5; i++) {
                     if (i == 0) {
                         if (dialogId != 0) {
                             state = getMessagesStorage().getDatabase().executeFast("UPDATE messages_v2 SET replydata = ? WHERE reply_to_message_id IN(?) AND uid = ?");
@@ -14243,6 +14819,8 @@ public class MessagesStorage extends BaseController {
                         }
                     } else if (i == 2) {
                         state = getMessagesStorage().getDatabase().executeFast("UPDATE quick_replies_messages SET replydata = ? WHERE reply_to_message_id IN(?)");
+                    } else if (i == 3) {
+                        state = getMessagesStorage().getDatabase().executeFast("UPDATE welcome_messages SET replydata = ? WHERE reply_to_message_id IN(?) AND dialog_id = ?");
                     } else {
                         if (dialogId == 0) {
                             continue;
@@ -14909,6 +15487,7 @@ public class MessagesStorage extends BaseController {
                 state = null;
             }
 
+
             database.executeFast(String.format(Locale.US, "UPDATE chat_settings_v2 SET pinned = 0 WHERE uid = %d AND pinned <= %d", channelId, mid)).stepThis().dispose();
             database.executeFast(String.format(Locale.US, "DELETE FROM chat_pinned_v2 WHERE uid = %d AND mid <= %d", channelId, mid)).stepThis().dispose();
             int updatedCount = 0;
@@ -15552,7 +16131,7 @@ public class MessagesStorage extends BaseController {
         storageQueue.postRunnable(() -> {
             final long selfId = getUserConfig().getClientUserId();
             for (MessageObject messageObject : messageObjects) {
-                if (messageObject.scheduled) continue; 
+                if (messageObject.scheduled) continue; // TODO if needed
                 if (messageObject.isQuickReply()) continue;
                 SQLiteCursor cursor = null;
                 try {
@@ -15580,6 +16159,7 @@ public class MessagesStorage extends BaseController {
         });
     }
 
+    // put messages in data base while load history
     public void putMessages(TLRPC.messages_Messages messages, long dialogId, int load_type, int max_id, boolean createDialog, int mode, long threadMessageId) {
         storageQueue.postRunnable(() -> {
             SQLitePreparedStatement state_messages = null;
@@ -15596,7 +16176,43 @@ public class MessagesStorage extends BaseController {
                 final long selfId = getUserConfig().getClientUserId();
                 final boolean scheduled = mode == ChatActivity.MODE_SCHEDULED;
                 final boolean quickReplies = mode == ChatActivity.MODE_QUICK_REPLIES;
-                if (quickReplies) {
+                final boolean welcomeMessages = mode == ChatActivity.MODE_WELCOME_MESSAGES;
+                if (welcomeMessages) {
+                    state_messages = database.executeFast("REPLACE INTO welcome_messages VALUES(?, ?, ?, ?, ?, ?, NULL, 0)");
+                    int count = messages.messages.size();
+                    for (int a = 0; a < count; a++) {
+                        TLRPC.Message message = messages.messages.get(a);
+                        if (message instanceof TLRPC.TL_messageEmpty) {
+                            continue;
+                        }
+
+                        long dialog_id = MessageObject.getDialogId(message);
+                        if (dialog_id != 0) {
+                            database.executeFast(String.format(Locale.ENGLISH, "DELETE FROM welcome_messages WHERE mid = %d AND dialog_id = %d", message.id, dialog_id)).stepThis().dispose();
+                        }
+
+                        fixUnsupportedMedia(message);
+                        MessageObject.normalizeFlags(message);
+                        state_messages.requery();
+                        NativeByteBuffer data = new NativeByteBuffer(message.getObjectSize());
+                        message.serializeToStream(data);
+                        state_messages.bindInteger(1, message.id);
+                        state_messages.bindLong(2, dialog_id);
+                        state_messages.bindInteger(3, message.send_state);
+                        state_messages.bindInteger(4, message.date);
+                        state_messages.bindByteBuffer(5, data);
+                        state_messages.bindInteger(6, message.ttl);
+                        state_messages.step();
+                        data.reuse();
+                    }
+                    state_messages.dispose();
+                    state_messages = null;
+
+                    putUsersInternal(messages.users);
+                    putChatsInternal(messages.chats);
+
+                    database.commitTransaction();
+                } else if (quickReplies) {
                     state_messages = database.executeFast("REPLACE INTO quick_replies_messages VALUES(?, ?, ?, ?, ?, ?, NULL, 0)");
                     int count = messages.messages.size();
                     for (int a = 0; a < count; a++) {
@@ -15631,6 +16247,7 @@ public class MessagesStorage extends BaseController {
                     putChatsInternal(messages.chats);
 
                     database.commitTransaction();
+//                    broadcastScheduledMessagesChange(dialogId);
 
                 } else if (scheduled) {
                     database.executeFast(String.format(Locale.US, "DELETE FROM scheduled_messages_v2 WHERE uid = %d AND mid > 0", dialogId)).stepThis().dispose();
@@ -15694,6 +16311,11 @@ public class MessagesStorage extends BaseController {
                     }
                     int count = messages.messages.size();
 
+                    //load_type == 0 ? backward loading
+                    //load_type == 1 ? forward loading
+                    //load_type == 2 ? load from first unread
+                    //load_type == 3 ? load around message
+                    //load_type == 4 ? load around date
                     ArrayList<File> filesToDelete = new ArrayList<>();
                     ArrayList<String> namesToDelete = new ArrayList<>();
                     ArrayList<Pair<Long, Integer>> idsToDelete = new ArrayList<>();
@@ -17652,6 +18274,7 @@ public class MessagesStorage extends BaseController {
         return chat;
     }
 
+
     public void localSearch(int dialogsType, String query, ArrayList<Object> resultArray, ArrayList<CharSequence> resultArrayNames, ArrayList<TLRPC.User> encUsers, ArrayList<Long> onlyDialogIds, int folderId) {
         long selfUserId = UserConfig.getInstance(currentAccount).getClientUserId();
         SQLiteCursor cursor = null;
@@ -18266,6 +18889,7 @@ public class MessagesStorage extends BaseController {
         });
     }
 
+
     public void putGiftChatTheme(TLRPC.ChatTheme theme) {
         putGiftChatThemes(Collections.singletonList(theme));
     }
@@ -18327,6 +18951,7 @@ public class MessagesStorage extends BaseController {
                 cursor.dispose();
                 cursor = null;
 
+
                 AndroidUtilities.runOnUIThread(() -> callback.run(gifts));
                 success = true;
             } catch (SQLiteException e) {
@@ -18352,6 +18977,7 @@ public class MessagesStorage extends BaseController {
             runnable.run();
         }
     }
+
 
     public void saveStoryAlbumsCache(long dialog_id, List<StoriesController.StoryAlbum> albums) {
         storageQueue.postRunnable(() -> saveStoryAlbumsCacheInternal(dialog_id, albums));
@@ -18424,7 +19050,7 @@ public class MessagesStorage extends BaseController {
     }
 
     public boolean isMonoForum(long dialogId) {
-        
+        // todo: inline
         return isForum(dialogId, FORUM_TYPE_DIRECT);
     }
 

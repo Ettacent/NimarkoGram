@@ -76,6 +76,7 @@ import org.telegram.ui.Components.AnimationProperties;
 import org.telegram.ui.Components.Bulletin;
 import org.telegram.ui.Components.BulletinFactory;
 import org.telegram.ui.Components.CubicBezierInterpolator;
+import org.telegram.ui.Components.ItemOptions;
 import org.telegram.ui.Components.LayoutHelper;
 import org.telegram.ui.LaunchActivity;
 
@@ -93,6 +94,7 @@ public class BottomSheet extends Dialog implements BaseFragment.AttachedSheet {
     protected int keyboardHeight;
     private WindowInsets lastInsets;
     public boolean drawNavigationBar;
+    public boolean doNotOverlayNavigationBar;
     public boolean drawDoubleNavigationBar;
     public boolean scrollNavBar;
     public boolean occupyNavigationBar;
@@ -255,6 +257,10 @@ public class BottomSheet extends Dialog implements BaseFragment.AttachedSheet {
     protected int openedLayerNum;
     private boolean skipDismissAnimation;
 
+    public void skipDismissAnimation() {
+        skipDismissAnimation = true;
+    }
+
     public void setDisableScroll(boolean b) {
         disableScroll = b;
     }
@@ -277,15 +283,32 @@ public class BottomSheet extends Dialog implements BaseFragment.AttachedSheet {
 
     }
 
+    // NimarkoGram: one-shot recursive invalidate so a plugin custom view's deeply-nested children
+    // (esp. Chaquopy TextViews whose GradientDrawable backgrounds recorded empty bounds on first
+    // draw) each re-record their display-list with correct bounds. A one-level invalidate is not
+    // enough — it dirties only the top node; nested children keep their stale display-lists.
     private static void nimarkoInvalidateSubtree(View view) {
         if (view == null) {
             return;
         }
+        // NimarkoGram: a background Drawable attached from Python (Chaquopy) sometimes never has
+        // its bounds set — the view's first background draw, which normally calls
+        // Drawable.setBounds(0,0,w,h), is missed for deeply-nested children, so the drawable keeps
+        // empty [0,0] bounds and its fill is invisible (observed: plugin button GradientDrawables).
+        // Set the bounds explicitly from the (now laid-out) view size so the fill paints. Cheap,
+        // one-shot, no layer / no per-frame cost.
         try {
             android.graphics.drawable.Drawable bg = view.getBackground();
             if (bg != null && bg.getBounds().isEmpty() && view.getWidth() > 0 && view.getHeight() > 0) {
                 bg.setBounds(0, 0, view.getWidth(), view.getHeight());
             }
+            // NimarkoGram: a plugin (Chaquopy) TextView whose setTextColor() didn't take falls back
+            // to the bare platform-default text colour — semi-transparent BLACK (e.g. 0x8a000000) —
+            // which is invisible on a themed (dark) sheet: the observed cause of "plugin buttons have
+            // no visible text". Detect that default (pure black, non-opaque alpha) and replace it with
+            // the dialog's readable text colour so plugin labels/buttons are legible. Symptom-level fix
+            // (works regardless of WHY the plugin colour didn't apply); opaque/coloured/white text and
+            // native cells (which set their own colours) are untouched.
             if (view instanceof android.widget.TextView) {
                 android.widget.TextView tv = (android.widget.TextView) view;
                 int tc = tv.getCurrentTextColor();
@@ -305,6 +328,11 @@ public class BottomSheet extends Dialog implements BaseFragment.AttachedSheet {
         }
     }
 
+    // NimarkoGram: same drawable-bounds / text-colour fix as above, but for views a plugin ADDS to the
+    // customView ASYNCHRONOUSLY (after the one-shot pass already ran) — e.g. an exteraGram verdict
+    // injector that adds its chip views once a network check returns. Unlike the one-shot it invalidates
+    // ONLY nodes it actually fixes, so wiring it to a per-layout listener converges to a cheap no-op
+    // traversal (no blanket re-invalidate / redraw storm) once everything is corrected.
     private static void nimarkoFixLateViews(View view) {
         if (view == null) {
             return;
@@ -316,6 +344,9 @@ public class BottomSheet extends Dialog implements BaseFragment.AttachedSheet {
                 bg.setBounds(0, 0, view.getWidth(), view.getHeight());
                 fixed = true;
             }
+            // Flatten any wide-gamut ColorLong a plugin set on a GradientDrawable fill into a plain
+            // sRGB int. A ColorLong whose low 6 bits are an invalid colour-space id throws
+            // IllegalArgumentException ("Invalid ID") when DRAWN (Paint.setColor(long)).
             if (bg instanceof android.graphics.drawable.GradientDrawable) {
                 try {
                     android.content.res.ColorStateList csl = ((android.graphics.drawable.GradientDrawable) bg).getColor();
@@ -331,10 +362,16 @@ public class BottomSheet extends Dialog implements BaseFragment.AttachedSheet {
                 int a = (tc >>> 24) & 0xFF;
                 int rgb = tc & 0xFFFFFF;
                 if (rgb == 0 && a > 0 && a < 0xC0) {
+                    // invisible default platform text colour -> readable themed colour
                     tv.setTextColor(Theme.getColor(Theme.key_dialogTextBlack));
                 } else {
+                    // Re-set the current colour as a plain sRGB int. This flattens any wide-gamut
+                    // ColorLong a plugin set: a ColorLong with an invalid colour-space id throws
+                    // IllegalArgumentException in TextView.onDraw -> Paint.setColor(long), which aborts
+                    // the ENTIRE sheet's draw (whole sheet blank but tappable). The int overload is safe.
                     tv.setTextColor(tc);
                 }
+                // Same hazard for highlight colour (used by onDraw when drawing selection).
                 try { tv.setHighlightColor(tv.getHighlightColor()); } catch (Throwable ignored3) {}
                 fixed = true;
             }
@@ -730,6 +767,10 @@ public class BottomSheet extends Dialog implements BaseFragment.AttachedSheet {
                 if (child.getVisibility() == GONE || child == containerView) {
                     continue;
                 }
+                if (child instanceof ItemOptions.DimView) {
+                    measureChildWithMargins(child, MeasureSpec.makeMeasureSpec(width, MeasureSpec.EXACTLY), 0, MeasureSpec.makeMeasureSpec(MeasureSpec.getSize(heightMeasureSpec), MeasureSpec.EXACTLY), 0);
+                    continue;
+                }
                 if (!onCustomMeasure(child, width, height)) {
                     measureChildWithMargins(child, MeasureSpec.makeMeasureSpec(width, MeasureSpec.EXACTLY), 0, MeasureSpec.makeMeasureSpec(height, MeasureSpec.EXACTLY), 0);
                 }
@@ -917,20 +958,27 @@ public class BottomSheet extends Dialog implements BaseFragment.AttachedSheet {
             } else {
                 super.dispatchDraw(canvas);
             }
-            if (!shouldOverlayCameraViewOverNavBar()) {
-                drawNavigationBar(canvas, (drawDoubleNavigationBar ? 0.7f * navigationBarAlpha : 1f));
-            }
-            if (drawNavigationBar && rightInset != 0 && rightInset > leftInset && fullWidth && AndroidUtilities.displaySize.x > AndroidUtilities.displaySize.y) {
-                canvas.drawRect(containerView.getRight() - backgroundPaddingLeft, containerView.getTranslationY(), containerView.getRight() + rightInset, getMeasuredHeight(), backgroundPaint);
-            }
 
-            if (drawNavigationBar && leftInset != 0 && leftInset > rightInset && fullWidth && AndroidUtilities.displaySize.x > AndroidUtilities.displaySize.y) {
-                canvas.drawRect(0, containerView.getTranslationY(), containerView.getLeft() + backgroundPaddingLeft, getMeasuredHeight(), backgroundPaint);
-            }
+            if (!doNotOverlayNavigationBar) {
+                if (!shouldOverlayCameraViewOverNavBar()) {
+                    drawNavigationBar(canvas, (drawDoubleNavigationBar ? 0.7f * navigationBarAlpha : 1f));
+                }
+                if (drawNavigationBar && rightInset != 0 && rightInset > leftInset && fullWidth && AndroidUtilities.displaySize.x > AndroidUtilities.displaySize.y) {
+                    canvas.drawRect(containerView.getRight() - backgroundPaddingLeft, containerView.getTranslationY(), containerView.getRight() + rightInset, getMeasuredHeight(), backgroundPaint);
+                }
 
-            if (containerView.getY() + containerView.getMeasuredHeight() < getMeasuredHeight()) {
-                backgroundPaint.setColor(behindKeyboardColorKey >= 0 ? getThemedColor(behindKeyboardColorKey) : behindKeyboardColor);
-                canvas.drawRect(containerView.getLeft() + backgroundPaddingLeft, containerView.getY() + containerView.getMeasuredHeight(), containerView.getRight() - backgroundPaddingLeft, getMeasuredHeight(), backgroundPaint);
+                if (drawNavigationBar && leftInset != 0 && leftInset > rightInset && fullWidth && AndroidUtilities.displaySize.x > AndroidUtilities.displaySize.y) {
+                    canvas.drawRect(0, containerView.getTranslationY(), containerView.getLeft() + backgroundPaddingLeft, getMeasuredHeight(), backgroundPaint);
+                }
+                if (containerView.getY() + containerView.getMeasuredHeight() < getMeasuredHeight()) {
+                    backgroundPaint.setColor(behindKeyboardColorKey >= 0 ? getThemedColor(behindKeyboardColorKey) : behindKeyboardColor);
+                    canvas.drawRect(containerView.getLeft() + backgroundPaddingLeft, containerView.getY() + containerView.getMeasuredHeight(), containerView.getRight() - backgroundPaddingLeft, getMeasuredHeight(), backgroundPaint);
+                }
+            } else {
+                if ((getMeasuredHeight() - containerView.getY() - containerView.getMeasuredHeight()) > dp(48)) {
+                    backgroundPaint.setColor(behindKeyboardColorKey >= 0 ? getThemedColor(behindKeyboardColorKey) : behindKeyboardColor);
+                    canvas.drawRect(containerView.getLeft() + backgroundPaddingLeft, containerView.getY() + containerView.getMeasuredHeight(), containerView.getRight() - backgroundPaddingLeft, getMeasuredHeight(), backgroundPaint);
+                }
             }
         }
 
@@ -1110,6 +1158,7 @@ public class BottomSheet extends Dialog implements BaseFragment.AttachedSheet {
             if (type != Builder.CELL_TYPE_CALL) {
                 setBackgroundDrawable(Theme.getSelectorDrawable(false, resourcesProvider));
             }
+            //setPadding(AndroidUtilities.dp(16), 0, AndroidUtilities.dp(16), 0);
 
             imageView = new ImageView(context);
             imageView.setScaleType(ImageView.ScaleType.CENTER);
@@ -1418,6 +1467,10 @@ public class BottomSheet extends Dialog implements BaseFragment.AttachedSheet {
 
                 @Override
                 protected boolean drawChild(Canvas canvas, View child, long drawingTime) {
+                    // NimarkoGram: isolate a plugin customView's draw — a Chaquopy view that throws in
+                    // onDraw (e.g. a malformed wide-gamut colour) must not abort the whole window's draw
+                    // and blank/crash the sheet. nimarkoFixLateViews prevents the known colour case; this
+                    // is defence-in-depth for any other plugin draw fault.
                     try {
                         return super.drawChild(canvas, child, drawingTime);
                     } catch (Throwable t) {
@@ -1498,6 +1551,16 @@ public class BottomSheet extends Dialog implements BaseFragment.AttachedSheet {
                 ViewGroup viewGroup = (ViewGroup) customView.getParent();
                 viewGroup.removeView(customView);
             }
+            // NimarkoGram: plugin custom views (chatexport export dialog) are built in
+            // Chaquopy/Python. A GradientDrawable background attached from Python AFTER the
+            // TextView is constructed records EMPTY bounds into its (hardware) display-list on the
+            // first draw and is never marked dirty again, so the rounded button backgrounds stay
+            // transparent (button text shows, the coloured pill doesn't). Fix with a ONE-SHOT
+            // recursive invalidate posted AFTER layout (bounds are set by then): every node
+            // re-records its display-list with correct drawable bounds → backgrounds paint. This is
+            // a single pass with ZERO per-frame / per-scroll cost (no software layer, nothing cached
+            // to re-rasterise). Posted on customView so it runs after this layout pass. Scoped to
+            // customView != null so app Builder/setItems sheets are untouched.
             if (!nativeCustomView) {
                 final View nimarkoCustomView = customView;
                 nimarkoCustomView.post(() -> nimarkoInvalidateSubtree(nimarkoCustomView));
@@ -1792,6 +1855,14 @@ public class BottomSheet extends Dialog implements BaseFragment.AttachedSheet {
         containerView.setVisibility(View.VISIBLE);
 
         if (!onCustomOpenAnimation()) {
+            // NimarkoGram: do NOT promote a custom-view sheet (chatexport's export dialog is the
+            // ONLY setCustomView user) into a hardware layer. Its Chaquopy/Python TextViews compute
+            // their text Layout + GradientDrawable draw-ops lazily on first onDraw, which happens
+            // AFTER this promotion -> they get baked BLANK into the open-animation layer texture and
+            // that stale texture is re-blitted every frame (laid out & tappable, never painted).
+            // Drawing straight to canvas paints them live on every slide frame, so they are visible
+            // the whole time and there is no cached texture to go stale. App Builder/setItems sheets
+            // (customView == null) keep the identical hardware-layer path, byte-for-byte unchanged.
             if (useHardwareLayer && (customView == null || nativeCustomView)) {
                 container.setLayerType(View.LAYER_TYPE_HARDWARE, null);
             }
@@ -1849,6 +1920,9 @@ public class BottomSheet extends Dialog implements BaseFragment.AttachedSheet {
                         if (delegate != null) {
                             delegate.onOpenAnimationEnd();
                         }
+                        // NimarkoGram: symmetric with the promote guard above. Tear down the layer
+                        // only for sheets that were actually promoted (customView == null). A
+                        // custom-view sheet was never put into a layer, so there is nothing to undo.
                         if (useHardwareLayer && (customView == null || nativeCustomView)) {
                             container.setLayerType(View.LAYER_TYPE_NONE, null);
                         }
@@ -2238,6 +2312,7 @@ public class BottomSheet extends Dialog implements BaseFragment.AttachedSheet {
             try {
                 super.dismiss();
             } catch (Exception e) {
+                //ignore: not attached to window manager
                 FileLog.e(e, false);
             }
         }
@@ -2464,8 +2539,16 @@ public class BottomSheet extends Dialog implements BaseFragment.AttachedSheet {
         if (attachedFragment != null) {
             LaunchActivity.instance.checkSystemBarColors(true, true, true);
             AndroidUtilities.setLightNavigationBar(getWindowView(), AndroidUtilities.computePerceivedBrightness(getNavigationBarColor(getThemedColor(Theme.key_windowBackgroundGray))) >= .721f);
+//            AndroidUtilities.setLightStatusBar(dialog != null ? dialog.windowView : windowView, attachedToActionBar && AndroidUtilities.computePerceivedBrightness(actionBar.getBackgroundColor()) > .721f);
             return;
         }
+//        if (Color.alpha(color) > 120) {
+//            AndroidUtilities.setLightStatusBar(getWindow(), false);
+//            AndroidUtilities.setLightNavigationBar(getWindow(), false);
+//        } else {
+//            AndroidUtilities.setLightStatusBar(getWindow(), !useLightStatusBar);
+//            AndroidUtilities.setLightNavigationBar(getWindow(), !useLightNavBar);
+//        }
         AndroidUtilities.setNavigationBarColor(this, overlayDrawNavBarColor);
         AndroidUtilities.setLightNavigationBar(this, AndroidUtilities.computePerceivedBrightness(overlayDrawNavBarColor) > .721);
     }

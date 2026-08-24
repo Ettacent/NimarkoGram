@@ -9,8 +9,10 @@ import androidx.core.math.MathUtils;
 
 import org.telegram.messenger.LiteMode;
 import org.telegram.messenger.MessagesController;
+import org.telegram.messenger.MessagesStorage;
 import org.telegram.messenger.SharedConfig;
 import org.telegram.messenger.UserConfig;
+import org.telegram.messenger.Utilities;
 import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.Components.blur3.drawable.color.BlurredBackgroundProvider;
 import org.telegram.ui.Components.blur3.drawable.color.BlurredBackgroundProviderBuilder;
@@ -78,18 +80,44 @@ public class BlurredBackgroundProviderImpl {
                 .build();
     }
 
+    public static BlurredBackgroundProvider messageMenuReactionsBackground(Theme.ResourcesProvider resourcesProvider) {
+        return messageMenuBackground(resourcesProvider);
+    }
+
+    public static BlurredBackgroundProvider messageMenuBackground(Theme.ResourcesProvider resourcesProvider) {
+        return new BlurredBackgroundProviderBuilder(resourcesProvider)
+                .setBackgroundColor((r, isDark) -> {
+                    if (!LiteMode.isEnabled(LiteMode.FLAG_CHAT_BLUR)) {
+                        return Theme.getColor(Theme.key_actionBarDefaultSubmenuBackground);
+                    }
+                    return Theme.multAlpha(Theme.getColor(Theme.key_actionBarDefaultSubmenuBackground), isDark ? 0.85f : 0.825f);
+                })
+                .setStrokeColorTop(0x44FFFFFF, 0)
+                .setStrokeColorBottom(0x22FFFFFF, 0)
+                .setShadowColor(0x38000000, 0)
+                .setShadowLayer(dpf2(3.5f), 0, 0)
+                .setStrokeWidth(dpf2(2 / 3f), dpf2(2 / 3f))
+                .build();
+    }
+
     public static BlurredBackgroundProvider scrimMenuBackground(Theme.ResourcesProvider resourcesProvider) {
         return new BlurredBackgroundProviderBuilder(resourcesProvider)
             .setBackgroundColor((r, isDark) ->
-                Theme.multAlpha(Theme.getColor(Theme.key_actionBarDefaultSubmenuBackground), isDark ? 0.85f : 0.76f))
-            .setStrokeColorTop(0xFFFFFFFF, 0)
-            .setStrokeColorBottom(0xFFFFFFFF, 0)
+                Theme.multAlpha(Theme.getColor(Theme.key_actionBarDefaultSubmenuBackground), isDark ? 0.85f : 0.825f))
+            .setStrokeColorTop(0x44FFFFFF, 0)
+            .setStrokeColorBottom(0x22FFFFFF, 0)
             .setShadowColor(0x26000000, 0)
             .setShadowLayer(dpf2(4f), 0, 0)
             .setStrokeWidth(dpf2(2 / 3f), dpf2(2 / 3f))
             .build();
     }
 
+    /**
+     * Stable base for NimarkoGram's modern message menu.  Its specular pass is
+     * intentionally short-lived, therefore the base must remain readable on
+     * its own after that pass ends.  Keep a small amount of the captured scene
+     * visible when blur is available and use an opaque fallback otherwise.
+     */
     public static BlurredBackgroundProvider modernMessageMenuBackground(
             Theme.ResourcesProvider resourcesProvider,
             boolean blurEnabled
@@ -145,6 +173,7 @@ public class BlurredBackgroundProviderImpl {
                 .setStrokeColorTop(0xFFFFFFFF, 0x28FFFFFF)
                 .setStrokeColorBottom(0xFFFFFFFF, 0x14FFFFFF)
                 .setShadowColor(0x20000000, 0)
+                //.setShadowLayer(dpf2(10 / 3f), 0, dpf2(2 / 3f))
                 .setStrokeWidth(dpf2(0.5f), dpf2(0.5f))
                 .build();
     }
@@ -164,22 +193,8 @@ public class BlurredBackgroundProviderImpl {
                 .setStrokeColorTop(0xFFFFFFFF, 0x20FFFFFF)
                 .setStrokeColorBottom(0xFFFFFFFF, 0x14FFFFFF)
                 .setShadowColor(0x20000000, 0)
+                //.setShadowLayer(dpf2(10 / 3f), 0, dpf2(2 / 3f))
                 .setStrokeWidth(dpf2(0.55f), dpf2(0.55f))
-                .build();
-    }
-
-    public static BlurredBackgroundProvider attachMenuActionBar(Theme.ResourcesProvider resourcesProvider) {
-        return new BlurredBackgroundProviderBuilder(resourcesProvider)
-                .setBackgroundColor((r, isDark) -> {
-                    final float alpha = LiteMode.isEnabled(LiteMode.FLAG_LIQUID_GLASS) ? 0.85f : 0.76f;
-                    final int colorBg = Theme.getColor(isDark ? Theme.key_windowBackgroundGray : Theme.key_dialogBackgroundGray, r);
-                    final int colorTarget = Theme.getColor(Theme.key_windowBackgroundWhite, r);
-                    return solveSrcColor(colorBg, colorTarget, alpha);
-                })
-                .setStrokeColorTop(0xFFFFFFFF, 0x28FFFFFF)
-                .setStrokeColorBottom(0xFFFFFFFF, 0x14FFFFFF)
-                .setShadowColor(0x20000000, 0)
-                .setStrokeWidth(dpf2(1), dpf2(2 / 3f))
                 .build();
     }
 
@@ -225,6 +240,10 @@ public class BlurredBackgroundProviderImpl {
                 final int colorBg = Theme.getColor(Theme.key_undo_background, r);
                 return Theme.multAlpha(colorBg, alpha);
             })
+            //.setStrokeColorTop(0xFFFFFFFF, 0x28FFFFFF)
+            //.setStrokeColorBottom(0xFFFFFFFF, 0x14FFFFFF)
+            //.setShadowColor(0x20000000, 0)
+            //.setShadowLayer(dpf2(10 / 3f), 0, dpf2(2 / 3f))
             .setStrokeWidth(dpf2(0.5f), dpf2(0.5f))
             .build();
     }
@@ -255,7 +274,7 @@ public class BlurredBackgroundProviderImpl {
                     final float alpha = LiteMode.isEnabled(LiteMode.FLAG_LIQUID_GLASS) ? 0.85f : 0.76f;
                     final int colorBg = 0xFF000000;
                     final int colorTarget = 0xFF1A1A1A;
-                    return 0;
+                    return 0; // solveSrcColor(colorBg, colorTarget, alpha);
                 })
                 .setStrokeColorTop(0x28FFFFFF, 0x28FFFFFF)
                 .setStrokeColorBottom(0x14FFFFFF, 0x14FFFFFF)
@@ -297,6 +316,7 @@ public class BlurredBackgroundProviderImpl {
     public static int solveSrcColor(int bgColor, int outColor, float alpha) {
         alpha = MathUtils.clamp(alpha, 0, 1);
 
+        // Edge cases
         if (alpha <= 0f) {
             return Color.argb(0, 0, 0, 0);
         }

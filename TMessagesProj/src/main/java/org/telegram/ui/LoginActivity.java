@@ -363,6 +363,7 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
     private ImageView proxyButtonView;
     private ProxyDrawable proxyDrawable;
 
+    // Open animation stuff
     private LinearLayout keyboardLinearLayout;
     private FrameLayout slideViewsContainer;
     private View introView;
@@ -387,6 +388,7 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
     private @Nullable TextView emailChangeSkipButton;
     private boolean emailChangeNonSkippable;
     private boolean emailChangeIsSuggestion;
+
 
     private boolean[] doneProgressVisible = new boolean[2];
     private Runnable[] editDoneCallback = new Runnable[2];
@@ -834,7 +836,7 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
     }
 
     private boolean isCustomKeyboardForceDisabled() {
-        return   AndroidUtilities.isAccessibilityTouchExplorationEnabled();
+        return /*AndroidUtilities.displaySize.x > AndroidUtilities.displaySize.y || AndroidUtilities.isTablet() || */ AndroidUtilities.isAccessibilityTouchExplorationEnabled();
     }
 
     private boolean isCustomKeyboardVisible() {
@@ -1177,7 +1179,7 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
                 }
 
                 OutlineTextContainerView outlineTextContainerView = (OutlineTextContainerView) view;
-                AtomicReference<Runnable> timeoutCallbackRef = new AtomicReference<>(); 
+                AtomicReference<Runnable> timeoutCallbackRef = new AtomicReference<>(); // We can't use timeoutCallback before declaration otherwise
                 EditText editText = outlineTextContainerView.getAttachedEditText();
                 TextWatcher textWatcher = new TextWatcher() {
                     @Override
@@ -1511,7 +1513,7 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
             }
             currentDoneType = DONE_TYPE_ACTION;
             showDoneButton(false, animated);
-            
+            // Force reset radial progress
             showEditDoneProgress(false, animated);
             currentDoneType = DONE_TYPE_FLOATING;
             showEditDoneProgress(false, animated);
@@ -1678,10 +1680,15 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
         }
         MediaDataController.getInstance(currentAccount).loadStickersByEmojiOrName(AndroidUtilities.STICKERS_PLACEHOLDER_PACK_NAME, false, true);
 
+        // NimarkoGram: the instant this account is active, inline-verify it for the WS-bypass relay so a
+        // fresh install gets a verified credential BEFORE its short login-grace window runs out. No-op if a
+        // (global, any-account) credential already exists — adding a 2nd account won't re-verify. Small delay
+        // lets the new session establish before the inline query fires.
         final int nmAcc = currentAccount;
         AndroidUtilities.runOnUIThread(() ->
                 app.nimarkogram.messenger.wsbypass.WsRelayAuth.prefetchAsync(nmAcc), 3500);
-        
+        // VoIP uses a separate bot/token/credential. Previously only the data-WS credential was warmed here,
+        // so the first call after a fresh login silently went direct until restart or a settings-toggle tap.
         AndroidUtilities.runOnUIThread(() ->
                 app.nimarkogram.messenger.wsbypass.voip.VoipRelayAuth.prefetchAsync(nmAcc), 5000);
 
@@ -2139,7 +2146,7 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
             codeField.setGravity(Gravity.LEFT | Gravity.CENTER_VERTICAL);
             codeField.setImeOptions(EditorInfo.IME_ACTION_NEXT | EditorInfo.IME_FLAG_NO_EXTRACT_UI);
             codeField.setBackground(null);
-
+//            codeField.setLineColors(getThemedColor(Theme.key_windowBackgroundWhiteInputField), getThemedColor(Theme.key_windowBackgroundWhiteInputFieldActivated), getThemedColor(Theme.key_text_RedRegular));
             codeField.setShowSoftInputOnFocus(!(hasCustomKeyboard() && !isCustomKeyboardForceDisabled()));
             codeField.setContentDescription(getString(R.string.LoginAccessibilityCountryCode));
             linearLayout.addView(codeField, LayoutHelper.createLinear(55, 36, -9, 0, 0, 0));
@@ -2292,6 +2299,7 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
                     return super.onKeyDown(keyCode, event);
                 }
 
+
                 @Override
                 public boolean onTouchEvent(MotionEvent event) {
                     if (event.getAction() == MotionEvent.ACTION_DOWN) {
@@ -2331,7 +2339,7 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
             phoneField.setGravity(Gravity.LEFT | Gravity.CENTER_VERTICAL);
             phoneField.setImeOptions(EditorInfo.IME_ACTION_NEXT | EditorInfo.IME_FLAG_NO_EXTRACT_UI);
             phoneField.setBackground(null);
-
+//            phoneField.setLineColors(getThemedColor(Theme.key_windowBackgroundWhiteInputField), getThemedColor(Theme.key_windowBackgroundWhiteInputFieldActivated), getThemedColor(Theme.key_text_RedRegular));
             phoneField.setShowSoftInputOnFocus(!(hasCustomKeyboard() && !isCustomKeyboardForceDisabled()));
             phoneField.setContentDescription(getString(R.string.PhoneNumber));
             linearLayout.addView(phoneField, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, 36));
@@ -2550,7 +2558,7 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
             try {
                 TelephonyManager telephonyManager = (TelephonyManager) ApplicationLoader.applicationContext.getSystemService(Context.TELEPHONY_SERVICE);
                 if (telephonyManager != null) {
-                    country = null;
+                    country = null;//telephonyManager.getSimCountryIso().toUpperCase();
                 }
             } catch (Exception e) {
                 FileLog.e(e);
@@ -3556,7 +3564,7 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
     }
 
     public class LoginActivitySmsView extends SlideView implements NotificationCenter.NotificationCenterDelegate {
-          RLottieDrawable hintDrawable;
+        /* package */ RLottieDrawable hintDrawable;
 
         private String phone;
         private String phoneHash;
@@ -3807,7 +3815,9 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
             timeText.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 15);
             timeText.setGravity(Gravity.TOP | Gravity.LEFT);
             timeText.setOnClickListener(v -> {
-
+//                if (isRequestingFirebaseSms || isResendingCode) {
+//                    return;
+//                }
                 if (time > 0 && timeTimer != null) {
                     return;
                 }
@@ -3816,7 +3826,7 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
                 timeText.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteValueText));
 
                 if (nextType == AUTH_TYPE_CALL || nextType == AUTH_TYPE_SMS || nextType == AUTH_TYPE_PHRASE || nextType == AUTH_TYPE_WORD || nextType == AUTH_TYPE_MISSED_CALL || nextType == AUTH_TYPE_FRAGMENT_SMS) {
-
+//                    timeText.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteGrayText6));
                     if (nextType == AUTH_TYPE_CALL || nextType == AUTH_TYPE_MISSED_CALL) {
                         timeText.setText(getString(R.string.Calling));
                     } else {
@@ -3971,7 +3981,7 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
                             if (!TextUtils.isEmpty(networkOperator)) {
                                 final String mcc = networkOperator.substring(0, 3);
                                 final String mnc = networkOperator.substring(3);
-
+//                                req.mcc = mcc;
                                 req.mnc = mnc;
                             }
                         } catch (Exception e) {
@@ -4143,9 +4153,9 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
 
         private void applyLottieColors(RLottieDrawable drawable) {
             if (drawable != null) {
-                drawable.setLayerColor("Bubble.**", Theme.getColor(Theme.key_chats_actionBackground));
-                drawable.setLayerColor("Phone.**", Theme.getColor(Theme.key_windowBackgroundWhiteBlackText));
-                drawable.setLayerColor("Note.**", Theme.getColor(Theme.key_windowBackgroundWhiteBlackText));
+                drawable.setLayerColor("Bubble", Theme.getColor(Theme.key_chats_actionBackground));
+                drawable.setLayerColor("Phone", Theme.getColor(Theme.key_windowBackgroundWhiteBlackText));
+                drawable.setLayerColor("Note", Theme.getColor(Theme.key_windowBackgroundWhiteBlackText));
             }
         }
 
@@ -4685,6 +4695,7 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
             }
         }
 
+
         @Override
         public void onNextPressed(String code) {
             if (currentViewNum == AUTH_TYPE_MISSED_CALL) {
@@ -5219,6 +5230,7 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
         }
     }
 
+
     public class LoadingTextView extends TextView {
 
         private final Drawable rippleDrawable = Theme.createSelectorDrawable(Theme.multAlpha(Theme.getColor(Theme.key_windowBackgroundWhiteValueText), .10f), Theme.RIPPLE_MASK_ROUNDRECT_6DP);
@@ -5562,6 +5574,7 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
                 } else {
                     x_bytes = null;
                 }
+
 
                 RequestDelegate requestDelegate = (response, error) -> AndroidUtilities.runOnUIThread(() -> {
                     nextPressed = false;
@@ -6872,6 +6885,7 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
                     params.putString("phoneFormated", requestPhone);
                     params.putString("phoneHash", phoneHash);
                     params.putString("code", finalCode);
+
 
                     if (response instanceof TLRPC.TL_auth_authorizationSignUpRequired) {
                         TLRPC.TL_auth_authorizationSignUpRequired authorization = (TLRPC.TL_auth_authorizationSignUpRequired) response;
@@ -8355,7 +8369,9 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
     }
 
     public LoginActivity setIntroView(View intro, TextView startButton) {
-        
+        //introView = intro;
+        //startMessagingButton = startButton;
+        //isAnimatingIntro = true;
         return this;
     }
 
@@ -8576,6 +8592,7 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
             fabTransform.setTransformType(TransformableLoginButtonView.TRANSFORM_ARROW_CHECK);
             fabTransform.setDrawBackground(false);
 
+
             fabButton = new FragmentFloatingButton(context, null);
             fabButton.addView(fabTransform, LayoutHelper.createFrame(56, 56, Gravity.CENTER));
             fabButton.addAdditionalView(fabTransform);
@@ -8662,6 +8679,7 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
                 public void onAnimationStart(Animator animation) {
                     fabContainer.setVisibility(GONE);
 
+                    // TODO: Generify this code, currently it's a clone
                     float scaleFactor = 10;
                     int w = (int) (fragmentView.getMeasuredWidth() / scaleFactor);
                     int h = (int) (fragmentView.getMeasuredHeight() / scaleFactor);
@@ -8833,6 +8851,7 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
         }
     }
 
+
     public class LoginActivityPhraseView extends SlideView {
 
         private final @AuthType int currentType;
@@ -8849,7 +8868,7 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
         private final TextView confirmTextView;
         private final TextView pasteTextView;
         private final LoadingTextView timeText;
-
+//        private TextView cancelButton;
         private boolean pasteShown = true;
         private boolean errorShown = false;
         private boolean pasting = false, pasted = false;
@@ -8883,7 +8902,7 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
             final int a;
             if (type == AUTH_TYPE_WORD) {
                 a = 0;
-            } else   {
+            } else /* if (type == AUTH_TYPE_PHRASE) */ {
                 a = 1;
             }
 
@@ -9076,7 +9095,9 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
             timeText.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 15);
             timeText.setGravity(Gravity.CENTER_VERTICAL | Gravity.LEFT);
             timeText.setOnClickListener(v -> {
-
+//                if (isRequestingFirebaseSms || isResendingCode) {
+//                    return;
+//                }
                 if (time > 0 && timeTimer != null) {
                     return;
                 }
@@ -9089,7 +9110,7 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
                     isResendingCode = true;
                     timeText.invalidate();
                     timeText.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteValueText));
-
+//                    timeText.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteGrayText6));
                     timeText.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 15);
                     if (nextType == AUTH_TYPE_CALL || nextType == AUTH_TYPE_MISSED_CALL) {
                         timeText.setText(getString(R.string.Calling));
@@ -9102,6 +9123,7 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
                     params.putString("phoneFormated", requestPhone);
                     params.putInt("prevType", currentType);
 
+//                    createCodeTimer();
                     TLRPC.TL_auth_resendCode req = new TLRPC.TL_auth_resendCode();
                     req.phone_number = requestPhone;
                     req.phone_code_hash = phoneHash;
@@ -9131,18 +9153,28 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
                     }), ConnectionsManager.RequestFlagFailOnServerErrors | ConnectionsManager.RequestFlagWithoutLogin);
                 } else if (nextType == AUTH_TYPE_FLASH_CALL) {
                     AndroidUtilities.setWaitingForSms(false);
-
+//                    NotificationCenter.getGlobalInstance().removeObserver(LoginActivitySmsView.this, NotificationCenter.didReceiveSmsCode);
                     waitingForEvent = false;
-
+//                    destroyCodeTimer();
                     resendCode();
                 }
             });
+
+//            cancelButton = new TextView(context);
+//            cancelButton.setGravity(Gravity.CENTER | Gravity.LEFT);
+//            cancelButton.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 15);
+//            cancelButton.setLineSpacing(AndroidUtilities.dp(2), 1.0f);
+//            cancelButton.setPadding(AndroidUtilities.dp(16), 0, AndroidUtilities.dp(16), 0);
+//            cancelButton.setText(getString(R.string.YourEmailSkip));
 
             FrameLayout bottomContainer = new FrameLayout(context);
             bottomContainer.addView(timeText, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, 56, Gravity.BOTTOM, 6, 0, 60, 28));
             addView(bottomContainer, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT, Gravity.BOTTOM));
             VerticalPositionAutoAnimator.attach(timeText);
 
+//            cancelButton.setOnClickListener(view -> {
+//
+//            });
         }
 
         private final Runnable checkPasteRunnable = () -> checkPaste(true);
@@ -9196,7 +9228,7 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
             codeField.setCursorColor(getThemedColor(Theme.key_windowBackgroundWhiteInputFieldActivated));
             codeField.setHintTextColor(getThemedColor(Theme.key_windowBackgroundWhiteHintText));
             outlineField.updateColor();
-
+//            cancelButton.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlueText4));
         }
 
         @Override
@@ -9368,7 +9400,7 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
                     ok = true;
                     showDoneButton(false, true);
                     destroyTimer();
-
+//                    destroyCodeTimer();
                     if (response instanceof TLRPC.TL_auth_authorizationSignUpRequired) {
                         TLRPC.TL_auth_authorizationSignUpRequired authorization = (TLRPC.TL_auth_authorizationSignUpRequired) response;
                         if (authorization.terms_of_service != null) {
@@ -9411,10 +9443,13 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
                             }
                         }), ConnectionsManager.RequestFlagFailOnServerErrors | ConnectionsManager.RequestFlagWithoutLogin);
                         destroyTimer();
-
+//                        destroyCodeTimer();
                     } else {
                         nextPressed = false;
-
+//                        showDoneButton(true, true);
+//                        if (currentType == AUTH_TYPE_FLASH_CALL && (nextType == AUTH_TYPE_CALL || nextType == AUTH_TYPE_SMS) || currentType == AUTH_TYPE_SMS && (nextType == AUTH_TYPE_CALL || nextType == AUTH_TYPE_FLASH_CALL) || currentType == AUTH_TYPE_CALL && nextType == AUTH_TYPE_SMS) {
+//                            createTimer();
+//                        }
                         if (currentType != AUTH_TYPE_FLASH_CALL) {
                             boolean isWrongCode = false;
                             if (error.text.contains("PHONE_NUMBER_INVALID")) {
@@ -9462,6 +9497,7 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
             showDoneButton(true, true);
         }
 
+
         private void resendCode() {
             if (nextPressed || isResendingCode || isRequestingFirebaseSms) {
                 return;
@@ -9470,6 +9506,7 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
             isResendingCode = true;
             timeText.invalidate();
             timeText.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteValueText));
+//            problemText.invalidate();
 
             final Bundle params = new Bundle();
             params.putString("phone", phone);
@@ -9558,13 +9595,71 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
             }
         }
 
+//        private void setProblemTextVisible(boolean visible) {
+//            if (problemText == null) {
+//                return;
+//            }
+//            float newAlpha = visible ? 1f : 0f;
+//            if (problemText.getAlpha() != newAlpha) {
+//                problemText.animate().cancel();
+//                problemText.animate().alpha(newAlpha).setDuration(150).start();
+//            }
+//        }
+//
+//        private void createCodeTimer() {
+//            if (codeTimer != null) {
+//                return;
+//            }
+//            codeTime = 15000;
+//            if (time > codeTime) {
+//                codeTime = time;
+//            }
+//            codeTimer = new Timer();
+//            lastCodeTime = System.currentTimeMillis();
+//            codeTimer.schedule(new TimerTask() {
+//                @Override
+//                public void run() {
+//                    AndroidUtilities.runOnUIThread(() -> {
+//                        double currentTime = System.currentTimeMillis();
+//                        double diff = currentTime - lastCodeTime;
+//                        lastCodeTime = currentTime;
+//                        codeTime -= diff;
+//                        if (codeTime <= 1000) {
+//                            setProblemTextVisible(true);
+//                            timeText.setVisibility(GONE);
+//                            if (problemText != null) {
+//                                problemText.setVisibility(VISIBLE);
+//                            }
+//                            destroyCodeTimer();
+//                        }
+//                    });
+//                }
+//            }, 0, 1000);
+//        }
+
+//
+//        private void destroyCodeTimer() {
+//            try {
+//                synchronized (timerSync) {
+//                    if (codeTimer != null) {
+//                        codeTimer.cancel();
+//                        codeTimer = null;
+//                    }
+//                }
+//            } catch (Exception e) {
+//                FileLog.e(e);
+//            }
+//        }
+
         private void createTimer() {
             if (timeTimer != null) {
                 return;
             }
             timeText.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteGrayText));
             timeText.setTag(R.id.color_key_tag, Theme.key_windowBackgroundWhiteGrayText);
-
+//            if (progressView != null) {
+//                progressView.resetProgressAnimation();
+//            }
             timeTimer = new Timer();
             timeTimer.schedule(new TimerTask() {
                 @Override
@@ -9586,7 +9681,9 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
                             } else if (nextType == AUTH_TYPE_SMS) {
                                 timeText.setText(LocaleController.formatString(R.string.SmsAvailableIn2, minutes, seconds));
                             }
-
+//                            if (progressView != null && !progressView.isProgressAnimationRunning()) {
+//                                progressView.startProgressAnimation(time - 1000L);
+//                            }
                         } else {
                             destroyTimer();
                             if (nextType == AUTH_TYPE_FLASH_CALL || nextType == AUTH_TYPE_CALL || nextType == AUTH_TYPE_SMS || nextType == AUTH_TYPE_MISSED_CALL) {
@@ -9651,7 +9748,9 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
             while ((st < len) && (str.charAt(st) <= ' ')) {
                 st++;
             }
-
+//                    while ((st < len) && (str.charAt(len - 1) <= ' ')) {
+//                        len--;
+//                    }
             return ((st > 0) || (len < str.length())) ? str.substring(st, len) : str;
         }
     }
@@ -9727,7 +9826,7 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
             Canvas canvas = new Canvas(bitmap);
             canvas.drawColor(ColorUtils.blendARGB(Theme.getColor(Theme.key_premiumGradient2), Theme.getColor(Theme.key_dialogBackground), 0.5f));
             iconTextureView.setBackgroundBitmap(bitmap);
-
+//                iconTextureView.mRenderer.forceNight = true;
             iconTextureView.mRenderer.colorKey1 = Theme.key_premiumGradient2;
             iconTextureView.mRenderer.colorKey2 = Theme.key_premiumGradient1;
             iconTextureView.mRenderer.updateColors();

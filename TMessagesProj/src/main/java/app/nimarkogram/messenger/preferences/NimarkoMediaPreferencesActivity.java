@@ -1,3 +1,11 @@
+/**
+ * NimarkoMedia native settings screen. Mirrors the Python plugin's
+ * create_settings: auto-download switch, YouTube default-format selector, ask
+ * YouTube format every time. Plus a test-download tile and the supported
+ * platforms info card.
+ *
+ * Reached from MainPreferencesActivity → "Разное" / "Misc" → NimarkoMedia.
+ */
 package app.nimarkogram.messenger.preferences;
 
 import android.view.View;
@@ -6,6 +14,7 @@ import java.util.ArrayList;
 
 import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.R;
+import org.telegram.messenger.AndroidUtilities;
 import org.telegram.ui.Components.UItem;
 import org.telegram.ui.Components.UniversalAdapter;
 
@@ -17,6 +26,11 @@ public class NimarkoMediaPreferencesActivity extends BasePreferencesActivity {
     private static final int ID_YT_ASK        = 101;
     private static final int ID_YT_FMT_VIDEO  = 102;
     private static final int ID_YT_FMT_AUDIO  = 103;
+    private final Runnable refreshRowsRunnable = () -> {
+        if (listView != null && listView.adapter != null) {
+            listView.adapter.update(true);
+        }
+    };
 
     @Override
     public String getTitle() {
@@ -81,9 +95,15 @@ public class NimarkoMediaPreferencesActivity extends BasePreferencesActivity {
         }
     }
 
+    /** Refreshes the recycler so switches/radios show the new state. */
     private void reloadMainInfo() {
-        if (listView != null && listView.adapter != null) {
-            listView.adapter.update(true);
-        }
+        AndroidUtilities.cancelRunOnUIThread(refreshRowsRunnable);
+        AndroidUtilities.runOnUIThread(refreshRowsRunnable, 180);
+    }
+
+    @Override
+    public void onFragmentDestroy() {
+        AndroidUtilities.cancelRunOnUIThread(refreshRowsRunnable);
+        super.onFragmentDestroy();
     }
 }
