@@ -1378,7 +1378,7 @@ public final class NimarkoBannerRenderer {
     }
 
     private void syncVideoViewport(int y1) {
-        final int vh = Math.max(y1 - 1, 1);
+        final int vh = Math.max(y1, 1);
         if (vh > maxVh) {
             maxVh = vh;
         }
@@ -1510,7 +1510,7 @@ public final class NimarkoBannerRenderer {
                     catch (Throwable e) { destroyVideo(); }
                 } else destroyVideo();
             }
-            videoViewH = Math.max(y1 - 1, 1);
+            videoViewH = Math.max(y1, 1);
             if (!prepVideo(path)) return;
             boolean reparentKeepFreeze = false;
             if (videoTexture != null) {

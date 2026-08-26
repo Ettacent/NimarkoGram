@@ -4,6 +4,7 @@ import static org.telegram.messenger.AndroidUtilities.dp;
 
 import android.content.Context;
 import android.graphics.Canvas;
+import android.graphics.Paint;
 import android.graphics.drawable.Drawable;
 import android.text.TextUtils;
 import android.util.TypedValue;
@@ -144,13 +145,34 @@ public class ProfileChannelCell extends FrameLayout implements Theme.Colorable {
 
     private boolean loading;
     private AnimatedFloat loadingAlpha = new AnimatedFloat(320, CubicBezierInterpolator.EASE_OUT_QUINT);
+    private final AnimatedFloat contentAlpha = new AnimatedFloat(220, CubicBezierInterpolator.EASE_OUT_QUINT);
     private final LoadingDrawable loadingDrawable;
+    private final Paint contentMaskPaint = new Paint();
 
     @Override
     protected void dispatchDraw(Canvas canvas) {
         super.dispatchDraw(canvas);
 
         float loading = loadingAlpha.set(this.loading);
+        float content = contentAlpha.set(this.loading ? 0f : 1f);
+        if (content < 1f) {
+            contentMaskPaint.setAlpha(Math.round(255f * (1f - content)));
+            canvas.drawRect(
+                    dialogCell.getX() + dp(dialogCell.messagePaddingStart + 2),
+                    dialogCell.getY() + dp(31),
+                    dialogCell.getRight(),
+                    dialogCell.getBottom(),
+                    contentMaskPaint
+            );
+            canvas.drawRect(
+                    dialogCell.getRight() - dp(76),
+                    dialogCell.getY() + dp(4),
+                    dialogCell.getRight(),
+                    dialogCell.getY() + dp(27),
+                    contentMaskPaint
+            );
+            invalidate();
+        }
         if (loading > 0) {
             loadingDrawable.setAlpha((int) (0xFF * loading));
 
@@ -255,6 +277,7 @@ public class ProfileChannelCell extends FrameLayout implements Theme.Colorable {
 
         if (!animated) {
             loadingAlpha.set(loading, true);
+            contentAlpha.set(loading ? 0f : 1f, true);
         }
         invalidate();
 
@@ -392,7 +415,7 @@ public class ProfileChannelCell extends FrameLayout implements Theme.Colorable {
 
                             if (!res.messages.isEmpty()) {
                                 messageObjects.clear();
-                                Collections.sort(messages, Comparator.comparingInt(msg -> msg.id));
+                                Collections.sort(res.messages, Comparator.comparingInt(msg -> msg.id));
                                 final TLRPC.Message lastMessage = res.messages.get(res.messages.size() - 1);
                                 final long grouped_id = lastMessage.grouped_id;
                                 if (grouped_id != 0) {
@@ -407,8 +430,10 @@ public class ProfileChannelCell extends FrameLayout implements Theme.Colorable {
 
                                 if (!messageObjects.isEmpty()) {
                                     done(false);
+                                    return;
                                 }
                             }
+                            done(true);
                         } else {
                             if (thisSearchId != searchId) return;
                             done(true);
@@ -447,6 +472,7 @@ public class ProfileChannelCell extends FrameLayout implements Theme.Colorable {
         subscribersView.setTextColor(headerColor);
         subscribersView.setBackground(Theme.createRoundRectDrawable(dp(9f), dp(9f), Theme.multAlpha(headerColor, .1f)));
         headerView.setTextColor(headerColor);
+        contentMaskPaint.setColor(processColor(Theme.getColor(Theme.key_windowBackgroundWhite, resourcesProvider)));
     }
 
 }

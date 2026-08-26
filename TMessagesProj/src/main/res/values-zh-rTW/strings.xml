@@ -410,8 +410,8 @@
     <string name="NM_GE_UploadSpeedBoost">上傳加速</string>
     <string name="EP_Network">網路</string>
     <string name="CP_Header_Record">媒體</string>
-    <string name="NM_PR_AllowSystemPasscode">裝置驗證</string>
-    <string name="NM_PR_AllowSystemPasscode_Desc">使用生物辨識或裝置螢幕鎖定。</string>
+    <string name="NM_PR_AllowSystemPasscode">允許裝置螢幕鎖定驗證</string>
+    <string name="NM_PR_AllowSystemPasscode_Desc">允許使用裝置 PIN、密碼或圖形代替生物辨識。</string>
     <string name="NM_PR_AskBioOpenArchive">保護封存聊天</string>
     <string name="NM_PR_AskBioOpenArchive_Desc">開啟封存前要求裝置身分驗證。</string>
     <string name="NM_PR_AskBioOpenEncrypted">保護私密聊天</string>
@@ -488,6 +488,8 @@
     <string name="NM_PR_TestFingerprint">測試驗證</string>
     <string name="NM_PR_TestFingerprint_Desc">檢查生物辨識或裝置身分驗證是否可用，並重新整理其狀態。</string>
     <string name="NM_PR_AskBioOpenChats">保護所選聊天</string>
+    <string name="NM_PR_AskBioOpenSavedMessages">保護收藏訊息</string>
+    <string name="NM_PR_AskBioOpenSavedMessages_Desc">開啟收藏訊息前要求生物辨識或裝置驗證。</string>
     <string name="NM_PR_AuthenticationRequired">變更此受保護設定需要身分驗證</string>
     <string name="NM_PR_AuthenticationUnavailable">身分驗證無法使用</string>
     <string name="NM_PR_AuthenticationUnavailable_Desc">裝置上沒有可用的生物辨識或螢幕鎖定。要停用此保護設定嗎？</string>
@@ -961,7 +963,6 @@
     <string name="CP_AdminActions">管理員快捷操作</string>
     <string name="AP_Header_General">一般</string>
     <string name="EP_NavigationAnimation">導覽動畫</string>
-    <string name="EP_NavigationAnimationCrossfading">交叉淡入淡出效果</string>
     <string name="NM_PredictiveBackAnimation">Predictive-Back 導覽</string>
     <string name="CP_SilenceNonContacts">靜音非聯絡人</string>
     <string name="CP_SilenceNonContacts_Desc">僅聯絡人通知發出聲音。</string>

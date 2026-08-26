@@ -409,7 +409,6 @@
     <string name="NM_SnowInHeader_Desc">Показывать снег в верхней панели</string>
     <string name="NM_CP_SnowflakesInChat_Desc">Показывать снег поверх сообщений в открытом чате</string>
     <string name="NM_SettingsDesc_NavigationAnimation">Выберите анимацию открытия и закрытия экранов</string>
-    <string name="NM_SettingsDesc_NavigationCrossfade">Плавно сменять элементы верхней панели</string>
     <string name="NM_SettingsDesc_PredictiveBack">Показывать предыдущий экран во время жеста назад</string>
     <string name="NM_SettingsDesc_SystemEmoji">Использовать набор эмодзи с устройства</string>
     <string name="NM_SettingsDesc_SystemFonts">Использовать системный шрифт во всём приложении</string>

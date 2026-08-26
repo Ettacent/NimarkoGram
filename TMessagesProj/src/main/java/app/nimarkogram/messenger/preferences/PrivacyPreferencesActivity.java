@@ -43,6 +43,7 @@ public class PrivacyPreferencesActivity extends BasePreferencesActivity {
     private static final int ID_PROTECT_SECRET_CHATS = 12;
     private static final int ID_PROTECT_ARCHIVE = 13;
     private static final int ID_OPEN_ARCHIVE = 14;
+    private static final int ID_PROTECT_SAVED_MESSAGES = 15;
 
     @Override
     public String getTitle() {
@@ -67,6 +68,10 @@ public class PrivacyPreferencesActivity extends BasePreferencesActivity {
                         LocaleController.getString(R.string.NM_PR_AskBioOpenChats),
                         LocaleController.getString(R.string.NM_PR_AskBioOpenChats_Desc))
                 .setChecked(NimarkoConfig.askBiometricsToOpenChat));
+        items.add(SettingsHelper.asSwitchCG(ID_PROTECT_SAVED_MESSAGES,
+                        LocaleController.getString(R.string.NM_PR_AskBioOpenSavedMessages),
+                        LocaleController.getString(R.string.NM_PR_AskBioOpenSavedMessages_Desc))
+                .setChecked(NimarkoConfig.askBiometricsToOpenSavedMessages));
         if (NimarkoConfig.askBiometricsToOpenChat) {
             int count = app.nimarkogram.messenger.utils.LockedChats.count(currentAccount);
             items.add(asSettingsValue(ID_LOCKED_CHATS, IconBackgroundColors.GREEN,
@@ -152,6 +157,11 @@ public class PrivacyPreferencesActivity extends BasePreferencesActivity {
                 NimarkoConfig.toggleAskBiometricsToOpenChat();
                 applyCheck(item, view, NimarkoConfig.askBiometricsToOpenChat);
                 refreshItems();
+            });
+        } else if (id == ID_PROTECT_SAVED_MESSAGES) {
+            changeProtectedSetting(NimarkoConfig.askBiometricsToOpenSavedMessages, () -> {
+                NimarkoConfig.toggleAskBiometricsToOpenSavedMessages();
+                applyCheck(item, view, NimarkoConfig.askBiometricsToOpenSavedMessages);
             });
         } else if (id == ID_PROTECT_SECRET_CHATS) {
             changeProtectedSetting(NimarkoConfig.askBiometricsToOpenEncrypted, () -> {

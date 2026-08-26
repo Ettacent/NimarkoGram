@@ -11131,8 +11131,8 @@
     <string name="CP_Header_Record">Media</string>
 
     <!-- Privacy (extra) -->
-    <string name="NM_PR_AllowSystemPasscode">Device authentication</string>
-    <string name="NM_PR_AllowSystemPasscode_Desc">Use biometrics or the device screen lock.</string>
+    <string name="NM_PR_AllowSystemPasscode">Allow device screen lock</string>
+    <string name="NM_PR_AllowSystemPasscode_Desc">Allow the device PIN, password, or pattern instead of biometrics.</string>
     <string name="NM_PR_AskBioOpenArchive">Protect archived chats</string>
     <string name="NM_PR_AskBioOpenArchive_Desc">Require device authentication before opening the archive.</string>
     <string name="NM_PR_AskBioOpenEncrypted">Protect secret chats</string>
@@ -11215,6 +11215,8 @@
     <string name="NM_PR_TestFingerprint">Test authentication</string>
     <string name="NM_PR_TestFingerprint_Desc">Checks whether biometric or device authentication is available and refreshes its state.</string>
     <string name="NM_PR_AskBioOpenChats">Protect selected chats</string>
+    <string name="NM_PR_AskBioOpenSavedMessages">Protect Saved Messages</string>
+    <string name="NM_PR_AskBioOpenSavedMessages_Desc">Require biometrics or device authentication before opening Saved Messages.</string>
     <string name="NM_PR_AuthenticationRequired">Authentication is required to change this protected setting</string>
     <string name="NM_PR_AuthenticationUnavailable">Authentication unavailable</string>
     <string name="NM_PR_AuthenticationUnavailable_Desc">No biometric or device screen lock is available. Disable this protection setting?</string>
@@ -11710,7 +11712,6 @@
     <!-- General -->
     <string name="AP_Header_General">General</string>
     <string name="EP_NavigationAnimation">Navigation animation</string>
-    <string name="EP_NavigationAnimationCrossfading">Smooth title transition</string>
     <string name="NM_PredictiveBackAnimation">Predictive back gesture</string>
     <string name="CP_SilenceNonContacts">Silence non-contacts</string>
     <string name="CP_SilenceNonContacts_Desc">Play notification sounds only for contacts.</string>

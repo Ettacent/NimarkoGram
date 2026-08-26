@@ -312,16 +312,6 @@ public abstract class BaseFragment {
     }
 
     public boolean isActionBarCrossfadeEnabled() {
-        // NimarkoGram: ported from Cherrygram (GPL-2.0). Active only when both spring
-        // animation and the actionbarCrossfade pref are enabled, the story viewer
-        // isn't attached, and the action bar isn't in action-mode (CG parity).
-        if (app.nimarkogram.messenger.NimarkoConfig.isSpringAnimationEnabled()
-                && app.nimarkogram.messenger.NimarkoConfig.actionbarCrossfade) {
-            if (getLastStoryViewer() != null && getLastStoryViewer().attachedToParent()) {
-                return false;
-            }
-            return actionBar != null && !actionBar.isActionModeShowed();
-        }
         return actionBar != null;
     }
 

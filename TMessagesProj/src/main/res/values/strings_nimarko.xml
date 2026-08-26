@@ -411,7 +411,6 @@
     <string name="NM_SnowInHeader_Desc">Show snow in the top bar</string>
     <string name="NM_CP_SnowflakesInChat_Desc">Show snow over messages in open chats</string>
     <string name="NM_SettingsDesc_NavigationAnimation">Choose how screens open and close</string>
-    <string name="NM_SettingsDesc_NavigationCrossfade">Smoothly blend top-bar elements during transitions</string>
     <string name="NM_SettingsDesc_PredictiveBack">Preview the previous screen while swiping back</string>
     <string name="NM_SettingsDesc_SystemEmoji">Use the emoji set installed on your device</string>
     <string name="NM_SettingsDesc_SystemFonts">Use the device font throughout the app</string>

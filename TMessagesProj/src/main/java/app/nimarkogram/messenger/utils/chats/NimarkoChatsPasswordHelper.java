@@ -10,6 +10,7 @@ import org.telegram.messenger.DialogObject;
 import org.telegram.messenger.FingerprintController;
 import org.telegram.messenger.MessageObject;
 import org.telegram.messenger.MessagesController;
+import org.telegram.messenger.UserConfig;
 import org.telegram.tgnet.TLRPC;
 
 import java.util.ArrayList;
@@ -28,16 +29,18 @@ public final class NimarkoChatsPasswordHelper {
     };
 
     public static boolean isChatLocked(long chatId) {
-        return CGCompat.isChatLocked(chatId);
+        return isChatLocked(UserConfig.selectedAccount, chatId);
     }
 
     public static boolean isChatLocked(int currentAccount, long dialogId) {
+        if (isSavedMessagesProtected(currentAccount, dialogId)) return true;
         return CGCompat.isChatLocked(currentAccount, dialogId);
     }
 
     public static boolean isChatLocked(@Nullable MessageObject messageObject) {
         if (messageObject == null || messageObject.messageOwner == null) return false;
-        if (!NimarkoConfig.askBiometricsToOpenChat) return false;
+        if (!NimarkoConfig.askBiometricsToOpenChat
+                && !NimarkoConfig.askBiometricsToOpenSavedMessages) return false;
         if (messageObject.messageOwner.message == null) return false;
         if (messageObject.isStoryReactionPush || messageObject.isStoryPush
                 || messageObject.isStoryMentionPush || messageObject.isStoryPushHidden) {
@@ -140,18 +143,31 @@ public final class NimarkoChatsPasswordHelper {
     }
 
     public static boolean shouldRequireBiometrics(long userId, long chatId, long encId, int currentAccount) {
+        boolean savedMessages = userId != 0L
+                && userId == UserConfig.getInstance(currentAccount).getClientUserId();
         boolean lockedChat = (userId != 0L && isChatLocked(currentAccount, userId))
                 || (chatId != 0L && isChatLocked(currentAccount, -Math.abs(chatId)));
         boolean encryptedChat = false;
         if (encId != 0L && encId >= Integer.MIN_VALUE && encId <= Integer.MAX_VALUE) {
             encryptedChat = MessagesController.getInstance(currentAccount).getEncryptedChat((int) encId) != null;
         }
-        return (lockedChat && shouldRequireBiometricsToOpenChats())
+        return (savedMessages && shouldRequireBiometricsToOpenSavedMessages())
+                || (lockedChat && shouldRequireBiometricsToOpenChats())
                 || (encryptedChat && shouldRequireBiometricsToOpenEncryptedChats());
+    }
+
+    public static boolean isSavedMessagesProtected(int currentAccount, long dialogId) {
+        return NimarkoConfig.askBiometricsToOpenSavedMessages
+                && dialogId != 0L
+                && dialogId == UserConfig.getInstance(currentAccount).getClientUserId();
     }
 
     public static boolean shouldRequireBiometricsToOpenChats() {
         return NimarkoConfig.askBiometricsToOpenChat;
+    }
+
+    public static boolean shouldRequireBiometricsToOpenSavedMessages() {
+        return NimarkoConfig.askBiometricsToOpenSavedMessages;
     }
 
     public static boolean shouldRequireBiometricsToOpenEncryptedChats() {
