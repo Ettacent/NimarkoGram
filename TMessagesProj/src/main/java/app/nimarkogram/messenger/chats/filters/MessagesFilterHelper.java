@@ -500,10 +500,6 @@ public class MessagesFilterHelper {
         
         if (!isChatFiltered(dialogId, msg.currentAccount)) return false;
 
-        if (NimarkoConfig.isMsgFiltersHideAll()) {
-            return true;
-        }
-
         if (NimarkoConfig.isMsgFiltersHideFromBlocked() && msg.messageOwner != null && msg.messageOwner.from_id != null) {
             try {
                 long fromId = senderPeerId(msg);
@@ -603,6 +599,26 @@ public class MessagesFilterHelper {
         try { dialogId = msg.getDialogId(); } catch (Throwable t) { dialogId = 0L; }
         
         if (!isChatFiltered(dialogId, msg.currentAccount)) return out;
+        if (NimarkoConfig.isMsgFiltersHideAll() && shouldBlockMessage(msg)) {
+            if (target != null && target.length() > 0) {
+                boolean covered = false;
+                for (int i = 0; i < out.size(); i++) {
+                    TLRPC.MessageEntity entity = out.get(i);
+                    if (entity instanceof TLRPC.TL_messageEntitySpoiler
+                            && entity.offset <= 0 && entity.offset + entity.length >= target.length()) {
+                        covered = true;
+                        break;
+                    }
+                }
+                if (!covered) {
+                    TLRPC.TL_messageEntitySpoiler spoiler = new TLRPC.TL_messageEntitySpoiler();
+                    spoiler.offset = 0;
+                    spoiler.length = target.length();
+                    out.add(spoiler);
+                }
+            }
+            return out;
+        }
         addSpoilerRunsFor(target, out);
         return out;
     }

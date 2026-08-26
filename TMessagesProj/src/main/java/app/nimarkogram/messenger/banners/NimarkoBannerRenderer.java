@@ -315,6 +315,10 @@ public final class NimarkoBannerRenderer {
     }
 
     public void onProfileResumed(ViewGroup topView, long dialogId) {
+        if (isProfileOpen && viewedProfileId == dialogId && currentTopView == topView) {
+            postInv();
+            return;
+        }
         ViewGroup prevTopView = currentTopView;
         boolean samePeer = viewedProfileId != 0 && viewedProfileId == dialogId;
         boolean topViewChanged = samePeer && prevTopView != topView;
@@ -880,10 +884,6 @@ public final class NimarkoBannerRenderer {
         if (storyView != null) {
             try {
                 setViewAlphaIfNeeded(storyView, af);
-                if (avSvVis != View.VISIBLE) {
-                    storyView.setVisibility(View.VISIBLE);
-                    avSvVis = View.VISIBLE;
-                }
             } catch (Throwable ignored) {}
         }
         setViewAlphaIfNeeded(giftsView, gf);

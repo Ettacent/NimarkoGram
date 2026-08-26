@@ -668,7 +668,10 @@ public class MessageObject {
                     || app.nimarkogram.messenger.utils.chats.NimarkoChatsPasswordHelper.isEncryptedChat(chatID, currentAccount);
             addSpoiler = require;
         }
-        return addSpoiler;
+        boolean filtered = (app.nimarkogram.messenger.NimarkoConfig.isMsgFiltersHideAll()
+                || app.nimarkogram.messenger.NimarkoConfig.isMsgFiltersHideFromBlocked())
+                && shouldBlockMessage();
+        return filtered || addSpoiler;
     }
 
     public Boolean isSensitiveCached;
@@ -1342,6 +1345,9 @@ public class MessageObject {
             int firstSpanAdditionalSize = 200;
 
             int count = messages.size();
+            for (int i = 0; i < count; i++) {
+                messages.get(i).groupedMessageBlocked = false;
+            }
             if (count == 1) {
                 captionMessage = messages.get(0);
                 return;
@@ -1363,8 +1369,10 @@ public class MessageObject {
             boolean checkCaption = true;
 
             captionAbove = false;
+            boolean blocked = false;
             for (int a = (reversed ? count - 1 : 0); (reversed ? a >= 0 : a < count);) {
                 MessageObject messageObject = messages.get(a);
+                blocked = blocked || messageObject.shouldBlockMessage();
                 if (a == (reversed ? count - 1 : 0)) {
                     messageObject.isOutOwnerCached = null;
                     isOut = messageObject.isOutOwner();
@@ -1729,6 +1737,7 @@ public class MessageObject {
                     }
                 }
                 MessageObject messageObject = messages.get(a);
+                messageObject.groupedMessageBlocked = blocked;
                 if (!isOut && messageObject.needDrawAvatarInternal()) {
                     if (pos.edge) {
                         if (pos.spanSize != 1000) {
@@ -10164,6 +10173,7 @@ public class MessageObject {
     /** NM_MF: ported CG MessageObject "filtered" cache. Null = not yet computed. */
     public volatile Boolean messageBlocked;
     private volatile MessageBlockedVerdict messageBlockedVerdict;
+    private volatile boolean groupedMessageBlocked;
 
     private MessageBlockedVerdict publishMessageBlockedVerdict(Object configurationToken, boolean blocked) {
         MessageBlockedVerdict verdict = new MessageBlockedVerdict(configurationToken, blocked);
@@ -10187,7 +10197,7 @@ public class MessageObject {
                 return MessagesFilterHelper.INSTANCE.shouldBlockMessage(this);
             }
         }
-        return verdict.blocked;
+        return groupedMessageBlocked || verdict.blocked;
     }
 
     public boolean shouldCollapseFilteredMessage() {

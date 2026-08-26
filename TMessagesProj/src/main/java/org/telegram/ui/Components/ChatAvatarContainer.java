@@ -835,7 +835,7 @@ public class ChatAvatarContainer extends FrameLayout implements FactorAnimator.T
     }
 
     public void openProfile(boolean byAvatar, boolean fromChatAnimation, boolean removeLast) {
-        if (byAvatar && (AndroidUtilities.isTablet() || AndroidUtilities.displaySize.x > AndroidUtilities.displaySize.y)) {
+        if (byAvatar && (AndroidUtilities.isTablet() || AndroidUtilities.displaySize.x > AndroidUtilities.displaySize.y || !avatarImageView.getImageReceiver().hasNotThumb())) {
             byAvatar = false;
         }
         TLRPC.User user = parentFragment.getCurrentUser();
@@ -860,22 +860,6 @@ public class ChatAvatarContainer extends FrameLayout implements FactorAnimator.T
             Drawable drawable = imageReceiver.getDrawable();
             if (drawable instanceof BitmapDrawable && !(drawable instanceof AnimatedFileDrawable)) {
                 imageLoader.putImageToCache((BitmapDrawable) drawable, key, false);
-            }
-        }
-
-        if (byAvatar) {
-            // Keep the user's intent (full avatar expansion) separate from the
-            // current image-loading stage. On the first open ImageReceiver may
-            // still contain only a thumbnail, so hasNotThumb() is false even
-            // though the peer has a real profile photo. Downgrading to the
-            // compact animation in that state produces the deterministic
-            // 96dp/138dp (~70%) opening. ProfileActivity already crossfades
-            // from this source receiver to the full-resolution gallery image.
-            final boolean hasProfilePhoto = user != null
-                    ? UserObject.hasPhoto(user)
-                    : ChatObject.hasPhoto(chat);
-            if (!hasProfilePhoto) {
-                byAvatar = false;
             }
         }
 
