@@ -67,6 +67,7 @@ public final class NimarkoConfigBackup {
     private static final Set<String> DEVICE_LOCAL_SECURITY_KEYS = new HashSet<>(Arrays.asList(
             "askBiometricsBeforeDelete",
             "askBiometricsToOpenChat",
+            "askBiometricsToOpenSavedMessages",
             "lockedChatsBiometricTtlSec",
             "allowSystemPasscode",
             "askBiometricsToOpenArchive",

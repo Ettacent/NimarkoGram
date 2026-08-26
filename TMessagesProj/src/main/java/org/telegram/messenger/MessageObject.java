@@ -662,9 +662,11 @@ public class MessageObject {
         org.telegram.ui.ActionBar.BaseFragment currentFragment = LaunchActivity.getSafeLastFragment();
         boolean isProperActivity = currentFragment instanceof org.telegram.ui.DialogsActivity || notifications;
         if (isProperActivity && (app.nimarkogram.messenger.NimarkoConfig.askBiometricsToOpenChat
+                || app.nimarkogram.messenger.NimarkoConfig.askBiometricsToOpenSavedMessages
                 || app.nimarkogram.messenger.NimarkoConfig.askBiometricsToOpenEncrypted)) {
             long chatID = messageOwner.dialog_id;
             boolean require = app.nimarkogram.messenger.utils.chats.NimarkoChatsPasswordHelper.isChatLocked(currentAccount, chatID)
+                    || app.nimarkogram.messenger.utils.chats.NimarkoChatsPasswordHelper.isSavedMessagesProtected(currentAccount, chatID)
                     || app.nimarkogram.messenger.utils.chats.NimarkoChatsPasswordHelper.isEncryptedChat(chatID, currentAccount);
             addSpoiler = require;
         }

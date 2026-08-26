@@ -6963,8 +6963,26 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
     private final ArrayList<Pair<Integer, CharSequence>> appliedTabs = new ArrayList<>();
     private boolean wasReordering;
     private int firstTab = -1;
+    private boolean updateTabsAfterProfileTransition;
+    private boolean animateTabsAfterProfileTransition;
+
+    public void onProfileTransitionFinished() {
+        if (!updateTabsAfterProfileTransition) {
+            return;
+        }
+        boolean animated = animateTabsAfterProfileTransition;
+        updateTabsAfterProfileTransition = false;
+        animateTabsAfterProfileTransition = false;
+        updateTabs(animated);
+    }
+
     public void updateTabs(boolean animated) {
         if (scrollSlidingTextTabStrip == null) {
+            return;
+        }
+        if (delegate.isProfileTransitionInProgress()) {
+            updateTabsAfterProfileTransition = true;
+            animateTabsAfterProfileTransition |= animated;
             return;
         }
         if (!delegate.isFragmentOpened()) {
@@ -11715,6 +11733,10 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
         TLRPC.Chat getCurrentChat();
 
         boolean isFragmentOpened();
+
+        default boolean isProfileTransitionInProgress() {
+            return false;
+        }
 
         RecyclerListView getListView();
 

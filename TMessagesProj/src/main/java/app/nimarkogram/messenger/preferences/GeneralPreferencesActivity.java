@@ -72,7 +72,6 @@ public class GeneralPreferencesActivity extends NimarkoUniversalPreferencesActiv
     private static final int MAX_CONFIG_IMPORT_BYTES = 2 * 1024 * 1024;
 
     private static final int springAnimationRow = 1;
-    private static final int actionbarCrossfadeRow = 2;
     private static final int predictiveBackRow = 3;
 
     private static final int silenceNonContactsRow = 4;
@@ -111,7 +110,7 @@ public class GeneralPreferencesActivity extends NimarkoUniversalPreferencesActiv
 
     public static GeneralPreferencesActivity forSetting(int itemId) {
         int targetPage = switch (itemId) {
-            case springAnimationRow, actionbarCrossfadeRow, predictiveBackRow,
+            case springAnimationRow, predictiveBackRow,
                     useSystemEmojiRow, useSystemFontsRow, tabledModeRow -> PAGE_SYSTEM;
             case silenceNonContactsRow, residentNotificationRow, notificationReactionsRow,
                     notificationReactionEmojiRow, hideStoriesRow, archiveStoriesRow -> PAGE_NOTIFICATIONS;
@@ -223,11 +222,6 @@ public class GeneralPreferencesActivity extends NimarkoUniversalPreferencesActiv
     private void fillInterface(ArrayList<UItem> items) {
         items.add(asSettingsValue(springAnimationRow, IconBackgroundColors.BLUE,
                 R.drawable.msg_speed, getString(R.string.EP_NavigationAnimation), getSpringValue()));
-        if (NimarkoConfig.springAnimation == NimarkoConfig.SPRING_SPRING) {
-            items.add(SettingsHelper.asSwitchCG(actionbarCrossfadeRow, getString(R.string.EP_NavigationAnimationCrossfading))
-                    .setChecked(NimarkoConfig.actionbarCrossfade)
-            );
-        }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
             items.add(SettingsHelper.asSwitchCG(predictiveBackRow, getString(R.string.NM_PredictiveBackAnimation))
                     .setChecked(NimarkoConfig.predictiveBack)
@@ -341,25 +335,9 @@ public class GeneralPreferencesActivity extends NimarkoUniversalPreferencesActiv
 
                 showRestartBulletin();
             });
-        } else if (item.id == actionbarCrossfadeRow) {
-            NimarkoConfig.toggleActionbarCrossfade();
-            SettingsHelper.updateCheckState(view, NimarkoConfig.actionbarCrossfade);
-
-            if (NimarkoConfig.actionbarCrossfade && NimarkoConfig.predictiveBack) {
-                NimarkoConfig.togglePredictiveBack();
-                listView.adapter.update(true);
-            }
-
-            showRestartBulletin();
         } else if (item.id == predictiveBackRow) {
             NimarkoConfig.togglePredictiveBack();
             SettingsHelper.updateCheckState(view, NimarkoConfig.predictiveBack);
-
-            if (NimarkoConfig.predictiveBack && NimarkoConfig.actionbarCrossfade) {
-                NimarkoConfig.toggleActionbarCrossfade();
-                listView.adapter.update(true);
-            }
-
             showRestartBulletin();
         } else if (item.id == silenceNonContactsRow) {
             NimarkoConfig.toggleSilenceNonContacts();

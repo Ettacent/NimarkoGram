@@ -13,7 +13,6 @@ import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.Path;
 import android.graphics.PorterDuff;
-import android.graphics.PorterDuffColorFilter;
 import android.graphics.RectF;
 import android.graphics.RenderNode;
 import android.graphics.drawable.Drawable;
@@ -41,27 +40,24 @@ import org.telegram.ui.ProfileActivity;
 public class ProfileMusicView extends View {
 
     private final Theme.ResourcesProvider resourcesProvider;
-    private final PorterDuffColorFilter filterColorWhite = new PorterDuffColorFilter(Color.WHITE, PorterDuff.Mode.SRC_IN);
-    private final PorterDuffColorFilter filterColorBlack = new PorterDuffColorFilter(Color.BLACK, PorterDuff.Mode.SRC_IN);
-
     private Text author, title;
-    private final Paint iconPaint = new Paint();
     private final Paint arrowPaint = new Paint();
     private final Path arrowPath = new Path();
     private final Drawable icon;
 
     private final RectF rect = new RectF();
     private final Paint backgroundPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint bannerBackgroundPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint strokePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Path clipPath = new Path();
 
     private final ButtonBounce bounce = new ButtonBounce(this);
-
     public ProfileMusicView(Context context, Theme.ResourcesProvider resourcesProvider) {
         super(context);
         this.resourcesProvider = resourcesProvider;
 
         icon = context.getResources().getDrawable(R.drawable.files_music).mutate();
+        bannerBackgroundPaint.setColor(0x40000000);
 
         arrowPaint.setStyle(Paint.Style.STROKE);
         arrowPaint.setStrokeCap(Paint.Cap.ROUND);
@@ -91,8 +87,10 @@ public class ProfileMusicView extends View {
     private int textColor = Color.WHITE;
     private float parentExpanded;
     private int backgroundColor;
+    private int normalTextColor = Color.WHITE;
+    private int appliedIconColor;
     private boolean withShadows;
-    private boolean bannerMode;
+    private float bannerProgress;
 
     public void setColor(MessagesController.PeerColor peerColor) {
         
@@ -112,18 +110,33 @@ public class ProfileMusicView extends View {
             backgroundColor = Theme.adaptHSV(ColorUtils.blendARGB(color1, color2, .15f), +.04f, -.09f);
             withShadows = false;
         }
-        backgroundPaint.setColor(bannerMode ? 0x40000000 : backgroundColor);
+        backgroundPaint.setColor(backgroundColor);
         checkTextColor();
     }
 
     private void checkTextColor() {
-        final boolean useBlackText = !bannerMode && parentExpanded < 0.8f
+        final boolean useBlackText = parentExpanded < 0.8f
                 && AndroidUtilities.computePerceivedBrightness(backgroundColor) > 0.85f;
-        textColor = useBlackText ? Color.BLACK : Color.WHITE;
-        icon.setColorFilter(useBlackText ? filterColorBlack : filterColorWhite);
-        iconPaint.setColor(textColor);
+        normalTextColor = useBlackText ? Color.BLACK : Color.WHITE;
+        updateVisualColors();
+    }
+
+    private void updateVisualColors() {
+        textColor = ColorUtils.blendARGB(normalTextColor, Color.WHITE, bannerProgress);
+        if (appliedIconColor != textColor) {
+            appliedIconColor = textColor;
+            icon.setColorFilter(textColor, PorterDuff.Mode.SRC_IN);
+        }
         arrowPaint.setColor(Theme.multAlpha(textColor, 0.85f));
         invalidate();
+    }
+
+    public void setBannerProgress(float progress) {
+        progress = Utilities.clamp01(progress);
+        if (Math.abs(bannerProgress - progress) > 0.0001f) {
+            bannerProgress = progress;
+            updateVisualColors();
+        }
     }
 
     public void setParentExpanded(float expanded) {
@@ -212,10 +225,6 @@ public class ProfileMusicView extends View {
     }
 
     public void drawingBlur(RenderNode renderNode, ProfileActivity.AvatarImageView avatarView, float scale, float dy) {
-        
-        if (app.nimarkogram.messenger.banners.NimarkoBannerRenderer.suppressActionsColor) {
-            return;
-        }
         this.ignoreRect = false;
         this.renderNode = renderNode;
         this.avatarView = avatarView;
@@ -257,14 +266,9 @@ public class ProfileMusicView extends View {
     protected void onDraw(@NonNull Canvas canvas) {
         if (this.author == null || this.title == null) return;
 
-        boolean nextBannerMode = app.nimarkogram.messenger.banners.NimarkoBannerRenderer.suppressActionsColor;
-        if (bannerMode != nextBannerMode) {
-            bannerMode = nextBannerMode;
-            backgroundPaint.setColor(bannerMode ? 0x40000000 : backgroundColor);
-            checkTextColor();
-        }
-
         final float alpha = Utilities.clamp01((currentHeight) / dp(21));
+        final float bannerT = Utilities.clamp01(bannerProgress);
+        final float profileT = 1f - bannerT;
         final float scale = bounce.getScale(0.02f);
         if (alpha <= 0) return;
 
@@ -287,31 +291,39 @@ public class ProfileMusicView extends View {
             dp(10) + dp(17) * alpha
         );
         if (withShadows && SharedConfig.shadowsInSections) {
-            backgroundPaint.setShadowLayer(dpf2(2), 0, dpf2(0.33f), multAlpha(0x0a000000, alpha));
-            strokePaint.setShadowLayer(dpf2(0.33f), 0, 0, multAlpha(0x0c000000, alpha));
+            backgroundPaint.setShadowLayer(dpf2(2), 0, dpf2(0.33f), multAlpha(0x0a000000, alpha * profileT));
+            strokePaint.setShadowLayer(dpf2(0.33f), 0, 0, multAlpha(0x0c000000, alpha * profileT));
             strokePaint.setColor(0);
         } else {
             backgroundPaint.setShadowLayer(0, 0, 0, 0);
         }
         int wasAlpha = backgroundPaint.getAlpha();
-        backgroundPaint.setAlpha((int) (wasAlpha * alpha));
-        if (withShadows && SharedConfig.shadowsInSections) {
+        backgroundPaint.setAlpha((int) (wasAlpha * alpha * profileT));
+        if (withShadows && SharedConfig.shadowsInSections && profileT > 0f) {
             canvas.drawRoundRect(rect, rect.height() / 2f, rect.height() / 2f, strokePaint);
         }
-        canvas.drawRoundRect(rect, rect.height() / 2f, rect.height() / 2f, backgroundPaint);
+        if (backgroundPaint.getAlpha() > 0) {
+            canvas.drawRoundRect(rect, rect.height() / 2f, rect.height() / 2f, backgroundPaint);
+        }
         backgroundPaint.setAlpha(wasAlpha);
+        if (bannerT > 0f) {
+            bannerBackgroundPaint.setAlpha((int) (40f * alpha * bannerT));
+            canvas.drawRoundRect(rect, rect.height() / 2f, rect.height() / 2f, bannerBackgroundPaint);
+        }
 
         clipPath.rewind();
         clipPath.addRoundRect(rect, rect.height() / 2f, rect.height() / 2f, Path.Direction.CW);
 
         canvas.save();
         canvas.clipPath(clipPath);
-        if (!ignoreRect && renderNode != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && canvas.isHardwareAccelerated()) {
-            canvas.save();
+        if (profileT > 0f && !ignoreRect && renderNode != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && canvas.isHardwareAccelerated()) {
+            int restoreCount = profileT >= 0.999f
+                    ? canvas.save()
+                    : canvas.saveLayerAlpha(rect, Math.round(255 * profileT));
             canvas.translate(0f, renderNodeTranslateY);
             canvas.scale(renderNodeScale, renderNodeScale);
             canvas.drawRenderNode(renderNode);
-            canvas.restore();
+            canvas.restoreToCount(restoreCount);
         }
 
         canvas.translate((getWidth() - width) / 2f, 0);

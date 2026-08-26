@@ -3122,8 +3122,8 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
                         // NG-SECURITY: gate push deeplink → locked user chat behind biometric prompt.
                         BaseFragment bf = mainFragmentsStack.isEmpty() ? null : mainFragmentsStack.get(mainFragmentsStack.size() - 1);
                         if (bf != null && bf.getParentActivity() != null
-                                && app.nimarkogram.messenger.utils.chats.NimarkoChatsPasswordHelper.isChatLocked(intentAccount[0], push_user_id)
-                                && app.nimarkogram.messenger.utils.chats.NimarkoChatsPasswordHelper.shouldRequireBiometricsToOpenChats()
+                                && app.nimarkogram.messenger.utils.chats.NimarkoChatsPasswordHelper
+                                .shouldRequireBiometrics(push_user_id, 0L, 0L, intentAccount[0])
                         ) {
                             final int _ngAcc = intentAccount[0];
                             final long _ngUid = push_user_id;
@@ -7354,10 +7354,8 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
                 long chatId = args.getLong("chat_id", 0L);
                 int encId = args.getInt("enc_id", 0);
                 int account = fragment.getCurrentAccount();
-                return app.nimarkogram.messenger.NimarkoConfig.askBiometricsToOpenChat
-                        && (userId != 0L && app.nimarkogram.messenger.utils.LockedChats.isLocked(account, userId)
-                        || chatId != 0L && app.nimarkogram.messenger.utils.LockedChats.isLocked(account, -Math.abs(chatId)))
-                        || encId != 0 && app.nimarkogram.messenger.NimarkoConfig.askBiometricsToOpenEncrypted;
+                return app.nimarkogram.messenger.utils.chats.NimarkoChatsPasswordHelper
+                        .shouldRequireBiometrics(userId, chatId, encId, account);
             }
             if (fragment instanceof DialogsActivity && app.nimarkogram.messenger.NimarkoConfig.askBiometricsToOpenArchive) {
                 Bundle args = fragment.getArguments();

@@ -22,6 +22,7 @@ import android.graphics.Shader;
 import android.graphics.drawable.Drawable;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Looper;
 import android.text.Layout;
 import android.view.HapticFeedbackConstants;
 import android.view.MotionEvent;
@@ -58,6 +59,7 @@ public class ProfileActionsView extends View {
 
     private final List<Action> actions = new ArrayList<>();
     private final Paint paint = new Paint();
+    private final Paint neutralPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint shaderPaint = new Paint();
     private float parentExpanded;
 
@@ -122,6 +124,7 @@ public class ProfileActionsView extends View {
     private boolean hasColorById;
     private RadialGradient radialGradient;
     private final Matrix matrix = new Matrix();
+    private float bannerProgress;
 
     public boolean myProfile;
 
@@ -130,6 +133,8 @@ public class ProfileActionsView extends View {
 
         paint.setColor(Color.BLACK);
         paint.setAlpha(40);
+        neutralPaint.setColor(Color.BLACK);
+        neutralPaint.setAlpha(40);
 
         xpadding = dpf2(14);
         ypadding = dpf2(12);
@@ -153,10 +158,6 @@ public class ProfileActionsView extends View {
     }
 
     public void drawingBlur(RenderNode renderNode, ProfileActivity.AvatarImageView avatarView, float scale, float dy) {
-        
-        if (app.nimarkogram.messenger.banners.NimarkoBannerRenderer.suppressActionsColor) {
-            return;
-        }
         this.ignoreRect = false;
         this.renderNode = renderNode;
         this.avatarView = avatarView;
@@ -178,20 +179,6 @@ public class ProfileActionsView extends View {
     }
 
     public void setActionsColor(int color, boolean hasColorById) {
-        
-        if (app.nimarkogram.messenger.banners.NimarkoBannerRenderer.suppressActionsColor) {
-            
-            paint.setColor(Color.BLACK);
-            paint.setAlpha(40);
-            if (this.color != 0 || radialGradient != null) {
-                this.color = 0;
-                this.hasColorById = false;
-                radialGradient = null;
-                try { shaderPaint.setShader(null); } catch (Throwable ignored) {}
-                invalidate();
-            }
-            return;
-        }
         if (radialGradient == null || this.color != color || this.hasColorById != hasColorById) {
             this.color = color;
             this.hasColorById = hasColorById;
@@ -200,11 +187,15 @@ public class ProfileActionsView extends View {
         }
     }
 
-    private boolean isButtonColorLight() {
-        
-        if (app.nimarkogram.messenger.banners.NimarkoBannerRenderer.suppressActionsColor) {
-            return false;
+    public void setBannerProgress(float progress) {
+        progress = Utilities.clamp01(progress);
+        if (Math.abs(bannerProgress - progress) > 0.0001f) {
+            bannerProgress = progress;
+            invalidate();
         }
+    }
+
+    private boolean isButtonColorLight() {
         return AndroidUtilities.computePerceivedBrightness(color) > 0.72f;
     }
 
@@ -277,9 +268,9 @@ public class ProfileActionsView extends View {
         float left = xpadding;
         float r = getRoundRadius();
 
-        final boolean neutralize = app.nimarkogram.messenger.banners.NimarkoBannerRenderer.suppressActionsColor;
-        if (neutralize) { paint.setColor(Color.BLACK); paint.setAlpha(40); }
-        final boolean useRadial = radialGradient != null && !neutralize;
+        final float bannerT = Utilities.clamp01(bannerProgress);
+        final float profileT = 1f - bannerT;
+        final boolean useRadial = radialGradient != null;
 
         if (renderNode != null) {
             clipPath.rewind();
@@ -332,22 +323,32 @@ public class ProfileActionsView extends View {
                     );
                     int wasAlpha = paint.getAlpha();
                     int newAlpha = (int) (action.getAlpha() * alphaFraction1 * wasAlpha);
-                    paint.setAlpha((int) (newAlpha * (useRadial ? 0.1f : 1f)));
+                    paint.setAlpha((int) (newAlpha * (useRadial ? 0.1f : 1f) * profileT));
 
                     if (SharedConfig.shadowsInSections && isButtonColorLight() && parentExpanded < 0.5f) {
-                        paint.setShadowLayer(dpf2(1.5f), 0, 0, Theme.multAlpha(Color.BLACK & 0x20FFFFFF, (newAlpha / 255f * (useRadial ? 0.1f : 1f))));
+                        paint.setShadowLayer(dpf2(1.5f), 0, 0, Theme.multAlpha(
+                                Color.BLACK & 0x20FFFFFF,
+                                newAlpha / 255f * (useRadial ? 0.1f : 1f) * profileT));
                     } else {
                         paint.setShadowLayer(0, 0, 0, 0);
                     }
 
-                    canvas.drawRoundRect(AndroidUtilities.rectTmp, r, r, paint);
+                    if (paint.getAlpha() > 0) {
+                        canvas.drawRoundRect(AndroidUtilities.rectTmp, r, r, paint);
+                    }
                     if (useRadial) {
                         int wasAlpha2 = shaderPaint.getAlpha();
-                        shaderPaint.setAlpha((int) (action.getAlpha() * alphaFraction1 * wasAlpha2));
+                        shaderPaint.setAlpha((int) (action.getAlpha() * alphaFraction1 * wasAlpha2 * profileT));
                         matrix.setTranslate(AndroidUtilities.rectTmp.left, AndroidUtilities.rectTmp.top);
                         radialGradient.setLocalMatrix(matrix);
-                        canvas.drawRoundRect(AndroidUtilities.rectTmp, r, r, shaderPaint);
+                        if (shaderPaint.getAlpha() > 0) {
+                            canvas.drawRoundRect(AndroidUtilities.rectTmp, r, r, shaderPaint);
+                        }
                         shaderPaint.setAlpha(wasAlpha2);
+                    }
+                    if (bannerT > 0f) {
+                        neutralPaint.setAlpha((int) (action.getAlpha() * alphaFraction1 * 40f * bannerT));
+                        canvas.drawRoundRect(AndroidUtilities.rectTmp, r, r, neutralPaint);
                     }
                     paint.setAlpha(wasAlpha);
                 }
@@ -365,11 +366,14 @@ public class ProfileActionsView extends View {
     }
 
     private void drawRenderNode(Canvas canvas) {
-        if (renderNode == null || Build.VERSION.SDK_INT < Build.VERSION_CODES.Q || !renderNode.hasDisplayList() || !canvas.isHardwareAccelerated()) {
+        final float alpha = 1f - Utilities.clamp01(bannerProgress);
+        if (alpha <= 0f || renderNode == null || Build.VERSION.SDK_INT < Build.VERSION_CODES.Q || !renderNode.hasDisplayList() || !canvas.isHardwareAccelerated()) {
             return;
         }
 
-        canvas.save();
+        int restoreCount = alpha >= 0.999f
+                ? canvas.save()
+                : canvas.saveLayerAlpha(0, 0, getWidth(), getHeight(), Math.round(255 * alpha));
         if (avatarView != null) {
             View v = (View) avatarView.getParent();
             float vl = v.getX();
@@ -395,7 +399,7 @@ public class ProfileActionsView extends View {
         canvas.scale(renderNodeScale, renderNodeScale);
         canvas.drawRenderNode(renderNode);
 
-        canvas.restore();
+        canvas.restoreToCount(restoreCount);
     }
 
     public void stopLoading(int key) {
@@ -416,7 +420,15 @@ public class ProfileActionsView extends View {
         final int drawableSize = dp(24);
         final float drawableR = drawableSize * 0.5f;
 
-        action.text.setMaxWidth(action.rect.width() - dp(2));
+        float textWidth;
+        if (action.isDeleting && !action.from.isEmpty()) {
+            textWidth = action.from.width();
+        } else if (!action.to.isEmpty()) {
+            textWidth = action.to.width();
+        } else {
+            textWidth = action.rect.width();
+        }
+        action.text.setMaxWidth(Math.max(0, textWidth - dp(2)));
         action.textScale = action.text.getLineCount() >= 3 ? 0.75f : action.text.getLineCount() >= 2 ? 0.85f : 1.0f;
         final float drawableTop = Math.max(0, (targetHeight - action.text.getHeight() * action.textScale) / 3f + dpf2(1.33f));
         action.setBounds(
@@ -440,6 +452,8 @@ public class ProfileActionsView extends View {
         if (isButtonColorLight && Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
             useFilledWhiteIcon = 0f;
         }
+        useFilledWhiteIcon = AndroidUtilities.lerp(
+                useFilledWhiteIcon, 1f, Utilities.clamp01(bannerProgress));
 
         final int textColor = ColorUtils.blendARGB(Color.BLACK, Color.WHITE, useFilledWhiteIcon);
         if (lastColorFilter == null || lastColorFilterColor != textColor) {
@@ -726,6 +740,10 @@ public class ProfileActionsView extends View {
 
     private void applyVisibleActions() {
         if (isApplying) return;
+        if (Looper.myLooper() != Looper.getMainLooper()) {
+            AndroidUtilities.runOnUIThread(this::applyVisibleActions);
+            return;
+        }
         if (mode == MODE_MY_PROFILE) {
             activeCount = actions.size();
             invalidate();
@@ -792,29 +810,27 @@ public class ProfileActionsView extends View {
                 break;
         }
 
-        AndroidUtilities.runOnUIThread(() -> {
-            int oldCount = activeCount;
-            activeCount = out.size();
+        int oldCount = activeCount;
+        activeCount = out.size();
 
-            if (oldCount != activeCount && radialGradient != null) {
-                createColorShader();
+        if (oldCount != activeCount && radialGradient != null) {
+            createColorShader();
+        }
+
+        int c = actions.size();
+        for (int i = 0; i < c; i++) {
+            Action a = actions.get(i);
+            if (a.isDeleting && !a.isDeleted) {
+                out.add(a);
+            } else if (find(out, a.key) == null) {
+                a.delete();
+                out.add(a);
             }
+        }
 
-            int c = actions.size();
-            for (int i = 0; i < c; i++) {
-                Action a = actions.get(i);
-                if (a.isDeleting && !a.isDeleted) {
-                    out.add(a);
-                } else if (find(out, a.key) == null) {
-                    a.delete();
-                    out.add(a);
-                }
-            }
-
-            actions.clear();
-            actions.addAll(out);
-            invalidate();
-        });
+        actions.clear();
+        actions.addAll(out);
+        invalidate();
     }
 
     private void insertIfAvailable(List<Action> list, int key) {
@@ -1152,38 +1168,6 @@ public class ProfileActionsView extends View {
                 isOpening = true;
                 to.set(rect);
                 from.set(rect);
-
-                boolean fromRight = rect.left - 1 <= xpadding;
-                boolean fromLeft = rect.right + 1 >= getMeasuredWidth() - xpadding;
-
-                if ((fromRight && fromLeft) ||
-                        (firstAction != null && firstAction.key == key) ||
-                        (lastAction != null && lastAction.key == key)) {
-                    fromRight = fromLeft = false;
-                }
-
-                if ((key == KEY_CALL || key == KEY_VIDEO) && mode == MODE_USER) {
-                    fromLeft = false;
-                    fromRight = true;
-                } else if ((key == KEY_GIFT || key == KEY_DISCUSS) && mode == MODE_CHANNEL) {
-                    fromLeft = false;
-                    fromRight = true;
-                } else if (fromRight && firstAction != null && !firstAction.isDeleting) {
-                    fromLeft = true;
-                    fromRight = false;
-                } else if (fromLeft && lastAction != null && !lastAction.isDeleting) {
-                    fromLeft = false;
-                    fromRight = true;
-                }
-
-                if (fromRight) {
-                    from.left = from.right;
-                } else if (fromLeft) {
-                    from.right = from.left;
-                } else {
-                    from.left = from.right = to.centerX();
-                }
-
                 positionFraction.set(0f, true);
             }
 
@@ -1211,7 +1195,11 @@ public class ProfileActionsView extends View {
         }
 
         public float getScale() {
-            return bounce.getScale(0.04f);
+            float scale = bounce.getScale(0.04f);
+            if (isOpening) {
+                scale *= AndroidUtilities.lerp(0.94f, 1f, positionFraction.set(1f));
+            }
+            return scale;
         }
 
         public void update(ActionButton button) {

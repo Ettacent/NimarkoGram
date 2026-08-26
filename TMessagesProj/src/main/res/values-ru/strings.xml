@@ -410,8 +410,8 @@
     <string name="CP_Header_Record">Медиа</string>
 
     <!-- Приватность (доп.) -->
-    <string name="NM_PR_AllowSystemPasscode">Защита устройства</string>
-    <string name="NM_PR_AllowSystemPasscode_Desc">Использовать биометрию или блокировку устройства.</string>
+    <string name="NM_PR_AllowSystemPasscode">Разрешить код устройства</string>
+    <string name="NM_PR_AllowSystemPasscode_Desc">Разрешить PIN-код, пароль или графический ключ вместо биометрии.</string>
     <string name="NM_PR_AskBioOpenArchive">Защищать архив</string>
     <string name="NM_PR_AskBioOpenArchive_Desc">Запрашивать подтверждение устройства перед открытием архива.</string>
     <string name="NM_PR_AskBioOpenEncrypted">Защищать секретные чаты</string>
@@ -500,6 +500,8 @@
     <string name="NM_PR_TestFingerprint">Проверить защиту</string>
     <string name="NM_PR_TestFingerprint_Desc">Проверяет доступность биометрии или блокировки устройства и обновляет их состояние.</string>
     <string name="NM_PR_AskBioOpenChats">Защищать выбранные чаты</string>
+    <string name="NM_PR_AskBioOpenSavedMessages">Защищать «Избранное»</string>
+    <string name="NM_PR_AskBioOpenSavedMessages_Desc">Запрашивать биометрию или подтверждение устройства перед открытием «Избранного».</string>
     <string name="NM_PR_AuthenticationRequired">Для изменения этой защищённой настройки требуется аутентификация</string>
     <string name="NM_PR_AuthenticationUnavailable">Аутентификация недоступна</string>
     <string name="NM_PR_AuthenticationUnavailable_Desc">На устройстве недоступны биометрия и блокировка экрана. Отключить эту настройку защиты?</string>
@@ -1019,7 +1021,6 @@
     <!-- General -->
     <string name="AP_Header_General">Основные</string>
     <string name="EP_NavigationAnimation">Анимация навигации</string>
-    <string name="EP_NavigationAnimationCrossfading">Плавная смена заголовка</string>
     <string name="NM_PredictiveBackAnimation">Предиктивный жест назад</string>
     <string name="CP_SilenceNonContacts">Заглушить не-контакты</string>
     <string name="CP_SilenceNonContacts_Desc">Включать звук уведомлений только для контактов.</string>

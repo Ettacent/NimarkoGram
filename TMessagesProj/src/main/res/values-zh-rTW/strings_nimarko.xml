@@ -401,7 +401,6 @@
     <string name="NM_SnowInHeader_Desc">在頂端列顯示飄雪</string>
     <string name="NM_CP_SnowflakesInChat_Desc">在開啟的聊天中於訊息上方顯示飄雪</string>
     <string name="NM_SettingsDesc_NavigationAnimation">選擇頁面開啟和關閉的動畫</string>
-    <string name="NM_SettingsDesc_NavigationCrossfade">切換頁面時平滑過渡頂端列元素</string>
     <string name="NM_SettingsDesc_PredictiveBack">返回滑動時預覽上一個頁面</string>
     <string name="NM_SettingsDesc_SystemEmoji">使用裝置安裝的表情符號</string>
     <string name="NM_SettingsDesc_SystemFonts">在整個應用程式中使用系統字型</string>

@@ -266,6 +266,16 @@ public final class NimarkoConfig {
         setAskBiometricsToOpenChat(!askBiometricsToOpenChat);
     }
 
+    public static boolean askBiometricsToOpenSavedMessages = getPreferences().getBoolean("askBiometricsToOpenSavedMessages", false);
+    public static void setAskBiometricsToOpenSavedMessages(boolean enabled) {
+        askBiometricsToOpenSavedMessages = enabled;
+        getEditor().putBoolean("askBiometricsToOpenSavedMessages", enabled).apply();
+        onPrivacyProtectionChanged();
+    }
+    public static void toggleAskBiometricsToOpenSavedMessages() {
+        setAskBiometricsToOpenSavedMessages(!askBiometricsToOpenSavedMessages);
+    }
+
     public static boolean chatShortcutJumpToBegin = getPreferences().getBoolean("chatShortcutJumpToBegin", true);
     public static void toggleChatShortcutJumpToBegin() {
         chatShortcutJumpToBegin = !chatShortcutJumpToBegin;
@@ -945,9 +955,6 @@ public final class NimarkoConfig {
     public static int springAnimation = getIntSafe("springAnimation", SPRING_SPRING);
     public static void setSpringAnimation(int v) { springAnimation = v; getEditor().putInt("springAnimation", v).apply(); }
     public static boolean isSpringAnimationEnabled() { return springAnimation == SPRING_SPRING; }
-
-    public static boolean actionbarCrossfade = getPreferences().getBoolean("actionbarCrossfade", false);
-    public static void toggleActionbarCrossfade() { actionbarCrossfade = !actionbarCrossfade; getEditor().putBoolean("actionbarCrossfade", actionbarCrossfade).apply(); }
 
     public static boolean predictiveBack = getPreferences().getBoolean("predictiveBack", true);
     public static void togglePredictiveBack() { predictiveBack = !predictiveBack; getEditor().putBoolean("predictiveBack", predictiveBack).apply(); }

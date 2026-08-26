@@ -410,8 +410,8 @@
     <string name="NM_GE_UploadSpeedBoost">加快上传</string>
     <string name="EP_Network">网络</string>
     <string name="CP_Header_Record">媒体</string>
-    <string name="NM_PR_AllowSystemPasscode">设备验证</string>
-    <string name="NM_PR_AllowSystemPasscode_Desc">使用生物识别或设备屏幕锁定。</string>
+    <string name="NM_PR_AllowSystemPasscode">允许设备锁屏验证</string>
+    <string name="NM_PR_AllowSystemPasscode_Desc">允许使用设备 PIN、密码或图案代替生物识别。</string>
     <string name="NM_PR_AskBioOpenArchive">保护归档聊天</string>
     <string name="NM_PR_AskBioOpenArchive_Desc">打开归档前要求设备身份验证。</string>
     <string name="NM_PR_AskBioOpenEncrypted">保护私密聊天</string>
@@ -488,6 +488,8 @@
     <string name="NM_PR_TestFingerprint">测试验证</string>
     <string name="NM_PR_TestFingerprint_Desc">检查生物识别或设备身份验证是否可用，并刷新其状态。</string>
     <string name="NM_PR_AskBioOpenChats">保护所选聊天</string>
+    <string name="NM_PR_AskBioOpenSavedMessages">保护收藏夹</string>
+    <string name="NM_PR_AskBioOpenSavedMessages_Desc">打开收藏夹前要求生物识别或设备验证。</string>
     <string name="NM_PR_AuthenticationRequired">更改此受保护设置需要身份验证</string>
     <string name="NM_PR_AuthenticationUnavailable">身份验证不可用</string>
     <string name="NM_PR_AuthenticationUnavailable_Desc">设备上没有可用的生物识别或屏幕锁定。是否禁用此保护设置？</string>
@@ -961,7 +963,6 @@
     <string name="CP_AdminActions">管理员快捷操作</string>
     <string name="AP_Header_General">通用</string>
     <string name="EP_NavigationAnimation">导航动画</string>
-    <string name="EP_NavigationAnimationCrossfading">平滑切换标题</string>
     <string name="NM_PredictiveBackAnimation">预测式返回手势</string>
     <string name="CP_SilenceNonContacts">静音非联系人</string>
     <string name="CP_SilenceNonContacts_Desc">仅联系人通知播放声音。</string>

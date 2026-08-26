@@ -34,6 +34,7 @@ import android.graphics.Shader;
 import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.Drawable;
 import android.os.Build;
+import android.os.Bundle;
 import android.text.TextUtils;
 import android.view.Gravity;
 import android.view.HapticFeedbackConstants;
@@ -1013,11 +1014,6 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
                 progress = Utilities.clamp01(value / (6 * dp(56)));
             } else {
                 progress = value / containerView.getMeasuredWidth();
-            }
-            // NimarkoGram: drive swipeProgress for actionbarCrossfade (CG parity).
-            if (app.nimarkogram.messenger.NimarkoConfig.actionbarCrossfade) {
-                swipeProgress = MathUtils.clamp(progress, 0f, 1f);
-                invalidateActionBars();
             }
             final BaseFragment prevFragment = fragmentsStack.get(fragmentsStack.size() - 2);
             prevFragment.onSlideProgress(false, progress);
@@ -2639,6 +2635,34 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
     @Override
     public boolean presentFragment(NavigationParams params) {
         BaseFragment fragment = params.fragment;
+        if (fragment instanceof ChatActivity) {
+            Bundle arguments = fragment.getArguments();
+            if (arguments != null) {
+                long userId = arguments.getLong("user_id");
+                long chatId = arguments.getLong("chat_id");
+                int encId = arguments.getInt("enc_id");
+                int account = fragment.getCurrentAccount();
+                boolean required = app.nimarkogram.messenger.utils.chats.NimarkoChatsPasswordHelper
+                        .shouldRequireBiometrics(userId, chatId, encId, account);
+                if (required && !app.nimarkogram.messenger.security.NimarkoBiometricPrompt
+                        .isRecentlyVerified(account, userId, chatId, encId)) {
+                    if (parentActivity == null) {
+                        return false;
+                    }
+                    app.nimarkogram.messenger.security.NimarkoBiometricPrompt.prompt(
+                            parentActivity,
+                            account,
+                            () -> {
+                                app.nimarkogram.messenger.security.NimarkoBiometricPrompt
+                                        .markVerified(account, userId, chatId, encId);
+                                presentFragment(params);
+                            },
+                            null
+                    );
+                    return true;
+                }
+            }
+        }
         boolean removeLast = params.removeLast;
         boolean forceWithoutAnimation = params.noAnimation;
         boolean check = params.checkPresentFromDelegate;
@@ -4518,7 +4542,7 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
         return WindowInsetsCompat.CONSUMED;
     }
 
-    /** NimarkoGram start (actionbarCrossfade + Spring runtime, ported verbatim from Cherrygram, GPL-2.0) */
+    /** NimarkoGram spring transition runtime. */
     private float swipeProgress;
     private MenuDrawable menuDrawable;
 
@@ -4529,7 +4553,7 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
     private AnimatorSet previewExpandAnimator;
     private View previewExpandView;
     private final boolean USE_SPRING_ANIMATION = app.nimarkogram.messenger.NimarkoConfig.isSpringAnimationEnabled();
-    private final boolean USE_ACTIONBAR_CROSSFADE = USE_SPRING_ANIMATION && app.nimarkogram.messenger.NimarkoConfig.actionbarCrossfade;
+    private static final boolean USE_ACTIONBAR_CROSSFADE = false;
     private final float SPRING_STIFFNESS = 700f;
     private final float SPRING_STIFFNESS_PREVIEW = 650f;
     private final float SPRING_STIFFNESS_PREVIEW_OUT = 800f;

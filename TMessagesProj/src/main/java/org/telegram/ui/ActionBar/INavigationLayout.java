@@ -255,6 +255,7 @@ public interface INavigationLayout {
         // the user hasn't turned the flag on, so the fast path is unaffected.
         if (fragment instanceof ChatActivity
                 && (app.nimarkogram.messenger.NimarkoConfig.askBiometricsToOpenChat
+                    || app.nimarkogram.messenger.NimarkoConfig.askBiometricsToOpenSavedMessages
                     || app.nimarkogram.messenger.NimarkoConfig.askBiometricsToOpenEncrypted)) {
             Bundle args = fragment.getArguments();
             if (args == null) {
@@ -326,6 +327,7 @@ public interface INavigationLayout {
             return presentFragment(new NavigationParams(fragment).setRemoveLast(removeLast).setNoAnimation(forceWithoutAnimation).setCheckPresentFromDelegate(check).setPreview(preview));
         }
         if (!(app.nimarkogram.messenger.NimarkoConfig.askBiometricsToOpenChat
+                || app.nimarkogram.messenger.NimarkoConfig.askBiometricsToOpenSavedMessages
                 || app.nimarkogram.messenger.NimarkoConfig.askBiometricsToOpenEncrypted)) {
             return presentFragment(new NavigationParams(fragment).setRemoveLast(removeLast).setNoAnimation(forceWithoutAnimation).setCheckPresentFromDelegate(check).setPreview(preview));
         }
@@ -362,6 +364,7 @@ public interface INavigationLayout {
             return presentFragment(new NavigationParams(fragment).setRemoveLast(removeLast).setNoAnimation(forceWithoutAnimation).setCheckPresentFromDelegate(check).setPreview(preview).setMenuView(menuView));
         }
         if (!(app.nimarkogram.messenger.NimarkoConfig.askBiometricsToOpenChat
+                || app.nimarkogram.messenger.NimarkoConfig.askBiometricsToOpenSavedMessages
                 || app.nimarkogram.messenger.NimarkoConfig.askBiometricsToOpenEncrypted)) {
             return presentFragment(new NavigationParams(fragment).setRemoveLast(removeLast).setNoAnimation(forceWithoutAnimation).setCheckPresentFromDelegate(check).setPreview(preview).setMenuView(menuView));
         }

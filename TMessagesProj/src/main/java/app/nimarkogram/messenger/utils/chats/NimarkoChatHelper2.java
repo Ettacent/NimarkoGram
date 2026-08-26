@@ -62,6 +62,7 @@ public final class NimarkoChatHelper2 {
         boolean encrypted = DialogObject.isEncryptedDialog(targetDialogId);
         if (fragment == null) {
             if (!NimarkoConfig.askBiometricsToOpenChat
+                    && !NimarkoConfig.askBiometricsToOpenSavedMessages
                     && !(NimarkoConfig.askBiometricsToOpenEncrypted && encrypted)) {
                 action.run();
             }
@@ -69,15 +70,28 @@ public final class NimarkoChatHelper2 {
         }
         boolean gateChat = NimarkoConfig.askBiometricsToOpenChat
                 && CGCompat.isChatLocked(fragment.getCurrentAccount(), targetDialogId);
+        boolean gateSavedMessages = NimarkoChatsPasswordHelper.isSavedMessagesProtected(
+                fragment.getCurrentAccount(), targetDialogId);
         boolean gateEnc = NimarkoConfig.askBiometricsToOpenEncrypted && encrypted;
-        if (!gateChat && !gateEnc) {
+        if (!gateChat && !gateSavedMessages && !gateEnc) {
             action.run();
             return;
         }
         if (fragment.getParentActivity() == null) return;
         if (!NimarkoBiometricPrompt.canAuthenticateConfigured()) return;
+        final int account = fragment.getCurrentAccount();
+        final long userId = !encrypted && targetDialogId > 0 ? targetDialogId : 0L;
+        final long chatId = !encrypted && targetDialogId < 0 ? -targetDialogId : 0L;
+        final int encId = encrypted ? DialogObject.getEncryptedChatId(targetDialogId) : 0;
+        if (NimarkoBiometricPrompt.isRecentlyVerified(account, userId, chatId, encId)) {
+            action.run();
+            return;
+        }
         try {
-            NimarkoBiometricPrompt.prompt(fragment.getParentActivity(), fragment.getCurrentAccount(), action, null);
+            NimarkoBiometricPrompt.prompt(fragment.getParentActivity(), account, () -> {
+                NimarkoBiometricPrompt.markVerified(account, userId, chatId, encId);
+                action.run();
+            }, null);
         } catch (Throwable t) {
             FileLog.e("Nimarko forwarding authentication prompt failed closed", t);
         }

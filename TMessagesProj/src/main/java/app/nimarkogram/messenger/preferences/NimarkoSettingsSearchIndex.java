@@ -168,7 +168,6 @@ final class NimarkoSettingsSearchIndex {
         rows(entries, guid, SCREEN_GENERAL, R.drawable.msg_settings_solar,
                 R.string.NM_Cat_General, R.string.NM_SettingsSectionSystemAnimations,
                 1, R.string.EP_NavigationAnimation,
-                2, R.string.EP_NavigationAnimationCrossfading,
                 3, R.string.NM_PredictiveBackAnimation,
                 9, R.string.AP_SystemEmoji,
                 10, R.string.AP_SystemFonts,
@@ -347,6 +346,7 @@ final class NimarkoSettingsSearchIndex {
         rows(entries, guid, SCREEN_PRIVACY, R.drawable.msg_secret_solar,
                 R.string.NM_Cat_Privacy, R.string.NM_PR_Header_ChatProtection,
                 5, R.string.NM_PR_AskBioOpenChats,
+                15, R.string.NM_PR_AskBioOpenSavedMessages,
                 6, R.string.NM_PR_LockedChats,
                 11, R.string.NM_PR_LockedChatsTtl,
                 12, R.string.NM_PR_AskBioOpenEncrypted,
@@ -611,7 +611,6 @@ final class NimarkoSettingsSearchIndex {
 
     private static int fallbackDescriptionRes(int titleRes) {
         if (titleRes == R.string.EP_NavigationAnimation) return R.string.NM_SettingsDesc_NavigationAnimation;
-        if (titleRes == R.string.EP_NavigationAnimationCrossfading) return R.string.NM_SettingsDesc_NavigationCrossfade;
         if (titleRes == R.string.NM_PredictiveBackAnimation) return R.string.NM_SettingsDesc_PredictiveBack;
         if (titleRes == R.string.AP_SystemEmoji) return R.string.NM_SettingsDesc_SystemEmoji;
         if (titleRes == R.string.AP_SystemFonts) return R.string.NM_SettingsDesc_SystemFonts;
@@ -689,6 +688,7 @@ final class NimarkoSettingsSearchIndex {
         if (titleRes == R.string.NM_PR_HideArchivedStories) return R.string.NM_PR_HideArchivedStories_Desc;
         if (titleRes == R.string.NM_PR_HideArchiveList) return R.string.NM_PR_HideArchiveList_Desc;
         if (titleRes == R.string.NM_PR_AskBioOpenChats) return R.string.NM_PR_AskBioOpenChats_Desc;
+        if (titleRes == R.string.NM_PR_AskBioOpenSavedMessages) return R.string.NM_PR_AskBioOpenSavedMessages_Desc;
         if (titleRes == R.string.NM_PR_AskBioOpenEncrypted) return R.string.NM_PR_AskBioOpenEncrypted_Desc;
         if (titleRes == R.string.NM_PR_AskBioOpenArchive) return R.string.NM_PR_AskBioOpenArchive_Desc;
         if (titleRes == R.string.NM_PR_RequireBiometricsToDelete) return R.string.NM_PR_RequireBiometricsToDelete_Desc;

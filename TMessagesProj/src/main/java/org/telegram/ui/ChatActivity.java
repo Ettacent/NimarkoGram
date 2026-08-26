@@ -31004,10 +31004,8 @@ public class ChatActivity extends BaseFragment implements
             final int encId = arguments != null ? arguments.getInt("enc_id", 0) : 0;
             final long uid = currentUser != null ? currentUser.id : 0L;
             final long cid = currentChat != null ? currentChat.id : 0L;
-            boolean lockedChat = (uid != 0L && app.nimarkogram.messenger.utils.CGCompat.isChatLocked(currentAccount, uid))
-                    || (cid != 0L && app.nimarkogram.messenger.utils.CGCompat.isChatLocked(currentAccount, -Math.abs(cid)));
-            boolean encryptedChat = encId != 0 && app.nimarkogram.messenger.utils.CGCompat.shouldRequireBiometricsToOpenEncryptedChats();
-            boolean needPrompt = (lockedChat && app.nimarkogram.messenger.utils.CGCompat.shouldRequireBiometricsToOpenChats()) || encryptedChat;
+            boolean needPrompt = app.nimarkogram.messenger.utils.chats.NimarkoChatsPasswordHelper
+                    .shouldRequireBiometrics(uid, cid, encId, currentAccount);
             if (needPrompt) {
                 // NG bug-fix (double-prompt): if a sibling site (LaunchActivity push or
                 // INavigationLayout.presentFragment) just authenticated this chat moments

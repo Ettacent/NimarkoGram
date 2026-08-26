@@ -750,6 +750,11 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
     private int blockedUsersRow;
     private int membersSectionRow;
     private boolean hasMusic;
+    private boolean musicHeaderProgressInitialized;
+    private float musicHeaderProgress;
+    private float musicHeaderTargetProgress;
+    private ValueAnimator musicHeaderAnimator;
+    private Runnable musicHeaderAnimationRunnable;
 
     private int sharedMediaRow;
 
@@ -906,6 +911,10 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
     private int profileLifecycleGeneration;
     private boolean profileLifecycleDestroyed;
     private int delayedProfileOpenLayoutGeneration;
+    private boolean pendingProfileRowsUpdate;
+    private boolean pendingProfileRowsOnlineCount;
+    private boolean pendingProfileRowsSelectedMediaText;
+    private boolean profileRowsUpdatePosted;
     private FrameLayout bottomButton2Container;
     private ButtonWithCounterView bottomButton2;
 
@@ -1277,9 +1286,6 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
 
         private boolean hasColorById;
         private final AnimatedFloat hasColorAnimated = new AnimatedFloat(this, 350, CubicBezierInterpolator.EASE_OUT_QUINT);
-        // NimarkoGram: smooth fade of the PREMIUM profile bg (gradient + emoji) out as a
-        // banner appears. 1 = premium bg fully visible, 0 = fully hidden behind banner.
-        private final AnimatedFloat ngBannerBgAlpha = new AnimatedFloat(1f, this, 0, 3000, CubicBezierInterpolator.EASE_OUT_QUINT);
         // Last actually-painted banner opacity. Kept per TopView (rather than in
         // the process-wide renderer) so outgoing/incoming profile fragments can
         // restore their own foreground colours independently during navigation.
@@ -1313,7 +1319,11 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                     btnColor = Theme.multAlpha(PeerColorActivity.adaptProfileEmojiColor(color1), .15f);
                 }
             } else {
-                actionBarBackgroundColor = currentColor;
+                int fallbackColor = currentColor != 0
+                        ? currentColor : getThemedColor(Theme.key_windowBackgroundGray);
+                color1 = fallbackColor;
+                color2 = fallbackColor;
+                actionBarBackgroundColor = fallbackColor;
                 hasColorById = false;
                 if (AndroidUtilities.computePerceivedBrightness(getThemedColor(Theme.key_actionBarDefault)) > .8f) {
                     emojiColor = Color.WHITE; // getThemedColor(Theme.key_windowBackgroundWhiteBlueText);
@@ -1326,7 +1336,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                     btnColor = Theme.multAlpha(PeerColorActivity.adaptProfileEmojiColor(getThemedColor(Theme.key_actionBarDefault)), .15f);
                 }
             }
-            if (!animated) {
+            if (!animated || !isLaidOut()) {
                 color1Animated.set(color1, true);
                 color2Animated.set(color2, true);
             }
@@ -1460,12 +1470,24 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                             getHeaderExtraHeight()).suppressBackground;
                 } catch (Throwable ignored) {}
             }
-            // Keep the normal profile header below a partially visible cached
-            // banner.  Suppressing it from frame zero leaves a transparent/black
-            // strip while the banner layer is still fading in (and the inverse
-            // seam while closing).
+            float bannerForegroundForBackground = 0f;
+            if (app.nimarkogram.messenger.banners.NimarkoBannerConfig.enabled) {
+                try {
+                    bannerForegroundForBackground = Utilities.clamp01(
+                            app.nimarkogram.messenger.banners.NimarkoBannerRenderer.getInstance()
+                                    .getForegroundProgress(getDialogId()) * nimarkoBannerTransitionAlpha);
+                } catch (Throwable ignored) {}
+            }
+            // Keep the normal profile header fully opaque below the banner while
+            // its photo/TextureView fades in. The foreground alpha then performs
+            // the complete crossfade by itself; fading this backing with a second
+            // timer makes the background disappear early and exposes the root
+            // container. Once the banner is fully opaque the backing can be
+            // skipped without a visible frame change.
+            final float ngBg = 1f;
             final boolean nimarkoSuppressBackground =
-                    nimarkoSuppress && nimarkoBannerTransitionAlpha >= 0.999f;
+                    nimarkoSuppress && nimarkoBannerTransitionAlpha >= 0.999f
+                            && bannerForegroundForBackground >= 0.999f;
 
             if (y1 != 0) {
                 if (previousTransitionFragment != null
@@ -1497,20 +1519,8 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                 } else {
                     if (actionBarBackgroundPaint != null) actionBarBackgroundPaint.setColor(Color.TRANSPARENT);
                     if (actionBar != null) actionBar.setBackgroundColor(Color.TRANSPARENT);
-                    // neutralise the action buttons over the banner (clears tint)
-                    if (actionsView != null) actionsView.setActionsColor(0, false);
                 }
                 final float progressToGradient = (playProfileAnimation == 0 ? 1f : avatarAnimationProgress) * hasColorAnimated.set(hasColorById);
-                // NimarkoGram: a banner exists for this profile (set as soon as the path
-                // resolves, BEFORE the video has rendered/faded in). While the video is
-                // still loading, nimarkoSuppress is false, so without this the PREMIUM
-                // peer-color gradient + emoji pattern would flash behind the banner every
-                // time the My-Profile tab re-loads the video. Hide the premium gradient &
-                // emoji as soon as a banner exists; keep a SOLID currentColor backing so
-                // the non-opaque video texture doesn't reveal the container bg underneath.
-                final boolean ngBannerBg = app.nimarkogram.messenger.banners.NimarkoBannerRenderer.suppressActionsColor;
-                // 1 = premium bg fully shown, 0 = fully faded out behind the banner.
-                final float ngBg = ngBannerBgAlpha.set(ngBannerBg ? 0f : 1f);
                 // Solid currentColor backing under the (fading) gradient, so the
                 // non-opaque video texture never reveals the container bg as the
                 // premium gradient fades out.
@@ -1622,6 +1632,12 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             }
             if (paintedNgBannerForegroundProgress > 0f || nextNgBannerForegroundProgress > 0f || hadNgBannerForeground) {
                 applyNimarkoBannerForeground(paintedNgBannerForegroundProgress);
+            }
+            if (actionsView != null) {
+                actionsView.setBannerProgress(paintedNgBannerForegroundProgress);
+            }
+            if (musicView != null) {
+                musicView.setBannerProgress(paintedNgBannerForegroundProgress);
             }
             if (profileTransitionOwnsActionBarColors) {
                 // Banner/media foreground updates run from draw and used to be
@@ -2659,6 +2675,10 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
     public void onFragmentDestroy() {
         delayedProfileOpenLayoutGeneration++;
         profileLifecycleDestroyed = true;
+        pendingProfileRowsUpdate = false;
+        pendingProfileRowsOnlineCount = false;
+        pendingProfileRowsSelectedMediaText = false;
+        profileRowsUpdatePosted = false;
         if (deferredSearchAdapterPreDrawListener != null && fragmentView != null) {
             ViewTreeObserver observer = fragmentView.getViewTreeObserver();
             if (observer.isAlive()) {
@@ -2757,6 +2777,16 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
     }
 
     private void cancelProfileLifecycleAnimations() {
+        if (musicHeaderAnimationRunnable != null && listView != null) {
+            listView.removeCallbacks(musicHeaderAnimationRunnable);
+            musicHeaderAnimationRunnable = null;
+        }
+        if (musicHeaderAnimator != null) {
+            musicHeaderAnimator.removeAllListeners();
+            musicHeaderAnimator.removeAllUpdateListeners();
+            musicHeaderAnimator.cancel();
+            musicHeaderAnimator = null;
+        }
         if (expandAnimator != null) {
             expandAnimator.removeAllListeners();
             expandAnimator.removeAllUpdateListeners();
@@ -6609,7 +6639,167 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
     private int getActionsExtraHeight(boolean withMusic) {
         if (userId != 0 && imageUpdater != null && !myProfile)
             return 0;
-        return dp(74 + (withMusic && hasMusic ? 25 : 0));
+        return dp(74) + (withMusic ? getMusicHeaderExtraHeight() : 0);
+    }
+
+    private int getMusicHeaderExtraHeight() {
+        if (!musicHeaderProgressInitialized) {
+            return hasMusic ? dp(25) : 0;
+        }
+        return Math.round(dp(25) * musicHeaderProgress);
+    }
+
+    private void updateMusicHeaderTarget() {
+        float target = hasMusic ? 1f : 0f;
+        if (!musicHeaderProgressInitialized) {
+            musicHeaderProgressInitialized = true;
+            musicHeaderProgress = musicHeaderTargetProgress = target;
+            return;
+        }
+        if (musicHeaderAnimator != null) {
+            if (Math.abs(musicHeaderTargetProgress - target) < 0.001f) {
+                return;
+            }
+            musicHeaderAnimator.removeAllListeners();
+            musicHeaderAnimator.removeAllUpdateListeners();
+            musicHeaderAnimator.cancel();
+            musicHeaderAnimator = null;
+        }
+        musicHeaderTargetProgress = target;
+        if (Math.abs(musicHeaderProgress - target) < 0.001f) {
+            musicHeaderProgress = target;
+            return;
+        }
+        if (fragmentView == null || listView == null) {
+            musicHeaderProgress = target;
+            return;
+        }
+        if (!fragmentOpened && !isFragmentOpened && !transitionAnimationInProress && !openAnimationInProgress) {
+            musicHeaderProgress = target;
+            return;
+        }
+        scheduleMusicHeaderAnimation();
+    }
+
+    private void scheduleMusicHeaderAnimation() {
+        if (profileLifecycleDestroyed || listView == null || !listView.isAttachedToWindow()
+                || musicHeaderAnimator != null || musicHeaderAnimationRunnable != null
+                || Math.abs(musicHeaderProgress - musicHeaderTargetProgress) < 0.001f) {
+            return;
+        }
+        if (openAnimationInProgress || transitionAnimationInProress) {
+            return;
+        }
+        musicHeaderAnimationRunnable = () -> {
+            musicHeaderAnimationRunnable = null;
+            if (profileLifecycleDestroyed || listView == null || layoutManager == null) return;
+            RecyclerView.ItemAnimator itemAnimator = listView.getItemAnimator();
+            if (openAnimationInProgress || transitionAnimationInProress || listView.isComputingLayout()
+                    || listView.getScrollState() != RecyclerView.SCROLL_STATE_IDLE
+                    || expandAnimator != null && expandAnimator.isRunning()
+                    || itemAnimator != null && itemAnimator.isRunning()) {
+                musicHeaderAnimationRunnable = () -> {
+                    musicHeaderAnimationRunnable = null;
+                    scheduleMusicHeaderAnimation();
+                };
+                listView.postDelayed(musicHeaderAnimationRunnable, 32L);
+                return;
+            }
+            if (isPulledDown || openingAvatar || collapsePagerPending) {
+                return;
+            }
+            startMusicHeaderAnimation();
+        };
+        listView.postOnAnimation(musicHeaderAnimationRunnable);
+    }
+
+    private void startMusicHeaderAnimation() {
+        final float startProgress = musicHeaderProgress;
+        final float targetProgress = musicHeaderTargetProgress;
+        if (Math.abs(startProgress - targetProgress) < 0.001f) return;
+
+        final int startHeaderHeight = getHeaderExtraHeight();
+        final float startExtraHeight = extraHeight;
+        final View rowZero = layoutManager.findViewByPosition(0);
+        final boolean keepHeaderAnchored = rowZero != null
+                && listView.getChildAdapterPosition(rowZero) == 0
+                && rowZero.getTop() >= 0 && startExtraHeight > 0f;
+        final int startRowTop = keepHeaderAnchored ? rowZero.getTop() : 0;
+
+        if (musicView != null) {
+            musicView.setVisibility(View.VISIBLE);
+        }
+        ValueAnimator animator = ValueAnimator.ofFloat(startProgress, targetProgress);
+        musicHeaderAnimator = animator;
+        animator.setDuration(220L);
+        animator.setInterpolator(CubicBezierInterpolator.EASE_OUT_QUINT);
+        animator.addUpdateListener(valueAnimator -> {
+            if (musicHeaderAnimator != valueAnimator || profileLifecycleDestroyed) return;
+            View currentRowZero = keepHeaderAnchored ? layoutManager.findViewByPosition(0) : null;
+            if (listView.getScrollState() != RecyclerView.SCROLL_STATE_IDLE
+                    || keepHeaderAnchored && (currentRowZero == null
+                    || listView.getChildAdapterPosition(currentRowZero) != 0)) {
+                valueAnimator.removeAllListeners();
+                valueAnimator.removeAllUpdateListeners();
+                valueAnimator.cancel();
+                musicHeaderAnimator = null;
+                listView.postOnAnimation(this::scheduleMusicHeaderAnimation);
+                return;
+            }
+            musicHeaderProgress = (float) valueAnimator.getAnimatedValue();
+            int headerDelta = getHeaderExtraHeight() - startHeaderHeight;
+            if (keepHeaderAnchored) {
+                extraHeight = startExtraHeight + headerDelta;
+                anchorMusicHeaderRow(startRowTop + headerDelta);
+            }
+            applyMusicHeaderGeometry(false);
+        });
+        animator.addListener(new AnimatorListenerAdapter() {
+            @Override
+            public void onAnimationEnd(Animator animation) {
+                if (musicHeaderAnimator != animation) return;
+                musicHeaderAnimator = null;
+                musicHeaderProgress = targetProgress;
+                applyMusicHeaderGeometry(true);
+                if (musicView != null) {
+                    if (targetProgress <= 0f) {
+                        musicView.setMusicDocument(null);
+                    }
+                    musicView.setVisibility(targetProgress > 0f ? View.VISIBLE : View.GONE);
+                }
+                if (Math.abs(musicHeaderProgress - musicHeaderTargetProgress) >= 0.001f) {
+                    scheduleMusicHeaderAnimation();
+                }
+            }
+        });
+        animator.start();
+    }
+
+    private void anchorMusicHeaderRow(int desiredTop) {
+        if (listView == null || layoutManager == null || listView.isComputingLayout()) return;
+        View rowZero = layoutManager.findViewByPosition(0);
+        if (rowZero == null || listView.getChildAdapterPosition(rowZero) != 0) return;
+        int dy = rowZero.getTop() - desiredTop;
+        if (dy != 0) listView.scrollBy(0, dy);
+    }
+
+    private void applyMusicHeaderGeometry(boolean requestLayout) {
+        int actionsHeight = getActionsExtraHeight();
+        if (avatarImage != null) avatarImage.createBlurEffect(actionsHeight);
+        if (requestLayout) {
+            if (avatarsBlurView != null) avatarsBlurView.setSize(actionsHeight);
+            if (avatarsViewPager != null) avatarsViewPager.setActionsSize(actionsHeight);
+        }
+        final int newTop = (actionBar.getOccupyStatusBar() ? AndroidUtilities.statusBarHeight : 0)
+                + ActionBar.getCurrentActionBarHeight();
+        if (listView != null) {
+            listView.setTopGlowOffset((int) extraHeight);
+        }
+        updateWriteButtonLayout(false);
+        updateExtraViews(newTop);
+        if (fragmentView != null) {
+            if (requestLayout) fragmentView.requestLayout();
+        }
     }
 
     private int getHeaderExtraHeight() {
@@ -6856,6 +7046,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             banner.setPagerOwnedByProfile(false);
             banner.setCollapseSettling(false);
         } catch (Throwable ignore) {}
+        scheduleMusicHeaderAnimation();
     }
 
     /**
@@ -7548,6 +7739,11 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
         return isFragmentOpened;
     }
 
+    @Override
+    public boolean isProfileTransitionInProgress() {
+        return transitionAnimationInProress || openAnimationInProgress;
+    }
+
     private void openAvatar() {
         openAvatar(false);
     }
@@ -7796,14 +7992,22 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
     }
 
     private void openLockedChatAfterAuthentication(long dialogId, Runnable action) {
-        boolean required = app.nimarkogram.messenger.NimarkoConfig.askBiometricsToOpenChat
-                && app.nimarkogram.messenger.utils.LockedChats.isLocked(currentAccount, dialogId);
+        final long userId = dialogId > 0 ? dialogId : 0L;
+        final long chatId = dialogId < 0 ? -dialogId : 0L;
+        boolean required = app.nimarkogram.messenger.utils.chats.NimarkoChatsPasswordHelper
+                .shouldRequireBiometrics(userId, chatId, 0L, currentAccount);
         if (!required) {
             action.run();
+        } else if (app.nimarkogram.messenger.security.NimarkoBiometricPrompt
+                .isRecentlyVerified(currentAccount, userId, chatId, 0)) {
+            action.run();
         } else if (getParentActivity() != null) {
-            // Failure/cancel/unavailable intentionally has no continuation.
             app.nimarkogram.messenger.security.NimarkoBiometricPrompt.prompt(
-                    getParentActivity(), currentAccount, action, null);
+                    getParentActivity(), currentAccount, () -> {
+                        app.nimarkogram.messenger.security.NimarkoBiometricPrompt
+                                .markVerified(currentAccount, userId, chatId, 0);
+                        action.run();
+                    }, null);
         }
     }
 
@@ -10124,11 +10328,11 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             if (userId != 0) {
                 TLRPC.User user = getMessagesController().getUser(userId);
                 if (user != null && chatFull.id == user.linked_community_id) {
-                    updateListAnimated(true);
+                    requestProfileRowsUpdate(true, false);
                 }
             }
             if (currentChat != null && chatFull.id == currentChat.linked_community_id) {
-                updateListAnimated(true);
+                requestProfileRowsUpdate(true, false);
             }
             if (chatFull.id == chatId) {
                 final boolean byChannelUsers = (Boolean) args[2];
@@ -10147,7 +10351,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                 if (avatarsViewPager != null && !isTopic) {
                     avatarsViewPager.setChatInfo(chatInfo);
                 }
-                updateListAnimated(true);
+                requestProfileRowsUpdate(true, true);
                 TLRPC.Chat newChat = getMessagesController().getChat(chatId);
                 if (newChat != null) {
                     currentChat = newChat;
@@ -10191,7 +10395,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             final TL_bots.BotInfo info = (TL_bots.BotInfo) args[0];
             if (info.user_id == userId) {
                 botInfo = info;
-                updateListAnimated(false);
+                requestProfileRowsUpdate(false, false);
             }
         } else if (id == NotificationCenter.userInfoDidLoad) {
             final long uid = (Long) args[0];
@@ -10222,7 +10426,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                     } else {
                         recreateMenuAfterAnimation = true;
                     }
-                    updateListAnimated(false);
+                    requestProfileRowsUpdate(false, false);
                     if (sharedMediaLayout != null) {
                         sharedMediaLayout.setCommonGroupsCount(userInfo.common_chats_count);
                         updateSelectedMediaTabText();
@@ -10235,7 +10439,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                 updateTtlIcon();
                 if (profileChannelMessageFetcher == null && !isSettings()) {
                     profileChannelMessageFetcher = new ProfileChannelCell.ChannelMessageFetcher(currentAccount);
-                    profileChannelMessageFetcher.subscribe(() -> updateListAnimated(false));
+                    profileChannelMessageFetcher.subscribe(this::onProfileChannelMessagesLoaded);
                     profileChannelMessageFetcher.fetch(userInfo);
                 }
                 if (!isSettings()) {
@@ -10343,30 +10547,12 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
         } else if (id == NotificationCenter.channelRecommendationsLoaded) {
             final long dialogId = (long) args[0];
             if (sharedMediaRow < 0 && dialogId == getDialogId()) {
-                updateRowsIds();
-                updateSelectedMediaTabText();
-                if (listAdapter != null) {
-                    listAdapter.notifyDataSetChanged();
-                }
+                requestProfileRowsUpdate(false, true);
             }
         } else if (id == NotificationCenter.starUserGiftsLoaded) {
             final long dialogId = (long) args[0];
-            if (dialogId == getDialogId() && !isSettings()) {
-                if (sharedMediaRow < 0) {
-                    updateRowsIds();
-                    updateSelectedMediaTabText();
-                    if (listAdapter != null) {
-                        listAdapter.notifyDataSetChanged();
-                    }
-                    AndroidUtilities.runOnUIThread(() -> {
-                        if (sharedMediaLayout != null) {
-                            sharedMediaLayout.updateTabs(true);
-                            sharedMediaLayout.updateAdapters();
-                        }
-                    });
-                } else if (sharedMediaLayout != null) {
-                    sharedMediaLayout.updateTabs(true);
-                }
+            if (dialogId == getDialogId() && !isSettings() && sharedMediaRow < 0) {
+                requestProfileRowsUpdate(false, true);
             }
         } else if (id == NotificationCenter.profileMusicUpdated) {
             if ((long) args[0] == getDialogId() && userId > 0) {
@@ -10374,20 +10560,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                 if (newUserInfo != null) {
                     userInfo = newUserInfo;
                 }
-                updateRowsIds();
-                updateSelectedMediaTabText();
-                if (listView != null && listView.isComputingLayout()) {
-                    listView.post(() -> {
-                        if (listView.isComputingLayout()) {
-                            return;
-                        }
-                        if (listAdapter != null) {
-                            listAdapter.notifyDataSetChanged();
-                        }
-                    });
-                } else if (listAdapter != null) {
-                    listAdapter.notifyDataSetChanged();
-                }
+                requestProfileRowsUpdate(false, true);
             }
         } else if (id == NotificationCenter.updatedChatRanks) {
             final long chatId = (long) args[0];
@@ -10648,10 +10821,24 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
         }
         updateItemsUsername();
         needLayout(false);
+        updateMusicHeaderTarget();
+        if (listView != null) {
+            listView.postOnAnimation(this::scheduleMusicHeaderAnimation);
+        }
     }
 
     @Override
     public void onPause() {
+        if (musicHeaderAnimationRunnable != null && listView != null) {
+            listView.removeCallbacks(musicHeaderAnimationRunnable);
+            musicHeaderAnimationRunnable = null;
+        }
+        if (musicHeaderAnimator != null) {
+            musicHeaderAnimator.removeAllListeners();
+            musicHeaderAnimator.removeAllUpdateListeners();
+            musicHeaderAnimator.cancel();
+            musicHeaderAnimator = null;
+        }
         super.onPause();
         // NimarkoGram: ALWAYS tear down (null/no-op safe) so toggling the feature OFF
         // while a video banner is live still pauses ExoPlayer + the blur worker. Only
@@ -10754,7 +10941,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
         if (listAdapter == null) {
             return;
         }
-        updateListAnimated(false);
+        requestProfileRowsUpdate(false, false);
     }
 
     public boolean isFragmentOpened;
@@ -10843,6 +11030,13 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
         }
         transitionAnimationInProress = false;
         checkPhotoDescriptionAlpha();
+        if (isOpen) {
+            flushPendingProfileRowsUpdate();
+            scheduleMusicHeaderAnimation();
+            if (sharedMediaLayout != null) {
+                sharedMediaLayout.onProfileTransitionFinished();
+            }
+        }
     }
 
     @Keep
@@ -12109,7 +12303,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
         if (profileChannelMessageFetcher == null) {
             profileChannelMessageFetcher = new ProfileChannelCell.ChannelMessageFetcher(currentAccount);
         }
-        profileChannelMessageFetcher.subscribe(() -> updateListAnimated(false));
+        profileChannelMessageFetcher.subscribe(this::onProfileChannelMessagesLoaded);
         profileChannelMessageFetcher.fetch(userInfo);
         if (birthdayFetcher == null) {
             birthdayFetcher = birthdayAssetsFetcher;
@@ -12128,6 +12322,23 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             } else {
                 otherItem.hideSubItem(bot_privacy);
             }
+        }
+    }
+
+    private void onProfileChannelMessagesLoaded() {
+        if (listAdapter == null || listView == null) {
+            updateRowsIds();
+            return;
+        }
+        if (listView.isInLayout()) {
+            listView.post(this::onProfileChannelMessagesLoaded);
+            return;
+        }
+        if (channelRow >= 0 && profileChannelMessageFetcher != null
+                && !profileChannelMessageFetcher.messageObjects.isEmpty()) {
+            listAdapter.notifyItemChanged(channelRow);
+        } else {
+            requestProfileRowsUpdate(false, false);
         }
     }
 
@@ -12804,6 +13015,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
         if (actionsView != null) {
             actionsView.set(ProfileActionsView.KEY_JOIN, hasJoinRow);
         }
+        updateMusicHeaderTarget();
         int actionsHeight = getActionsExtraHeight();
         if (avatarImage != null) {
             avatarImage.createBlurEffect(actionsHeight);
@@ -12816,9 +13028,11 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
         }
         if (musicView != null) {
             if (userInfo != null) {
-                musicView.setMusicDocument(userInfo.saved_music);
+                if (userInfo.saved_music != null || getMusicHeaderExtraHeight() <= 0) {
+                    musicView.setMusicDocument(userInfo.saved_music);
+                }
             }
-            musicView.setVisibility(hasMusic ? View.VISIBLE : View.GONE);
+            musicView.setVisibility(hasMusic || getMusicHeaderExtraHeight() > 0 ? View.VISIBLE : View.GONE);
         }
     }
 
@@ -13147,7 +13361,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             actionsView.updatePosition(listView.getMeasuredWidth(), dp(74));
         } else {
             actionsView.clipHeight = -1;
-            float bottom = extraHeight + newTop - dp(hasMusic ? 25 : 0);
+            float bottom = extraHeight + newTop - getMusicHeaderExtraHeight();
             float height = Math.min(dp(74), bottom - newTop);
             actionsView.updatePosition(bottom - height, height);
         }
@@ -13174,7 +13388,9 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
 //            float vh = avatarContainer.getHeight() * avatarContainer.getScaleY();
 //            musicView.clipHeight = avatarContainer.getY() + vh;
             musicView.setAlpha(avatarAnimationProgress);
-            musicView.updatePosition(listView.getMeasuredWidth() + dp(74), getActionsExtraHeight() - dp(74));
+            float targetY = listView.getMeasuredWidth() + dp(74);
+            float targetHeight = getActionsExtraHeight() - dp(74);
+            musicView.updatePosition(targetY, targetHeight);
         } else {
             if (openAnimationInProgress) {
                 musicView.setAlpha(avatarAnimationProgress);
@@ -13183,7 +13399,9 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
 //            musicView.clipHeight = -1;
             float bottom = extraHeight + newTop + dp(74);
             float height = Math.min(getActionsExtraHeight(), bottom - newTop);
-            musicView.updatePosition(bottom - height, height - dp(74));
+            float targetY = bottom - height;
+            float targetHeight = height - dp(74);
+            musicView.updatePosition(targetY, targetHeight);
         }
     }
 
@@ -17583,6 +17801,48 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
 
     public void updateListAnimated(boolean updateOnlineCount) {
         updateListAnimated(updateOnlineCount, false);
+    }
+
+    private void requestProfileRowsUpdate(boolean updateOnlineCount, boolean updateSelectedMediaText) {
+        if (profileLifecycleDestroyed) {
+            return;
+        }
+        pendingProfileRowsUpdate = true;
+        pendingProfileRowsOnlineCount |= updateOnlineCount;
+        pendingProfileRowsSelectedMediaText |= updateSelectedMediaText;
+        if (transitionAnimationInProress || openAnimationInProgress) {
+            return;
+        }
+        if (!fragmentOpened && !isFragmentOpened) {
+            flushPendingProfileRowsUpdate();
+            return;
+        }
+        if (profileRowsUpdatePosted) {
+            return;
+        }
+        profileRowsUpdatePosted = true;
+        if (listView != null && listView.isAttachedToWindow()) {
+            listView.postOnAnimation(this::flushPendingProfileRowsUpdate);
+        } else {
+            flushPendingProfileRowsUpdate();
+        }
+    }
+
+    private void flushPendingProfileRowsUpdate() {
+        profileRowsUpdatePosted = false;
+        if (profileLifecycleDestroyed || !pendingProfileRowsUpdate
+                || transitionAnimationInProress || openAnimationInProgress) {
+            return;
+        }
+        boolean updateOnlineCount = pendingProfileRowsOnlineCount;
+        boolean updateSelectedMediaText = pendingProfileRowsSelectedMediaText;
+        pendingProfileRowsUpdate = false;
+        pendingProfileRowsOnlineCount = false;
+        pendingProfileRowsSelectedMediaText = false;
+        updateListAnimated(updateOnlineCount);
+        if (updateSelectedMediaText) {
+            updateSelectedMediaTabText();
+        }
     }
 
     private void updateListAnimated(boolean updateOnlineCount, boolean triedInLayout) {
