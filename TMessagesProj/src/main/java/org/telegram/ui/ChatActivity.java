@@ -38696,7 +38696,7 @@ public class ChatActivity extends BaseFragment implements
                 username = username.toLowerCase();
                 if (ChatObject.hasPublicLink(currentChat, username) || UserObject.hasPublicUsername(currentUser, username)) {
                     if (avatarContainer != null) {
-                        avatarContainer.openProfile(true);
+                        avatarContainer.openProfile(false);
                     } else {
                         shakeContent();
                     }
@@ -42169,7 +42169,7 @@ public class ChatActivity extends BaseFragment implements
                 didPressInstantButton(cell, 10);
                 return;
             }
-            openProfile(user, ChatObject.isForum(currentChat) || isThreadChat());
+            openProfile(user, false);
         }
 
         @Override

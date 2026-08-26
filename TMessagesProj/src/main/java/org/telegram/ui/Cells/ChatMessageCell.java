@@ -6976,15 +6976,18 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
         if (currentNameEmojiStatusDrawable != null) {
             currentNameEmojiStatusDrawable.attach();
         }
-        if (mediaSpoilerEffect2 != null) {
-            if (mediaSpoilerEffect2.destroyed) {
+        if (currentMessageObject != null && currentMessageObject.hasMediaSpoilers() && SpoilerEffect2.supports()) {
+            if (mediaSpoilerEffect2 == null || mediaSpoilerEffect2.destroyed) {
                 mediaSpoilerEffect2 = makeSpoilerEffect();
-                if (mediaSpoilerEffect2Index != null) {
+                if (mediaSpoilerEffect2 != null && mediaSpoilerEffect2Index != null) {
                     mediaSpoilerEffect2.reassignAttach(this, mediaSpoilerEffect2Index);
                 }
             } else {
                 mediaSpoilerEffect2.attach(this);
             }
+        } else if (mediaSpoilerEffect2 != null) {
+            mediaSpoilerEffect2.detach(this);
+            mediaSpoilerEffect2 = null;
         }
         if (channelRecommendationsCell != null) {
             channelRecommendationsCell.onAttachedToWindow();
@@ -15742,6 +15745,9 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
             @Override
             public void onAnimationEnd(Animator animation) {
                 currentMessageObject.isMediaSpoilersRevealed = true;
+                if (documentAttachType == DOCUMENT_ATTACH_TYPE_VIDEO || documentAttachType == DOCUMENT_ATTACH_TYPE_GIF) {
+                    updateButtonState(false, true, false);
+                }
                 invalidate();
             }
         });
@@ -18437,10 +18443,18 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
                             fullWidth = (currentPosition.flags & mask) == mask;
                         }
                         if ((documentAttachType == DOCUMENT_ATTACH_TYPE_VIDEO || documentAttachType == DOCUMENT_ATTACH_TYPE_GIF && autoDownload) && canStreamVideo && hasDocLayout && fullWidth) {
-                            drawVideoImageButton = true;
+                            boolean showSpoilerLoading = currentMessageObject.hasMediaSpoilers()
+                                    && !currentMessageObject.isMediaSpoilersRevealed;
+                            drawVideoImageButton = !showSpoilerLoading;
                             getIconForCurrentState();
-                            radialProgress.setIcon(autoPlayingMedia ? MediaActionDrawable.ICON_NONE : MediaActionDrawable.ICON_PLAY, ifSame, animated);
-                            videoRadialProgress.setIcon(MediaActionDrawable.ICON_DOWNLOAD, ifSame, animated);
+                            if (showSpoilerLoading) {
+                                radialProgress.setProgress(0, animated);
+                                radialProgress.setIcon(MediaActionDrawable.ICON_EMPTY, ifSame, animated);
+                                videoRadialProgress.setIcon(MediaActionDrawable.ICON_NONE, ifSame, animated);
+                            } else {
+                                radialProgress.setIcon(autoPlayingMedia ? MediaActionDrawable.ICON_NONE : MediaActionDrawable.ICON_PLAY, ifSame, animated);
+                                videoRadialProgress.setIcon(MediaActionDrawable.ICON_DOWNLOAD, ifSame, animated);
+                            }
                         } else {
                             drawVideoImageButton = false;
                             radialProgress.setIcon(getIconForCurrentState(), ifSame, animated);
@@ -18464,11 +18478,19 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
                             fullWidth = (currentPosition.flags & mask) == mask;
                         }
                         if ((documentAttachType == DOCUMENT_ATTACH_TYPE_VIDEO || MessageObject.isGifDocument(documentAttach, currentMessageObject.hasValidGroupId()) && autoDownload) && canStreamVideo && hasDocLayout && fullWidth) {
-                            drawVideoImageButton = true;
+                            boolean showSpoilerLoading = currentMessageObject.hasMediaSpoilers()
+                                    && !currentMessageObject.isMediaSpoilersRevealed;
+                            drawVideoImageButton = !showSpoilerLoading;
                             getIconForCurrentState();
-                            radialProgress.setIcon(autoPlayingMedia || documentAttachType == DOCUMENT_ATTACH_TYPE_GIF ? MediaActionDrawable.ICON_NONE : MediaActionDrawable.ICON_PLAY, ifSame, animated);
-                            videoRadialProgress.setProgress(progress != null ? DownloadController.getProgress(progress) : 0, animated);
-                            videoRadialProgress.setIcon(MediaActionDrawable.ICON_CANCEL_FILL, ifSame, animated);
+                            if (showSpoilerLoading) {
+                                radialProgress.setProgress(progress != null ? DownloadController.getProgress(progress) : 0, animated);
+                                radialProgress.setIcon(MediaActionDrawable.ICON_EMPTY, ifSame, animated);
+                                videoRadialProgress.setIcon(MediaActionDrawable.ICON_NONE, ifSame, animated);
+                            } else {
+                                radialProgress.setIcon(autoPlayingMedia || documentAttachType == DOCUMENT_ATTACH_TYPE_GIF ? MediaActionDrawable.ICON_NONE : MediaActionDrawable.ICON_PLAY, ifSame, animated);
+                                videoRadialProgress.setProgress(progress != null ? DownloadController.getProgress(progress) : 0, animated);
+                                videoRadialProgress.setIcon(MediaActionDrawable.ICON_CANCEL_FILL, ifSame, animated);
+                            }
                         } else {
                             drawVideoImageButton = false;
                             radialProgress.setProgress(progress != null ? DownloadController.getProgress(progress) : 0, animated);
