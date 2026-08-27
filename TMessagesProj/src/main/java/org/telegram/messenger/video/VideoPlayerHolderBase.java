@@ -257,7 +257,7 @@ public class VideoPlayerHolderBase {
                     return;
                 }
                 FileLog.e(e);
-                final long positionMs = player.getCurrentPosition();
+                final long positionMs = currentPosition;
                 triesCount--;
                 if (triesCount > 0) {
                     dispatchQueue.postRunnable(initRunnable = () -> {
