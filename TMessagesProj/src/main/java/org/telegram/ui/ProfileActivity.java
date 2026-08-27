@@ -915,6 +915,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
     private boolean pendingProfileRowsOnlineCount;
     private boolean pendingProfileRowsSelectedMediaText;
     private boolean profileRowsUpdatePosted;
+
     private FrameLayout bottomButton2Container;
     private ButtonWithCounterView bottomButton2;
 
@@ -11021,6 +11022,9 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                     fragmentView.requestLayout();
                 }
             }
+            if (actionsView != null) {
+                actionsView.isOpeningLayout = false;
+            }
             getNotificationCenter().onAnimationFinish(transitionIndex);
 
             if (blurredView != null && blurredView.getVisibility() == View.VISIBLE) {
@@ -11032,10 +11036,10 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
         checkPhotoDescriptionAlpha();
         if (isOpen) {
             flushPendingProfileRowsUpdate();
-            scheduleMusicHeaderAnimation();
             if (sharedMediaLayout != null) {
                 sharedMediaLayout.onProfileTransitionFinished();
             }
+            scheduleMusicHeaderAnimation();
         }
     }
 
@@ -17839,7 +17843,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
         pendingProfileRowsUpdate = false;
         pendingProfileRowsOnlineCount = false;
         pendingProfileRowsSelectedMediaText = false;
-        updateListAnimated(updateOnlineCount);
+        updateListAnimated(updateOnlineCount, false);
         if (updateSelectedMediaText) {
             updateSelectedMediaTabText();
         }

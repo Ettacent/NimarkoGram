@@ -141,6 +141,24 @@ public final class NimarkoBannerRenderer {
     private final Map<Long, Float> avBase = new HashMap<>();
     private final Set<Long> avAnim = new HashSet<>();
     private final Set<Long> avShow = new HashSet<>();
+    private static final double AVATAR_RESUME_HOLD = 3.0;
+
+    private static final class AvatarFadeState {
+        final long dialogId;
+        final float avatarAlpha;
+        final float giftsAlpha;
+
+        AvatarFadeState(long dialogId, float avatarAlpha, float giftsAlpha) {
+            this.dialogId = dialogId;
+            this.avatarAlpha = avatarAlpha;
+            this.giftsAlpha = giftsAlpha;
+        }
+    }
+
+    private final Map<ViewGroup, AvatarFadeState> pausedAvatarStates = new IdentityHashMap<>();
+    private ViewGroup avatarResumeHoldView;
+    private long avatarResumeHoldDialogId;
+    private double avatarResumeHoldUntil;
 
     private ViewGroup currentTopView;
     private long viewedProfileId;
@@ -287,6 +305,48 @@ public final class NimarkoBannerRenderer {
         avLastAlpha = -1f; avLastGifts = -1f; avSvVis = -1;
     }
 
+    private void saveAvatarState(ViewGroup topView) {
+        if (topView == null || topView != currentTopView || viewedProfileId == 0) return;
+        long dialogId = viewedProfileId;
+        if (!ctrl.shouldHideAvatar(dialogId) && !avAlpha.containsKey(dialogId)) {
+            pausedAvatarStates.remove(topView);
+            return;
+        }
+        float alpha = getOr(avAlpha, dialogId, lastFadeA);
+        if (alpha < 0f) {
+            View view = avatarContainer != null ? avatarContainer : avatarImage;
+            alpha = view != null ? view.getAlpha() : 1f;
+        }
+        float giftsAlpha = lastFadeGifts;
+        if (giftsAlpha < 0f) giftsAlpha = giftsView != null ? giftsView.getAlpha() : alpha;
+        pausedAvatarStates.put(topView, new AvatarFadeState(
+                dialogId, clamp01(alpha), clamp01(giftsAlpha)));
+    }
+
+    private void restoreAvatarState(ViewGroup topView, long dialogId) {
+        AvatarFadeState state = topView == null ? null : pausedAvatarStates.get(topView);
+        if (state == null || state.dialogId != dialogId || !ctrl.shouldHideAvatar(dialogId)
+                || state.avatarAlpha >= 0.999f) {
+            clearAvatarResumeHold();
+            return;
+        }
+        avAlpha.put(dialogId, state.avatarAlpha);
+        avTimes.remove(dialogId);
+        avBase.remove(dialogId);
+        avAnim.remove(dialogId);
+        avShow.remove(dialogId);
+        setAvAlpha(state.avatarAlpha, state.giftsAlpha);
+        avatarResumeHoldView = topView;
+        avatarResumeHoldDialogId = dialogId;
+        avatarResumeHoldUntil = t() + AVATAR_RESUME_HOLD;
+    }
+
+    private void clearAvatarResumeHold() {
+        avatarResumeHoldView = null;
+        avatarResumeHoldDialogId = 0;
+        avatarResumeHoldUntil = 0;
+    }
+
     public void setCollapseSettling(boolean settling) {
         if (collapseSettling == settling) return;
         collapseSettling = settling;
@@ -327,6 +387,7 @@ public final class NimarkoBannerRenderer {
         viewedProfileId = dialogId;
         isProfileOpen = true;
         openAnimDone = false;
+        restoreAvatarState(topView, dialogId);
         if (appPaused && !ApplicationLoader.mainInterfacePaused) {
             appPaused = false;
         }
@@ -357,6 +418,7 @@ public final class NimarkoBannerRenderer {
         if (topView != null && currentTopView != null && topView != currentTopView) {
             return;
         }
+        saveAvatarState(topView);
         isProfileOpen = false;
         openAnimDone = false;
         setupVideoAfter = 0;
@@ -374,6 +436,7 @@ public final class NimarkoBannerRenderer {
     }
 
     public void onProfileDestroyed(ViewGroup topView, long dialogId) {
+        if (topView != null) pausedAvatarStates.remove(topView);
         if (dialogId != 0 && viewedProfileId != 0 && dialogId != viewedProfileId) {
             frameBfByEid.remove(dialogId);
             frameIvByEid.remove(dialogId);
@@ -541,6 +604,7 @@ public final class NimarkoBannerRenderer {
         videoHierarchyGeneration++;
         destroyVideo();
         avAlpha.clear(); avTimes.clear(); avBase.clear(); avAnim.clear(); avShow.clear();
+        clearAvatarResumeHold();
         clearSettleState();
         maxEh = 0; matKeyW = -1; matKeyY1 = -1; matKeyBw = -1; matKeyBh = -1; grad = null; gradKeyY1q = -1;
         lastDa = -1; lastBa = -1f; lastLh = 0; lastVol = -1f;
@@ -776,6 +840,22 @@ public final class NimarkoBannerRenderer {
         try {
             if (profileExitActive && profileExitEid == eid) return;
 
+            if (avatarResumeHoldView == currentTopView && avatarResumeHoldDialogId == eid) {
+                if (!ctrl.shouldHideAvatar(eid) || now >= avatarResumeHoldUntil) {
+                    clearAvatarResumeHold();
+                } else if (!hide) {
+                    setAvAlpha(getOr(avAlpha, eid, 0f), lastFadeGifts < 0f ? 0f : lastFadeGifts);
+                    postInv();
+                    return;
+                } else {
+                    clearAvatarResumeHold();
+                    float restoredAlpha = getOr(avAlpha, eid, 0f);
+                    if (restoredAlpha > 0.001f && restoredAlpha < 0.999f) {
+                        avAnim.add(eid);
+                        anchorFadeStart(eid, restoredAlpha, now);
+                    }
+                }
+            }
             if (!hide) {
                 if (!avAlpha.containsKey(eid)) return;
                 float ca = getOr(avAlpha, eid, 1f);

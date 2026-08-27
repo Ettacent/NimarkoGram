@@ -693,6 +693,7 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
         }
         dispatchPendingAdaptersUpdate();
     };
+
     private ActionBarMenuItem deleteItem;
     @Nullable
     public ActionBarMenuItem searchItemIcon;
@@ -6973,14 +6974,19 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
         boolean animated = animateTabsAfterProfileTransition;
         updateTabsAfterProfileTransition = false;
         animateTabsAfterProfileTransition = false;
-        updateTabs(animated);
+        updateTabs(animated, true);
+        checkCurrentTabValid();
     }
 
     public void updateTabs(boolean animated) {
+        updateTabs(animated, false);
+    }
+
+    private void updateTabs(boolean animated, boolean completingProfileTransition) {
         if (scrollSlidingTextTabStrip == null) {
             return;
         }
-        if (delegate.isProfileTransitionInProgress()) {
+        if (!completingProfileTransition && delegate.isProfileTransitionInProgress()) {
             updateTabsAfterProfileTransition = true;
             animateTabsAfterProfileTransition |= animated;
             return;
@@ -10510,6 +10516,7 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
             notifyDataSetChanged();
             int reqId = profileActivity.getConnectionsManager().sendRequest(req, (response, error) -> AndroidUtilities.runOnUIThread(() -> {
                 int oldCount = getItemCount();
+                final boolean initialPage = !firstLoaded && max_id == 0;
                 if (error == null) {
                     TLRPC.messages_Chats res = (TLRPC.messages_Chats) response;
                     profileActivity.getMessagesController().putChats(res.chats, false);
@@ -10519,19 +10526,42 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
                     endReached = true;
                 }
 
+                RecyclerListView visibleListView = null;
                 for (int a = 0; a < mediaPages.length; a++) {
-                    if (mediaPages[a].selectedType == 6) {
-                        if (mediaPages[a].listView != null) {
-                            final RecyclerListView listView = mediaPages[a].listView;
-                            if (firstLoaded || oldCount == 0) {
-                                animateItemsEnter(listView, 0, null);
-                            }
-                        }
+                    if (mediaPages[a].selectedType == TAB_COMMON_GROUPS) {
+                        visibleListView = mediaPages[a].listView;
+                        break;
+                    }
+                }
+                final boolean animateInitialPage = initialPage && visibleListView != null && visibleListView.isAttachedToWindow();
+                if (animateInitialPage) {
+                    visibleListView.animate().cancel();
+                    visibleListView.setAlpha(0f);
+                } else if (visibleListView != null) {
+                    visibleListView.animate().cancel();
+                    visibleListView.setAlpha(1f);
+                    if (!initialPage) {
+                        animateItemsEnter(visibleListView, oldCount, null);
                     }
                 }
                 loading = false;
                 firstLoaded = true;
                 notifyDataSetChanged();
+                if (animateInitialPage) {
+                    final RecyclerListView listView = visibleListView;
+                    listView.postOnAnimation(() -> {
+                        if (!listView.isAttachedToWindow() || listView.getAdapter() != CommonGroupsAdapter.this) {
+                            listView.setAlpha(1f);
+                            return;
+                        }
+                        listView.animate()
+                                .alpha(1f)
+                                .setDuration(260)
+                                .setInterpolator(CubicBezierInterpolator.EASE_OUT_QUINT)
+                                .withEndAction(() -> listView.setAlpha(1f))
+                                .start();
+                    });
+                }
             }));
             profileActivity.getConnectionsManager().bindRequestToGuid(reqId, profileActivity.getClassGuid());
         }

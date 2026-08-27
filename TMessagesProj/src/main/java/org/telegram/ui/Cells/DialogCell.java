@@ -650,6 +650,10 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
     private int drawScam;
 
     private boolean isSelected;
+    private boolean modernPressFeedback;
+    private final AnimatedFloat modernPressProgress = new AnimatedFloat(0f, this, 0, 180, CubicBezierInterpolator.EASE_OUT_QUINT);
+    private final Paint modernPressPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final RectF modernPressRect = new RectF();
 
     private RectF rect = new RectF();
     private DialogsAdapter.DialogsPreloader preloader;
@@ -748,6 +752,7 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
 
     public void setDialog(TLRPC.Dialog dialog, int type, int folder) {
         if (currentDialogId != dialog.id) {
+            resetModernPressFeedback();
             if (statusDrawableAnimator != null) {
                 statusDrawableAnimator.removeAllListeners();
                 statusDrawableAnimator.cancel();
@@ -793,6 +798,7 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
     }
 
     public void setDialog(CustomDialog dialog) {
+        resetModernPressFeedback();
         customDialog = dialog;
         messageId = 0;
         update(0);
@@ -853,6 +859,7 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
 
     public void setDialog(long dialog_id, MessageObject messageObject, int date, boolean useMe, boolean animated) {
         if (currentDialogId != dialog_id) {
+            resetModernPressFeedback();
             lastStatusDrawableParams = -1;
         }
         currentDialogId = dialog_id;
@@ -877,6 +884,7 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
 
     public void setDialog(long dialog_id, MessageObject messageObject, ArrayList<MessageObject> groupMessageObject, int date, boolean useMe, boolean animated) {
         if (currentDialogId != dialog_id) {
+            resetModernPressFeedback();
             lastStatusDrawableParams = -1;
         }
         currentDialogId = dialog_id;
@@ -915,6 +923,7 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
     @Override
     protected void onDetachedFromWindow() {
         super.onDetachedFromWindow();
+        resetModernPressFeedback();
         isSliding = false;
         drawRevealBackground = false;
         currentRevealProgress = 0.0f;
@@ -3204,6 +3213,20 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
         isSelected = value;
     }
 
+    public void setModernPressFeedback(boolean pressed) {
+        if (modernPressFeedback == pressed) {
+            return;
+        }
+        modernPressFeedback = pressed;
+        modernPressProgress.setDuration(pressed ? 110 : 190);
+        invalidate();
+    }
+
+    private void resetModernPressFeedback() {
+        modernPressFeedback = false;
+        modernPressProgress.force(0f);
+    }
+
     public boolean checkCurrentDialogIndex(boolean frozen) {
         return false;
     }
@@ -3930,6 +3953,15 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
         if (clipProgress != 0.0f && Build.VERSION.SDK_INT != 24) {
             canvas.save();
             canvas.clipRect(0, topClip * clipProgress, getMeasuredWidth(), getMeasuredHeight() - (int) (bottomClip * clipProgress));
+        }
+
+        float pressProgress = modernPressProgress.set(modernPressFeedback);
+        if (pressProgress > 0f) {
+            int color = Theme.getColor(Theme.key_listSelector, resourcesProvider);
+            modernPressPaint.setColor(color);
+            modernPressPaint.setAlpha(Math.round(Color.alpha(color) * pressProgress));
+            modernPressRect.set(dp(6), dp(2), getMeasuredWidth() - dp(6), getMeasuredHeight() - dp(2));
+            canvas.drawRoundRect(modernPressRect, dp(14), dp(14), modernPressPaint);
         }
 
         int backgroundColor = 0;

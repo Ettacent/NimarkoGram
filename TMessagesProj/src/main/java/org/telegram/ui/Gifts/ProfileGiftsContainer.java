@@ -202,6 +202,8 @@ public class ProfileGiftsContainer extends FrameLayout implements NotificationCe
         public @Nullable IBlur3Capture iBlur3Capture;
 
         private boolean reordering;
+        private boolean initialGiftContentShown;
+        private int initialGiftRevealId;
 
         public void update(boolean animated) {
             if (listView == null || listView.adapter == null) return;
@@ -385,6 +387,10 @@ public class ProfileGiftsContainer extends FrameLayout implements NotificationCe
         public void bind(boolean isCollection, StarsController.GiftsList list) {
             this.isCollection = isCollection;
             this.list = list;
+            initialGiftRevealId++;
+            listView.animate().cancel();
+            listView.setAlpha(1f);
+            initialGiftContentShown = list != null && !list.gifts.isEmpty();
             if (list != null) {
                 list.load();
             }
@@ -433,6 +439,9 @@ public class ProfileGiftsContainer extends FrameLayout implements NotificationCe
         protected void onDetachedFromWindow() {
             super.onDetachedFromWindow();
             NotificationCenter.getInstance(currentAccount).removeObserver(this, NotificationCenter.starUserGiftsLoaded);
+            initialGiftRevealId++;
+            listView.animate().cancel();
+            listView.setAlpha(1f);
         }
 
         @Override
@@ -441,7 +450,30 @@ public class ProfileGiftsContainer extends FrameLayout implements NotificationCe
                 if (args[1] != list)
                     return;
 
+                final boolean revealInitialContent = !initialGiftContentShown
+                        && list != null && !list.gifts.isEmpty() && isAttachedToWindow();
+                if (revealInitialContent) {
+                    initialGiftContentShown = true;
+                    listView.animate().cancel();
+                    listView.setAlpha(0f);
+                }
                 update(true);
+                if (revealInitialContent) {
+                    final StarsController.GiftsList revealingList = list;
+                    final int revealId = ++initialGiftRevealId;
+                    listView.postOnAnimation(() -> {
+                        if (revealId != initialGiftRevealId || list != revealingList || !isAttachedToWindow()) {
+                            listView.setAlpha(1f);
+                            return;
+                        }
+                        listView.animate()
+                                .alpha(1f)
+                                .setDuration(260)
+                                .setInterpolator(CubicBezierInterpolator.EASE_OUT_QUINT)
+                                .withEndAction(() -> listView.setAlpha(1f))
+                                .start();
+                    });
+                }
                 if (list != null && isAttachedToWindow() && (!listView.canScrollVertically(1) || isLoadingVisible())) {
                     list.load();
                 }
