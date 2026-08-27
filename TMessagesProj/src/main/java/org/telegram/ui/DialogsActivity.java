@@ -2475,6 +2475,24 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             return true;
         }
 
+        @Override
+        protected boolean canHighlightChildAt(View child, float x, float y) {
+            if (child instanceof DialogCell) {
+                return false;
+            }
+            return super.canHighlightChildAt(child, x, y);
+        }
+
+        @Override
+        protected void onChildPressed(View child, float x, float y, boolean pressed) {
+            if (child instanceof DialogCell) {
+                child.setPressed(false);
+                ((DialogCell) child).setModernPressFeedback(pressed);
+                return;
+            }
+            super.onChildPressed(child, x, y, pressed);
+        }
+
         public void setOpenRightFragmentProgress(float progress) {
             rightFragmentOpenedProgress = progress;
             invalidate();

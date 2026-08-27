@@ -366,7 +366,7 @@ public class ProfileGiftsView extends View implements NotificationCenter.Notific
         }
 
         if (changed)
-            invalidate();
+        invalidate();
     }
 
     private final TimeInterpolator giftCollapseXInterpolator = new DecelerateInterpolator();
@@ -402,6 +402,11 @@ public class ProfileGiftsView extends View implements NotificationCenter.Notific
 
         for (int i = 0; i < gifts.size(); ++i) {
             final Gift gift = gifts.get(i);
+            final boolean visualReady = gift.emojiDrawable != null && gift.emojiDrawable.getImageReceiver() != null
+                    && gift.emojiDrawable.getImageReceiver().hasBitmapImage();
+            if (!visualReady) {
+                continue;
+            }
             final float enter = gift.animatedFloat.set(1.0f);
             float scale = lerp(0.5f, 1.0f, enter);
             final float alpha = enter * (1.0f - expandProgress) * (1.0f - actionBarProgress) * (closedAlpha);
