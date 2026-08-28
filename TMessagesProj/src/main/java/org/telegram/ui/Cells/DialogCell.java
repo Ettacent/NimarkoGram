@@ -651,7 +651,7 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
 
     private boolean isSelected;
     private boolean modernPressFeedback;
-    private final AnimatedFloat modernPressProgress = new AnimatedFloat(0f, this, 0, 180, CubicBezierInterpolator.EASE_OUT_QUINT);
+    private final AnimatedFloat modernPressProgress = new AnimatedFloat(0f, this, 0, 160, CubicBezierInterpolator.EASE_BOTH);
     private final Paint modernPressPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final RectF modernPressRect = new RectF();
 
@@ -3218,7 +3218,7 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
             return;
         }
         modernPressFeedback = pressed;
-        modernPressProgress.setDuration(pressed ? 110 : 190);
+        modernPressProgress.setDuration(pressed ? 150 : 170);
         invalidate();
     }
 
@@ -3959,7 +3959,9 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
         if (pressProgress > 0f) {
             int color = Theme.getColor(Theme.key_listSelector, resourcesProvider);
             modernPressPaint.setColor(color);
-            modernPressPaint.setAlpha(Math.round(Color.alpha(color) * pressProgress));
+            int backgroundColor = Theme.getColor(Theme.key_windowBackgroundWhite, resourcesProvider);
+            int maximumAlpha = ColorUtils.calculateLuminance(backgroundColor) >= 0.5 ? 16 : 20;
+            modernPressPaint.setAlpha(Math.round(Math.min(Color.alpha(color), maximumAlpha) * pressProgress));
             modernPressRect.set(dp(6), dp(2), getMeasuredWidth() - dp(6), getMeasuredHeight() - dp(2));
             canvas.drawRoundRect(modernPressRect, dp(14), dp(14), modernPressPaint);
         }
