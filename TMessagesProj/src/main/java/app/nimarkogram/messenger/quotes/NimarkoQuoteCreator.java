@@ -1468,10 +1468,10 @@ public final class NimarkoQuoteCreator {
                 clonedWallpaper = cloneDrawable(Theme.getCachedWallpaperNonBlocking());
             }
             wallpaper = clonedWallpaper;
-            wallpaperColor = Theme.getColor(Theme.key_chat_wallpaper, resourcesProvider);
             boolean dark = resourcesProvider != null
                     ? resourcesProvider.isDark()
                     : Theme.isCurrentThemeDark();
+            wallpaperColor = resolveWallpaperColor(wallpaper, resourcesProvider, dark);
             int bubbleColor = Theme.getColor(Theme.key_chat_serviceBackground, resourcesProvider);
             int shadowColor = Theme.getColor(Theme.key_chat_serviceText, resourcesProvider);
             Theme.ThemeInfo activeTheme = Theme.getActiveTheme();
@@ -2077,6 +2077,21 @@ public final class NimarkoQuoteCreator {
         }
 
         private static Drawable cloneDrawable(Drawable source) {
+            if (source instanceof MotionBackgroundDrawable) {
+                MotionBackgroundDrawable motion = (MotionBackgroundDrawable) source;
+                int[] colors = motion.getColors();
+                if (colors != null && colors.length >= 4) {
+                    MotionBackgroundDrawable copy = new MotionBackgroundDrawable(
+                            colors[0], colors[1], colors[2], colors[3], false
+                    );
+                    Bitmap pattern = motion.getPatternBitmap();
+                    if (pattern != null && !pattern.isRecycled()) {
+                        copy.setPatternBitmap(motion.getIntensity(), pattern);
+                        copy.setPatternColorFilter(copy.getPatternColor());
+                    }
+                    return copy;
+                }
+            }
             if (source == null || source.getConstantState() == null) return null;
             try {
                 return source.getConstantState()
@@ -2086,6 +2101,41 @@ public final class NimarkoQuoteCreator {
                 FileLog.e(error);
                 return null;
             }
+        }
+
+        private static int resolveWallpaperColor(
+                Drawable wallpaper,
+                Theme.ResourcesProvider resourcesProvider,
+                boolean dark
+        ) {
+            if (wallpaper instanceof ColorDrawable) {
+                return ColorUtils.setAlphaComponent(((ColorDrawable) wallpaper).getColor(), 255);
+            }
+            if (wallpaper instanceof MotionBackgroundDrawable) {
+                int[] colors = ((MotionBackgroundDrawable) wallpaper).getColors();
+                if (colors != null && colors.length >= 4) {
+                    int average = colors[0];
+                    for (int i = 1; i < colors.length; i++) {
+                        if (colors[i] != 0) {
+                            average = AndroidUtilities.getAverageColor(average, colors[i]);
+                        }
+                    }
+                    return ColorUtils.setAlphaComponent(average, 255);
+                }
+            }
+
+            int themeColor = Theme.getColor(Theme.key_chat_wallpaper, resourcesProvider);
+            if (themeColor != 0 && themeColor != Theme.getDefaultColor(Theme.key_chat_wallpaper)) {
+                return ColorUtils.setAlphaComponent(themeColor, 255);
+            }
+
+            Theme.ThemeInfo activeTheme = Theme.getActiveTheme();
+            int fallback = activeTheme != null ? activeTheme.getPreviewBackgroundColor() : 0;
+            if (fallback == 0
+                    || activeTheme != null && activeTheme.isDark() != dark) {
+                fallback = dark ? 0xff17212b : 0xffe1e9f0;
+            }
+            return ColorUtils.setAlphaComponent(fallback, 255);
         }
     }
 
