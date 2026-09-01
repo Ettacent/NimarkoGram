@@ -10487,7 +10487,6 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
         private Context mContext;
         private ArrayList<TLRPC.Chat> chats = new ArrayList<>();
         private boolean loading;
-        private boolean firstLoaded;
         private boolean endReached;
 
         public CommonGroupsAdapter(Context context) {
@@ -10515,8 +10514,6 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
             loading = true;
             notifyDataSetChanged();
             int reqId = profileActivity.getConnectionsManager().sendRequest(req, (response, error) -> AndroidUtilities.runOnUIThread(() -> {
-                int oldCount = getItemCount();
-                final boolean initialPage = !firstLoaded && max_id == 0;
                 if (error == null) {
                     TLRPC.messages_Chats res = (TLRPC.messages_Chats) response;
                     profileActivity.getMessagesController().putChats(res.chats, false);
@@ -10526,54 +10523,24 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
                     endReached = true;
                 }
 
-                RecyclerListView visibleListView = null;
-                for (int a = 0; a < mediaPages.length; a++) {
-                    if (mediaPages[a].selectedType == TAB_COMMON_GROUPS) {
-                        visibleListView = mediaPages[a].listView;
-                        break;
-                    }
-                }
-                final boolean animateInitialPage = initialPage && visibleListView != null && visibleListView.isAttachedToWindow();
-                if (animateInitialPage) {
-                    visibleListView.animate().cancel();
-                    visibleListView.setAlpha(0f);
-                } else if (visibleListView != null) {
-                    visibleListView.animate().cancel();
-                    visibleListView.setAlpha(1f);
-                    if (!initialPage) {
-                        animateItemsEnter(visibleListView, oldCount, null);
-                    }
-                }
                 loading = false;
-                firstLoaded = true;
                 notifyDataSetChanged();
-                if (animateInitialPage) {
-                    final RecyclerListView listView = visibleListView;
-                    listView.postOnAnimation(() -> {
-                        if (!listView.isAttachedToWindow() || listView.getAdapter() != CommonGroupsAdapter.this) {
-                            listView.setAlpha(1f);
-                            return;
-                        }
-                        listView.animate()
-                                .alpha(1f)
-                                .setDuration(260)
-                                .setInterpolator(CubicBezierInterpolator.EASE_OUT_QUINT)
-                                .withEndAction(() -> listView.setAlpha(1f))
-                                .start();
-                    });
-                }
             }));
             profileActivity.getConnectionsManager().bindRequestToGuid(reqId, profileActivity.getClassGuid());
         }
 
         @Override
         public boolean isEnabled(RecyclerView.ViewHolder holder) {
-            return holder.getAdapterPosition() != chats.size();
+            return holder.getItemViewType() == VIEW_TYPE_GROUP;
         }
 
         @Override
         public int getItemCount() {
-            if (chats.isEmpty() && !loading) {
+            if (chats.isEmpty()) {
+                if (loading) {
+                    int expectedCount = hasMedia[TAB_COMMON_GROUPS];
+                    return Math.min(8, expectedCount > 0 ? expectedCount : 3);
+                }
                 return 1;
             }
             int count = chats.size();
@@ -10601,7 +10568,8 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
                     FlickerLoadingView flickerLoadingView = new FlickerLoadingView(mContext, resourcesProvider);
                     flickerLoadingView.setIsSingleCell(true);
                     flickerLoadingView.showDate(false);
-                    flickerLoadingView.setViewType(FlickerLoadingView.DIALOG_TYPE);
+                    flickerLoadingView.setViewType(FlickerLoadingView.PROFILE_SEARCH_CELL);
+                    flickerLoadingView.setGlobalGradientView(globalGradientView);
                     view = flickerLoadingView;
                     break;
             }
@@ -10622,8 +10590,8 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
 
         @Override
         public int getItemViewType(int i) {
-            if (chats.isEmpty() && !loading) {
-                return VIEW_TYPE_GROUP_EMPTY;
+            if (chats.isEmpty()) {
+                return loading ? VIEW_TYPE_GROUP_LOADING : VIEW_TYPE_GROUP_EMPTY;
             }
             if (i < chats.size()) {
                 return VIEW_TYPE_GROUP;

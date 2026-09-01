@@ -83,7 +83,7 @@ public final class MessageMenuTelegramPlus {
                 }
                 boolean destructiveAction = isDestructive(option);
 
-                row.setItemHeight(48);
+                row.setItemHeight(44);
                 row.setMinimumWidth(minWidth);
                 row.setSelectorColor(Theme.multAlpha(
                         destructiveAction ? destructive : accent,

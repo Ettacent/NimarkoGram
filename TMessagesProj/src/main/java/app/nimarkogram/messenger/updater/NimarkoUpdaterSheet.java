@@ -34,7 +34,6 @@ import io.noties.markwon.ext.strikethrough.StrikethroughPlugin;
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.FileLog;
 import org.telegram.messenger.LocaleController;
-import org.telegram.messenger.NotificationCenter;
 import org.telegram.messenger.R;
 import org.telegram.messenger.SharedConfig;
 import org.telegram.messenger.Utilities;
@@ -262,7 +261,7 @@ public class NimarkoUpdaterSheet extends BottomSheet implements NimarkoUpdater.D
             checkUpdatesButton.setOnClickListener(v ->
                     NimarkoUpdater.checkUpdates(fragment, true,
                             () -> BulletinFactory.of(getContainer(), resourcesProvider).createErrorBulletin(getString(R.string.UP_Not_Found)).show(),
-                            this::dismiss,
+                            this::dismissForReplacement,
                             () -> BulletinFactory.of(getContainer(), resourcesProvider).createErrorBulletin(getString(R.string.UP_CheckFailed)).show()));
             footerLayout.addView(checkUpdatesButton, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 48, 16, 16, 16, 16));
         }
@@ -273,15 +272,7 @@ public class NimarkoUpdaterSheet extends BottomSheet implements NimarkoUpdater.D
         rootLayout.addView(footerLayout, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
 
         setCustomView(rootLayout);
-        setOnDismissListener(() -> {
-            bindingDetached = true;
-            changelogGeneration++;
-            if (changelogView != null) changelogView.animate().cancel();
-            if (changelogProgress != null) changelogProgress.animate().cancel();
-            long token = downloadBindingToken;
-            downloadBindingToken = 0L;
-            if (token != 0L) NimarkoUpdater.unbindDownloadUi(token);
-        });
+        setOnDismissListener(this::detachBindings);
     }
 
     private void scheduleChangelogFormatting(View sheetRoot, Context context, String markdown, ChangelogStyle style) {
@@ -575,11 +566,35 @@ public class NimarkoUpdaterSheet extends BottomSheet implements NimarkoUpdater.D
     }
 
     public static void showAlert(BaseFragment fragment, boolean available, NimarkoUpdater.Update update) {
-        NotificationCenter.getGlobalInstance().postNotificationName(NotificationCenter.appUpdateAvailable);
         if (fragment == null || fragment.getParentActivity() == null || fragment.getContext() == null) {
             return;
         }
-        showPreparedAlert(fragment, available, update);
+        boolean effectiveAvailable = available;
+        NimarkoUpdater.Update effectiveUpdate = update;
+        if (!effectiveAvailable) {
+            NimarkoUpdater.DownloadUiState state = NimarkoUpdater.getDownloadUiState();
+            if (state.downloading || state.paused || state.finished) {
+                effectiveUpdate = NimarkoUpdater.getOrRestoreLastUpdate();
+                effectiveAvailable = effectiveUpdate != null;
+            }
+        }
+        showPreparedAlert(fragment, effectiveAvailable, effectiveUpdate);
+    }
+
+    private void dismissForReplacement() {
+        skipDismissAnimation();
+        dismiss();
+    }
+
+    private void detachBindings() {
+        if (bindingDetached) return;
+        bindingDetached = true;
+        changelogGeneration++;
+        if (changelogView != null) changelogView.animate().cancel();
+        if (changelogProgress != null) changelogProgress.animate().cancel();
+        long token = downloadBindingToken;
+        downloadBindingToken = 0L;
+        if (token != 0L) NimarkoUpdater.unbindDownloadUi(token);
     }
 
     private static void showPreparedAlert(BaseFragment fragment, boolean available, NimarkoUpdater.Update update) {

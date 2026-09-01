@@ -755,6 +755,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
     private float musicHeaderTargetProgress;
     private ValueAnimator musicHeaderAnimator;
     private Runnable musicHeaderAnimationRunnable;
+    private boolean musicHeaderWaitingForItemAnimator;
 
     private int sharedMediaRow;
 
@@ -6314,6 +6315,9 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                 if (openingAvatar && newState != RecyclerView.SCROLL_STATE_SETTLING) {
                     openingAvatar = false;
                 }
+                if (newState == RecyclerView.SCROLL_STATE_IDLE) {
+                    scheduleMusicHeaderAnimation();
+                }
                 if (searchItem != null) {
                     scrolling = newState != RecyclerView.SCROLL_STATE_IDLE;
                     searchItem.setEnabled(!scrolling && !isPulledDown);
@@ -6364,6 +6368,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                 avatarImage.clearForeground();
                 doNotSetForeground = false;
                 updateStoriesViewBounds(false);
+                scheduleMusicHeaderAnimation();
             }
         });
         updateRowsIds();
@@ -6622,7 +6627,9 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             avatarGooey.setGooeyEnabled(false);
         }
         if (storyView != null && playProfileAnimation != 2) {
-            storyView.setAlpha(pullUpProgress > 0 ? lerp(1.0f, 0.0f, ilerp(pullUpProgress, 0, 0.5f)) : 1.0f);
+            storyView.setAlpha(pullUpProgress > 0
+                    ? 1.0f - Utilities.clamp01(ilerp(pullUpProgress, 0, 0.5f))
+                    : 1.0f);
         }
         avatarGooey.setVisibility(pullUpProgress >= 1.0f ? View.GONE : View.VISIBLE);
     }
@@ -6683,7 +6690,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
     }
 
     private void scheduleMusicHeaderAnimation() {
-        if (profileLifecycleDestroyed || listView == null || !listView.isAttachedToWindow()
+        if (profileLifecycleDestroyed || isPaused || listView == null || !listView.isAttachedToWindow()
                 || musicHeaderAnimator != null || musicHeaderAnimationRunnable != null
                 || Math.abs(musicHeaderProgress - musicHeaderTargetProgress) < 0.001f) {
             return;
@@ -6695,18 +6702,31 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             musicHeaderAnimationRunnable = null;
             if (profileLifecycleDestroyed || listView == null || layoutManager == null) return;
             RecyclerView.ItemAnimator itemAnimator = listView.getItemAnimator();
-            if (openAnimationInProgress || transitionAnimationInProress || listView.isComputingLayout()
+            if (openAnimationInProgress || transitionAnimationInProress
                     || listView.getScrollState() != RecyclerView.SCROLL_STATE_IDLE
-                    || expandAnimator != null && expandAnimator.isRunning()
-                    || itemAnimator != null && itemAnimator.isRunning()) {
-                musicHeaderAnimationRunnable = () -> {
-                    musicHeaderAnimationRunnable = null;
-                    scheduleMusicHeaderAnimation();
-                };
-                listView.postDelayed(musicHeaderAnimationRunnable, 32L);
+                    || expandAnimator != null && expandAnimator.isRunning()) {
                 return;
             }
             if (isPulledDown || openingAvatar || collapsePagerPending) {
+                return;
+            }
+            if (listView.isComputingLayout()) {
+                listView.postOnAnimation(this::scheduleMusicHeaderAnimation);
+                return;
+            }
+            if (itemAnimator != null && itemAnimator.isRunning()) {
+                if (!musicHeaderWaitingForItemAnimator) {
+                    musicHeaderWaitingForItemAnimator = true;
+                    final int lifecycleGeneration = profileLifecycleGeneration;
+                    itemAnimator.isRunning(() -> {
+                        musicHeaderWaitingForItemAnimator = false;
+                        if (!profileLifecycleDestroyed && !isPaused
+                                && lifecycleGeneration == profileLifecycleGeneration
+                                && listView != null) {
+                            listView.postOnAnimation(this::scheduleMusicHeaderAnimation);
+                        }
+                    });
+                }
                 return;
             }
             startMusicHeaderAnimation();
@@ -6736,20 +6756,12 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
         animator.setInterpolator(CubicBezierInterpolator.EASE_OUT_QUINT);
         animator.addUpdateListener(valueAnimator -> {
             if (musicHeaderAnimator != valueAnimator || profileLifecycleDestroyed) return;
-            View currentRowZero = keepHeaderAnchored ? layoutManager.findViewByPosition(0) : null;
-            if (listView.getScrollState() != RecyclerView.SCROLL_STATE_IDLE
-                    || keepHeaderAnchored && (currentRowZero == null
-                    || listView.getChildAdapterPosition(currentRowZero) != 0)) {
-                valueAnimator.removeAllListeners();
-                valueAnimator.removeAllUpdateListeners();
-                valueAnimator.cancel();
-                musicHeaderAnimator = null;
-                listView.postOnAnimation(this::scheduleMusicHeaderAnimation);
-                return;
-            }
             musicHeaderProgress = (float) valueAnimator.getAnimatedValue();
             int headerDelta = getHeaderExtraHeight() - startHeaderHeight;
-            if (keepHeaderAnchored) {
+            View currentRowZero = keepHeaderAnchored ? layoutManager.findViewByPosition(0) : null;
+            if (keepHeaderAnchored && currentRowZero != null
+                    && listView.getChildAdapterPosition(currentRowZero) == 0
+                    && listView.getScrollState() == RecyclerView.SCROLL_STATE_IDLE) {
                 extraHeight = startExtraHeight + headerDelta;
                 anchorMusicHeaderRow(startRowTop + headerDelta);
             }

@@ -17,6 +17,7 @@ import androidx.core.content.FileProvider;
 import org.json.JSONObject;
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.ApplicationLoader;
+import org.telegram.messenger.BuildVars;
 import org.telegram.messenger.DispatchQueue;
 import org.telegram.messenger.FileLog;
 import org.telegram.messenger.LocaleController;
@@ -191,13 +192,7 @@ public class NimarkoUpdater {
     }
 
     public static String getCurrentVersionName() {
-        try {
-            Context ctx = ApplicationLoader.applicationContext;
-            return ctx.getPackageManager().getPackageInfo(ctx.getPackageName(), 0).versionName;
-        } catch (Exception e) {
-            FileLog.e(e);
-            return "";
-        }
+        return BuildVars.BUILD_VERSION_STRING;
     }
 
     public static int getCurrentVersionCode() {
@@ -296,21 +291,33 @@ public class NimarkoUpdater {
         if (System.currentTimeMillis() - lastThrottle < updateCheckInterval && !manual) {
             return;
         }
+        boolean startCheck = false;
+        boolean reopenActiveDownload = false;
         synchronized (downloadBindingLock) {
             boolean downloadOwned = downloading || downloadPaused || hasPersistedDownloadLocked();
             if (!checkingForUpdates && !downloadOwned) {
                 checkingForUpdates = true;
+                startCheck = true;
             } else {
-                if (manual && downloadOwned) {
-                    if (onCheckFailed != null) {
-                        AndroidUtilities.runOnUIThread(onCheckFailed::run);
-                    } else if (onUpdateNotFound != null) {
-                        AndroidUtilities.runOnUIThread(onUpdateNotFound::run);
-                    }
-                }
-                return;
+                reopenActiveDownload = manual && downloadOwned;
             }
         }
+        if (reopenActiveDownload) {
+            Update activeUpdate = getOrRestoreLastUpdate();
+            if (activeUpdate != null && fragment != null && fragment.getContext() != null) {
+                AndroidUtilities.runOnUIThread(() -> {
+                    if (onUpdateFound != null) {
+                        onUpdateFound.run();
+                        AndroidUtilities.runOnUIThread(() ->
+                                NimarkoUpdaterSheet.showAlert(fragment, true, activeUpdate));
+                    } else {
+                        NimarkoUpdaterSheet.showAlert(fragment, true, activeUpdate);
+                    }
+                });
+            }
+            return;
+        }
+        if (!startCheck) return;
         otaQueue.postRunnable(() -> {
             NimarkoUpdateConfig.setLastUpdateCheckTime(System.currentTimeMillis());
             try {
@@ -386,8 +393,13 @@ public class NimarkoUpdater {
                 if (update.isNew() && fragment != null && fragment.getContext() != null) {
                     checkDirs();
                     AndroidUtilities.runOnUIThread(() -> {
-                        NimarkoUpdaterSheet.showAlert(fragment, true, update);
-                        if (onUpdateFound != null) onUpdateFound.run();
+                        if (onUpdateFound != null) {
+                            onUpdateFound.run();
+                            AndroidUtilities.runOnUIThread(() ->
+                                    NimarkoUpdaterSheet.showAlert(fragment, true, update));
+                        } else {
+                            NimarkoUpdaterSheet.showAlert(fragment, true, update);
+                        }
                     });
                     NimarkoUpdateConfig.setUpdateIsDownloading(false);
                     NimarkoUpdateConfig.setUpdateAvailable(true);

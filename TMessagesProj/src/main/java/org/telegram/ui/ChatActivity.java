@@ -12603,7 +12603,9 @@ public class ChatActivity extends BaseFragment implements
     private void updateScrimSourceBitmap() {
         ScrimOptions.makeGlobalBlurBitmaps((bitmapBg, bitmapOptions) -> {
             scrimBlur3SourceBitmap.setBitmap(bitmapOptions);
-            Blur3Utils.checkBitmapSourceMatrixScale(scrimBlur3SourceBitmap, fragmentView);
+            if (fragmentView != null) {
+                Blur3Utils.checkBitmapSourceMatrixScale(scrimBlur3SourceBitmap, fragmentView);
+            }
             scrimBlur3Factory.invalidateAllLinkedViews();
         });
     }
@@ -32516,14 +32518,8 @@ public class ChatActivity extends BaseFragment implements
                 flags |= ActionBarPopupWindow.ActionBarPopupWindowLayout.FLAG_USE_SWIPEBACK;
             }
             if (telegramPlusMessageMenu) {
-                // The Telegram Plus card is measured at its natural height and
-                // placed next to its message. Do not put its actions into Telegram's
-                // internal ScrollView: scrolling a context menu under the thumb
-                // is both easy to trigger accidentally and was only needed by
-                // the previous artificial 420dp cap.
                 flags |= ActionBarPopupWindow.ActionBarPopupWindowLayout.FLAG_DONT_USE_SCROLLVIEW;
             }
-
             ActionBarPopupWindow.ActionBarPopupWindowLayout popupLayout = new ActionBarPopupWindow.ActionBarPopupWindowLayout(getParentActivity(), R.drawable.popup_fixed_alert4, themeDelegate, flags);
             popupLayout.setMinimumWidth(AndroidUtilities.dp(200));
             Rect backgroundPaddings = new Rect();
@@ -32549,7 +32545,9 @@ public class ChatActivity extends BaseFragment implements
             updateScrimSourceBitmap();
 
             popupLayout.setBackground(scrimBlur3Factory.create(popupLayout, true)
-                .setColorProvider(BlurredBackgroundProviderImpl.messageMenuBackground(resourceProvider))
+                .setColorProvider(telegramPlusMessageMenu
+                        ? BlurredBackgroundProviderImpl.messageMenuBackground(resourceProvider)
+                        : BlurredBackgroundProviderImpl.opaqueMessageMenuBackground(resourceProvider))
                 .setRadius(dp(12))
                 .setPadding(dp(8)));
 
@@ -33776,7 +33774,11 @@ public class ChatActivity extends BaseFragment implements
             } else {
                 final boolean tags = getUserConfig().getClientUserId() == getDialogId();
                 reactionsLayout = new ReactionsContainerLayout(tags ? ReactionsContainerLayout.TYPE_TAGS : ReactionsContainerLayout.TYPE_DEFAULT, ChatActivity.this, contentView.getContext(), currentAccount, getResourceProvider());
-                reactionsLayout.setBackgroundFactory(scrimBlur3Factory, BlurredBackgroundProviderImpl.messageMenuReactionsBackground(resourceProvider));
+                reactionsLayout.setBackgroundFactory(
+                        scrimBlur3Factory,
+                        telegramPlusMessageMenu
+                                ? BlurredBackgroundProviderImpl.messageMenuReactionsBackground(resourceProvider)
+                                : BlurredBackgroundProviderImpl.opaqueMessageMenuBackground(resourceProvider));
                 if (tags) {
                     reactionsLayout.setHint(getUserConfig().isPremium() ? LocaleController.getString(R.string.SavedTagReactionsHint2) : AndroidUtilities.replaceSingleTag(LocaleController.getString(R.string.SavedTagReactionsPremiumHint), Theme.key_windowBackgroundWhiteBlueText2, 0, () -> {
                         closeMenu(false);
@@ -34070,13 +34072,7 @@ public class ChatActivity extends BaseFragment implements
             final int finalPopupY;
             final boolean telegramPlusAnchorRight = primaryMessage != null && primaryMessage.isOutOwner();
             final int[] telegramPlusAnchorLocation = new int[2];
-            final int[] telegramPlusListLocation = new int[2];
-            int telegramPlusBubbleTop = 0;
-            int telegramPlusBubbleBottom = 0;
-            boolean telegramPlusHasBubbleBounds = false;
-            if (telegramPlusMessageMenu) {
-                chatListView.getLocationInWindow(telegramPlusListLocation);
-            }
+            v.getLocationInWindow(telegramPlusAnchorLocation);
             final int popupWidthMeasureSpec = View.MeasureSpec.makeMeasureSpec(
                     telegramPlusMessageMenu
                             ? Math.max(AndroidUtilities.dp(180),
@@ -34085,48 +34081,18 @@ public class ChatActivity extends BaseFragment implements
                     View.MeasureSpec.AT_MOST);
             final int popupHeightMeasureSpec = View.MeasureSpec.makeMeasureSpec(
                     AndroidUtilities.dp(1000), View.MeasureSpec.AT_MOST);
+            scrimPopupContainerLayout.setDynamicHeight(telegramPlusMessageMenu);
             scrimPopupContainerLayout.measure(popupWidthMeasureSpec, popupHeightMeasureSpec);
-            int popupX;
-            if (telegramPlusMessageMenu && v instanceof ChatMessageCell) {
-                ChatMessageCell messageCell = (ChatMessageCell) v;
-                v.getLocationInWindow(telegramPlusAnchorLocation);
-                int bubbleLeft = telegramPlusAnchorLocation[0] + messageCell.getBackgroundDrawableLeft();
-                int bubbleRight = telegramPlusAnchorLocation[0] + messageCell.getBackgroundDrawableRight();
-                telegramPlusBubbleTop = telegramPlusAnchorLocation[1]
-                        + messageCell.getPaddingTop()
-                        + messageCell.getBackgroundDrawableTop();
-                telegramPlusBubbleBottom = telegramPlusAnchorLocation[1]
-                        + messageCell.getPaddingTop()
-                        + messageCell.getBackgroundDrawableBottom();
-                telegramPlusHasBubbleBounds = telegramPlusBubbleBottom > telegramPlusBubbleTop;
-                int physicalLeftMargin = isReactionsAvailable
-                        ? dp(LocaleController.isRTL ? 36 : 16) : 0;
-                int physicalRightMargin = isReactionsAvailable
-                        ? dp(LocaleController.isRTL ? 16 : 36) : 0;
-                if (telegramPlusAnchorRight) {
-                    popupX = bubbleRight - scrimPopupContainerLayout.getMeasuredWidth()
-                            + physicalRightMargin + backgroundPaddings.right + dp(4);
-                } else {
-                    popupX = bubbleLeft - physicalLeftMargin
-                            - backgroundPaddings.left - dp(4);
-                }
-                int minX = telegramPlusListLocation[0] + dp(6);
-                int maxX = Math.max(minX,
-                        telegramPlusListLocation[0] + chatListView.getMeasuredWidth() - dp(6)
-                                - scrimPopupContainerLayout.getMeasuredWidth());
-                popupX = Math.max(minX, Math.min(popupX, maxX));
-            } else {
-                popupX = v.getLeft() + (int) x - scrimPopupContainerLayout.getMeasuredWidth() + backgroundPaddings.left - AndroidUtilities.dp(28);
-                if (popupX < AndroidUtilities.dp(6)) {
-                    popupX = AndroidUtilities.dp(6);
-                } else if (popupX > chatListView.getMeasuredWidth() - AndroidUtilities.dp(6) - scrimPopupContainerLayout.getMeasuredWidth()) {
-                    popupX = chatListView.getMeasuredWidth() - AndroidUtilities.dp(6) - scrimPopupContainerLayout.getMeasuredWidth();
-                }
-                if (AndroidUtilities.isTablet()) {
-                    int[] location = new int[2];
-                    fragmentView.getLocationInWindow(location);
-                    popupX += location[0];
-                }
+            int popupX = v.getLeft() + (int) x - scrimPopupContainerLayout.getMeasuredWidth() + backgroundPaddings.left - AndroidUtilities.dp(28);
+            if (popupX < AndroidUtilities.dp(6)) {
+                popupX = AndroidUtilities.dp(6);
+            } else if (popupX > chatListView.getMeasuredWidth() - AndroidUtilities.dp(6) - scrimPopupContainerLayout.getMeasuredWidth()) {
+                popupX = chatListView.getMeasuredWidth() - AndroidUtilities.dp(6) - scrimPopupContainerLayout.getMeasuredWidth();
+            }
+            if (AndroidUtilities.isTablet()) {
+                int[] location = new int[2];
+                fragmentView.getLocationInWindow(location);
+                popupX += location[0];
             }
             int totalHeight = contentView.getHeight();
             int height = scrimPopupContainerLayout.getMeasuredHeight() + AndroidUtilities.dp(48);
@@ -34155,113 +34121,12 @@ public class ChatActivity extends BaseFragment implements
                 popupY = inBubbleMode ? 0 : AndroidUtilities.statusBarHeight;
             }
 
-            int telegramPlusDisplayedHeight = scrimPopupContainerLayout.getMeasuredHeight();
-            int telegramPlusVisibleTopOffset = 0;
-            int telegramPlusWindowHeight = scrimPopupContainerLayout.getMeasuredHeight();
-            if (telegramPlusMessageMenu) {
-                if (!telegramPlusHasBubbleBounds) {
-                    v.getLocationInWindow(telegramPlusAnchorLocation);
-                    telegramPlusBubbleTop = telegramPlusAnchorLocation[1];
-                    telegramPlusBubbleBottom = telegramPlusAnchorLocation[1]
-                            + v.getMeasuredHeight();
-                }
-                int viewportTop = telegramPlusListLocation[1] + dp(6);
-                int viewportBottom = telegramPlusListLocation[1]
-                        + chatListView.getMeasuredHeight() - dp(6);
-                if (AndroidUtilities.displaySize != null) {
-                    viewportBottom = Math.min(viewportBottom,
-                            AndroidUtilities.displaySize.y - dp(6));
-                }
-                if (chatActivityEnterView != null
-                        && chatActivityEnterView.getVisibility() == View.VISIBLE
-                        && chatActivityEnterView.getAlpha() > 0f) {
-                    int[] inputLocation = new int[2];
-                    chatActivityEnterView.getLocationInWindow(inputLocation);
-                    if (inputLocation[1] > viewportTop
-                            && inputLocation[1] < viewportBottom) {
-                        viewportBottom = inputLocation[1] - dp(6);
-                    }
-                }
-
-                int viewportHeight = Math.max(dp(1), viewportBottom - viewportTop);
-                if (scrimPopupContainerLayout.getMeasuredHeight() > viewportHeight) {
-                    scrimPopupContainerLayout.setMaxHeight(viewportHeight);
-                    scrimPopupContainerLayout.measure(
-                            popupWidthMeasureSpec, popupHeightMeasureSpec);
-                }
-
-                int bubbleTop = Math.max(viewportTop, telegramPlusBubbleTop);
-                int bubbleBottom = Math.min(viewportBottom, telegramPlusBubbleBottom);
-                int popupWindowHeight = scrimPopupContainerLayout.getMeasuredHeight();
-                int popupVisibleHeight = Math.max(dp(1),
-                        scrimPopupContainerLayout.getVisibleHeight());
-                popupVisibleHeight = Math.min(popupVisibleHeight, popupWindowHeight);
-                int gap = dp(8);
-                int spaceBelow = Math.max(0, viewportBottom - bubbleBottom - gap);
-                int spaceAbove = Math.max(0, bubbleTop - viewportTop - gap);
-                int desiredVisibleY;
-                boolean placeVisibleCardAbove = false;
-                if (popupVisibleHeight <= spaceBelow) {
-                    // Upper and middle messages: keep the actions immediately
-                    // under the pressed bubble instead of detaching them at the
-                    // bottom edge of the screen.
-                    desiredVisibleY = bubbleBottom + gap;
-                } else if (popupVisibleHeight <= spaceAbove) {
-                    // Messages near the input panel use the symmetric placement.
-                    desiredVisibleY = bubbleTop - gap - popupVisibleHeight;
-                    placeVisibleCardAbove = true;
-                } else {
-                    // When neither side can hold the whole card, preserve the
-                    // user's spatial context: centre the visible card around
-                    // the actual press point instead of pinning it to the top or
-                    // bottom edge. Clamp only as much as the screen requires.
-                    int pressY = telegramPlusAnchorLocation[1]
-                            + Utilities.clamp(Math.round(y), v.getHeight(), 0);
-                    int maxVisibleY = Math.max(viewportTop,
-                            viewportBottom - popupVisibleHeight);
-                    desiredVisibleY = Utilities.clamp(
-                            pressY - popupVisibleHeight / 2,
-                            maxVisibleY, viewportTop);
-                }
-
-                // PopupSwipeBackLayout reserves the tallest drill-down page
-                // (reaction users/readers), while the main action card can be
-                // much shorter. Keep the full window inside the viewport but
-                // align its currently visible page exactly at desiredVisibleY.
-                // As swipe-back opens, Telegram's native backScaleY smoothly
-                // consumes this reserved offset instead of jumping the window.
-                int hiddenPageReserve = Math.max(0,
-                        popupWindowHeight - popupVisibleHeight);
-                int minWindowY = viewportTop;
-                int maxWindowY = Math.max(minWindowY,
-                        viewportBottom - popupWindowHeight);
-                int preferredWindowY = placeVisibleCardAbove
-                        ? desiredVisibleY - hiddenPageReserve
-                        : desiredVisibleY;
-                popupY = Utilities.clamp(
-                        preferredWindowY, maxWindowY, minWindowY);
-                telegramPlusVisibleTopOffset = Utilities.clamp(
-                        desiredVisibleY - popupY, hiddenPageReserve, 0);
-                float verticalGravityFactor = hiddenPageReserve > 0
-                        ? telegramPlusVisibleTopOffset / (float) hiddenPageReserve
-                        : 0f;
-                scrimPopupContainerLayout.setSwipeBackGravityVerticalFactor(
-                        verticalGravityFactor);
-                telegramPlusDisplayedHeight = popupVisibleHeight;
-                telegramPlusWindowHeight = popupWindowHeight;
-                scrimPopupContainerLayout.setMaxHeight(popupWindowHeight);
-            }
             finalPopupX = scrimPopupX = popupX;
             finalPopupY = scrimPopupY = popupY;
-            if (!telegramPlusHasBubbleBounds) {
-                v.getLocationInWindow(telegramPlusAnchorLocation);
-            }
             final boolean telegramPlusMenuBelowAnchor = finalPopupY
-                    + telegramPlusVisibleTopOffset
-                    + telegramPlusDisplayedHeight / 2
+                    + scrimPopupContainerLayout.getMeasuredHeight() / 2
                     >= telegramPlusAnchorLocation[1] + v.getMeasuredHeight() / 2;
-            scrimPopupContainerLayout.setMaxHeight(telegramPlusMessageMenu
-                    ? telegramPlusWindowHeight : maxY + height - popupY);
+            scrimPopupContainerLayout.setMaxHeight(Math.max(dp(1), maxY + height - popupY));
             ReactionsContainerLayout finalReactionsLayout = reactionsLayout;
             final ActionBarPopupWindow popupForShow = scrimPopupWindow;
             Runnable showMenu = () -> {
