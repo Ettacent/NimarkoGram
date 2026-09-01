@@ -136,12 +136,7 @@ public class CounterView extends View {
         }
 
         public void setSize(int h, int w) {
-            if (h != lastH) {
-                int count = currentCount;
-                currentCount = -1;
-                setCount(count, animationType == ANIMATION_TYPE_IN);
-                lastH = h;
-            }
+            lastH = h;
             width = w;
         }
 

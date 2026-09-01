@@ -100,6 +100,18 @@ public class BlurredBackgroundProviderImpl {
                 .build();
     }
 
+    public static BlurredBackgroundProvider opaqueMessageMenuBackground(Theme.ResourcesProvider resourcesProvider) {
+        return new BlurredBackgroundProviderBuilder(resourcesProvider)
+                .setBackgroundColor((r, isDark) ->
+                        Theme.getColor(Theme.key_actionBarDefaultSubmenuBackground, r))
+                .setStrokeColorTop(0x44FFFFFF, 0)
+                .setStrokeColorBottom(0x22FFFFFF, 0)
+                .setShadowColor(0x38000000, 0)
+                .setShadowLayer(dpf2(3.5f), 0, 0)
+                .setStrokeWidth(dpf2(2 / 3f), dpf2(2 / 3f))
+                .build();
+    }
+
     public static BlurredBackgroundProvider scrimMenuBackground(Theme.ResourcesProvider resourcesProvider) {
         return new BlurredBackgroundProviderBuilder(resourcesProvider)
             .setBackgroundColor((r, isDark) ->
