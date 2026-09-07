@@ -6,6 +6,7 @@ import java.net.InetAddress;
 
 import app.nimarkogram.messenger.wsbypass.NimarkoWsBypassConfig;
 
+import app.nimarkogram.messenger.wsbypass.RelayRegion;
 public final class VoipBypassConfig {
 
     private static final Object RELAY_STATE_LOCK = new Object();
@@ -36,11 +37,13 @@ public final class VoipBypassConfig {
     }
 
     public static String relayHost(int account) {
-        return app.nimarkogram.messenger.wsbypass.RelayRegion.isAsia(account) ? ASIA_RELAY_HOST : RELAY_HOST;
+        return RelayRegion.ASIA_RELAY_ENABLED && RelayRegion.isAsia(account)
+                ? ASIA_RELAY_HOST : RELAY_HOST;
     }
 
     public static String[] relayHosts(int account) {
-        if (app.nimarkogram.messenger.wsbypass.RelayRegion.isAsia(account)) {
+        if (!RelayRegion.ASIA_RELAY_ENABLED) return new String[]{RELAY_HOST};
+        if (RelayRegion.isAsia(account)) {
             return new String[]{ASIA_RELAY_HOST, RELAY_HOST};
         }
         return new String[]{RELAY_HOST, ASIA_RELAY_HOST};

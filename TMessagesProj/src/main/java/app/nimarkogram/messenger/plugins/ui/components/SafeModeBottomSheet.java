@@ -20,6 +20,7 @@ import org.telegram.ui.Stories.recorder.ButtonWithCounterView;
 import app.nimarkogram.messenger.NimarkoConfig;
 import app.nimarkogram.messenger.plugins.PluginsController;
 
+import app.nimarkogram.messenger.plugins.utils.PluginCrashReports;
 public class SafeModeBottomSheet extends BottomSheet {
     
     @Override
@@ -57,7 +58,7 @@ public class SafeModeBottomSheet extends BottomSheet {
         textView2.setTypeface(AndroidUtilities.getTypeface(AndroidUtilities.TYPEFACE_ROBOTO_REGULAR));
         textView2.setTextSize(1, 14.0f);
         textView2.setTextColor(getThemedColor(Theme.key_windowBackgroundWhiteGrayText));
-        textView2.setText(LocaleController.getString(R.string.PluginsSafeModeInfo));
+        textView2.setText(PluginCrashReports.safeModeExplanation());
         linearLayout.addView(textView2, LayoutHelper.createFrame(-1, -2.0f, Gravity.TOP | Gravity.LEFT, 21.0f, 8.0f, 21.0f, 0.0f));
         
         ButtonWithCounterView buttonWithCounterView = new ButtonWithCounterView(parentActivity, true, this.resourcesProvider);
@@ -67,7 +68,7 @@ public class SafeModeBottomSheet extends BottomSheet {
         setCustomView(frameLayout);
     }
 
-    private   void lambda$new$0(View view) {
+    private                 void lambda$new$0(View view) {
         dismiss();
         NimarkoConfig.setPluginsSafeMode(false);
         PluginsController.getInstance().restart();

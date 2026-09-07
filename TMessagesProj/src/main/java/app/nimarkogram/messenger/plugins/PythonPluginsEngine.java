@@ -1226,7 +1226,8 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
             if (pluginId.equals(activeWatermark)) {
                 editor.remove("crashed_plugin_id")
                         .remove("crashed_plugin_started_at")
-                        .remove("crashed_plugin_attribution_exact");
+                        .remove("crashed_plugin_pid")
+                        .remove("crashed_plugin_load_token");
             }
             for (String key : new ArrayList<>(
                     preferences.getAll().keySet())) {
@@ -1346,11 +1347,10 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
             return;
         }
         controller.preferences.edit()
-                .remove("had_crash")
                 .remove("crashed_plugin_id")
                 .remove("crashed_plugin_started_at")
-                .remove("native_crash_flag_only")
-                .remove("crashed_plugin_attribution_exact")
+                .remove("crashed_plugin_pid")
+                .remove("crashed_plugin_load_token")
                 .commit();
     }
 
@@ -1981,6 +1981,7 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
 
     @Override
     public void init(Runnable runnable) {
+        final long initializationAttempt = getPluginsController().getInitializationAttempt();
         if (!Utilities.pluginsQueue.isAlive()) {
             Utilities.pluginsQueue = new org.telegram.messenger.DispatchQueue("pluginsQueue");
         }
@@ -1991,6 +1992,7 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
                 registerPluginsMetadataOnly(
                         PYTHON_RUNTIME_ABANDONED.get()
                                 || NimarkoConfig.pluginsSafeMode);
+                getPluginsController().reportInitializationProgress(initializationAttempt);
                 getPluginsController().notifyPluginsChanged();
                 if (PYTHON_RUNTIME_ABANDONED.get()) {
                     FileLog.w("nimarko: Python runtime was abandoned; "
@@ -2017,6 +2019,7 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
                     }
                     return;
                 }
+                getPluginsController().reportInitializationProgress(initializationAttempt);
                 recoverInterruptedPluginUpdates(getPluginsController());
                 if (!NimarkoConfig.pluginsSafeMode) {
                     try {
@@ -2034,7 +2037,8 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
                         FileLog.e("nimarko: plugin_settings init failed", th);
                     }
                 }
-                loadPlugins(runnable);
+                getPluginsController().reportInitializationProgress(initializationAttempt);
+                loadPlugins(runnable, initializationAttempt);
                 checkDevServer();
             } catch (Throwable th) {
                 FileLog.e("nimarko: PythonPluginsEngine.init crashed", th);
@@ -2329,6 +2333,10 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
     }
 
     public void loadPlugins(final Runnable runnable) {
+        loadPlugins(runnable, 0L);
+    }
+
+    private void loadPlugins(final Runnable runnable, final long initializationAttempt) {
         Utilities.pluginsQueue.postRunnable(() -> {
             Plugin plugin;
             if (getPython() == null) {
@@ -2406,6 +2414,7 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
                             getPluginsController()
                                     .setPluginStartupActivationPending(
                                             pluginId, false);
+                            getPluginsController().reportInitializationProgress(initializationAttempt);
                             continue;
                         }
 
@@ -2504,6 +2513,8 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
                                     "nimarko: plugin metadata validation failed for "
                                             + file.getName(),
                                     validationFailure);
+                        } finally {
+                            getPluginsController().reportInitializationProgress(initializationAttempt);
                         }
                     }
 
@@ -2531,6 +2542,7 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
                     if (!reqsByPlugin.isEmpty()) {
                         for (Map.Entry<String, List<String>> e
                                 : reqsByPlugin.entrySet()) {
+                            getPluginsController().reportInitializationProgress(initializationAttempt);
                             try {
                                 int generation = getPluginsController()
                                         .getPluginToggleGeneration(
@@ -2553,6 +2565,8 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
                                                 + e.getValue()
                                                 + " (deps may be bundled already): "
                                                 + t.getMessage());
+                            } finally {
+                                getPluginsController().reportInitializationProgress(initializationAttempt);
                             }
                         }
                     }
@@ -2563,6 +2577,7 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
                         File file = entry.getValue();
                         Plugin startupPlugin =
                                 startupPlugins.get(pluginId);
+                        getPluginsController().reportInitializationProgress(initializationAttempt);
                         try {
                             loadPlugin(
                                     pluginId, file.getAbsolutePath(),
@@ -2591,6 +2606,7 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
                             getPluginsController().plugins.put(
                                     pluginId, startupPlugin);
                         } finally {
+                            getPluginsController().reportInitializationProgress(initializationAttempt);
                             getPluginsController()
                                     .setPluginStartupActivationPending(
                                             pluginId, false);
@@ -2737,17 +2753,30 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
                 throw new LifecyclePendingException(str);
             }
         }
-        getPluginsController().preferences.edit()
-                .putString("crashed_plugin_id", str)
-                .putLong("crashed_plugin_started_at", System.currentTimeMillis())
-                .commit();
-        getPluginsController().beginPluginInitialization(str, enableGeneration);
+        final SharedPreferences loadPreferences = getPluginsController().preferences;
+        final long loadStartedAt = System.currentTimeMillis();
+        final int loadPid = android.os.Process.myPid();
+        final String loadToken = java.util.UUID.randomUUID().toString();
         PluginsController.PluginRuntimeToken runtimeToken = null;
         PyObject importedModule = null;
         PyObject createdInstance = null;
         boolean runtimeScopeEntered = false;
+        boolean loadSucceeded = false;
+        String loadPhase = "load_start";
         try {
+        synchronized (loadPreferences) {
+            if (!loadPreferences.edit()
+                    .putString("crashed_plugin_id", str)
+                    .putLong("crashed_plugin_started_at", loadStartedAt)
+                    .putInt("crashed_plugin_pid", loadPid)
+                    .putString("crashed_plugin_load_token", loadToken)
+                    .commit()) {
+                throw new IOException("Unable to persist plugin load marker for " + str);
+            }
+        }
+        getPluginsController().beginPluginInitialization(str, enableGeneration);
         ensureEnableStillRequested(str, enableGeneration);
+        loadPhase = "dependencies";
         try {
             if (dependenciesPrepared) {
                 PluginDebugLog.log("loadPlugin deps already prepared id=" + str);
@@ -2785,6 +2814,7 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
                 legacyOverlayProbes.put(runtimeToken, overlayProbe);
             }
             PluginDebugLog.log("loadPlugin importing module id=" + str);
+            loadPhase = "import";
             PyObject module = getPython().getModule(str);
             importedModule = module;
             module.put("__nimarko_runtime_token__", runtimeToken);
@@ -2799,6 +2829,7 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
                 throw new Exception("Could not find a class inheriting from BasePlugin in " + str + ".py. Make sure your main plugin class extends BasePlugin.");
             }
             PluginDebugLog.log("loadPlugin found class, instantiating id=" + str);
+            loadPhase = "instantiate";
             claimEnableCode(str, enableGeneration);
             PyObject pyObjectCall = pyObjectFindPluginClass.call();
             createdInstance = pyObjectCall;
@@ -2857,6 +2888,7 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
             }
             if (z && !forceInstantiate) {
                 ensureEnableStillRequested(str, enableGeneration);
+                loadPhase = "on_plugin_load";
                 setPluginEnabled(
                         str, true, enableGeneration, null,
                         deferDependencyCleanup);
@@ -2890,9 +2922,11 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
             }
             if (!dependenciesPrepared && !forceInstantiate
                     && !deferDependencyCleanup) {
+                loadPhase = "dependency_cleanup";
                 PipController.getInstance().cleanup();
             }
             PluginDebugLog.log("loadPlugin SUCCESS id=" + str + " enabled=" + shouldEnable);
+            loadSucceeded = true;
         } catch (LifecyclePendingException pending) {
             throw pending;
         } catch (EnableCancelledException cancelled) {
@@ -2910,6 +2944,9 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
             }
             throw cancelled;
         } catch (Exception failure) {
+            if (!"on_plugin_load".equals(loadPhase)) {
+                reportPluginLoadFailure(str, loadPhase, failure);
+            }
             getPluginsController().cleanupPlugin(str, runtimeToken);
             finishLegacyOverlayProbe(runtimeToken);
             rollbackPluginImport(
@@ -2920,6 +2957,9 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
             }
             throw failure;
         } catch (Error failure) {
+            if (!"on_plugin_load".equals(loadPhase)) {
+                reportPluginLoadFailure(str, loadPhase, failure);
+            }
             getPluginsController().cleanupPlugin(str, runtimeToken);
             finishLegacyOverlayProbe(runtimeToken);
             rollbackPluginImport(
@@ -2930,16 +2970,69 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
             }
             throw failure;
         } finally {
+            boolean cleanupSucceeded = false;
+            try {
+                try {
             if (runtimeScopeEntered) {
                 getPluginsController().exitPluginRuntime(runtimeToken);
             }
+                } finally {
             getPluginsController().endPluginInitialization(str, enableGeneration);
-            getPluginsController().preferences.edit()
-                    .remove("plugin_crashed_" + str)
-                    .remove("plugin_enabled_before_quarantine_" + str)
+                }
+                cleanupSucceeded = true;
+            } catch (RuntimeException | Error cleanupFailure) {
+                if (loadSucceeded) {
+                    reportPluginLoadFailure(str, "load_cleanup", cleanupFailure);
+                }
+                throw cleanupFailure;
+            } finally {
+                clearOwnedPluginLoadMarker(loadPreferences, str, loadStartedAt,
+                        loadPid, loadToken,
+                        loadSucceeded && cleanupSucceeded && !forceInstantiate);
+            }
+        }
+    }
+
+    private void reportPluginLoadFailure(String pluginId, String phase, Throwable failure) {
+
+        try {
+            if (pluginId == null || failure == null) return;
+
+            Throwable cause = failure;
+            for (int depth = 0; cause != null && depth < 16; depth++) {
+                if (cause instanceof OutOfMemoryError) return;
+                cause = cause.getCause();
+            }
+            if (cause != null) return;
+            getPluginsController().getWatchdog()
+                    .onPluginExecutionFailed(pluginId, failure, phase);
+        } catch (Throwable reportFailure) {
+            FileLog.e("Unable to enqueue plugin load failure report", reportFailure);
+        }
+    }
+
+    private static void clearOwnedPluginLoadMarker(SharedPreferences preferences,
+            String pluginId, long startedAt, int pid, String token, boolean succeeded) {
+        synchronized (preferences) {
+            if (!pluginId.equals(preferences.getString("crashed_plugin_id", null))
+                    || startedAt != preferences.getLong("crashed_plugin_started_at", 0L)
+                    || pid != preferences.getInt("crashed_plugin_pid", 0)
+                    || !token.equals(preferences.getString("crashed_plugin_load_token", null))) {
+                return;
+            }
+            SharedPreferences.Editor editor = preferences.edit()
                     .remove("crashed_plugin_id")
                     .remove("crashed_plugin_started_at")
-                    .commit();
+                    .remove("crashed_plugin_pid")
+                    .remove("crashed_plugin_load_token");
+
+            if (succeeded) {
+                editor.remove("plugin_crashed_" + pluginId)
+                        .remove("plugin_enabled_before_quarantine_" + pluginId);
+            }
+            if (!editor.commit()) {
+                FileLog.e("Unable to clear plugin load marker for " + pluginId);
+            }
         }
     }
 
@@ -3127,6 +3220,12 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
         }
         PyObject operationObject = null;
         PluginsController.PluginRuntimeToken operationToken = null;
+        boolean loadCallbackAttempted = false;
+        final SharedPreferences activationPreferences = getPluginsController().preferences;
+        long activationStartedAt = 0L;
+        final int activationPid = android.os.Process.myPid();
+        String activationToken = null;
+        boolean activationSucceeded = false;
         try {
             if (z) ensureEnableStillRequested(str, enableGeneration);
             Plugin plugin = getPluginsController().plugins.get(str);
@@ -3204,6 +3303,22 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
                 PluginDebugLog.log("PY on_plugin_load call plugin=" + str
                         + " generation=" + enableGeneration
                         + " runtime=" + runtimeToken);
+                synchronized (activationPreferences) {
+
+                    if (activationPreferences.getString("crashed_plugin_id", null) == null) {
+                        activationStartedAt = System.currentTimeMillis();
+                        activationToken = java.util.UUID.randomUUID().toString();
+                        if (!activationPreferences.edit()
+                                .putString("crashed_plugin_id", str)
+                                .putLong("crashed_plugin_started_at", activationStartedAt)
+                                .putInt("crashed_plugin_pid", activationPid)
+                                .putString("crashed_plugin_load_token", activationToken)
+                                .commit()) {
+                            throw new IOException("Unable to persist plugin activation marker for " + str);
+                        }
+                    }
+                }
+                loadCallbackAttempted = true;
                 callOnPluginLoadWithTimeout(str, pyObject, enableGeneration, runtimeToken);
                 pyObject.put("initialized", true);
                 PluginDebugLog.log("PY on_plugin_load returned plugin=" + str
@@ -3255,10 +3370,18 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
             PluginDebugLog.log("PY setEnabled success plugin=" + str
                     + " target=" + z
                     + " generation=" + enableGeneration);
+            activationSucceeded = z && loadCallbackAttempted
+                    && getPluginsController().isPluginEnableRequested(str, enableGeneration);
         } catch (Throwable th2) {
             PluginDebugLog.log("PY setEnabled failure plugin=" + str
                     + " target=" + z
                     + " generation=" + enableGeneration, th2);
+            if (z && loadCallbackAttempted
+                    && !(th2 instanceof EnableCancelledException)
+                    && !(th2 instanceof LifecyclePendingException)) {
+
+                reportPluginLoadFailure(str, "on_plugin_load", th2);
+            }
             getPluginsController().endPluginInitialization(str);
             if (th2 instanceof EnableCancelledException) {
                 finishLegacyOverlayProbe(operationToken);
@@ -3297,6 +3420,12 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
             }
             if (callback != null) {
                 AndroidUtilities.runOnUIThread(() -> callback.run(PluginCell.stackTraceToString(th2)));
+            }
+        } finally {
+            if (activationToken != null) {
+                clearOwnedPluginLoadMarker(activationPreferences, str,
+                        activationStartedAt, activationPid, activationToken,
+                        activationSucceeded);
             }
         }
     }

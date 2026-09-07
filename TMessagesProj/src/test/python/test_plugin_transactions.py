@@ -390,7 +390,7 @@ class PluginTransactionTest(unittest.TestCase):
         recover = controller.index(
             'PythonPluginsEngine.recoverInterruptedPluginUpdates(this)')
         attribution = controller.index(
-            'String crashedPluginId = this.preferences.getString')
+            'recoverPluginSafetyState(startWithSafeMode);')
         self.assertLess(recover, attribution)
 
     def test_dependency_rollback_restores_ordered_managed_sys_path(self):

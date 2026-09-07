@@ -178,13 +178,25 @@ public final class NativeCrashHandler {
                 || signal == 8 || signal == 11 || signal == 31;
     }
 
+    @Deprecated
     public static boolean lastExitWasLoadCrashAfter(long loadStartedAtMs) {
-        if (loadStartedAtMs <= 0L) return false;
+        return lastExitWasLoadCrashAfter(loadStartedAtMs, 0);
+    }
+
+    public static boolean lastExitWasLoadCrashAfter(long loadStartedAtMs, int loadPid) {
+        if (loadStartedAtMs <= 0L || loadPid <= 0 || !isSupportedMainProcess()) return false;
         ApplicationExitInfo info = lastExitInfo();
         
-        if (!isNativeCrashExit(info)) return false;
+        if (!isNativeCrashExit(info) || info.getPid() != loadPid
+                || !ApplicationLoader.applicationContext.getPackageName()
+                        .equals(info.getProcessName())) return false;
         long exitAt = info.getTimestamp();
-        return exitAt >= loadStartedAtMs && exitAt - loadStartedAtMs <= 10 * 60_000L;
+        long processStartedAtMs = System.currentTimeMillis()
+                - (android.os.SystemClock.elapsedRealtime()
+                        - android.os.Process.getStartElapsedRealtime());
+        return exitAt >= loadStartedAtMs
+                && exitAt < processStartedAtMs
+                && exitAt - loadStartedAtMs <= 10 * 60_000L;
     }
 
     public static boolean conservativePre30LoadCrash(long loadStartedAtMs) {

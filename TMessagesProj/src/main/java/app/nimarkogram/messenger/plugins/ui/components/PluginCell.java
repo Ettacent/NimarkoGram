@@ -31,7 +31,6 @@ import org.telegram.messenger.R;
 import org.telegram.messenger.UserConfig;
 import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.Components.BackupImageView;
-import org.telegram.ui.Components.BulletinFactory;
 import org.telegram.ui.Components.EffectsTextView;
 import org.telegram.ui.Components.LayoutHelper;
 import org.telegram.ui.Components.Switch;
@@ -46,6 +45,7 @@ import java.io.StringWriter;
 import app.nimarkogram.messenger.NimarkoConfig;
 import app.nimarkogram.messenger.plugins.Plugin;
 import app.nimarkogram.messenger.plugins.PluginsController;
+import app.nimarkogram.messenger.plugins.utils.PluginCrashReports;
 import app.nimarkogram.messenger.utils.text.LocaleUtils;
 
 @SuppressLint({"ViewConstructor"})
@@ -67,6 +67,7 @@ public class PluginCell extends FrameLayout implements NotificationCenter.Notifi
     private final EffectsTextView subtitleView;
     private final TextView requirementsView;
     private boolean compact;
+    private boolean showingSavedReport;
     private long bindingEpoch;
 
     public PluginCell(Context context) {
@@ -239,6 +240,10 @@ public class PluginCell extends FrameLayout implements NotificationCenter.Notifi
     }
 
     public boolean isPointOnInteractive(float x, float y) {
+        if (descriptionView.getVisibility() == View.VISIBLE
+                && isInsideViewRelativeToSelf(descriptionView, x, y, false)) {
+            return true;
+        }
         if (isInsideViewRelativeToSelf(kebabButton, x, y)) {
             return true;
         }
@@ -295,6 +300,10 @@ public class PluginCell extends FrameLayout implements NotificationCenter.Notifi
     }
 
     private boolean isInsideViewRelativeToSelf(View child, float x, float y) {
+        return isInsideViewRelativeToSelf(child, x, y, true);
+    }
+
+    private boolean isInsideViewRelativeToSelf(View child, float x, float y, boolean fullHeight) {
         if (child == null || child.getVisibility() != View.VISIBLE) {
             return false;
         }
@@ -313,9 +322,10 @@ public class PluginCell extends FrameLayout implements NotificationCenter.Notifi
         }
         float right = left + child.getWidth();
         
-        float slop = AndroidUtilities.dp(8);
+        float slop = fullHeight ? AndroidUtilities.dp(8) : 0;
         return x >= left - slop && x <= right + slop
-                && y >= 0 && y <= getHeight();
+                && (fullHeight ? y >= 0 && y <= getHeight()
+                : y >= top && y <= top + child.getHeight());
     }
 
     public void setCompact(boolean z) {
@@ -427,23 +437,34 @@ public class PluginCell extends FrameLayout implements NotificationCenter.Notifi
     }
 
     private void bindErrorState() {
+        showingSavedReport = false;
         this.descriptionView.setVisibility(View.VISIBLE);
-        this.descriptionView.setText(this.plugin.getError().getLocalizedMessage()
-                + "\n" + LocaleController.getString(R.string.NM_TapToReEnable));
+        Throwable error = this.plugin.getError();
+        String summary = error.getLocalizedMessage();
+        if (TextUtils.isEmpty(summary)) summary = error.getClass().getSimpleName();
+        if (summary.length() > 240) summary = summary.substring(0, 240) + "…";
+        summary = summary.replace('\n', ' ').replace('\r', ' ');
+        this.descriptionView.setText(summary
+                + "\n" + LocaleController.getString(R.string.NM_PluginTapToViewReport));
         this.descriptionView.setTextColor(Theme.getColor(Theme.key_text_RedRegular));
         this.descriptionView.setTypeface(AndroidUtilities.getTypeface(AndroidUtilities.TYPEFACE_ROBOTO_MONO));
         this.descriptionView.setTextSize(1, 12.0f);
         
-        this.descriptionView.setOnClickListener(v -> pluginCellDelegate.togglePlugin(this));
-        this.descriptionView.setOnLongClickListener(v -> { onErrorClicked(v); return true; });
+        bindReportActions();
         
         this.checkBox.setVisibility(View.VISIBLE);
     }
 
-    private void onErrorClicked(View view) {
-        if (AndroidUtilities.addToClipboard(stackTraceToString(this.plugin.getError()))) {
-            BulletinFactory.of(LaunchActivity.getSafeLastFragment()).createCopyBulletin(LocaleController.getString(R.string.TextCopied)).show();
-        }
+    private void bindReportActions() {
+
+        final Plugin reportPlugin = this.plugin;
+        this.descriptionView.setOnClickListener(v -> PluginCrashReports.showReport(
+                reportPlugin, LaunchActivity.getSafeLastFragment()));
+        this.descriptionView.setOnLongClickListener(v -> {
+            PluginCrashReports.copyReport(reportPlugin, reportPlugin.getError(),
+                    LaunchActivity.getSafeLastFragment());
+            return true;
+        });
     }
 
     public static String stackTraceToString(Throwable th) {
@@ -454,10 +475,34 @@ public class PluginCell extends FrameLayout implements NotificationCenter.Notifi
 
     private void bindNormalState() {
         
+        bindSavedReportState(PluginCrashReports.hasReport(this.plugin.getId()));
+    }
+
+    private void bindSavedReportState(boolean available) {
+        showingSavedReport = available;
+        if (available) {
+            this.descriptionView.setVisibility(View.VISIBLE);
+            this.descriptionView.setText(LocaleController.getString(R.string.NM_PluginViewSavedReport));
+            this.descriptionView.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteLinkText));
+            this.descriptionView.setTypeface(AndroidUtilities.getTypeface(AndroidUtilities.TYPEFACE_ROBOTO_REGULAR));
+            this.descriptionView.setTextSize(1, 13.0f);
+            bindReportActions();
+            return;
+        }
         this.descriptionView.setVisibility(View.GONE);
         this.descriptionView.setOnClickListener(null);
         this.descriptionView.setOnLongClickListener(null);
-        this.checkBox.setVisibility(View.VISIBLE);
+    }
+
+    private void refreshSavedReportAvailability() {
+
+        if (plugin == null || plugin.hasError()) {
+            return;
+        }
+        boolean available = PluginCrashReports.hasReport(plugin.getId());
+        if (available != showingSavedReport) {
+            bindSavedReportState(available);
+        }
     }
 
     public void setChecked(boolean z, boolean z2) {
@@ -485,13 +530,16 @@ public class PluginCell extends FrameLayout implements NotificationCenter.Notifi
     @Override
     protected void onAttachedToWindow() {
         super.onAttachedToWindow();
+        NotificationCenter.getGlobalInstance().addObserver(this, NotificationCenter.pluginsUpdated);
         NotificationCenter.getGlobalInstance().addObserver(this, NotificationCenter.pluginSettingsRegistered);
         NotificationCenter.getGlobalInstance().addObserver(this, NotificationCenter.pluginSettingsUnregistered);
+        refreshSavedReportAvailability();
     }
 
     @Override
     protected void onDetachedFromWindow() {
         super.onDetachedFromWindow();
+        NotificationCenter.getGlobalInstance().removeObserver(this, NotificationCenter.pluginsUpdated);
         NotificationCenter.getGlobalInstance().removeObserver(this, NotificationCenter.pluginSettingsRegistered);
         NotificationCenter.getGlobalInstance().removeObserver(this, NotificationCenter.pluginSettingsUnregistered);
     }
@@ -499,6 +547,10 @@ public class PluginCell extends FrameLayout implements NotificationCenter.Notifi
     @Override
     public void didReceivedNotification(int i, int i2, Object... objArr) {
         
+        if (i == NotificationCenter.pluginsUpdated && isAttachedToWindow()) {
+            refreshSavedReportAvailability();
+            return;
+        }
     }
 
     public static class Factory extends UItem.UItemFactory {

@@ -36,19 +36,24 @@ public final class DomainPool {
             VoipBypassConfig.ASIA_RELAY_HOST,
     };
 
+    private static final String[] NO_RELAY_HOSTS = {};
     private static String[] primaryPool() {
-        return RelayRegion.isAsia() ? RELAY_HOSTS_ASIA : RELAY_HOSTS_NL;
+        return RelayRegion.ASIA_RELAY_ENABLED && RelayRegion.isAsia()
+                ? RELAY_HOSTS_ASIA : RELAY_HOSTS_NL;
     }
 
     private static String[] primaryPoolForDc(int dc) {
-        return dc == 5 ? RELAY_HOSTS_ASIA : RELAY_HOSTS_NL;
+        return RelayRegion.ASIA_RELAY_ENABLED && dc == 5
+                ? RELAY_HOSTS_ASIA : RELAY_HOSTS_NL;
     }
 
     private static String[] fallbackPool() {
+        if (!RelayRegion.ASIA_RELAY_ENABLED) return NO_RELAY_HOSTS;
         return RelayRegion.isAsia() ? RELAY_HOSTS_NL : RELAY_HOSTS_ASIA;
     }
 
     private static String[] fallbackPoolForDc(int dc) {
+        if (!RelayRegion.ASIA_RELAY_ENABLED) return NO_RELAY_HOSTS;
         return dc == 5 ? RELAY_HOSTS_NL : RELAY_HOSTS_ASIA;
     }
 
