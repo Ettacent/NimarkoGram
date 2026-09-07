@@ -154,6 +154,7 @@ public class RichMessageLayout {
     private static final int ORDERED_LIST_MARKER_START_DP = 6;
 
     public final ArrayList<RichUnsupportedBlock> unsupportedBlocks = new ArrayList<>();
+    public final ArrayList<RichUnsupportedBlock> unsupportedBlocksRoot = new ArrayList<>();
     public final ArrayList<RichBlock> blocks = new ArrayList<>();
     public final ArrayList<QuoteBackground> quotes = new ArrayList<>();
     private Drawable pullquoteIcon;
@@ -224,7 +225,6 @@ public class RichMessageLayout {
         numTextPaint.setTextSize(dp(fontSize));
     }
 
-    /** Uses the message renderer for editable inline buttons without laying out a message. */
     public static RichButtonSpan createEditorButtonSpan(int currentAccount, int maxWidth,
                                                         Theme.ResourcesProvider resourcesProvider,
                                                         TL_iv.textButton textButton) {
@@ -236,7 +236,6 @@ public class RichMessageLayout {
         );
     }
 
-    /** Uses the page-button renderer with incoming theme colors inside the rich editor. */
     public static RichButton createEditorPageButton(int currentAccount, int maxWidth,
                                                     Theme.ResourcesProvider resourcesProvider,
                                                     TL_keyboard.PageButton pageButton,
@@ -353,6 +352,7 @@ public class RichMessageLayout {
         }
 
         unsupportedBlocks.clear();
+        unsupportedBlocksRoot.clear();
         blocks.clear();
         quotes.clear();
         anchors.clear();
@@ -637,7 +637,6 @@ public class RichMessageLayout {
     public void snapshotForBlockquoteAnimation() {
         snapshotForDetailsAnimation();
     }
-
 
     public View view;
     public void attach(View view) {
@@ -1144,11 +1143,15 @@ public class RichMessageLayout {
             }
             return null;
         } else if (pageBlock instanceof TL_iv.pageBlockUnsupported) {
+            final int o = BitwiseUtils.hasFlag(textFlags, TEXT_FLAG_BLOCK_QUOTE) ? dp(6) : level > 0 ? dp(4) : 0;
             final RichUnsupportedBlock block = new RichUnsupportedBlock(this, new Rect(
-                -dp(7), Math.max(dp(14), padding.top),
-                -dp(7), Math.max(dp(14), padding.bottom)
-            ), maxWidth, blocks.size());
+                padding.left + o - dp(7), Math.max(dp(14), padding.top),
+                padding.right + o - dp(7), Math.max(dp(14), padding.bottom)
+            ), maxWidth, blocks.size(), level);
             unsupportedBlocks.add(block);
+            if (level == 0) {
+                unsupportedBlocksRoot.add(block);
+            }
             blocks.add(block);
             return block;
         } else if (pageBlock instanceof TL_iv.pageBlockDetails) {
@@ -1210,8 +1213,17 @@ public class RichMessageLayout {
         return !unsupportedBlocks.isEmpty();
     }
 
+    public boolean hasRootUnsupportedBlocks() {
+        return !unsupportedBlocksRoot.isEmpty();
+
+    }
+
     public ArrayList<RichUnsupportedBlock> getUnsupportedHoles() {
         return unsupportedBlocks;
+    }
+
+    public ArrayList<RichUnsupportedBlock> getUnsupportedHolesRoot() {
+        return unsupportedBlocksRoot;
     }
 
     public int getMinWidth() {
@@ -1289,10 +1301,10 @@ public class RichMessageLayout {
                 AndroidUtilities.rectTmp.set(q.padding, quoteTop, getMinWidth() - dp(12 * q.level), quoteBottom);
                 canvas.save();
                 canvas.scale(scale, scale, AndroidUtilities.rectTmp.centerX(), AndroidUtilities.rectTmp.centerY());
-//                if (q.level == 0) {
+
                     float rad = (float) Math.floor(SharedConfig.bubbleRadius / 3f);
                     quoteLine.drawBackground(canvas, AndroidUtilities.rectTmp, rad, rad, rad, 1.0f, false, false);
-//                }
+
                 quoteLine.drawLine(canvas, AndroidUtilities.rectTmp);
                 canvas.restore();
             }
@@ -2169,7 +2181,7 @@ public class RichMessageLayout {
         } else if (text instanceof TL_iv.textButton) {
             final TL_iv.textButton textButton = (TL_iv.textButton) text;
             final int start = out.length();
-            //formatText(text.text, out, flags);
+
             out.append("*");
             RichButtonSpan span = new RichButtonSpan(this, maxWidth, textButton);
             span.scale = 1.2f;
@@ -2542,9 +2554,6 @@ public class RichMessageLayout {
             }
         }
 
-        // Span ranges are collected once, then the row is scanned once. Whitespace is layout
-        // separation rather than content, and link-button labels are expanded into their inner
-        // emoji/text counts. This keeps detection O(characters + spans) for each logical row.
         private static EmojiLineMetrics measureEmojiLine(
                 Spanned text, int start, int end, TextPaint paint) {
             final EmojiLineMetrics result = new EmojiLineMetrics();
@@ -2591,8 +2600,6 @@ public class RichMessageLayout {
                 }
             }
 
-            // The common mixed-text row has neither emoji spans nor link buttons. It can never
-            // meet the threshold, so avoid both the character scan and line-sized allocations.
             if (emojiEnds == null && buttonsAt == null) {
                 return result;
             }
@@ -2642,8 +2649,6 @@ public class RichMessageLayout {
             }
         }
 
-        // inline buttons are ReplacementSpans: they are wider than the single character they
-        // occupy, so they are hit-tested by their drawn bounds instead of by text offset
         private RichButtonSpan[] getButtonSpans() {
             if (!(layout.getText() instanceof Spanned)) {
                 return null;
@@ -2766,6 +2771,31 @@ public class RichMessageLayout {
         private int pressedLinkStart, pressedLinkEnd;
         private AnimatedEmojiSpan pressedEmoji;
         private RichButtonSpan pressedButtonSpan;
+        private final RectF soleButtonHitBounds = new RectF();
+
+        private RichButtonSpan getSoleButtonSpan() {
+            if (!(layout.getText() instanceof Spanned)) return null;
+            final Spanned text = (Spanned) layout.getText();
+            final RichButtonSpan[] spans = text.getSpans(0, text.length(), RichButtonSpan.class);
+            if (spans.length != 1) return null;
+            final int spanStart = text.getSpanStart(spans[0]);
+            final int spanEnd = text.getSpanEnd(spans[0]);
+            for (int i = 0; i < text.length(); i++) {
+                if ((i < spanStart || i >= spanEnd) && !Character.isWhitespace(text.charAt(i))) {
+                    return null;
+                }
+            }
+            return spans[0];
+        }
+
+        private void setSoleButtonHitBounds(float left, float top, float right, float bottom) {
+            soleButtonHitBounds.set(left, top, right, bottom);
+        }
+
+        private boolean buttonContains(RichButtonSpan span, float x, float y) {
+            return span.contains(x, y, dp(8))
+                || (span == getSoleButtonSpan() && soleButtonHitBounds.contains(x, y));
+        }
 
         public boolean onTouchEvent(MotionEvent event) {
             final int act = event.getActionMasked();
@@ -2785,11 +2815,10 @@ public class RichMessageLayout {
                     }
                 }
 
-                // checked before ClickableSpan: a link inside the label must not steal the press
                 final RichButtonSpan[] buttonSpans = getButtonSpans();
                 if (buttonSpans != null) {
                     for (RichButtonSpan span : buttonSpans) {
-                        if (span.contains(lx, ly)) {
+                        if (buttonContains(span, lx, ly)) {
                             if (span.isDisabled()) {
                                 return true;
                             }
@@ -2890,8 +2919,8 @@ public class RichMessageLayout {
             }
             if (act == MotionEvent.ACTION_MOVE) {
                 if (pressedButtonSpan != null) {
-                    // drop the press once the finger leaves the pill, same as a bot button row
-                    if (!pressedButtonSpan.contains(lx, ly)) {
+
+                    if (!buttonContains(pressedButtonSpan, lx, ly)) {
                         cancelLongPress();
                         pressedButtonSpan.setPressed(false);
                         pressedButtonSpan = null;
@@ -3607,7 +3636,7 @@ public class RichMessageLayout {
                 quoteArrow.setColorFilter(new PorterDuffColorFilter(quoteArrowColor = root.quoteLine.getColor(), PorterDuff.Mode.SRC_IN));
             }
 
-            final int arrowX = root.getMinWidth() - dp(24); // + dp(8);
+            final int arrowX = root.getMinWidth() - dp(24);
             final int arrowY = collapsedH - dp(16) - dp(2) + dp(8);
             DrawableUtils.setBounds(quoteArrow, arrowX, arrowY, dp(16), dp(16), Gravity.CENTER);
             canvas.save();
@@ -4479,6 +4508,11 @@ public class RichMessageLayout {
                         pressedCellText = (Text) cell.textLayout;
                         cellDx = cell.getTextX() - scrollX;
                         cellDy = titleHeight + cell.getTextY();
+                        pressedCellText.setSoleButtonHitBounds(
+                            cell.x - cell.getTextX(), cell.y - cell.getTextY(),
+                            cell.x + cell.getMeasuredWidth() - cell.getTextX(),
+                            cell.y + cell.getMeasuredHeight() - cell.getTextY()
+                        );
                         event.offsetLocation(-cellDx, -cellDy);
                         textHandlingTouch = pressedCellText.onTouchEvent(event);
                         event.offsetLocation(cellDx, cellDy);
@@ -4704,13 +4738,15 @@ public class RichMessageLayout {
         public final int unsupportedBlockWidth;
         public final int unsupportedBlockHeight;
         public final int index;
+        public final int level;
 
         public TornEdge.Params tornParams;
         public Bitmap tornBitmap;
 
-        public RichUnsupportedBlock(RichMessageLayout root, Rect padding, int maxWidth, int index) {
+        public RichUnsupportedBlock(RichMessageLayout root, Rect padding, int maxWidth, int index, int level) {
             super(root, padding, maxWidth);
             this.index = index;
+            this.level = level;
 
             unsupportedBlockDrawable = new UnsupportedBlockDrawable(root.resourcesProvider);
             unsupportedBlockDrawable.setCallback(this);
@@ -4784,8 +4820,6 @@ public class RichMessageLayout {
         }
     }
 
-    /* * */
-
     public static class RichButtonRowBlock extends RichBlock {
         private enum Align {
             LEFT, RIGHT, CENTER, FILL;
@@ -4841,8 +4875,7 @@ public class RichMessageLayout {
 
         private void updateLayout() {
             final int bubbleWidth = root.getMinWidth() + root.padLeft + root.padRight;
-            // padRight may also contain width made available by the bubble/preview. Keep the
-            // original (symmetric) bubble inset, while allowing FILL rows to consume that width.
+
             final int width = Math.max(0, bubbleWidth
                 - root.padLeft * 2 - padding.left - padding.right);
             if (layoutWidth != width) {
@@ -4895,8 +4928,6 @@ public class RichMessageLayout {
             }
         }
 
-        // grow buttons to fill the row, keeping widths as equal as possible:
-        // buttons wider than the even share keep their preferred width, the rest split what is left
         private void stretch(int available) {
             final boolean[] fixed = new boolean[buttons.length];
             int flexible = buttons.length;
@@ -4926,7 +4957,6 @@ public class RichMessageLayout {
             }
         }
 
-        // take the overflow away proportionally to how much each button can give up
         private void squeeze(int available, int preferred) {
             int shrinkable = 0;
             for (RichButton button : buttons) {
@@ -4961,9 +4991,8 @@ public class RichMessageLayout {
             return padding.left + getIntrinsicWidth() + padding.right;
         }
 
-
         private RichButton pressedButton;
-        // button the current gesture started on; kept until UP/CANCEL even if the finger slides off
+
         private RichButton touchButton;
 
         private RichButton getButtonAt(float x, float y) {
@@ -5015,7 +5044,7 @@ public class RichMessageLayout {
         private final ClickHelper clickHelper = new ClickHelper(new ClickHelper.Delegate() {
             @Override
             public boolean needClickAt(View view, float x, float y) {
-                // the button picked here is the one the whole gesture belongs to
+
                 final RichButton button = getButtonAt(x, y);
                 touchButton = button != null && !button.isDisabled ? button : null;
                 return touchButton != null;
@@ -5028,7 +5057,7 @@ public class RichMessageLayout {
 
             @Override
             public void onClickTouchMove(View view, float x, float y) {
-                // release the visual press while the finger is off the button, without dropping the gesture
+
                 setPressedButton(getButtonAt(x, y) == touchButton ? touchButton : null);
             }
 
@@ -5099,10 +5128,8 @@ public class RichMessageLayout {
             SRC_OUT_PAINT.setXfermode(SRC_OUT);
         }
 
-        // inline buttons are compact: the pill hugs the label instead of using the block paddings
         public static final int INLINE_PADDING_HORIZONTAL = 7;
-        // how far the pill shrinks while pressed; inline pills are small, so they need a bigger
-        // relative drop to read as a bounce at all
+
         private static final float PRESS_SCALE = 0.04f;
         private static final float PRESS_SCALE_INLINE = 0.09f;
         private static final int PADDING = 20;
@@ -5117,14 +5144,12 @@ public class RichMessageLayout {
         public final TL_keyboard.RichButtonStyle style;
         public final boolean isDisabled;
 
-        // only set for buttons that came from a page block; inline buttons have no proto to report
         @Nullable
         public final TL_keyboard.PageButton pageButton;
 
         public int x;
         public int width;
 
-        // inline buttons override the block metrics with their own paddings
         private final boolean inline;
         private final boolean out;
 
@@ -5195,15 +5220,14 @@ public class RichMessageLayout {
             colorSpan = new ForegroundColorSpanThemable(styleKeys.getTextKey(out));
             colorSpan.setAlpha(isDisabled ? 0.5f : 1f);
             final SpannableStringBuilder formatted = new SpannableStringBuilder(formattedText);
-            // applied last so it wins over whatever coloring formatText produced
+
             if (link) {
                 formatted.setSpan(new URLSpanNoUnderline(""), 0, formatted.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
             } else  {
                 formatted.setSpan(colorSpan, 0, formatted.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
             }
             AndroidUtilities.replaceNewLines(formatted);
-            // Give the label its natural width so StaticLayout never wraps it. The button itself
-            // is still capped to maxWidth and fades the clipped end when it has to be narrower.
+
             final int oneLineWidth = Math.max(1,
                 (int) Math.ceil(Layout.getDesiredWidth(formatted, layout.textPaint)) + dp(2));
             text = new Text(layout, formatted, oneLineWidth, Layout.Alignment.ALIGN_CENTER);
@@ -5266,7 +5290,6 @@ public class RichMessageLayout {
             setTextColorKey(textColorKey);
         }
 
-        // the span resolves the key itself on every draw; color does not affect metrics, so no re-layout is needed
         public void setTextColorKey(int colorKey) {
             textColorKey = colorKey;
             int textColorToSet = layout.getThemedColor(colorKey);
@@ -5289,11 +5312,9 @@ public class RichMessageLayout {
         }
 
         public int getHeight() {
-            // no vertical padding: the pill is exactly as tall as the laid-out label
+
             return inline ? dp(layout.fontSize * 1.166666f) : dp(18 + layout.fontSize);
         }
-
-        // wider padding when there is an icon, so the icon lives inside the right padding
 
         public int getPaddingLeft() {
             if (link) {
@@ -5321,13 +5342,10 @@ public class RichMessageLayout {
             return dp(iconDrawable != null ? PADDING_WITH_ICON : PADDING);
         }
 
-        // horizontal strip on the right the text must never run into:
-        // the icon is centered at width - ICON_OFFSET, so its left edge is half a size before that
         public int getIconReserve() {
             return iconDrawable != null ? dp(ICON_OFFSET_X) + dp(ICON_OFFSET_Y) / 2 : 0;
         }
 
-        // centered; only icon buttons give up the left padding to keep clear of the icon
         public float getTextX() {
             if (inline) {
                 return getPaddingLeft();
@@ -5363,12 +5381,10 @@ public class RichMessageLayout {
             return Math.max(1, getTextViewportRight() - getTextViewportLeft());
         }
 
-        // width the button wants: text plus both paddings
         public int getPreferredWidth() {
             return Math.min(maxWidth, getTextWidth() + getPaddingLeft() + getPaddingRight());
         }
 
-        // lower bound when the row has to be squeezed; keeps the pill shape and the icon strip
         public int getMinWidth() {
             return Math.min(getPreferredWidth(), getHeight() + getIconReserve());
         }
@@ -5380,7 +5396,7 @@ public class RichMessageLayout {
             if (s != 1) {
                 canvas.scale(s, s, width / 2f, getHeight() / 2f);
             }
-            final boolean drawBackground = /*!onlyEmoji &&*/ !link;
+            final boolean drawBackground =                   !link;
             final boolean saveLayer = needSaveLayer && drawBackground;
             if (saveLayer) {
                 canvas.saveLayer(0, 0, width, getHeight(), null);
@@ -5406,9 +5422,7 @@ public class RichMessageLayout {
             final int textBaseLine = text.getBaseline();
             final boolean emojiOnly = text.getEmojiOnlyCount() > 0;
             if (emojiOnly) {
-                // The emoji's drawn square is taller than this compact inline button. Center its
-                // complete inner line box instead of aligning its unusually tall font metrics to
-                // the text baseline; otherwise emoji-only buttons sit below direct-emoji rows.
+
                 canvas.translate(getTextX() - text.left, (getHeight() - text.getHeight()) / 2f);
             } else if (textBaseLine > 0) {
                 if (inline) {
@@ -5461,7 +5475,7 @@ public class RichMessageLayout {
             final boolean drawProgress = pageButton != null && layout.cell != null && layout.cell.drawButtonProgress(pageButton);
             setLoading(drawProgress);
             if (loadingDrawable != null && (drawProgress || loadingDrawable.isDisappearing())) {
-                // half the stroke sits outside the path, so keep it inside the pill
+
                 final float sw = loadingDrawable.strokePaint.getStrokeWidth();
                 loadingRect.set(0, 0, width, getHeight());
                 loadingRect.inset(sw / 2f, sw / 2f);
@@ -5534,7 +5548,6 @@ public class RichMessageLayout {
             }
         }
 
-        // ramps up frame by frame while pressed, springs back through the animator on release
         public float getPressScale() {
             if (pressed && pressT != 1f) {
                 pressT += (float) Math.min(40, 1000f / AndroidUtilities.screenRefreshRate) / 100f;
@@ -5567,9 +5580,9 @@ public class RichMessageLayout {
                 final String url = ((TL_keyboard.TL_inlineButtonTypeUrl) type).url;
                 if (LinkManager.isWebAppLink(url)) {
                     return R.drawable.bot_webview;
-                } /*else if (isInviteButton) {
-                drawable = Theme.getThemeDrawable(Theme.key_drawable_botInvite, resourcesProvider);
-            } */ else {
+                }
+
+                 else {
                     return R.drawable.mini_inline_arrow_16;
                 }
             } else if (type instanceof TL_keyboard.TL_inlineButtonTypeWebView) {
@@ -5586,12 +5599,12 @@ public class RichMessageLayout {
     }
 
     public static class RichButtonSpan extends ReplacementSpan {
-        // outer gap between the pill and the surrounding text
+
         private static final int MARGIN_HORIZONTAL = 1;
 
         private final RichButton button;
         private final TL_iv.textButton textButton;
-        // where the pill was last drawn, in the coordinate space Text.onTouchEvent works in
+
         private final RectF bounds = new RectF();
 
         public RichButtonSpan(RichMessageLayout layout, int maxWidth, TL_iv.textButton textButton) {
@@ -5710,15 +5723,14 @@ public class RichMessageLayout {
             }
             float center;
             if (centerEmojiInLineBox) {
-                // Direct animated emojis are centered in StaticLayout's complete line box. Match
-                // that center for emoji-only buttons in table cells and expanded emoji-grid rows.
+
                 center = (top + bottom) / 2f;
             } else {
                 final Paint.FontMetricsInt fm = paint.getFontMetricsInt();
                 center = y + (fm.ascent + fm.descent) / 2f;
             }
             canvas.save();
-            // nudged up by OFFSET_VERTICAL: the pill reads low when centered on the text metrics
+
             final int pillLeft = Math.round(x + (button.link ? 0 : dp(MARGIN_HORIZONTAL)));
             final int pillTop = (int) Math.ceil(
                 center - button.getHeight() / 2f + (centerEmojiInLineBox ? 0 : 1)
@@ -5735,6 +5747,11 @@ public class RichMessageLayout {
 
         public boolean contains(float x, float y) {
             return bounds.contains(x, y);
+        }
+
+        public boolean contains(float x, float y, float padding) {
+            return x >= bounds.left - padding && x < bounds.right + padding
+                && y >= bounds.top - padding && y < bounds.bottom + padding;
         }
 
         public void setPressed(boolean pressed) {
@@ -5763,8 +5780,6 @@ public class RichMessageLayout {
             button.detach(view);
         }
     }
-
-    /* * */
 
     public static class RichPreformattedBlock extends RichBlock {
 

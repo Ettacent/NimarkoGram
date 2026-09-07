@@ -54,7 +54,6 @@ import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.LinearSmoothScroller;
 import androidx.recyclerview.widget.RecyclerView;
 
-
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.Emoji;
 import org.telegram.messenger.LocaleController;
@@ -210,7 +209,6 @@ public class FilterTabsView extends FrameLayout {
 
         public boolean animateCounterChange;
         private float locIconXOffset;
-
 
         float lastTextX;
         float animateFromTextX;
@@ -448,7 +446,6 @@ public class FilterTabsView extends FrameLayout {
                 countWidth = 0;
             }
 
-
             if (showRemove && (isEditing || editingStartAnimationProgress != 0)) {
                 countWidth = (int) (countWidth + (dp(TAB_COUNTER_HEIGHT) - countWidth) * editingStartAnimationProgress);
             }
@@ -474,7 +471,6 @@ public class FilterTabsView extends FrameLayout {
                 textHeight = textLayout.getHeight();
                 textOffsetX = (int) -textLayout.getLineLeft(0);
             }
-
 
             float titleOffsetX = 0;
             if (animateTextChange) {
@@ -598,7 +594,6 @@ public class FilterTabsView extends FrameLayout {
                 } else {
                     counterPaint.setAlpha(255);
                 }
-
 
                 float w = (animateCounterReplace && animateFromCountWidth != countWidth) ? animateFromCountWidth * (1f - changeProgress) + countWidth * changeProgress : countWidth;
                 if (animateCounterReplace) {
@@ -1998,7 +1993,9 @@ public class FilterTabsView extends FrameLayout {
             invalidated = true;
             requestLayout();
             setItemAnimatorIfChanged(itemAnimator);
-            adapter.notifyDataSetChanged();
+            if (adapter != null) {
+                adapter.notifyDataSetChanged();
+            }
             allTabsWidth = 0;
             if (!app.nimarkogram.messenger.NimarkoConfig.tabsHideAllChats) {
                 final Tab defaultTab = findDefaultTab();

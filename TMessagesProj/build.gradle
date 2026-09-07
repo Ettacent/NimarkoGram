@@ -72,7 +72,7 @@ dependencies {
     implementation 'com.googlecode.mp4parser:isoparser:1.0.6'
     implementation 'com.stripe:stripe-android:2.0.2'
     implementation 'com.google.mlkit:language-id:17.0.6'
-    implementation 'com.android.billingclient:billing:7.1.1'
+    implementation 'com.android.billingclient:billing:8.0.0'
     implementation 'com.google.code.gson:gson:2.11.0'
     implementation 'com.google.guava:guava:31.1-android'
     implementation 'com.google.android.play:integrity:1.3.0'
@@ -220,14 +220,13 @@ android {
         freeCompilerArgs += '-Xskip-metadata-version-check'
     }
 
-
     defaultConfig {
         // NimarkoGram: lowered to 23 so apksigner verifies v1 (>=24 spec
         // skips v1 entirely → Play Protect treated APK as "modern-only"
         // and hard-blocked on Android 16). Chaquopy minSdk note was a
         // soft preference; actual native libs work on 23 fine.
         minSdkVersion 24
-        targetSdkVersion 35
+        targetSdkVersion 36
 
         // NimarkoGram: hybrid — build BOTH arm64-v8a (modern) AND armeabi-v7a (old devices) so a
         // single APK runs everywhere. CMake compiles the full native set for each ABI; prebuilt
@@ -250,6 +249,7 @@ android {
             cmake {
                 version '3.22.1'
                 arguments '-DANDROID_STL=c++_static', '-DANDROID_PLATFORM=android-24' //, '-DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON'
+                targets 'tmessages.49'
             }
         }
     }
@@ -410,7 +410,6 @@ chaquopy {
         }
     }
 }
-
 
 def getProps(String propName) {
     def propsFile = rootProject.file('local.properties')

@@ -100,6 +100,7 @@ public final class NimarkoQuoteCreator {
     private static final long MAX_LIVE_PREVIEW_PIXELS = 1_600_000L;
     private static final long MAX_SNAPSHOT_PREVIEW_PIXELS = 2_000_000L;
     private static final int MAX_SNAPSHOT_PREVIEW_SIDE = 4_096;
+
     private static final float MAX_INLINE_PHOTO_ASPECT_RATIO = 3f;
     private static final long PREVIEW_REVEAL_DURATION = 300L;
     private static final float PREVIEW_REVEAL_SCALE = 0.996f;
@@ -117,6 +118,12 @@ public final class NimarkoQuoteCreator {
     private static PendingLegacySave pendingLegacySave;
 
     private NimarkoQuoteCreator() {
+    }
+
+    private static boolean canSnapshotPreview(int width, int height) {
+        return width > 0 && height > 0
+                && Math.max(width, height) <= MAX_SNAPSHOT_PREVIEW_SIDE
+                && (long) width * height <= MAX_SNAPSHOT_PREVIEW_PIXELS;
     }
 
     public static boolean onRequestPermissionsResult(
@@ -800,6 +807,7 @@ public final class NimarkoQuoteCreator {
             }
             long pixels = (long) card.getWidth() * card.getHeight();
             boolean snapshotCandidate = pixels > MAX_LIVE_PREVIEW_PIXELS
+                    && canSnapshotPreview(card.getWidth(), card.getHeight())
                     && !card.requiresLivePreview();
             if (pending || !presentationReady || !snapshotCandidate) {
                 completePreview(generation, card);
@@ -835,21 +843,12 @@ public final class NimarkoQuoteCreator {
         private void createBitmapPreview(int generation, QuoteCardView card) {
             int sourceWidth = card.getWidth();
             int sourceHeight = card.getHeight();
-            if (sourceWidth <= 0 || sourceHeight <= 0) {
+            if (!canSnapshotPreview(sourceWidth, sourceHeight)) {
                 completePreview(generation, card);
                 return;
             }
-            double scale = Math.min(
-                    1.0,
-                    Math.sqrt(MAX_SNAPSHOT_PREVIEW_PIXELS / (double) ((long) sourceWidth * sourceHeight))
-            );
-            int longestSide = Math.max(sourceWidth, sourceHeight);
-            if (longestSide * scale > MAX_SNAPSHOT_PREVIEW_SIDE) {
-                scale = MAX_SNAPSHOT_PREVIEW_SIDE / (double) longestSide;
-            }
-            int bitmapWidth = Math.max(1, (int) Math.round(sourceWidth * scale));
-            int bitmapHeight = Math.max(1, (int) Math.round(sourceHeight * scale));
-            float bitmapScale = (float) scale;
+            int bitmapWidth = sourceWidth;
+            int bitmapHeight = sourceHeight;
             EXPORT_QUEUE.postRunnable(() -> {
                 if (dismissed || generation != previewGeneration) return;
                 Bitmap bitmap;
@@ -867,7 +866,7 @@ public final class NimarkoQuoteCreator {
                     }
                     previewBitmap = bitmap;
                     card.setPreviewSnapshotMode(true);
-                    drawBitmapPreview(generation, card, bitmap, bitmapScale);
+                    drawBitmapPreview(generation, card, bitmap);
                 });
             });
         }
@@ -875,8 +874,7 @@ public final class NimarkoQuoteCreator {
         private void drawBitmapPreview(
                 int generation,
                 QuoteCardView card,
-                Bitmap bitmap,
-                float scale
+                Bitmap bitmap
         ) {
             if (!isPreviewBuildValid(generation) || quoteCard != card || previewBitmap != bitmap) {
                 card.setPreviewSnapshotMode(false);
@@ -886,7 +884,6 @@ public final class NimarkoQuoteCreator {
             }
             try {
                 Canvas canvas = new Canvas(bitmap);
-                canvas.scale(scale, scale);
                 card.draw(canvas);
                 canvas.setBitmap(null);
             } catch (Throwable error) {

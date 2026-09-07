@@ -98,10 +98,8 @@ public class BotForumHelper extends BaseController {
         return messageObject;
     }
 
-    // user_id > topic_id -> random_id - message
     private final DialogTopicIdKeyMap<BotDraftMessage> botTextDraftsByRandomIds = new DialogTopicIdKeyMap<>();
     private final DialogTopicIdKeyMap<Object> botTextDraftsByRandomIdsBlocklist = new DialogTopicIdKeyMap<>();
-
 
     public void onBotForumDraftUpdate(long userId, int topicId, TLRPC.TL_sendMessageTextDraftAction action) {
         onBotForumDraftUpdate(userId, topicId, action.random_id, action.text, action.can_stop, action.keep_on_stop);
@@ -242,8 +240,6 @@ public class BotForumHelper extends BaseController {
         return SteamingSendButtonState.NO_STREAMING;
     }
 
-
-
     public void stopStreaming(long userId, long topicId) {
         final LongSparseArray<BotDraftMessage> drafts = botTextDraftsByRandomIds.get(userId, topicId);
 
@@ -290,14 +286,39 @@ public class BotForumHelper extends BaseController {
 
     }
 
-
-
     public boolean hasBotForumDrafts(long userId, int topicId) {
         LongSparseArray<BotDraftMessage> messages = botTextDraftsByRandomIds.get(userId, topicId);
-        return messages != null && messages.size() > 0;
+        if (messages != null && messages.size() > 0) {
+            for (int a = 0, N = messages.size(); a < N; a++) {
+                if (!messages.valueAt(a).removed) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    public void removeAllMarkedAsRemovedMessages(long userId, int topicId) {
+        LongSparseArray<BotDraftMessage> messages = botTextDraftsByRandomIds.get(userId, topicId);
+        if (messages == null) {
+            return;
+        }
+
+        for (int a = 0, N = messages.size(); a < N; a++) {
+            BotDraftMessage draftMessage = messages.valueAt(a);
+            if (draftMessage.removed) {
+                getNotificationCenter().postNotificationName(NotificationCenter.botForumDraftDelete,
+                        new BotForumTextDraftDeleteNotification(userId, topicId, draftMessage.localMessageId));
+                botTextDraftsByRandomIds.remove(userId, topicId, draftMessage.randomId);
+                a--;
+                N--;
+            }
+        }
     }
 
     public MessageObject onBotForumDraftCheckNewMessages(long userId, int topicId, int messageId, String message) {
+        removeAllMarkedAsRemovedMessages(userId, topicId);
+
         LongSparseArray<BotDraftMessage> messages = botTextDraftsByRandomIds.get(userId, topicId);
         if (messages == null) {
             return null;
@@ -339,10 +360,6 @@ public class BotForumHelper extends BaseController {
                 new BotForumTextDraftDeleteNotification(userId, topicId, draftMessage.localMessageId));
     }
 
-
-
-
-
     private static class BotDraftMessage {
         public final long userId;
         public final int topicId;
@@ -365,9 +382,6 @@ public class BotForumHelper extends BaseController {
             this.localMessageId = localMessageId;
         }
     }
-
-
-    /** Send message interceptors **/
 
     public boolean beforeSendingFinalRequest(TLObject req, MessageObject msg, Runnable send) {
         return beforeSendingFinalRequest(req, Collections.singletonList(msg), send);
@@ -442,9 +456,6 @@ public class BotForumHelper extends BaseController {
         return false;
     }
 
-
-
-    //  userId -> topicId
     private final LongSparseArray<List<MessagesStorage.IntCallback>> pendingBotTopics = new LongSparseArray<>();
 
     private void performSendBotTopicCreate(final TLRPC.InputPeer inputPeer,
@@ -536,10 +547,6 @@ public class BotForumHelper extends BaseController {
         }
     }
 
-
-
-    /** Notification classes **/
-
     public static class BotForumTopicCreateNotification {
         public final long dialogId;
         public final int topicId;
@@ -576,9 +583,6 @@ public class BotForumHelper extends BaseController {
         }
     }
 
-
-    /** Helper Utils **/
-
     public static boolean isBotForum(int currentAccount, long dialogId) {
         if (dialogId > 0) {
             return UserObject.isBotForum(MessagesController.getInstance(currentAccount).getUser(dialogId));
@@ -597,9 +601,6 @@ public class BotForumHelper extends BaseController {
     public boolean isStreamingTopic(long dialogId, long topicId) {
         return preferences.getBoolean(dialogId + "_" + topicId, false);
     }
-
-
-    /** Instance **/
 
     private BotForumHelper(int currentAccount) {
         super(currentAccount);
@@ -620,11 +621,9 @@ public class BotForumHelper extends BaseController {
         return localInstance;
     }
 
-
-
     public static class BotDraftAnimationsPool {
         private final DialogTopicIdKeyMap<MultiLayoutTypingAnimator> animators = new DialogTopicIdKeyMap<>();
-        private final SparseIntArray ids = new SparseIntArray();   // messageId -> pendingId;
+        private final SparseIntArray ids = new SparseIntArray();
 
         @Nullable
         public MultiLayoutTypingAnimator getAnimator(long dialogId, int messageId, boolean allowCreate) {
