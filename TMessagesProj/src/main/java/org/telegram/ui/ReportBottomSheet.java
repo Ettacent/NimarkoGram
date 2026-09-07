@@ -30,6 +30,7 @@ import org.telegram.messenger.R;
 import org.telegram.messenger.Utilities;
 import org.telegram.messenger.browser.Browser;
 import org.telegram.tgnet.ConnectionsManager;
+import org.telegram.tgnet.TLMethod;
 import org.telegram.tgnet.TLObject;
 import org.telegram.tgnet.TLRPC;
 import org.telegram.tgnet.tl.TL_ephemeral;
@@ -847,7 +848,7 @@ public class ReportBottomSheet extends BottomSheet {
     ) {
         if (context == null || messageIds == null) return;
         final boolean[] done = new boolean[] { false };
-        final TLObject request;
+        final TLMethod<TLRPC.ReportResult> request;
         if (stories) {
             TL_stories.TL_stories_report req = new TL_stories.TL_stories_report();
             req.peer = MessagesController.getInstance(currentAccount).getInputPeer(dialogId);
@@ -872,69 +873,65 @@ public class ReportBottomSheet extends BottomSheet {
             req.message = TextUtils.isEmpty(message) ? "" : message;
             request = req;
         }
-        ConnectionsManager.getInstance(currentAccount).sendRequest(request, (response, error) -> {
-            if (response != null) {
-                if (response instanceof TLRPC.TL_reportResultChooseOption || response instanceof TLRPC.TL_reportResultAddComment) {
-                    AndroidUtilities.runOnUIThread(() -> {
-                        final ReportBottomSheet sheet = new ReportBottomSheet(context, resourceProvider, stories, ephemeral, dialogId, messageIds);
-                        if (response instanceof TLRPC.TL_reportResultChooseOption) {
-                            sheet.setReportChooseOption((TLRPC.TL_reportResultChooseOption) response);
-                        } else if (response instanceof TLRPC.TL_reportResultAddComment) {
-                            sheet.setReportChooseOption((TLRPC.TL_reportResultAddComment) response);
-                        }
-                        sheet.setListener(new ReportBottomSheet.Listener() {
-                            @Override
-                            public void onReported() {
-                                if (!done[0] && whenDone != null) {
-                                    done[0] = true;
-                                    whenDone.run(true);
-                                }
-                                AndroidUtilities.runOnUIThread(() -> {
-                                    if (LaunchActivity.getSafeLastFragment() == null) return;
-                                    final BulletinFactory bf = bulletinFactory == null ? BulletinFactory.of(LaunchActivity.getSafeLastFragment()) : bulletinFactory;
-                                    if (bf == null) return;
-                                    bf
-                                        .createSimpleBulletin(
-                                            R.raw.msg_antispam,
-                                            LocaleController.getString(R.string.ReportChatSent),
-                                            LocaleController.getString(R.string.Reported2)
-                                        )
-                                        .setDuration(Bulletin.DURATION_PROLONG)
-                                        .show();
-                                }, 200);
-                            }
-                        });
-                        sheet.setOnDismissListener(() -> {
-                            if (!done[0] && whenDone != null) {
-                                done[0] = true;
-                                whenDone.run(false);
-                            }
-                        });
-                        sheet.show();
-                    });
-                } else if (response instanceof TLRPC.TL_reportResultReported) {
-                    AndroidUtilities.runOnUIThread(() -> {
+        ConnectionsManager.getInstance(currentAccount).sendRequestTyped(request, AndroidUtilities::runOnUIThread, (response, error) -> {
+            if (response instanceof TLRPC.TL_reportResultChooseOption || response instanceof TLRPC.TL_reportResultAddComment) {
+                final ReportBottomSheet sheet = new ReportBottomSheet(context, resourceProvider, stories, ephemeral, dialogId, messageIds);
+                if (response instanceof TLRPC.TL_reportResultChooseOption) {
+                    sheet.setReportChooseOption((TLRPC.TL_reportResultChooseOption) response);
+                } else if (response instanceof TLRPC.TL_reportResultAddComment) {
+                    sheet.setReportChooseOption((TLRPC.TL_reportResultAddComment) response);
+                }
+                sheet.setListener(new ReportBottomSheet.Listener() {
+                    @Override
+                    public void onReported() {
                         if (!done[0] && whenDone != null) {
                             done[0] = true;
                             whenDone.run(true);
                         }
-                        Runnable showToast = () -> {
-                            BaseFragment fragment = LaunchActivity.getSafeLastFragment();
-                            if (fragment == null) return;
-                            final BulletinFactory bf = BulletinFactory.of(fragment);
+                        AndroidUtilities.runOnUIThread(() -> {
+                            if (LaunchActivity.getSafeLastFragment() == null) return;
+                            final BulletinFactory bf = bulletinFactory == null ? BulletinFactory.of(LaunchActivity.getSafeLastFragment()) : bulletinFactory;
                             if (bf == null) return;
                             bf
                                 .createSimpleBulletin(
-                                        R.raw.msg_antispam,
-                                        LocaleController.getString(R.string.ReportChatSent),
-                                        LocaleController.getString(R.string.Reported2)
+                                    R.raw.msg_antispam,
+                                    LocaleController.getString(R.string.ReportChatSent),
+                                    LocaleController.getString(R.string.Reported2)
                                 )
                                 .setDuration(Bulletin.DURATION_PROLONG)
                                 .show();
-                        };
-                        AndroidUtilities.runOnUIThread(showToast, 220);
-                    }, 200);
-                }
+                        }, 200);
+                    }
+                });
+                sheet.setOnDismissListener(() -> {
+                    if (!done[0] && whenDone != null) {
+                        done[0] = true;
+                        whenDone.run(false);
+                    }
+                });
+                sheet.show();
+            } else if (response instanceof TLRPC.TL_reportResultReported || true) {
+                AndroidUtilities.runOnUIThread(() -> {
+                    if (!done[0] && whenDone != null) {
+                        done[0] = true;
+                        whenDone.run(true);
+                    }
+                    Runnable showToast = () -> {
+                        BaseFragment fragment = LaunchActivity.getSafeLastFragment();
+                        if (fragment == null) return;
+                        final BulletinFactory bf = BulletinFactory.of(fragment);
+                        if (bf == null) return;
+                        bf
+                            .createSimpleBulletin(
+                                    R.raw.msg_antispam,
+                                    LocaleController.getString(R.string.ReportChatSent),
+                                    LocaleController.getString(R.string.Reported2)
+                            )
+                            .setDuration(Bulletin.DURATION_PROLONG)
+                            .show();
+                    };
+                    AndroidUtilities.runOnUIThread(showToast, 220);
+                }, 200);
             }
         });
     }
@@ -1056,10 +1053,7 @@ public class ReportBottomSheet extends BottomSheet {
         Runnable showPremium,
         Runnable done
     ) {
-//        if (fragment == null) return;
-//        final int currentAccount = fragment.getCurrentAccount();
-//        final Context context = fragment.getContext();
-//        final long dialogId = fragment.getDialogId();
+
         if (context == null) return;
 
         TLRPC.TL_messages_reportSponsoredMessage req = new TLRPC.TL_messages_reportSponsoredMessage();
@@ -1090,8 +1084,7 @@ public class ReportBottomSheet extends BottomSheet {
                                                 )
                                             )
                                             .show();
-//                                        fragment.removeFromSponsored(message);
-//                                        fragment.removeMessageWithThanos(message);
+
                                     }, 200);
                                 }
 
@@ -1104,15 +1097,14 @@ public class ReportBottomSheet extends BottomSheet {
                                         bulletinFactory
                                             .createAdReportedBulletin(LocaleController.getString(R.string.AdHidden))
                                             .show();
-//                                        fragment.removeFromSponsored(message);
-//                                        fragment.removeMessageWithThanos(message);
+
                                     }, 200);
                                 }
 
                                 @Override
                                 public void onPremiumRequired() {
                                     showPremium.run();
-//                                    fragment.showDialog(new PremiumFeatureBottomSheet(fragment, PremiumPreviewFragment.PREMIUM_FEATURE_ADS, true));
+
                                 }
                             })
                             .show();
@@ -1122,7 +1114,7 @@ public class ReportBottomSheet extends BottomSheet {
                         if (done != null) {
                             done.run();
                         }
-//                        BulletinFactory.of(fragment)
+
                         bulletinFactory
                             .createAdReportedBulletin(
                                 AndroidUtilities.replaceSingleTag(
@@ -1134,21 +1126,19 @@ public class ReportBottomSheet extends BottomSheet {
                                 )
                             )
                             .show();
-//                        fragment.removeFromSponsored(message);
-//                        fragment.removeMessageWithThanos(message);
+
                     }, 200);
                 } else if (response instanceof TLRPC.TL_channels_sponsoredMessageReportResultAdsHidden) {
                     AndroidUtilities.runOnUIThread(() -> {
                         if (done != null) {
                             done.run();
                         }
-//                        BulletinFactory.of(fragment)
+
                         bulletinFactory
                             .createAdReportedBulletin(LocaleController.getString(R.string.AdHidden))
                             .show();
                         MessagesController.getInstance(currentAccount).disableAds(false);
-//                        fragment.removeFromSponsored(message);
-//                        fragment.removeMessageWithThanos(message);
+
                     }, 200);
                 }
             } else if (error != null && "AD_EXPIRED".equalsIgnoreCase(error.text)) {
@@ -1171,7 +1161,6 @@ public class ReportBottomSheet extends BottomSheet {
             }
         });
     }
-
 
     public static void openSponsoredPeer(
         BaseFragment fragment,

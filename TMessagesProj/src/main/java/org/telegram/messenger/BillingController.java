@@ -18,8 +18,8 @@ import com.android.billingclient.api.BillingClientStateListener;
 import com.android.billingclient.api.BillingFlowParams;
 import com.android.billingclient.api.BillingResult;
 import com.android.billingclient.api.ConsumeParams;
+import com.android.billingclient.api.PendingPurchasesParams;
 import com.android.billingclient.api.ProductDetails;
-import com.android.billingclient.api.ProductDetailsResponseListener;
 import com.android.billingclient.api.Purchase;
 import com.android.billingclient.api.PurchasesResponseListener;
 import com.android.billingclient.api.PurchasesUpdatedListener;
@@ -79,7 +79,7 @@ public class BillingController implements PurchasesUpdatedListener, BillingClien
 
     private BillingController(Context ctx) {
         billingClient = BillingClient.newBuilder(ctx)
-                .enablePendingPurchases()
+                .enablePendingPurchases(PendingPurchasesParams.newBuilder().enableOneTimeProducts().build())
                 .setListener(this)
                 .build();
     }
@@ -160,7 +160,7 @@ public class BillingController implements PurchasesUpdatedListener, BillingClien
             return;
         }
         billingClientEmpty = true;
-        NotificationCenter.getGlobalInstance().postNotificationName(NotificationCenter.billingProductDetailsUpdated);
+        NotificationCenter.getGlobalInstance().postNotificationNameOnUIThread(NotificationCenter.billingProductDetailsUpdated);
     }
 
     private void switchBackFromInvoice() {
@@ -168,23 +168,25 @@ public class BillingController implements PurchasesUpdatedListener, BillingClien
             return;
         }
         billingClientEmpty = false;
-        NotificationCenter.getGlobalInstance().postNotificationName(NotificationCenter.billingProductDetailsUpdated);
+        NotificationCenter.getGlobalInstance().postNotificationNameOnUIThread(NotificationCenter.billingProductDetailsUpdated);
     }
 
     public boolean isReady() {
         return billingClient.isReady();
     }
 
-    public void queryProductDetails(List<QueryProductDetailsParams.Product> products, ProductDetailsResponseListener responseListener) {
+    public interface ProductDetailsResponseListenerLegacy {
+        void onProductDetailsResponse(BillingResult billingResult, List<ProductDetails> list);
+    }
+
+    public void queryProductDetails(List<QueryProductDetailsParams.Product> products, ProductDetailsResponseListenerLegacy responseListener) {
         if (!isReady()) {
             throw new IllegalStateException("Billing: Controller should be ready for this call!");
         }
-        billingClient.queryProductDetailsAsync(QueryProductDetailsParams.newBuilder().setProductList(products).build(), responseListener);
+        billingClient.queryProductDetailsAsync(QueryProductDetailsParams.newBuilder().setProductList(products).build(), (billingResult, queryProductDetailsResult) ->
+            responseListener.onProductDetailsResponse(billingResult, queryProductDetailsResult.getProductDetailsList()));
     }
 
-    /**
-     * {@link BillingClient#queryPurchasesAsync} returns only active subscriptions and not consumed purchases.
-     */
     public void queryPurchases(String productType, PurchasesResponseListener responseListener) {
         billingClient.queryPurchasesAsync(QueryPurchasesParams.newBuilder().setProductType(productType).build(), responseListener);
     }
@@ -438,10 +440,6 @@ public class BillingController implements PurchasesUpdatedListener, BillingClien
         }
     }
 
-    /**
-     * All consumable purchases must be consumed. For us it is a gift.
-     * Without confirmation the user will not be able to buy the product again.
-     */
     public void consumeGiftPurchase(Purchase purchase, TLRPC.InputStorePaymentPurpose purpose, Runnable onDone) {
         if (purpose instanceof TLRPC.TL_inputStorePaymentGiftPremium ||
             purpose instanceof TLRPC.TL_inputStorePaymentPremiumGiftCode ||
@@ -466,10 +464,6 @@ public class BillingController implements PurchasesUpdatedListener, BillingClien
         }
     }
 
-    /**
-     * May occur in extremely rare cases.
-     * For example when Google Play decides to update.
-     */
     @SuppressWarnings("Convert2MethodRef")
     @Override
     public void onBillingServiceDisconnected() {

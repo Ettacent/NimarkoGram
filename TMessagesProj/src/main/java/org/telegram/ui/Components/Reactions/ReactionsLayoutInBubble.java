@@ -172,10 +172,7 @@ public class ReactionsLayoutInBubble {
         hasPaidReaction = false;
         reactionButtons.clear();
         if (messageObject != null) {
-            boolean forceLikeDislikeReactions = false; /*!messageObject.isOutOwner()
-                    && !messageObject.isBotPendingDraft
-                    && BotForumHelper.isBotForum(currentAccount, messageObject.getDialogId())
-                    && messageObject.messageOwner.action == null;*/
+            boolean forceLikeDislikeReactions = false;
 
             if (forceLikeDislikeReactions && messageObject.messageOwner.reactions == null) {
                 messageObject.messageOwner.reactions = new TLRPC.TL_messageReactions();
@@ -433,18 +430,29 @@ public class ReactionsLayoutInBubble {
     private final RectF scrimRect = new RectF();
     private final Rect scrimRect2 = new Rect();
 
+    public float getCurrentY(float animationProgress) {
+        if (isEmpty) return lastDrawnY;
+        return animateMove ? y * animationProgress + fromY * (1f - animationProgress) : y;
+    }
+
+    public boolean isVisible(float top, float bottom, float animationProgress) {
+        if (isEmpty && outButtons.isEmpty()) return false;
+        final float currentY = getCurrentY(animationProgress);
+        final float currentHeight = isEmpty ? lastDrawTotalHeight
+                : Math.max(height, getCurrentTotalHeight(animationProgress));
+        return currentY <= bottom && currentY + currentHeight >= top;
+    }
+
     public void draw(Canvas canvas, float animationProgress, Integer drawOnlyReaction) {
         if (isEmpty && outButtons.isEmpty()) {
             return;
         }
         float totalX = this.x;
-        float totalY = this.y;
+        float totalY = getCurrentY(animationProgress);
         if (isEmpty) {
             totalX = lastDrawnX;
-            totalY = lastDrawnY;
         } else if (animateMove) {
             totalX = totalX * (animationProgress) + fromX * (1f - animationProgress);
-            totalY = totalY * (animationProgress) + fromY * (1f - animationProgress);
         }
         for (int i = 0; i < reactionButtons.size(); i++) {
             ReactionButton reactionButton = reactionButtons.get(i);
@@ -495,13 +503,11 @@ public class ReactionsLayoutInBubble {
             return false;
         }
         float totalX = this.x;
-        float totalY = this.y;
+        float totalY = getCurrentY(animationProgress);
         if (isEmpty) {
             totalX = lastDrawnX;
-            totalY = lastDrawnY;
         } else if (animateMove) {
             totalX = totalX * (animationProgress) + fromX * (1f - animationProgress);
-            totalY = totalY * (animationProgress) + fromY * (1f - animationProgress);
         }
         boolean needsInvalidate = false;
         for (int i = 0; i < reactionButtons.size(); i++) {
@@ -556,11 +562,7 @@ public class ReactionsLayoutInBubble {
 
                 reactionButton.attachPreview(view);
                 scrimRect2.set((int) scrimRect.left, (int) scrimRect.top, (int) scrimRect.right, (int) scrimRect.bottom);
-//                if (1f - progress > 0) {
-//                    canvas.saveLayerAlpha(scrimRect, (int) (0xFF * (1f - progress)), Canvas.ALL_SAVE_FLAG);
-//                    reactionButton.drawImage(canvas, scrimRect2, 1f);
-//                    canvas.restore();
-//                }
+
                 reactionButton.drawPreview(view, canvas, scrimRect, progress);
             }
         }
@@ -920,16 +922,12 @@ public class ReactionsLayoutInBubble {
                     } else {
                         imageReceiver.setImageBitmap(ApplicationLoader.applicationContext.getResources().getDrawable(R.drawable.star_reaction).mutate());
                     }
-//                    if (reuseFrom != null) {
-//                        imageReceiver.setImageBitmap(reuseFrom.imageReceiver.getImageDrawable());
-//                    } else {
-//                        imageReceiver.setImageBitmap(ApplicationLoader.applicationContext.getResources().getDrawable(R.drawable.star_small_inner));
-//                    }
+
                     particles = reuseFrom != null && reuseFrom.particles != null ? reuseFrom.particles : new StarsReactionsSheet.Particles(StarsReactionsSheet.Particles.TYPE_RADIAL, SharedConfig.getDevicePerformanceClass() == SharedConfig.PERFORMANCE_CLASS_HIGH ? 18 : 8);
                 } else if (visibleReaction.emojicon != null) {
                     TLRPC.TL_availableReaction r = MediaDataController.getInstance(currentAccount).getReactionsMap().get(visibleReaction.emojicon);
                     if (r != null) {
-                        //imageReceiver.setImage(ImageLocation.getForDocument(r.static_icon), "40_40", svgThumb, "webp", r, 1);
+
                         SvgHelper.SvgDrawable svgThumb = DocumentObject.getSvgThumb(r.static_icon, Theme.key_windowBackgroundGray, 1.0f);
                         imageReceiver.setImage(ImageLocation.getForDocument(r.center_icon), "40_40_lastreactframe", svgThumb, "webp", r, 1);
                     }
@@ -1397,7 +1395,7 @@ public class ReactionsLayoutInBubble {
                 } else if (visibleReaction.emojicon != null) {
                     TLRPC.TL_availableReaction r = MediaDataController.getInstance(currentAccount).getReactionsMap().get(visibleReaction.emojicon);
                     if (r != null && r.activate_animation != null) {
-                        //imageReceiver.setImage(ImageLocation.getForDocument(r.static_icon), "40_40", svgThumb, "webp", r, 1);
+
                         SvgHelper.SvgDrawable svgThumb = DocumentObject.getSvgThumb(r.static_icon, Theme.key_windowBackgroundGray, 1.0f);
                         previewImageReceiver = new ImageReceiver(parent);
                         previewImageReceiver.setLayerNum(7);
@@ -1511,7 +1509,7 @@ public class ReactionsLayoutInBubble {
                         lastSelectedButton = null;
                         pressed = false;
                         longPressRunnable = null;
-                        // here
+
                     }, ViewConfiguration.getLongPressTimeout());
                     pressed = true;
                     break;
@@ -1594,11 +1592,7 @@ public class ReactionsLayoutInBubble {
                     return o2.realCount - o1.realCount;
                 }
             }
-//            TLRPC.TL_availableReaction availableReaction1 = MediaDataController.getInstance(currentAccount).getReactionsMap().get(o1.reaction);
-//            TLRPC.TL_availableReaction availableReaction2 = MediaDataController.getInstance(currentAccount).getReactionsMap().get(o2.reaction);
-//            if (availableReaction1 != null && availableReaction2 != null) {
-//                return availableReaction1.positionInList - availableReaction2.positionInList;
-//            }
+
             return o1.reactionCount.lastDrawnPosition - o2.reactionCount.lastDrawnPosition;
         }
     }

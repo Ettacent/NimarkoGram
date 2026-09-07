@@ -73,6 +73,7 @@ import org.telegram.ui.Components.SnowflakesEffect;
 import org.telegram.ui.Components.blur3.BlurredBackgroundDrawableViewFactory;
 import org.telegram.ui.Components.blur3.drawable.BlurredBackgroundDrawable;
 import org.telegram.ui.Components.blur3.drawable.color.BlurredBackgroundColorProvider;
+import org.telegram.ui.MainTabsLayout;
 
 import java.util.ArrayList;
 
@@ -96,12 +97,7 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
     private BlurredBackgroundDrawable glassDrawableBack;
     private BlurredBackgroundDrawable glassDrawableMenu;
     private INavigationLayout.BackButtonState backButtonState = INavigationLayout.BackButtonState.BACK;
-    // NimarkoGram (CG-port): Cherrygram exposes the unread-chats badge by wrapping
-    // backButtonImageView in an UnreadImageView (extends ImageView) that owns a
-    // sibling CounterView in the enclosing ActionBar FrameLayout. ChatActivity
-    // listens to NotificationCenter.dialogsUnreadCounterChanged and pushes the
-    // global main unread count via backButtonImageView.checkUnreadView(...).
-    // Rendering is gated on NimarkoConfig.unreadBadgeOnBackButton — verbatim CG.
+
     public UnreadImageView backButtonImageView;
     private BackupImageView avatarSearchImageView;
     private Drawable backButtonDrawable;
@@ -192,9 +188,7 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
     public ActionBar(Context context, Theme.ResourcesProvider resourcesProvider) {
         super(context);
         this.resourcesProvider = resourcesProvider;
-        // NimarkoGram: titles use widthWrapContent (getMeasuredWidth()==textWidth, for positional centring),
-        // so a title's right drawable (verified badge / emoji / status) is drawn just PAST the view's narrow
-        // layout rect. Don't clip children so that badge stays visible (glass bars already do this).
+
         setClipChildren(false);
         setOnClickListener(v -> {
             if (isSearchFieldVisible()) {
@@ -205,7 +199,6 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
             }
         });
     }
-
 
     private boolean glassMode;
     private boolean glassOnlyBack;
@@ -219,8 +212,7 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
 
     public void setChatAvatarContainer(ChatAvatarContainer chatAvatarContainer) {
         if (chatAvatarContainer != null && !isChatAvatarContainerReady(chatAvatarContainer)) {
-            // Registration is retried by ChatAvatarContainer.onAttachedToWindow.
-            // Keeping a not-yet-added view here makes draw-time geometry invalid.
+
             return;
         }
         if (this.chatAvatarContainer == chatAvatarContainer) {
@@ -264,7 +256,6 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
         } else {
             glassDrawable.setRadius(dp(23));
         }
-
 
         glassDrawableBack = factory.create(this)
             .setColorProvider(colorProvider)
@@ -330,10 +321,6 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
         backButtonImageView.setBackgroundDrawable(selector);
     }
 
-    /**
-     * Fades only the selector/ripple while keeping the back glyph fully opaque.
-     * The value is also applied to selectors recreated by theme/banner updates.
-     */
     public void setBackButtonBackgroundAlpha(float alpha) {
         backButtonBackgroundAlpha = Math.max(0f, Math.min(1f, alpha));
         if (backButtonImageView != null && backButtonImageView.getBackground() != null) {
@@ -386,8 +373,6 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
         if (backButtonImageView == null) {
             return;
         }
-
-        // BackDrawable is expensive for render thread because it uses PathStencilCoverOp
 
         final Drawable drawable = backButtonImageView.getDrawable();
         final int layerToSet = (drawable instanceof BackDrawable || drawable instanceof MenuDrawable) ?
@@ -481,10 +466,7 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
                         && !((String) titleView.getText()).isEmpty()) {
                     TextPaint textPaint = titleView.getTextPaint();
                     textPaint.getFontMetricsInt(fontMetricsInt);
-                    // NimarkoGram: guard against empty title — happens when user hides
-                    // folder names (tabsHideAllChats / folderNameInHeader=false), the
-                    // holiday-drawable measurement called getTextBounds(text, 0, 1)
-                    // which throws IndexOutOfBoundsException on length=0 strings.
+
                     textPaint.getTextBounds((String) titleView.getText(), 0, 1, rect);
                     int x = titleView.getTextStartX() + Theme.getCurrentHolidayDrawableXOffset() + (rect.width() - (drawable.getIntrinsicWidth() + Theme.getCurrentHolidayDrawableXOffset())) / 2;
                     int y = titleView.getTextStartY() + Theme.getCurrentHolidayDrawableYOffset() + (int) Math.ceil((titleView.getTextHeight() - rect.height()) / 2.0f) + (int) (dp(8) * (1f - titlesContainer.getScaleY()));
@@ -498,16 +480,13 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
                 }
             }
 
-            // NimarkoGram: draw snowflakes year-round when user-flag is on,
-            // independent of whether the holiday drawable is loaded.
             boolean nimarkoSnow = app.nimarkogram.messenger.NimarkoConfig.drawSnowInActionBar;
             boolean wantSnow = Theme.canStartHolidayAnimation() || nimarkoSnow;
             if (wantSnow) {
                 if (snowflakesEffect == null) {
                     snowflakesEffect = new SnowflakesEffect(0);
                 }
-                // Ensure the effect ignores LiteMode FLAG_CHAT_BACKGROUND when the
-                // user explicitly opted in via the NimarkoGram toggle.
+
                 snowflakesEffect.bypassLiteMode = nimarkoSnow;
             } else if (!manualStart) {
                 if (snowflakesEffect != null) {
@@ -556,7 +535,7 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
             return;
         }
         subtitleTextView = new SimpleTextView(getContext());
-        // NimarkoGram: honour isCenterTitle for subtitle so it stays in sync with title.
+
         subtitleTextView.setGravity(getSubtitleGravity());
         subtitleTextView.setVisibility(GONE);
         subtitleTextView.setTextColor(getThemedColor(Theme.key_actionBarDefaultSubtitle));
@@ -569,7 +548,7 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
             return;
         }
         additionalSubtitleTextView = new SimpleTextView(getContext());
-        // NimarkoGram: honour isCenterTitle for subtitle so it stays in sync with title.
+
         additionalSubtitleTextView.setGravity(getSubtitleGravity());
         additionalSubtitleTextView.setVisibility(GONE);
         additionalSubtitleTextView.setTextColor(getThemedColor(Theme.key_actionBarDefaultSubtitle));
@@ -608,14 +587,10 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
         }
     }
 
-    // NimarkoGram: CG-parity — default delegating helper keeps gilroy=false so lazy
-    // title creation (e.g. via setTitleColor before setTitle) matches CG default.
     private void createTitleTextView(int i) {
         createTitleTextView(i, false);
     }
 
-    // NimarkoGram: gilroy-aware overload ported from CG ActionBar to back setTitleAnimatedX().
-    // The existing single-arg createTitleTextView() delegates here so all other call sites stay identical.
     private void createTitleTextView(int i, boolean gilroy) {
         if (titleTextView[i] != null) {
             return;
@@ -636,18 +611,9 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
         titleTextView[i].setDrawablePadding(dp(4));
         titleTextView[i].setPadding(0, dp(8), 0, dp(8));
         titleTextView[i].setRightDrawableTopPadding(-dp(1));
-        // NimarkoGram: wrapContent shrinks getMeasuredWidth() to actual text width so the
-        // leftX = centerX - mw/2 formula in onLayout centres the text exactly on centerX.
-        // With gravity always LEFT (see getTitleGravity), no CENTER-gravity offsetX is added.
+
         titleTextView[i].setWidthWrapContent(true);
-        // NimarkoGram (bug: NFT/emoji status missing right of the dialogs title). With wrapContent the
-        // measured width EXCLUDES an *inside* right drawable, so the badge was painted past the view's
-        // right bound. A static premium star survived (drawn once on layout) but an animated collectible
-        // (SwapAnimatedEmojiDrawable) invalidates only its own [0,textWidth] bounds — which don't cover a
-        // badge drawn outside them — so after async load it was never repainted = invisible. Mark the
-        // right drawable as OUTSIDE: onMeasure then ADDS its width to the wrapContent measure (so it sits
-        // inside the invalidation rect and repaints) and the centring formula centres the text+badge unit.
-        // The clipRect at SimpleTextView.onDraw already special-cases (SwapAnimatedEmojiDrawable, outside).
+
         titleTextView[i].setRightDrawableOutside(true);
         if (useContainerForTitles) {
             titlesContainer.addView(titleTextView[i], 0, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, Gravity.LEFT | Gravity.TOP));
@@ -656,17 +622,9 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
         }
     }
 
-    // NimarkoGram: per-bar FORCE-ON latch ONLY (set by centerTitle(); no external callers today). Must default
-    // FALSE so shouldCenterTitle() == the LIVE NimarkoConfig.centerTitle. Snapshotting the config here made it
-    // sticky-true (config defaults true): a bar opened while centred kept isCenterTitle=true, so DISABLING the
-    // toggle left shouldCenterTitle() true (isCenterTitle||config) -> target stayed centred -> no slide. This is
-    // the "re-enter settings, then disable doesn't animate" bug. Pairs with the widthWrapContent centring fix.
     private boolean isCenterTitle = false;
     private boolean forceDisableCenterTitle;
-    // --- Ported from exteraGram: smooth centred-title slide ---------------------------------------------------
-    // animatedCenterTitleX is the CURRENT per-frame centre POINT (not a left edge) the title box is centred on.
-    // animatedCenterTitleAvailableWidth is the CURRENT per-frame width budget the title is measured against, so the
-    // box width morphs in lock-step with the centre point. NaN on both = idle (callers fall back to the raw target).
+
     private float animatedCenterTitleX = Float.NaN;
     private float animatedCenterTitleAvailableWidth = Float.NaN;
     private int centerTitleAnimationTargetX = Integer.MIN_VALUE;
@@ -712,19 +670,15 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
     }
 
     private int getTitleGravity() {
-        // NimarkoGram: gravity is permanently LEFT — centering is done purely by position
-        // (leftX = centerX - getMeasuredWidth()/2 with widthWrapContent=true, so mw = textWidth).
-        // Keeping gravity fixed avoids the instantaneous CENTER→LEFT snap on a live toggle
-        // (which would add/remove offsetX = (fullWidth - textWidth)/2 mid-animation).
+
         return Gravity.LEFT | Gravity.CENTER_VERTICAL;
     }
 
     private int getSubtitleGravity() {
-        // NimarkoGram: same rationale as getTitleGravity() — positional centering, not gravity centering.
+
         return Gravity.LEFT;
     }
 
-    // The X of the LEFT edge of the menu = the rightmost usable X for a centred title.
     private int getCenterTitleRightBound(int width) {
         if (menu == null || menu.getVisibility() == GONE) {
             return width - dp(16);
@@ -741,12 +695,10 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
         return Math.max(0, Math.max(textLeft, getCenterTitleRightBound(width)) - textLeft);
     }
 
-    // THE TARGET CENTRE POINT: adaptive (>2 menu items) centres in the strip left of the menu; else the raw width/2.
     private int getTargetCenterTitleX(int width, int textLeft, boolean adaptive) {
         return adaptive ? getAdaptiveCenterTitleCenterX(width, textLeft) : width / 2;
     }
 
-    // THE TARGET WIDTH BUDGET when centred.
     private int getCenteredTitleAvailableWidth(int width, int textLeft, boolean adaptive) {
         if (adaptive) {
             return getAdaptiveCenterTitleAvailableWidth(width, textLeft);
@@ -757,7 +709,6 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
         return Math.min(cap, Math.max(0, Math.min(half - textLeft, bound - half)) * 2);
     }
 
-    // The original NimarkoGram left-aligned title width formula (used when not centred / when sliding back left).
     private int getLeftAlignedTitleAvailableWidth(int width, int textLeft) {
         return width - (menu != null ? menu.getMeasuredWidth() : 0) - dp(16) - textLeft - titleRightMargin;
     }
@@ -786,9 +737,6 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
         centerTitleSlidePending = false;
     }
 
-    // NimarkoGram-specific SEED: called by the appearance toggle BEFORE flipping NimarkoConfig.centerTitle, so the
-    // first centred onLayout has a FROM value (the current visible centre/width) to slide AWAY from instead of
-    // snapping. This is what makes the live (non-rebuilt) bar actually animate on the very first toggle.
     public void prepareCenterTitleAnimation() {
         if (titleTextView[0] == null || getMeasuredWidth() == 0) {
             return;
@@ -815,13 +763,12 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
     }
 
     private void updateCenterTitleLayoutAnimation(int targetX, int targetWidth, boolean animate) {
-        // Only fully bail when idle AND not centred (steady left-aligned bar). While a disable-slide is seeded /
-        // running we must keep going so the title slides LEFT instead of snapping.
+
         if (!shouldCenterTitle() && Float.isNaN(animatedCenterTitleX) && !isCenterTitleSliding()) {
             resetCenterTitleLayoutAnimation();
             return;
         }
-        // SEED: first centred pass with no FROM -> snap (steady centred bars never animate).
+
         if (Float.isNaN(animatedCenterTitleX) || Float.isNaN(animatedCenterTitleAvailableWidth)) {
             animatedCenterTitleX = targetX;
             animatedCenterTitleAvailableWidth = targetWidth;
@@ -902,8 +849,6 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
         titleRightMargin = value;
     }
 
-    // NimarkoGram: CG-parity — defaults stay gilroy=false. Per-call-site explicit
-    // gilroy=true is sprinkled at the same locations CG does (DialogsActivity etc.).
     public void setTitle(CharSequence value) {
         setTitle(value, null, false);
     }
@@ -912,7 +857,6 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
         setTitle(value, rightDrawable, false);
     }
 
-    // NimarkoGram: gilroy-aware setTitle ported from CG. Used by setTitleAnimatedX().
     public void setTitle(CharSequence value, Drawable rightDrawable, boolean gilroy) {
         if (value != null && titleTextView[0] == null) {
             createTitleTextView(0, gilroy);
@@ -946,9 +890,6 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
         setTitleColor(color, false);
     }
 
-    // NimarkoGram CG-parity: gilroy-aware overload ported from CG ActionBar. Used by
-    // DialogsActivity to lazy-create the title text view in Gilroy ExtraBold when the
-    // chat-list logo color is applied before setTitle().
     public void setTitleColor(int color, boolean gilroy) {
         if (titleTextView[0] == null) {
             createTitleTextView(0, gilroy);
@@ -1108,12 +1049,7 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
                 ActionBar.this.invalidate();
                 if (chatAvatarContainer != null
                         && chatAvatarContainer.shouldUseCompactTitleIsland()) {
-                    // Every compact identity island uses action-mode alpha in
-                    // its live bounds. Redrawing only the glass updates the
-                    // capsule, but leaves title/subtitle at their previous
-                    // local X until an unrelated layout (usually a scroll).
-                    // Re-layout the content on the same animation frame for
-                    // both regular chats/channels and inline forum headers.
+
                     chatAvatarContainer.requestLayout();
                 }
                 if (doOnActionModeFactorChanged != null) {
@@ -1153,18 +1089,6 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
         layoutParams.gravity = Gravity.RIGHT;
         actionMode.setLayoutParams(layoutParams);
         actionMode.setVisibility(INVISIBLE);
-
-//        if (occupyStatusBar && needTop && actionModeTop == null && !blurredBackground) {
-//            actionModeTop = new View(getContext());
-//            actionModeTop.setBackgroundColor(getThemedColor(Theme.key_actionBarActionModeDefaultTop));
-//            addView(actionModeTop);
-//            layoutParams = (FrameLayout.LayoutParams) actionModeTop.getLayoutParams();
-//            layoutParams.height = AndroidUtilities.statusBarHeight;
-//            layoutParams.width = LayoutHelper.MATCH_PARENT;
-//            layoutParams.gravity = Gravity.TOP | Gravity.LEFT;
-//            actionModeTop.setLayoutParams(layoutParams);
-//            actionModeTop.setVisibility(INVISIBLE);
-//        }
 
         return actionMode;
     }
@@ -1764,7 +1688,6 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
         additionalTextLeft = x;
     }
 
-
     @Override
     protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
         int width = MeasureSpec.getSize(widthMeasureSpec);
@@ -1792,9 +1715,7 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
         if (backButtonImageView != null && backButtonImageView.getVisibility() != GONE) {
             backButtonImageView.measure(MeasureSpec.makeMeasureSpec(dp(54), MeasureSpec.EXACTLY), actionBarHeightSpec);
             if (countLayout != null) {
-                // The counter is an overlay anchored to the back-button slot,
-                // not an ordinary ActionBar child. Measure it independently so
-                // status-bar height and extraHeight cannot move it away.
+
                 countLayout.measure(
                         MeasureSpec.makeMeasureSpec(dp(100), MeasureSpec.EXACTLY),
                         actionBarHeightSpec);
@@ -1803,7 +1724,6 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
         } else {
             textLeft = dp(AndroidUtilities.isTablet() ? 26 : 18);
         }
-        // textLeft += additionalTextLeft;
 
         if (menu != null && menu.getVisibility() != GONE) {
             int menuWidth;
@@ -1833,9 +1753,7 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
 
         for (int i = 0; i < 2; i++) {
             if (titleTextView[0] != null && titleTextView[0].getVisibility() != GONE || subtitleTextView != null && subtitleTextView.getVisibility() != GONE) {
-                // NimarkoGram (extera port): when centred, measure against the ANIMATED width budget so the box width
-                // morphs in lock-step with the centre point (no width pop). While sliding back to left keep the
-                // animated budget; only the steady non-centred state uses the raw left-aligned formula.
+
                 int availableWidth;
                 if (shouldCenterTitle()) {
                     availableWidth = getAnimatedCenterTitleAvailableWidth(getCenteredTitleAvailableWidth(width, textLeft, shouldUseAdaptiveCenterTitle()));
@@ -1929,9 +1847,7 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
         if (backButtonImageView != null && backButtonImageView.getVisibility() != GONE) {
             backButtonImageView.layout(0, additionalTop, backButtonImageView.getMeasuredWidth(), additionalTop + backButtonImageView.getMeasuredHeight());
             if (countLayout != null) {
-                // Keep the badge at the upper-right of the real 54dp back
-                // target. Using the generic TOP layout placed it at y=0 while
-                // the button itself starts below the status bar.
+
                 int counterLeft = backButtonImageView.getLeft() + dp(30);
                 int counterTop = backButtonImageView.getTop() - dp(15);
                 countLayout.layout(
@@ -1952,8 +1868,6 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
             menu.layout(menuLeft, additionalTop, menuLeft + menu.getMeasuredWidth(), additionalTop + menu.getMeasuredHeight());
         }
 
-        // NimarkoGram (extera port): drive the centred-title slide from onLayout by detecting a target change.
-        // centerX is the animated CENTRE POINT; every centred view is placed as (centerX - measuredWidth/2).
         int barWidth = getMeasuredWidth();
         boolean centerTitleNow = shouldCenterTitle();
         int targetCenterX, targetCenterWidth;
@@ -1982,9 +1896,7 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
                         textTop = (getCurrentActionBarHeight() - titleTextView[i].getTextHeight()) / 2;
                     }
                 }
-                // NimarkoGram (extera port): place the box on the animated centre POINT (left = centerX - mw/2).
-                // measuredWidth already includes side drawables, so no manual sideExtra math. At rest this equals
-                // the old left branch (centerX == textLeft + mw/2) or the centred branch.
+
                 {
                     int mw = titleTextView[i].getMeasuredWidth();
                     int titleTop = additionalTop + textTop - titleTextView[i].getPaddingTop();
@@ -2109,19 +2021,10 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
 
     boolean overlayTitleAnimationInProgress;
 
-    // NimarkoGram: CG-parity — 3-arg overlay default stays gilroy=false. BaseFragment
-    // calls the 4-arg overload with explicit true to bold connection-state overlays
-    // ("Connecting...", "Updating...") matching CG behaviour.
     public void setTitleOverlayText(String title, int titleId, Runnable action) {
         setTitleOverlayText(title, titleId, false, action);
     }
 
-    // NimarkoGram: gilroy-aware overload ported from CG ActionBar. The connection-state
-    // title overlay ("Connecting...", "Updating...", etc.) used to rebuild titleTextView
-    // via createTitleTextView() without the gilroy flag, dropping Gilroy ExtraBold (w800)
-    // back to AndroidUtilities.bold() (w500) and causing the visible bold flicker as the
-    // overlay appears/clears. BaseFragment.setTitleOverlayText now calls this with
-    // gilroy=true so the overlay path preserves typeface end-to-end (CG-parity).
     public void setTitleOverlayText(String title, int titleId, boolean gilroy, Runnable action) {
         if (!allowOverlayTitle || parentFragment.parentLayout == null) {
             return;
@@ -2146,7 +2049,6 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
             }
             additionalSubTitleOverlayContainer.setText(textToSet, true);
         }
-
 
         CharSequence textToSet = title != null ? LocaleController.getString(title, titleId) : lastTitle;
         Drawable rightDrawableToSet = title != null ? null : lastRightDrawable;
@@ -2334,6 +2236,47 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
     }
 
     @Override
+    public boolean dispatchTouchEvent(MotionEvent ev) {
+        if (chatAvatarContainer != null && glassMode) {
+            if (ev.getAction() == MotionEvent.ACTION_DOWN) {
+                final int x = (int) ev.getX();
+                final int y = (int) ev.getY();
+                View child = findChildUnder(this, x, y, chatAvatarContainer);
+                if (child == null) {
+                    child = findChildUnder(this, x, y, null);
+                }
+
+                boolean contains = false;
+                contains |= glassDrawable != null && glassDrawable.getBounds().contains(x, y);
+                if (child != null && child != chatAvatarContainer) {
+                    contains |= glassDrawableBack != null && glassDrawableBack.getBounds().contains(x, y);
+                    contains |= glassDrawableMenu != null && glassDrawableMenu.getBounds().contains(x, y);
+                }
+
+                if (!contains) {
+                    return false;
+                }
+            }
+        }
+
+        return super.dispatchTouchEvent(ev);
+    }
+
+    public static View findChildUnder(ViewGroup parent, float x, float y, View exclude) {
+        for (int i = parent.getChildCount() - 1; i >= 0; i--) {
+            View child = parent.getChildAt(i);
+
+            if (child.getVisibility() != View.VISIBLE || child == exclude) continue;
+
+            if (x >= child.getX() && x <= (child.getX() + child.getWidth())
+                    && y >= child.getTop() && y <= child.getBottom()) {
+                return child;
+            }
+        }
+        return null;
+    }
+
+    @Override
     public boolean onTouchEvent(MotionEvent event) {
         if (forceSkipTouches) {
             return false;
@@ -2415,11 +2358,6 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
         requestLayout();
     }
 
-    // NimarkoGram: horizontal title crossfade ported verbatim from Cherrygram ActionBar.
-    // Swaps titleTextView[0] for a new title that slides in from the chosen side while
-    // the old title slides out the opposite way. Pivot, translation magnitude (20dp),
-    // interpolator (default ViewPropertyAnimator) and duration all match CG so the
-    // folder-name-in-header animation behaves identically.
     public void setTitleAnimatedX(CharSequence title, Drawable rightDrawable, boolean forward, long duration, boolean gilroy) {
         if (titleTextView[0] == null || title == null) {
             setTitle(title, rightDrawable, gilroy);
@@ -2532,7 +2470,6 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
             transitionSet.addTransition(new Fade());
             transitionSet.addTransition(new ChangeBounds() {
 
-
                 public void captureStartValues(TransitionValues transitionValues) {
                     super.captureStartValues(transitionValues);
                     if (transitionValues.view instanceof SimpleTextView) {
@@ -2611,16 +2548,10 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
         }
     }
 
-    // NG: fade for the glass ovals (back / title / menu) while this bar is skip-drawn under a morphing
-    // ProfileActivity. The glass is drawn in dispatchDraw BEFORE the doNotDrawChild guard, so without this it
-    // leaked at full opacity behind the profile's fading white list and the back circle flickered. Driven by
-    // ProfileActivity.setAvatarAnimationProgress; only honored while doNotDrawChild, so other screens stay 255.
     private float glassAlpha = 1f;
     private float glassLiquidIntensity = BlurredBackgroundDrawable.DEFAULT_LIQUID_INTENSITY;
     public void setGlassAlpha(float a) {
-        // A cancelled/invalid animator must never poison the persistent header
-        // state with NaN: Math.round(NaN) is zero, which made every glass island
-        // disappear until another transition happened to write its alpha.
+
         a = Float.isNaN(a) || Float.isInfinite(a) ? 1f : Utilities.clamp01(a);
         if (glassAlpha != a) {
             glassAlpha = a;
@@ -2628,7 +2559,6 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
         }
     }
 
-    /** Adjusts glass refraction without changing title and icon opacity. */
     public void setGlassLiquidIntensity(float intensity) {
         intensity = Math.max(0f, intensity);
         if (glassLiquidIntensity == intensity) {
@@ -2657,13 +2587,7 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
             if (chatAvatarContainer != null
                     && (chatAvatarContainer.shouldUseCompactTitleIsland()
                     || glassModeIsForum)) {
-                // Search changes the live centre/width of the glass island.
-                // Redrawing only its background leaves ChatAvatarContainer's
-                // title at the last layout sampled while search was open. This
-                // is especially visible after a header long-press followed by
-                // Back: the capsule returns, but the name stays shifted right.
-                // Keep every compact chat header (not only inline forums) on
-                // the same geometry for the complete open/close animation.
+
                 chatAvatarContainer.requestLayout();
             }
         }
@@ -2674,10 +2598,6 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
             return;
         }
 
-        // ChatActivity may detach the centred avatar into the right menu slot,
-        // while Topics keeps it inline. Only the detached design uses
-        // Telegram's fixed 192dp budget; the inline Topics capsule remains
-        // content-sized and follows its single width animator.
         final boolean hasVisibleAvatar = chatAvatarContainer.hasVisibleAvatar();
         final boolean hasDetachedAvatar = hasVisibleAvatar
                 && !chatAvatarContainer.isInlineCenteredAvatar();
@@ -2702,17 +2622,11 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
     private final FactorAnimator animatorAvatarContainerWidth = new FactorAnimator(0, this, CubicBezierInterpolator.EASE_OUT_QUINT, 380);
     private final BoolAnimator animatorAvatarContainerHasAvatar = new BoolAnimator(0, this, CubicBezierInterpolator.EASE_OUT_QUINT, 380);
 
-    // upstream 12.9.0: animated menu-items width/appearance for the glass menu oval.
     private final FactorAnimator animatorMenuItemsWidth = new FactorAnimator(0, this, CubicBezierInterpolator.EASE_OUT_QUINT, 320);
     private final BoolAnimator animatorHasMenuItems = new BoolAnimator(0, this, CubicBezierInterpolator.EASE_OUT_QUINT, 320);
 
     private final Rect chatAvatarOvalBounds = new Rect();
 
-    /**
-     * A ChatAvatarContainer can be configured before it is added to the
-     * ActionBar (and some special ChatActivity modes never add it at all).
-     * Geometry is only valid after addView has assigned MarginLayoutParams.
-     */
     private boolean isChatAvatarContainerReady(ChatAvatarContainer container) {
         return container != null
                 && container.getParent() == this
@@ -2726,11 +2640,6 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
                 : 0;
     }
 
-    /**
-     * Single source of truth for the centre glass island.  Measurement,
-     * child layout and drawing must use the same menu-padding/search factors;
-     * otherwise the inline Topics identity trails the oval by a few pixels.
-     */
     private boolean calculateChatAvatarOvalBounds(Rect out) {
         if (!isChatAvatarContainerReady(chatAvatarContainer) || glassDrawable == null) {
             out.setEmpty();
@@ -2748,9 +2657,8 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
             out.setEmpty();
             return false;
         }
-        final int menuWidth = Math.max(0,
-                hasForcedMenuWidth ? forcedMenuWidth : (int) animatorMenuItemsWidth.getFactor());
-        final int menuWidthWithPadding = menuWidth + (hasForcedMenuWidth
+        final int menuWidth = getGlassMenuWidth();
+        final int menuWidthWithPadding = menuWidth + ((hasForcedMenuWidth || hasForcedMenuMinWidth)
                 ? (menuWidth > 0 ? p : 0)
                 : (int) (p * animatorHasMenuItems.getFloatValue()));
         final int normalRightOffset = lerp(
@@ -2762,10 +2670,7 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
                 hasBackButton ? s + p : 0,
                 s + p,
                 useCompactChatTitle ? 1f - animatorAvatarContainerHasAvatar.getFloatValue() : 0f);
-        // Action mode may expose several 54dp buttons at once. In a narrow
-        // split-screen window their nominal width can consume the complete bar
-        // and invert the centre drawable's bounds. Preserve at least the glass
-        // padding plus one content pixel instead of silently dropping the oval.
+
         final int minimumIslandWidth = Math.min(barWidth, p * 2 + 1);
         final int boundedLeftDefault = Math.min(
                 leftDefault, Math.max(0, barWidth - minimumIslandWidth));
@@ -2805,12 +2710,6 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
         return chatAvatarOvalBounds.width();
     }
 
-    /**
-     * Live usable width inside the forum identity island. This is intentionally
-     * available for both centered and regular titles: a topic action mode can
-     * occupy considerably more space than the normal search/overflow menu, so
-     * the regular left-aligned title must be remeasured as that boundary moves.
-     */
     public int getForumChatAvatarContentWidth() {
         if (!glassModeIsForum
                 || chatAvatarContainer == null
@@ -2820,13 +2719,6 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
         return Math.max(0, chatAvatarOvalBounds.width() - dp(6) * 2);
     }
 
-    /**
-     * Current animated content width of the compact identity island, excluding
-     * the glass drawable's 6dp padding on each side.  Unlike
-     * {@link #getChatAvatarOvalWidth()}, this deliberately ignores the temporary
-     * search/action-mode expansion, so the avatar does not fly to the edge while
-     * the search pill opens.
-     */
     public int getChatAvatarCompactContentWidth() {
         if (chatAvatarContainer == null
                 || !chatAvatarContainer.isCenterChatTitleEnabled()
@@ -2875,18 +2767,15 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
                 && (chatAvatarContainer.isInlineCenteredAvatar()
                 || compactTitleWidthChanged
                 || compactMenuGeometryChanged)) {
-            // The oval width and its centre animate every frame. The complete
-            // title/subtitle geometry must follow the same frame in both the
-            // inline forum header and a centred ChatActivity; otherwise the
-            // glass moves first and its text snaps into place on a later layout.
-            // Restrict the extra layout to the width animator itself so the
-            // profile has-avatar morph cannot retarget/snap this animator.
+
             chatAvatarContainer.requestLayout();
         }
     }
 
     private int forcedMenuWidth;
+    private int forcedMenuMinWidth;
     private boolean hasForcedMenuWidth;
+    private boolean hasForcedMenuMinWidth;
 
     public void setForcedMenuWidth(int width) {
         width = Math.max(0, width);
@@ -2902,13 +2791,29 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
         }
     }
 
+    public void setForcedMenuMinWidth(int width) {
+        width = Math.max(0, width);
+        hasForcedMenuMinWidth = true;
+        if (forcedMenuMinWidth != width) {
+            forcedMenuMinWidth = width;
+            invalidate();
+        }
+    }
+
     private boolean isAnimationsAllowed;
+
+    private int getGlassMenuWidth() {
+        final int width = hasForcedMenuWidth ? forcedMenuWidth : (int) animatorMenuItemsWidth.getFactor();
+        return Math.max(0, hasForcedMenuMinWidth
+                ? Math.max((int) (forcedMenuMinWidth * (1f - Utilities.clamp01(searchFactor))), width)
+                : width);
+    }
 
     public void checkMenuItemsWidth() {
         final int defaultMenuWidth = Math.max(0, menu != null ? (int) menu.getItemsWidth() - dp(1) - dp(1) : 0);
         final int actionMenuWidth = Math.max(0, actionMode != null ? actionMode.getItemsWidth() - dp(1) - dp(1) : 0);
         final int searchMenuWidth = dp(46);
-        final int width = /*isSearchFieldVisible ? searchMenuWidth :*/ (actionModeVisible ? actionMenuWidth : defaultMenuWidth);
+        final int width =                                              (actionModeVisible ? actionMenuWidth : defaultMenuWidth);
 
         animatorHasMenuItems.setValue(width > 0, isAnimationsAllowed);
         if (animatorMenuItemsWidth.getToFactor() != width) {
@@ -2928,17 +2833,13 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
         final int s = dp(46);
         final float search = Utilities.clamp01(searchFactor);
 
-        final int menuWidth = Math.max(0,
-                hasForcedMenuWidth ? forcedMenuWidth : (int) animatorMenuItemsWidth.getFactor());
+        final int menuWidth = getGlassMenuWidth();
 
         final boolean hasBackButton = backButtonImageView != null && backButtonImageView.getVisibility() == View.VISIBLE;
 
         final int t = getHeight() - (getCurrentActionBarHeight() + s) / 2 - p;
         final int b = t + s + p * 2;
 
-        // Keep glass alpha independent from child suppression.  Besides profile
-        // morphs, screens with a standalone FragmentSearchField need to fade
-        // their header islands while that field becomes the sole background.
         final int glassA = Math.round(255 * glassAlpha);
         final boolean useCompactChatTitle = isChatAvatarContainerReady(chatAvatarContainer)
                 && chatAvatarContainer.shouldUseCompactTitleIsland();
@@ -2970,11 +2871,9 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
         }
         if (glassDrawableMenu != null && menuWidth > 0 && !glassOnlyBack && !doNotDrawGlassMenu) {
             glassDrawableMenu.setBounds(getWidth() - Math.max(s, menuWidth) - p * 2, t, getWidth(), b);
-            // upstream: menu-items appear/disappear fade; NG: also fade under a morphing profile (glassA).
+
             final int menuGlassA = hasForcedMenuWidth ? 255 : (int) (255 * animatorHasMenuItems.getFloatValue());
-            // Search is backed by the expanded centre island above.  Fade the
-            // separate menu island with the same progress so the two rounded
-            // backgrounds never intersect or form a crooked right edge.
+
             glassDrawableMenu.setAlpha((int) (glassA * menuGlassA / 255f * (1f - search)));
             glassDrawableMenu.draw(canvas);
         }
@@ -3186,15 +3085,6 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
         }
     }
 
-    /** NimarkoGram start (ported from Cherrygram, GPL-2.0) */
-    // CG-port: unread-chats badge painted to the right of the back arrow.
-    // CounterView is added as a sibling of backButtonImageView in the
-    // enclosing ActionBar FrameLayout (an unqualified addView() inside the
-    // UnreadImageView inner class resolves to ActionBar#addView, exactly
-    // like CG). Reverse-gravity makes it line up to the upper-right of the
-    // 54x54 back-button slot. Visibility is gated on NimarkoConfig at the
-    // checkUnreadView() entry point; ChatActivity drives count updates via
-    // NotificationCenter.dialogsUnreadCounterChanged.
     private CounterView countLayout;
 
     public class UnreadImageView extends ImageView {
@@ -3218,12 +3108,7 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
             countLayout.setGravity(Gravity.LEFT);
 
             addView(countLayout, LayoutHelper.createFrame(54, 54, Gravity.LEFT | Gravity.TOP));
-            // The counter is only a visual extension of the back button. Its
-            // 100dp drawing canvas intentionally reaches to the right of the
-            // 54dp button, but making that whole transparent canvas clickable
-            // steals taps from the chat avatar/title underneath and dispatches
-            // them as Back. Let the real backButtonImageView remain the only
-            // touch and accessibility target.
+
             countLayout.setClickable(false);
             countLayout.setFocusable(false);
             countLayout.setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO);
@@ -3232,10 +3117,7 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
         }
 
         public void checkUnreadView(int count) {
-            // NimarkoGram deviation from CG: when the flag is OFF, also hide the existing
-            // CounterView. CG simply early-returns (leaves a stale badge), but we want
-            // onResume() to act as the cheap refresh path for runtime toggles without
-            // forcing a full fragment rebuild from the settings screen.
+
             if (!app.nimarkogram.messenger.NimarkoConfig.unreadBadgeOnBackButton) {
                 if (countLayout != null) {
                     countLayout.setVisibility(GONE);
@@ -3278,5 +3160,5 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
     public int getItemsColor() {
         return itemsColor;
     }
-    /** NimarkoGram finish */
+
 }
