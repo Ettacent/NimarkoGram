@@ -79,7 +79,9 @@ class ControllerExactCallbackRetirementTest(unittest.TestCase):
             public_init,
         )
         self.assertIn(
-            "timeoutControllerInitialization(attempt)", public_init)
+            "() -> checkControllerInitializationDeadline(attempt)",
+            public_init,
+        )
         deadline = public_init.index(
             "ENGINE_INIT_TIMEOUT_MS")
         queue_post = public_init.index(
@@ -97,7 +99,12 @@ class ControllerExactCallbackRetirementTest(unittest.TestCase):
             background,
         )
         self.assertIn(
-            "NativeCrashHandler.lastExitWasBenignKill()", background)
+            "recoverPluginSafetyState(startWithSafeMode)", background)
+        recovery = self.controller[
+            self.controller.index("private void recoverPluginSafetyState")
+            : self.controller.index("private void startControllerInitialization")
+        ]
+        self.assertIn("NativeCrashHandler.lastExitWasLoadCrashAfter(", recovery)
         self.assertIn("engine.init(engineDone)", background)
 
     def test_preparing_callbacks_are_owned_and_drained_by_exact_slot(self):

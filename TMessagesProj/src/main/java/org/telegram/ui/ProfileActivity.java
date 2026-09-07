@@ -11011,15 +11011,16 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             if (!backward) {
                 if (playProfileAnimation != 0 && allowProfileAnimation) {
                     if (playProfileAnimation == 1) {
-                        currentExpandAnimatorValue = 0f;
+                        final float expanded = isPulledDown ? 1f : 0f;
+                        currentExpandAnimatorValue = expanded;
                         if (ratingView != null) {
-                            ratingView.setParentExpanded(0);
+                            ratingView.setParentExpanded(expanded);
                         }
                         if (actionsView != null) {
-                            actionsView.setParentExpanded(0);
+                            actionsView.setParentExpanded(expanded);
                         }
                         if (musicView != null) {
-                            musicView.setParentExpanded(0);
+                            musicView.setParentExpanded(expanded);
                         }
                     }
                     openAnimationInProgress = false;

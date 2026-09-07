@@ -393,6 +393,7 @@ public class ApplicationLoader extends Application {
     private static final String NG_PINE_RUNTIME_PREFS = "nimarko_pine_runtime";
     private static final String NG_PINE_INIT_SIGNATURE = "init_signature";
     private static final String NG_PINE_INIT_STARTED_AT = "init_started_at";
+    private static final String NG_PINE_INIT_PID = "init_pid";
     private static final String NG_PINE_BLOCKED_SIGNATURE = "blocked_signature";
     private static final long NG_PINE_HOOK_WAIT_BUDGET_MS = 30_000L;
     private static volatile boolean ngPineRuntimeGuardInstalled = false;
@@ -404,9 +405,33 @@ public class ApplicationLoader extends Application {
     private static volatile String ngPineUnavailableReason;
     public static final java.util.concurrent.CountDownLatch ngPineReady = new java.util.concurrent.CountDownLatch(1);
 
+    private static boolean isPineRecoveryMainProcess(Context context) {
+        if (context == null) return false;
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                return context.getPackageName().equals(Application.getProcessName());
+            }
+            android.app.ActivityManager manager = (android.app.ActivityManager)
+                    context.getSystemService(Context.ACTIVITY_SERVICE);
+            if (manager == null) return false;
+            java.util.List<android.app.ActivityManager.RunningAppProcessInfo> processes =
+                    manager.getRunningAppProcesses();
+            if (processes != null) {
+                int pid = android.os.Process.myPid();
+                for (android.app.ActivityManager.RunningAppProcessInfo process : processes) {
+                    if (process != null && process.pid == pid) {
+                        return context.getPackageName().equals(process.processName);
+                    }
+                }
+            }
+        } catch (Throwable ignored) {
+        }
+
+        return false;
+    }
     private static SharedPreferences pineRuntimePreferences() {
         Context context = applicationContext;
-        if (context == null) return null;
+        if (!isPineRecoveryMainProcess(context)) return null;
         try {
             return context.getSharedPreferences(NG_PINE_RUNTIME_PREFS, Context.MODE_PRIVATE);
         } catch (Throwable t) {
@@ -464,11 +489,14 @@ public class ApplicationLoader extends Application {
         if (ngPineRecoveryChecked) return;
         SharedPreferences preferences = pineRuntimePreferences();
         if (preferences == null) {
-            ngPineRecoveryChecked = true;
             return;
         }
         String signature = pineRuntimeSignature();
         String blockedSignature = preferences.getString(NG_PINE_BLOCKED_SIGNATURE, null);
+        SharedPreferences.Editor editor = preferences.edit()
+                .remove(NG_PINE_INIT_SIGNATURE)
+                .remove(NG_PINE_INIT_STARTED_AT)
+                .remove(NG_PINE_INIT_PID);
         if (signature.equals(blockedSignature)) {
             ngPineBlockedByRecovery = true;
             ngPineUnavailableReason =
@@ -476,13 +504,11 @@ public class ApplicationLoader extends Application {
         } else {
             String initSignature = preferences.getString(NG_PINE_INIT_SIGNATURE, null);
             long initStartedAt = preferences.getLong(NG_PINE_INIT_STARTED_AT, 0L);
+            int initPid = preferences.getInt(NG_PINE_INIT_PID, 0);
             boolean confirmedNativeInitCrash = signature.equals(initSignature)
                     && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R
                     && app.nimarkogram.messenger.plugins.utils.NativeCrashHandler
-                            .lastExitWasLoadCrashAfter(initStartedAt);
-            SharedPreferences.Editor editor = preferences.edit()
-                    .remove(NG_PINE_INIT_SIGNATURE)
-                    .remove(NG_PINE_INIT_STARTED_AT);
+                            .lastExitWasLoadCrashAfter(initStartedAt, initPid);
             if (confirmedNativeInitCrash) {
                 ngPineBlockedByRecovery = true;
                 ngPineUnavailableReason =
@@ -492,8 +518,8 @@ public class ApplicationLoader extends Application {
             } else {
                 editor.remove(NG_PINE_BLOCKED_SIGNATURE);
             }
-            editor.commit();
         }
+            editor.commit();
         ngPineRecoveryChecked = true;
     }
 
@@ -503,15 +529,18 @@ public class ApplicationLoader extends Application {
         preferences.edit()
                 .putString(NG_PINE_INIT_SIGNATURE, pineRuntimeSignature())
                 .putLong(NG_PINE_INIT_STARTED_AT, System.currentTimeMillis())
+                .putInt(NG_PINE_INIT_PID, android.os.Process.myPid())
                 .commit();
     }
 
     private static void clearPineInitializationMarker(boolean initialized) {
         SharedPreferences preferences = pineRuntimePreferences();
         if (preferences == null) return;
+        if (preferences.getInt(NG_PINE_INIT_PID, 0) != android.os.Process.myPid()) return;
         SharedPreferences.Editor editor = preferences.edit()
                 .remove(NG_PINE_INIT_SIGNATURE)
-                .remove(NG_PINE_INIT_STARTED_AT);
+                .remove(NG_PINE_INIT_STARTED_AT)
+                .remove(NG_PINE_INIT_PID);
         if (initialized) editor.remove(NG_PINE_BLOCKED_SIGNATURE);
         editor.commit();
     }

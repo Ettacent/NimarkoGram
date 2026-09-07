@@ -14,6 +14,7 @@ import org.telegram.tgnet.ConnectionsManager;
 
 public final class RelayRegion {
 
+    public static final boolean ASIA_RELAY_ENABLED = false;
     private static final Set<String> ASIA_COUNTRIES = new HashSet<>(Arrays.asList(
             "CN", "HK", "MO", "TW", "JP", "KR", "KP", "MN",
             "SG", "MY", "ID", "PH", "VN", "TH", "KH", "LA", "MM", "BN", "TL",

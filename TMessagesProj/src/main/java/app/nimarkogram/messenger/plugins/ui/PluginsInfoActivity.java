@@ -18,6 +18,7 @@ import java.util.ArrayList;
 
 import app.nimarkogram.messenger.NimarkoConfig;
 import app.nimarkogram.messenger.plugins.PluginsController;
+import app.nimarkogram.messenger.plugins.utils.PluginCrashReports;
 import app.nimarkogram.messenger.preferences.BasePreferencesActivity;
 import app.nimarkogram.messenger.utils.text.LocaleUtils;
 
@@ -59,7 +60,9 @@ public class PluginsInfoActivity extends BasePreferencesActivity {
         items.add(UItem.asCheck(PreferenceItem.SAFE_MODE.getId(),
                         LocaleController.getString(R.string.PluginsSafeMode), R.drawable.msg_secret)
                 .setChecked(NimarkoConfig.pluginsSafeMode));
-        items.add(UItem.asShadow(LocaleController.getString(R.string.PluginsSafeModeInfo2)));
+        items.add(UItem.asShadow(NimarkoConfig.pluginsSafeMode
+                ? PluginCrashReports.safeModeExplanation()
+                : LocaleController.getString(R.string.PluginsSafeModeInfo2)));
 
         items.add(UItem.asHeader(LocaleController.getString(R.string.Links)));
         UItem docButton = UItem.asButton(PreferenceItem.DOCUMENTATION.getId(),

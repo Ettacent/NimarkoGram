@@ -4,7 +4,8 @@ import android.content.Context;
 import android.os.Build;
 import android.os.Environment;
 
-import app.nimarkogram.messenger.plugins.PluginsController;
+import app.nimarkogram.messenger.plugins.utils.PluginCrashReports;
+import app.nimarkogram.messenger.plugins.utils.PluginsWatchdog;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.File;
@@ -33,40 +34,21 @@ public final class NimarkoCrashHandler {
         if (installed || appContext == null) return;
         final Thread.UncaughtExceptionHandler prior = Thread.getDefaultUncaughtExceptionHandler();
         Thread.UncaughtExceptionHandler handler = (thread, throwable) -> {
+            String pluginId = null;
             try {
-                dump(thread, throwable);
+                if (!isOom(throwable)) {
+                    pluginId = PluginsWatchdog.findCrashingPlugin(thread, throwable);
+                }
+                if (pluginId != null) {
+
+                    appContext.getSharedPreferences("plugin_settings", Context.MODE_PRIVATE).edit()
+                            .putString("pending_plugin_fatal_id", pluginId)
+                            .putLong("pending_plugin_fatal_at", System.currentTimeMillis()).commit();
+                }
             } catch (Throwable ignored) {}
             
             try {
-                Context context = appContext;
-                if (context != null) {
-                    android.content.SharedPreferences pp = context.getSharedPreferences("plugin_settings", 0);
-                    android.content.SharedPreferences.Editor ed = pp.edit();
-
-                    String attributedId = null;
-                    try {
-                        attributedId = PluginsController.getInstance().attributePluginFromCrashStack(thread, throwable);
-                    } catch (Throwable ignored) {}
-
-                    if (isLikelyPluginCrash(throwable) || attributedId != null) {
-                        ed.putBoolean("had_crash", true);
-                    }
-
-                    if (attributedId != null) {
-                        
-                        ed.putString("crashed_plugin_id", attributedId)
-                                .putBoolean("crashed_plugin_attribution_exact", true);
-                    } else {
-                        ed.remove("crashed_plugin_attribution_exact");
-                        
-                        String tn = thread != null ? thread.getName() : null;
-                        boolean onPluginThread = tn != null && tn.contains("pluginsQueue");
-                        if (!onPluginThread) {
-                            ed.remove("crashed_plugin_id");
-                        }
-                    }
-                    ed.commit();
-                }
+                dump(thread, throwable, pluginId);
             } catch (Throwable ignored) {}
             if (prior != null) {
                 prior.uncaughtException(thread, throwable);
@@ -79,46 +61,39 @@ public final class NimarkoCrashHandler {
         installed = true;
     }
 
-    private static boolean isLikelyPluginCrash(Throwable t) {
-        Throwable cur = t;
-        int depth = 0;
-        while (cur != null && depth++ < 10) {
-            StackTraceElement[] trace = cur.getStackTrace();
-            if (trace != null) {
-                for (StackTraceElement el : trace) {
-                    String cls = el.getClassName();
-                    if (cls == null) continue;
-                    
-                    if (cls.startsWith("com.chaquo.python.")
-                            || cls.startsWith("app.nimarkogram.messenger.plugins.xposed.")
-                            || cls.startsWith("app.nimarkogram.messenger.plugins.hooks.")
-                            || cls.startsWith("app.nimarkogram.messenger.plugins.intents.")) {
-                        return true;
+    public static void dump(Thread thread, Throwable t) {
+        String pluginId = null;
+        try {
+            if (!isOom(t)) pluginId = PluginsWatchdog.findCrashingPlugin(thread, t);
+        } catch (Throwable ignored) {}
+        dump(thread, t, pluginId);
                     }
                     
-                }
-            }
-            cur = cur.getCause();
-        }
-        return false;
-    }
-
-    public static void dump(Thread thread, Throwable t) {
+    private static void dump(Thread thread, Throwable t, String pluginId) {
         final boolean oom = isOom(t);
         try {
             File dir = getLogDir();
             if (dir == null) return;
+            if (pluginId != null) {
+                dir = ensureLogDir(new File(dir, "plugin-crashes"));
+                if (dir == null) return;
+            }
             String ts = new SimpleDateFormat("yyyyMMdd-HHmmss-SSS", Locale.US).format(new Date());
             long threadId = thread != null ? thread.getId() : Thread.currentThread().getId();
             String reportId = ts + "-p" + android.os.Process.myPid()
                     + "-t" + threadId + "-" + reportSequence.incrementAndGet();
-            File f = new File(dir, "crash-" + reportId + ".txt");
+            File f = new File(dir, (pluginId == null ? "crash-" : "plugin-crash-") + reportId + ".txt");
             
             try (PrintWriter pw = new PrintWriter(new BufferedWriter(new FileWriter(f)))) {
                 
-                pw.println("Report this crash through the project issue tracker");
+                pw.println(pluginId == null ? "Report this crash through the project issue tracker" : "Plugin error report — share with the plugin developer");
                 pw.println();
-                pw.println("=== NimarkoGram crash ===");
+                pw.println(pluginId == null ? "=== NimarkoGram crash ===" : "=== NimarkoGram plugin crash ===");
+                if (pluginId != null) {
+                    PluginCrashReports.writeIdentity(pw, pluginId);
+                    pw.println("Attribution: tracked plugin callback / matching throwable");
+                    pw.println("Client process terminated: yes");
+                }
                 pw.println("Time: " + new Date());
                 pw.println("Thread: " + (thread != null ? thread.getName() : "(null)"));
                 pw.println("Build: " + Build.MODEL + " / Android " + Build.VERSION.SDK_INT);
@@ -210,6 +185,7 @@ public final class NimarkoCrashHandler {
                 }
             }
             
+            if (pluginId != null) PluginCrashReports.rememberFatalReport(pluginId, f);
             if (oom) {
                 try {
                     File hp = new File(dir, "oom-" + reportId + ".hprof");
@@ -261,7 +237,8 @@ public final class NimarkoCrashHandler {
             android.content.ClipboardManager cm =
                     (android.content.ClipboardManager) context.getSystemService(Context.CLIPBOARD_SERVICE);
             if (cm != null) {
-                cm.setPrimaryClip(android.content.ClipData.newPlainText("NimarkoGram crash", text));
+                cm.setPrimaryClip(android.content.ClipData.newPlainText(
+                        text.contains("=== NimarkoGram plugin crash ===") ? "NimarkoGram plugin crash" : "NimarkoGram crash", text));
             }
         } catch (Throwable ignored) {}
     }
@@ -323,7 +300,7 @@ public final class NimarkoCrashHandler {
     private static boolean isOom(Throwable t) {
         Throwable cur = t;
         int depth = 0;
-        while (cur != null && depth++ < 10) {
+        while (cur != null && depth++ < 64) {
             if (cur instanceof OutOfMemoryError) return true;
             cur = cur.getCause();
         }

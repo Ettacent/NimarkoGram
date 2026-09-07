@@ -2811,7 +2811,18 @@
     <string name="PluginsDesignedBy">Design — %1$s</string>
     <!-- NimarkoGram plugin engine strings -->
     <string name="PluginsEngine">Plugin engine</string>
-    <string name="NM_PluginCrashDisabled">Plugin \"%1$s\" was disabled after it crashed the app.</string>
+    <string name="NM_PluginCrashDisabled">Plugin \"%1$s\" was disabled after a failure. See its report for details.</string>
+    <string name="NM_PluginTapToViewReport">Tap to view report</string>
+    <string name="NM_PluginViewSavedReport">View saved plugin report</string>
+    <string name="NM_PluginReportTitle">Plugin report</string>
+    <string name="NM_PluginLoadCrashDisabled">Plugin \"%1$s\" paused after a process crash during loading. Cause unproven; see report.</string>
+    <string name="NM_PluginSafetyRecoveryFailed">Plugin loading stopped: recovery state could not be saved. No plugin identified as the cause. Restart the app and check storage.</string>
+    <string name="NM_PluginReportMissing">No saved report is available for this plugin.</string>
+    <string name="NM_PluginReportHint">Reports identify the plugin and how it was linked to the failure. A suspected link does not confirm the cause.</string>
+    <string name="NM_PluginSafetyManual">You enabled safe mode. Plugins are paused; this does not mean a plugin caused a crash.</string>
+    <string name="NM_PluginSafetyEngineTimeout">The plugin engine took too long to start. Plugins are paused as a precaution; no individual plugin has been identified as the cause.</string>
+    <string name="NM_PluginSafetyEngineFailure">The plugin engine could not initialize. Plugins are paused; no individual plugin has been identified as the cause.</string>
+    <string name="NM_PluginSafetyUnknown">Plugins are paused in safe mode. The reason is unavailable. Safe mode alone does not identify a plugin as the cause.</string>
     <string name="NM_TapToReEnable">Tap to re-enable</string>
     <string name="NM_ExitSafeMode">Exit safe mode</string>
     <string name="NM_SafeModeBlocked">Exit safe mode to enable plugins</string>
@@ -2823,8 +2834,8 @@
     <string name="PluginsDevMode">Developer mode</string>
     <string name="EnterValue">Enter value</string>
     <string name="PluginsSafeMode">Safe mode</string>
-    <string name="PluginsSafeModeInfo">Plugin engine is running in safe mode after a crash.</string>
-    <string name="PluginsSafeModeInfo2">All plugins are disabled. Re-enable them one by one to find the offender.</string>
+    <string name="PluginsSafeModeInfo">Plugin execution is paused in safe mode.</string>
+    <string name="PluginsSafeModeInfo2">Safe mode prevents plugins from running. Saved plugin reports remain available.</string>
     <string name="PluginsSafeModeOn">Safe mode enabled. Plugins won\'t auto-load.</string>
     <string name="PluginsSafeModeOff">Safe mode disabled.</string>
     <string name="PluginsDisableAll">Disable all plugins</string>

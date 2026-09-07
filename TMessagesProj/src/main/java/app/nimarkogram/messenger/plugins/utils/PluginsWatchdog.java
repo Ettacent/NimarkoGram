@@ -7,8 +7,13 @@ import android.content.pm.PackageManager;
 import android.os.SystemClock;
 
 import java.lang.ref.WeakReference;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.Objects;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.WeakHashMap;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -31,9 +36,12 @@ public final class PluginsWatchdog {
 
     public static final PluginsWatchdog INSTANCE_HOLDER = null; 
 
+    private static volatile PluginsWatchdog activeWatchdog;
     private final PluginsController controller;
-    private final ConcurrentHashMap<Thread, ExecutionInfo> executingPlugins = new ConcurrentHashMap<>();
-    private final ConcurrentHashMap<Thread, CrashSnapshot> callbackFailures = new ConcurrentHashMap<>();
+    private final Map<Thread, ExecutionInfo> executingPlugins =
+            Collections.synchronizedMap(new WeakHashMap<>());
+    private final Map<Thread, CrashSnapshot> callbackFailures =
+            Collections.synchronizedMap(new WeakHashMap<>());
     private volatile String lastReportedFrozenPluginId;
     private volatile PluginsController.PluginRuntimeToken lastReportedFrozenRuntime;
     private volatile ScheduledExecutorService scheduler;
@@ -49,6 +57,18 @@ public final class PluginsWatchdog {
     public PluginsWatchdog(PluginsController controller) {
         this.controller = controller;
         this.watchdogRunnable = this::tick;
+        activeWatchdog = this;
+    }
+
+    public static String findCrashingPlugin(Thread thread, Throwable error) {
+        PluginsWatchdog active = activeWatchdog;
+        return active != null ? active.getCrashingPluginId(thread, error) : null;
+    }
+
+    public static Plugin getKnownPlugin(String id) {
+        PluginsWatchdog active = activeWatchdog;
+        return active != null && active.controller != null && id != null
+                ? active.controller.plugins.get(id) : null;
     }
 
     private void tick() {
@@ -65,13 +85,17 @@ public final class PluginsWatchdog {
             }
             long worst = 0L;
             ExecutionInfo frozenInfo = null;
-            for (java.util.Map.Entry<Thread, ExecutionInfo> entry
-                    : executingPlugins.entrySet()) {
+            Map<Thread, ExecutionInfo> executions;
+            synchronized (executingPlugins) {
+                executions = new HashMap<>(executingPlugins);
+            }
+            for (Map.Entry<Thread, ExecutionInfo> entry : executions.entrySet()) {
+                Thread thread = entry.getKey();
                 ExecutionInfo info = entry.getValue();
                 if (info.runtimeToken != null
                         && !controller.isPluginRuntimeExecuting(
                                 info.runtimeToken)) {
-                    executingPlugins.remove(entry.getKey(), info);
+                    executingPlugins.remove(thread, info);
                     continue;
                 }
                 long elapsed = now - Math.max(info.getStartTime(), foregroundResumedAtMs);
@@ -160,11 +184,25 @@ public final class PluginsWatchdog {
     }
 
     private static final class CrashSnapshot {
+        private static final int MAX_CAUSES = 16;
         final String pluginId;
-        final Throwable throwable;
+        final List<WeakReference<Throwable>> throwables = new ArrayList<>();
         CrashSnapshot(String pluginId, Throwable throwable) {
             this.pluginId = pluginId;
-            this.throwable = throwable;
+            for (int depth = 0; throwable != null && depth < MAX_CAUSES;
+                    depth++, throwable = throwable.getCause()) {
+                throwables.add(new WeakReference<>(throwable));
+            }
+        }
+
+        boolean matches(Throwable throwable) {
+            for (int depth = 0; throwable != null && depth < MAX_CAUSES;
+                    depth++, throwable = throwable.getCause()) {
+                for (WeakReference<Throwable> reference : throwables) {
+                    if (reference.get() == throwable) return true;
+                }
+            }
+            return false;
         }
     }
 
@@ -194,15 +232,29 @@ public final class PluginsWatchdog {
         if (pluginId == null) return;
         Thread t = Thread.currentThread();
         
-        callbackFailures.remove(t);
+        ExecutionInfo previous = executingPlugins.get(t);
+        if (previous == null) callbackFailures.remove(t);
         executingPlugins.put(t, new ExecutionInfo(
                 pluginId, controller.captureCurrentPluginRuntime(),
-                SystemClock.elapsedRealtime(), executingPlugins.get(t)));
+                SystemClock.elapsedRealtime(), previous));
     }
 
     public void onPluginExecutionFailed(String pluginId, Throwable throwable) {
+        onPluginExecutionFailed(pluginId, throwable, "callback");
+    }
+
+    public void onPluginExecutionFailed(String pluginId, Throwable throwable, String phase) {
         if (pluginId == null || throwable == null) return;
-        callbackFailures.put(Thread.currentThread(), new CrashSnapshot(pluginId, throwable));
+        Thread thread = Thread.currentThread();
+        CrashSnapshot previous = callbackFailures.get(thread);
+
+        if (previous != null && previous.matches(throwable)) return;
+        callbackFailures.put(thread, new CrashSnapshot(pluginId, throwable));
+        try {
+
+            PluginCrashReports.recordFailure(pluginId, phase, throwable);
+        } catch (Throwable ignored) {
+        }
     }
 
     public void onPluginExecutionFinished(String pluginId) {
@@ -233,15 +285,10 @@ public final class PluginsWatchdog {
 
     public String getCrashingPluginId(Thread thread, Throwable uncaught) {
         if (thread == null || uncaught == null) return null;
-        ExecutionInfo active = executingPlugins.get(thread);
-        if (active != null) return active.getPluginId();
         CrashSnapshot snapshot = callbackFailures.get(thread);
-        if (snapshot == null) return null;
-        Throwable current = uncaught;
-        for (int depth = 0; current != null && depth < 16; depth++, current = current.getCause()) {
-            if (current == snapshot.throwable) return snapshot.pluginId;
-        }
-        return null;
+        if (snapshot != null && snapshot.matches(uncaught)) return snapshot.pluginId;
+        ExecutionInfo active = executingPlugins.get(thread);
+        return active != null ? active.getPluginId() : null;
     }
 
     private void dismissStaleAlert(String pluginId) {

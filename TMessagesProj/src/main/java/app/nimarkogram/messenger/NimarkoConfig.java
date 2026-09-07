@@ -164,17 +164,17 @@ public final class NimarkoConfig {
         getEditor().putBoolean("pluginsDevMode", pluginsDevMode).apply();
     }
 
-    public static boolean pluginsSafeMode = getPreferences().getBoolean("pluginsSafeMode", false);
+    public static volatile boolean pluginsSafeMode = getPreferences().getBoolean("pluginsSafeMode", false);
     public static void togglePluginsSafeMode() {
-        pluginsSafeMode = !pluginsSafeMode;
-        getEditor().putBoolean("pluginsSafeMode", pluginsSafeMode).apply();
-        try {
-            org.telegram.messenger.FileLog.d("nimarko: togglePluginsSafeMode -> " + pluginsSafeMode);
-        } catch (Throwable ignored) {}
+        if (!pluginsSafeMode) {
+            app.nimarkogram.messenger.plugins.utils.PluginCrashReports.setSafeModeReason("manual");
+        }
+        setPluginsSafeMode(!pluginsSafeMode);
     }
     public static void setPluginsSafeMode(boolean v) {
         pluginsSafeMode = v;
-        getEditor().putBoolean("pluginsSafeMode", v).apply();
+        if (!v) app.nimarkogram.messenger.plugins.utils.PluginCrashReports.setSafeModeReason(null);
+        getEditor().putBoolean("pluginsSafeMode", v).commit();
         try {
             org.telegram.messenger.FileLog.d("nimarko: setPluginsSafeMode = " + v);
         } catch (Throwable ignored) {}

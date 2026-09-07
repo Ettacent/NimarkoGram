@@ -3202,8 +3202,20 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
         });
     }
 
+    private void finishPipCloseForSurfaceTransfer() {
+        if (!pipClosingToInline) {
+            return;
+        }
+        PipRoundVideoView closingPip = pipRoundVideoView;
+        pipRoundVideoView = null;
+        pipClosingToInline = false;
+        showPipAfterInlineClose = false;
+        if (closingPip != null) {
+            closingPip.close(false);
+        }
+    }
     public void setCurrentVideoVisible(boolean visible) {
-        if (currentAspectRatioFrameLayout == null) {
+        if (videoPlayer == null || currentTextureView == null || currentAspectRatioFrameLayout == null || currentTextureViewContainer == null) {
             return;
         }
         if (visible) {
@@ -3212,13 +3224,21 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
                 return;
             }
             if (pipRoundVideoView != null) {
-                pipSwitchingState = 2;
                 PipRoundVideoView closingPip = pipRoundVideoView;
                 pipClosingToInline = true;
+                pipSwitchingState = 0;
+                if (currentAspectRatioFrameLayout.getParent() == null) {
+                    currentTextureViewContainer.addView(currentAspectRatioFrameLayout);
+                }
+                isDrawingWasReady = false;
+                currentAspectRatioFrameLayout.setDrawingReady(false);
+
+                videoPlayer.setTextureView(currentTextureView);
                 closingPip.close(true, () -> {
-                    if (pipRoundVideoView == closingPip) {
-                        pipRoundVideoView = null;
+                    if (pipRoundVideoView != closingPip) {
+                        return;
                     }
+                        pipRoundVideoView = null;
                     pipClosingToInline = false;
                     if (showPipAfterInlineClose) {
                         showPipAfterInlineClose = false;
@@ -3265,11 +3285,13 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
         if (textureView == null) {
             return;
         }
-        if (!set && currentTextureView == textureView) {
+        if (!set) {
+            if (currentTextureView == textureView) {
             pipSwitchingState = 1;
             currentTextureView = null;
             currentAspectRatioFrameLayout = null;
             currentTextureViewContainer = null;
+            }
             return;
         }
         if (videoPlayer == null || textureView == currentTextureView) {
@@ -3285,7 +3307,7 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
                 pipRoundVideoView = null;
             }
         }
-        if (pipRoundVideoView != null) {
+        if (pipRoundVideoView != null && !pipClosingToInline) {
             videoPlayer.setTextureView(pipRoundVideoView.getTextureView());
         } else {
             videoPlayer.setTextureView(currentTextureView);
@@ -3475,22 +3497,8 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
                     pipSwitchingState = 0;
                     return false;
                 }
-                if (pipSwitchingState == 2) {
-                    if (currentAspectRatioFrameLayout != null) {
-                        if (isDrawingWasReady) {
-                            currentAspectRatioFrameLayout.setDrawingReady(true);
-                        }
-                        if (currentAspectRatioFrameLayout.getParent() == null) {
-                            currentTextureViewContainer.addView(currentAspectRatioFrameLayout);
-                        }
-                        if (currentTextureView.getSurfaceTexture() != surfaceTexture) {
-                            currentTextureView.setSurfaceTexture(surfaceTexture);
-                        }
-                        videoPlayer.setTextureView(currentTextureView);
-                    }
-                    pipSwitchingState = 0;
-                    return true;
-                } else if (pipSwitchingState == 1) {
+                if (pipSwitchingState == 1) {
+                    finishPipCloseForSurfaceTransfer();
                     if (baseActivity != null) {
                         if (pipRoundVideoView == null) {
                             try {
@@ -3818,22 +3826,8 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
                         pipSwitchingState = 0;
                         return false;
                     }
-                    if (pipSwitchingState == 2) {
-                        if (currentAspectRatioFrameLayout != null) {
-                            if (isDrawingWasReady) {
-                                currentAspectRatioFrameLayout.setDrawingReady(true);
-                            }
-                            if (currentAspectRatioFrameLayout.getParent() == null) {
-                                currentTextureViewContainer.addView(currentAspectRatioFrameLayout);
-                            }
-                            if (currentTextureView.getSurfaceTexture() != surfaceTexture) {
-                                currentTextureView.setSurfaceTexture(surfaceTexture);
-                            }
-                            videoPlayer.setTextureView(currentTextureView);
-                        }
-                        pipSwitchingState = 0;
-                        return true;
-                    } else if (pipSwitchingState == 1) {
+                    if (pipSwitchingState == 1) {
+                        finishPipCloseForSurfaceTransfer();
                         if (baseActivity != null) {
                             if (pipRoundVideoView == null) {
                                 try {
@@ -3860,7 +3854,9 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
                 }
             });
             currentAspectRatioFrameLayoutReady = false;
-            if (pipRoundVideoView != null || !MessagesController.getInstance(messageObject.currentAccount).isDialogVisible(messageObject.getDialogId(), messageObject.scheduled)) {
+            if (pipClosingToInline && currentTextureView != null) {
+                videoPlayer.setTextureView(currentTextureView);
+            } else if (pipRoundVideoView != null || !MessagesController.getInstance(messageObject.currentAccount).isDialogVisible(messageObject.getDialogId(), messageObject.scheduled)) {
                 if (pipRoundVideoView == null) {
                     try {
                         pipRoundVideoView = new PipRoundVideoView();

@@ -27,7 +27,7 @@ class PluginStartupMetadataPublicationTests(unittest.TestCase):
         )
         self.assertLess(
             init.index("registerPluginsMetadataOnly("),
-            init.index("loadPlugins(runnable)"),
+            init.index("loadPlugins(runnable, initializationAttempt)"),
         )
 
     def test_all_candidates_are_published_before_dependencies_and_imports(self):

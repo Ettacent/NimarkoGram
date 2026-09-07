@@ -2,6 +2,7 @@ package app.nimarkogram.messenger.plugins;
 
 import android.content.SharedPreferences;
 import android.os.Build;
+import android.os.SystemClock;
 import android.text.TextUtils;
 import com.chaquo.python.PyObject;
 import app.nimarkogram.messenger.NimarkoConfig;
@@ -17,6 +18,7 @@ import app.nimarkogram.messenger.plugins.ui.components.SafeModeBottomSheet;
 import app.nimarkogram.messenger.plugins.utils.ClassProxy;
 import app.nimarkogram.messenger.plugins.utils.MenuContextBuilder;
 import app.nimarkogram.messenger.plugins.utils.NativeCrashHandler;
+import app.nimarkogram.messenger.plugins.utils.PluginCrashReports;
 import app.nimarkogram.messenger.utils.chats.ChatUtils;
 import de.robv.android.xposed.XC_MethodHook;
 
@@ -52,6 +54,7 @@ import org.telegram.tgnet.TLObject;
 import org.telegram.tgnet.TLRPC;
 import org.telegram.ui.ActionBar.BaseFragment;
 import org.telegram.ui.Components.BulletinFactory;
+import org.telegram.ui.Components.ForegroundDetector;
 import org.telegram.ui.LaunchActivity;
 
 public class PluginsController implements PluginsHooks {
@@ -71,6 +74,16 @@ public class PluginsController implements PluginsHooks {
     private boolean shutdownInProgress;
     private boolean initializationInProgress;
     private long initializationAttempt;
+    private long initializationProgressAt;
+    private boolean initializationForegroundListenerAttached;
+    private final ForegroundDetector.Listener initializationForegroundListener = new ForegroundDetector.Listener() {
+        @Override public void onBecameForeground() {
+            reportInitializationProgress(getInitializationAttempt());
+        }
+        @Override public void onBecameBackground() {
+            reportInitializationProgress(getInitializationAttempt());
+        }
+    };
     private boolean shutdownRequiresProcessRestart;
     private final AtomicLong controllerLifecycleEpoch =
             new AtomicLong(1L);
@@ -1294,13 +1307,19 @@ public class PluginsController implements PluginsHooks {
             }
             initializationInProgress = true;
             initializationAttempt++;
+            initializationProgressAt = SystemClock.elapsedRealtime();
+            ForegroundDetector detector = ForegroundDetector.getInstance();
+            if (!initializationForegroundListenerAttached && detector != null) {
+                detector.addListener(initializationForegroundListener);
+                initializationForegroundListenerAttached = true;
+            }
         }
         final long attempt;
         synchronized (controllerLifecycleLock) {
             attempt = initializationAttempt;
         }
         AndroidUtilities.runOnUIThread(
-                () -> timeoutControllerInitialization(attempt),
+                () -> checkControllerInitializationDeadline(attempt),
                 ENGINE_INIT_TIMEOUT_MS);
 
         Runnable initializationWork =
@@ -1313,7 +1332,101 @@ public class PluginsController implements PluginsHooks {
         }
         if (!initializationQueue.postRunnable(initializationWork)) {
             FileLog.e("nimarko: could not enqueue plugin initialization");
+            failControllerInitialization(attempt, "engine_failure");
+        }
+    }
+
+    public long getInitializationAttempt() {
+        synchronized (controllerLifecycleLock) {
+            return initializationInProgress ? initializationAttempt : 0L;
+        }
+    }
+
+    public void reportInitializationProgress(long attempt) {
+        synchronized (controllerLifecycleLock) {
+            if (initializationInProgress && initializationAttempt == attempt) {
+                initializationProgressAt = SystemClock.elapsedRealtime();
+            }
+        }
+    }
+
+    private void checkControllerInitializationDeadline(long attempt) {
+        synchronized (controllerLifecycleLock) {
+            if (!initializationInProgress || initializationAttempt != attempt) return;
+            long now = SystemClock.elapsedRealtime();
+            if (ApplicationLoader.mainInterfacePaused) initializationProgressAt = now;
+            long remaining = ENGINE_INIT_TIMEOUT_MS - (now - initializationProgressAt);
+            if (remaining > 0L) {
+                AndroidUtilities.runOnUIThread(
+                        () -> checkControllerInitializationDeadline(attempt), remaining);
+                return;
+            }
+        }
             timeoutControllerInitialization(attempt);
+    }
+
+    private void recoverPluginSafetyState(boolean startWithSafeMode) {
+        String attributedId = null;
+        boolean nativeCorrelation = false;
+        long loadStartedAt = 0L;
+        boolean manual = startWithSafeMode;
+        try {
+            synchronized (preferences) {
+                String loadingId = preferences.getString("crashed_plugin_id", null);
+                manual |= "manual!".equals(loadingId);
+                attributedId = preferences.getString("pending_plugin_fatal_id", null);
+                if (TextUtils.isEmpty(attributedId)
+                        && preferences.getBoolean("had_crash", false)
+                        && preferences.getBoolean("crashed_plugin_attribution_exact", false)
+                        && !TextUtils.isEmpty(loadingId) && !"manual!".equals(loadingId)) {
+                    attributedId = loadingId;
+                }
+                loadStartedAt = preferences.getLong("crashed_plugin_started_at", 0L);
+                if (TextUtils.isEmpty(attributedId)
+                        && !TextUtils.isEmpty(loadingId) && !"manual!".equals(loadingId)
+                        && NativeCrashHandler.lastExitWasLoadCrashAfter(loadStartedAt,
+                                preferences.getInt("crashed_plugin_pid", 0))) {
+                    attributedId = loadingId;
+                    nativeCorrelation = true;
+                }
+                SharedPreferences.Editor editor = preferences.edit()
+                        .remove("had_crash").remove("unattributed_native_crashes")
+                        .remove("crashed_plugin_id").remove("crashed_plugin_started_at")
+                        .remove("crashed_plugin_pid").remove("crashed_plugin_load_token")
+                        .remove("crashed_plugin_attribution_exact").remove("native_crash_flag_only")
+                        .remove("pending_plugin_fatal_id").remove("pending_plugin_fatal_at");
+                if (!TextUtils.isEmpty(attributedId)) {
+                    String restoreKey = "plugin_enabled_before_quarantine_" + attributedId;
+                    if (!preferences.contains(restoreKey)) {
+                        editor.putBoolean(restoreKey,
+                                preferences.getBoolean(PREF_PLUGIN_ENABLED_KEY_PREFIX + attributedId, false));
+                    }
+                    editor.putBoolean(PREF_PLUGIN_ENABLED_KEY_PREFIX + attributedId, false)
+                            .putBoolean("plugin_crashed_" + attributedId, true);
+                }
+
+                if (!editor.commit()) throw new IllegalStateException("Cannot persist plugin recovery");
+            }
+            if (manual) {
+                PluginCrashReports.setSafeModeReason("manual");
+                NimarkoConfig.setPluginsSafeMode(true);
+            }
+            if (!TextUtils.isEmpty(attributedId)) {
+                if (nativeCorrelation) PluginCrashReports.recordLoadInterruption(attributedId, loadStartedAt);
+                final String id = attributedId;
+                final int message = nativeCorrelation ? R.string.NM_PluginLoadCrashDisabled : R.string.NM_PluginCrashDisabled;
+                AndroidUtilities.runOnUIThread(() -> {
+                    BaseFragment fragment = LaunchActivity.getLastFragment();
+                    if (fragment != null) {
+                        BulletinFactory.of(fragment).createSimpleBulletin(R.raw.info,
+                                LocaleController.formatString(message, id)).show();
+                    }
+                }, 800L);
+            }
+        } catch (Exception failure) {
+            FileLog.e("Plugin recovery state could not be saved", failure);
+            PluginCrashReports.setSafeModeReason("recovery_failed");
+            NimarkoConfig.setPluginsSafeMode(true);
         }
     }
 
@@ -1352,95 +1465,13 @@ public class PluginsController implements PluginsHooks {
         
         PythonPluginsEngine.recoverInterruptedPluginUpdates(this);
 
-        try {
-            if (!this.preferences.getBoolean("plugin_falsequarantine_recovered_1", false)) {
-                android.content.SharedPreferences.Editor rec = this.preferences.edit();
-                for (String key : new java.util.ArrayList<>(this.preferences.getAll().keySet())) {
-                    if (key != null && key.startsWith("plugin_crashed_")) {
-                        String id = key.substring("plugin_crashed_".length());
-                        String restoreKey = "plugin_enabled_before_quarantine_" + id;
-                        if (this.preferences.contains(restoreKey)) {
-                            rec.remove(key);
-                            if (this.preferences.getBoolean(restoreKey, false)) {
-                                rec.putBoolean(PREF_PLUGIN_ENABLED_KEY_PREFIX + id, true);
-                            }
-                            rec.remove(restoreKey);
-                        }
-                    }
-                }
-                rec.putBoolean("plugin_falsequarantine_recovered_1", true);
-                rec.apply();
-            }
-        } catch (Throwable ignore) {}
-
-        try {
-            boolean hadCrash = this.preferences.getBoolean("had_crash", false);
-            String crashedPluginId = this.preferences.getString("crashed_plugin_id", null);
-            long crashedPluginStartedAt = this.preferences.getLong("crashed_plugin_started_at", 0L);
-            boolean exactJavaAttribution = this.preferences.getBoolean("crashed_plugin_attribution_exact", false);
-            boolean isManualSafeMode = crashedPluginId != null && crashedPluginId.equals("manual!");
-            
-            final boolean benignKill = NativeCrashHandler.lastExitWasBenignKill();
-            boolean reliableLoadCrash = exactJavaAttribution
-                    || NativeCrashHandler.lastExitWasLoadCrashAfter(crashedPluginStartedAt)
-                    || NativeCrashHandler.conservativePre30LoadCrash(crashedPluginStartedAt);
-            final String attributedId = (crashedPluginId != null && !isManualSafeMode
-                    && !benignKill && reliableLoadCrash) ? crashedPluginId : null;
-            this.preferences.edit().remove("had_crash").remove("crashed_plugin_id")
-                    .remove("crashed_plugin_started_at").remove("native_crash_flag_only")
-                    .remove("crashed_plugin_attribution_exact").apply();
-
-            if (attributedId != null && !startWithSafeMode) {
-                boolean wasAlreadyQuarantined = this.preferences.getBoolean("plugin_crashed_" + attributedId, false);
-                if (wasAlreadyQuarantined) {
-                    
-                    this.preferences.edit()
-                            .putBoolean(PREF_PLUGIN_ENABLED_KEY_PREFIX + attributedId, false)
-                            .putInt("unattributed_native_crashes", 0)
-                            .apply();
-                    NimarkoConfig.setPluginsSafeMode(true);
-                } else {
-                    
-                    this.preferences.edit()
-                            .putBoolean("plugin_enabled_before_quarantine_" + attributedId,
-                                    this.preferences.getBoolean(PREF_PLUGIN_ENABLED_KEY_PREFIX + attributedId, false))
-                            .putBoolean(PREF_PLUGIN_ENABLED_KEY_PREFIX + attributedId, false)
-                            .putBoolean("plugin_crashed_" + attributedId, true)
-                            .putInt("unattributed_native_crashes", 0)
-                            .apply();
+        recoverPluginSafetyState(startWithSafeMode);
+        if (NimarkoConfig.pluginsSafeMode) {
                     AndroidUtilities.runOnUIThread(() -> {
-                        BaseFragment lastFragment = LaunchActivity.getLastFragment();
-                        if (lastFragment != null) {
-                            BulletinFactory.of(lastFragment).createSimpleBulletin(R.raw.info,
-                                    LocaleController.formatString(R.string.NM_PluginCrashDisabled, attributedId)).show();
-                        }
+                BaseFragment fragment = LaunchActivity.getLastFragment();
+                if (fragment != null) new SafeModeBottomSheet(fragment).show();
                     }, 800L);
                 }
-            } else if (isManualSafeMode || startWithSafeMode) {
-                NimarkoConfig.setPluginsSafeMode(true);
-            } else if (hadCrash) {
-                int streak = this.preferences.getInt("unattributed_native_crashes", 0) + 1;
-                if (streak >= 2) {
-                    this.preferences.edit().putInt("unattributed_native_crashes", 0).apply();
-                    NimarkoConfig.setPluginsSafeMode(true);
-                } else {
-                    this.preferences.edit().putInt("unattributed_native_crashes", streak).apply();
-                    NimarkoConfig.setPluginsSafeMode(NimarkoConfig.pluginsSafeMode);
-                }
-            } else {
-                this.preferences.edit().putInt("unattributed_native_crashes", 0).apply();
-                NimarkoConfig.setPluginsSafeMode(NimarkoConfig.pluginsSafeMode);
-            }
-
-            if (NimarkoConfig.pluginsSafeMode) {
-                AndroidUtilities.runOnUIThread(() -> {
-                    BaseFragment lastFragment = LaunchActivity.getLastFragment();
-                    if (lastFragment != null) {
-                        new SafeModeBottomSheet(lastFragment).show();
-                    }
-                }, 800L);
-            }
-        } catch (Exception unused) {}
         
         File file = new File(ApplicationLoader.getFilesDirFixed(), PluginsConstants.PLUGINS);
         this.pluginsDir = file;
@@ -1483,24 +1514,19 @@ public class PluginsController implements PluginsHooks {
         } catch (Throwable failure) {
             FileLog.e("nimarko: plugin controller initialization failed",
                     failure);
-            timeoutControllerInitialization(attempt);
+            failControllerInitialization(attempt, "engine_failure");
         }
     }
 
     private void timeoutControllerInitialization(long attempt) {
-        synchronized (controllerLifecycleLock) {
-            if (!initializationInProgress
-                    || initializationAttempt != attempt) {
+        failControllerInitialization(attempt, "engine_timeout");
+    }
+
+    private void failControllerInitialization(long attempt, String reason) {
+        if (!finishControllerInitialization(attempt, false, reason)) {
                 return;
             }
-            shutdownRequiresProcessRestart = true;
-        }
-        FileLog.e("nimarko: plugin engine initialization timed out or failed");
-        if (!finishControllerInitialization(attempt, false)) {
-            return;
-        }
-        
-        NimarkoConfig.setPluginsSafeMode(true);
+        FileLog.e("nimarko: plugin engine initialization stopped: " + reason);
         AndroidUtilities.runOnUIThread(() ->
                 app.nimarkogram.messenger.utils.AppRestartHelper
                         .triggerRebirth(
@@ -1509,17 +1535,36 @@ public class PluginsController implements PluginsHooks {
 
     private boolean finishControllerInitialization(
             long attempt, boolean success) {
+        return finishControllerInitialization(attempt, success, null);
+    }
+
+    private boolean finishControllerInitialization(long attempt, boolean success, String reason) {
         final ArrayList<Runnable> completionCallbacks;
         synchronized (controllerLifecycleLock) {
             if (!initializationInProgress
                     || initializationAttempt != attempt) {
                 return false;
             }
+            if (!success && "engine_timeout".equals(reason)) {
+                long now = SystemClock.elapsedRealtime();
+                if (ApplicationLoader.mainInterfacePaused) initializationProgressAt = now;
+                long remaining = ENGINE_INIT_TIMEOUT_MS - (now - initializationProgressAt);
+                if (remaining > 0L) {
+                    AndroidUtilities.runOnUIThread(
+                            () -> checkControllerInitializationDeadline(attempt), remaining);
+                    return false;
+                }
+            }
+            if (!success) shutdownRequiresProcessRestart = true;
             initialized = success;
             initializationInProgress = false;
             completionCallbacks =
                     new ArrayList<>(initializationCompletionCallbacks);
             initializationCompletionCallbacks.clear();
+        }
+        if (!success) {
+            PluginCrashReports.setSafeModeReason(reason);
+            NimarkoConfig.setPluginsSafeMode(true);
         }
         
         try {

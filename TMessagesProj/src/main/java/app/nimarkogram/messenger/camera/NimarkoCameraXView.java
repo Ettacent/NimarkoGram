@@ -15,7 +15,6 @@ import android.graphics.Rect;
 import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.Drawable;
 import android.hardware.display.DisplayManager;
-import android.hardware.camera2.CaptureRequest;
 import android.media.MediaMetadataRetriever;
 import android.os.Build;
 import android.os.SystemClock;
@@ -26,9 +25,7 @@ import android.util.Size;
 import android.view.HapticFeedbackConstants;
 import android.view.OrientationEventListener;
 import android.view.Surface;
-import android.view.TextureView;
 import android.view.View;
-import android.view.ViewGroup;
 import android.view.animation.DecelerateInterpolator;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
@@ -112,6 +109,7 @@ public class NimarkoCameraXView extends BaseCameraView {
     private float baseZoomRatio = 1f;
     private int cameraGeneration;
     private boolean cameraControlsReady;
+    @Nullable private Runnable pendingPreviewReady;
     private boolean cameraSwitchInProgress;
     private final CameraXZoomCoordinator zoomCoordinator =
             new CameraXZoomCoordinator("CameraX view zoom");
@@ -364,6 +362,7 @@ public class NimarkoCameraXView extends BaseCameraView {
     }
 
     private void unbindOwnedUseCases() {
+        cancelPendingPreviewReady();
         if (provider == null) return;
         cameraControlsReady = false;
         ++cameraGeneration;
@@ -421,32 +420,9 @@ public class NimarkoCameraXView extends BaseCameraView {
         Preview.Builder previewBuilder = new Preview.Builder()
                 .setResolutionSelector(CameraXUtils.buildResolutionSelector(
                         targetSize, aspectRatio, true));
-        Camera2Interop.Extender<Preview> previewExtender = null;
         if (applyEnhancements) {
-            previewExtender = new Camera2Interop.Extender<>(previewBuilder);
             CameraXUtils.applyCamera2Controls(provider, selector,
-                    previewExtender, false);
-        }
-        if (!frontFacing && NimarkoConfig.startFromUltraWideCam
-                && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            try {
-                if (previewExtender == null) {
-                    previewExtender = new Camera2Interop.Extender<>(previewBuilder);
-                }
-                androidx.camera.core.CameraInfo info = provider.getCameraInfo(selector);
-                androidx.camera.core.ZoomState zoomState = info == null ? null
-                        : info.getZoomState().getValue();
-                float initialRatio = CameraXUtils.getBaseZoomRatio(zoomState, true);
-                if (initialRatio < 0.999f) {
-                    previewExtender.setCaptureRequestOption(
-                            CaptureRequest.CONTROL_ZOOM_RATIO, initialRatio);
-                    baseZoomRatio = initialRatio;
-                    if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("CXView initial wide request ratio="
-                            + initialRatio);
-                }
-            } catch (Throwable error) {
-                if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("CXView initial wide request unavailable", error);
-            }
+                    new Camera2Interop.Extender<>(previewBuilder), false);
         }
         if (applyEnhancements
                 && CameraXUtils.shouldEnablePreviewStabilization(provider, selector)) {
@@ -535,27 +511,16 @@ public class NimarkoCameraXView extends BaseCameraView {
         try {
             
             streamStateObserver = state -> {
+                if (boundCamera != camera || generation != cameraGeneration) return;
                 if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("CXView stream state=" + state
                         + " front=" + frontFacing + " generation=" + generation);
                 if (state == PreviewView.StreamState.STREAMING) {
                     
-                    AndroidUtilities.runOnUIThread(() -> {
-                        if (boundCamera != camera || generation != cameraGeneration) {
-                            return;
+                    if (!cameraControlsReady && pendingPreviewReady == null) {
+                        schedulePreviewReady(boundCamera, generation, applyInitialZoom(boundCamera, generation));
                         }
-                        isStreaming = true;
-                        firstFrameRendered = true;
-                        cameraSwitchInProgress = false;
-                        cameraControlsReady = true;
-                        zoomCoordinator.setReady(boundCamera, generation, true);
-                        applyStableCameraControls(boundCamera, generation);
-                        hideSwitchPlaceholder();
-                        if (previewView.getAlpha() == 0f) {
-                            showTexture(true, true);
-                        }
-                        onFirstFrameRendered();
-                    }, 120L);
                 } else if (state == PreviewView.StreamState.IDLE) {
+                    cancelPendingPreviewReady();
                     cameraControlsReady = false;
                     zoomCoordinator.setReady(boundCamera, generation, false);
                 }
@@ -586,11 +551,9 @@ public class NimarkoCameraXView extends BaseCameraView {
         streamStateObserver = null;
     }
 
-    private void applyStableCameraControls(Camera boundCamera, int generation) {
-        if (boundCamera != camera || generation != cameraGeneration
-                || !cameraControlsReady) {
-            return;
-        }
+    @Nullable
+    private ListenableFuture<Void> applyInitialZoom(Camera boundCamera, int generation) {
+        baseZoomRatio = 1f;
         try {
             androidx.camera.core.ZoomState zoomState =
                     boundCamera.getCameraInfo().getZoomState().getValue();
@@ -598,10 +561,59 @@ public class NimarkoCameraXView extends BaseCameraView {
                     && NimarkoConfig.startFromUltraWideCam
                     && CameraXUtils.isWideAngleAvailable(provider);
             baseZoomRatio = CameraXUtils.getBaseZoomRatio(zoomState, ultraWide);
-            zoomCoordinator.requestZoomRatio(baseZoomRatio);
+            ListenableFuture<Void> future = boundCamera.getCameraControl().setZoomRatio(
+                    zoomCoordinator.getRequestedOr(baseZoomRatio));
+            trackControlFuture(future, boundCamera, generation, "CameraX initial zoom");
+            return future;
         } catch (Throwable error) {
             FileLog.e(error);
         }
+        return null;
+    }
+
+    private void cancelPendingPreviewReady() {
+        if (pendingPreviewReady != null) {
+            AndroidUtilities.cancelRunOnUIThread(pendingPreviewReady);
+            pendingPreviewReady = null;
+        }
+    }
+
+    private void schedulePreviewReady(Camera boundCamera, int generation,
+                                      @Nullable ListenableFuture<Void> initialZoom) {
+        cancelPendingPreviewReady();
+        if (boundCamera != camera || generation != cameraGeneration || cameraControlsReady) return;
+        Runnable ready = () -> {
+            pendingPreviewReady = null;
+            if (boundCamera != camera || generation != cameraGeneration
+                    || previewView.getPreviewStreamState().getValue() != PreviewView.StreamState.STREAMING
+                    || cameraControlsReady || !streamingEnabled) return;
+            isStreaming = true;
+            firstFrameRendered = true;
+            cameraSwitchInProgress = false;
+            cameraControlsReady = true;
+            zoomCoordinator.requestZoomRatio(zoomCoordinator.getRequestedOr(baseZoomRatio));
+            zoomCoordinator.setReady(boundCamera, generation, true);
+            applyStableCameraControls(boundCamera, generation);
+            hideSwitchPlaceholder();
+            if (previewView.getAlpha() == 0f) showTexture(true, true);
+            onFirstFrameRendered();
+        };
+        pendingPreviewReady = ready;
+        boolean waitingForZoom = initialZoom != null && !initialZoom.isDone();
+
+        AndroidUtilities.runOnUIThread(ready, waitingForZoom ? 1500L : 120L);
+        if (waitingForZoom) {
+            initialZoom.addListener(() -> {
+                if (pendingPreviewReady != ready) return;
+                AndroidUtilities.cancelRunOnUIThread(ready);
+                AndroidUtilities.runOnUIThread(ready, 120L);
+            }, ContextCompat.getMainExecutor(getContext()));
+        }
+    }
+
+    private void applyStableCameraControls(Camera boundCamera, int generation) {
+        if (boundCamera != camera || generation != cameraGeneration
+                || !cameraControlsReady) return;
         try {
             ExposureState exposure = boundCamera.getCameraInfo().getExposureState();
             if (exposure != null && exposure.isExposureCompensationSupported()) {
@@ -667,32 +679,8 @@ public class NimarkoCameraXView extends BaseCameraView {
     }
 
     @Nullable
-    private TextureView findPreviewTextureView(View view) {
-        if (view instanceof TextureView) {
-            return (TextureView) view;
-        }
-        if (view instanceof ViewGroup) {
-            ViewGroup group = (ViewGroup) view;
-            for (int i = 0; i < group.getChildCount(); i++) {
-                TextureView texture = findPreviewTextureView(group.getChildAt(i));
-                if (texture != null) return texture;
-            }
-        }
-        return null;
-    }
-
-    @Nullable
     private Bitmap captureTransitionFrame(int maxDimension) {
         try {
-            TextureView texture = findPreviewTextureView(previewView);
-            if (texture != null && texture.isAvailable()
-                    && texture.getWidth() > 0 && texture.getHeight() > 0) {
-                float scale = Math.min(1f, maxDimension
-                        / (float) Math.max(texture.getWidth(), texture.getHeight()));
-                int width = Math.max(1, Math.round(texture.getWidth() * scale));
-                int height = Math.max(1, Math.round(texture.getHeight() * scale));
-                return texture.getBitmap(width, height);
-            }
             Bitmap full = previewView.getBitmap();
             if (full == null || full.getWidth() <= 0 || full.getHeight() <= 0) {
                 return full;
@@ -1026,6 +1014,7 @@ public class NimarkoCameraXView extends BaseCameraView {
     @Override
     public void showTexture(boolean show, boolean animated) {
         if (previewView == null) return;
+        if (show && !cameraControlsReady) return;
         if (textureViewAnimator != null) {
             textureViewAnimator.cancel();
             textureViewAnimator = null;
