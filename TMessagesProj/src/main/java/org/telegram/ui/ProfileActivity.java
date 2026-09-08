@@ -1477,7 +1477,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                 try {
                     bannerForegroundForBackground = Utilities.clamp01(
                             app.nimarkogram.messenger.banners.NimarkoBannerRenderer.getInstance()
-                                    .getForegroundProgress(getDialogId()) * nimarkoBannerTransitionAlpha);
+                                    .getForegroundProgress(TopView.this, getDialogId()) * nimarkoBannerTransitionAlpha);
                 } catch (Throwable ignored) {}
             }
             // Keep the normal profile header fully opaque below the banner while
@@ -1597,17 +1597,16 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                     if (bannerLayer >= 0) {
                         canvas.restoreToCount(bannerLayer);
                     }
-                    float bannerForegroundBase;
-                    if (nimarkoBannerExitTransition) {
-                        // Read the unmodified video/photo foreground first:
-                        // applyProfileExitAlpha multiplies TextureView layers.
-                        bannerForegroundBase = r.getForegroundProgress(getDialogId());
-                        r.applyProfileExitAlpha(getDialogId(), nimarkoBannerTransitionAlpha);
-                    } else {
-                        r.applyVideoFx(bannerExtraHeight, bannerY1, bannerExpand);
-                        bannerForegroundBase = r.getForegroundProgress(getDialogId());
+                    float bannerForegroundBase = r.getForegroundProgress(TopView.this, getDialogId());
+                    if (r.isCurrentProfile(TopView.this, getDialogId())) {
+                        if (nimarkoBannerExitTransition) {
+                            r.applyProfileExitAlpha(getDialogId(), nimarkoBannerTransitionAlpha);
+                        } else {
+                            r.applyVideoFx(bannerExtraHeight, bannerY1, bannerExpand);
+                            bannerForegroundBase = r.getForegroundProgress(TopView.this, getDialogId());
+                        }
+                        r.reassertAvatarFade();
                     }
-                    r.reassertAvatarFade();
                     // Couple all content colours to the same composited opacity
                     // used to paint the banner.  Omitting the morph factor made
                     // cached media fade on one curve while the name/status/badges
@@ -11620,7 +11619,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                             * (1f - mediaHeaderAnimationProgress)));
             try {
                 app.nimarkogram.messenger.banners.NimarkoBannerRenderer.getInstance()
-                        .beginProfileExit(getDialogId());
+                        .beginProfileExit(topView, getDialogId());
             } catch (Throwable ignored) {}
         }
 
@@ -12063,7 +12062,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             if (nimarkoBannerExitTransition) {
                 try {
                     app.nimarkogram.messenger.banners.NimarkoBannerRenderer.getInstance()
-                            .endProfileExit(getDialogId());
+                            .endProfileExit(topView, getDialogId());
                 } catch (Throwable ignored) {}
                 nimarkoBannerExitTransition = false;
             }
