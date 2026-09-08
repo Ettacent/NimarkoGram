@@ -341,7 +341,7 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
             int height = MeasureSpec.getSize(heightMeasureSpec);
             boolean isPortrait = height > width;
             if (wasPortrait != isPortrait && isInPreviewMode()) {
-                finishPreviewFragment();
+                schedulePreviewCloseAfterRotation();
             }
             wasPortrait = isPortrait;
 
@@ -591,6 +591,7 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
     private boolean inBubbleMode;
 
     private boolean inPreviewMode;
+    private BaseFragment previewRotationCloseFragment;
     private boolean previewOpenAnimationInProgress;
     private ColorDrawable previewBackgroundDrawable;
 
@@ -2144,6 +2145,7 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
      * navigation-owned animators without running their completion logic.
      */
     private void cancelNavigationAnimationsForStackReset() {
+        previewRotationCloseFragment = null;
         navigationEpoch++;
 
         // Retire navigation ownership before cancel(). AnimatorSet cancellation
@@ -3366,8 +3368,22 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
         } catch (Exception ignore) {}
     }
 
+    private void schedulePreviewCloseAfterRotation() {
+        final BaseFragment preview = getLastFragment();
+        if (preview == null || previewRotationCloseFragment == preview) return;
+        previewRotationCloseFragment = preview;
+        post(() -> {
+            if (previewRotationCloseFragment != preview) return;
+            previewRotationCloseFragment = null;
+            if (getLastFragment() == preview && isInPreviewMode()) {
+                finishPreviewFragment();
+            }
+        });
+    }
+
     @Override
     public void finishPreviewFragment() {
+        if (onCloseAnimationEndRunnable != null) return;
         if (!inPreviewMode && !transitionAnimationPreviewMode) {
             return;
         }
@@ -3393,7 +3409,7 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
         if (fragment != null && fragment.closeLastFragment()) {
             return;
         }
-        if (delegate != null && !delegate.needCloseLastFragment(this) || animationInProgress || checkTransitionAnimation() || fragmentsStack.isEmpty()) {
+        if (delegate != null && !delegate.needCloseLastFragment(this) || animationInProgress || checkTransitionAnimation() || fragmentsStack.isEmpty() || getLastFragment() != fragment) {
             return;
         }
         if (parentActivity.getCurrentFocus() != null) {
