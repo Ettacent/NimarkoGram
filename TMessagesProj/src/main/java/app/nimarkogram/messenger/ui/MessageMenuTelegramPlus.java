@@ -44,6 +44,8 @@ public final class MessageMenuTelegramPlus {
 
     private static final int MIN_WIDTH_DP = 204;
     private static final int MAX_STAGGERED_ITEMS = 10;
+    public static final int CORNER_RADIUS_DP = 16;
+    public static final int BACKGROUND_PADDING_DP = 8;
 
     private MessageMenuTelegramPlus() {
     }
@@ -530,10 +532,11 @@ public final class MessageMenuTelegramPlus {
         @Override
         protected void onBoundsChange(@NonNull Rect bounds) {
             super.onBoundsChange(bounds);
-            float inset = AndroidUtilities.dp(8) + AndroidUtilities.density * 0.45f;
+            float strokeInset = strokePaint.getStrokeWidth() / 2f;
+            float inset = AndroidUtilities.dp(BACKGROUND_PADDING_DP) + strokeInset;
             glassRect.set(bounds.left + inset, bounds.top + inset,
                     bounds.right - inset, bounds.bottom - inset);
-            float radius = AndroidUtilities.dp(15);
+            float radius = Math.max(0f, AndroidUtilities.dp(CORNER_RADIUS_DP) - strokeInset);
             glassPath.rewind();
             glassPath.addRoundRect(glassRect, radius, radius, Path.Direction.CW);
 
@@ -584,7 +587,7 @@ public final class MessageMenuTelegramPlus {
             canvas.restoreToCount(save);
 
             strokePaint.setAlpha(drawableAlpha);
-            float radius = AndroidUtilities.dp(15);
+            float radius = Math.max(0f, AndroidUtilities.dp(CORNER_RADIUS_DP) - strokePaint.getStrokeWidth() / 2f);
             canvas.drawRoundRect(glassRect, radius, radius, strokePaint);
         }
 
