@@ -9586,7 +9586,13 @@ public class MessageObject {
                         block.directionFlags |= TextLayoutBlock.FLAG_NOT_RTL;
                     }
 
-                    textWidth = Math.max(textWidth, Math.min(width, linesMaxWidth));
+                    int blockWidth = linesMaxWidth;
+                    if (block.quote) {
+                        blockWidth += AndroidUtilities.dp(32);
+                    } else if (block.code) {
+                        blockWidth += AndroidUtilities.dp(15);
+                    }
+                    textWidth = Math.max(textWidth, Math.min(width, blockWidth));
                 }
                 if (block.languageLayout != null) {
                     textWidth = (int) Math.max(textWidth, Math.min(block.languageLayout.getCurrentWidth() + dp(15), block.textLayout == null ? 0 : block.textLayout.getWidth()));

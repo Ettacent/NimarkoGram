@@ -10695,7 +10695,8 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             resumeDelayedFragmentAnimation();
             return;
         }
-        if (fragmentOpened || isFragmentOpened || transitionAnimationInProress || openAnimationInProgress) {
+        if (fragmentOpened || isFragmentOpened || transitionAnimationInProress || openAnimationInProgress
+                || openGifts || openSimilar || openCommonChats) {
             delayedProfileOpenLayoutGeneration++;
             needLayout(false);
             resumeDelayedFragmentAnimation();

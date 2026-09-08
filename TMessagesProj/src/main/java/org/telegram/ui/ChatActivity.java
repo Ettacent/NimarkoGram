@@ -8,6 +8,8 @@
 
 package org.telegram.ui;
 
+import app.nimarkogram.messenger.ui.MessageMenuTelegramPlus;
+
 import static org.telegram.messenger.AndroidUtilities.dp;
 import static org.telegram.messenger.AndroidUtilities.lerp;
 import static org.telegram.messenger.LocaleController.formatPluralStringComma;
@@ -32072,9 +32074,9 @@ public class ChatActivity extends BaseFragment implements
                         .create(popupLayout, true)
                         .setColorProvider(BlurredBackgroundProviderImpl.modernMessageMenuBackground(
                                 themeDelegate, telegramPlusGlassBlur))
-                        .setRadius(dp(16))
+                        .setRadius(dp(MessageMenuTelegramPlus.CORNER_RADIUS_DP))
                         .setThickness(dp(6))
-                        .setPadding(dp(8))
+                        .setPadding(dp(MessageMenuTelegramPlus.BACKGROUND_PADDING_DP))
                         .setHasPadding(true);
                 glassBackground.setIntensity(0.86f);
                 popupLayout.setPopupBackgroundDrawable(glassBackground);
@@ -32087,8 +32089,8 @@ public class ChatActivity extends BaseFragment implements
                 .setColorProvider(telegramPlusMessageMenu
                         ? BlurredBackgroundProviderImpl.messageMenuBackground(resourceProvider)
                         : BlurredBackgroundProviderImpl.opaqueMessageMenuBackground(resourceProvider))
-                .setRadius(dp(12))
-                .setPadding(dp(8)));
+                .setRadius(dp(telegramPlusMessageMenu ? MessageMenuTelegramPlus.CORNER_RADIUS_DP : 12))
+                .setPadding(dp(telegramPlusMessageMenu ? MessageMenuTelegramPlus.BACKGROUND_PADDING_DP : 8)));
 
             boolean addGap = false;
 
