@@ -63,6 +63,8 @@ public class ProfileRatingHarness {
     int playProfileAnimation = 2, transitionIndex;
     boolean allowProfileAnimation = true, openAnimationInProgress = true, isPulledDown = true;
     boolean recreateMenuAfterAnimation, fragmentOpened, invalidateScroll, transitionAnimationInProress = true;
+    boolean openCommonChats;
+    int commonChatsScrolls;
     float currentExpandAnimatorValue = 1, avatarAnimationProgress = 1;
     float customPhotoOffset, lastOnlineTextViewX, lastOnlineTextViewY, density = 1;
     Header ratingView = new Header(), actionsView = new Header(), musicView = new Header();
@@ -75,6 +77,7 @@ public class ProfileRatingHarness {
     void checkPhotoDescriptionAlpha() {}
     void flushPendingProfileRowsUpdate() {}
     void scheduleMusicHeaderAnimation() {}
+    void scrollToCommonChatsAfterOpen() { commonChatsScrolls++; }
     ${signatures.map(signature => method(text, signature)).join('\n')}
 
     float badgeX() {
@@ -137,6 +140,14 @@ public class ProfileRatingHarness {
         absent.sharedMediaLayout = null;
         absent.onTransitionAnimationEnd(true, false);
         equal(1, absent.currentExpandAnimatorValue, "optional views changed expansion state");
+        ProfileRatingHarness common = new ProfileRatingHarness();
+        common.openCommonChats = true;
+        common.onTransitionAnimationEnd(true, false);
+        equal(1, common.commonChatsScrolls, "common groups must scroll after opening");
+        common.onTransitionAnimationEnd(true, true);
+        common.onTransitionAnimationEnd(false, true);
+        equal(1, common.commonChatsScrolls, "return or close must not restart common-groups scroll");
+        equal(0, compact.commonChatsScrolls, "ordinary profile must not scroll to groups");
         System.out.println("PASS: rating XY continuity, densities, visibility animation, custom photo offset, compact/expanded/return/close/null states");
     }
 }

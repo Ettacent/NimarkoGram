@@ -22,6 +22,7 @@ function method(text, signature) {
 assert.equal((reactions.match(/float totalY = getCurrentY\(animationProgress\)/g) || []).length, 2);
 assert(method(cell, 'public void drawReactionsLayout(').includes('areReactionsVisible()'));
 assert(method(cell, 'public boolean drawReactionsLayoutOverlay(').includes('areReactionsVisible()'));
+assert(method(cell, 'public void setVisiblePart(').includes('reactionsViewportInitialized = true;'));
 assert(!qr.includes('0xFF9BC38F'), 'No green placeholder');
 assert(qr.includes('if (!initialBackgroundReady) return;'));
 assert(qr.indexOf('resumeDelayedFragmentAnimation();') < qr.indexOf('Bitmap preparedLogo = null;'));
@@ -43,7 +44,7 @@ public class Regression {
  }
  static class Params { boolean animateChange; float animateChangeProgress; }
  static class Cell {
-  boolean fullyDraw, reactionsVisible; int childPosition, visibleHeight;
+  boolean fullyDraw, reactionsVisible, reactionsViewportInitialized = true; int childPosition, visibleHeight;
   Reactions reactionsLayoutInBubble = new Reactions(); Params transitionParams = new Params();
   ${method(cell, 'private boolean areReactionsVisible(')}
  }
@@ -77,8 +78,46 @@ public class Regression {
   r.isEmpty=true; check(!c.areReactionsVisible());
   r.lastDrawnY=160; r.lastDrawTotalHeight=38; r.outButtons.add(new Object()); check(c.areReactionsVisible());
   c.fullyDraw=true; r.lastDrawnY=900; check(c.areReactionsVisible());
-  c.fullyDraw=false; c.transitionParams.animateChange=false; c.reactionsVisible=true; check(c.areReactionsVisible());
-  c.reactionsVisible=false; check(!c.areReactionsVisible());
+  // The parent can stop updating the viewport as soon as the animator finishes.
+  c.fullyDraw=false; r.isEmpty=false; r.outButtons.clear(); r.height=30; r.totalHeight=38;
+  r.fromY=760; r.y=160; r.animateMove=true;
+  c.childPosition=0; c.visibleHeight=500; c.reactionsVisible=false;
+  c.transitionParams.animateChange=true; c.transitionParams.animateChangeProgress=1f;
+  check(c.areReactionsVisible());
+  c.transitionParams.animateChange=false; r.animateMove=false;
+  if (!c.areReactionsVisible()) throw new AssertionError("Collapsed quote loses reactions on animation handoff");
+  c.reactionsVisible=true; r.y=760;
+  check(!c.areReactionsVisible());
+  c.reactionsViewportInitialized=false;
+  check(c.areReactionsVisible());
+  c.reactionsViewportInitialized=true;
+  c.visibleHeight=0; r.y=160; check(!c.areReactionsVisible());
+  c.fullyDraw=true; check(c.areReactionsVisible());
+  for (int hz : new int[]{60,90,120,144}) for (int direction : new int[]{-1,1})
+   for (int rows : new int[]{1,3,8}) for (int edge : new int[]{-1,0,1,499,500,501}) {
+    Cell end = new Cell(); Reactions er=end.reactionsLayoutInBubble;
+    end.visibleHeight=500; er.y=edge; er.fromY=edge+direction*600;
+    er.height=rows*30; er.totalHeight=er.height+8; er.animateMove=true;
+    end.transitionParams.animateChange=true;
+    for (int i=0;i<=hz;i++) {
+     float p=i/(float)hz; end.transitionParams.animateChangeProgress=p;
+     float y=er.y*p+er.fromY*(1-p);
+     boolean expected=y<=500 && y+er.totalHeight>=0;
+     end.reactionsVisible=!expected;
+     check(end.areReactionsVisible()==expected); checks++;
+    }
+    boolean lastFrame=end.areReactionsVisible();
+    end.transitionParams.animateChange=false; er.animateMove=false;
+    check(end.areReactionsVisible()==lastFrame);
+    for (float interruptedAt : new float[]{0f,0.25f,0.75f}) {
+     end.transitionParams.animateChange=true; er.animateMove=true;
+     end.transitionParams.animateChangeProgress=interruptedAt;
+     end.reactionsVisible=!lastFrame;
+     end.areReactionsVisible();
+     end.transitionParams.animateChange=false; er.animateMove=false;
+     check(end.areReactionsVisible()==lastFrame);
+    }
+   }
   for (boolean colorsFirst : new boolean[]{true,false}) {
    Qr q=new Qr(); check(q.needDelayOpenAnimation());
    if (colorsFirst) q.initialThemeColorsReady=true; else q.openTransitionFinished=true;
@@ -90,7 +129,7 @@ public class Regression {
   Qr q=new Qr(); q.openTransitionFinished=q.initialThemeColorsReady=true;
   q.initialThemeApplied=true; q.selectedPosition=4; q.applyInitialThemeAfterTransition(); check(q.count==0);
   q.initialThemeApplied=false; q.themesViewController=null; q.applyInitialThemeAfterTransition(); check(q.count==0);
-  System.out.println("PASS: " + checks + " animated reaction viewport checks; negative control, overlays, outgoing reactions, QR preparation ordering and stale callbacks");
+  System.out.println("PASS: " + checks + " reaction viewport checks; close/open handoff, cancellation, overlays, outgoing reactions and QR ordering");
  }
 }`;
 fs.writeFileSync(path.join(temp, 'Regression.java'), java);
