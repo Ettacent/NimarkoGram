@@ -1285,11 +1285,12 @@ public class RichMessageLayout {
         return out;
     }
 
-    private void drawBackground(Canvas canvas, ChatMessageCell.TransitionParams tp) {
+    private void drawBackground(Canvas canvas, ChatMessageCell.TransitionParams tp, boolean hasClip, float clipTop, float clipBottom) {
         if (!quotes.isEmpty()) {
             for (QuoteBackground q : quotes) {
                 int quoteTop = getBlockTop(q.startBlockIndex, tp);
                 int quoteBottom = getBlockBottom(q.endBlockIndex, tp);
+                if (hasClip && (quoteBottom < clipTop || quoteTop > clipBottom)) continue;
                 final float scale = getBlockBackgroundScale(q.startBlockIndex, q.endBlockIndex);
                 final int nestedInset = q.level * dp(QUOTE_NEST_VPAD);
                 final int topInset = nestedInset + q.outerTopVpad;
@@ -1312,6 +1313,7 @@ public class RichMessageLayout {
         for (int i = 0; i < blocks.size(); ++i) {
             final RichBlock block = blocks.get(i);
             if (!(block instanceof RichPullquoteBlock) || (!block.currVisible && !block.prevVisible)) continue;
+            if (hasClip && (block.currY + block.currH < clipTop || block.currY > clipBottom)) continue;
             drawPullquoteBackground(canvas, (RichPullquoteBlock) block, tp);
         }
     }
@@ -1371,24 +1373,7 @@ public class RichMessageLayout {
             final RichBlock block = blocks.get(index);
             return Math.round(AndroidUtilities.lerp(block.prevY, block.currY, prog));
         }
-        int y = 0;
-        boolean lastVisible = false;
-        for (int i = 0; i < blocks.size(); ++i) {
-            final RichBlock block = blocks.get(i);
-            final boolean visible = block.isVisible();
-            if (visible && lastVisible) y += getGap();
-            if (i == index) return y;
-            if (visible) {
-                if (tp != null && (detailsAnimating || blockquoteAnimating)) {
-                    final float prog = Math.max(0f, Math.min(1f, tp.animateChangeProgress));
-                    y += AndroidUtilities.lerp(block.prevH, block.currH, prog);
-                } else {
-                    y += block.getHeight();
-                }
-                lastVisible = true;
-            }
-        }
-        return height;
+        return index >= 0 && index < blocks.size() ? Math.round(blocks.get(index).currY) : height;
     }
     private int getBlockBottom(int index, ChatMessageCell.TransitionParams tp) {
         if (index >= 0 && index < blocks.size() && tp != null && (detailsAnimating || blockquoteAnimating)) {
@@ -1399,27 +1384,10 @@ public class RichMessageLayout {
             final float currBottom = block.currY + block.currH - (block.currVisible ? bottomInset : 0);
             return Math.round(AndroidUtilities.lerp(prevBottom, currBottom, prog));
         }
-        int y = 0;
-        boolean lastVisible = false;
-        for (int i = 0; i < blocks.size(); ++i) {
-            final RichBlock block = blocks.get(i);
-            final boolean visible = block.isVisible();
-            if (visible && lastVisible) y += getGap();
-            if (visible) {
-                if (tp != null && (detailsAnimating || blockquoteAnimating)) {
-                    final float prog = Math.max(0f, Math.min(1f, tp.animateChangeProgress));
-                    y += AndroidUtilities.lerp(block.prevH, block.currH, prog);
-                } else {
-                    y += block.getHeight();
-                }
-                if (i == index && block.padding.bottom > dp(4)) {
-                    y -= block.padding.bottom - dp(4);
-                }
-            }
-            if (i == index) return y;
-            if (visible) lastVisible = true;
-        }
-        return height;
+        if (index < 0 || index >= blocks.size()) return height;
+        final RichBlock block = blocks.get(index);
+        final int bottomInset = block.currVisible ? Math.max(0, block.padding.bottom - dp(4)) : 0;
+        return Math.round(block.currY + block.currH - bottomInset);
     }
     private float getBlockBackgroundScale(int start, int end) {
         float result = 1;
@@ -1435,13 +1403,22 @@ public class RichMessageLayout {
 
     public int padLeft;
     public int padRight;
+    private static int viewportBand(int position) {
+        return Math.floorDiv(position, Math.max(1, dp(256)));
+    }
+    public static boolean viewportChanged(int oldTop, int oldHeight, int top, int height) {
+        return oldHeight != height || viewportBand(oldTop) != viewportBand(top)
+                || viewportBand(oldTop + oldHeight) != viewportBand(top + height);
+    }
 
     private void drawInternal(Canvas canvas, ChatMessageCell.TransitionParams tp) {
         float clipTop = 0f, clipBottom = 0f;
-        final boolean hasClip = cell != null && cell.visibleHeight > 0;
+        final boolean hasClip = cell != null && cell.getVisiblePartHeightForDraw() > 0;
         if (hasClip) {
-            clipTop = cell.childPosition - cell.textY;
-            clipBottom = clipTop + cell.visibleHeight;
+            final int position = cell.getVisiblePartPositionForDraw();
+            final int step = Math.max(1, dp(256));
+            clipTop = (viewportBand(position) - 1) * step - cell.textY;
+            clipBottom = (viewportBand(position + cell.getVisiblePartHeightForDraw()) + 2) * step - cell.textY;
         }
         drawInternal(canvas, tp, hasClip, clipTop, clipBottom);
     }
@@ -1465,8 +1442,8 @@ public class RichMessageLayout {
     }
 
     private void drawInternal(Canvas canvas, ChatMessageCell.TransitionParams tp, boolean hasClip, float clipTop, float clipBottom) {
-        drawBackground(canvas, tp);
         updateTranslationLoading();
+        final boolean wasAnimating = detailsAnimating || blockquoteAnimating;
 
         final float prog = (tp != null && (detailsAnimating || blockquoteAnimating)) ? Math.max(0f, Math.min(1f, tp.animateChangeProgress)) : 1f;
         detailsAnimationProgress = prog;
@@ -1477,6 +1454,11 @@ public class RichMessageLayout {
         if (detailsAnimating || blockquoteAnimating) {
             hasClip = false;
         }
+        canvas.save();
+        if (hasClip) {
+            canvas.clipRect(-padLeft - dp(32), clipTop, getMinWidth() + padRight + dp(32), clipBottom);
+        }
+        drawBackground(canvas, tp, hasClip, clipTop, clipBottom);
 
         final boolean clipDetails = detailsAnimating && prog < 1f;
         if (clipDetails) computeDetailsClips(prog);
@@ -1519,7 +1501,8 @@ public class RichMessageLayout {
             canvas.restore();
         }
 
-        if (prog >= 1f) snapshotForDetailsAnimation();
+        canvas.restore();
+        if (wasAnimating && prog >= 1f) snapshotForDetailsAnimation();
     }
 
     private void computeDetailsClips(float prog) {

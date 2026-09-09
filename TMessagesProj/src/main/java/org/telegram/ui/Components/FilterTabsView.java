@@ -138,6 +138,9 @@ public class FilterTabsView extends FrameLayout {
             this.noanimate = noanimate;
             this.emoticon = (emoticon != null ? emoticon : "");
         }
+        public String getIconEmoticon() {
+            return isDefault ? "💬" : emoticon;
+        }
 
         public int getWidth(boolean store) {
             iconWidth = app.nimarkogram.messenger.preferences.folders.helpers.FolderIconHelper.getTotalIconWidth();
@@ -271,7 +274,7 @@ public class FilterTabsView extends FrameLayout {
                 return;
             }
 
-            final String wantedEmoticon = currentTab.isDefault ? "💬" : currentTab.emoticon;
+            final String wantedEmoticon = currentTab.getIconEmoticon();
             if (TextUtils.equals(wantedEmoticon, currentEmoticon) && icon != null) {
                 return;
             }
@@ -847,11 +850,11 @@ public class FilterTabsView extends FrameLayout {
                     changed = true;
                 }
 
-                if (currentTab != null && lastEmoticon != null && !currentTab.emoticon.equals(lastEmoticon)) {
+                if (currentTab != null && lastEmoticon != null && !TextUtils.equals(currentTab.getIconEmoticon(), lastEmoticon)) {
                     int emoticonWidth = app.nimarkogram.messenger.preferences.folders.helpers.FolderIconHelper.getIconWidth();
                     android.graphics.Rect bounds = new android.graphics.Rect(0, 0, emoticonWidth, emoticonWidth);
                     iconAnimateOutDrawable = androidx.core.content.ContextCompat.getDrawable(getContext(), app.nimarkogram.messenger.preferences.folders.helpers.FolderIconHelper.getTabIcon(lastEmoticon)).mutate();
-                    iconAnimateInDrawable = androidx.core.content.ContextCompat.getDrawable(getContext(), app.nimarkogram.messenger.preferences.folders.helpers.FolderIconHelper.getTabIcon(currentTab.emoticon)).mutate();
+                    iconAnimateInDrawable = androidx.core.content.ContextCompat.getDrawable(getContext(), app.nimarkogram.messenger.preferences.folders.helpers.FolderIconHelper.getTabIcon(currentTab.getIconEmoticon())).mutate();
                     iconAnimateOutDrawable.setBounds(bounds);
                     iconAnimateInDrawable.setBounds(bounds);
                     iconAnimateOutDrawable.setTint(textPaint.getColor());

@@ -526,7 +526,7 @@ public class ReactionsLayoutInBubble {
                 alpha = animationProgress;
                 canvas.scale(s, s, totalX + x + reactionButton.width / 2f, totalY + y + reactionButton.height / 2f);
             }
-            needsInvalidate = needsInvalidate || reactionButton.drawOverlay(canvas, totalX + x, totalY + y, reactionButton.animationType == ANIMATION_TYPE_MOVE ? animationProgress : 1f, alpha, false);
+            needsInvalidate = reactionButton.drawOverlay(canvas, totalX + x, totalY + y, reactionButton.animationType == ANIMATION_TYPE_MOVE ? animationProgress : 1f, alpha, false) || needsInvalidate;
             canvas.restore();
         }
         for (int i = 0; i < outButtons.size(); i++) {
@@ -535,7 +535,7 @@ public class ReactionsLayoutInBubble {
             float s = 0.5f + 0.5f * (1f - animationProgress);
             canvas.save();
             canvas.scale(s, s, totalX + reactionButton.x + reactionButton.width / 2f, totalY + reactionButton.y + reactionButton.height / 2f);
-            needsInvalidate = needsInvalidate || outButtons.get(i).drawOverlay(canvas, totalX + reactionButton.x, totalY + reactionButton.y, 1f, (1f - animationProgress), false);
+            needsInvalidate = reactionButton.drawOverlay(canvas, totalX + reactionButton.x, totalY + reactionButton.y, 1f, (1f - animationProgress), false) || needsInvalidate;
             canvas.restore();
         }
         return needsInvalidate;
@@ -989,17 +989,23 @@ public class ReactionsLayoutInBubble {
         }
 
         public boolean drawOverlay(Canvas canvas, float x, float y, float progress, float alpha, boolean drawOverlayScrim) {
-            if (particles == null) return false;
+            if (particles == null || alpha <= 0f) return false;
             if (!LiteMode.isEnabled(LiteMode.FLAG_ANIMATED_EMOJI_REACTIONS) || !LiteMode.isEnabled(LiteMode.FLAG_PARTICLES)) return false;
 
-            AndroidUtilities.rectTmp.set(x, y, x + width, y + height);
+            final float drawnWidth = animationType == ANIMATION_TYPE_MOVE
+                    ? width * progress + animateFromWidth * (1f - progress) : width;
+            final int save = canvas.save();
+            canvas.translate(x, y);
+            final float bounceScale = bounce.getScale(0.1f);
+            canvas.scale(bounceScale, bounceScale, drawnWidth / 2f, height / 2f);
+            AndroidUtilities.rectTmp.set(0, 0, drawnWidth, height);
             float rad = height / 2f;
 
             particles.bounds.set(AndroidUtilities.rectTmp);
             particles.bounds.inset(-dp(4), -dp(4));
             particles.setBounds(particles.bounds);
             final boolean needsPostInvalidate = particles.process();
-            particles.draw(canvas, ColorUtils.blendARGB(ColorUtils.setAlphaComponent(backgroundColor, 0xFF), ColorUtils.blendARGB(serviceTextColor, ColorUtils.setAlphaComponent(backgroundColor, 0xFF), .4f), getDrawServiceShaderBackground()));
+            particles.draw(canvas, ColorUtils.blendARGB(ColorUtils.setAlphaComponent(backgroundColor, 0xFF), ColorUtils.blendARGB(serviceTextColor, ColorUtils.setAlphaComponent(backgroundColor, 0xFF), .4f), getDrawServiceShaderBackground()), alpha);
 
             if (isSelected) {
                 tagPath.rewind();
@@ -1007,9 +1013,10 @@ public class ReactionsLayoutInBubble {
 
                 canvas.save();
                 canvas.clipPath(tagPath);
-                particles.draw(canvas, textColor);
+                particles.draw(canvas, textColor, alpha);
                 canvas.restore();
             }
+            canvas.restoreToCount(save);
 
             return needsPostInvalidate;
         }

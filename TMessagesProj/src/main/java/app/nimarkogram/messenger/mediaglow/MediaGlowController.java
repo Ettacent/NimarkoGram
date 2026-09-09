@@ -5,8 +5,6 @@ import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.LinearGradient;
 import android.graphics.Paint;
-import android.graphics.PorterDuff;
-import android.graphics.PorterDuffXfermode;
 import android.graphics.Rect;
 import android.graphics.RectF;
 import android.graphics.Shader;
@@ -43,7 +41,6 @@ public final class MediaGlowController {
     private static final long CLOSE_FADE_MS = 280L;      
     private static final int[] RETRY_DELAYS = {0, 120, 350}; 
     private static final DispatchQueue queue = new DispatchQueue("nimarko-media-glow");
-    private static final PorterDuffXfermode ADD_XFERMODE = new PorterDuffXfermode(PorterDuff.Mode.ADD);
     private static final Handler mainHandler = new Handler(Looper.getMainLooper());
 
     private static volatile MediaGlowController instance;
@@ -342,13 +339,13 @@ public final class MediaGlowController {
             int cw = canvas.getWidth(), ch = canvas.getHeight();
             if (cw <= 0 || ch <= 0) return;
             float a = strengthAlpha() * (darkTheme ? 0.85f : 1f) * closeDismiss;
+            float currentAlpha = a * mediaAlpha(currentIsVideo) * closeTransitionProgress;
             boolean hasPrevious = previous != null && !previous.isRecycled() && closeTransitionProgress < 1f;
             if (hasPrevious) {
                 drawCloseCover(canvas, previous, cw, ch,
-                        a * mediaAlpha(previousIsVideo) * (1f - closeTransitionProgress), true, false);
+                        previousLayerAlpha(a * mediaAlpha(previousIsVideo) * (1f - closeTransitionProgress), currentAlpha), true);
             }
-            drawCloseCover(canvas, current, cw, ch,
-                    a * mediaAlpha(currentIsVideo) * closeTransitionProgress, false, hasPrevious);
+            drawCloseCover(canvas, current, cw, ch, currentAlpha, false);
             return;   
         }
         if (!active) return;
@@ -373,12 +370,12 @@ public final class MediaGlowController {
             progress = transitionProgress(now);
         }
         boolean hasPrevious = previous != null && !previous.isRecycled() && progress < 1f;
+        float currentAlpha = baseAlpha * mediaAlpha(currentIsVideo) * (fadeStartedAt != 0 ? progress : 1f);
         if (hasPrevious) {
             drawCover(canvas, previous, w, h,
-                    baseAlpha * mediaAlpha(previousIsVideo) * (1f - progress), false);
+                    previousLayerAlpha(baseAlpha * mediaAlpha(previousIsVideo) * (1f - progress), currentAlpha));
         }
-        drawCover(canvas, current, w, h,
-                baseAlpha * mediaAlpha(currentIsVideo) * (fadeStartedAt != 0 ? progress : 1f), hasPrevious);
+        drawCover(canvas, current, w, h, currentAlpha);
 
         if (progress < 1f) {
             requestFrame(container);
@@ -391,7 +388,10 @@ public final class MediaGlowController {
         }
     }
 
-    private void drawCover(Canvas canvas, Bitmap bmp, int w, int h, float alpha, boolean additive) {
+    private static float previousLayerAlpha(float previousAlpha, float currentAlpha) {
+        return currentAlpha >= 1f ? 0f : Math.max(0f, Math.min(1f, previousAlpha / (1f - currentAlpha)));
+    }
+    private void drawCover(Canvas canvas, Bitmap bmp, int w, int h, float alpha) {
         if (bmp == null || bmp.isRecycled()) return;
         int bw = bmp.getWidth(), bh = bmp.getHeight();
         if (bw <= 0 || bh <= 0 || alpha <= 0f) return;
@@ -404,13 +404,11 @@ public final class MediaGlowController {
         coverPaint.setFilterBitmap(true);
         coverPaint.setAlpha(Math.max(0, Math.min(255, (int) (255 * alpha))));
         
-        coverPaint.setXfermode(additive ? ADD_XFERMODE : null);
         canvas.drawBitmap(bmp, srcRect, dstRect, coverPaint);
-        coverPaint.setXfermode(null);
     }
 
     private void drawCloseCover(Canvas canvas, Bitmap bmp, int w, int h, float alpha,
-                                boolean oldLayer, boolean additive) {
+                                boolean oldLayer) {
         if (bmp == null || bmp.isRecycled() || alpha <= 0f) return;
         int bw = bmp.getWidth(), bh = bmp.getHeight();
         if (bw <= 0 || bh <= 0) return;
@@ -426,9 +424,7 @@ public final class MediaGlowController {
         }
         coverPaint.setFilterBitmap(true);
         coverPaint.setAlpha(Math.max(0, Math.min(255, (int) (255 * alpha))));
-        coverPaint.setXfermode(additive ? ADD_XFERMODE : null);
         canvas.drawBitmap(bmp, srcRect, dstRect, coverPaint);
-        coverPaint.setXfermode(null);
     }
 
     private void prepareCloseGeometry(Bitmap bmp, int w, int h, boolean oldLayer) {

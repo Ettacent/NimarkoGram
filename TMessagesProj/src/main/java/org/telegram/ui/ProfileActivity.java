@@ -112,6 +112,7 @@ import androidx.core.graphics.ColorUtils;
 import androidx.core.math.MathUtils;
 import androidx.core.view.NestedScrollingParent3;
 import androidx.core.view.NestedScrollingParentHelper;
+import androidx.core.view.OneShotPreDrawListener;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
 import androidx.interpolator.view.animation.FastOutSlowInInterpolator;
@@ -5541,7 +5542,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             }
         });
 
-        if (openSimilar || openGifts || openCommonChats) {
+        if (openSimilar || openGifts) {
             updateRowsIds();
             scrollToSharedMedia();
             savedScrollToSharedMedia = true;
@@ -10696,7 +10697,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             return;
         }
         if (fragmentOpened || isFragmentOpened || transitionAnimationInProress || openAnimationInProgress
-                || openGifts || openSimilar || openCommonChats) {
+                || openGifts || openSimilar) {
             delayedProfileOpenLayoutGeneration++;
             needLayout(false);
             resumeDelayedFragmentAnimation();
@@ -11053,7 +11054,21 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                 sharedMediaLayout.onProfileTransitionFinished();
             }
             scheduleMusicHeaderAnimation();
+            if (!backward && openCommonChats) {
+                scrollToCommonChatsAfterOpen();
+            }
         }
+    }
+    private void scrollToCommonChatsAfterOpen() {
+        if (listView == null || profileLifecycleDestroyed) return;
+        final RecyclerListView openedList = listView;
+        OneShotPreDrawListener.add(openedList, () -> {
+            if (!profileLifecycleDestroyed && !isPaused && isFragmentOpened
+                    && listView == openedList && layoutManager != null) {
+                scrollToSharedMedia(true);
+            }
+        });
+        openedList.invalidate();
     }
 
     @Keep

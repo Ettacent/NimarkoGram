@@ -4490,8 +4490,7 @@ public class ChatActivityEnterView extends FrameLayout implements
             // slot has collapsed, while the send control keeps its own island.
             final int sideInset = dp(ChatInputViewsContainer.SEPARATED_COMPOSER_SIDE_SIZE
                     + ChatInputViewsContainer.SEPARATED_COMPOSER_GAP);
-            params.leftMargin = Math.round(sideInset
-                    * (1f - recordDraftTransitionProgress));
+            params.leftMargin = sideInset;
             params.rightMargin = sideInset;
         }
         reparentComposerControl(recordedAudioPanel, destination, params);
@@ -8035,16 +8034,19 @@ public class ChatActivityEnterView extends FrameLayout implements
                     controlsView.hideHintView();
                 }
                 exitAnimation.playTogether(animators);
-                if (emojiButtonPaddingAlpha == 1f) {
+                if (!separatedComposerLayout && emojiButtonPaddingAlpha == 1f) {
                     exitAnimation.playTogether(ObjectAnimator.ofFloat(messageEditText, View.ALPHA, 1f));
-                } else {
+                } else if (!separatedComposerLayout) {
                     ObjectAnimator messageEditTextAniamtor = ObjectAnimator.ofFloat(messageEditText, View.ALPHA, 1);
                     messageEditTextAniamtor.setStartDelay(750);
                     messageEditTextAniamtor.setDuration(200);
                     exitAnimation.playTogether(messageEditTextAniamtor);
                 }
             } else {
-                if (messageEditText != null && emojiButtonPaddingAlpha == 1f) {
+                if (separatedComposerLayout) {
+                    messageTextTranslationX = 0;
+                    updateMessageTextParams();
+                } else if (messageEditText != null && emojiButtonPaddingAlpha == 1f) {
                     messageEditText.setAlpha(1f);
                     messageTextTranslationX = 0;
                     updateMessageTextParams();
@@ -8126,6 +8128,13 @@ public class ChatActivityEnterView extends FrameLayout implements
             iconsEndAnimator.setStartDelay(600);
 
             recordPannelAnimation = new AnimatorSet();
+            if (separatedComposerLayout && messageEditText != null) {
+                messageEditText.setAlpha(0f);
+                ObjectAnimator restoreText = ObjectAnimator.ofFloat(messageEditText, View.ALPHA, 1f);
+                restoreText.setStartDelay(getRecordTextRestoreDelay(iconsEndAnimator, 750));
+                restoreText.setDuration(200);
+                recordPannelAnimation.playTogether(restoreText);
+            }
             if (attachIconAnimator != null) {
                 recordPannelAnimation.playTogether(
                         exitAnimation,
@@ -9835,7 +9844,10 @@ public class ChatActivityEnterView extends FrameLayout implements
     }
 
     private int lastAttachVisible;
-    private float recordDraftTransitionProgress;
+    private long getRecordTextRestoreDelay(Animator disappearingIcon, long standardDelay) {
+        return separatedComposerLayout
+                ? disappearingIcon.getStartDelay() + disappearingIcon.getDuration() : standardDelay;
+    }
 
     /**
      * The prepared-recording panel and the glass use the same animated left
@@ -9850,8 +9862,7 @@ public class ChatActivityEnterView extends FrameLayout implements
                 (FrameLayout.LayoutParams) recordedAudioPanel.getLayoutParams();
         final int sideInset = dp(ChatInputViewsContainer.SEPARATED_COMPOSER_SIDE_SIZE
                 + ChatInputViewsContainer.SEPARATED_COMPOSER_GAP);
-        final int leftMargin = separatedComposerLayout
-                ? Math.round(sideInset * (1f - recordDraftTransitionProgress)) : 0;
+        final int leftMargin = separatedComposerLayout ? sideInset : 0;
         final int rightMargin = separatedComposerLayout
                 ? sideInset
                 : editingMessageObject == null
@@ -9861,6 +9872,27 @@ public class ChatActivityEnterView extends FrameLayout implements
             params.rightMargin = rightMargin;
             recordedAudioPanel.setLayoutParams(params);
         }
+    }
+    private int getSeparatedComposerTextRightMargin(int attachVisible) {
+        int margin = dp(50);
+        if (attachLayout == null || (attachVisible != 1 && attachVisible != 2)) {
+            return margin;
+        }
+        int controlsWidth = attachLayout.getPaddingLeft() + attachLayout.getPaddingRight();
+        for (int i = 0; i < attachLayout.getChildCount(); i++) {
+            View child = attachLayout.getChildAt(i);
+            if (child.getVisibility() == GONE) {
+                continue;
+            }
+            ViewGroup.LayoutParams params = child.getLayoutParams();
+            controlsWidth += params.width >= 0 ? params.width : child.getMeasuredWidth();
+            if (params instanceof ViewGroup.MarginLayoutParams) {
+                ViewGroup.MarginLayoutParams margins = (ViewGroup.MarginLayoutParams) params;
+                controlsWidth += margins.leftMargin + margins.rightMargin;
+            }
+        }
+        ViewGroup.MarginLayoutParams params = (ViewGroup.MarginLayoutParams) attachLayout.getLayoutParams();
+        return Math.max(margin, controlsWidth + params.rightMargin + dp(6));
     }
 
     private void updateFieldRight(int attachVisible) {
@@ -9901,7 +9933,8 @@ public class ChatActivityEnterView extends FrameLayout implements
         // owns the trailing slot inside the center pill. Attachment visibility
         // is unrelated now, so reserve this slot even while Send is shown.
         if (separatedComposerLayout) {
-            layoutParams.rightMargin = Math.max(layoutParams.rightMargin, dp(50));
+            layoutParams.rightMargin = Math.max(layoutParams.rightMargin,
+                    getSeparatedComposerTextRightMargin(attachVisible));
         }
         // ChatActivity can keep the paperclip inside Telegram's standard
         // composer while Send is visible. In that mode checkSendButton passes
@@ -10736,7 +10769,8 @@ public class ChatActivityEnterView extends FrameLayout implements
                 updateMessageTextParams();
 
                 ObjectAnimator messageEditTextAniamtor = ObjectAnimator.ofFloat(messageEditText, View.ALPHA, 1);
-                messageEditTextAniamtor.setStartDelay(emojiButtonPaddingAlpha == 1f ? 300 : 700);
+                messageEditTextAniamtor.setStartDelay(getRecordTextRestoreDelay(iconsAnimator,
+                        emojiButtonPaddingAlpha == 1f ? 300 : 700));
                 messageEditTextAniamtor.setDuration(200);
 
                 runningAnimationAudio.playTogether(
@@ -10851,6 +10885,10 @@ public class ChatActivityEnterView extends FrameLayout implements
                 @Override
                 public void onAnimationEnd(Animator animator) {
                     if (animator.equals(runningAnimationAudio)) {
+                        if (separatedComposerLayout && !recordingAudioVideo && messageEditText != null
+                                && (recordState == RECORD_STATE_CANCEL || recordState == RECORD_STATE_CANCEL_BY_GESTURE)) {
+                            messageEditText.setAlpha(1f);
+                        }
                         if (recordState != RECORD_STATE_PREPARING && messageEditText != null && !AndroidUtilities.isAccessibilityScreenReaderEnabled()) {
                             messageEditText.requestFocus();
                         }
@@ -10905,7 +10943,6 @@ public class ChatActivityEnterView extends FrameLayout implements
     }
 
     protected void onRecordDraftTransitionProgress(float progress) {
-        recordDraftTransitionProgress = Math.max(0f, Math.min(1f, progress));
         applyRecordedAudioPanelTransitionGeometry();
     }
 

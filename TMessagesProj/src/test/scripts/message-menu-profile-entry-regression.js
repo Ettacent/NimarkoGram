@@ -48,11 +48,10 @@ const java = `public class ProfileEntry {
     }
     static void check(boolean value) { if (!value) throw new AssertionError(); }
     public static void main(String[] args) {
-        for (int destination = 1; destination <= 3; destination++) {
+        for (int destination = 1; destination <= 2; destination++) {
             ProfileEntry p = new ProfileEntry();
             p.openGifts = destination == 1;
             p.openSimilar = destination == 2;
-            p.openCommonChats = destination == 3;
             for (int event = 0; event < 5; event++) p.resumeDelayedFragmentAnimationAfterLayout();
             check(p.position == 9 && p.resets == 0 && p.resumes == 5 && p.layouts == 5);
             check(p.delayedProfileOpenLayoutGeneration == 5);
@@ -60,6 +59,10 @@ const java = `public class ProfileEntry {
         ProfileEntry regular = new ProfileEntry();
         regular.resumeDelayedFragmentAnimationAfterLayout();
         check(regular.resets == 1 && regular.position == 0);
+        ProfileEntry common = new ProfileEntry();
+        common.openCommonChats = true;
+        common.resumeDelayedFragmentAnimationAfterLayout();
+        check(common.resets == 1 && common.position == 0 && common.openCommonChats);
         ProfileEntry destroyed = new ProfileEntry();
         destroyed.profileLifecycleDestroyed = true;
         destroyed.resumeDelayedFragmentAnimationAfterLayout();
@@ -78,7 +81,7 @@ const java = `public class ProfileEntry {
 fs.writeFileSync(path.join(directory, 'ProfileEntry.java'), java);
 cp.execFileSync('javac', ['ProfileEntry.java'], { cwd: directory, stdio: 'inherit' });
 cp.execFileSync('java', ['ProfileEntry'], { cwd: directory, stdio: 'inherit' });
-const old = java.replace('|| openGifts || openSimilar || openCommonChats', '');
+const old = java.replace('|| openGifts || openSimilar', '');
 assert.notEqual(old, java);
 fs.writeFileSync(path.join(directory, 'ProfileEntry.java'), old);
 cp.execFileSync('javac', ['ProfileEntry.java'], { cwd: directory, stdio: 'inherit' });

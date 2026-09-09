@@ -1479,6 +1479,7 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
     private boolean pollVisiblePartCalculated;
     public float resultsPollButtonOffset;
     private boolean reactionsVisible = true;
+    private boolean reactionsViewportInitialized;
     private boolean pollVoted;
     private boolean pollAllowAdding;
     private boolean pollInInputNewOption;
@@ -5989,6 +5990,9 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
         int blurredViewBottomOffset,
         int position2
     ) {
+        reactionsViewportInitialized = true;
+        final boolean richViewportChanged = currentMessageObject != null && currentMessageObject.richLayout != null
+                && RichMessageLayout.viewportChanged(childPosition, visibleHeight, position, height);
         this.childPosition = position;
         this.visibleHeight = height;
         this.visibleParent = parent;
@@ -6077,7 +6081,7 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
                     break;
                 }
             }
-            if (firstVisibleRichBlock != newFirst || lastVisibleRichBlock != newLast) {
+            if (richViewportChanged || firstVisibleRichBlock != newFirst || lastVisibleRichBlock != newLast) {
                 firstVisibleRichBlock = newFirst;
                 lastVisibleRichBlock = newLast;
                 invalidate();
@@ -24117,10 +24121,9 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
     }
 
     private boolean areReactionsVisible() {
-        return fullyDraw || (transitionParams.animateChange
-                ? reactionsLayoutInBubble.isVisible(childPosition, childPosition + visibleHeight,
-                        transitionParams.animateChangeProgress)
-                : reactionsVisible);
+        return fullyDraw || !reactionsViewportInitialized
+                || reactionsLayoutInBubble.isVisible(childPosition, childPosition + visibleHeight,
+                        transitionParams.animateChange ? transitionParams.animateChangeProgress : 1f);
     }
 
     public void drawReactionsLayout(Canvas canvas, float alpha, Integer only) {
