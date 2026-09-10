@@ -376,7 +376,10 @@ public class StoryViewer implements NotificationCenter.NotificationCenterDelegat
         cancelOpenCloseAnimator();
         acquireBannerOverlay();
         setSpeed(1f);
-        ATTACH_TO_FRAGMENT = !AndroidUtilities.isTablet() && !fromBottomSheet;
+        BaseFragment fragment = LaunchActivity.getLastFragment();
+        ATTACH_TO_FRAGMENT = !AndroidUtilities.isTablet() && !fromBottomSheet
+                && fragment != null && fragment.getLayoutContainer() != null
+                && !fragment.isSupportEdgeToEdge();
         USE_SURFACE_VIEW = SharedConfig.useSurfaceInStories && ATTACH_TO_FRAGMENT;
         messageId = storyItem == null ? 0 : storyItem.messageId;
         isSingleStory = storyItem != null && storiesList == null && userStories == null;
@@ -423,7 +426,6 @@ public class StoryViewer implements NotificationCenter.NotificationCenterDelegat
         isClosed = false;
         unreadStateChanged = false;
 
-        BaseFragment fragment = LaunchActivity.getLastFragment();
         if (windowView == null) {
             gestureDetector = new GestureDetector(new GestureDetector.OnGestureListener() {
                 @Override
@@ -1690,23 +1692,6 @@ public class StoryViewer implements NotificationCenter.NotificationCenterDelegat
             });
             containerView.addView(storiesViewPager, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT, Gravity.CENTER_HORIZONTAL));
             aspectRatioFrameLayout = new AspectRatioFrameLayout(context);
-            if (USE_SURFACE_VIEW) {
-                surfaceView = new SurfaceView(context);
-                surfaceView.setZOrderMediaOverlay(false);
-                surfaceView.setZOrderOnTop(false);
-                aspectRatioFrameLayout.addView(surfaceView);
-            } else {
-                textureView = new HwTextureView(context) {
-                    @Override
-                    public void invalidate() {
-                        super.invalidate();
-                        if (currentPlayerScope != null) {
-                            currentPlayerScope.invalidate();
-                        }
-                    }
-                };
-                aspectRatioFrameLayout.addView(textureView);
-            }
 
             liveView = new LivePlayerView(context, currentAccount, false);
             liveView.setVisibility(View.GONE);
@@ -1715,6 +1700,7 @@ public class StoryViewer implements NotificationCenter.NotificationCenterDelegat
             volumeControl = new StoriesVolumeControl(context);
             containerView.addView(volumeControl, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT, 0, 4, 0, 4, 0));
         }
+        ensureVideoOutput(context);
         if (liveView != null) {
             liveView.setAccount(currentAccount);
         }
@@ -1738,9 +1724,6 @@ public class StoryViewer implements NotificationCenter.NotificationCenterDelegat
         }
 
         windowManager = (WindowManager) context.getSystemService(Context.WINDOW_SERVICE);
-        if (fragment == null || fragment.getLayoutContainer() == null || fragment.isSupportEdgeToEdge()) {
-            ATTACH_TO_FRAGMENT = false;
-        }
         ATTACHED_FRAGMENT_IS_EDGE_TO_EDGE = ATTACH_TO_FRAGMENT && fragment != null && fragment.isSupportEdgeToEdge();
         ViewCompat.setOnApplyWindowInsetsListener(containerView, (v, insets) -> {
             final Insets i = AndroidUtilities.getDefaultWindowInsets(insets, false);
@@ -2277,6 +2260,36 @@ public class StoryViewer implements NotificationCenter.NotificationCenterDelegat
             storiesIntro != null ||
             ATTACH_TO_FRAGMENT && fragment != null && fragment.getLastStoryViewer() != this
         );
+    }
+    private void ensureVideoOutput(Context context) {
+        if (USE_SURFACE_VIEW ? surfaceView != null : textureView != null) {
+            return;
+        }
+        if (surfaceView != null) {
+            AndroidUtilities.removeFromParent(surfaceView);
+            surfaceView = null;
+        }
+        if (textureView != null) {
+            AndroidUtilities.removeFromParent(textureView);
+            textureView = null;
+        }
+        if (USE_SURFACE_VIEW) {
+            surfaceView = new SurfaceView(context);
+            surfaceView.setZOrderMediaOverlay(false);
+            surfaceView.setZOrderOnTop(false);
+            aspectRatioFrameLayout.addView(surfaceView, 0);
+        } else {
+            textureView = new HwTextureView(context) {
+                @Override
+                public void invalidate() {
+                    super.invalidate();
+                    if (currentPlayerScope != null) {
+                        currentPlayerScope.invalidate();
+                    }
+                }
+            };
+            aspectRatioFrameLayout.addView(textureView, 0);
+        }
     }
 
     public void updatePlayingMode() {

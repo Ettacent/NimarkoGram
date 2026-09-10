@@ -48408,7 +48408,7 @@ public class ChatActivity extends BaseFragment implements
         }
         floatingDateView.setTranslationX(getSideMenuWidth() / 2f);
         floatingDateView.setTranslationY(chatListView.getY() - floatingDateView.getTop()
-                + chatListViewPaddingTop - dp(4));
+                + chatListViewPaddingTop);
         floatingDateView.invalidate();
     }
 
