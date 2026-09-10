@@ -1939,6 +1939,8 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
                 try {
                     if (!ensurePineReady()) {
                         FileLog.w("nimarko: Pine unavailable; Python starts with method hooks disabled");
+                    } else {
+                        app.nimarkogram.messenger.plugins.utils.PluginDexTracking.install();
                     }
                 } catch (Throwable pineError) {
                     FileLog.e("nimarko: optional Pine initialization failed; continuing without hooks", pineError);
@@ -2973,11 +2975,11 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
             boolean cleanupSucceeded = false;
             try {
                 try {
-            if (runtimeScopeEntered) {
-                getPluginsController().exitPluginRuntime(runtimeToken);
-            }
+                    if (runtimeScopeEntered) {
+                        getPluginsController().exitPluginRuntime(runtimeToken);
+                    }
                 } finally {
-            getPluginsController().endPluginInitialization(str, enableGeneration);
+                    getPluginsController().endPluginInitialization(str, enableGeneration);
                 }
                 cleanupSucceeded = true;
             } catch (RuntimeException | Error cleanupFailure) {

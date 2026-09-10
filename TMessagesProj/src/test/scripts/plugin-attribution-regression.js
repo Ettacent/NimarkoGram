@@ -43,6 +43,7 @@ const members = [
     'public PluginsWatchdog(PluginsController controller)',
     'public static String findCrashingPlugin(',
     'public static Plugin getKnownPlugin(',
+    'public static String currentExecutingPluginId(',
     'private void tick()',
     'public static final class ExecutionInfo',
     'private static final class CrashSnapshot',
@@ -67,12 +68,19 @@ public class PluginAttributionHarness {
         static {
             if (!controllerInitializationAllowed) throw new AssertionError("Lazy controller initialization");
         }
-        static class PluginRuntimeToken {}
+        static class PluginRuntimeToken {
+            String getPluginId() { return "initializing-plugin"; }
+        }
+        PluginRuntimeToken runtime;
         final Map<String, Plugin> plugins = new ConcurrentHashMap<>();
-        PluginRuntimeToken captureCurrentPluginRuntime() { return null; }
+        PluginRuntimeToken captureCurrentPluginRuntime() { return runtime; }
         boolean isPluginRuntimeExecuting(PluginRuntimeToken token) { return true; }
     }
     static class Plugin { void setNotResponding(boolean value) {} }
+    static class PluginDexTracking {
+        static final Map<Throwable, String> origins = new IdentityHashMap<>();
+        static String findOwner(Throwable error) { return origins.get(error); }
+    }
     static class SystemClock { static long now; static long elapsedRealtime() { return now; } }
     static class AlertDialog {}
     static class AndroidUtilities { static void runOnUIThread(Runnable task) { task.run(); } }
@@ -117,6 +125,7 @@ public class PluginAttributionHarness {
     }
     static PluginsWatchdog fresh() {
         PluginCrashReports.reset();
+        PluginDexTracking.origins.clear();
         return new PluginsWatchdog(new PluginsController());
     }
     static void owner(PluginsWatchdog w, Throwable error, String expected, String message) {
@@ -340,6 +349,27 @@ public class PluginAttributionHarness {
         eq(0, w.executingPlugins.size(), "concurrent callbacks balance");
     }
 
+    static void asynchronousDex() {
+        PluginsWatchdog w = fresh();
+        w.controller.runtime = new PluginsController.PluginRuntimeToken();
+        eq("initializing-plugin", PluginsWatchdog.currentExecutingPluginId(), "import scope before callback tracking");
+        w.controller.runtime = null;
+        w.onPluginExecutionStarted("dex-plugin");
+        eq("dex-plugin", PluginsWatchdog.currentExecutingPluginId(), "loader captures tracked identity");
+        Throwable fatal = new NoSuchFieldError("chat_timePaint");
+        PluginDexTracking.origins.put(fatal, "dex-plugin");
+        w.onPluginExecutionFinished("dex-plugin");
+        eq(null, PluginsWatchdog.currentExecutingPluginId(), "loader scope retired");
+        owner(w, fatal, "dex-plugin", "later Handler callback attributed without active execution");
+        owner(w, new NoSuchFieldError("chat_timePaint"), null, "error text alone is not attribution");
+        w.onPluginExecutionStarted("outer");
+        owner(w, fatal, "dex-plugin", "DEX origin beats outer active callback");
+        w.onPluginExecutionFinished("outer");
+        w.onPluginExecutionFailed("inner", fatal);
+        owner(w, fatal, "inner", "exact callback snapshot retains precedence");
+        PluginDexTracking.origins.clear();
+    }
+
     public static void main(String[] args) throws Exception {
         eq(null, PluginsWatchdog.findCrashingPlugin(Thread.currentThread(), new RuntimeException()), "lookup before construction");
         eq(null, PluginsWatchdog.getKnownPlugin("missing"), "plugin lookup before construction");
@@ -362,6 +392,7 @@ public class PluginAttributionHarness {
         boundedCauses();
         weakRetention();
         concurrentTicks();
+        asynchronousDex();
         System.out.println("PASS: static lookup, nested/cause attribution, report deduplication, suppressed/host boundaries, stale failures, weak retention, bounded causes, concurrent ticks");
     }
 }

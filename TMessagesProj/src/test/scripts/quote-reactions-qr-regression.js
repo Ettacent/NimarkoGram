@@ -20,8 +20,8 @@ function method(text, signature) {
     throw Error(signature);
 }
 assert.equal((reactions.match(/float totalY = getCurrentY\(animationProgress\)/g) || []).length, 2);
-assert(method(cell, 'public void drawReactionsLayout(').includes('areReactionsVisible()'));
-assert(method(cell, 'public boolean drawReactionsLayoutOverlay(').includes('areReactionsVisible()'));
+assert(method(cell, 'public void drawReactionsLayout(').includes('areReactionsVisible(canvas)'));
+assert(method(cell, 'public boolean drawReactionsLayoutOverlay(').includes('areReactionsVisible(canvas)'));
 assert(method(cell, 'public void setVisiblePart(').includes('reactionsViewportInitialized = true;'));
 assert(!qr.includes('0xFF9BC38F'), 'No green placeholder');
 assert(qr.includes('if (!initialBackgroundReady) return;'));
@@ -42,11 +42,19 @@ public class Regression {
   ${method(reactions, 'public boolean isVisible(')}
   ${method(reactions, 'public float getCurrentTotalHeight(')}
  }
- static class Params { boolean animateChange; float animateChangeProgress; }
+ static class Rect { int top, bottom; }
+ static class Canvas {
+  int top = -428, bottom = 2118, reads; boolean empty;
+  boolean getClipBounds(Rect rect) { reads++; rect.top=top; rect.bottom=bottom; return !empty; }
+ }
+ static class Params { boolean animateChange, animateBackgroundBoundsInner; float animateChangeProgress; }
  static class Cell {
   boolean fullyDraw, reactionsVisible, reactionsViewportInitialized = true; int childPosition, visibleHeight;
+  final Rect reactionsClipBounds = new Rect();
+  final Canvas canvas = new Canvas();
   Reactions reactionsLayoutInBubble = new Reactions(); Params transitionParams = new Params();
   ${method(cell, 'private boolean areReactionsVisible(')}
+  boolean areReactionsVisible() { return areReactionsVisible(canvas); }
  }
  static class Qr {
   boolean openTransitionFinished, initialThemeColorsReady, initialThemeApplied, initialBackgroundReady;
@@ -118,6 +126,34 @@ public class Regression {
      check(end.areReactionsVisible()==lastFrame);
     }
    }
+  for (int hz : new int[]{60,90,120,144}) for (boolean collapse : new boolean[]{true,false}) {
+   Cell observed = new Cell(); Reactions or = observed.reactionsLayoutInBubble;
+   observed.childPosition=0; observed.visibleHeight=collapse ? 1548 : 1853;
+   observed.transitionParams.animateChange=observed.transitionParams.animateBackgroundBoundsInner=true;
+   or.fromY=collapse ? 1571 : 1266; or.y=collapse ? 1266 : 1571;
+   or.height=78; or.totalHeight=138; or.animateMove=true;
+   for(int i=0;i<=hz;i++) {
+    observed.transitionParams.animateChangeProgress=i/(float)hz;
+    check(observed.areReactionsVisible()); checks++;
+   }
+   observed.transitionParams.animateBackgroundBoundsInner=false;
+   observed.transitionParams.animateChange=false; or.animateMove=false;
+   int clipReads=observed.canvas.reads;
+   check(observed.areReactionsVisible());
+   check(observed.canvas.reads==clipReads);
+   observed.transitionParams.animateBackgroundBoundsInner=true;
+   observed.canvas.empty=true; check(!observed.areReactionsVisible());
+   observed.fullyDraw=true; check(observed.areReactionsVisible());
+   observed.fullyDraw=false; observed.canvas.empty=false;
+   observed.canvas.top=2000; observed.canvas.bottom=2118;
+   check(!observed.areReactionsVisible());
+   observed.canvas.top=-428; observed.canvas.bottom=1000;
+   check(!observed.areReactionsVisible());
+   or.isEmpty=true; observed.canvas.bottom=2118;
+   check(!observed.areReactionsVisible());
+   or.lastDrawnY=1571; or.lastDrawTotalHeight=138; or.outButtons.add(new Object());
+   check(observed.areReactionsVisible());
+  }
   for (boolean colorsFirst : new boolean[]{true,false}) {
    Qr q=new Qr(); check(q.needDelayOpenAnimation());
    if (colorsFirst) q.initialThemeColorsReady=true; else q.openTransitionFinished=true;
@@ -135,3 +171,12 @@ public class Regression {
 fs.writeFileSync(path.join(temp, 'Regression.java'), java);
 cp.execFileSync('javac', [path.join(temp, 'Regression.java')], {stdio:'inherit'});
 cp.execFileSync('java', ['-cp',temp,'Regression'], {stdio:'inherit'});
+const oldViewport = java.replace('if (transitionParams.animateBackgroundBoundsInner) {', 'if (false) {');
+assert.notEqual(oldViewport, java);
+fs.writeFileSync(path.join(temp, 'Regression.java'), oldViewport);
+cp.execFileSync('javac', [path.join(temp, 'Regression.java')], {stdio:'inherit'});
+const negative = cp.spawnSync('java', ['-cp', temp, 'Regression'], {encoding:'utf8', timeout:30000});
+assert.ifError(negative.error);
+assert.notEqual(negative.status, 0);
+assert(negative.stderr.includes('AssertionError'));
+console.log('PASS: recorded collapse/expand geometry and clip handoff; old destination-viewport culling fails');

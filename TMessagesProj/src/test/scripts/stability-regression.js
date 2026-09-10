@@ -12,6 +12,8 @@ const tests = [
     'paid-reaction-particles-regression.js',
     'quote-reactions-qr-regression.js',
     'profile-common-groups-scroll-regression.js',
+    'profile-loading-rows-regression.js',
+    'section-header-background-regression.js',
     'profile-rating-transition-regression.js',
     'caption-quote-width-regression.js',
     'message-menu-profile-entry-regression.js',

@@ -11,6 +11,11 @@ package org.telegram.ui.Cells;
 import static org.telegram.messenger.AndroidUtilities.dp;
 
 import android.content.Context;
+import android.graphics.Canvas;
+import android.graphics.Paint;
+import android.graphics.PixelFormat;
+import android.graphics.Rect;
+import android.graphics.drawable.ColorDrawable;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.widget.Button;
@@ -28,6 +33,7 @@ import org.telegram.ui.Components.AnimatedTextView;
 import org.telegram.ui.Components.CubicBezierInterpolator;
 import org.telegram.ui.Components.LayoutHelper;
 import org.telegram.ui.Components.RecyclerListView;
+import java.lang.ref.WeakReference;
 
 import java.util.List;
 
@@ -38,6 +44,7 @@ public class GraySectionCell extends FrameLayout implements Theme.Colorable {
     private FrameLayout.LayoutParams rightTextViewLayoutParams;
     private final Theme.ResourcesProvider resourcesProvider;
     private int layerHeight = 32;
+    private WeakReference<RecyclerListView> sectionHeaderOwner;
 
     public GraySectionCell(Context context) {
         this(context, null);
@@ -51,7 +58,7 @@ public class GraySectionCell extends FrameLayout implements Theme.Colorable {
         super(context);
         this.resourcesProvider = resourcesProvider;
 
-        setBackgroundColor(getThemedColor(Theme.key_graySection));
+        setBackground(new SectionBackground(getThemedColor(Theme.key_graySection)));
 
         textView = new AnimatedEmojiSpan.TextViewEmojis(getContext());
         textView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 14);
@@ -77,6 +84,51 @@ public class GraySectionCell extends FrameLayout implements Theme.Colorable {
     }
 
     private boolean noBackground;
+    public void setSectionHeaderOwner(RecyclerListView owner) {
+        if (sectionHeaderOwner == null || sectionHeaderOwner.get() != owner) {
+            sectionHeaderOwner = new WeakReference<>(owner);
+        }
+        invalidate();
+    }
+    @Override
+    protected void onAttachedToWindow() {
+        super.onAttachedToWindow();
+        sectionHeaderOwner = null;
+        invalidate();
+    }
+    @Override
+    public void setBackgroundColor(int color) {
+        super.setBackgroundColor(noBackground ? 0 : color);
+    }
+    private class SectionBackground extends ColorDrawable {
+        private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        SectionBackground(int color) {
+            super(color);
+        }
+        @Override
+        public void draw(Canvas canvas) {
+            if (noBackground) {
+                return;
+            }
+            RecyclerListView owner = getParent() instanceof RecyclerListView
+                    ? (RecyclerListView) getParent()
+                    : getParent() == null && sectionHeaderOwner != null ? sectionHeaderOwner.get() : null;
+            if (owner == null || !owner.hasSections()) {
+                super.draw(canvas);
+            } else if (getParent() == null) {
+                Rect bounds = getBounds();
+                float inset = Math.min(owner.getSectionPadding(), bounds.width() / 2f);
+                float radius = Math.min(owner.getSectionRadius(), Math.min(bounds.height(), bounds.width() - 2 * inset) / 2f);
+                paint.setColor(getColor());
+                paint.setColorFilter(getColorFilter());
+                canvas.drawRoundRect(bounds.left + inset, bounds.top, bounds.right - inset, bounds.bottom, radius, radius, paint);
+            }
+        }
+        @Override
+        public int getOpacity() {
+            return PixelFormat.TRANSLUCENT;
+        }
+    }
     public void setNoBackground(boolean no) {
         this.noBackground = no;
         updateColors();

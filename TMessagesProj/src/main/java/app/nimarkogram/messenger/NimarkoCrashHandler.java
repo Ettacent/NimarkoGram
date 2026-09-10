@@ -67,7 +67,7 @@ public final class NimarkoCrashHandler {
             if (!isOom(t)) pluginId = PluginsWatchdog.findCrashingPlugin(thread, t);
         } catch (Throwable ignored) {}
         dump(thread, t, pluginId);
-                    }
+    }
                     
     private static void dump(Thread thread, Throwable t, String pluginId) {
         final boolean oom = isOom(t);
@@ -91,7 +91,7 @@ public final class NimarkoCrashHandler {
                 pw.println(pluginId == null ? "=== NimarkoGram crash ===" : "=== NimarkoGram plugin crash ===");
                 if (pluginId != null) {
                     PluginCrashReports.writeIdentity(pw, pluginId);
-                    pw.println("Attribution: tracked plugin callback / matching throwable");
+                    pw.println("Attribution: tracked callback, matching throwable or registered DEX origin");
                     pw.println("Client process terminated: yes");
                 }
                 pw.println("Time: " + new Date());

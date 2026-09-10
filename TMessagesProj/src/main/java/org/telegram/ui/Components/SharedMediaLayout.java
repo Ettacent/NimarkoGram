@@ -3631,7 +3631,17 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
             mediaPages[a].animatingImageView.setVisibility(View.GONE);
             mediaPages[a].listView.addOverlayView(mediaPages[a].animatingImageView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT));
 
-            mediaPages[a].progressView = new FlickerLoadingView(context) {
+            mediaPages[a].progressView = new FlickerLoadingView(context, resourcesProvider) {
+                @Override
+                protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
+                    int rows = getProfileLoadingRows(mediaPage.selectedType);
+                    setIsSingleCell(rows > 0);
+                    setItemsCount(Math.max(1, rows));
+                    super.onMeasure(widthMeasureSpec, heightMeasureSpec);
+                    if (rows > 0 && MeasureSpec.getMode(heightMeasureSpec) != MeasureSpec.UNSPECIFIED) {
+                        setMeasuredDimension(getMeasuredWidth(), Math.min(getMeasuredHeight(), MeasureSpec.getSize(heightMeasureSpec)));
+                    }
+                }
 
                 @Override
                 public int getColumnsCount() {
@@ -3640,22 +3650,20 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
 
                 @Override
                 public int getViewType() {
-                    setIsSingleCell(false);
                     if (mediaPage.selectedType == TAB_PHOTOVIDEO || mediaPage.selectedType == TAB_GIF) {
                         return FlickerLoadingView.PHOTOS_TYPE;
                     } else if (mediaPage.selectedType == TAB_FILES) {
                         return FlickerLoadingView.FILES_TYPE;
                     } else if (mediaPage.selectedType == TAB_VOICE || mediaPage.selectedType == TAB_AUDIO) {
-                        return FlickerLoadingView.USERS_TYPE;
+                        return FlickerLoadingView.AUDIO_TYPE;
                     } else if (mediaPage.selectedType == TAB_LINKS) {
                         return FlickerLoadingView.LINKS_TYPE;
                     } else if (mediaPage.selectedType == TAB_GROUPUSERS) {
-                        return FlickerLoadingView.USERS_TYPE;
-                    } else if (mediaPage.selectedType == TAB_COMMON_GROUPS) {
-                        if (scrollSlidingTextTabStrip.getTabsCount() == 1) {
-                            setIsSingleCell(true);
-                        }
-                        return FlickerLoadingView.DIALOG_TYPE;
+                        return FlickerLoadingView.USERS2_TYPE;
+                    } else if (mediaPage.selectedType == TAB_COMMON_GROUPS || mediaPage.selectedType == TAB_RECOMMENDED_CHANNELS) {
+                        return FlickerLoadingView.PROFILE_SEARCH_CELL;
+                    } else if (mediaPage.selectedType == TAB_SAVED_DIALOGS) {
+                        return FlickerLoadingView.DIALOG_CELL_TYPE;
                     } else if (isAnyStoryPageType(mediaPage.selectedType)) {
                         return FlickerLoadingView.STORIES_TYPE;
                     }
@@ -6278,8 +6286,8 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
                             animateItemsEnter(listView, oldItemCount, addedMesages);
                         }
                     } else {
-                        if (listView != null && (adapter == photoVideoAdapter || newItemCount >= oldItemCount)) {
-                            animateItemsEnter(listView, oldItemCount, addedMesages);
+                        if (listView != null && addedMesages.size() > 0 && (oldMessagesCount == 0 || adapter == photoVideoAdapter || newItemCount >= oldItemCount)) {
+                            animateItemsEnter(listView, oldMessagesCount == 0 ? 0 : oldItemCount, addedMesages);
                         }
                     }
                     if (listView != null && !sharedMediaData[type].loadingAfterFastScroll) {
@@ -6641,8 +6649,30 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
     }
 
     SparseArray<Float> messageAlphaEnter = new SparseArray<>();
+    private static int boundedProfileLoadingRows(int expectedCount) {
+        return Math.min(8, expectedCount > 0 ? expectedCount : 3);
+    }
+    private int getProfileLoadingRows(int type) {
+        switch (type) {
+            case TAB_FILES:
+            case TAB_VOICE:
+            case TAB_LINKS:
+            case TAB_AUDIO:
+            case TAB_COMMON_GROUPS:
+                return boundedProfileLoadingRows(hasMedia[type]);
+            case TAB_GROUPUSERS:
+                return boundedProfileLoadingRows(chatUsersAdapter.chatInfo != null
+                        ? chatUsersAdapter.chatInfo.participants_count : 0);
+            case TAB_SAVED_DIALOGS:
+            case TAB_RECOMMENDED_CHANNELS:
+                return boundedProfileLoadingRows(0);
+            default:
+                return 0;
+        }
+    }
 
     private void animateItemsEnter(final RecyclerListView finalListView, int oldItemCount, SparseBooleanArray addedMesages) {
+        final RecyclerView.Adapter expectedAdapter = finalListView.getAdapter();
         int n = finalListView.getChildCount();
         View progressView = null;
         for (int i = 0; i < n; i++) {
@@ -6660,6 +6690,9 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
             public boolean onPreDraw() {
                 getViewTreeObserver().removeOnPreDrawListener(this);
                 RecyclerView.Adapter adapter = finalListView.getAdapter();
+                if (destroyed || adapter != expectedAdapter || !finalListView.isAttachedToWindow()) {
+                    return true;
+                }
                 if (adapter == photoVideoAdapter || adapter == documentsAdapter || adapter == audioAdapter || adapter == voiceAdapter) {
                     if (addedMesages != null) {
                         int n = finalListView.getChildCount();
@@ -8136,6 +8169,9 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
             if (sharedMediaData[3].sections.size() == 0 && !sharedMediaData[3].loading) {
                 return 1;
             }
+            if (sharedMediaData[3].sections.isEmpty() && sharedMediaData[3].loading) {
+                return getProfileLoadingRows(TAB_LINKS);
+            }
             if (section < sharedMediaData[3].sections.size()) {
                 return sharedMediaData[3].sectionArrays.get(sharedMediaData[3].sections.get(section)).size() + (section != 0 ? 1 : 0);
             }
@@ -8182,6 +8218,7 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
                     flickerLoadingView.setIsSingleCell(true);
                     flickerLoadingView.showDate(false);
                     flickerLoadingView.setViewType(FlickerLoadingView.LINKS_TYPE);
+                    flickerLoadingView.setGlobalGradientView(globalGradientView);
                     view = flickerLoadingView;
                     break;
             }
@@ -8304,7 +8341,7 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
                 case VIEW_TYPE_DOCUMENT_LOADING:
                     FlickerLoadingView flickerLoadingView = new FlickerLoadingView(mContext, resourcesProvider);
                     view = flickerLoadingView;
-                    if (currentType == 2) {
+                    if (currentType == TAB_VOICE || currentType == TAB_AUDIO) {
                         flickerLoadingView.setViewType(FlickerLoadingView.AUDIO_TYPE);
                     } else {
                         flickerLoadingView.setViewType(FlickerLoadingView.FILES_TYPE);
@@ -10538,8 +10575,7 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
         public int getItemCount() {
             if (chats.isEmpty()) {
                 if (loading) {
-                    int expectedCount = hasMedia[TAB_COMMON_GROUPS];
-                    return Math.min(8, expectedCount > 0 ? expectedCount : 3);
+                    return getProfileLoadingRows(TAB_COMMON_GROUPS);
                 }
                 return 1;
             }
