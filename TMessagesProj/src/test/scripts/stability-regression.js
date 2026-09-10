@@ -5,6 +5,7 @@ const tests = [
     'preview-rotation-regression.js',
     'round-video-return-regression.js',
     'story-pause-frame-regression.js',
+    'story-output-mode-regression.js',
     'chat-date-position-regression.js',
     'poll-menu-reactions-regression.js',
     'topics-typing-width-regression.js',

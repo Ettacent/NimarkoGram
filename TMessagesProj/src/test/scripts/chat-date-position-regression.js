@@ -48,8 +48,10 @@ for (const density of [1, 1.5, 2, 2.75, 3, 4]) {
                 const listTranslation = dp(7);
                 const safePadding = dp(84 + pinned + translated - search);
                 const y = calculate({getY: () => listTop + listTranslation}, {getTop: () => dateTop}, safePadding, dp);
-                const safeTop = listTop + listTranslation + safePadding - dp(4);
+                const safeTop = listTop + listTranslation + safePadding;
                 assert(Math.abs(dateTop + y - safeTop) < 1e-6);
+                const incomingDateTop = listTop + listTranslation + safePadding;
+                assert.equal(dateTop + y, incomingDateTop, 'No jump when an inline date becomes floating');
                 let previous = 0;
                 for (let offset = -dp(30); offset <= 0; offset++) {
                     const alpha = fade(offset, () => dp(30));
