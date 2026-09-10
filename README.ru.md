@@ -13,10 +13,10 @@
 </p>
 
 <p align="center">
-  <img alt="NimarkoGram 12.9.2" src="https://img.shields.io/badge/NimarkoGram-12.9.2-ff4fa3">
+  <img alt="NimarkoGram 12.10.1" src="https://img.shields.io/badge/NimarkoGram-12.10.1-ff4fa3">
   <a href="LICENSE"><img alt="Лицензия GPL-2.0" src="https://img.shields.io/badge/license-GPL--2.0-6f42c1"></a>
   <img alt="Android 7.0 и новее" src="https://img.shields.io/badge/Android-7.0%2B-3DDC84?logo=android&logoColor=white">
-  <img alt="Telegram 12.9.2" src="https://img.shields.io/badge/Telegram-12.9.2-26A5E4?logo=telegram&logoColor=white">
+  <img alt="Telegram 12.10.1" src="https://img.shields.io/badge/Telegram-12.10.1-26A5E4?logo=telegram&logoColor=white">
 </p>
 
 <p align="center">
