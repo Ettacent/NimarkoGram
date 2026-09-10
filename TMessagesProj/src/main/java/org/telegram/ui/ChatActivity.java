@@ -7412,18 +7412,16 @@ public class ChatActivity extends BaseFragment implements
             @Override
             protected void onDraw(Canvas canvas) {
                 if (scrimBlurBitmap != null) return;
-                float clipTop = chatListView.getY() + chatListViewPaddingTop - getY();
-                clipTop -= AndroidUtilities.dp(4);
-                if (clipTop > 0) {
-                    if (clipTop < getMeasuredHeight()) {
-                        canvas.save();
-                        canvas.clipRect(0, clipTop, getMeasuredWidth(), getMeasuredHeight());
-                        super.onDraw(canvas);
-                        canvas.restore();
-                    }
-                } else {
-                    super.onDraw(canvas);
+                final float visible = Math.max(0f, Math.min(1f,
+                        1f + floatingDateViewOffset / Math.max(1, getMeasuredHeight())));
+                if (visible <= 0f) {
+                    return;
                 }
+                final int saveCount = visible < 1f
+                        ? canvas.saveLayerAlpha(0, 0, getMeasuredWidth(), getMeasuredHeight(), Math.round(255 * visible))
+                        : canvas.save();
+                super.onDraw(canvas);
+                canvas.restoreToCount(saveCount);
             }
 
             @Override
@@ -12451,9 +12449,8 @@ public class ChatActivity extends BaseFragment implements
         chatListViewPaddingVisibleOffset = 0;
         chatListViewPaddingTop += contentPanTranslation;
 
-        float searchExpandOffset = 0;
         if (searchExpandProgress != 0 && chatActivityEnterView != null && chatActivityEnterView.getVisibility() == View.VISIBLE) {
-            chatListViewPaddingTop -= (searchExpandOffset = searchExpandProgress * (chatActivityEnterView.getMeasuredHeight() - AndroidUtilities.dp(searchContainerHeight)));
+            chatListViewPaddingTop -= searchExpandProgress * (chatActivityEnterView.getMeasuredHeight() - AndroidUtilities.dp(searchContainerHeight));
         }
 
         if (infoTopView != null) {
@@ -12462,9 +12459,7 @@ public class ChatActivity extends BaseFragment implements
             chatListViewPaddingVisibleOffset += topViewOffset;
         }
 
-        if (floatingDateView != null) {
-            floatingDateView.setTranslationY(chatListView.getTranslationY() - searchExpandOffset + chatListViewPaddingTop + floatingDateViewOffset - dp(4));
-        }
+        updateFloatingDatePosition();
         updateFloatingTopicView();
 
         if (chatListView != null && chatLayoutManager != null && chatAdapter != null) {
@@ -17210,10 +17205,7 @@ public class ChatActivity extends BaseFragment implements
                 updatePinnedListButton(animated);
             }
         }
-        if (floatingDateView != null) {
-            floatingDateView.setTranslationX(getSideMenuWidth() / 2f);
-            floatingDateView.setTranslationY(chatListView.getTranslationY() + chatListViewPaddingTop + floatingDateViewOffset - dp(4));
-        }
+        updateFloatingDatePosition();
         updateFloatingTopicView();
         invalidateChatListViewTopPadding();
         if (!firstLoading && !paused && !inPreviewMode && (chatMode == 0 || chatMode == MODE_SUGGESTIONS) && !getMessagesController().ignoreSetOnline) {
@@ -48409,6 +48401,15 @@ public class ChatActivity extends BaseFragment implements
         if (hashtagSearchEmptyView != null) {
             hashtagSearchEmptyView.linearLayout.setTranslationY((top - bottom) / 2f + dp(32));
         }
+    }
+    private void updateFloatingDatePosition() {
+        if (floatingDateView == null || chatListView == null) {
+            return;
+        }
+        floatingDateView.setTranslationX(getSideMenuWidth() / 2f);
+        floatingDateView.setTranslationY(chatListView.getY() - floatingDateView.getTop()
+                + chatListViewPaddingTop - dp(4));
+        floatingDateView.invalidate();
     }
 
     private float getTopPanelHeightWithPadding(float padding) {

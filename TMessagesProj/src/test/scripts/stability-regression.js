@@ -4,6 +4,10 @@ const path = require('node:path');
 const tests = [
     'preview-rotation-regression.js',
     'round-video-return-regression.js',
+    'story-pause-frame-regression.js',
+    'chat-date-position-regression.js',
+    'poll-menu-reactions-regression.js',
+    'topics-typing-width-regression.js',
     'folder-icon-transition-regression.js',
     'folder-selection-regression.js',
     'rich-message-viewport-regression.js',

@@ -393,6 +393,7 @@ public class VideoPlayerHolderBase {
             return;
         }
         paused = true;
+        invalidateStubCapture();
         prepareStub();
         dispatchQueue.postRunnable(() -> {
             if (videoPlayer != null) {
@@ -433,7 +434,6 @@ public class VideoPlayerHolderBase {
                     }
                     if (capturedBitmap.getPixel(0, 0) == Color.TRANSPARENT) {
                         releaseStubBitmap(capturedBitmap);
-                        stubAvailable = playerStubBitmap != null;
                         return;
                     }
                     Bitmap oldBitmap = playerStubBitmap;
@@ -446,8 +446,6 @@ public class VideoPlayerHolderBase {
                         releaseStubBitmap(oldBitmap);
                     }
                 });
-            } else {
-                stubAvailable = playerStubBitmap != null;
             }
         }
     }
@@ -471,6 +469,7 @@ public class VideoPlayerHolderBase {
             return;
         }
         paused = false;
+        invalidateStubCapture();
         dispatchQueue.postRunnable(() -> {
             if (videoPlayer != null) {
                 if (surface != null) {
@@ -497,6 +496,7 @@ public class VideoPlayerHolderBase {
             return;
         }
         paused = false;
+        invalidateStubCapture();
         dispatchQueue.postRunnable(() -> {
             if (videoPlayer != null) {
                 if (surface != null) {
@@ -649,12 +649,12 @@ public class VideoPlayerHolderBase {
         boundMediaUri = mediaUri;
         mediaGeneration++;
         invalidateStubCapture();
-        stubAvailable = false;
         setOnReadyListener(null);
     }
 
     private void invalidateStubCapture() {
         stubCaptureGeneration++;
+        stubAvailable = false;
     }
 
     private void releaseStubBitmap(Bitmap bitmap) {
