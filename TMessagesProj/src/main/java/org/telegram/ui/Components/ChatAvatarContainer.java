@@ -115,6 +115,9 @@ public class ChatAvatarContainer extends FrameLayout implements FactorAnimator.T
         if (subtitleTextView != null) {
             subtitleTextView.setGravity(value ? Gravity.CENTER_HORIZONTAL : Gravity.LEFT);
             subtitleTextView.setPadding(value ? dp(10) : 0, 0, dp(10), 0);
+            subtitleTextView.setEllipsizeByGradient(
+                    !value && !useChatTitleLayoutOutsideChat,
+                    useChatTitleLayoutOutsideChat ? LocaleController.isRTL : null);
         }
         if (animatedSubtitleTextView != null) {
             animatedSubtitleTextView.setGravity(value ? Gravity.CENTER_HORIZONTAL : Gravity.LEFT);
@@ -435,7 +438,8 @@ public class ChatAvatarContainer extends FrameLayout implements FactorAnimator.T
         } else {
             subtitleTextView = new SimpleTextConnectedView(context, subtitleTextLargerCopyView);
             subtitleTextView.setEllipsizeByGradient(
-                    true, useChatTitleLayoutOutsideChat ? LocaleController.isRTL : null);
+                    !centerChatTitle && !useChatTitleLayoutOutsideChat,
+                    useChatTitleLayoutOutsideChat ? LocaleController.isRTL : null);
             subtitleTextView.setTextColor(getThemedColor(Theme.key_actionBarDefaultSubtitle));
             subtitleTextView.setTag(Theme.key_actionBarDefaultSubtitle);
             subtitleTextView.setTextSize(14);
@@ -918,10 +922,17 @@ public class ChatAvatarContainer extends FrameLayout implements FactorAnimator.T
                 0, subtitleAvailableWidth - inlineCommunityReserve - titleTrailingSafety);
         int centeredTitleCapacity = titleAvailableWidth;
         int inlineTextCapacity = titleAvailableWidth;
+        int centeredSubtitleCapacity = subtitleAvailableWidth;
         if (centerChatTitle && getParent() instanceof ActionBar) {
             final int compactContentWidth =
                     ((ActionBar) getParent()).getChatAvatarCompactContentWidth();
             int animatedTextCapacity = compactContentWidth - dp(4) * 2;
+            if (compactContentWidth > 0) {
+                final int subtitleContentWidth = animatedTextCapacity
+                        - (inlineCenteredAvatar ? avatarImageView.getMeasuredWidth() + dp(8) : 0);
+                centeredSubtitleCapacity = Math.min(
+                        centeredSubtitleCapacity, Math.max(0, subtitleContentWidth));
+            }
             if (inlineCenteredAvatar) {
                 animatedTextCapacity -= avatarImageView.getMeasuredWidth() + dp(8);
                 if (animatedTextCapacity > 0) {
@@ -951,9 +962,8 @@ public class ChatAvatarContainer extends FrameLayout implements FactorAnimator.T
         }
         if (subtitleTextView != null) {
             subtitleTextView.measure(MeasureSpec.makeMeasureSpec(subtitleAvailableWidth, MeasureSpec.AT_MOST), MeasureSpec.makeMeasureSpec(dp(20), MeasureSpec.AT_MOST));
-            if (inlineCenteredAvatar && subtitleTextView.getVisibility() != GONE) {
-
-                final int exactSubtitleWidth = Math.max(1, Math.min(inlineTextCapacity,
+            if (centerChatTitle && subtitleTextView.getVisibility() != GONE) {
+                final int exactSubtitleWidth = Math.max(1, Math.min(centeredSubtitleCapacity,
                         (int) Math.ceil(getInlineDesiredWidth(subtitleTextView))));
                 if (exactSubtitleWidth != subtitleTextView.getMeasuredWidth()) {
                     subtitleTextView.measure(

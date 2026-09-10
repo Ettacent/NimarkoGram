@@ -1,0 +1,21 @@
+diff --git a/core/src/main/java/top/canyie/pine/Pine.java b/core/src/main/java/top/canyie/pine/Pine.java
+--- a/core/src/main/java/top/canyie/pine/Pine.java
++++ b/core/src/main/java/top/canyie/pine/Pine.java
+@@ -734,7 +734,8 @@ public final class Pine {
+                     thisObject + " args=" + Arrays.toString(args));*/
+             Log.d(TAG, "handleCall for method " + hookRecord.target);
+ 
+-        if (PineConfig.disableHooks || hookRecord.emptyCallbacks()) {
++        MethodHook[] callbacks = hookRecord.getCallbacks();
++        if (PineConfig.disableHooks || callbacks.length == 0) {
+             try {
+                 return callBackupMethod(hookRecord, thisObject, args);
+             } catch (InvocationTargetException e) {
+@@ -743,7 +744,6 @@ public final class Pine {
+         }
+ 
+         CallFrame callFrame = new CallFrame(hookRecord, thisObject, args);
+-        MethodHook[] callbacks = hookRecord.getCallbacks();
+ 
+         // call before callbacks
+         int beforeIdx = 0;

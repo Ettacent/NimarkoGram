@@ -781,6 +781,9 @@ public class ChatListItemAnimator extends DefaultItemAnimator {
         final int deltaY = toY - fromY;
 
         AnimatorSet animatorSet = new AnimatorSet();
+        if (view instanceof ChatActionCell && view.getTranslationX() != 0f) {
+            animatorSet.playTogether(ObjectAnimator.ofFloat(view, View.TRANSLATION_X, 0f));
+        }
 
         if (deltaY != 0) {
             animatorSet.playTogether(ObjectAnimator.ofFloat(view, View.TRANSLATION_Y, 0));
@@ -1237,6 +1240,7 @@ public class ChatListItemAnimator extends DefaultItemAnimator {
             ((ChatMessageCell) view).setAnimationOffsetX(0f);
         } else if (view instanceof ChatActionCell) {
             ((ChatActionCell) view).getTransitionParams().resetAnimation();
+            view.setTranslationX(0f);
         } else {
             view.setTranslationX(0f);
         }

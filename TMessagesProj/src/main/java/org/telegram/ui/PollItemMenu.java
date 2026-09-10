@@ -62,8 +62,6 @@ import org.telegram.ui.ActionBar.ActionBarMenuSubItem;
 import org.telegram.ui.ActionBar.ActionBarPopupWindow;
 import org.telegram.ui.ActionBar.BaseFragment;
 import org.telegram.ui.ActionBar.Theme;
-import org.telegram.ui.Cells.BaseCell;
-import org.telegram.ui.Cells.ChatActionCell;
 import org.telegram.ui.Cells.ChatMessageCell;
 import org.telegram.ui.Components.AudioVisualizerDrawable;
 import org.telegram.ui.Components.Bulletin;
@@ -73,8 +71,6 @@ import org.telegram.ui.Components.ItemOptions;
 import org.telegram.ui.Components.LayoutHelper;
 import org.telegram.ui.Components.MessagePreviewView;
 import org.telegram.ui.Components.MessagePrivateSeenView;
-import org.telegram.ui.Components.Reactions.ReactionsLayoutInBubble;
-import org.telegram.ui.Components.ReactionsContainerLayout;
 import org.telegram.ui.Components.RecyclerListView;
 import org.telegram.ui.Components.ScrimOptions;
 import org.telegram.ui.Components.ViewPagerFixed;
@@ -232,11 +228,6 @@ public class PollItemMenu extends Dialog {
                             MeasureSpec.makeMeasureSpec(Math.min(w, (int) taskOptionsViewMaxWidth), MeasureSpec.AT_MOST),
                             MeasureSpec.makeMeasureSpec(h, MeasureSpec.AT_MOST)
                         );
-                    } else if (child == reactionsView) {
-                        child.measure(
-                            MeasureSpec.makeMeasureSpec(reactionsView.getTotalWidth(), MeasureSpec.EXACTLY),
-                            MeasureSpec.makeMeasureSpec(h, MeasureSpec.AT_MOST)
-                        );
                     } else {
                         child.measure(
                             MeasureSpec.makeMeasureSpec(w, MeasureSpec.AT_MOST),
@@ -328,7 +319,6 @@ public class PollItemMenu extends Dialog {
 
     private byte[] taskId;
 
-    private ReactionsContainerLayout reactionsView;
     private View taskOptionsView;
     private float taskOptionsViewMaxWidth = -1;
     private View messageOptionsView;
@@ -609,17 +599,6 @@ public class PollItemMenu extends Dialog {
 
         List<TLRPC.TL_availableReaction> availableReacts = chatActivity.getMediaDataController().getEnabledReactionsList();
         final boolean isReactionsViewAvailable = !chatActivity.isSecretChat() && !chatActivity.isInScheduleMode() && chatActivity.currentUser == null && message.hasReactions() && (!ChatObject.isChannel(chatActivity.currentChat) || chatActivity.currentChat.megagroup) && !ChatObject.isMonoForum(chatActivity.currentChat) && !availableReacts.isEmpty() && message.messageOwner.reactions.can_see_list && !message.isSecretMedia();
-        final boolean isReactionsAvailable;
-        if (message.isForwardedChannelPost()) {
-            TLRPC.ChatFull chatInfo = chatActivity.getMessagesController().getChatFull(-message.getFromChatId());
-            if (chatInfo == null) {
-                isReactionsAvailable = true;
-            } else {
-                isReactionsAvailable = !chatActivity.isSecretChat() && chatActivity.getChatMode() != ChatActivity.MODE_QUICK_REPLIES && !chatActivity.isInScheduleMode() && message.isReactionsAvailable() && (chatInfo != null && (!(chatInfo.available_reactions instanceof TLRPC.TL_chatReactionsNone) || chatInfo.paid_reactions_available)) && !availableReacts.isEmpty();
-            }
-        } else {
-            isReactionsAvailable = !message.isSecretMedia() && chatActivity.getChatMode() != ChatActivity.MODE_QUICK_REPLIES && !chatActivity.isSecretChat() && !chatActivity.isInScheduleMode() && message.isReactionsAvailable() && (chatActivity.chatInfo != null && (!(chatActivity.chatInfo.available_reactions instanceof TLRPC.TL_chatReactionsNone) || chatActivity.chatInfo.paid_reactions_available) || (chatActivity.chatInfo == null && !ChatObject.isChannel(chatActivity.currentChat)) || chatActivity.currentUser != null || ChatObject.isMonoForum(chatActivity.currentChat)) && !availableReacts.isEmpty();
-        }
         final boolean showMessageSeen = !isReactionsViewAvailable && !chatActivity.isInScheduleMode() && chatActivity.currentChat != null && message.isOutOwner() && message.isSent() && !message.isEditing() && !message.isSending() && !message.isSendError() && !message.isContentUnread() && !message.isUnread() && (ConnectionsManager.getInstance(chatActivity.getCurrentAccount()).getCurrentTime() - message.messageOwner.date < chatActivity.getMessagesController().chatReadMarkExpirePeriod) && (ChatObject.isMegagroup(chatActivity.currentChat) || !ChatObject.isChannel(chatActivity.currentChat)) && chatActivity.chatInfo != null && chatActivity.chatInfo.participants_count <= chatActivity.getMessagesController().chatReadMarkSizeThreshold && !(message.messageOwner.action instanceof TLRPC.TL_messageActionChatJoinedByRequest) && chatActivity.getChatMode() != ChatActivity.MODE_SAVED && message.canSetReaction() && !ChatObject.isMonoForum(chatActivity.currentChat);
         final boolean showMessageAuthor = chatActivity.currentChat != null && !message.isOut() && ChatObject.isMonoForum(chatActivity.currentChat) && ChatObject.canManageMonoForum(chatActivity.getCurrentAccount(), chatActivity.currentChat) && -chatActivity.currentChat.linked_monoforum_id == message.getFromChatId();
         final boolean showPrivateMessageSeen = !isReactionsViewAvailable && chatActivity.currentChat == null && chatActivity.currentEncryptedChat == null && (chatActivity.currentUser != null && !UserObject.isUserSelf(chatActivity.currentUser) && !UserObject.isReplyUser(chatActivity.currentUser) && !UserObject.isAnonymous(chatActivity.currentUser) && !chatActivity.currentUser.bot && !UserObject.isService(chatActivity.currentUser.id)) && (chatActivity.userInfo == null || !chatActivity.userInfo.read_dates_private) && !chatActivity.isInScheduleMode() && message.isOutOwner() && message.isSent() && !message.isEditing() && !message.isSending() && !message.isSendError() && !message.isContentUnread() && !message.isUnread() && (chatActivity.getConnectionsManager().getCurrentTime() - message.messageOwner.date < chatActivity.getMessagesController().pmReadDateExpirePeriod) && !(message.messageOwner.action instanceof TLRPC.TL_messageActionChatJoinedByRequest);
@@ -743,52 +722,6 @@ public class PollItemMenu extends Dialog {
             });
         }
 
-        if (isReactionsAvailable) {
-            final boolean tags = chatActivity.getUserConfig().getClientUserId() == chatActivity.getDialogId();
-            ReactionsContainerLayout reactionsLayout = new ReactionsContainerLayout(tags ? ReactionsContainerLayout.TYPE_TAGS : ReactionsContainerLayout.TYPE_DEFAULT, chatActivity, getContext(), chatActivity.getCurrentAccount(), resourcesProvider);
-            reactionsLayout.forceAttachToParent = true;
-            int pad = 22;
-            int sPad = 24;
-            reactionsLayout.setPadding(dp(4) + (LocaleController.isRTL ? 0 : sPad), dp(4), dp(4) + (LocaleController.isRTL ? sPad : 0), dp(pad));
-
-            ReactionsContainerLayout finalReactionsLayout = reactionsLayout;
-            reactionsLayout.setDelegate(new ReactionsContainerLayout.ReactionsContainerDelegate() {
-                @Override
-                public void onReactionClicked(View v, ReactionsLayoutInBubble.VisibleReaction visibleReaction, boolean longpress, boolean addToRecent) {
-                    float x = 0, y = 0;
-                    BaseCell cell = chatActivity.findMessageCell(message.getId(), true);
-                    if (cell instanceof ChatMessageCell) {
-                        final ChatMessageCell messageCell = (ChatMessageCell) cell;
-                        final ReactionsLayoutInBubble.ReactionButton btn = messageCell.reactionsLayoutInBubble.getReactionButton(visibleReaction);
-                        if (btn != null) {
-                            x = messageCell.reactionsLayoutInBubble.x + btn.x + btn.width / 2f;
-                            y = messageCell.reactionsLayoutInBubble.y + btn.y + btn.height / 2f;
-                        }
-                    } else if (cell instanceof ChatActionCell) {
-                        final ChatActionCell actionCell = (ChatActionCell) cell;
-                        final ReactionsLayoutInBubble.ReactionButton btn = actionCell.reactionsLayoutInBubble.getReactionButton(visibleReaction);
-                        if (btn != null) {
-                            x = actionCell.reactionsLayoutInBubble.x + btn.x + btn.width / 2f;
-                            y = actionCell.reactionsLayoutInBubble.y + btn.y + btn.height / 2f;
-                        }
-                    }
-                    if (visibleReaction != null && visibleReaction.isStar) {
-                        longpress = true;
-                    }
-                    chatActivity.selectReaction(cell, message, finalReactionsLayout, v, x, y, visibleReaction,false, longpress, addToRecent, false);
-                    dismiss(false);
-                }
-
-                @Override
-                public void hideMenu() {
-                    dismiss(false);
-                }
-            });
-            menuContainer.addView(reactionsView = reactionsLayout, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, (int) (52 + reactionsLayout.getTopOffset() / AndroidUtilities.density + pad), Gravity.TOP | Gravity.LEFT));
-
-            reactionsLayout.setMessage(message, chatActivity.chatInfo, true);
-            reactionsView.setTransitionProgress(1);
-        }
 
         updateTranslation();
     }
@@ -890,18 +823,6 @@ public class PollItemMenu extends Dialog {
             myTaskCell.setAlpha(openProgress);
         }
 
-        if (reactionsView != null) {
-            final float rtx = Math.max(0, (myCell.getBoundsRight() + myCell.getBoundsLeft()) / 2f - reactionsView.getWidth() * .8f);
-            reactionsView.setTranslationX(page1x + rtx);
-            reactionsView.setTranslationY(Math.max(0, myCell.getY() - reactionsView.getHeight() + dp(22) - menuContainer.getTop()));
-            reactionsView.setAlpha(openProgress);
-
-            View reactionsWindow = reactionsView.getWindowView();
-            if (reactionsWindow != null) {
-                reactionsWindow.setTranslationX(page1x + rtx);
-                reactionsWindow.setAlpha(openProgress);
-            }
-        }
 
         hintTextView.setTranslationX(page0x);
         hintTextView.setAlpha(openProgress);
@@ -958,10 +879,6 @@ public class PollItemMenu extends Dialog {
 
     private boolean dismissingWithAlpha;
     public void dismiss(boolean backIntoMessage) {
-        if (backIntoMessage && reactionsView != null && reactionsView.getReactionsWindow() != null && reactionsView.getReactionsWindow().isShowing()) {
-            reactionsView.dismissWindow();
-            return;
-        }
         if (dismissing) return;
         dismissing = true;
         hasTranslation = false;
