@@ -1362,7 +1362,7 @@ public class PluginsController implements PluginsHooks {
                 return;
             }
         }
-            timeoutControllerInitialization(attempt);
+        timeoutControllerInitialization(attempt);
     }
 
     private void recoverPluginSafetyState(boolean startWithSafeMode) {
@@ -1467,11 +1467,11 @@ public class PluginsController implements PluginsHooks {
 
         recoverPluginSafetyState(startWithSafeMode);
         if (NimarkoConfig.pluginsSafeMode) {
-                    AndroidUtilities.runOnUIThread(() -> {
+            AndroidUtilities.runOnUIThread(() -> {
                 BaseFragment fragment = LaunchActivity.getLastFragment();
                 if (fragment != null) new SafeModeBottomSheet(fragment).show();
-                    }, 800L);
-                }
+            }, 800L);
+        }
         
         File file = new File(ApplicationLoader.getFilesDirFixed(), PluginsConstants.PLUGINS);
         this.pluginsDir = file;
@@ -1524,8 +1524,8 @@ public class PluginsController implements PluginsHooks {
 
     private void failControllerInitialization(long attempt, String reason) {
         if (!finishControllerInitialization(attempt, false, reason)) {
-                return;
-            }
+            return;
+        }
         FileLog.e("nimarko: plugin engine initialization stopped: " + reason);
         AndroidUtilities.runOnUIThread(() ->
                 app.nimarkogram.messenger.utils.AppRestartHelper

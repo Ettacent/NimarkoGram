@@ -64,6 +64,14 @@ public final class PluginsWatchdog {
         PluginsWatchdog active = activeWatchdog;
         return active != null ? active.getCrashingPluginId(thread, error) : null;
     }
+    public static String currentExecutingPluginId() {
+        PluginsWatchdog active = activeWatchdog;
+        if (active == null) return null;
+        PluginsController.PluginRuntimeToken runtime = active.controller != null
+                ? active.controller.captureCurrentPluginRuntime() : null;
+        return runtime != null ? runtime.getPluginId()
+                : active.getExecutingPluginId(Thread.currentThread());
+    }
 
     public static Plugin getKnownPlugin(String id) {
         PluginsWatchdog active = activeWatchdog;
@@ -287,6 +295,8 @@ public final class PluginsWatchdog {
         if (thread == null || uncaught == null) return null;
         CrashSnapshot snapshot = callbackFailures.get(thread);
         if (snapshot != null && snapshot.matches(uncaught)) return snapshot.pluginId;
+        String dexOwner = PluginDexTracking.findOwner(uncaught);
+        if (dexOwner != null) return dexOwner;
         ExecutionInfo active = executingPlugins.get(thread);
         return active != null ? active.getPluginId() : null;
     }

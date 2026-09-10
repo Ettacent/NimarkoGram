@@ -1480,6 +1480,7 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
     public float resultsPollButtonOffset;
     private boolean reactionsVisible = true;
     private boolean reactionsViewportInitialized;
+    private final Rect reactionsClipBounds = new Rect();
     private boolean pollVoted;
     private boolean pollAllowAdding;
     private boolean pollInInputNewOption;
@@ -24120,17 +24121,23 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
         return currentMessageObject != null && currentMessageObject.shouldDrawReactions() && (currentPosition == null || ((currentPosition.flags & MessageObject.POSITION_FLAG_BOTTOM) != 0 && (currentPosition.flags & MessageObject.POSITION_FLAG_LEFT) != 0)) && !reactionsLayoutInBubble.isSmall;
     }
 
-    private boolean areReactionsVisible() {
-        return fullyDraw || !reactionsViewportInitialized
-                || reactionsLayoutInBubble.isVisible(childPosition, childPosition + visibleHeight,
-                        transitionParams.animateChange ? transitionParams.animateChangeProgress : 1f);
+    private boolean areReactionsVisible(Canvas canvas) {
+        if (fullyDraw || !reactionsViewportInitialized) {
+            return true;
+        }
+        final float progress = transitionParams.animateChange ? transitionParams.animateChangeProgress : 1f;
+        if (transitionParams.animateBackgroundBoundsInner) {
+            return canvas.getClipBounds(reactionsClipBounds)
+                    && reactionsLayoutInBubble.isVisible(reactionsClipBounds.top, reactionsClipBounds.bottom, progress);
+        }
+        return reactionsLayoutInBubble.isVisible(childPosition, childPosition + visibleHeight, progress);
     }
 
     public void drawReactionsLayout(Canvas canvas, float alpha, Integer only) {
         if (isRoundVideo) {
             reactionsLayoutInBubble.drawServiceShaderBackground = 1f - getVideoTranscriptionProgress();
         }
-        if (areReactionsVisible() && hasReactionsToDraw()) {
+        if (areReactionsVisible(canvas) && hasReactionsToDraw()) {
             if (reactionsLayoutInBubble.drawServiceShaderBackground > 0) {
                 applyServiceShaderMatrix();
             }
@@ -24175,7 +24182,7 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
         if (isRoundVideo) {
             reactionsLayoutInBubble.drawServiceShaderBackground = 1f - getVideoTranscriptionProgress();
         }
-        if (!areReactionsVisible()) {
+        if (!areReactionsVisible(canvas)) {
             return false;
         }
         if (hasReactionsToDraw()) {

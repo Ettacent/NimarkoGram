@@ -2575,6 +2575,9 @@ public class RecyclerListView extends RecyclerView implements IBlur3Capture {
     private View getSectionHeaderView(int section, View oldView) {
         boolean shouldLayout = oldView == null;
         View view = sectionsAdapter.getSectionHeaderView(section, oldView);
+        if (view instanceof GraySectionCell) {
+            ((GraySectionCell) view).setSectionHeaderOwner(this);
+        }
         if (shouldLayout) {
             ensurePinnedHeaderLayout(view, false);
         }
@@ -2732,7 +2735,7 @@ public class RecyclerListView extends RecyclerView implements IBlur3Capture {
                 int saveCount = canvas.save();
                 int top = (Integer) pinnedHeader.getTag();
                 canvas.translate(LocaleController.isRTL ? getWidth() - pinnedHeader.getWidth() : 0, top);
-                if (pinnedHeaderShadowDrawable != null) {
+                if (pinnedHeaderShadowDrawable != null && !(hasSections() && pinnedHeader instanceof GraySectionCell)) {
                     pinnedHeaderShadowDrawable.setBounds(0, pinnedHeader.getMeasuredHeight(), getWidth(), pinnedHeader.getMeasuredHeight() + pinnedHeaderShadowDrawable.getIntrinsicHeight());
                     pinnedHeaderShadowDrawable.setAlpha((int) (255 * pinnedHeaderShadowAlpha));
                     pinnedHeaderShadowDrawable.draw(canvas);
@@ -3273,6 +3276,29 @@ public class RecyclerListView extends RecyclerView implements IBlur3Capture {
     public boolean hasSections() {
         return sectionsItemDecoration != null;
     }
+    public int getSectionPadding() {
+        return sectionsItemDecoration == null ? 0 : sectionsItemDecoration.padding;
+    }
+    public float getSectionRadius() {
+        return sectionRadius;
+    }
+    private void invalidateSectionHeaders() {
+        for (int i = 0; i < getChildCount(); i++) {
+            View child = getChildAt(i);
+            if (child instanceof GraySectionCell) {
+                child.invalidate();
+            }
+        }
+        if (headers != null) {
+            for (int i = 0; i < headers.size(); i++) {
+                headers.get(i).invalidate();
+            }
+        }
+        if (pinnedHeader != null) {
+            pinnedHeader.invalidate();
+        }
+        invalidate();
+    }
 
     private ListSectionsDecoration sectionsItemDecoration;
     private Utilities.CallbackReturn<Integer, Boolean> isViewTypeSection;
@@ -3295,6 +3321,7 @@ public class RecyclerListView extends RecyclerView implements IBlur3Capture {
             removeItemDecoration(sectionsItemDecoration);
             sectionsItemDecoration = null;
         }
+        invalidateSectionHeaders();
     }
 
     public void setSections() {
@@ -3373,6 +3400,7 @@ public class RecyclerListView extends RecyclerView implements IBlur3Capture {
             removeItemDecoration(sectionsItemDecoration);
         }
         addItemDecoration(sectionsItemDecoration = new ListSectionsDecoration(this, isSectionView, padding, topPadding));
+        invalidateSectionHeaders();
     }
 
     @Override

@@ -149,7 +149,7 @@ import java.util.Objects;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicInteger;
 
-public class Theme {
+public class Theme extends com.exteragram.messenger.utils.ui.LegacyThemeFields {
 
     public static final String DEFAULT_BACKGROUND_SLUG = "d";
     public static final String THEME_BACKGROUND_SLUG = "t";
@@ -8261,7 +8261,7 @@ public class Theme {
                 chat_topicTextPaint.setTypeface(AndroidUtilities.bold());
                 chat_forwardNamePaint = new TextPaint(TextPaint.ANTI_ALIAS_FLAG);
                 chat_adminPaint = new TextPaint(TextPaint.ANTI_ALIAS_FLAG);
-                chat_timePaint = new TextPaint(TextPaint.ANTI_ALIAS_FLAG);
+                chat_timePaint = createChatTimePaint(TextPaint.ANTI_ALIAS_FLAG);
                 chat_msgTextCodePaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
                 chat_msgTextCodePaint.setTypeface(Typeface.MONOSPACE);
                 chat_msgTextCode2Paint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
@@ -8346,7 +8346,7 @@ public class Theme {
             chat_gamePaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
             chat_gamePaint.setTypeface(AndroidUtilities.bold());
             chat_shipmentPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
-            chat_timePaint = new TextPaint(TextPaint.ANTI_ALIAS_FLAG);
+            chat_timePaint = createChatTimePaint(TextPaint.ANTI_ALIAS_FLAG);
             chat_adminPaint = new TextPaint(TextPaint.ANTI_ALIAS_FLAG);
             chat_ephemeralPaint = new TextPaint(TextPaint.ANTI_ALIAS_FLAG);
             chat_namePaint = new TextPaint(TextPaint.ANTI_ALIAS_FLAG);
