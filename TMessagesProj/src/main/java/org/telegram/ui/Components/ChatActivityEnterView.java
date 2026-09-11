@@ -91,7 +91,6 @@ import android.view.animation.DecelerateInterpolator;
 import android.view.animation.OvershootInterpolator;
 import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InputConnection;
-import android.view.inputmethod.InputConnectionWrapper;
 import android.webkit.MimeTypeMap;
 import android.widget.EditText;
 import android.widget.FrameLayout;
@@ -159,7 +158,6 @@ import org.telegram.messenger.browser.Browser;
 import org.telegram.messenger.camera.CameraController;
 import org.telegram.messenger.utils.DrawableUtils;
 import org.telegram.messenger.utils.EphemeralMessagesHelper;
-import org.telegram.messenger.utils.CustomHtml;
 import org.telegram.messenger.utils.tlutils.TLKeyboardHelper;
 import org.telegram.tgnet.ConnectionsManager;
 import org.telegram.tgnet.SerializedData;
@@ -5861,31 +5859,21 @@ public class ChatActivityEnterView extends FrameLayout implements
                     }
                     return true;
                 };
-                final InputConnection contentConnection = InputConnectionCompat.createWrapper(ic, editorInfo, callback);
-                return new InputConnectionWrapper(contentConnection, false) {
-                    @Override
-                    public boolean commitText(CharSequence text, int newCursorPosition) {
-                        // Clipboard panels in many keyboards commit only the
-                        // plain-text projection and bypass onTextContextMenuItem.
-                        // If it exactly matches our marked HTML clipboard item,
-                        // restore Telegram entities directly into the Editable.
-                        if (CustomHtml.mayMatchTelegramEntitiesClipboard(text)) {
-                            final boolean previousPaste = isPaste;
-                            isPaste = true;
-                            if (pasteTelegramEntitiesFromClipboard(text)) {
-                                return true;
-                            }
-                            isPaste = previousPaste;
-                        }
-                        return super.commitText(text, newCursorPosition);
-                    }
-                };
+                return InputConnectionCompat.createWrapper(ic, editorInfo, callback);
             } catch (Throwable e) {
                 FileLog.e(e);
             }
             return ic;
         }
 
+        @Override
+        protected CharSequence restoreClipboardEntities(CharSequence text) {
+            CharSequence restored = super.restoreClipboardEntities(text);
+            if (restored != text) {
+                isPaste = true;
+            }
+            return restored;
+        }
         @Override
         public boolean onTouchEvent(MotionEvent event) {
             if (stickersDragging || stickersExpansionAnim != null) {

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="NM_BAN_Attach">Attach banner</string>
+    <string name="NM_BAN_SelectHint">Choose a photo or video up to 8 MB. It is sent for review automatically and, once approved, will be visible to everyone.</string>
+    <string name="NM_BAN_AutoStatus">Status updates automatically while this screen is open.</string>
+    <string name="NM_BAN_AccountChanged">Account changed. Select the file again.</string>
+</resources>

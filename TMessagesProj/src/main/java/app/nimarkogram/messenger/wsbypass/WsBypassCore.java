@@ -553,6 +553,23 @@ public final class WsBypassCore {
 
     private RawWebSocket connectWsCf(int dc, boolean isMedia, long deadlineNanos,
                                      long generation) throws IOException {
+        if (WlAccess.enabled()) {
+            WlAccess.Grant grant = WlAccess.cached();
+            if (grant == null) {
+                WlAccess.warm();
+                throw new IOException("wl_access_required");
+            }
+            String path = DomainPool.relayPathForDc(dc);
+            try {
+                return RawWebSocket.connectUntil(WlAccess.HOST, WlAccess.HOST, path,
+                        WlAccess.headers(grant, "GET", path, null), deadlineNanos,
+                        () -> isBridgeGenerationCurrent(generation) && WlAccess.enabled()
+                                && WlAccess.isCurrent(grant));
+            } catch (RawWebSocket.HandshakeException error) {
+                if (error.statusCode == 401 || error.statusCode == 403) WlAccess.rejected(grant);
+                throw error;
+            }
+        }
         IOException last = null;
         
         final String path = DomainPool.relayPathForDc(dc);

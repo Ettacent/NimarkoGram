@@ -416,8 +416,7 @@ final class NimarkoSettingsSearchIndex {
                 R.string.NM_BAN_Title, R.string.NM_BAN_GlobalHeader,
                 101, R.string.NM_BAN_StatusLabel,
                 102, R.string.NM_BAN_ChangeGlobal,
-                103, R.string.NM_BAN_SubmitModeration,
-                105, R.string.NM_BAN_RefreshStatus);
+                103, R.string.NM_BAN_Attach);
         row(entries, guid, SCREEN_BANNERS, 104, R.string.NM_BAN_HideAvatar, R.string.NM_BAN_HideAvatarHint,
                 R.drawable.msg_photos_solar, R.string.NM_BAN_Title, R.string.NM_SettingsSectionDisplay);
         rows(entries, guid, SCREEN_BANNERS, R.drawable.msg_photos_solar,
@@ -725,7 +724,7 @@ final class NimarkoSettingsSearchIndex {
         if (titleRes == R.string.NM_TA_Spoiler) return R.string.NM_TA_Spoiler_Desc;
         if (titleRes == R.string.NM_BAN_StatusLabel) return R.string.NM_SettingsDesc_BannerStatus;
         if (titleRes == R.string.NM_BAN_ChangeGlobal) return R.string.NM_SettingsDesc_BannerGlobal;
-        if (titleRes == R.string.NM_BAN_SubmitModeration) return R.string.NM_SettingsDesc_BannerSubmit;
+        if (titleRes == R.string.NM_BAN_Attach) return R.string.NM_BAN_SelectHint;
         if (titleRes == R.string.NM_BAN_RefreshStatus) return R.string.NM_SettingsDesc_BannerRefresh;
         if (titleRes == R.string.NM_BAN_PickLocal) return R.string.NM_SettingsDesc_BannerLocal;
         if (titleRes == R.string.NM_BAN_DeleteLocal) return R.string.NM_SettingsDesc_BannerDelete;

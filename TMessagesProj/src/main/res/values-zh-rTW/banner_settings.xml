@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="NM_BAN_Attach">新增橫幅</string>
+    <string name="NM_BAN_SelectHint">選擇不超過 8 MB 的照片或影片。選擇後自動提交審核，通過後所有人可見。</string>
+    <string name="NM_BAN_AutoStatus">此頁面開啟時會自動更新狀態。</string>
+    <string name="NM_BAN_AccountChanged">帳號已變更，請重新選擇檔案。</string>
+</resources>

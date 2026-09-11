@@ -101,6 +101,20 @@ public final class VoipBypassCore {
                 && app.nimarkogram.messenger.wsbypass.NimarkoVpnDetector.isVpnActiveFresh()) {
             return null;
         }
+        if (app.nimarkogram.messenger.wsbypass.WlAccess.enabled()) {
+            Future<RelayEndpoint> pending = executor.submit(() ->
+                    app.nimarkogram.messenger.wsbypass.WlAccess.allocateCall(protocolTarget, reflectorPort, budgetMs));
+            try {
+                return pending.get(budgetMs, TimeUnit.MILLISECONDS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return null;
+            } catch (Exception e) {
+                return null;
+            } finally {
+                if (!pending.isDone()) pending.cancel(true);
+            }
+        }
         
         VoipRelayAuth.Credential cred = VoipRelayAuth.getCached(account);
         if (cred == null) {
