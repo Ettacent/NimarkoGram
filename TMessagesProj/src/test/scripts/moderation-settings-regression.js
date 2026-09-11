@@ -29,6 +29,13 @@ assert(wl.includes('asRadio(ENABLE, text(R.string.NM_WL_Network))'));
 const fill = method(bypass, 'public void fillItems(');
 assert(fill.indexOf('asSettingsLink(ID_STATUS') < fill.indexOf('asSettingsLink(ID_WL'));
 assert(fill.indexOf('asSettingsLink(ID_WL') < fill.indexOf('asSettingsLink(ID_OPEN_PROXY'));
+assert(fill.includes('LocaleController.getString(R.string.NM_WL_Network)'));
+assert(!fill.includes('NM_WSB_SuspendOnVpn_Desc'), 'VPN description is already supplied by the settings index');
+assert(read('preferences/NimarkoSettingsSearchIndex.java').includes(
+    'if (titleRes == R.string.NM_WSB_SuspendOnVpn) return R.string.NM_WSB_SuspendOnVpn_Desc;'));
+const accessFill = method(wl, 'public void fillItems(');
+assert(accessFill.indexOf('text(R.string.NM_WL_FileHint)') > accessFill.indexOf('if (canSubmit())'),
+    'Application instructions belong only to the available upload action');
 assert(banner.includes('asSettingsLink(ID_STATUS'));
 assert(!banner.includes('asSettingsValue(ID_STATUS'));
 assert(!banner.includes('asSettingsLink(ID_REFRESH'));
@@ -46,6 +53,13 @@ for (const dir of ['values', 'values-ru', 'values-zh-rCN', 'values-zh-rTW']) {
     ]) {
         const xml = fs.readFileSync(path.join(root, 'res', dir, file), 'utf8');
         for (const key of keys) assert(xml.includes(`name="${key}"`), `${dir}/${key}`);
+        if (file === 'wl.xml') {
+            const about = xml.match(/<string name="NM_WL_About">([^<]+)<\/string>/)[1];
+            assert(!/личного кабинета|account page|个人账户页面|個人帳戶頁面/.test(about), `${dir}: approved users are not asked for an account page`);
+            const hint = xml.match(/<string name="NM_WL_FileHint">([^<]+)<\/string>/)[1];
+            assert(/личного кабинета|account page|个人账户页面|個人帳戶頁面/.test(hint), `${dir}: upload instructions specify an account page`);
+            assert(!/PNG|JPEG|WebP|\d/.test(hint), `${dir}: omit technical file details from the hint`);
+        }
     }
 }
 const fields = wl.slice(wl.indexOf('    private int account'), wl.indexOf('    @Override public String getTitle'));

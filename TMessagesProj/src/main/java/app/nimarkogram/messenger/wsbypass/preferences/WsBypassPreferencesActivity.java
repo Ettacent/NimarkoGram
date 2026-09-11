@@ -141,7 +141,7 @@ public class WsBypassPreferencesActivity extends BasePreferencesActivity
                 LocaleController.getString(R.string.NM_WSB_SuspendOnVpn))
                 .setChecked(NimarkoWsBypassConfig.suspendOnVpn));
 
-        items.add(UItem.asShadow(LocaleController.getString(R.string.NM_WSB_SuspendOnVpn_Desc)));
+        items.add(UItem.asShadow(""));
     }
 
     @Override
