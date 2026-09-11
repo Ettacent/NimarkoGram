@@ -5,11 +5,12 @@
     <string name="NM_WL_Title">Mobile network access</string>
     <string name="NM_WL_Network">MegaFon and Yota</string>
     <string name="NM_WL_About">For MegaFon and Yota during mobile internet restrictions. Connects through Moscow to Europe. Availability depends on your mobile network.</string>
-    <string name="NM_WL_Request">Request access</string>
+    <string name="NM_WL_Request">Access</string>
     <string name="NM_WL_Status">Access status</string>
     <string name="NM_WL_OtherAccount">Available through another account signed in on this device.</string>
     <string name="NM_WL_Choose">Attach screenshot</string>
-    <string name="NM_WL_FileHint">Your MegaFon or Yota account page. You may hide your phone number. PNG, JPEG or WebP, up to 8 MB.</string>
+    <string name="NM_WL_FileHint">Attach a screenshot or photo of your MegaFon or Yota account page. PNG, JPEG or WebP, up to 8 MB.</string>
+    <string name="NM_WL_SharedAccess">Access works for all accounts on this device while at least one approved account remains signed in. No additional request is needed.</string>
     <string name="NM_WL_Privacy">Your screenshot and its date, if present in the file, are sent to a moderator. Metadata does not prove authenticity. The screenshot is deleted after review or after the request expires in 24 hours; failed deletions are retried. Initial account verification requires a Telegram connection. One approved account signed in on this device is enough; signing out ends access unless another approved account remains.</string>
     <string name="NM_WL_Sending">Submitting…</string>
     <string name="NM_WL_Checking">Checking…</string>
@@ -20,12 +21,12 @@
     <string name="NM_WL_Expired">Request expired. Submit a new one.</string>
     <string name="NM_WL_Revoked">Access revoked</string>
     <string name="NM_WL_Busy">Please try again later</string>
-    <string name="NM_WL_None">Attach a screenshot for review</string>
+    <string name="NM_WL_None">Attach a screenshot or photo of your mobile operator account page for review.</string>
     <string name="NM_WL_FileLarge">Screenshot must be no larger than 8 MB</string>
     <string name="NM_WL_FileInvalid">Could not read this image</string>
     <string name="NM_WL_AuthRequired">Connect to Telegram to verify your account</string>
     <string name="NM_WL_AccountChanged">Account changed. Please try again.</string>
     <string name="NM_WL_Error">Could not check access. Please try again later.</string>
     <string name="NM_WL_Details">Access and privacy</string>
-    <string name="NM_WL_AutoSubmit">The selected screenshot and its file date are sent to a moderator automatically. You may hide your phone number.</string>
+    <string name="NM_WL_AutoSubmit">The selected image and its file date are sent to a moderator automatically. The review status updates here.</string>
 </resources>

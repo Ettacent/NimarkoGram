@@ -28,6 +28,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArraySet;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -53,6 +54,8 @@ public final class WlAccess {
     private static final ConcurrentHashMap<Long, Grant> GRANTS = new ConcurrentHashMap<>();
     private static final ConcurrentHashMap<Long, Long> EPOCHS = new ConcurrentHashMap<>();
     private static final AtomicBoolean WARMING = new AtomicBoolean();
+    private static final CopyOnWriteArraySet<Runnable> LISTENERS = new CopyOnWriteArraySet<>();
+    private static final AtomicBoolean NOTIFY_PENDING = new AtomicBoolean();
     private static volatile long lastWarm;
     private static final ThreadPoolExecutor WORK = new ThreadPoolExecutor(1, 1, 0, TimeUnit.SECONDS,
             new ArrayBlockingQueue<>(12), task -> {
@@ -99,12 +102,26 @@ public final class WlAccess {
 
     public static Grant cached() {
         for (int i = 0; i < UserConfig.MAX_ACCOUNT_COUNT; i++) {
-            long owner = uid(i);
-            Grant grant = GRANTS.get(owner);
-            if (grant != null && grant.expires > ConnectionsManager.getInstance(i).getCurrentTime() + 60
-                    && uid(i) == owner) return grant;
+            Grant grant = accountGrant(i);
+            if (grant != null) return grant;
         }
         return null;
+    }
+    private static Grant accountGrant(int account) {
+        long owner = uid(account);
+        Grant grant = GRANTS.get(owner);
+        return grant != null && grant.expires > ConnectionsManager.getInstance(account).getCurrentTime() + 60
+                && uid(account) == owner ? grant : null;
+    }
+    public static boolean hasAccountGrant(int account) { return accountGrant(account) != null; }
+    public static void addListener(Runnable listener) { LISTENERS.add(listener); }
+    public static void removeListener(Runnable listener) { LISTENERS.remove(listener); }
+    private static void notifyChanged() {
+        if (LISTENERS.isEmpty() || !NOTIFY_PENDING.compareAndSet(false, true)) return;
+        AndroidUtilities.runOnUIThread(() -> {
+            NOTIFY_PENDING.set(false);
+            for (Runnable listener : LISTENERS) listener.run();
+        });
     }
 
     public static boolean isCurrent(Grant grant) {
@@ -131,6 +148,7 @@ public final class WlAccess {
     }
 
     private static void restoreGrants() {
+        boolean changed = false;
         try {
             KeyStore keys = KeyStore.getInstance("AndroidKeyStore"); keys.load(null);
             for (int account = 0; account < UserConfig.MAX_ACCOUNT_COUNT; account++) {
@@ -145,11 +163,12 @@ public final class WlAccess {
                     if (key == null) continue;
                     Grant grant = new Grant(owner, stored.getLong("expires"), stored.getString("token"), key);
                     synchronized (LOCK) {
-                        if (current(account, owner, epoch)) GRANTS.putIfAbsent(owner, grant);
+                        if (current(account, owner, epoch) && GRANTS.putIfAbsent(owner, grant) == null) changed = true;
                     }
                 } catch (Exception ignored) { }
             }
         } catch (Exception ignored) { }
+        if (changed) notifyChanged();
     }
 
     public static void warm() {
@@ -178,10 +197,18 @@ public final class WlAccess {
             String status = "error";
             try { status = refreshNow(account, owner, epoch); }
             catch (Exception e) { status = errorStatus(e); }
+            Grant available = cached();
+            int checkedOther = -1;
+            if (current(account, owner, epoch) && available != null && available.uid != owner) {
+                int other = accountFor(available.uid);
+                checkedOther = other;
+                try { refreshNow(other, available.uid, EPOCHS.getOrDefault(available.uid, 0L)); }
+                catch (Exception ignored) { }
+            }
             if (current(account, owner, epoch) && cached() == null) {
                 for (int other = 0; other < UserConfig.MAX_ACCOUNT_COUNT; other++) {
                     long otherOwner = uid(other);
-                    if (other == account || otherOwner <= 0) continue;
+                    if (other == account || other == checkedOther || otherOwner <= 0) continue;
                     try { refreshNow(other, otherOwner, EPOCHS.getOrDefault(otherOwner, 0L)); }
                     catch (Exception ignored) { }
                     if (cached() != null || !current(account, owner, epoch)) break;
@@ -241,12 +268,14 @@ public final class WlAccess {
         if (!current(account, owner, epoch)) throw new IOException("account_changed");
         String status = state.optString("status", "none");
         if (!"approved".equals(status)) {
+            boolean changed = false;
             synchronized (LOCK) {
                 if (current(account, owner, epoch)) {
-                    GRANTS.remove(owner);
+                    changed = GRANTS.remove(owner) != null;
                     prefs().edit().remove("grant_" + owner).apply();
                 }
             }
+            if (changed) notifyChanged();
             return status;
         }
         KeyStore keys = KeyStore.getInstance("AndroidKeyStore"); keys.load(null);
@@ -303,10 +332,12 @@ public final class WlAccess {
                 prefs().edit().putString("grant_" + owner, issued.toString()).apply();
             }
         }
+        boolean changed;
         synchronized (LOCK) {
             if (!current(account, owner, epoch)) throw new IOException("account_changed");
-            GRANTS.put(owner, grant);
+            changed = GRANTS.put(owner, grant) != grant;
         }
+        if (changed) notifyChanged();
         return "approved";
     }
 
@@ -341,6 +372,7 @@ public final class WlAccess {
             prefs().edit().remove("grant_" + grant.uid).apply();
             lastWarm = 0;
         }
+        notifyChanged();
         warm();
     }
 
@@ -355,6 +387,7 @@ public final class WlAccess {
             GRANTS.remove(owner);
             prefs().edit().remove("grant_" + owner).remove("key_" + owner).apply();
         }
+        notifyChanged();
         Runnable cleanup = () -> {
             try {
                 KeyStore keys = KeyStore.getInstance("AndroidKeyStore"); keys.load(null);

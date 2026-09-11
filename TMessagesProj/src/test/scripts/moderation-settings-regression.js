@@ -6,6 +6,7 @@ const assert = require('node:assert/strict');
 const root = path.resolve(__dirname, '../../main');
 const read = file => fs.readFileSync(path.join(root, 'java/app/nimarkogram/messenger', file), 'utf8');
 const wl = read('wsbypass/preferences/WlPreferencesActivity.java');
+const access = read('wsbypass/WlAccess.java');
 const bypass = read('wsbypass/preferences/WsBypassPreferencesActivity.java');
 const banner = read('preferences/BannerPreferencesActivity.java');
 const controller = read('banners/NimarkoBannerController.java');
@@ -40,7 +41,7 @@ assert(method(controller, 'public void refreshStatus(boolean notify)').includes(
 assert(method(controller, 'public void submitModeration(').includes('moderationSending.remove(operationScope)'));
 for (const dir of ['values', 'values-ru', 'values-zh-rCN', 'values-zh-rTW']) {
     for (const [file, keys] of [
-        ['wl.xml', ['NM_WL_Details', 'NM_WL_AutoSubmit']],
+        ['wl.xml', ['NM_WL_Details', 'NM_WL_AutoSubmit', 'NM_WL_SharedAccess']],
         ['banner_settings.xml', ['NM_BAN_Attach', 'NM_BAN_SelectHint', 'NM_BAN_AutoStatus', 'NM_BAN_AccountChanged']]
     ]) {
         const xml = fs.readFileSync(path.join(root, 'res', dir, file), 'utf8');
@@ -50,29 +51,51 @@ for (const dir of ['values', 'values-ru', 'values-zh-rCN', 'values-zh-rTW']) {
 const fields = wl.slice(wl.indexOf('    private int account'), wl.indexOf('    @Override public String getTitle'));
 const methods = ['public void onResume()', 'public void onPause()', 'public void onFragmentDestroy()',
     'public void onActivityResultFragment(', 'private void refresh(', 'private WlAccess.Callback callback()',
-    'private boolean shouldPoll()', 'private void schedulePoll()'].map(signature => method(wl, signature)).join('\n');
+    'private boolean syncAccount()', 'private void onAccessChanged()', 'private boolean canSubmit()',
+    'private int statusString()', 'private boolean shouldPoll()', 'private void schedulePoll()'].map(signature => method(wl, signature)).join('\n');
+assert(method(wl, 'public void fillItems(').includes('if (canSubmit())'));
+assert(method(wl, 'public void onClick(').includes('item.id == PICK && canSubmit()'));
+const wlStrings = [...new Set([...wl.matchAll(/R\.string\.(\w+)/g)].map(match => match[1]))];
 const test = `import java.util.*;
 import java.lang.ref.WeakReference;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicBoolean;
 public class ModerationSettingsTest {
  static class Uri {}
  static class Intent { Uri uri = new Uri(); Uri getData() { return uri; } }
  static class Activity { static final int RESULT_OK = -1; }
  static class UserConfig {
   static int selectedAccount;
+  static final int MAX_ACCOUNT_COUNT=2;
   static final UserConfig[] users = {new UserConfig(11), new UserConfig(22)};
   long uid; UserConfig(long id) {uid=id;}
   static UserConfig getInstance(int i) {return users[i];}
   long getClientUserId() {return uid;}
+  boolean isClientActivated() {return uid>0;}
+ }
+ static class ConnectionsManager {
+  static int now=1000;
+  static ConnectionsManager getInstance(int account) {return new ConnectionsManager();}
+  int getCurrentTime() {return now;}
  }
  static class AndroidUtilities {
   static final Set<Runnable> scheduled = new HashSet<>();
   static void cancelRunOnUIThread(Runnable r) {scheduled.remove(r);}
   static void runOnUIThread(Runnable r,long delay) {scheduled.add(r);}
+  static void runOnUIThread(Runnable r) {r.run();}
  }
  static class WlAccess {
   interface Callback {void done(String state);}
   static int submissions, refreshes;
   static Callback last;
+  static class Grant {long uid,expires;Grant(long id,long expiry) {uid=id;expires=expiry;}}
+  static final ConcurrentHashMap<Long,Grant> GRANTS=new ConcurrentHashMap<>();
+  static final CopyOnWriteArraySet<Runnable> LISTENERS=new CopyOnWriteArraySet<>();
+  static final AtomicBoolean NOTIFY_PENDING=new AtomicBoolean();
+  ${['private static long uid(', 'private static int accountFor(', 'public static Grant cached()',
+     'private static Grant accountGrant(', 'public static boolean hasAccountGrant(',
+     'public static void addListener(', 'public static void removeListener(', 'private static void notifyChanged()']
+     .map(signature => method(access, signature)).join('\n')}
   static void submit(int account,Uri uri,Callback cb) {submissions++;last=cb;}
   static void refresh(int account,Callback cb) {refreshes++;last=cb;}
  }
@@ -90,6 +113,7 @@ public class ModerationSettingsTest {
  static class SystemClock {static long now;static long elapsedRealtime() {return now;}}
  static class R {static class string {
   static final int NM_BAN_StatusUpdated=1,NM_BAN_RateLimited=2,NM_BAN_StatusRefreshFailed=3;
+  ${wlStrings.map((name, index) => `static final int ${name}=${index + 10};`).join('\n')}
  }}
  static class BannerStatus {
   static final int STATUS_SKIPPED=-2;
@@ -115,7 +139,8 @@ public class ModerationSettingsTest {
  }
  static void check(boolean ok,String message) {if(!ok) throw new AssertionError(message);}
  static WlPreferencesActivity fresh() {
-  UserConfig.selectedAccount=0;UserConfig.users[0].uid=11;
+  UserConfig.selectedAccount=0;UserConfig.users[0].uid=11;UserConfig.users[1].uid=22;
+  WlAccess.GRANTS.clear();WlAccess.LISTENERS.clear();ConnectionsManager.now=1000;
   WlAccess.submissions=0;WlAccess.refreshes=0;
   AndroidUtilities.scheduled.clear();return new WlPreferencesActivity();
  }
@@ -146,6 +171,45 @@ public class ModerationSettingsTest {
   s=fresh();s.onResume();WlAccess.last.done("error");
   check(AndroidUtilities.scheduled.size()==1,"network failure automatically retries without a button");
   s.onPause();check(AndroidUtilities.scheduled.isEmpty(),"error retry stops when hidden");
+  s=fresh();check(!s.canSubmit(),"no application prompt during initial grant restore");
+  WlAccess.GRANTS.put(22L,new WlAccess.Grant(22,10_000));
+  for (String state : new String[]{"none","loading","approved","pending","blocked","rejected","error","authentication_required","expired","revoked"}) {
+   s.status=state;
+   check(s.statusString()==R.string.NM_WL_OtherAccount && !s.canSubmit(),"shared access overrides personal status: "+state);
+  }
+  WlAccess.GRANTS.put(11L,new WlAccess.Grant(11,10_000));
+  check(s.statusString()==R.string.NM_WL_Approved,"own grant has priority in status");
+  UserConfig.users[1].uid=0;
+  check(WlAccess.cached()!=null && !s.canSubmit(),"logout of one approved account keeps another grant");
+  UserConfig.users[0].uid=33;
+  check(WlAccess.cached()==null,"logged-out grants never authorize a reused slot");
+  s=fresh();s.status="none";check(s.canSubmit(),"unapproved device can apply");
+  s.onResume();WlAccess.last.done("none");int before=s.reloads;
+  WlAccess.GRANTS.put(22L,new WlAccess.Grant(22,10_000));WlAccess.notifyChanged();
+  check(s.reloads>before && !s.canSubmit() && s.statusString()==R.string.NM_WL_OtherAccount,"restored grant updates visible screen immediately");
+  check(AndroidUtilities.scheduled.size()==1,"shared access periodically rechecked");
+  WlAccess.GRANTS.remove(22L);WlAccess.notifyChanged();
+  check(s.canSubmit() && s.statusString()==R.string.NM_WL_None,"last sponsor removed reveals own application state");
+  s.onPause();before=s.reloads;WlAccess.notifyChanged();
+  check(WlAccess.LISTENERS.isEmpty() && s.reloads==before,"hidden screen unsubscribes");
+  s=fresh();s.pick();WlAccess.GRANTS.put(22L,new WlAccess.Grant(22,10_000));
+  s.onActivityResultFragment(9913,-1,new Intent());
+  check(!s.picking && WlAccess.submissions==0,"skip redundant upload if shared access arrives during picker");
+  s=fresh();WlAccess.GRANTS.put(22L,new WlAccess.Grant(22,1061));
+  check(!s.canSubmit(),"valid grant accepted");ConnectionsManager.now++;
+  check(WlAccess.cached()==null,"expiring grant cannot keep shared access visible");
+  s=fresh();s.onResume();WlAccess.last.done("approved");
+  WlAccess.notifyChanged();
+  check(s.busy && s.status.equals("loading"),"loss of own grant triggers recheck");
+  s.onFragmentDestroy();check(WlAccess.LISTENERS.isEmpty(),"destroy removes listener");
+  s=fresh();s.onResume();stale=WlAccess.last;
+  UserConfig.selectedAccount=1;WlAccess.notifyChanged();stale.done("approved");
+  check(s.account==1 && s.status.equals("loading") && s.busy,"listener switches identity and ignores previous result");
+  WlAccess.last.done("pending");
+  WlAccess.GRANTS.put(11L,new WlAccess.Grant(11,10_000));WlAccess.notifyChanged();
+  check(!s.canSubmit() && s.statusString()==R.string.NM_WL_OtherAccount,"another approval takes precedence over pending application");
+  WlAccess.GRANTS.remove(11L);WlAccess.notifyChanged();
+  check(!s.canSubmit() && s.statusString()==R.string.NM_WL_Pending,"own pending application survives sponsor logout");
   BannerStatus b=new BannerStatus();SystemClock.now=1000;
   b.refreshStatus(false);b.refreshStatus(false);check(b.executor.tasks.size()==1,"coalesce status request");
   b.executor.drain();check(b.requests==1 && b.bulletins==0,"silent refresh");
@@ -162,6 +226,7 @@ public class ModerationSettingsTest {
   SystemClock.now=500_000;b.response=-1;b.refreshStatus(false);b.executor.drain();
   check(b.settingsRefreshError==-1,"network failure is not mistaken for coalescing");
   System.out.println("PASS: auto-submit, cancellation, duplicate result, account switch/logout, stale callbacks, polling lifecycle and errors");
+  System.out.println("PASS: actual grant selection, shared/own status, cold restore, expiry, logout, slot reuse, listeners and duplicate-application guards");
  }
 }`;
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'moderation-settings-'));

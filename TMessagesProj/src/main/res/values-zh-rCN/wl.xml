@@ -5,11 +5,12 @@
     <string name="NM_WL_Title">移动网络访问</string>
     <string name="NM_WL_Network">MegaFon 和 Yota</string>
     <string name="NM_WL_About">用于 MegaFon 和 Yota 移动网络受限时，经莫斯科连接欧洲。可用性取决于运营商网络。</string>
-    <string name="NM_WL_Request">申请访问</string>
+    <string name="NM_WL_Request">访问权限</string>
     <string name="NM_WL_Status">访问状态</string>
     <string name="NM_WL_OtherAccount">可通过此设备上已登录的其他账号使用。</string>
     <string name="NM_WL_Choose">添加截图</string>
-    <string name="NM_WL_FileHint">MegaFon 或 Yota 个人账户页面。可以遮挡手机号。PNG、JPEG 或 WebP，最大 8 MB。</string>
+    <string name="NM_WL_FileHint">请添加 MegaFon 或 Yota 个人账户页面的截图或照片。PNG、JPEG 或 WebP，最大 8 MB。</string>
+    <string name="NM_WL_SharedAccess">只要此设备上至少有一个已获批准的账号保持登录，所有账号均可使用，无需重复申请。</string>
     <string name="NM_WL_Privacy">截图及文件中存在的日期信息将发送给审核员。元数据不能证明截图真实。审核后或申请在 24 小时后过期时会删除截图；删除失败会重试。首次验证账号需要连接 Telegram。此设备上登录一个已获批准的账号即可；退出后将停止访问，除非仍有其他已获批准的账号登录。</string>
     <string name="NM_WL_Sending">正在提交…</string>
     <string name="NM_WL_Checking">正在检查…</string>
@@ -20,12 +21,12 @@
     <string name="NM_WL_Expired">申请已过期，请重新提交。</string>
     <string name="NM_WL_Revoked">访问权限已撤销</string>
     <string name="NM_WL_Busy">请稍后重试</string>
-    <string name="NM_WL_None">请添加截图以供审核</string>
+    <string name="NM_WL_None">请添加运营商个人账户页面的截图或照片以供审核。</string>
     <string name="NM_WL_FileLarge">截图不能超过 8 MB</string>
     <string name="NM_WL_FileInvalid">无法读取此图片</string>
     <string name="NM_WL_AuthRequired">请连接 Telegram 以验证账号</string>
     <string name="NM_WL_AccountChanged">账号已更改，请重试。</string>
     <string name="NM_WL_Error">无法检查访问权限，请稍后重试。</string>
     <string name="NM_WL_Details">访问条件与隐私</string>
-    <string name="NM_WL_AutoSubmit">所选截图及文件日期将自动发送给审核员。您可以遮挡手机号。</string>
+    <string name="NM_WL_AutoSubmit">所选图片及文件日期将自动发送给审核员。审核状态将在此处自动更新。</string>
 </resources>

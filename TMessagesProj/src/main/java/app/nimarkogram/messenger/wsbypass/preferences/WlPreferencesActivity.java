@@ -32,6 +32,7 @@ public final class WlPreferencesActivity extends BasePreferencesActivity {
     private int generation;
     private boolean busy;
     private String status = "loading";
+    private final Runnable accessChanged = this::onAccessChanged;
     private final Runnable statusPoll = () -> {
         if (visible && !busy && !picking && shouldPoll()) refresh(false);
     };
@@ -41,18 +42,35 @@ public final class WlPreferencesActivity extends BasePreferencesActivity {
     @Override public void onResume() {
         super.onResume();
         visible = true;
+        WlAccess.addListener(accessChanged);
+        syncAccount();
+        if (!busy && !picking) refresh(false);
+        schedulePoll();
+    }
+    private boolean syncAccount() {
         int selected = UserConfig.selectedAccount;
         long selectedUid = UserConfig.getInstance(selected).getClientUserId();
         if (account != selected || owner != selectedUid) {
             account = selected; owner = selectedUid;
             generation++; busy = false; status = "loading";
+            return true;
         }
-        if (!busy && !picking) refresh(false);
+        return false;
+    }
+    private void onAccessChanged() {
+        if (!visible) return;
+        boolean changedAccount = syncAccount();
+        if (changedAccount || WlAccess.cached() == null && "approved".equals(status)) {
+            status = "loading";
+            if (!busy && !picking) refresh(false);
+        }
+        reload();
         schedulePoll();
     }
 
     @Override public void onPause() {
         visible = false;
+        WlAccess.removeListener(accessChanged);
         AndroidUtilities.cancelRunOnUIThread(statusPoll);
         super.onPause();
     }
@@ -61,6 +79,7 @@ public final class WlPreferencesActivity extends BasePreferencesActivity {
         visible = false;
         picking = false;
         generation++;
+        WlAccess.removeListener(accessChanged);
         AndroidUtilities.cancelRunOnUIThread(statusPoll);
         super.onFragmentDestroy();
     }
@@ -72,18 +91,17 @@ public final class WlPreferencesActivity extends BasePreferencesActivity {
                 .setChecked(WlAccess.enabled()));
         items.add(UItem.asShadow(text(R.string.NM_WL_About)));
         items.add(UItem.asHeader(text(R.string.NM_WL_Request)));
-        String details = text(statusString());
-        if (!"approved".equals(status) && WlAccess.cached() != null) details += "\n" + text(R.string.NM_WL_OtherAccount);
         items.add(asSettingsLink(STATUS, IconBackgroundColors.BLUE, R.drawable.msg_info,
-                text(R.string.NM_WL_Status), details).setEnabled(false));
-        if (!"approved".equals(status) && !"blocked".equals(status) && !"pending".equals(status)) {
+                text(R.string.NM_WL_Status), text(statusString())).setEnabled(false));
+        if (canSubmit()) {
             items.add(asSettingsLink(PICK, IconBackgroundColors.PURPLE, R.drawable.msg_photos,
                     text(R.string.NM_WL_Choose),
                     text(R.string.NM_WL_FileHint)).setEnabled(!busy && !picking));
         }
         items.add(asSettingsLink(DETAILS, IconBackgroundColors.CYAN, R.drawable.msg_help,
                 text(R.string.NM_WL_Details)));
-        items.add(UItem.asShadow(text(R.string.NM_WL_AutoSubmit)));
+        items.add(UItem.asShadow(text(WlAccess.cached() != null
+                ? R.string.NM_WL_SharedAccess : R.string.NM_WL_AutoSubmit)));
     }
 
     @Override public void onClick(UItem item, View view, int position, float x, float y) {
@@ -108,7 +126,7 @@ public final class WlPreferencesActivity extends BasePreferencesActivity {
             return;
         }
         if (busy || picking) return;
-        if (item.id == PICK && getParentActivity() != null) {
+        if (item.id == PICK && canSubmit() && getParentActivity() != null) {
             try {
                 pickOwner = owner;
                 pickAccount = account;
@@ -132,6 +150,11 @@ public final class WlPreferencesActivity extends BasePreferencesActivity {
         if (account != pickAccount || UserConfig.selectedAccount != pickAccount
                 || owner != pickOwner || UserConfig.getInstance(pickAccount).getClientUserId() != pickOwner) {
             status = "account_changed"; reload(); return;
+        }
+        if (WlAccess.cached() != null) {
+            reload();
+            schedulePoll();
+            return;
         }
         Uri screenshot = data.getData();
         busy = true;
@@ -163,6 +186,8 @@ public final class WlPreferencesActivity extends BasePreferencesActivity {
     }
 
     private int statusString() {
+        if (WlAccess.cached() != null) return WlAccess.hasAccountGrant(account)
+                ? R.string.NM_WL_Approved : R.string.NM_WL_OtherAccount;
         if ("sending".equals(status)) return R.string.NM_WL_Sending;
         if ("loading".equals(status)) return R.string.NM_WL_Checking;
         switch (status) {
@@ -183,8 +208,13 @@ public final class WlPreferencesActivity extends BasePreferencesActivity {
     }
 
     private static String text(int id) { return LocaleController.getString(id); }
+    private boolean canSubmit() {
+        return WlAccess.cached() == null && !"loading".equals(status) && !"sending".equals(status)
+                && !"approved".equals(status) && !"blocked".equals(status) && !"pending".equals(status);
+    }
     private boolean shouldPoll() {
-        return "pending".equals(status) || "error".equals(status) || "busy".equals(status)
+        return WlAccess.cached() != null || "loading".equals(status) || "approved".equals(status)
+                || "pending".equals(status) || "error".equals(status) || "busy".equals(status)
                 || "authentication_required".equals(status);
     }
     private void schedulePoll() {
