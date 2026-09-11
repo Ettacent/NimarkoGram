@@ -9,7 +9,7 @@
     <string name="NM_WL_Status">访问状态</string>
     <string name="NM_WL_OtherAccount">可通过此设备上已登录的其他账号使用。</string>
     <string name="NM_WL_Choose">添加截图</string>
-    <string name="NM_WL_FileHint">请添加 MegaFon 或 Yota 个人账户页面的截图或照片。PNG、JPEG 或 WebP，最大 8 MB。</string>
+    <string name="NM_WL_FileHint">请添加 MegaFon 或 Yota 个人账户页面的截图或照片。</string>
     <string name="NM_WL_SharedAccess">只要此设备上至少有一个已获批准的账号保持登录，所有账号均可使用，无需重复申请。</string>
     <string name="NM_WL_Privacy">截图及文件中存在的日期信息将发送给审核员。元数据不能证明截图真实。审核后或申请在 24 小时后过期时会删除截图；删除失败会重试。首次验证账号需要连接 Telegram。此设备上登录一个已获批准的账号即可；退出后将停止访问，除非仍有其他已获批准的账号登录。</string>
     <string name="NM_WL_Sending">正在提交…</string>

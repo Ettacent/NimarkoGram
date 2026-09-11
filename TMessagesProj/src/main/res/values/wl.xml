@@ -9,7 +9,7 @@
     <string name="NM_WL_Status">Access status</string>
     <string name="NM_WL_OtherAccount">Available through another account signed in on this device.</string>
     <string name="NM_WL_Choose">Attach screenshot</string>
-    <string name="NM_WL_FileHint">Attach a screenshot or photo of your MegaFon or Yota account page. PNG, JPEG or WebP, up to 8 MB.</string>
+    <string name="NM_WL_FileHint">Attach a screenshot or photo of your MegaFon or Yota account page.</string>
     <string name="NM_WL_SharedAccess">Access works for all accounts on this device while at least one approved account remains signed in. No additional request is needed.</string>
     <string name="NM_WL_Privacy">Your screenshot and its date, if present in the file, are sent to a moderator. Metadata does not prove authenticity. The screenshot is deleted after review or after the request expires in 24 hours; failed deletions are retried. Initial account verification requires a Telegram connection. One approved account signed in on this device is enough; signing out ends access unless another approved account remains.</string>
     <string name="NM_WL_Sending">Submitting…</string>
