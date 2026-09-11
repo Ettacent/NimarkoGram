@@ -3,6 +3,7 @@ package org.telegram.ui;
 import static org.telegram.messenger.AndroidUtilities.dpf2;
 
 import android.content.Context;
+import android.content.res.Configuration;
 import android.graphics.Canvas;
 import android.graphics.Path;
 import android.util.SparseArray;
@@ -267,6 +268,21 @@ public abstract class ViewPagerActivity extends BaseFragment {
     private boolean isResumed;
     private boolean isFullyVisible;
 
+    @Override
+    public void onConfigurationChanged(Configuration newConfig) {
+        super.onConfigurationChanged(newConfig);
+        ArrayList<BaseFragment> fragments = new ArrayList<>();
+        for (int i = 0; i < fragmentsArr.size(); i++) {
+            FragmentState state = fragmentsArr.valueAt(i);
+            if (state != null && state.onCreateCalled && state.fragment != null
+                    && state.fragment.getFragmentView() != null) {
+                fragments.add(state.fragment);
+            }
+        }
+        for (BaseFragment fragment : fragments) {
+            fragment.onConfigurationChanged(newConfig);
+        }
+    }
     @Override
     public void onPause() {
         super.onPause();

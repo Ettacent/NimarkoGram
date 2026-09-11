@@ -20,6 +20,7 @@ const tests = [
     'profile-loading-rows-regression.js',
     'section-header-background-regression.js',
     'profile-rating-transition-regression.js',
+    'profile-rotation-regression.js',
     'caption-quote-width-regression.js',
     'editor-quote-layout-regression.js',
     'caption-clipboard-regression.js',

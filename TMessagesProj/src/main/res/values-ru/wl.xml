@@ -5,11 +5,12 @@
     <string name="NM_WL_Title">Обход белых списков</string>
     <string name="NM_WL_Network">МегаФон и Yota</string>
     <string name="NM_WL_About">Для МегаФона и Yota при ограничении мобильного интернета. Соединение идёт через Москву в Европу. Работа зависит от сети оператора.</string>
-    <string name="NM_WL_Request">Доступ по заявке</string>
+    <string name="NM_WL_Request">Доступ</string>
     <string name="NM_WL_Status">Статус доступа</string>
     <string name="NM_WL_OtherAccount">Доступен через другой аккаунт на этом устройстве.</string>
     <string name="NM_WL_Choose">Прикрепить скриншот</string>
-    <string name="NM_WL_FileHint">Личный кабинет МегаФона или Yota. Номер можно скрыть. PNG, JPEG или WebP, до 8 МБ.</string>
+    <string name="NM_WL_FileHint">Прикрепите скриншот или фото личного кабинета МегаФона или Yota. PNG, JPEG или WebP, до 8 МБ.</string>
+    <string name="NM_WL_SharedAccess">Доступ работает для всех аккаунтов на устройстве, пока хотя бы один одобренный аккаунт остаётся в клиенте. Повторная заявка не нужна.</string>
     <string name="NM_WL_Privacy">Скриншот и дата из файла, если она есть, будут отправлены модератору. Метаданные не подтверждают подлинность снимка. Снимок удаляется после рассмотрения или истечения заявки через 24 часа; при ошибке удаление повторяется. Для первоначальной проверки аккаунта нужно соединение с Telegram. Достаточно одного одобренного аккаунта на устройстве; после выхода из него доступ прекращается, если других одобренных аккаунтов нет.</string>
     <string name="NM_WL_Sending">Отправка заявки…</string>
     <string name="NM_WL_Checking">Проверка…</string>
@@ -20,12 +21,12 @@
     <string name="NM_WL_Expired">Заявка истекла. Отправьте новую.</string>
     <string name="NM_WL_Revoked">Доступ отозван</string>
     <string name="NM_WL_Busy">Попробуйте немного позже</string>
-    <string name="NM_WL_None">Прикрепите скриншот для проверки</string>
+    <string name="NM_WL_None">Прикрепите скриншот или фото личного кабинета оператора для проверки.</string>
     <string name="NM_WL_FileLarge">Скриншот должен быть не больше 8 МБ</string>
     <string name="NM_WL_FileInvalid">Не удалось прочитать изображение</string>
     <string name="NM_WL_AuthRequired">Для проверки подключитесь к Telegram</string>
     <string name="NM_WL_AccountChanged">Аккаунт изменился. Повторите действие.</string>
     <string name="NM_WL_Error">Не удалось проверить доступ. Повторите позже.</string>
     <string name="NM_WL_Details">Условия доступа и данные</string>
-    <string name="NM_WL_AutoSubmit">Выбранный скриншот и дата из файла отправятся модератору автоматически. Номер телефона можно скрыть.</string>
+    <string name="NM_WL_AutoSubmit">Выбранное изображение и дата из файла отправятся модератору автоматически. Статус рассмотрения обновляется здесь.</string>
 </resources>

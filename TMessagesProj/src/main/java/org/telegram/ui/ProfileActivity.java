@@ -3749,6 +3749,9 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                 super.onSizeChanged(w, h, oldw, oldh);
                 Blur3Utils.checkBitmapSourceMatrixScale(scrimBlur3SourceBitmap, fragmentView);
                 scrimBlur3Factory.invalidateAllLinkedViews();
+                if (oldw > 0 && oldh > 0 && (w != oldw || h != oldh)) {
+                    fixLayout();
+                }
             }
 
             @Override
