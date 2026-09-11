@@ -395,6 +395,10 @@ public class EditTextEffects extends EditText {
     }
 
     private int lastText2Length;
+    private Layout lastQuoteLayout;
+    private int lastQuoteLayoutWidth;
+    private int lastQuoteLayoutHeight;
+    private int lastQuoteLineCount;
     private int quoteUpdatesTries;
     private boolean[] quoteUpdateLayout;
     private boolean quoteBlocksUpdating;
@@ -405,10 +409,19 @@ public class EditTextEffects extends EditText {
             editedWhileQuoteUpdating = true;
             return;
         }
-        int newTextLength = (getLayout() == null || getLayout().getText() == null) ? 0 : getLayout().getText().length();
-        if (force || lastText2Length != newTextLength) {
+        final Layout layout = getLayout();
+        final int newTextLength = layout == null || layout.getText() == null ? 0 : layout.getText().length();
+        final int width = layout == null ? 0 : layout.getWidth();
+        final int height = layout == null ? 0 : layout.getHeight();
+        final int lines = layout == null ? 0 : layout.getLineCount();
+        if (force || lastText2Length != newTextLength || lastQuoteLayout != layout
+                || lastQuoteLayoutWidth != width || lastQuoteLayoutHeight != height || lastQuoteLineCount != lines) {
             quoteUpdatesTries = 2;
             lastText2Length = newTextLength;
+            lastQuoteLayout = layout;
+            lastQuoteLayoutWidth = width;
+            lastQuoteLayoutHeight = height;
+            lastQuoteLineCount = lines;
         }
         if (quoteUpdatesTries > 0) {
             if (quoteUpdateLayout == null) {
@@ -417,12 +430,15 @@ public class EditTextEffects extends EditText {
             quoteUpdateLayout[0] = false;
             editedWhileQuoteUpdating = false;
             quoteBlocksUpdating = true;
-            quoteBlocks = QuoteSpan.updateQuoteBlocks(this, getLayout(), quoteBlocks, quoteUpdateLayout);
-            if (editedWhileQuoteUpdating) {
+            try {
                 quoteBlocks = QuoteSpan.updateQuoteBlocks(this, getLayout(), quoteBlocks, quoteUpdateLayout);
+                if (editedWhileQuoteUpdating) {
+                    quoteBlocks = QuoteSpan.updateQuoteBlocks(this, getLayout(), quoteBlocks, quoteUpdateLayout);
+                }
+            } finally {
+                quoteBlocksUpdating = false;
+                editedWhileQuoteUpdating = false;
             }
-            quoteBlocksUpdating = false;
-            editedWhileQuoteUpdating = false;
             if (quoteUpdateLayout[0]) {
                 resetFontMetricsCache();
             }
@@ -439,6 +455,7 @@ public class EditTextEffects extends EditText {
     }
 
     public void invalidateEffects() {
+        lastQuoteLayout = null;
         Editable text = getText();
         if (text != null) {
             for (TextStyleSpan span : text.getSpans(0, text.length(), TextStyleSpan.class)) {

@@ -16,6 +16,7 @@ import org.telegram.messenger.ApplicationLoader;
 import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.R;
 import org.telegram.messenger.Utilities;
+import org.telegram.messenger.UserConfig;
 import org.telegram.ui.Components.BulletinFactory;
 import org.telegram.ui.Components.IconBackgroundColors;
 import org.telegram.ui.Components.UItem;
@@ -35,7 +36,6 @@ public class BannerPreferencesActivity extends BasePreferencesActivity {
     private static final int ID_CHANGE_GLOBAL = 102;
     private static final int ID_SUBMIT        = 103;
     private static final int ID_HIDE_AVATAR   = 104;
-    private static final int ID_REFRESH       = 105;
     private static final int ID_PICK_LOCAL    = 106;
     private static final int ID_DELETE_LOCAL  = 107;
     private static final int ID_USE_AVATAR    = 108;
@@ -44,7 +44,19 @@ public class BannerPreferencesActivity extends BasePreferencesActivity {
 
     private final NimarkoBannerController ctrl = NimarkoBannerController.getInstance();
     private boolean pickingGlobal;
+    private boolean picking;
+    private boolean processingFile;
+    private int pickAccount;
+    private long pickOwner;
+    private boolean visible;
     private Runnable settingsReloader;
+    private final Runnable statusPoll = new Runnable() {
+        @Override public void run() {
+            if (!visible || isFinished) return;
+            if (NimarkoBannerConfig.enabled && !picking && !processingFile) ctrl.refreshStatus(false);
+            AndroidUtilities.runOnUIThread(this, 30_000);
+        }
+    };
 
 
     @Override
@@ -54,6 +66,7 @@ public class BannerPreferencesActivity extends BasePreferencesActivity {
 
     @Override
     public boolean onFragmentCreate() {
+        ctrl.ensureStarted();
         installSettingsReloader();
         return super.onFragmentCreate();
     }
@@ -61,11 +74,27 @@ public class BannerPreferencesActivity extends BasePreferencesActivity {
     @Override
     public void onResume() {
         super.onResume();
+        visible = true;
+        ctrl.myId();
         installSettingsReloader();
+        AndroidUtilities.cancelRunOnUIThread(statusPoll);
+        statusPoll.run();
+        reload();
+    }
+    @Override
+    public void onPause() {
+        visible = false;
+        AndroidUtilities.cancelRunOnUIThread(statusPoll);
+        ctrl.clearSettingsReloader(settingsReloader);
+        super.onPause();
     }
 
     @Override
     public void onFragmentDestroy() {
+        visible = false;
+        picking = false;
+        AndroidUtilities.cancelRunOnUIThread(statusPoll);
+        ctrl.clearSettingsReloader(settingsReloader);
         super.onFragmentDestroy();
     }
 
@@ -74,7 +103,7 @@ public class BannerPreferencesActivity extends BasePreferencesActivity {
             WeakReference<BannerPreferencesActivity> owner = new WeakReference<>(this);
             settingsReloader = () -> {
                 BannerPreferencesActivity activity = owner.get();
-                if (activity != null && !activity.isFinished) {
+                if (activity != null && activity.visible && !activity.isFinished) {
                     activity.reload();
                 }
             };
@@ -96,13 +125,25 @@ public class BannerPreferencesActivity extends BasePreferencesActivity {
         String st = ctrl.statusString();
 
         items.add(UItem.asHeader(LocaleController.getString(R.string.NM_BAN_GlobalHeader)));
-        items.add(asSettingsValue(ID_STATUS, IconBackgroundColors.BLUE,
-                R.drawable.msg_info, LocaleController.getString(R.string.NM_BAN_StatusLabel), statusText(st)));
+        boolean sending = processingFile || ctrl.isModerationSending();
+        String details;
+        if (sending) details = LocaleController.getString(R.string.NM_BAN_Sending);
+        else if (ctrl.hasKnownStatus()) details = statusText(st);
+        else details = LocaleController.getString(ctrl.isStatusRefreshing()
+                    ? R.string.NM_BAN_Refreshing : R.string.NM_BAN_StatusUnknown);
+        int error = ctrl.settingsStatusError();
+        if (!sending && error != 0) {
+            details += "\n" + LocaleController.getString(error == 429
+                    ? R.string.NM_BAN_RateLimited : R.string.NM_BAN_StatusRefreshFailed);
+        }
+        items.add(asSettingsLink(ID_STATUS, IconBackgroundColors.BLUE,
+                R.drawable.msg_info, LocaleController.getString(R.string.NM_BAN_StatusLabel), details).setEnabled(false));
         String moderationHint = null;
         switch (st) {
             case "approved":
                 items.add(asSettingsLink(ID_CHANGE_GLOBAL, IconBackgroundColors.PURPLE,
-                        R.drawable.msg_edit, LocaleController.getString(R.string.NM_BAN_ChangeGlobal)));
+                        R.drawable.msg_edit, LocaleController.getString(R.string.NM_BAN_ChangeGlobal),
+                        LocaleController.getString(R.string.NM_BAN_SelectHint)).setEnabled(!sending && !picking));
                 break;
             case "pending":
                 moderationHint = LocaleController.getString(R.string.NM_BAN_PendingWarning);
@@ -112,23 +153,13 @@ public class BannerPreferencesActivity extends BasePreferencesActivity {
                 break;
             default:
                 items.add(asSettingsLink(ID_SUBMIT, IconBackgroundColors.GREEN,
-                        R.drawable.msg_send, LocaleController.getString(R.string.NM_BAN_SubmitModeration)));
+                        R.drawable.msg_gallery, LocaleController.getString(R.string.NM_BAN_Attach),
+                        LocaleController.getString(R.string.NM_BAN_SelectHint)).setEnabled(!sending && !picking));
                 break;
         }
-        items.add(asSettingsLink(ID_REFRESH, IconBackgroundColors.CYAN,
-                R.drawable.msg_retry, LocaleController.getString(R.string.NM_BAN_RefreshStatus)));
-        items.add(UItem.asShadow(moderationHint));
-
-        items.add(UItem.asHeader(LocaleController.getString(R.string.NM_SettingsSectionDisplay)));
-        if ("approved".equals(st)) {
-            items.add(SettingsHelper.asSwitchCG(ID_HIDE_AVATAR,
-                    LocaleController.getString(R.string.NM_BAN_HideAvatar))
-                    .setChecked(ctrl.hideAvatarFlag()));
-        }
-        items.add(SettingsHelper.asSwitchCG(ID_LITE,
-                LocaleController.getString(R.string.NM_BAN_LiteMode))
-                .setChecked(NimarkoBannerConfig.liteMode));
-        items.add(UItem.asShadow(LocaleController.getString(R.string.NM_BAN_LiteModeHint)));
+        items.add(UItem.asShadow(moderationHint == null
+                ? LocaleController.getString(R.string.NM_BAN_AutoStatus)
+                : moderationHint + "\n" + LocaleController.getString(R.string.NM_BAN_AutoStatus)));
 
         items.add(UItem.asHeader(LocaleController.getString(R.string.NM_BAN_LocalHeader)));
         if ("approved".equals(st)) {
@@ -156,6 +187,16 @@ public class BannerPreferencesActivity extends BasePreferencesActivity {
             }
             items.add(UItem.asShadow(LocaleController.getString(R.string.NM_BAN_LocalOnlyHint)));
         }
+        items.add(UItem.asHeader(LocaleController.getString(R.string.NM_SettingsSectionDisplay)));
+        if ("approved".equals(st)) {
+            items.add(SettingsHelper.asSwitchCG(ID_HIDE_AVATAR,
+                    LocaleController.getString(R.string.NM_BAN_HideAvatar))
+                    .setChecked(ctrl.hideAvatarFlag()));
+        }
+        items.add(SettingsHelper.asSwitchCG(ID_LITE,
+                LocaleController.getString(R.string.NM_BAN_LiteMode))
+                .setChecked(NimarkoBannerConfig.liteMode));
+        items.add(UItem.asShadow(LocaleController.getString(R.string.NM_BAN_LiteModeHint)));
     }
 
     private static String statusText(String st) {
@@ -176,6 +217,7 @@ public class BannerPreferencesActivity extends BasePreferencesActivity {
             case ID_ENABLED:
                 NimarkoBannerConfig.toggleEnabled();
                 ctrl.setPollingEnabled(NimarkoBannerConfig.enabled);
+                if (NimarkoBannerConfig.enabled) ctrl.refreshStatus(false);
                 updateCheckState(view, NimarkoBannerConfig.enabled);
                 reload();
                 break;
@@ -204,13 +246,11 @@ public class BannerPreferencesActivity extends BasePreferencesActivity {
             case ID_DELETE_LOCAL:
                 ctrl.removeLocalBanner();
                 break;
-            case ID_REFRESH:
-                ctrl.refreshStatus();
-                break;
         }
     }
 
     private void selGlobal() {
+        if (picking || processingFile || ctrl.isModerationSending()) return;
         String st = ctrl.statusString();
         if ("blocked".equals(st)) { err(R.string.NM_BAN_BlockedError); return; }
         if ("pending".equals(st)) { err(R.string.NM_BAN_PendingError); return; }
@@ -219,41 +259,59 @@ public class BannerPreferencesActivity extends BasePreferencesActivity {
     }
 
     private void selLocal() {
+        if (picking || processingFile || ctrl.isModerationSending()) return;
         if ("approved".equals(ctrl.statusString())) { err(R.string.NM_BAN_LocalNa); return; }
         pickingGlobal = false;
         openChooser();
     }
 
     private void openChooser() {
+        if (picking || processingFile || ctrl.isModerationSending()) return;
         try {
             Activity act = getParentActivity();
             if (act == null) return;
-            Intent intent = new Intent(Intent.ACTION_GET_CONTENT).setType("*/*");
+            picking = true;
+            pickAccount = UserConfig.selectedAccount;
+            pickOwner = UserConfig.getInstance(pickAccount).getClientUserId();
+            Intent intent = new Intent(Intent.ACTION_GET_CONTENT).setType("*/*")
+                    .addCategory(Intent.CATEGORY_OPENABLE);
             intent.putExtra(Intent.EXTRA_MIME_TYPES, new String[]{"image/jpeg", "image/png", "video/mp4"});
             act.startActivityForResult(
                     Intent.createChooser(intent, LocaleController.getString(R.string.NM_BAN_PickFile)),
                     FILE_PICK_CODE);
         } catch (Throwable t) {
+            picking = false;
             err(R.string.NM_BAN_NoAccess);
         }
     }
 
     @Override
     public void onActivityResultFragment(int requestCode, int resultCode, Intent data) {
-        if (requestCode != FILE_PICK_CODE) return;
+        if (requestCode != FILE_PICK_CODE || !picking) return;
+        picking = false;
         if (resultCode != Activity.RESULT_OK || data == null || data.getData() == null) return;
+        final int account = pickAccount;
+        final long owner = pickOwner;
+        if (!ownsSelection(account, owner)) { err(R.string.NM_BAN_AccountChanged); return; }
         final Uri uri = data.getData();
         final boolean global = pickingGlobal;
-        Utilities.globalQueue.postRunnable(() -> processPickedFile(uri, global));
+        processingFile = true;
+        reload();
+        Utilities.globalQueue.postRunnable(() -> processPickedFile(uri, global, account, owner));
     }
 
-    private void processPickedFile(Uri uri, boolean global) {
-        File tmp = new File(ctrl.storageDir(), "temp_upload");
+    private boolean ownsSelection(int account, long owner) {
+        return !isFinished && owner != 0 && UserConfig.selectedAccount == account
+                && UserConfig.getInstance(account).getClientUserId() == owner;
+    }
+    private void processPickedFile(Uri uri, boolean global, int account, long owner) {
+        File tmp = null;
         InputStream in = null;
         FileOutputStream out = null;
         try {
+            tmp = File.createTempFile("banner_upload_", ".tmp", new File(ctrl.storageDir()));
             in = ApplicationLoader.applicationContext.getContentResolver().openInputStream(uri);
-            if (in == null) { err(R.string.NM_BAN_NoAccess); return; }
+            if (in == null) { tmp.delete(); err(R.string.NM_BAN_NoAccess); return; }
             out = new FileOutputStream(tmp);
             byte[] buf = new byte[8192];
             long total = 0;
@@ -277,17 +335,27 @@ public class BannerPreferencesActivity extends BasePreferencesActivity {
                 return;
             }
 
-            if (global) {
-                ctrl.submitModeration(tmp, ext, total);
-            } else {
-                ctrl.setLocalBanner(tmp, ext);
-            }
+            final File upload = tmp;
+            final long size = total;
+            AndroidUtilities.runOnUIThread(() -> {
+                if (!ownsSelection(account, owner)) {
+                    upload.delete();
+                    if (!isFinished) err(R.string.NM_BAN_AccountChanged);
+                    return;
+                }
+                if (global) ctrl.submitModeration(upload, ext, size);
+                else ctrl.setLocalBanner(upload, ext);
+            });
         } catch (Throwable t) {
-            tmp.delete();
+            if (tmp != null) tmp.delete();
             err(R.string.NM_BAN_NoAccess);
         } finally {
             try { if (in != null) in.close(); } catch (Throwable ignored) {}
             try { if (out != null) out.close(); } catch (Throwable ignored) {}
+            AndroidUtilities.runOnUIThread(() -> {
+                processingFile = false;
+                if (visible && !isFinished) reload();
+            });
         }
     }
 

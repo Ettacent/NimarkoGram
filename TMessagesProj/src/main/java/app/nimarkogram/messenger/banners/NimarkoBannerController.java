@@ -1,6 +1,7 @@
 package app.nimarkogram.messenger.banners;
 
 import android.text.TextUtils;
+import android.os.SystemClock;
 import android.util.AtomicFile;
 
 import app.nimarkogram.messenger.utils.NimarkoInlineAuth;
@@ -95,6 +96,7 @@ public final class NimarkoBannerController {
     private volatile boolean myHasSound;
     private volatile String myStatusRaw;
     private volatile boolean statusEverFetched;
+    private static final int STATUS_SKIPPED = -2;
 
     private final Map<CacheKey, String> cachedBanners = new ConcurrentHashMap<>();
     private final Map<String, CacheKey> bannerByPath = new ConcurrentHashMap<>();
@@ -106,6 +108,11 @@ public final class NimarkoBannerController {
     private final Map<CacheKey, Long> checkTimes = new ConcurrentHashMap<>();
     private final Map<CacheKey, Long> existsTimes = new ConcurrentHashMap<>();
     private final Set<Scope> statusFetching = ConcurrentHashMap.newKeySet();
+    private final Set<Scope> moderationSending = ConcurrentHashMap.newKeySet();
+    private final Set<Scope> settingsRefreshing = ConcurrentHashMap.newKeySet();
+    private Scope settingsRefreshOwner;
+    private long settingsRefreshAfter;
+    private int settingsRefreshError;
 
     private final Object cacheLock = new Object();
     private final Object authLock = new Object();
@@ -180,7 +187,23 @@ public final class NimarkoBannerController {
         }
     }
 
-    public void setSettingsReloader(Runnable r) { settingsReloader = r; }
+    public synchronized void setSettingsReloader(Runnable r) { settingsReloader = r; }
+    public synchronized void clearSettingsReloader(Runnable r) {
+        if (settingsReloader == r) settingsReloader = null;
+    }
+    public boolean isModerationSending() {
+        Scope owner = currentScope;
+        return owner != null && moderationSending.contains(owner);
+    }
+    public boolean isStatusRefreshing() {
+        Scope owner = currentScope;
+        return owner != null && settingsRefreshing.contains(owner);
+    }
+    public int settingsStatusError() {
+        synchronized (statusStateLock) {
+            return currentScope != null && currentScope.equals(settingsRefreshOwner) ? settingsRefreshError : 0;
+        }
+    }
 
     private void reloadSettings() {
         Runnable r = settingsReloader;
@@ -700,6 +723,7 @@ public final class NimarkoBannerController {
 
 
     public String statusString() { return myStatus; }
+    public boolean hasKnownStatus() { return statusEverFetched; }
     public boolean hideAvatarFlag() { return myHideAvatar; }
 
     private File statusFile(Scope scope) { return new File(storageDir, "server_status_" + scope.fileTag() + ".json"); }
@@ -780,12 +804,12 @@ public final class NimarkoBannerController {
     }
 
     private int fetchStatus(Scope scope) {
-        if (scope == null || scope.uid == 0L || !statusFetching.add(scope)) return -1;
+        if (scope == null || scope.uid == 0L || !statusFetching.add(scope)) return STATUS_SKIPPED;
         final long requestRevision;
         synchronized (statusStateLock) {
             if (!isCurrentScope(scope)) {
                 statusFetching.remove(scope);
-                return -1;
+                return STATUS_SKIPPED;
             }
             statusActivityRevision++;
             requestRevision = statusRevision;
@@ -795,7 +819,7 @@ public final class NimarkoBannerController {
             if (!s.ok) return s.httpCode == 200 ? -1 : s.httpCode;
             final String old;
             synchronized (statusStateLock) {
-                if (!statusRevisionMatches(scope, requestRevision)) return -1;
+                if (!statusRevisionMatches(scope, requestRevision)) return STATUS_SKIPPED;
                 statusEverFetched = true;
                 old = myStatus;
                 myStatus = s.status;
@@ -871,7 +895,12 @@ public final class NimarkoBannerController {
 
     public void submitModeration(File tmp, String ext, long size) {
         final Scope operationScope = scope();
+        if (!moderationSending.add(operationScope)) {
+            safeRemove(tmp);
+            return;
+        }
         final long operationRevision = beginStatusMutation(operationScope);
+        reloadSettings();
         executor.submit(() -> {
             try {
                 long my = operationScope.uid;
@@ -932,6 +961,7 @@ public final class NimarkoBannerController {
                 safeRemove(tmp);
                 FileLog.e("nimarko-banner: submitModeration failed", t);
             } finally {
+                moderationSending.remove(operationScope);
                 reloadSettings();
             }
         });
@@ -964,12 +994,37 @@ public final class NimarkoBannerController {
     }
 
     public void refreshStatus() {
+        refreshStatus(true);
+    }
+    public void refreshStatus(boolean notify) {
         Scope operationScope = scope();
+        if (operationScope.uid == 0 || moderationSending.contains(operationScope)) return;
+        synchronized (statusStateLock) {
+            if (operationScope.equals(settingsRefreshOwner) && SystemClock.elapsedRealtime() < settingsRefreshAfter) return;
+            if (!settingsRefreshing.add(operationScope)) return;
+            settingsRefreshOwner = operationScope;
+            settingsRefreshAfter = SystemClock.elapsedRealtime() + 30_000;
+            settingsRefreshError = 0;
+        }
         CacheKey ownKey = key(operationScope, operationScope.uid);
         usersNoBanner.remove(ownKey);
+        reloadSettings();
         executor.submit(() -> {
-            int responseCode = fetchStatus(operationScope);
-            reloadSettings();
+            int responseCode = -1;
+            try {
+                responseCode = fetchStatus(operationScope);
+            } finally {
+                settingsRefreshing.remove(operationScope);
+                synchronized (statusStateLock) {
+                    if (isCurrentScope(operationScope) && operationScope.equals(settingsRefreshOwner)) {
+                        settingsRefreshError = responseCode == 200 || responseCode == STATUS_SKIPPED ? 0 : responseCode;
+                        settingsRefreshAfter = SystemClock.elapsedRealtime()
+                                + (responseCode == 429 ? 300_000 : responseCode == 200 ? 30_000 : 60_000);
+                    }
+                }
+                reloadSettings();
+            }
+            if (!notify || !isCurrentScope(operationScope) || responseCode == STATUS_SKIPPED) return;
             if (responseCode == 200) uiOk(R.string.NM_BAN_StatusUpdated);
             else if (responseCode == 429) uiErr(R.string.NM_BAN_RateLimited);
             else uiErr(R.string.NM_BAN_StatusRefreshFailed);

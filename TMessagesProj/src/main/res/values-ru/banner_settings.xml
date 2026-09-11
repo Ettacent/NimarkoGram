@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="NM_BAN_Attach">Прикрепить баннер</string>
+    <string name="NM_BAN_SelectHint">Фото или видео до 8 МБ. После выбора сразу отправится на проверку, а после одобрения будет видно всем.</string>
+    <string name="NM_BAN_AutoStatus">Статус обновляется автоматически, пока открыт этот экран.</string>
+    <string name="NM_BAN_AccountChanged">Аккаунт изменился. Выберите файл заново.</string>
+</resources>

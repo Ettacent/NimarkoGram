@@ -461,6 +461,7 @@ public class UserConfig extends BaseController {
         app.nimarkogram.messenger.security.NimarkoBiometricPrompt.clearVerifiedForAccount(currentAccount);
         app.nimarkogram.messenger.utils.LockedChats.onAccountLoggedOut(currentAccount, clientUserId);
         app.nimarkogram.messenger.wsbypass.WsRelayAuth.onAccountLoggedOut(currentAccount, clientUserId);
+        app.nimarkogram.messenger.wsbypass.WlAccess.onAccountLoggedOut(currentAccount, clientUserId);
         app.nimarkogram.messenger.wsbypass.voip.VoipRelayAuth.onAccountLoggedOut(currentAccount, clientUserId);
         getPreferences().edit().clear().apply();
 

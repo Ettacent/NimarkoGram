@@ -40,6 +40,9 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.view.accessibility.AccessibilityNodeInfo;
 import android.view.inputmethod.EditorInfo;
+import android.view.inputmethod.InputConnection;
+import android.view.inputmethod.InputConnectionWrapper;
+import android.view.inputmethod.TextAttribute;
 import android.widget.FrameLayout;
 import android.widget.TextView;
 
@@ -1009,8 +1012,9 @@ public class EditTextCaption extends EditTextBoldCursor implements FloatingToolb
                 return true;
             }
             ClipboardManager clipboard = (ClipboardManager) getContext().getSystemService(Context.CLIPBOARD_SERVICE);
-            ClipData clipData = clipboard.getPrimaryClip();
-            if (clipData != null && clipData.getItemCount() == 1 && clipData.getDescription().hasMimeType("text/html")) {
+            ClipData clipData = clipboard == null ? null : clipboard.getPrimaryClip();
+            if (clipData != null && clipData.getItemCount() == 1 && clipData.getDescription() != null
+                    && clipData.getDescription().hasMimeType("text/html")) {
                 try {
                     String html = clipData.getItemAt(0).getHtmlText();
                     if (pasteTelegramEntitiesHtml(html)) {
@@ -1052,6 +1056,36 @@ public class EditTextCaption extends EditTextBoldCursor implements FloatingToolb
         }
         return super.onTextContextMenuItem(id);
     }
+    @Override
+    public InputConnection onCreateInputConnection(EditorInfo editorInfo) {
+        InputConnection connection = super.onCreateInputConnection(editorInfo);
+        if (connection == null) {
+            return null;
+        }
+        return new InputConnectionWrapper(connection, false) {
+            @Override
+            public boolean commitText(CharSequence text, int newCursorPosition) {
+                return super.commitText(restoreClipboardEntities(text), newCursorPosition);
+            }
+            @android.annotation.TargetApi(33)
+            @Override
+            public boolean commitText(CharSequence text, int newCursorPosition, TextAttribute textAttribute) {
+                return super.commitText(restoreClipboardEntities(text), newCursorPosition, textAttribute);
+            }
+        };
+    }
+    protected CharSequence restoreClipboardEntities(CharSequence text) {
+        if (!CustomHtml.mayMatchTelegramEntitiesClipboard(text)) {
+            return text;
+        }
+        try {
+            CharSequence restored = parseClipboardHtml(getTelegramEntitiesClipboardHtml(text));
+            return restored == null ? text : restored;
+        } catch (Throwable e) {
+            FileLog.e(e);
+            return text;
+        }
+    }
 
     /**
      * Restores Telegram formatting from a clipboard item created by
@@ -1060,17 +1094,20 @@ public class EditTextCaption extends EditTextBoldCursor implements FloatingToolb
      * rich clipboard item which merely starts with the same characters.
      */
     protected boolean pasteTelegramEntitiesFromClipboard(CharSequence expectedPlainText) {
+        return pasteTelegramEntitiesHtml(getTelegramEntitiesClipboardHtml(expectedPlainText));
+    }
+    private String getTelegramEntitiesClipboardHtml(CharSequence expectedPlainText) {
         try {
             ClipboardManager clipboard = (ClipboardManager) getContext().getSystemService(Context.CLIPBOARD_SERVICE);
             ClipData clipData = clipboard == null ? null : clipboard.getPrimaryClip();
             if (clipData == null || clipData.getItemCount() != 1 || clipData.getDescription() == null
                     || !clipData.getDescription().hasMimeType("text/html")) {
-                return false;
+                return null;
             }
             ClipData.Item item = clipData.getItemAt(0);
             String html = item.getHtmlText();
             if (!CustomHtml.isTelegramEntitiesClipboardHtml(html)) {
-                return false;
+                return null;
             }
             if (expectedPlainText != null) {
                 CharSequence clipboardText = item.getText();
@@ -1078,35 +1115,61 @@ public class EditTextCaption extends EditTextBoldCursor implements FloatingToolb
                     clipboardText = item.coerceToText(getContext());
                 }
                 if (!TextUtils.equals(expectedPlainText, clipboardText)) {
-                    return false;
+                    return null;
                 }
             }
-            return pasteTelegramEntitiesHtml(html);
+            return html;
         } catch (Throwable e) {
             FileLog.e(e);
-            return false;
+            return null;
         }
     }
 
-    private boolean pasteTelegramEntitiesHtml(String html) {
+    private SpannableStringBuilder parseClipboardHtml(String html) {
         if (TextUtils.isEmpty(html)) {
-            return false;
+            return null;
         }
+        CharSequence parsed = CopyUtilities.fromHTML(html);
+        Editable editable = getText();
+        if (parsed == null || editable == null) {
+            return null;
+        }
+        SpannableStringBuilder pasted = new SpannableStringBuilder(parsed);
+        Paint.FontMetricsInt metrics = getPaint().getFontMetricsInt();
+        Emoji.replaceEmoji(pasted, metrics, false, null);
+        AnimatedEmojiSpan[] spans = pasted.getSpans(0, pasted.length(), AnimatedEmojiSpan.class);
+        if (spans != null) {
+            for (AnimatedEmojiSpan span : spans) {
+                span.applyFontMetrics(metrics, AnimatedEmojiDrawable.getCacheTypeForEnterView());
+            }
+        }
+        int rawStart = getSelectionStart();
+        int rawEnd = getSelectionEnd();
+        if (rawStart < 0 || rawEnd < 0) {
+            rawStart = rawEnd = editable.length();
+        }
+        int start = Math.min(editable.length(), Math.max(0, Math.min(rawStart, rawEnd)));
+        int end = Math.min(editable.length(), Math.max(rawStart, rawEnd));
+        QuoteSpan.QuoteStyleSpan[] quotesInSelection = editable.getSpans(start, end, QuoteSpan.QuoteStyleSpan.class);
+        if (quotesInSelection != null && quotesInSelection.length > 0) {
+            QuoteSpan.QuoteStyleSpan[] quotesToDelete = pasted.getSpans(0, pasted.length(), QuoteSpan.QuoteStyleSpan.class);
+            for (QuoteSpan.QuoteStyleSpan quote : quotesToDelete) {
+                pasted.removeSpan(quote);
+                pasted.removeSpan(quote.span);
+            }
+        } else {
+            QuoteSpan.normalizeQuotes(pasted);
+        }
+        return pasted;
+    }
+    private boolean pasteTelegramEntitiesHtml(String html) {
         try {
-            CharSequence parsed = CopyUtilities.fromHTML(html);
-            if (parsed == null) {
-                return false;
-            }
-            SpannableStringBuilder pasted = new SpannableStringBuilder(parsed);
-            Emoji.replaceEmoji(pasted, getPaint().getFontMetricsInt(), false, null);
-            AnimatedEmojiSpan[] spans = pasted.getSpans(0, pasted.length(), AnimatedEmojiSpan.class);
-            if (spans != null) {
-                for (int k = 0; k < spans.length; ++k) {
-                    spans[k].applyFontMetrics(getPaint().getFontMetricsInt(), AnimatedEmojiDrawable.getCacheTypeForEnterView());
-                }
-            }
+            SpannableStringBuilder pasted = parseClipboardHtml(html);
 
             Editable editable = getText();
+            if (pasted == null || editable == null) {
+                return false;
+            }
             int rawStart = getSelectionStart();
             int rawEnd = getSelectionEnd();
             if (rawStart < 0 || rawEnd < 0) {
@@ -1114,16 +1177,6 @@ public class EditTextCaption extends EditTextBoldCursor implements FloatingToolb
             }
             int start = Math.max(0, Math.min(rawStart, rawEnd));
             int end = Math.min(editable.length(), Math.max(rawStart, rawEnd));
-            QuoteSpan.QuoteStyleSpan[] quotesInSelection = editable.getSpans(start, end, QuoteSpan.QuoteStyleSpan.class);
-            if (quotesInSelection != null && quotesInSelection.length > 0) {
-                QuoteSpan.QuoteStyleSpan[] quotesToDelete = pasted.getSpans(0, pasted.length(), QuoteSpan.QuoteStyleSpan.class);
-                for (QuoteSpan.QuoteStyleSpan quote : quotesToDelete) {
-                    pasted.removeSpan(quote);
-                    pasted.removeSpan(quote.span);
-                }
-            } else {
-                QuoteSpan.normalizeQuotes(pasted);
-            }
 
             beginBatchEdit();
             try {

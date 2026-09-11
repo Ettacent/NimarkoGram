@@ -21,7 +21,10 @@ const tests = [
     'section-header-background-regression.js',
     'profile-rating-transition-regression.js',
     'caption-quote-width-regression.js',
+    'editor-quote-layout-regression.js',
+    'caption-clipboard-regression.js',
     'message-menu-profile-entry-regression.js',
+    'moderation-settings-regression.js',
 ];
 let failed = 0;
 for (const test of tests) {

@@ -220,6 +220,7 @@ public final class NimarkoWsBypassController {
     }
 
     public void onAppResume() {
+        WlAccess.warm();
         final boolean dataEnabled = app.nimarkogram.messenger.wsbypass.voip.VoipBypassConfig
                 .isDataBypassEnabled();
         final boolean suspendOnVpn = app.nimarkogram.messenger.wsbypass.voip.VoipBypassConfig
@@ -389,6 +390,7 @@ public final class NimarkoWsBypassController {
                 lastError = "";
                 try {
                     int account = org.telegram.messenger.UserConfig.selectedAccount;
+                    WlAccess.warm();
                     WsRelayAuth.prefetchAsync(account);
                     if (app.nimarkogram.messenger.wsbypass.voip.VoipBypassConfig.isVoipBypassEnabled()) {
                         app.nimarkogram.messenger.wsbypass.voip.VoipRelayAuth.prefetchAsync(account);
