@@ -212,6 +212,11 @@ public final class NimarkoConfig {
     }
 
     public static volatile boolean silenceNonContacts = getPreferences().getBoolean("silenceNonContacts", false);
+    public static volatile boolean inAppNotifications = getPreferences().getBoolean("inAppNotifications", true);
+    public static void toggleInAppNotifications() {
+        inAppNotifications = !inAppNotifications;
+        getEditor().putBoolean("inAppNotifications", inAppNotifications).apply();
+    }
     public static void toggleSilenceNonContacts() {
         silenceNonContacts = !silenceNonContacts;
         getEditor().putBoolean("silenceNonContacts", silenceNonContacts).apply();
@@ -476,21 +481,9 @@ public final class NimarkoConfig {
     public static final int ICON_REPLACE_MD3 = 2;
     public static final int ICON_REPLACE_LIQUID_GLASS = 3;
     public static final int ICON_REPLACE_PLUMPY = 4;
-    public static volatile int iconReplacement = nmForcePlumpyOnce();
+    public static volatile int iconReplacement = getIntSafe("iconReplacement", ICON_REPLACE_NONE);
     public static void setIconReplacement(int v) { iconReplacement = v; getEditor().putInt("iconReplacement", v).apply(); }
 
-    private static final int PLUMPY_DEFAULT_VERSION = 1;
-
-    private static int nmForcePlumpyOnce() {
-        try {
-            if (getPreferences().getInt("plumpyDefaultVersion", 0) < PLUMPY_DEFAULT_VERSION) {
-                getEditor().putInt("iconReplacement", ICON_REPLACE_PLUMPY)
-                        .putInt("plumpyDefaultVersion", PLUMPY_DEFAULT_VERSION).apply();
-                return ICON_REPLACE_PLUMPY;
-            }
-        } catch (Throwable ignored) {}
-        return getIntSafe("iconReplacement", ICON_REPLACE_PLUMPY);
-    }
 
     public static boolean tabsHideAllChats = getPreferences().getBoolean("tabsHideAllChats", false);
     public static void toggleTabsHideAllChats() { tabsHideAllChats = !tabsHideAllChats; getEditor().putBoolean("tabsHideAllChats", tabsHideAllChats).apply(); }

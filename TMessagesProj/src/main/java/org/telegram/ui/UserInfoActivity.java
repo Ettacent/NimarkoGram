@@ -492,7 +492,7 @@ public class UserInfoActivity extends UniversalFragment implements NotificationC
         } else if (item.instanceOf(SettingsActivity.AccountCell.Factory.class)) {
             final int account = item.intValue;
             if (LaunchActivity.instance != null) {
-                LaunchActivity.instance.switchToAccount(account, true);
+                LaunchActivity.instance.switchToAccountAnimated(account);
             }
         } else if (item.id == BUTTON_BIRTHDAY || item.id == INFO_BIRTHDAY) {
             showDialog(AlertsCreator.createBirthdayPickerDialog(

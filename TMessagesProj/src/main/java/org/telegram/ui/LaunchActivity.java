@@ -1219,14 +1219,38 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
     }
 
     private boolean switchingAccount;
+    private final org.telegram.ui.Components.AccountSwitchTransition accountSwitchTransition = new org.telegram.ui.Components.AccountSwitchTransition();
+    public void switchToAccountAnimated(int account) {
+        if (!UserConfig.isValidAccount(account) || !UserConfig.getInstance(account).isClientActivated()
+                || account == UserConfig.selectedAccount || isFinishing() || isDestroyed()) return;
+        if (frameLayout == null || !frameLayout.isAttachedToWindow() || !SharedConfig.animationsEnabled()
+                || ApplicationLoader.mainInterfacePaused || SharedConfig.appLocked || SharedConfig.isWaitingForPasscodeEnter) {
+            switchToAccount(account, true);
+            return;
+        }
+        final int source = UserConfig.selectedAccount;
+        final long owner = UserConfig.getInstance(account).getClientUserId();
+        final long session = app.nimarkogram.messenger.notifications.NimarkoInAppNotifications.session(account);
+        app.nimarkogram.messenger.notifications.NimarkoInAppNotifications.dismiss();
+        navigationRequestGeneration.incrementAndGet();
+        AndroidUtilities.hideKeyboard(getCurrentFocus());
+        accountSwitchTransition.start(frameLayout, getWindow(),
+                () -> !isFinishing() && !isDestroyed() && !ApplicationLoader.mainInterfacePaused
+                        && !SharedConfig.appLocked && !SharedConfig.isWaitingForPasscodeEnter
+                        && UserConfig.selectedAccount == source
+                        && app.nimarkogram.messenger.notifications.NimarkoInAppNotifications.isCurrent(account, owner, session),
+                () -> switchToAccount(account, true));
+    }
     public void switchToAccount(int account, boolean removeAll) {
         switchToAccount(account, removeAll, obj -> new MainTabsActivity());
     }
 
     public void switchToAccount(int account, boolean removeAll, GenericProvider<Void, MainTabsActivity> dialogsActivityProvider) {
+        if (!accountSwitchTransition.isApplying()) accountSwitchTransition.cancel();
         if (account == UserConfig.selectedAccount || !UserConfig.isValidAccount(account)) {
             return;
         }
+        app.nimarkogram.messenger.notifications.NimarkoInAppNotifications.dismiss();
         navigationRequestGeneration.incrementAndGet();
         switchingAccount = true;
 
@@ -1276,11 +1300,11 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
                     .prewarmFolderIconsAsync();
         }
         MainTabsActivity mainTabsActivity = dialogsActivityProvider.provide(null);
-        actionBarLayout.addFragmentToStack(mainTabsActivity, INavigationLayout.FORCE_ATTACH_VIEW_AS_FIRST);
-        actionBarLayout.rebuildFragments(INavigationLayout.REBUILD_FLAG_REBUILD_LAST);
-        if (AndroidUtilities.isTablet()) {
-            layersActionBarLayout.rebuildFragments(INavigationLayout.REBUILD_FLAG_REBUILD_LAST);
-            rightActionBarLayout.rebuildFragments(INavigationLayout.REBUILD_FLAG_REBUILD_LAST);
+        actionBarLayout.addFragmentToStack(mainTabsActivity, removeAll ? 0 : INavigationLayout.FORCE_ATTACH_VIEW_AS_FIRST);
+        if (removeAll) {
+            actionBarLayout.showLastFragment();
+        } else {
+            actionBarLayout.rebuildFragments(INavigationLayout.REBUILD_FLAG_REBUILD_LAST);
         }
         if (!ApplicationLoader.mainInterfacePaused) {
             ConnectionsManager.getInstance(currentAccount).setAppPaused(false, false);
@@ -1474,6 +1498,8 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
     }
 
     public void showPasscodeActivity(boolean fingerprint, boolean animated, int x, int y, Runnable onShow, Runnable onStart) {
+        accountSwitchTransition.cancel();
+        app.nimarkogram.messenger.notifications.NimarkoInAppNotifications.dismiss();
         if (drawerLayoutContainer == null || isFinishing()) {
             return;
         }
@@ -1559,9 +1585,14 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
     private boolean handleIntent(Intent intent, boolean isNew, boolean restore, boolean fromPassword) {
         return handleIntent(intent, isNew, restore, fromPassword, null, true, false);
     }
+    private long bannerNavigationOwner;
+    private long bannerNavigationSession;
+    private long bannerNavigationGeneration;
 
     private boolean isNavigationRequestCurrent(int targetAccount, long generation) {
         return generation == navigationRequestGeneration.get()
+                && (generation != bannerNavigationGeneration || bannerNavigationOwner == 0 || app.nimarkogram.messenger.notifications.NimarkoInAppNotifications
+                    .isCurrent(targetAccount, bannerNavigationOwner, bannerNavigationSession))
                 && instance == this
                 && isActive
                 && !finished
@@ -1573,6 +1604,10 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
 
     @SuppressLint("Range")
     private boolean handleIntent(Intent intent, boolean isNew, boolean restore, boolean fromPassword, Browser.Progress progress, boolean rebuildFragments, boolean openedTelegram) {
+        if (intent != null && intent.hasExtra("nm_banner_owner")
+                && !app.nimarkogram.messenger.notifications.NimarkoInAppNotifications.isCurrent(
+                    intent.getIntExtra("currentAccount", -1), intent.getLongExtra("nm_banner_owner", 0),
+                    intent.getLongExtra("nm_banner_session", -1))) return false;
         if (GiftInfoBottomSheet.handleIntent(intent, progress)) {
             return true;
         }
@@ -1619,6 +1654,10 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
         final int[] intentAccount = new int[]{intent.getIntExtra("currentAccount", UserConfig.selectedAccount)};
         switchToAccount(intentAccount[0], true);
         final long intentNavigationGeneration = navigationRequestGeneration.incrementAndGet();
+        bannerNavigationOwner = intent.getLongExtra("nm_banner_owner", 0);
+        bannerNavigationSession = intent.getLongExtra("nm_banner_session", -1);
+        bannerNavigationGeneration = intentNavigationGeneration;
+        final boolean animateInAppNavigation = bannerNavigationOwner != 0 && isNew && !restore;
         final boolean isVoipIntent = action != null && action.equals("voip");
         final boolean isVoipAnswerIntent = action != null && action.equals("voip_answer");
         if ((isVoipIntent || isVoipAnswerIntent) && !isNew && ApplicationLoader.mainInterfacePaused) {
@@ -3045,14 +3084,14 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
 //                            push_story_id = intent.getIntExtra("storyId", 0);
                             showDialogsList = true;
                         } else if (chatId != 0) {
-                            NotificationCenter.getInstance(intentAccount[0]).postNotificationName(NotificationCenter.closeChats);
+                            if (!animateInAppNavigation) NotificationCenter.getInstance(intentAccount[0]).postNotificationName(NotificationCenter.closeChats);
                             push_chat_id = chatId;
                             push_topic_id = topicId;
                         } else if (userId != 0) {
-                            NotificationCenter.getInstance(intentAccount[0]).postNotificationName(NotificationCenter.closeChats);
+                            if (!animateInAppNavigation) NotificationCenter.getInstance(intentAccount[0]).postNotificationName(NotificationCenter.closeChats);
                             push_user_id = userId;
                         } else if (encId != 0) {
-                            NotificationCenter.getInstance(intentAccount[0]).postNotificationName(NotificationCenter.closeChats);
+                            if (!animateInAppNavigation) NotificationCenter.getInstance(intentAccount[0]).postNotificationName(NotificationCenter.closeChats);
                             push_enc_id = encId;
                         } else {
                             showDialogsList = true;
@@ -3128,7 +3167,7 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
                             final int _ngAcc = intentAccount[0];
                             final long _ngUid = push_user_id;
                             if (app.nimarkogram.messenger.security.NimarkoBiometricPrompt.isRecentlyVerified(_ngAcc, _ngUid, 0L, 0)) {
-                                if (bf.presentFragment(new INavigationLayout.NavigationParams(fragment).setNoAnimation(true))) {
+                                if (bf.presentFragment(new INavigationLayout.NavigationParams(fragment).setNoAnimation(!animateInAppNavigation || accountSwitchTransition.isApplying()))) {
                                     LaunchActivity.dismissAllWeb();
                                 }
                             } else {
@@ -3137,14 +3176,14 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
                                         return;
                                     }
                                     app.nimarkogram.messenger.security.NimarkoBiometricPrompt.markVerified(_ngAcc, _ngUid, 0L, 0);
-                                    if (bf.presentFragment(new INavigationLayout.NavigationParams(fragment).setNoAnimation(true))) {
+                                    if (bf.presentFragment(new INavigationLayout.NavigationParams(fragment).setNoAnimation(!animateInAppNavigation || accountSwitchTransition.isApplying()))) {
                                         LaunchActivity.dismissAllWeb();
                                     }
                                 }, null);
                             }
                             pushOpened = true;
                         } else {
-                            if (getActionBarLayout().presentFragment(new INavigationLayout.NavigationParams(fragment).setNoAnimation(true))) {
+                            if (getActionBarLayout().presentFragment(new INavigationLayout.NavigationParams(fragment).setNoAnimation(!animateInAppNavigation || accountSwitchTransition.isApplying()))) {
                                 pushOpened = true;
                                 LaunchActivity.dismissAllWeb();
                             }
@@ -3178,8 +3217,7 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
                                 FileLog.d("LaunchActivity openForum after load " + finalPush_chat_id + " " + finalPush_topic_id + " TL_forumTopic " + loadedTopic);
                                 if (loadedTopic != null && actionBarLayout != null
                                         && isNavigationRequestCurrent(targetAccount, requestGeneration)) {
-                                    ForumUtilities.applyTopic(fragment, MessagesStorage.TopicKey.of(-finalPush_chat_id, finalPush_topic_id));
-                                    getActionBarLayout().presentFragment(fragment);
+                                    handleIntent(intent, true, false, false, progress, rebuildFragments, openedTelegram);
                                 }
                             });
                             return true;
@@ -3194,7 +3232,7 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
                         final int _ngAcc = intentAccount[0];
                         final long _ngCid = push_chat_id;
                         if (app.nimarkogram.messenger.security.NimarkoBiometricPrompt.isRecentlyVerified(_ngAcc, 0L, _ngCid, 0)) {
-                            if (bf.presentFragment(new INavigationLayout.NavigationParams(fragment).setNoAnimation(true))) {
+                            if (bf.presentFragment(new INavigationLayout.NavigationParams(fragment).setNoAnimation(!animateInAppNavigation || accountSwitchTransition.isApplying()))) {
                                 LaunchActivity.dismissAllWeb();
                             }
                         } else {
@@ -3203,14 +3241,14 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
                                     return;
                                 }
                                 app.nimarkogram.messenger.security.NimarkoBiometricPrompt.markVerified(_ngAcc, 0L, _ngCid, 0);
-                                if (bf.presentFragment(new INavigationLayout.NavigationParams(fragment).setNoAnimation(true))) {
+                                if (bf.presentFragment(new INavigationLayout.NavigationParams(fragment).setNoAnimation(!animateInAppNavigation || accountSwitchTransition.isApplying()))) {
                                     LaunchActivity.dismissAllWeb();
                                 }
                             }, null);
                         }
                         pushOpened = true;
                     } else {
-                        if (getActionBarLayout().presentFragment(new INavigationLayout.NavigationParams(fragment).setNoAnimation(true))) {
+                        if (getActionBarLayout().presentFragment(new INavigationLayout.NavigationParams(fragment).setNoAnimation(!animateInAppNavigation || accountSwitchTransition.isApplying()))) {
                             pushOpened = true;
                             LaunchActivity.dismissAllWeb();
                         }
@@ -3229,7 +3267,7 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
                     final int _ngAcc = intentAccount[0];
                     final int _ngEnc = push_enc_id;
                     if (app.nimarkogram.messenger.security.NimarkoBiometricPrompt.isRecentlyVerified(_ngAcc, 0L, 0L, _ngEnc)) {
-                        if (bf.presentFragment(new INavigationLayout.NavigationParams(fragment).setNoAnimation(true))) {
+                        if (bf.presentFragment(new INavigationLayout.NavigationParams(fragment).setNoAnimation(!animateInAppNavigation || accountSwitchTransition.isApplying()))) {
                             LaunchActivity.dismissAllWeb();
                         }
                     } else {
@@ -3238,14 +3276,14 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
                                 return;
                             }
                             app.nimarkogram.messenger.security.NimarkoBiometricPrompt.markVerified(_ngAcc, 0L, 0L, _ngEnc);
-                            if (bf.presentFragment(new INavigationLayout.NavigationParams(fragment).setNoAnimation(true))) {
+                            if (bf.presentFragment(new INavigationLayout.NavigationParams(fragment).setNoAnimation(!animateInAppNavigation || accountSwitchTransition.isApplying()))) {
                                 LaunchActivity.dismissAllWeb();
                             }
                         }, null);
                     }
                     pushOpened = true;
                 } else {
-                    if (getActionBarLayout().presentFragment(new INavigationLayout.NavigationParams(fragment).setNoAnimation(true))) {
+                    if (getActionBarLayout().presentFragment(new INavigationLayout.NavigationParams(fragment).setNoAnimation(!animateInAppNavigation || accountSwitchTransition.isApplying()))) {
                         pushOpened = true;
                         LaunchActivity.dismissAllWeb();
                     }
@@ -6346,11 +6384,41 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
 
     @Override
     public void onNewIntent(Intent intent) {
+        app.nimarkogram.messenger.notifications.NimarkoInAppNotifications.dismiss();
         super.onNewIntent(intent);
         handleIntent(intent, true, false, false, null, true, true);
     }
+    public void openInAppNotification(Intent intent) {
+        if (isFinishing() || isDestroyed() || !hasWindowFocus() || intent == null
+                || !"com.tmessages.openchat".equals(intent.getAction())
+                || !intent.hasExtra("nm_banner_owner")) return;
+        final int account = intent.getIntExtra("currentAccount", -1);
+        final long owner = intent.getLongExtra("nm_banner_owner", 0);
+        final long session = intent.getLongExtra("nm_banner_session", -1);
+        if (!app.nimarkogram.messenger.notifications.NimarkoInAppNotifications.isCurrent(account, owner, session)) return;
+        if (account == UserConfig.selectedAccount || frameLayout == null || !frameLayout.isAttachedToWindow()
+                || !SharedConfig.animationsEnabled()
+                || !app.nimarkogram.messenger.notifications.NimarkoInAppNotifications.isAvailable()) {
+            handleIntent(intent, true, false, false, null, false, false);
+            return;
+        }
+        final int source = UserConfig.selectedAccount;
+        final long sourceOwner = UserConfig.getInstance(source).getClientUserId();
+        final long sourceSession = app.nimarkogram.messenger.notifications.NimarkoInAppNotifications.session(source);
+        final long request = navigationRequestGeneration.incrementAndGet();
+        final Intent destination = new Intent(intent);
+        AndroidUtilities.hideKeyboard(getCurrentFocus());
+        accountSwitchTransition.start(frameLayout, getWindow(),
+                () -> !isFinishing() && !isDestroyed() && hasWindowFocus()
+                        && request == navigationRequestGeneration.get() && UserConfig.selectedAccount == source
+                        && app.nimarkogram.messenger.notifications.NimarkoInAppNotifications.isAvailable()
+                        && app.nimarkogram.messenger.notifications.NimarkoInAppNotifications.isCurrent(source, sourceOwner, sourceSession)
+                        && app.nimarkogram.messenger.notifications.NimarkoInAppNotifications.isCurrent(account, owner, session),
+                () -> handleIntent(destination, true, false, false, null, false, false));
+    }
 
     public void onNewIntent(Intent intent, Browser.Progress progress) {
+        app.nimarkogram.messenger.notifications.NimarkoInAppNotifications.dismiss();
         super.onNewIntent(intent);
         handleIntent(intent, true, false, false, progress, true, false);
     }
@@ -6768,6 +6836,7 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
     }
 
     private void onFinish() {
+        accountSwitchTransition.cancel();
         if (lockRunnable != null) {
             AndroidUtilities.cancelRunOnUIThread(lockRunnable);
             lockRunnable = null;
@@ -6950,8 +7019,20 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
     }
 
     @Override
+    public void onWindowFocusChanged(boolean hasFocus) {
+        super.onWindowFocusChanged(hasFocus);
+        app.nimarkogram.messenger.notifications.NimarkoInAppNotifications.onWindowFocusChanged(this, hasFocus);
+    }
+    @Override
+    public boolean dispatchTouchEvent(android.view.MotionEvent event) {
+        app.nimarkogram.messenger.notifications.NimarkoInAppNotifications.onContentTouch(event);
+        return super.dispatchTouchEvent(event);
+    }
+    @Override
     protected void onPause() {
+        accountSwitchTransition.cancel();
         super.onPause();
+        app.nimarkogram.messenger.notifications.NimarkoInAppNotifications.onPause(this);
         // NimarkoGram plugin engine event hook.
         try {
             app.nimarkogram.messenger.plugins.PluginsController.getInstance()
@@ -7113,6 +7194,8 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
 
     @Override
     protected void onDestroy() {
+        accountSwitchTransition.cancel();
+        app.nimarkogram.messenger.notifications.NimarkoInAppNotifications.onPause(this);
         // Invalidate any posted icon-pack cache/rebuild callback before fragment
         // teardown starts; an old activity must never rebuild a replacement stack.
         nmIconReloadGeneration.incrementAndGet();
@@ -7231,6 +7314,7 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
     @Override
     protected void onResume() {
         super.onResume();
+        app.nimarkogram.messenger.notifications.NimarkoInAppNotifications.onResume(this);
         if (flagSecureReason != null) flagSecureReason.invalidate();
         // NimarkoGram plugin engine event hook.
         try {
@@ -7427,6 +7511,7 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
 
     @Override
     public void onConfigurationChanged(Configuration newConfig) {
+        accountSwitchTransition.cancel();
         AndroidUtilities.checkDisplaySize(this, newConfig);
         AndroidUtilities.setPreferredMaxRefreshRate(getWindow());
         super.onConfigurationChanged(newConfig);
@@ -7470,6 +7555,7 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
     @SuppressWarnings("unchecked")
     public void didReceivedNotification(int id, final int account, Object... args) {
         if (id == NotificationCenter.appDidLogout) {
+            app.nimarkogram.messenger.notifications.NimarkoInAppNotifications.dismiss();
             switchToAvailableAccountOrLogout();
         } else if (id == NotificationCenter.openBoostForUsersDialog) {
             long dialogId = (long) args[0];
@@ -8645,6 +8731,10 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
     }
 
     public boolean onBackPressed(boolean invoked) {
+        if (accountSwitchTransition.isRunning()) {
+            if (invoked) accountSwitchTransition.cancel();
+            return false;
+        }
         if (FloatingDebugController.onBackPressed(invoked)) {
             return false;
         }

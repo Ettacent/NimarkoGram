@@ -237,9 +237,11 @@ public class ReactionsEffectOverlay {
             fromHeight = holderView.loopImageView.getWidth() * holderView.getScaleX();
         } else if (reactionButton != null) {
             cell.getLocationInWindow(loc);
-            fromX = loc[0] + (reactionButton.imageReceiver == null ? 0 : reactionButton.imageReceiver.getImageX());
-            fromY = loc[1] + (reactionButton.imageReceiver == null ? 0 : reactionButton.imageReceiver.getImageY());
-            fromHeight = reactionButton.imageReceiver == null ? 0 : reactionButton.imageReceiver.getImageHeight();
+            fromX = loc[0] + reactionButton.drawingImageRect.left;
+            final int pinnedOffset = cell instanceof ChatMessageCell && ((ChatMessageCell) cell).drawPinnedBottom
+                    && !((ChatMessageCell) cell).shouldDrawTimeOnMedia() ? AndroidUtilities.dp(2) : 0;
+            fromY = loc[1] + reactionButton.drawingImageRect.top + cell.getPaddingTop() + pinnedOffset;
+            fromHeight = reactionButton.drawingImageRect.height();
         } else if (cell != null) {
             ((View) cell.getParent()).getLocationInWindow(loc);
             fromX = loc[0] + x;
@@ -346,6 +348,9 @@ public class ReactionsEffectOverlay {
                     if (reactionButton != null) {
                         toX += reactionButton.drawingImageRect.left;
                         toY += reactionButton.drawingImageRect.top;
+                        if (!isStories && !reactionButton.drawingImageRect.isEmpty()) {
+                            toH = reactionButton.drawingImageRect.height();
+                        }
                     }
                     if (chatActivity != null) {
                         toY += chatActivity.drawingChatListViewYoffset;

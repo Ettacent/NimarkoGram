@@ -1023,13 +1023,14 @@ public class ReactionsLayoutInBubble {
 
         public void draw(Canvas canvas, float x, float y, float progress, float alpha, boolean drawOverlayScrim, boolean scrimProgressDirection, float scrimProgress) {
             wasDrawn = true;
+            updateImageBounds(x, y);
             ImageReceiver imageReceiver = animatedEmojiDrawable != null ? animatedEmojiDrawable.getImageReceiver() : this.imageReceiver;
-            if (isSmall && imageReceiver != null) {
-                imageReceiver.setAlpha(alpha);
-                drawingImageRect.set((int) x, (int) y, dp(14), dp(14));
-                imageReceiver.setImageCoords(drawingImageRect);
-                imageReceiver.setRoundRadius(0);
-                drawImage(canvas, drawingImageRect, alpha);
+            if (isSmall) {
+                if (imageReceiver != null) {
+                    imageReceiver.setAlpha(alpha);
+                    imageReceiver.setRoundRadius(0);
+                    drawImage(canvas, drawingImageRect, alpha);
+                }
                 return;
             }
 
@@ -1157,24 +1158,9 @@ public class ReactionsLayoutInBubble {
             }
 
             if (imageReceiver != null) {
-                int size, X;
-                if (paid) {
-                    size = dp(22);
-                    X = dp(4);
-                } else if (animatedEmojiDrawable != null) {
-                    size = dp(24);
-                    X = dp(6);
-                    imageReceiver.setRoundRadius(dp(6));
-                } else {
-                    size = dp(20);
-                    X = dp(8);
-                    imageReceiver.setRoundRadius(0);
+                if (!paid) {
+                    imageReceiver.setRoundRadius(animatedEmojiDrawable != null ? dp(6) : 0);
                 }
-                int Y = (int) ((height - size) / 2f);
-                if (isTag) {
-                    X -= dp(2);
-                }
-                drawingImageRect.set((int) x + X, (int) y + Y, (int) x + X + size, (int) y + Y + size);
                 drawImage(canvas, drawingImageRect, alpha);
             }
 
@@ -1246,6 +1232,13 @@ public class ReactionsLayoutInBubble {
 
         protected boolean drawTagDot() {
             return true;
+        }
+        private void updateImageBounds(float x, float y) {
+            final int size = dp(isSmall ? 14 : paid ? 22 : animatedEmojiDrawable != null ? 24 : 20);
+            final int inset = isSmall ? 0 : dp(paid ? 4 : animatedEmojiDrawable != null ? 6 : 8) - (isTag ? dp(2) : 0);
+            final int left = (int) x + inset;
+            final int top = (int) y + (isSmall ? 0 : (int) ((height - size) / 2f));
+            drawingImageRect.set(left, top, left + size, top + size);
         }
 
         private void drawImage(Canvas canvas, Rect bounds, float alpha) {

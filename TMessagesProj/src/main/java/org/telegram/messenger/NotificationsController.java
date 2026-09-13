@@ -84,6 +84,7 @@ import org.telegram.ui.PopupNotificationActivity;
 import org.telegram.ui.Stories.recorder.StoryEntry;
 
 import app.nimarkogram.messenger.NimarkoConfig;
+import app.nimarkogram.messenger.notifications.NimarkoInAppNotifications;
 import app.nimarkogram.messenger.chats.filters.MessagesFilterHelper;
 
 import java.io.File;
@@ -172,6 +173,13 @@ public class NotificationsController extends BaseController implements Notificat
     public static final int SETTING_SOUND_OFF = 1;
 
     NotificationsSettingsFacade dialogsNotificationsFacade;
+    private final java.util.concurrent.atomic.AtomicLong bannerPrivacyRevision = new java.util.concurrent.atomic.AtomicLong();
+    private final SharedPreferences.OnSharedPreferenceChangeListener bannerPrivacyListener = (preferences, key) -> {
+        if (key == null || key.startsWith("content_preview_") || key.startsWith("EnablePreview")
+                || key.equals("EnableInAppPreview") || key.startsWith("askBiometrics") || key.toLowerCase(java.util.Locale.ROOT).contains("locked")) {
+            bannerPrivacyRevision.incrementAndGet();
+        }
+    };
 
     static {
         if (Build.VERSION.SDK_INT >= 26 && ApplicationLoader.applicationContext != null) {
@@ -209,6 +217,8 @@ public class NotificationsController extends BaseController implements Notificat
         notificationGroup = "messages" + (currentAccount == 0 ? "" : currentAccount);
         SharedPreferences preferences = getAccountInstance().getNotificationsSettings();
         inChatSoundEnabled = preferences.getBoolean("EnableInChatSound", true);
+        preferences.registerOnSharedPreferenceChangeListener(bannerPrivacyListener);
+        NimarkoConfig.getPreferences().registerOnSharedPreferenceChangeListener(bannerPrivacyListener);
         showBadgeNumber = preferences.getBoolean("badgeNumber", true);
         showBadgeMuted = preferences.getBoolean("badgeNumberMuted", false);
         showBadgeMessages = preferences.getBoolean("badgeNumberMessages", true);
@@ -840,6 +850,8 @@ public class NotificationsController extends BaseController implements Notificat
     public void processReadMessages(LongSparseIntArray inbox, long dialogId, int maxDate, int maxId, boolean isPopup) {
         ArrayList<MessageObject> popupArrayRemove = new ArrayList<>(0);
         notificationsQueue.postRunnable(() -> {
+            boolean refreshPendingBanner = pendingBannerDelivery != null && !pendingBannerDelivery.isComplete();
+            cancelBannerDelivery();
             if (inbox != null) {
                 for (int b = 0; b < inbox.size(); b++) {
                     long key = inbox.keyAt(b);
@@ -928,6 +940,7 @@ public class NotificationsController extends BaseController implements Notificat
                     NotificationCenter.getGlobalInstance().postNotificationName(NotificationCenter.pushMessagesUpdated);
                 });
             }
+            if (refreshPendingBanner) showOrUpdateNotification(false);
         });
     }
 
@@ -3287,6 +3300,7 @@ public class NotificationsController extends BaseController implements Notificat
 
     public void hideNotifications() {
         notificationsQueue.postRunnable(() -> {
+            cancelBannerDelivery();
             notificationManager.cancel(notificationId);
             lastWearNotifiedMessageId.clear();
             for (int a = 0; a < wearNotificationsIds.size(); a++) {
@@ -3297,6 +3311,7 @@ public class NotificationsController extends BaseController implements Notificat
     }
 
     private void dismissNotification() {
+        cancelBannerDelivery();
         FileLog.d("NotificationsController dismissNotification");
         try {
             notificationManager.cancel(notificationId);
@@ -3881,6 +3896,10 @@ public class NotificationsController extends BaseController implements Notificat
             //TODO notifications
             key = (isInApp ? "org.telegram.keyia" : "org.telegram.key") + dialogId + "_" + topicId;
         }
+        if (isInApp && !isSilent && NimarkoConfig.inAppNotifications
+                && importance == NotificationManager.IMPORTANCE_DEFAULT) {
+            key += "_banner";
+        }
         key += "_" + soundHash;
         String channelId = preferences.getString(key, null);
         String settings = preferences.getString(key + "_s", null);
@@ -4124,8 +4143,22 @@ public class NotificationsController extends BaseController implements Notificat
         }
         return channelId;
     }
+    private int bannerDeliveryGeneration;
+    private NimarkoInAppNotifications.Delivery pendingBannerDelivery;
+    private void cancelBannerDelivery() {
+        ++bannerDeliveryGeneration;
+        if (pendingBannerDelivery != null) {
+            if (!pendingBannerDelivery.isComplete()) pendingBannerDelivery.cancel();
+            pendingBannerDelivery = null;
+        }
+    }
 
     private void showOrUpdateNotification(boolean notifyAboutLast) {
+        cancelBannerDelivery();
+        final int bannerDelivery = bannerDeliveryGeneration;
+        final long bannerPrivacy = bannerPrivacyRevision.get();
+        final long bannerSession = app.nimarkogram.messenger.notifications.NimarkoInAppNotifications.session(currentAccount);
+        final long bannerOwner = getUserConfig().getClientUserId();
         if (!getUserConfig().isClientActivated() || pushMessages.isEmpty() && storyPushMessages.isEmpty() || !SharedConfig.showNotificationsForAllAccounts && currentAccount != UserConfig.selectedAccount) {
             dismissNotification();
             return;
@@ -4792,10 +4825,108 @@ public class NotificationsController extends BaseController implements Notificat
                     mBuilder.addAction(R.drawable.ic_ab_reply, LocaleController.getString(R.string.Reply), PendingIntent.getBroadcast(ApplicationLoader.applicationContext, 2, replyIntent, PendingIntent.FLAG_MUTABLE | PendingIntent.FLAG_UPDATE_CURRENT));
                 }
             }
+            if (isInApp && notifyAboutLast && !notifyDisabled
+                    && app.nimarkogram.messenger.notifications.NimarkoInAppNotifications.isAvailable()) {
+                final String bannerDetail = detailText, bannerChatName = chatName;
+                final long bannerDialog = dialog_id, bannerTopic = topicId;
+                final long[] bannerVibration = vibrationPattern;
+                final int bannerLed = ledColor, bannerImportance = configImportance, bannerChatType = chatType;
+                final Uri bannerSound = sound;
+                final boolean bannerDefault = isDefault;
+                final boolean previewAllowed = NimarkoInAppNotifications.canPreview(currentAccount, bannerDialog, bannerTopic);
+                final NimarkoInAppNotifications.Delivery delivery = new NimarkoInAppNotifications.Delivery();
+                pendingBannerDelivery = delivery;
+                final Runnable fallback = () -> {
+                    if (bannerDelivery == bannerDeliveryGeneration && delivery.complete()) {
+                        delivery.cancel();
+                        showOrUpdateNotification(false);
+                    }
+                };
+                if (offerInAppNotification(lastMessageObject, bannerOwner, bannerSession, delivery, handled -> {
+                    if (!delivery.complete()) return;
+                    notificationsQueue.cancelRunnable(fallback);
+                    notificationsQueue.postRunnable(() -> {
+                        if (bannerDelivery != bannerDeliveryGeneration
+                                || !NimarkoInAppNotifications.isCurrent(currentAccount, bannerOwner, bannerSession)
+                                || !SharedConfig.showNotificationsForAllAccounts && currentAccount != UserConfig.selectedAccount) return;
+                        if (!NimarkoInAppNotifications.isAvailable()
+                                || bannerPrivacy != bannerPrivacyRevision.get()
+                                || previewAllowed != NimarkoInAppNotifications.canPreview(currentAccount, bannerDialog, bannerTopic)) {
+                            showOrUpdateNotification(false);
+                            return;
+                        }
+                        try {
+                            if (handled) mBuilder.setPriority(NotificationCompat.PRIORITY_DEFAULT);
+                            showExtraNotifications(mBuilder, bannerDetail, bannerDialog, bannerTopic, bannerChatName,
+                                    bannerVibration, bannerLed, bannerSound, handled ? NotificationManager.IMPORTANCE_DEFAULT : bannerImportance,
+                                    bannerDefault, true, false, bannerChatType);
+                            scheduleNotificationRepeat();
+                        } catch (Exception e) {
+                            FileLog.e(e);
+                        }
+                    });
+                })) {
+                    notificationsQueue.postRunnable(fallback, 5000);
+                    return;
+                }
+                delivery.cancel();
+                pendingBannerDelivery = null;
+            }
             showExtraNotifications(mBuilder, detailText, dialog_id, topicId, chatName, vibrationPattern, ledColor, sound, configImportance, isDefault, isInApp, notifyDisabled, chatType);
             scheduleNotificationRepeat();
         } catch (Exception e) {
             FileLog.e(e);
+        }
+    }
+    private boolean offerInAppNotification(MessageObject message, long owner, long loginSession, NimarkoInAppNotifications.Delivery delivery, java.util.function.Consumer<Boolean> completion) {
+        if (!app.nimarkogram.messenger.notifications.NimarkoInAppNotifications.isAvailable()
+                || !getAccountInstance().getNotificationsSettings().getBoolean("EnableInAppPopup", true)
+                || message == null || message.messageOwner == null || message.messageOwner.peer_id == null
+                || isSilentMessage(message) || message.isStoryPush || message.isStoryMentionPush
+                || message.isStoryReactionPush || message.isLiveStoryPush || message.isOauthPush) return false;
+        long dialogId = message.getDialogId();
+        int date = message.messageOwner.date;
+        int age = getConnectionsManager().getCurrentTime() - date;
+        if (age < -5 || age > 120 || date <= getAccountInstance().getNotificationsSettings()
+                .getInt("dismissDate" + dialogId, 0)) return false;
+        try {
+            long topicId = MessageObject.getTopicId(currentAccount, message.messageOwner, getMessagesController().isForum(message));
+            boolean preview = app.nimarkogram.messenger.notifications.NimarkoInAppNotifications.canPreview(currentAccount, dialogId, topicId)
+                    && message.messageOwner.rich_message == null
+                    && TextUtils.isEmpty(getMessagesController().getRestrictionReason(message.messageOwner.restriction_reason));
+            TLRPC.Chat peerChat = dialogId < 0 ? getMessagesController().getChat(-dialogId) : null;
+            TLRPC.User peerUser = dialogId > 0 ? getMessagesController().getUser(dialogId) : null;
+            if (peerChat != null && !TextUtils.isEmpty(getMessagesController().getRestrictionReason(peerChat.restriction_reason))
+                    || peerUser != null && !TextUtils.isEmpty(getMessagesController().getRestrictionReason(peerUser.restriction_reason))) preview = false;
+            String text = LocaleController.getString(R.string.NotificationHiddenMessage);
+            String title = LocaleController.getString(R.string.AppName);
+            if (preview) {
+                String[] sender = new String[1];
+                boolean[] hasPreview = new boolean[1];
+                String formatted = getShortStringForMessage(message, sender, hasPreview);
+                preview = hasPreview[0] && !TextUtils.isEmpty(formatted);
+                if (preview) {
+                    text = app.nimarkogram.messenger.utils.NimarkoLatexHelper.cleanForPreview(formatted);
+                    TLRPC.User user = dialogId > 0 ? getMessagesController().getUser(dialogId) : null;
+                    TLRPC.Chat chat = dialogId < 0 ? getMessagesController().getChat(-dialogId) : null;
+                    title = user != null ? UserObject.getUserName(user) : chat != null ? getTitle(chat) : message.localName;
+                    if (TextUtils.isEmpty(title)) title = LocaleController.getString(R.string.AppName);
+                    if (chat != null && (!ChatObject.isChannel(chat) || chat.megagroup) && !TextUtils.isEmpty(sender[0])) {
+                        text = sender[0] + ": " + text;
+                    }
+                }
+            }
+            if (TextUtils.isEmpty(text)) {
+                preview = false;
+                text = LocaleController.getString(R.string.NotificationHiddenMessage);
+            }
+            if (title.length() > 128) title = title.substring(0, title.offsetByCodePoints(0, 64)) + "…";
+            if (text.length() > 512) text = text.substring(0, text.offsetByCodePoints(0, 256)) + "…";
+            return app.nimarkogram.messenger.notifications.NimarkoInAppNotifications.offer(currentAccount, owner, loginSession, dialogId,
+                    topicId, message.getId(), message.messageOwner.random_id, title, text, preview, delivery, completion);
+        } catch (RuntimeException e) {
+            if (BuildVars.LOGS_ENABLED) FileLog.e(e);
+            return false;
         }
     }
 

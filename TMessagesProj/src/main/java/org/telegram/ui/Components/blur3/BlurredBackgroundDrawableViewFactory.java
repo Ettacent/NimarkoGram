@@ -36,6 +36,9 @@ public class BlurredBackgroundDrawableViewFactory {
     private @Nullable ReferenceList<View> linkedViews;
     private @Nullable ViewPositionWatcher viewPositionWatcher;
     private @Nullable ViewGroup parent;
+    public View getSourceRootView() {
+        return parent;
+    }
 
     public void setLinkedViewsRef(@Nullable ReferenceList<View> linkedViews) {
         this.linkedViews = linkedViews;
@@ -51,6 +54,14 @@ public class BlurredBackgroundDrawableViewFactory {
                 v.invalidate();
             }
         }
+    }
+    public void release(View view, BlurredBackgroundDrawable drawable) {
+        if (viewPositionWatcher != null) viewPositionWatcher.unsubscribe(view);
+        if (linkedViews != null) linkedViews.remove(view);
+        if (linkedDrawables != null) linkedDrawables.remove(drawable);
+        drawable.setAlpha(0);
+        drawable.setCallback(null);
+        source.dispatchOnDrawablesRelativePositionChange();
     }
 
     private boolean isLiquidGlassEffectAllowed;
@@ -76,6 +87,12 @@ public class BlurredBackgroundDrawableViewFactory {
     }
 
     public BlurredBackgroundDrawable create(View view, BlurredBackgroundColorProvider provider, boolean multiwindow) {
+        return create(view, provider, multiwindow, true);
+    }
+    public BlurredBackgroundDrawable createForOverlay(View view, BlurredBackgroundColorProvider provider) {
+        return create(view, provider, false, false);
+    }
+    private BlurredBackgroundDrawable create(View view, BlurredBackgroundColorProvider provider, boolean multiwindow, boolean trackPosition) {
         final BlurredBackgroundDrawable drawable = source.createDrawable();
         if (isLiquidGlassEffectAllowed && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (drawable instanceof BlurredBackgroundDrawableRenderNode) {
@@ -89,7 +106,7 @@ public class BlurredBackgroundDrawableViewFactory {
             linkedViews.add(view);
         }
 
-        if (viewPositionWatcher != null && parent != null && view != null) {
+        if (trackPosition && viewPositionWatcher != null && parent != null && view != null) {
             
             viewPositionWatcher.subscribe(view, parent, (v, pos) -> {
                 drawable.setSourceOffset(pos.left, pos.top);

@@ -68,6 +68,7 @@ public class FragmentSearchField extends FrameLayout implements FactorAnimator.T
     private final LinearLayout additionalIconsLayout;
     
     private app.nimarkogram.messenger.infocards.InfoCardStripView infoCards;
+    private boolean infoCardsSuppressed;
     private final boolean withInfoCards;
     private boolean closeButtonForcedVisible;
     public final EditTextBoldCursor editText;
@@ -343,6 +344,13 @@ public class FragmentSearchField extends FrameLayout implements FactorAnimator.T
         closeButtonForcedVisible = visible;
         checkCloseButtonVisible();
     }
+    public void setInfoCardsSuppressed(boolean suppressed) {
+        if (infoCardsSuppressed == suppressed) return;
+        infoCardsSuppressed = suppressed;
+        if (infoCards != null) {
+            infoCards.setVisibilityFactor(suppressed ? 0f : animatorInfoCardsVisible.getFloatValue());
+        }
+    }
 
     private void checkCloseButtonVisible() {
         boolean searching = closeButtonForcedVisible || editText.length() > 0;
@@ -360,7 +368,7 @@ public class FragmentSearchField extends FrameLayout implements FactorAnimator.T
         } else if (id == ANIMATOR_ID_SEARCH_FILTERS_WIDTH) {
             checkUi_editTextPaddings();
         } else if (id == ANIMATOR_ID_INFO_CARDS_VISIBLE) {
-            if (infoCards != null) infoCards.setVisibilityFactor(factor);
+            if (infoCards != null) infoCards.setVisibilityFactor(infoCardsSuppressed ? 0f : factor);
         }
     }
 
@@ -393,7 +401,7 @@ public class FragmentSearchField extends FrameLayout implements FactorAnimator.T
 
     public void addSearchFilter(FiltersView.MediaFilterData filter) {
         currentSearchFilters.add(filter);
-        if (true  ) {
+        if (true                                     ) {
             selectedFilterIndex = currentSearchFilters.size() - 1;
         }
         onFiltersChanged();
@@ -443,7 +451,7 @@ public class FragmentSearchField extends FrameLayout implements FactorAnimator.T
 
         ArrayList<FiltersView.MediaFilterData> localFilters = new ArrayList<>(currentSearchFilters);
 
-        if (true  ) {
+        if (true                                                                ) {
             TransitionSet transition = new TransitionSet();
             ChangeBounds changeBounds = new ChangeBounds();
             changeBounds.setDuration(150);

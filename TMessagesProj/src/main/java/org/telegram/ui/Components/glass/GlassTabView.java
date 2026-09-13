@@ -66,8 +66,10 @@ public class GlassTabView extends FrameLayout implements MainTabsLayout.Tab, Fac
     private static final int ANIMATOR_ID_IS_SELECTED = 0;
     private static final int ANIMATOR_ID_COUNTER_VISIBLE = 1;
     private static final int ANIMATOR_ID_COUNTER_ERROR = 2;
+    private static final int ANIMATOR_ID_SELECTOR = 3;
 
     private final BoolAnimator isSelectedAnimator = new BoolAnimator(ANIMATOR_ID_IS_SELECTED, this, AnimatorUtils.DECELERATE_INTERPOLATOR, 320);
+    private final FactorAnimator selectorAnimator = new FactorAnimator(ANIMATOR_ID_SELECTOR, this, AnimatorUtils.DECELERATE_INTERPOLATOR, 320, 0f);
     private final BoolAnimator isHasCounterAnimator = new BoolAnimator(ANIMATOR_ID_COUNTER_VISIBLE, this, CubicBezierInterpolator.EASE_OUT_QUINT, 380);
     private final BoolAnimator isHasCounterErrorAnimator = new BoolAnimator(ANIMATOR_ID_COUNTER_ERROR, this, CubicBezierInterpolator.EASE_OUT_QUINT, 380);
     private int colorSelected;
@@ -138,13 +140,26 @@ public class GlassTabView extends FrameLayout implements MainTabsLayout.Tab, Fac
     private static final RectF tmpRectF = new RectF();
 
     private boolean hasGestureSelectedOverride;
-    private float gestureSelectedOverride;
     private boolean skipDrawSelector;
 
     public void setGestureSelectedOverride(float gestureSelectedOverride, boolean allow) {
-        this.gestureSelectedOverride = gestureSelectedOverride;
+        final boolean wasOverridden = hasGestureSelectedOverride;
         this.hasGestureSelectedOverride = allow;
+        if (allow) {
+            selectorAnimator.forceFactor(MathUtils.clamp(gestureSelectedOverride, 0f, 1f));
+        } else if (wasOverridden) {
+            updateSelectorTarget(isSelectedAnimator.getValue(), true);
+        }
         invalidate();
+    }
+    private void updateSelectorTarget(boolean selected, boolean animated) {
+        if (hasGestureSelectedOverride) return;
+        final float target = selected ? 1f : 0f;
+        if (!animated) {
+            selectorAnimator.forceFactor(target);
+        } else if (selectorAnimator.getToFactor() != target) {
+            selectorAnimator.animateTo(target);
+        }
     }
 
     public void setSkipDrawSelector(boolean skipDrawSelector) {
@@ -157,7 +172,7 @@ public class GlassTabView extends FrameLayout implements MainTabsLayout.Tab, Fac
     @Override
     protected void dispatchDraw(@NonNull Canvas canvas) {
         final float viewWidth = hasVisualWidth ? visualWidth : getWidth();
-        final float selectedFactor = hasGestureSelectedOverride ? gestureSelectedOverride : isSelectedAnimator.getFloatValue();
+        final float selectedFactor = selectorAnimator.getFactor();
         if (selectedFactor > 0 && !skipDrawSelector) {
             final float alpha = AnimatorUtils.DECELERATE_INTERPOLATOR.getInterpolation(selectedFactor);
 
@@ -240,6 +255,7 @@ public class GlassTabView extends FrameLayout implements MainTabsLayout.Tab, Fac
     public void setSelected(boolean selected, boolean animated) {
         boolean changed = isSelectedAnimator.getValue() != selected;
         isSelectedAnimator.setValue(selected, animated);
+        updateSelectorTarget(selected, animated);
         super.setSelected(selected);
         checkPlayAnimation(animated);
 
@@ -393,18 +409,21 @@ public class GlassTabView extends FrameLayout implements MainTabsLayout.Tab, Fac
             return;
         }
 
-        if (lastIsSelected != isSelected) {
+        if (!animated || lastIsSelected != isSelected) {
             lastIsSelected = isSelected;
-            if (isSelected) {
-                drawable.setPlayInDirectionOfCustomEndFrame(false);
-                drawable.setCurrentFrame(0);
-                drawable.setCustomEndFrame(drawable.getFramesCount());
+            final int lastFrame = Math.max(0, drawable.getFramesCount() - 1);
+            final int targetFrame = isSelected ? lastFrame : 0;
+            drawable.setPlayInDirectionOfCustomEndFrame(true);
+            drawable.setCustomEndFrame(targetFrame);
+            if (!animated) {
+                imageView.stopAnimation();
+                drawable.setCurrentFrame(targetFrame);
             } else {
-                drawable.setPlayInDirectionOfCustomEndFrame(true);
-                drawable.setCurrentFrame(drawable.getFramesCount());
-                drawable.setCustomEndFrame(0);
+                if (drawable.getCurrentFrame() > lastFrame) {
+                    drawable.setCurrentFrame(lastFrame);
+                }
+                imageView.playAnimation();
             }
-            imageView.playAnimation();
         }
     }
 

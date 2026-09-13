@@ -1332,4 +1332,6 @@
     <string name="NM_WSB_Subscribe_Button">Подписаться на @NimarkoProject</string>
     <string name="NM_CP_LatexRendering">Отображать формулы LaTeX</string>
     <string name="NM_CP_LatexRendering_Desc">Распознаёт формулы внутри $…$ и $$…$$ в сообщениях.</string>
+    <string name="NM_Menu_More">Дополнительно</string>
+    <string name="NM_Menu_Manage">Управление</string>
 </resources>

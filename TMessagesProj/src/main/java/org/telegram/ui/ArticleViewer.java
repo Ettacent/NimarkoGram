@@ -14981,6 +14981,7 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
         public boolean paused = false;
         public void pause() {
             if (paused) return;
+            webViewContainer.cancelBrowserContentReveal();
             if (getWebView() != null) {
                 getWebView().onPause();
             }
@@ -14988,6 +14989,7 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
         }
         public void resume() {
             if (!paused) return;
+            webViewContainer.resumeBrowserContentReveal();
             if (getWebView() != null) {
                 getWebView().onResume();
             }
@@ -15106,6 +15108,7 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
                 @Override
                 protected void onErrorShown(boolean shown, int errorCode, String description) {
                     if (shown) {
+                        cancelBrowserContentReveal();
                         createErrorContainer();
                         errorContainer.set(getWebView() != null ? getWebView().getUrl() : null, errorCode, description);
                         errorContainer.setDark(AndroidUtilities.computePerceivedBrightness(getThemedColor(Theme.key_iv_background)) <= .721f, false);
@@ -15972,6 +15975,9 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
             if (dismissing) return;
             dismissing = true;
             dismissingIntoTabs = tabs;
+            for (PageLayout page : pages) {
+                if (page != null) page.webViewContainer.holdBrowserContentReveal(true);
+            }
             if (tabs) {
                 LaunchActivity.instance.getBottomSheetTabsOverlay().dismissSheet(this);
             } else {
@@ -16190,6 +16196,9 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
             if (openAnimator != null) {
                 openAnimator.cancel();
             }
+            for (PageLayout page : pages) {
+                if (page != null) page.webViewContainer.holdBrowserContentReveal(true);
+            }
             if (animated) {
                 final int frameRateGeneration = beginAnimationFrameRate();
                 openAnimator = ValueAnimator.ofFloat(openProgress, open ? 1f : 0f);
@@ -16210,6 +16219,11 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
                         }
                         checkFullyVisible();
                         if (open) animationsLock.unlock();
+                        if (open) {
+                            for (PageLayout page : pages) {
+                                if (page != null) page.webViewContainer.holdBrowserContentReveal(false);
+                            }
+                        }
                         finishAnimationFrameRate(frameRateGeneration);
                     }
                 });
@@ -16229,6 +16243,11 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
                 }
                 checkFullyVisible();
                 if (open) animationsLock.unlock();
+                if (open) {
+                    for (PageLayout page : pages) {
+                        if (page != null) page.webViewContainer.holdBrowserContentReveal(false);
+                    }
+                }
             }
         }
 

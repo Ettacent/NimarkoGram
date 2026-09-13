@@ -15,14 +15,9 @@ import org.telegram.ui.Components.UniversalAdapter;
 
 import app.nimarkogram.messenger.preferences.BasePreferencesActivity;
 import app.nimarkogram.messenger.preferences.helpers.PopupHelper;
-import app.nimarkogram.messenger.infocards.CacheCard;
-import app.nimarkogram.messenger.infocards.CryptoCard;
-import app.nimarkogram.messenger.infocards.InfoCardRates;
 import app.nimarkogram.messenger.infocards.InfoCardRegistry;
 import app.nimarkogram.messenger.infocards.InfoCardType;
 import app.nimarkogram.messenger.infocards.InfoCardsConfig;
-import app.nimarkogram.messenger.infocards.ProxyCard;
-import app.nimarkogram.messenger.infocards.WeatherCard;
 
 public class InfoCardsPreferencesActivity extends BasePreferencesActivity implements InfoCardRowView.Listener {
 
@@ -39,8 +34,6 @@ public class InfoCardsPreferencesActivity extends BasePreferencesActivity implem
     };
 
     private final SparseArray<InfoCardRowView> rows = new SparseArray<>();
-    private InfoCardRates.CallbackHandle ratesCallback;
-    private CacheCard.SizeCallbackHandle cacheCallback;
 
     @Override
     public String getTitle() {
@@ -52,29 +45,11 @@ public class InfoCardsPreferencesActivity extends BasePreferencesActivity implem
         View view = super.createView(context);
         listView.listenReorder(this::onReordered);
         listView.allowReorder(true);
-        if (ratesCallback != null) ratesCallback.cancel();
-        ratesCallback = InfoCardRates.fetchWeak(false, () -> {
-            ratesCallback = null;
-            if (!isFinished) reload();
-        });
-        if (cacheCallback != null) cacheCallback.cancel();
-        cacheCallback = CacheCard.computeAsyncWeak(() -> {
-            cacheCallback = null;
-            if (!isFinished) reload();
-        });
         return view;
     }
 
     @Override
     public void onFragmentDestroy() {
-        if (ratesCallback != null) {
-            ratesCallback.cancel();
-            ratesCallback = null;
-        }
-        if (cacheCallback != null) {
-            cacheCallback.cancel();
-            cacheCallback = null;
-        }
         rows.clear();
         super.onFragmentDestroy();
     }
@@ -86,7 +61,7 @@ public class InfoCardsPreferencesActivity extends BasePreferencesActivity implem
             row.setListener(this);
             rows.put(info.id, row);
         }
-        row.bind(info, active, valueFor(info.id), active, active && hasOptions(info.id));
+        row.bind(info, active, active && hasOptions(info.id));
         return row;
     }
 
@@ -224,19 +199,4 @@ public class InfoCardsPreferencesActivity extends BasePreferencesActivity implem
         }
     }
 
-    private static CharSequence valueFor(int id) {
-        CharSequence v;
-        if (id == InfoCardType.TON.id || id == InfoCardType.BTC.id || id == InfoCardType.USD.id) {
-            v = CryptoCard.liveValueText(id);
-        } else if (id == InfoCardType.PROXY.id) {
-            v = ProxyCard.liveValueText();
-        } else if (id == InfoCardType.CACHE.id) {
-            v = CacheCard.liveValueText();
-        } else if (id == InfoCardType.WEATHER.id) {
-            v = WeatherCard.liveValueText();
-        } else {
-            v = null;
-        }
-        return v == null ? "" : v;
-    }
 }

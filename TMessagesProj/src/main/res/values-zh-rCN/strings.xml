@@ -1256,4 +1256,6 @@
     <string name="PluginsRowSubtitle">Python scripts that extend the app</string>
     <string name="NM_CP_LatexRendering">显示 LaTeX 公式</string>
     <string name="NM_CP_LatexRendering_Desc">识别消息中 $…$ 和 $$…$$ 内的公式。</string>
+    <string name="NM_Menu_More">更多操作</string>
+    <string name="NM_Menu_Manage">管理</string>
 </resources>

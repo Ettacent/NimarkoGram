@@ -12483,4 +12483,6 @@
     <string name="UnsupportedMessageTitle">Unsupported Message</string>
     <string name="UnsupportedMessageMessage">Update Telegram to view this message</string>
     <string name="UnsupportedUpdate">Update</string>
+    <string name="NM_Menu_More">More actions</string>
+    <string name="NM_Menu_Manage">Manage</string>
 </resources>

@@ -4115,6 +4115,10 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
                     selectorDrawableMaskType[1] = 2;
                     commentButtonPressed = true;
                     if (selectorDrawable[1] != null) {
+                        selectorDrawable[1].setBounds(commentButtonRect);
+                        if (selectorMaskDrawable[1] != null) {
+                            selectorMaskDrawable[1].invalidateSelf();
+                        }
                         selectorDrawable[1].setHotspot(x, y);
                         selectorDrawable[1].setState(pressedState);
                     }
@@ -9402,7 +9406,7 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
                         if (reactionsLayoutInBubble.width > backgroundWidth) {
                             backgroundWidth = reactionsLayoutInBubble.width;
                         }
-                        int timeMore = timeWidth + dp(6);
+                        int timeMore = timeWidth + dp(32);
                         if (messageObject.isQuickReply() && !messageObject.isSendError()) {
                             timeMore -= dp(3);
                         } else if (messageObject.isOutOwner()) {
@@ -13755,7 +13759,7 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
                     } else if (selectorDrawableMaskType[num] == 2) {
                         boolean out = currentMessageObject != null && currentMessageObject.isOutOwner();
                         for (int a = 0; a < 4; a++) {
-                            if (!instantTextNewLine) {
+                            if (num == 1 || !instantTextNewLine) {
                                 if (a == (out ? 3 : 2)) {
                                     radii[a * 2] = radii[a * 2 + 1] = dp(SharedConfig.bubbleRadius);
                                     continue;
@@ -13777,8 +13781,12 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
                                     rect.bottom
                             );
                             path.arcTo(AndroidUtilities.rectTmp, 0, 83, false);
-                            AndroidUtilities.rectTmp.set(rect.right - radii[4] * 2, rect.bottom - radii[5] * 2, rect.right, rect.bottom);
-                            path.arcTo(AndroidUtilities.rectTmp, 90, -90, false);
+                            if (radii[4] > 0 && radii[5] > 0) {
+                                AndroidUtilities.rectTmp.set(rect.right - radii[4] * 2, rect.bottom - radii[5] * 2, rect.right, rect.bottom);
+                                path.arcTo(AndroidUtilities.rectTmp, 90, -90, false);
+                            } else {
+                                path.lineTo(rect.right, rect.bottom);
+                            }
                             path.lineTo(rect.right, rect.top);
                             path.close();
                         } else {

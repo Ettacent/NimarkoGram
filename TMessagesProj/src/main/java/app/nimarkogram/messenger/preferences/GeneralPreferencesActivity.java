@@ -81,6 +81,8 @@ public class GeneralPreferencesActivity extends NimarkoUniversalPreferencesActiv
 
     private static final int exportConfigRow = 19;
     private static final int importConfigRow = 20;
+    private static final int inAppNotificationsRow = 21;
+    private static final int inAppNotificationsPreviewRow = 22;
 
     private static final int hideStoriesRow = 7;
     private static final int archiveStoriesRow = 8;
@@ -113,7 +115,8 @@ public class GeneralPreferencesActivity extends NimarkoUniversalPreferencesActiv
             case springAnimationRow, predictiveBackRow,
                     useSystemEmojiRow, useSystemFontsRow, tabledModeRow -> PAGE_SYSTEM;
             case silenceNonContactsRow, residentNotificationRow, notificationReactionsRow,
-                    notificationReactionEmojiRow, hideStoriesRow, archiveStoriesRow -> PAGE_NOTIFICATIONS;
+                    notificationReactionEmojiRow, hideStoriesRow, archiveStoriesRow,
+                    inAppNotificationsRow, inAppNotificationsPreviewRow -> PAGE_NOTIFICATIONS;
             case downloadSpeedBoostRow, uploadSpeedBoostRow, slowNetworkMode -> PAGE_CONNECTION;
             case deletedGiftsRow, localPremiumEmojisRow -> PAGE_CONTENT;
             case exportConfigRow, importConfigRow -> PAGE_BACKUP;
@@ -174,7 +177,6 @@ public class GeneralPreferencesActivity extends NimarkoUniversalPreferencesActiv
                 items.add(UItem.asShadow(getString(R.string.NM_SettingsSummaryGeneralInterface)));
             }
             case PAGE_NOTIFICATIONS -> {
-                items.add(UItem.asHeader(getString(R.string.NM_SettingsSectionNotificationsStories)));
                 fillNotifications(items);
                 items.add(UItem.asShadow(getString(R.string.NM_SettingsSummaryNotificationsStories)));
             }
@@ -238,6 +240,16 @@ public class GeneralPreferencesActivity extends NimarkoUniversalPreferencesActiv
     }
 
     private void fillNotifications(ArrayList<UItem> items) {
+        items.add(UItem.asHeader(getString(R.string.InAppNotifications)));
+        items.add(SettingsHelper.asSwitchCG(inAppNotificationsRow,
+                getString(R.string.NM_InAppNotifications), getString(R.string.NM_InAppNotificationsDesc))
+                .setChecked(NimarkoConfig.inAppNotifications));
+        if (NimarkoConfig.inAppNotifications) {
+            items.add(asSettingsValue(inAppNotificationsPreviewRow, IconBackgroundColors.BLUE,
+                    R.drawable.msg_played, getString(R.string.NM_InAppNotificationsPreview), ""));
+        }
+        items.add(UItem.asShadow(null));
+        items.add(UItem.asHeader(getString(R.string.Notifications)));
         items.add(SettingsHelper.asSwitchCG(silenceNonContactsRow,
                         getString(R.string.CP_SilenceNonContacts),
                         getString(R.string.CP_SilenceNonContacts_Desc))
@@ -260,6 +272,8 @@ public class GeneralPreferencesActivity extends NimarkoUniversalPreferencesActiv
             notificationReactionCell.update(false);
             items.add(UItem.asCustom(notificationReactionEmojiRow, notificationReactionCell));
         }
+        items.add(UItem.asShadow(null));
+        items.add(UItem.asHeader(getString(R.string.NotificationsStories)));
         items.add(SettingsHelper.asSwitchCG(hideStoriesRow,
                         getString(R.string.CP_HideStories),
                         getString(R.string.CP_HideStories_Desc))
@@ -339,6 +353,13 @@ public class GeneralPreferencesActivity extends NimarkoUniversalPreferencesActiv
             NimarkoConfig.togglePredictiveBack();
             SettingsHelper.updateCheckState(view, NimarkoConfig.predictiveBack);
             showRestartBulletin();
+        } else if (item.id == inAppNotificationsRow) {
+            NimarkoConfig.toggleInAppNotifications();
+            SettingsHelper.updateCheckState(view, NimarkoConfig.inAppNotifications);
+            app.nimarkogram.messenger.notifications.NimarkoInAppNotifications.dismiss();
+            listView.adapter.update(true);
+        } else if (item.id == inAppNotificationsPreviewRow) {
+            app.nimarkogram.messenger.notifications.NimarkoInAppNotifications.preview();
         } else if (item.id == silenceNonContactsRow) {
             NimarkoConfig.toggleSilenceNonContacts();
             SettingsHelper.updateCheckState(view, NimarkoConfig.silenceNonContacts);

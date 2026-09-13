@@ -25365,17 +25365,22 @@ public class MessagesController extends BaseController implements NotificationCe
     }
 
     public boolean isWebBrowserInAppEnabled() {
-        if (app.nimarkogram.messenger.NimarkoConfig.inappBrowser) return true;   // NimarkoGram local toggle (default ON)
-        return webBrowserSettings != null && !webBrowserSettings.open_external_browser;
+        return app.nimarkogram.messenger.NimarkoConfig.inappBrowser
+                || webBrowserSettings != null && !webBrowserSettings.open_external_browser;
     }
 
     public boolean isWebBrowserOpenInApp(String url) {
+        return isWebBrowserOpenInApp(url, false);
+    }
+    public boolean isWebBrowserOpenInApp(String url, boolean preferInApp) {
         if (url == null) return false;
         // NimarkoGram: a local toggle (default ON) forces the built-in browser. DrKLO 12.8 defaults the in-app
         // browser OFF (server-synced WebBrowserSettings, open_external_browser=true, and null until the config
         // round-trip completes), which sent every link to an external browser. Off -> upstream behaviour.
-        if (app.nimarkogram.messenger.NimarkoConfig.inappBrowser) return true;
-        return webBrowserSettings != null && !isWebBrowserOpenInExternal(webBrowserSettings, url);
+        if (webBrowserSettings != null && hasWebBrowserException(webBrowserSettings, url)) {
+            return !isWebBrowserOpenInExternal(webBrowserSettings, url);
+        }
+        return preferInApp || isWebBrowserInAppEnabled();
     }
 
 
@@ -25619,18 +25624,17 @@ public class MessagesController extends BaseController implements NotificationCe
             domain = AndroidUtilities.getHostAuthority("//" + url);
         }
 
-        boolean isOpenInExternal = settings.open_external_browser;
-        if (isOpenInExternal) {
-            return !hasWebBrowserException(settings.inapp_exceptions, domain);
-        } else {
-            return hasWebBrowserException(settings.external_exceptions, domain);
-        }
+        if (hasWebBrowserException(settings.external_exceptions, domain)) return true;
+        if (hasWebBrowserException(settings.inapp_exceptions, domain)) return false;
+        return settings.open_external_browser;
     }
 
     private static boolean hasWebBrowserException(ArrayList<TL_account.WebDomainException> list, String domain) {
-        final String domainLowCase = domain.toLowerCase();
+        if (TextUtils.isEmpty(domain)) return false;
+        final String domainLowCase = domain.toLowerCase(Locale.ROOT);
         for (int a = 0, N = list.size(); a < N; a++) {
-            final String exceptionDomain = list.get(a).domain.toLowerCase();
+            if (list.get(a) == null || TextUtils.isEmpty(list.get(a).domain)) continue;
+            final String exceptionDomain = list.get(a).domain.toLowerCase(Locale.ROOT);
             if (TextUtils.equals(exceptionDomain, domainLowCase) || domainLowCase.endsWith("." + exceptionDomain)) {
                 return true;
             }
@@ -25641,10 +25645,9 @@ public class MessagesController extends BaseController implements NotificationCe
     public void toggleWebBrowserInAppEnabled() {
         // NimarkoGram: the toggle drives the local default (works even before the server config loads), and
         // mirrors to the server setting when it's available.
-        app.nimarkogram.messenger.NimarkoConfig.setInappBrowser(!app.nimarkogram.messenger.NimarkoConfig.inappBrowser);
-        if (webBrowserSettings != null) {
-            updateWebBrowserSettings(!app.nimarkogram.messenger.NimarkoConfig.inappBrowser, webBrowserSettings.display_close_button);
-        }
+        final boolean enabled = !isWebBrowserInAppEnabled();
+        app.nimarkogram.messenger.NimarkoConfig.setInappBrowser(enabled);
+        updateWebBrowserSettings(!enabled, webBrowserSettings == null || webBrowserSettings.display_close_button);
     }
 
     public void toggleWebBrowserUseCustomTabs(boolean useCustomTabs) {

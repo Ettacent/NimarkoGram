@@ -427,9 +427,9 @@ public class ActionBarMenuItem extends FrameLayout {
         popupLayout.setOnTouchListener((v, event) -> {
             if (event.getActionMasked() == MotionEvent.ACTION_DOWN) {
                 if (popupWindow != null && popupWindow.isShowing()) {
-                    v.getHitRect(rect);
-                    if (!rect.contains((int) event.getX(), (int) event.getY())) {
+                    if (!popupLayout.containsVisiblePoint(event.getX(), event.getY())) {
                         popupWindow.dismiss();
+                        return true;
                     }
                 }
             }
@@ -2608,6 +2608,11 @@ public class ActionBarMenuItem extends FrameLayout {
     }
     public Item lazilyAddSwipeBackItem(int icon, Drawable iconDrawable, String text, View viewToSwipeBack) {
         return putLazyItem(Item.asSwipeBackItem(icon, iconDrawable, text, viewToSwipeBack));
+    }
+    public void moveLazyItemToStart(Item item) {
+        if (item != null && lazyList != null && lazyList.remove(item)) {
+            lazyList.add(0, item);
+        }
     }
     public Item lazilyAddSubItem(int id, int icon, CharSequence text) {
         return lazilyAddSubItem(id, icon, null, text, true, false);
