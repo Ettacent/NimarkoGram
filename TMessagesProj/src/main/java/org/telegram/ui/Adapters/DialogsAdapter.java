@@ -1489,10 +1489,12 @@ public class DialogsAdapter extends RecyclerListView.SelectionAdapter implements
                 height -= blurOffset;
                 int cellHeight = AndroidUtilities.dp(SharedConfig.useThreeLinesLayout ? 76 : 70);
                 int dialogsHeight = 0;
+                int separators = size - 1;
                 for (int i = 0; i < size; i++) {
                     if (itemInternals.get(i).viewType == VIEW_TYPE_DIALOG) {
                         if (itemInternals.get(i).isForumCell && !collapsedView) {
                             dialogsHeight += AndroidUtilities.dp(SharedConfig.useThreeLinesLayout ? 86 : 91);
+                            separators--;
                         } else {
                             dialogsHeight += cellHeight;
                         }
@@ -1500,7 +1502,7 @@ public class DialogsAdapter extends RecyclerListView.SelectionAdapter implements
                         dialogsHeight += cellHeight;
                     }
                 }
-                dialogsHeight += size - 1;
+                dialogsHeight += Math.max(0, separators);
                 if (onlineContacts != null) {
                     dialogsHeight += onlineContacts.size() * AndroidUtilities.dp(58) + (onlineContacts.size() - 1) + AndroidUtilities.dp(52);
                 }
@@ -1824,7 +1826,7 @@ public class DialogsAdapter extends RecyclerListView.SelectionAdapter implements
     public int getItemHeight(int position) {
         if (itemInternals.get(position).viewType == VIEW_TYPE_DIALOG) {
             if (itemInternals.get(position).isForumCell && !collapsedView) {
-                return AndroidUtilities.dp(SharedConfig.useThreeLinesLayout ? 86 : 91) + 1;
+                return AndroidUtilities.dp(SharedConfig.useThreeLinesLayout ? 86 : 91);
             } else {
                 return AndroidUtilities.dp(SharedConfig.useThreeLinesLayout ? 76 : 70) + 1;
             }

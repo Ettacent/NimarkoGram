@@ -35,15 +35,15 @@ public class MotionTest {
  // Deterministic animator transport, not an Android rendering simulation. cancel()
  // delivers onAnimationEnd too: production must clear ownership before cancelling.
  static class ValueAnimator extends Animator {
-  boolean cancelled,ended;int starts;long duration;float from,to,value;
+  boolean cancelled,ended;int starts;long duration;float from,to,value,fraction;
   ArrayList<java.util.function.Consumer<ValueAnimator>> updates=new ArrayList<>();
   ArrayList<AnimatorListenerAdapter> listeners=new ArrayList<>();
   static ValueAnimator ofFloat(float from,float to){ValueAnimator a=new ValueAnimator();a.from=from;a.to=to;a.value=from;return a;}
   void setDuration(long d){duration=d;}void setInterpolator(Interpolator i){}
   void addUpdateListener(java.util.function.Consumer<ValueAnimator> l){updates.add(l);}
   void addListener(AnimatorListenerAdapter l){listeners.add(l);}void start(){starts++;}
-  Object getAnimatedValue(){return value;}
-  void frame(float fraction){value=from+(to-from)*fraction;for(var l:updates)l.accept(this);}
+  Object getAnimatedValue(){return value;}float getAnimatedFraction(){return fraction;}
+  void frame(float fraction){this.fraction=fraction;value=from+(to-from)*fraction;for(var l:updates)l.accept(this);}
   void notifyEnd(){for(var l:listeners)l.onAnimationEnd(this);}
   void cancel(){cancelled=true;notifyEnd();}void end(){ended=true;frame(1);notifyEnd();}
  }
@@ -69,6 +69,7 @@ public class MotionTest {
   void setAlpha(float a){alpha=a;}float getAlpha(){return alpha;}void setImportantForAccessibility(int mode){}
  }
  static class Slot {boolean directResize;int layouts;void requestLayout(){layouts++;}}
+ static class TextUtils {static boolean equals(CharSequence a,CharSequence b){return Objects.equals(a,b);}}
  static class UserConfig {static int selectedAccount;}
  static class Banner {
   int account;boolean sample;
@@ -77,7 +78,7 @@ public class MotionTest {
   int height=80,expandedHeight=160,collapsedHeight=80,layouts;
   float pullOffset,translationY,expansion,releaseVelocity;boolean preview=true;Slot slot=new Slot();
   ValueAnimator pullAnimator,expansionAnimator,contentAnimator;boolean contentFadeOut;
-  String pendingName,pendingMessage;View title=new View(),body=new View(),expandedBody=new View(),text=new View();
+  String pendingName,pendingMessage;View title=new View(),body=new View(),expandedBody=new View(),text=new View(),bodies=new View();
   float alpha=1;float getAlpha(){return alpha;}void setAlpha(float a){alpha=a;}
   int getHeight(){return height;}void setTranslationY(float y){translationY=y;}void requestLayout(){layouts++;}
   Animation animator=new Animation(); Animation animate(){return animator;} int dp(int n){return n;}
@@ -157,28 +158,28 @@ public class MotionTest {
   // alpha back to 1 here would flash before the parent's exit animation finishes.
   n=new Banner();Banner.banner=n;n.title.value="old";n.body.value="old body";
   n.pendingName="updated";n.pendingMessage="body";n.fadeText(true);
-  ValueAnimator content=n.contentAnimator;content.frame(.8f);float fadedAlpha=n.text.alpha;
+  ValueAnimator content=n.contentAnimator;content.frame(.8f);float fadedAlpha=n.bodies.alpha;
   n.settleExpansion(true);ValueAnimator expansion=n.pullAnimator;
   n.animateOpenChat();check(!content.cancelled&&expansion.cancelled&&n.contentAnimator==content&&n.pullAnimator!=expansion);
-  check(n.text.alpha==fadedAlpha&&"old".equals(n.title.value)&&"updated".equals(n.pendingName)&&n.opens==0);
+  check(n.bodies.alpha==fadedAlpha&&"old".equals(n.title.value)&&"updated".equals(n.pendingName)&&n.opens==0);
   check(n.opens==0&&n.contentAnimator==content);
   content.end();ValueAnimator fadeIn=n.contentAnimator;
-  check(fadeIn!=null&&fadeIn!=content&&fadeIn.duration==160&&n.text.alpha==0);
+  check(fadeIn!=null&&fadeIn!=content&&fadeIn.duration==160&&n.bodies.alpha==0);
   check(n.pendingName==null&&n.pendingMessage==null&&"updated".equals(n.title.value));
   check("body".equals(n.body.value)&&"body".equals(n.expandedBody.value)&&n.opens==0);
   fadeIn.frame(.5f);n.pauseInteraction();
-  check(!n.opening&&!n.touching&&n.contentAnimator==fadeIn&&!fadeIn.cancelled&&n.text.alpha==.5f);
-  fadeIn.end();check(n.contentAnimator==null&&n.text.alpha==1&&n.opens==0);
+  check(!n.opening&&!n.touching&&n.contentAnimator==fadeIn&&!fadeIn.cancelled&&n.bodies.alpha==.5f);
+  fadeIn.end();check(n.contentAnimator==null&&n.bodies.alpha==1&&n.opens==0);
   n.pullAnimator.end();check(n.pullOffset==0&&n.opens==0);
   // Explicit removal/detach cleanup still retires content and pending text.
   n=new Banner();n.title.value="old";n.pendingName="late";n.pendingMessage="late";
   n.fadeText(true);content=n.contentAnimator;content.frame(.5f);n.closing=true;
   n.cancelContentTransition();check(content.cancelled&&n.contentAnimator==null);
-  check("old".equals(n.title.value)&&n.pendingName==null&&n.pendingMessage==null&&n.text.alpha==.5f);
-  content.frame(1);content.notifyEnd();check(n.contentAnimator==null&&n.text.alpha==.5f&&"old".equals(n.title.value));
+  check("old".equals(n.title.value)&&n.pendingName==null&&n.pendingMessage==null&&n.bodies.alpha==.5f);
+  content.frame(1);content.notifyEnd();check(n.contentAnimator==null&&n.bodies.alpha==.5f&&"old".equals(n.title.value));
   n=new Banner();n.pendingName="updated";n.pendingMessage="body";n.fadeText(true);
   content=n.contentAnimator;content.frame(.5f);n.cancelContentTransition();
-  check(content.cancelled&&n.contentAnimator==null&&n.text.alpha==1&&"updated".equals(n.title.value));
+  check(content.cancelled&&n.contentAnimator==null&&n.bodies.alpha==1&&"updated".equals(n.title.value));
   check(n.pendingName==null&&n.pendingMessage==null&&"body".equals(n.expandedBody.value));
   Tabs tab=new Tabs();tab.setResizeReferenceWidth(400);tab.onLayout(true,0,0,344,50);
   tab.animatingIndicator=true;tab.delegate.completions=0;tab.scrollingToChild=3;
