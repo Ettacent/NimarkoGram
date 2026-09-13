@@ -29,6 +29,9 @@ public class BlurredBackgroundSourceRenderNode implements BlurredBackgroundSourc
     private int scrollableNoiseSuppressorIndex;
     public BlurredBackgroundSource underSource;
     private boolean noClip;
+    public boolean isDisplayListReady() {
+        return !inRecording && renderNode.hasDisplayList() && renderNode.getWidth() > 0 && renderNode.getHeight() > 0;
+    }
 
     public BlurredBackgroundSourceRenderNode(BlurredBackgroundSource fallbackSource) {
         this.fallbackSource = fallbackSource;

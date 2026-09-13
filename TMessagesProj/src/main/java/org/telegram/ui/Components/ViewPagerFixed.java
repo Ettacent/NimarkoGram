@@ -216,6 +216,9 @@ public class ViewPagerFixed extends FrameLayout {
     public boolean isManualScrolling() {
         return manualScrolling != null && manualScrolling.isRunning();
     }
+    public boolean isPageTransitionRunning() {
+        return startedTracking || tabsAnimationInProgress || isManualScrolling();
+    }
 
     private ValueAnimator manualScrolling;
     public boolean scrollToPosition(int page) {

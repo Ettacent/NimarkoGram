@@ -17,6 +17,8 @@ import android.os.Bundle;
 import android.net.Uri;
 import android.text.TextUtils;
 import android.util.Base64;
+import android.view.ViewGroup;
+import android.widget.ScrollView;
 
 import org.telegram.messenger.AccountInstance;
 import org.telegram.messenger.AndroidUtilities;
@@ -133,7 +135,34 @@ public final class NimarkoChatMenuInjector {
         }
     }
 
-    public static void injectAdminShortcuts(ActionBarMenuItem headerItem, TLRPC.Chat currentChat) {
+    public static ItemOptions createHeaderSubmenu(ActionBarMenuItem headerItem, ChatActivity chatActivity) {
+        ItemOptions options = ItemOptions.swipeback(headerItem.getPopupLayout(), chatActivity.getResourceProvider());
+        options.add(R.drawable.msg_arrow_back, getString(R.string.Back), () -> {
+            if (headerItem.getPopupLayout() != null && headerItem.getPopupLayout().getSwipeBack() != null) {
+                headerItem.getPopupLayout().getSwipeBack().closeForeground();
+            }
+        });
+        options.addGap();
+        return options;
+    }
+    public static void addHeaderAction(ItemOptions options, ActionBarMenuItem headerItem,
+                                       ChatActivity chatActivity, int id, int icon, CharSequence title) {
+        options.add(icon, title, () -> {
+            headerItem.closeSubMenu();
+            chatActivity.getActionBar().getActionBarMenuOnItemClick().onItemClick(id);
+        });
+    }
+    public static ActionBarMenuItem.Item attachHeaderSubmenu(ItemOptions options, ActionBarMenuItem headerItem, int icon, String title) {
+        if (options.getLinearLayout().getChildCount() > 2) {
+            ScrollView content = new ScrollView(headerItem.getContext());
+            content.setVerticalScrollBarEnabled(false);
+            content.addView(options.getLinearLayout(), new ScrollView.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+            return headerItem.lazilyAddSwipeBackItem(icon, null, title, content);
+        }
+        return null;
+    }
+    public static void injectAdminShortcuts(ActionBarMenuItem headerItem, ChatActivity chatActivity, TLRPC.Chat currentChat) {
         if (headerItem == null || currentChat == null) return;
 
         if (!ChatObject.hasAdminRights(currentChat)) return;
@@ -142,33 +171,35 @@ public final class NimarkoChatMenuInjector {
                 || NimarkoConfig.adminsAdministrators || NimarkoConfig.adminsMembers
                 || NimarkoConfig.adminsStatistics || NimarkoConfig.adminsRecentActions;
 
-        if (any) headerItem.lazilyAddColoredGap();
+        if (!any) return;
+        ItemOptions options = createHeaderSubmenu(headerItem, chatActivity);
 
         if (NimarkoConfig.adminsReactions && ChatObject.canChangeChatInfo(currentChat)) {
-            headerItem.lazilyAddSubItem(ADMIN_OPTION_REACTIONS, R.drawable.msg_reactions2, getString(R.string.Reactions));
+            addHeaderAction(options, headerItem, chatActivity, ADMIN_OPTION_REACTIONS, R.drawable.msg_reactions2, getString(R.string.Reactions));
         }
         
         if (NimarkoConfig.adminsPermissions
                 && !(ChatObject.isChannel(currentChat) && !currentChat.megagroup)
                 && !currentChat.gigagroup) {
-            headerItem.lazilyAddSubItem(ADMIN_OPTION_PERMISSIONS, R.drawable.msg_permissions, getString(R.string.ChannelPermissions));
+            addHeaderAction(options, headerItem, chatActivity, ADMIN_OPTION_PERMISSIONS, R.drawable.msg_permissions, getString(R.string.ChannelPermissions));
         }
         if (NimarkoConfig.adminsAdministrators) {
-            headerItem.lazilyAddSubItem(ADMIN_OPTION_ADMINISTRATORS, R.drawable.msg_admins, getString(R.string.ChannelAdministrators));
+            addHeaderAction(options, headerItem, chatActivity, ADMIN_OPTION_ADMINISTRATORS, R.drawable.msg_admins, getString(R.string.ChannelAdministrators));
         }
         if (NimarkoConfig.adminsMembers) {
-            headerItem.lazilyAddSubItem(ADMIN_OPTION_MEMBERS, R.drawable.msg_groups, getString(R.string.ChannelMembers));
+            addHeaderAction(options, headerItem, chatActivity, ADMIN_OPTION_MEMBERS, R.drawable.msg_groups, getString(R.string.ChannelMembers));
         }
         if (NimarkoConfig.adminsPermissions
                 && ((ChatObject.isChannel(currentChat) && !currentChat.megagroup) || currentChat.gigagroup)) {
-            headerItem.lazilyAddSubItem(ADMIN_OPTION_BLACKLIST, R.drawable.msg_user_remove, getString(R.string.ChannelBlacklist));
+            addHeaderAction(options, headerItem, chatActivity, ADMIN_OPTION_BLACKLIST, R.drawable.msg_user_remove, getString(R.string.ChannelBlacklist));
         }
         if (NimarkoConfig.adminsStatistics && ChatObject.isBoostSupported(currentChat)) {
-            headerItem.lazilyAddSubItem(ADMIN_OPTION_STATISTICS, R.drawable.msg_stats, getString(R.string.StatisticsAndBoosts));
+            addHeaderAction(options, headerItem, chatActivity, ADMIN_OPTION_STATISTICS, R.drawable.msg_stats, getString(R.string.StatisticsAndBoosts));
         }
         if (NimarkoConfig.adminsRecentActions) {
-            headerItem.lazilyAddSubItem(ADMIN_OPTION_RECENT_ACTIONS, R.drawable.msg_log, getString(R.string.EventLog));
+            addHeaderAction(options, headerItem, chatActivity, ADMIN_OPTION_RECENT_ACTIONS, R.drawable.msg_log, getString(R.string.EventLog));
         }
+        attachHeaderSubmenu(options, headerItem, R.drawable.msg_admins, getString(R.string.NM_Menu_Manage));
     }
 
     public static void injectCreateChannel(ItemOptions io, BaseFragment fragment) {

@@ -24,6 +24,8 @@ public class ChatActivityTopPanelLayout extends AnimatedLinearLayout {
         super(context);
 
         setOrientation(LinearLayout.VERTICAL);
+        setClipChildren(false);
+        setClipToPadding(false);
         updateColors();
     }
 
@@ -56,7 +58,7 @@ public class ChatActivityTopPanelLayout extends AnimatedLinearLayout {
     @Override
     public boolean dispatchTouchEvent(MotionEvent ev) {
         return super.dispatchTouchEvent(ev)
-                || ev.getAction() == MotionEvent.ACTION_DOWN && backgroundDrawable != null && backgroundDrawable.getBounds().contains((int) ev.getX(), (int) ev.getY());
+                || ev.getAction() == MotionEvent.ACTION_DOWN && backgroundDrawable != null && getSharedBackgroundOffset() >= 0 && backgroundDrawable.getBounds().contains((int) ev.getX(), (int) ev.getY());
     }
 
     private final Path clipPath = new Path();
@@ -74,7 +76,7 @@ public class ChatActivityTopPanelLayout extends AnimatedLinearLayout {
 
         if (backgroundDrawable != null) {
             backgroundDrawable.setAlpha((int) (bgAlpha * 255));
-            backgroundDrawable.setBounds(getPaddingLeft() - dp(7), 0, getMeasuredWidth() - getPaddingRight() + dp(7), getPaddingTop() + getPaddingBottom() + (int) bgHeight);
+            backgroundDrawable.setBounds(getPaddingLeft() - dp(7), Math.max(0, Math.round(getSharedBackgroundOffset())), getMeasuredWidth() - getPaddingRight() + dp(7), getPaddingTop() + getPaddingBottom() + (int) bgHeight);
             backgroundDrawable.setRadius(Math.min(dp(18), bgHeight / 2));
         }
     }
@@ -106,7 +108,7 @@ public class ChatActivityTopPanelLayout extends AnimatedLinearLayout {
     protected void dispatchDraw(@NonNull Canvas canvas) {
         if (getMetadata().getTotalVisibility() == 0) return;
 
-        if (backgroundDrawable != null) {
+        if (backgroundDrawable != null && getSharedBackgroundOffset() >= 0) {
             backgroundDrawable.draw(canvas);
         }
 
@@ -167,7 +169,15 @@ public class ChatActivityTopPanelLayout extends AnimatedLinearLayout {
             Theme.dividerPaint.setAlpha(wasAlpha);
         }
 
-        super.dispatchDraw(canvas);
         canvas.restore();
+        super.dispatchDraw(canvas);
+    }
+    @Override protected boolean drawChild(Canvas canvas, View child, long drawingTime) {
+        int save = canvas.save();
+        if (!(child instanceof IndependentPanel)) canvas.clipPath(clipPath);
+        else canvas.clipRect(0, 0, getWidth(), getHeight());
+        boolean result = super.drawChild(canvas, child, drawingTime);
+        canvas.restoreToCount(save);
+        return result;
     }
 }

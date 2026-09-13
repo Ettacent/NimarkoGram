@@ -304,6 +304,20 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
     }
 
     @Override
+    public void onLowMemory() {
+        super.onLowMemory();
+        final int position = posProfile();
+        if (viewPager != null && position >= 0 && viewPager.getCurrentPosition() != position
+                && viewPager.getNextPosition() != position && viewPager.getPositionVisibility(position) == 0) {
+            FragmentState state = fragmentsArr.get(position);
+            if (state != null) {
+                AndroidUtilities.removeFromParent(state.fragment.getFragmentView());
+                AndroidUtilities.removeFromParent(state.fragment.getActionBar());
+                dropFragmentAtPosition(position);
+            }
+        }
+    }
+    @Override
     public void onResume() {
         super.onResume();
         blur3_updateColors();
@@ -763,7 +777,7 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
                     if (currentAccount == account) return;
                     o.dismiss();
                     if (LaunchActivity.instance != null) {
-                        LaunchActivity.instance.switchToAccount(account, true);
+                        LaunchActivity.instance.switchToAccountAnimated(account);
                     }
                 });
                 o.addView(btn, LayoutHelper.createLinear(230, 48));
@@ -845,10 +859,6 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
             if (currentPosition != posSettings() && dropCallsFragmentAfterPageScroll) {
                 dropFragmentAtPosition(posSettings());
                 dropCallsFragmentAfterPageScroll = false;
-            }
-            int profilePosition = posProfile();
-            if (profilePosition >= 0 && currentPosition != profilePosition) {
-                dropFragmentAtPosition(profilePosition);
             }
             if (pendingFolderId != null && currentPosition == posChats() && dialogsActivity != null) {
                 dialogsActivity.scrollToFolder(pendingFolderId);

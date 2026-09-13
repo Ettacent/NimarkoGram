@@ -174,6 +174,8 @@ final class NimarkoSettingsSearchIndex {
                 11, R.string.AP_Tablet_Mode);
         row(entries, guid, SCREEN_GENERAL, 4, R.string.CP_SilenceNonContacts, R.string.CP_SilenceNonContacts_Desc,
                 R.drawable.msg_settings_solar, R.string.NM_Cat_General, R.string.NM_SettingsSectionNotificationsStories);
+        row(entries, guid, SCREEN_GENERAL, 21, R.string.NM_InAppNotifications, R.string.NM_InAppNotificationsDesc,
+                R.drawable.msg_notifications, R.string.NM_Cat_General, R.string.NM_SettingsSectionNotificationsStories);
         row(entries, guid, SCREEN_GENERAL, 6, R.string.NM_ResidentNotification, R.string.NotificationsService,
                 R.drawable.msg_settings_solar, R.string.NM_Cat_General, R.string.NM_SettingsSectionNotificationsStories);
         row(entries, guid, SCREEN_GENERAL, 17, R.string.NM_NotificationReactions, R.string.NM_NotificationReactions_Desc,

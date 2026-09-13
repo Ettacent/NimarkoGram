@@ -155,6 +155,14 @@ import me.vkryl.android.animator.BoolAnimator;
 import me.vkryl.android.animator.FactorAnimator;
 
 public class SettingsActivity extends BaseFragment implements NotificationCenter.NotificationCenterDelegate, ImageUpdater.ImageUpdaterDelegate, MainTabsActivity.TabFragmentDelegate, FactorAnimator.Target {
+    @Override
+    public org.telegram.ui.Components.AnimatedLinearLayout getInAppNotificationPanel() {
+        if (!(fragmentView instanceof FrameLayout) || listView == null) return null;
+        if (notificationInlinePanel == null || notificationInlinePanel.getParent() != fragmentView) {
+            notificationInlinePanel = new app.nimarkogram.messenger.notifications.NotificationInlinePanel(this, (FrameLayout) fragmentView, listView);
+        }
+        return notificationInlinePanel;
+    }
 
     private static final int ANIMATOR_ID_SEARCH_PAGE_VISIBLE = 0;
 
@@ -834,7 +842,7 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
         if (item.instanceOf(AccountCell.Factory.class)) {
             final int account = item.intValue;
             if (LaunchActivity.instance != null) {
-                LaunchActivity.instance.switchToAccount(account, true);
+                LaunchActivity.instance.switchToAccountAnimated(account);
             }
             return;
         } else if (item.instanceOf(SettingsSearchCell.Factory.class)) {

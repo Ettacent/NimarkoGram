@@ -254,6 +254,22 @@ public abstract class BaseFragment {
     public View getFragmentView() {
         return fragmentView;
     }
+    protected app.nimarkogram.messenger.notifications.NotificationInlinePanel notificationInlinePanel;
+    public org.telegram.ui.Components.AnimatedLinearLayout getInAppNotificationPanel() {
+        if (!(fragmentView instanceof android.widget.FrameLayout) || actionBar == null
+                || actionBar.getParent() == fragmentView || !actionBar.shouldAddToContainer()) return null;
+        if (notificationInlinePanel == null || notificationInlinePanel.getParent() != fragmentView) {
+            android.widget.FrameLayout root = (android.widget.FrameLayout) fragmentView;
+            java.util.ArrayList<View> contents = new java.util.ArrayList<>();
+            for (int i = 0; i < root.getChildCount(); i++) {
+                View child = root.getChildAt(i);
+                if (child.getLayoutParams().height == ViewGroup.LayoutParams.MATCH_PARENT) contents.add(child);
+            }
+            if (contents.isEmpty()) return null;
+            notificationInlinePanel = new app.nimarkogram.messenger.notifications.NotificationInlinePanel(this, root, contents.toArray(new View[0]));
+        }
+        return notificationInlinePanel;
+    }
 
     public void setFragmentView(View fragmentView) {
         this.fragmentView = fragmentView;
@@ -1198,6 +1214,9 @@ public abstract class BaseFragment {
 
     private void setParentDialog(Dialog dialog) {
         parentDialog = dialog;
+    }
+    public org.telegram.ui.Components.blur3.BlurredBackgroundDrawableViewFactory getNotificationGlassFactory() {
+        return null;
     }
 
     public Theme.ResourcesProvider getResourceProvider() {

@@ -177,6 +177,9 @@ public abstract class ViewPagerActivity extends BaseFragment {
 
         return WindowInsetsCompat.CONSUMED;
     }
+    public boolean isPageTransitionRunning() {
+        return viewPager != null && viewPager.isPageTransitionRunning();
+    }
 
     public BaseFragment getCurrentVisibleFragment() {
         if (viewPager == null) {

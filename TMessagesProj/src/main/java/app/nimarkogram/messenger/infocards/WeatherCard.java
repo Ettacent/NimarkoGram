@@ -109,7 +109,9 @@ public class WeatherCard extends BaseInfoCard {
         needsPermission = true;
         stopLoading();
         setIcon(R.drawable.msg_location_solar);   
-        setText(LocaleController.getString(R.string.NM_CARDS_GrantLocation), true);
+        setText(LocaleController.getString(R.string.NM_CARDS_NameWeather), true);
+        setContentDescription(LocaleController.getString(R.string.NM_CARDS_NameWeather) + ": "
+                + LocaleController.getString(R.string.NM_CARDS_GrantLocation));
     }
 
     public static CharSequence liveValueText() {

@@ -445,7 +445,7 @@
     <string name="NM_SettingsDesc_GifSpoilers">Apply spoiler effects to GIFs</string>
     <string name="NM_SettingsDesc_NotificationSound">Choose the sound played in open chats</string>
     <string name="NM_SettingsDesc_ChatVibration">Choose vibration for messages in open chats</string>
-    <string name="NM_SettingsDesc_ChatShortcuts">Choose shortcuts shown in the chat menu</string>
+    <string name="NM_SettingsDesc_ChatShortcuts">Choose actions for the More actions and Manage submenus</string>
     <string name="NM_SettingsDesc_HideKeyboardOnScroll">Set how far to scroll before the keyboard hides</string>
     <string name="NM_SettingsDesc_VideoSeek">Set how many seconds the seek buttons skip</string>
     <string name="NM_SettingsDesc_HideProxy">Hide the sponsored proxy chat from the chat list</string>
@@ -499,4 +499,8 @@
     <string name="NM_MP_ProfileBusinessPreview_Desc">Show business details in profiles</string>
     <string name="NM_MP_ProfileBackgroundColor_Desc">Use profile colors in the expanded header</string>
     <string name="NM_MP_ProfileBackgroundEmoji_Desc">Show profile emoji in the expanded header</string>
+    <string name="NM_InAppNotifications">In-app banners</string>
+    <string name="NM_InAppNotificationsDesc">Show new messages at the top. Pull down to read more, swipe up to collapse or dismiss, tap to open the chat.</string>
+    <string name="NM_InAppNotificationsPreview">Show example</string>
+    <string name="NM_InAppNotificationsSample">New messages will appear here</string>
 </resources>

@@ -757,6 +757,14 @@ public class ActionBarPopupWindow extends PopupWindow {
         public int getVisibleHeight() {
             return (int) (getMeasuredHeight() * backScaleY);
         }
+        public boolean containsVisiblePoint(float x, float y) {
+            float width = getMeasuredWidth() * Math.max(0f, Math.min(1f, backScaleX));
+            float height = getMeasuredHeight() * Math.max(0f, Math.min(1f, backScaleY));
+            float left = !shownFromBottom && swipeBackLayout != null && swipeBackLayout.stickToRight
+                    ? getMeasuredWidth() - width : 0f;
+            float top = shownFromBottom ? getMeasuredHeight() - height : 0f;
+            return x >= left && x < left + width && y >= top && y < top + height;
+        }
 
         public void setTopView(View topView) {
             this.topView = topView;
@@ -836,9 +844,8 @@ public class ActionBarPopupWindow extends PopupWindow {
         if (contentView instanceof ActionBarPopupWindowLayout && ((ActionBarPopupWindowLayout) contentView).getSwipeBack() != null) {
             setTouchInterceptor((v, e) -> {
                 if (e.getAction() == MotionEvent.ACTION_DOWN) {
-                    AndroidUtilities.rectTmp.set(0, 0, contentView.getMeasuredWidth(), contentView.getMeasuredHeight());
-                    AndroidUtilities.rectTmp.offset(contentView.getX(), contentView.getY());
-                    if (!AndroidUtilities.rectTmp.contains(e.getX(), e.getY())) {
+                    ActionBarPopupWindowLayout content = (ActionBarPopupWindowLayout) contentView;
+                    if (!content.containsVisiblePoint(e.getX() - contentView.getX(), e.getY() - contentView.getY())) {
                         dismiss();
                         return true;
                     }

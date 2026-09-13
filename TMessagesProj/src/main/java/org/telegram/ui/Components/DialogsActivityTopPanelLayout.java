@@ -23,6 +23,8 @@ public class DialogsActivityTopPanelLayout extends AnimatedLinearLayout {
         super(context);
 
         setOrientation(LinearLayout.VERTICAL);
+        setClipChildren(false);
+        setClipToPadding(false);
         updateColors();
     }
 
@@ -48,7 +50,7 @@ public class DialogsActivityTopPanelLayout extends AnimatedLinearLayout {
     @Override
     public boolean dispatchTouchEvent(MotionEvent ev) {
         return super.dispatchTouchEvent(ev)
-            || ev.getAction() == MotionEvent.ACTION_DOWN && backgroundDrawable != null && backgroundDrawable.getBounds().contains((int) ev.getX(), (int) ev.getY());
+            || ev.getAction() == MotionEvent.ACTION_DOWN && backgroundDrawable != null && getSharedBackgroundOffset() >= 0 && backgroundDrawable.getBounds().contains((int) ev.getX(), (int) ev.getY());
     }
 
     private final Path clipPath = new Path();
@@ -66,7 +68,7 @@ public class DialogsActivityTopPanelLayout extends AnimatedLinearLayout {
 
         if (backgroundDrawable != null) {
             backgroundDrawable.setAlpha((int) (bgAlpha * 255));
-            backgroundDrawable.setBounds(dp(4), dp(14), getMeasuredWidth() - dp(4), getPaddingTop() + getPaddingBottom() + (int) bgHeight - dp(14));
+            backgroundDrawable.setBounds(dp(4), dp(14) + Math.max(0, Math.round(getSharedBackgroundOffset())), getMeasuredWidth() - dp(4), getPaddingTop() + getPaddingBottom() + (int) bgHeight - dp(14));
             backgroundDrawable.setRadius(Math.min(dp(defaultRadiusDp), bgHeight / 2));
         }
     }
@@ -100,7 +102,7 @@ public class DialogsActivityTopPanelLayout extends AnimatedLinearLayout {
     protected void dispatchDraw(@NonNull Canvas canvas) {
         if (getMetadata().getTotalVisibility() == 0) return;
 
-        if (backgroundDrawable != null) {
+        if (backgroundDrawable != null && getSharedBackgroundOffset() >= 0) {
             backgroundDrawable.draw(canvas);
         }
 
@@ -160,8 +162,8 @@ public class DialogsActivityTopPanelLayout extends AnimatedLinearLayout {
 
         exceptCall = callDrawnView != null;
         onlyCall = false;
-        super.dispatchDraw(canvas);
         canvas.restore();
+        super.dispatchDraw(canvas);
 
         if (callDrawnView != null) {
             onlyCall = true;
@@ -181,7 +183,14 @@ public class DialogsActivityTopPanelLayout extends AnimatedLinearLayout {
         if (isCallView && exceptCall || !isCallView && onlyCall) {
             return false;
         }
-        return super.drawChild(canvas, child, drawingTime);
+        int save = canvas.save();
+        if (!onlyCall) {
+            if (!(child instanceof IndependentPanel)) canvas.clipPath(clipPath);
+            else canvas.clipRect(0, 0, getWidth(), getHeight());
+        }
+        boolean result = super.drawChild(canvas, child, drawingTime);
+        canvas.restoreToCount(save);
+        return result;
     }
 
     private boolean isCallView(View view) {

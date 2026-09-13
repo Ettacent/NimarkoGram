@@ -52,7 +52,8 @@ public abstract class BaseInfoCard extends FrameLayout {
     
     private boolean opaqueFlat;
     
-    private boolean nextRenderInstant;
+    private boolean inlineFolderStyle;
+    private boolean renderingInstantly;
     private int lastIconRes;
     
     private int maxChipWidth;
@@ -127,6 +128,7 @@ public abstract class BaseInfoCard extends FrameLayout {
         textView.setScaleProperty(RESIZE_TEXT_SCALE_POP);
         
         textView.setOnWidthUpdatedListener(this::onAnimatedTextWidthUpdated);
+        textView.setText("", false, false);
         content.addView(textView, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, CHIP_HEIGHT_DP, Gravity.CENTER_VERTICAL));
 
         ScaleStateListAnimator.apply(content);
@@ -241,6 +243,12 @@ public abstract class BaseInfoCard extends FrameLayout {
         opaqueFlat = v;
         applyColorMode();
     }
+    public void setInlineFolderStyle(boolean inline) {
+        if (inlineFolderStyle == inline) return;
+        inlineFolderStyle = inline;
+        textView.setTextSize(AndroidUtilities.dp(inline ? 14 : 13));
+        requestLayout();
+    }
 
     protected int contentColorOverride() {
         return 0;
@@ -261,10 +269,7 @@ public abstract class BaseInfoCard extends FrameLayout {
         accessibilityValue = text;
         updateAccessibilityDescription();
         
-        if (nextRenderInstant) {
-            animated = false;
-            nextRenderInstant = false;
-        }
+        animated &= !renderingInstantly;
         boolean changed = !android.text.TextUtils.equals(textView.getText(), text);
         if (!changed) {
             return;
@@ -333,8 +338,14 @@ public abstract class BaseInfoCard extends FrameLayout {
         }
     }
 
-    public void renderNextInstant() {
-        nextRenderInstant = true;
+    void updateDataInstantly() {
+        boolean previous = renderingInstantly;
+        renderingInstantly = true;
+        try {
+            onUpdateData(false);
+        } finally {
+            renderingInstantly = previous;
+        }
     }
 
     public void setMaxChipWidth(int maxTextWidth) {
@@ -444,9 +455,10 @@ public abstract class BaseInfoCard extends FrameLayout {
 
     protected void updateLoadingColors() {
         if (loadingDrawable != null) {
+            int color = currentContentColor();
             loadingDrawable.setColors(
-                    Theme.multAlpha(0xffffffff, 0.1f),
-                    Theme.multAlpha(0xffffffff, 0.3f));
+                    Theme.multAlpha(color, 0.1f),
+                    Theme.multAlpha(color, 0.3f));
         }
     }
 

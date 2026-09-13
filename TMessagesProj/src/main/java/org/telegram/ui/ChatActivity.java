@@ -484,6 +484,10 @@ public class ChatActivity extends BaseFragment implements
     private HintView2 guestBotHintView;
     private HintView2 bottomSuggestHintView;
     private ChatActivityTopPanelLayout topPanelLayout;
+    @Override
+    public org.telegram.ui.Components.AnimatedLinearLayout getInAppNotificationPanel() {
+        return inPreviewMode || isInsideContainer ? null : topPanelLayout;
+    }
 
     private boolean ignoreItemAnimation;
     private ChatActivityChannelButtonsLayout bottomChannelButtonsLayout;
@@ -2793,6 +2797,10 @@ public class ChatActivity extends BaseFragment implements
     };
 
     public boolean isInsideContainer;
+    @Override
+    public BlurredBackgroundDrawableViewFactory getNotificationGlassFactory() {
+        return glassBackgroundDrawableFactoryFrosted;
+    }
     public boolean reversed;
     private long wallpaperRandomSeed;
 
@@ -4709,12 +4717,13 @@ public class ChatActivity extends BaseFragment implements
                     headerItem.hideSubItem(video_call);
                 }
             }
+            ItemOptions extraActions = app.nimarkogram.messenger.utils.chats.NimarkoChatMenuInjector.createHeaderSubmenu(headerItem, this);
 
             if (searchItem != null) {
                 headerItem.lazilyAddSubItem(search, R.drawable.msg_search, LocaleController.getString(R.string.Search));
 
                 if (currentChat != null) {
-                    headerItem.lazilyAddSubItem(
+                    app.nimarkogram.messenger.utils.chats.NimarkoChatMenuInjector.addHeaderAction(extraActions, headerItem, this,
                             app.nimarkogram.messenger.utils.chats.NimarkoChatActivityHelper.OPTION_ADVANCED_SEARCH,
                             R.drawable.msg_search,
                             LocaleController.getString(R.string.Search) + " (ID)");
@@ -4722,13 +4731,15 @@ public class ChatActivity extends BaseFragment implements
             }
 
             if (app.nimarkogram.messenger.NimarkoConfig.chatShortcutJumpToBegin) {
-                headerItem.lazilyAddSubItem(nimarko_jump_to_begin, R.drawable.ic_upward_solar, LocaleController.getString(R.string.NM_JumpToBeginning));
+                app.nimarkogram.messenger.utils.chats.NimarkoChatMenuInjector.addHeaderAction(extraActions, headerItem, this,
+                        nimarko_jump_to_begin, R.drawable.msg_go_up, LocaleController.getString(R.string.NM_JumpToBeginning));
             }
 
             if (app.nimarkogram.messenger.NimarkoConfig.shortcutDeleteAll
                     && currentChat != null
                     && (ChatObject.isMegagroup(currentChat) || !ChatObject.isChannel(currentChat))) {
-                headerItem.lazilyAddSubItem(nimarko_delete_all, R.drawable.msg_delete, LocaleController.getString(R.string.NM_CMS_DeleteAllFromSelf));
+                app.nimarkogram.messenger.utils.chats.NimarkoChatMenuInjector.addHeaderAction(extraActions, headerItem, this,
+                        nimarko_delete_all, R.drawable.msg_delete, LocaleController.getString(R.string.NM_CMS_DeleteAllFromSelf));
             }
             if (app.nimarkogram.messenger.NimarkoConfig.chatShortcutSavedMessages
                     && (currentUser == null || !currentUser.self)) {
@@ -4738,18 +4749,26 @@ public class ChatActivity extends BaseFragment implements
                         (currentUser != null && savedTarget > 0 && currentUser.id == savedTarget)
                                 || (currentChat != null && savedTarget < 0 && currentChat.id == -savedTarget);
                 if (!isSavedTarget) {
-                    headerItem.lazilyAddSubItem(nimarko_saved_messages, R.drawable.msg_saved, LocaleController.getString(R.string.SavedMessages));
+                    app.nimarkogram.messenger.utils.chats.NimarkoChatMenuInjector.addHeaderAction(extraActions, headerItem, this,
+                            nimarko_saved_messages, R.drawable.msg_saved, LocaleController.getString(R.string.SavedMessages));
                 }
             }
 
             if (app.nimarkogram.messenger.NimarkoConfig.shortcutBrowser) {
-                headerItem.lazilyAddSubItem(nimarko_browser, R.drawable.msg_language, LocaleController.getString(R.string.NM_CMS_TelegramBrowser));
+                app.nimarkogram.messenger.utils.chats.NimarkoChatMenuInjector.addHeaderAction(extraActions, headerItem, this,
+                        nimarko_browser, R.drawable.msg_language, LocaleController.getString(R.string.NM_CMS_TelegramBrowser));
+            }
+            ActionBarMenuItem.Item moreActions = app.nimarkogram.messenger.utils.chats.NimarkoChatMenuInjector.attachHeaderSubmenu(extraActions, headerItem,
+                    R.drawable.ic_ab_other, getString(R.string.NM_Menu_More));
+            if (moreActions != null) {
+                moreActions.setRightIconVisibility(View.GONE);
+                headerItem.moveLazyItemToStart(moreActions);
             }
 
             app.nimarkogram.messenger.utils.chats.NimarkoChatMenuInjector.injectPrivacyShortcuts(
                     headerItem, ChatActivity.this, currentChat, currentUser, currentEncryptedChat != null);
 
-            app.nimarkogram.messenger.utils.chats.NimarkoChatMenuInjector.injectAdminShortcuts(headerItem, currentChat);
+            app.nimarkogram.messenger.utils.chats.NimarkoChatMenuInjector.injectAdminShortcuts(headerItem, this, currentChat);
             if (ChatObject.isBoostSupported(currentChat) && (getUserConfig().isPremium() || ChatObject.isBoosted(chatInfo) || ChatObject.hasAdminRights(currentChat))) {
                 RLottieDrawable drawable = new RLottieDrawable(R.raw.boosts, "" + R.raw.boosts, dp(24), dp(24));
                 headerItem.lazilyAddSubItem(boost_group, drawable, LocaleController.getString(ChatObject.isChannelAndNotMegaGroup(currentChat) ? R.string.BoostingBoostChannelMenu : R.string.BoostingBoostGroupMenu));
@@ -11582,6 +11601,7 @@ public class ChatActivity extends BaseFragment implements
                     args.putBoolean("onlySelect", true);
                     args.putInt("dialogsType", DialogsActivity.DIALOGS_TYPE_FORWARD);
                     args.putBoolean("quote", !forward);
+                    args.putBoolean("change_forward_recipient", forward);
                     final boolean reply = !forward && messagePreviewParams.replyMessage != null && !messagePreviewParams.replyMessage.messages.isEmpty() && messagePreviewParams.quote == null;
                     args.putBoolean("reply_to", reply);
                     if (reply) {
@@ -30786,6 +30806,12 @@ public class ChatActivity extends BaseFragment implements
         dismissReactionUiForNavigation();
         super.finishFragment();
     }
+    private void clearTransferredForward(MessagePreviewParams source) {
+        if (source == null || source != messagePreviewParams) return;
+        source.updateForward(null, dialog_id);
+        forbidForwardingWithDismiss = false;
+        fallbackFieldPanel();
+    }
 
     public void saveDraft() {
         if (chatActivityEnterView != null && chatActivityEnterView.isRichDraftActive()) {
@@ -35933,6 +35959,8 @@ public class ChatActivity extends BaseFragment implements
             return false;
         }
         final Bundle ngPickerArgs = fragment == null ? null : fragment.getArguments();
+        final MessagePreviewParams recipientForwardSource = ngPickerArgs != null
+                && ngPickerArgs.getBoolean("change_forward_recipient", false) ? messagePreviewParams : null;
         final boolean ngHasExplicitForwardOptions = ngPickerArgs != null
                 && (ngPickerArgs.containsKey(ARG_NIMARKO_FORWARD_HIDE_AUTHOR)
                 || ngPickerArgs.containsKey(ARG_NIMARKO_FORWARD_HIDE_CAPTION));
@@ -36111,6 +36139,7 @@ public class ChatActivity extends BaseFragment implements
                             ngForwardTarget.showFieldPanelForReplyQuote(replyingMessageObject, replyingQuote);
                         } else {
                             ngForwardTarget.showFieldPanelForForward(true, fmessages, ngForwardOptions);
+                            clearTransferredForward(recipientForwardSource);
                         }
                         if (ngForwardTarget.getDialogId() == getDialogId() && !AndroidUtilities.isTablet()) {
                             removeSelfFromStack();
@@ -48622,7 +48651,8 @@ public class ChatActivity extends BaseFragment implements
             bottomOverlay.setTranslationY(dp(54) * hideFactor);
         }
         if (chatInputViewsContainer != null) {
-            chatInputViewsContainer.setInputBubbleAlpha((int) (255 * (1f - hideFactor)));
+            chatInputViewsContainer.setInputBubbleAlpha((int) (255 * (1f - hideFactor)
+                    * (1f - animatorPullingDownContainerVisibility.getFloatValue())));
             chatInputViewsContainer.setInputBubbleTranslationY(dp(54) * hideFactor);
         }
 

@@ -38,6 +38,7 @@ import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.ColorFilter;
 import android.graphics.Paint;
+import android.graphics.Path;
 import android.graphics.PixelFormat;
 import android.graphics.PointF;
 import android.graphics.PorterDuff;
@@ -531,6 +532,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
     // NimarkoGram: when the home search bar is hidden (hideSearchBar), the info cards that normally live in
     // the search field have no home — show them as a compact capsule in the action bar's free space instead.
     private app.nimarkogram.messenger.infocards.InfoCardStripView homeInfoCards;
+    private int homeInfoCardSlotWidth;
     // Fade+scale the home capsule in/out (via its visibilityFactor) instead of snapping visibility, so it
     // returns SMOOTHLY when the search closes (back from search with hideSearchBar on). homeInfoCardsShown is the
     // last-applied show state, to fire the transition only once.
@@ -807,6 +809,9 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         --t;
         return t * t * t * t * t + 1.0F;
     };
+    private static float getFolderSwipeProgress(float offset, int width) {
+        return width <= 0 ? 0f : Math.min(.999f, Math.abs(offset) / width);
+    }
 
     private Bulletin topBulletin;
 
@@ -886,8 +891,10 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             }
             getParent().requestDisallowInterceptTouchEvent(true);
             maybeStartTracking = false;
+            if (!startedTracking) {
+                startedTrackingX = (int) (ev.getX() + additionalOffset);
+            }
             startedTracking = true;
-            startedTrackingX = (int) (ev.getX() + additionalOffset);
             actionBar.setEnabled(false);
             filterTabsView.setEnabled(false);
             viewPages[1].selectedType = id;
@@ -973,10 +980,11 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                 return super.drawChild(canvas, child, drawingTime);
             }
             boolean result;
-            if (child == viewPages[0] || (viewPages.length > 1 && child == viewPages[1]) || child == topPanelLayout || child == filterTabsView) {
+            if (child == viewPages[0] || (viewPages.length > 1 && child == viewPages[1]) || child == topPanelLayout || child == filterTabsView
+                    || (child == homeInfoCards && homeInfoCardSlotWidth > 0)) {
                 canvas.save();
 
-                final boolean doNotClip = child == topPanelLayout || child == filterTabsView;
+                final boolean doNotClip = child == topPanelLayout || child == filterTabsView || child == homeInfoCards;
                 if (!doNotClip) {
                     canvas.clipRect(0, -getY() + getActionBarTop() + getActionBarFullHeight(), getMeasuredWidth(), getMeasuredHeight());
                 }
@@ -1230,13 +1238,27 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
 
             int keyboardSize = measureKeyboardHeight();
             int childCount = getChildCount();
+            homeInfoCardSlotWidth = useInlineHomeInfoCards() ? Math.min(dp(96), widthSize / 4) : 0;
+            if (homeInfoCards != null) homeInfoCards.setInlineFolderStyle(useInlineHomeInfoCards());
+            if (homeInfoCardSlotWidth > 0) {
+                homeInfoCards.measure(MeasureSpec.makeMeasureSpec(homeInfoCardSlotWidth, MeasureSpec.AT_MOST),
+                        MeasureSpec.makeMeasureSpec(dp(40), MeasureSpec.EXACTLY));
+                homeInfoCardSlotWidth = homeInfoCards.getMeasuredWidth();
+            }
+            if (filterTabsView != null) {
+                filterTabsView.setResizeReferenceWidth(useInlineHomeInfoCards() ? widthSize : 0);
+                filterTabsView.setTrailingOverlayInset(useInlineHomeInfoCards()
+                        ? homeInfoCardSlotWidth + dp(8) : 0, LocaleController.isRTL);
+            }
 
             for (int i = 0; i < childCount; i++) {
                 View child = getChildAt(i);
                 if (child == null || child.getVisibility() == GONE || child == actionBar) {
                     continue;
                 }
-                if (child instanceof DatabaseMigrationHint) {
+                if (child == homeInfoCards && homeInfoCardSlotWidth > 0) {
+                    continue;
+                } else if (child instanceof DatabaseMigrationHint) {
                     int contentWidthSpec = View.MeasureSpec.makeMeasureSpec(widthSize, View.MeasureSpec.EXACTLY);
                     int h = View.MeasureSpec.getSize(heightMeasureSpec);
                     int contentHeightSpec = View.MeasureSpec.makeMeasureSpec(Math.max(dp(10), h + dp(2) - actionBar.getMeasuredHeight()), View.MeasureSpec.EXACTLY);
@@ -1521,13 +1543,14 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                             prepareForMoving(ev, dx < 0);
                         }
                     } else if (startedTracking) {
+                        dx = Math.max(-viewPages[0].getMeasuredWidth(), Math.min(viewPages[0].getMeasuredWidth(), dx));
                         viewPages[0].setTranslationX(dx);
                         if (animatingForward) {
                             viewPages[1].setTranslationX(viewPages[0].getMeasuredWidth() + dx);
                         } else {
                             viewPages[1].setTranslationX(dx - viewPages[0].getMeasuredWidth());
                         }
-                        float scrollProgress = Math.abs(dx) / (float) viewPages[0].getMeasuredWidth();
+                        float scrollProgress = getFolderSwipeProgress(dx, viewPages[0].getMeasuredWidth());
                         if (viewPages[1].isLocked && scrollProgress > 0.3f) {
                             dispatchTouchEvent(MotionEvent.obtain(0, 0, MotionEvent.ACTION_CANCEL, 0, 0, 0));
                             filterTabsView.shakeLock(viewPages[1].selectedType);
@@ -2186,7 +2209,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             additionalPadding = 0;
 
             final float filterTabsVisibility = foldersAtBottom() ? 0f : getFilterTabsVisibilityFactor(false);
-            final float topPanelsVisibility = topPanelLayout != null ? topPanelLayout.getMetadata().getTotalVisibility() : 0f;
+            final float topPanelsVisibility = topPanelLayout != null ? topPanelLayout.getLayoutVisibility() : 0f;
 
             t += (int) (dp(36 + 14) * filterTabsVisibility);
             additionalPadding += (int) (dp(36 + 14) * filterTabsVisibility);
@@ -3207,9 +3230,6 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         // the MainTabs reservation (showMainTabs on), and as the only bottom chrome when the MainTabs
         // bar is hidden (showMainTabs off, where the reservation above is 0). list-padding adds the
         // strip's 50dp separately, so additionNavigationBarHeight stays 0 here (no double-count).
-        if (foldersAtBottom()) {
-            additionFloatingButtonOffset += dp(SEARCH_TABS_HEIGHT);
-        }
 
         return true;
     }
@@ -3315,6 +3335,11 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         if (animation != null) {
             animation.removeAllListeners();
             animation.cancel();
+        }
+        if (homeInfoCardsAnimator != null) {
+            homeInfoCardsAnimator.removeAllUpdateListeners();
+            homeInfoCardsAnimator.cancel();
+            homeInfoCardsAnimator = null;
         }
         if (filterTabsView != null) {
             filterTabsView.destroy();
@@ -3895,6 +3920,78 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             folderId == 0 && communityId == 0 && TextUtils.isEmpty(searchString)
         ) {
             filterTabsView = new FilterTabsView(context, resourceProvider) {
+                private final Paint cardEdgePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+                private final Paint cardClipPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+                private final Path cardClipPath = new Path();
+                private float cardBackgroundRadius = -1f;
+                private final android.graphics.Shader cardEdgeShader = new android.graphics.LinearGradient(
+                        0, 0, dp(8), 0, 0x00ffffff, 0xffffffff, android.graphics.Shader.TileMode.CLAMP);
+                {
+                    cardEdgePaint.setShader(cardEdgeShader);
+                    cardEdgePaint.setXfermode(new android.graphics.PorterDuffXfermode(PorterDuff.Mode.DST_OUT));
+                    cardClipPaint.setXfermode(new android.graphics.PorterDuffXfermode(PorterDuff.Mode.DST_OUT));
+                }
+                @Override
+                public void draw(Canvas canvas) {
+                    final int backgroundPadding = dp(6.666f);
+                    final float backgroundRadius = homeInfoCardSlotWidth > 0
+                            ? (getHeight() - backgroundPadding * 2) / 2f : dp(18);
+                    if (getBackground() instanceof BlurredBackgroundDrawable && cardBackgroundRadius != backgroundRadius) {
+                        ((BlurredBackgroundDrawable) getBackground()).setRadius(backgroundRadius);
+                        cardBackgroundRadius = backgroundRadius;
+                    }
+                    if (homeInfoCardSlotWidth <= 0) {
+                        if (getBackground() != null) getBackground().setBounds(0, 0, getWidth(), getHeight());
+                        super.draw(canvas);
+                        return;
+                    }
+                    int edge = Math.round(LocaleController.isRTL
+                            ? homeInfoCards.getX() + homeInfoCards.getWidth() - getX() + dp(2)
+                            : homeInfoCards.getX() - getX() - dp(2));
+                    float left = LocaleController.isRTL ? edge : backgroundPadding;
+                    float right = LocaleController.isRTL ? getWidth() - backgroundPadding : edge;
+                    if (getBackground() != null) {
+                        getBackground().setBounds(LocaleController.isRTL ? Math.round(left) - dp(6.666f) : 0, 0,
+                                LocaleController.isRTL ? getWidth() : Math.round(right) + dp(6.666f), getHeight());
+                        getBackground().draw(canvas);
+                    }
+                    final int contentInset = dp(9) - backgroundPadding;
+                    float contentLeft = left + contentInset;
+                    float contentRight = right - contentInset;
+                    cardClipPath.rewind();
+                    cardClipPath.setFillType(Path.FillType.INVERSE_WINDING);
+                    cardClipPath.addRoundRect(contentLeft, dp(9), contentRight, getHeight() - dp(9),
+                            dp(16), dp(16), Path.Direction.CW);
+                    int layer = canvas.saveLayer(0, 0, getWidth(), getHeight(), null);
+                    super.dispatchDraw(canvas);
+                    canvas.drawPath(cardClipPath, cardClipPaint);
+                    canvas.save();
+                    if (LocaleController.isRTL) {
+                        canvas.translate(contentLeft + dp(8), 0);
+                        canvas.scale(-1, 1);
+                    } else {
+                        canvas.translate(contentRight - dp(8), 0);
+                    }
+                    canvas.drawRect(0, 0, getWidth(), getHeight(), cardEdgePaint);
+                    canvas.restore();
+                    canvas.restoreToCount(layer);
+                    final float selectorInset = (getHeight() - dp(28)) / 2f - backgroundPadding;
+                    drawSelector(canvas, left + selectorInset, right - selectorInset);
+                }
+                @Override
+                protected boolean drawSelectorWithChildren() {
+                    return homeInfoCardSlotWidth <= 0;
+                }
+                @Override
+                public boolean dispatchTouchEvent(MotionEvent event) {
+                    if (event.getActionMasked() == MotionEvent.ACTION_DOWN && homeInfoCardSlotWidth > 0) {
+                        float edge = LocaleController.isRTL
+                                ? homeInfoCards.getX() + homeInfoCards.getWidth() - getX() + dp(2)
+                                : homeInfoCards.getX() - getX() - dp(2);
+                        if (LocaleController.isRTL ? event.getX() < edge : event.getX() > edge) return false;
+                    }
+                    return super.dispatchTouchEvent(event);
+                }
                 @Override
                 public boolean onInterceptTouchEvent(MotionEvent ev) {
                     getParent().requestDisallowInterceptTouchEvent(true);
@@ -5316,6 +5413,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                 @Override
                 protected void onChangedIslandTotalHeight(float h) {
                     chatInputViewsContainer.setInputBubbleHeight(h);
+                    updateBottomFolderMargin();
                     checkUi_chatListViewPaddingsBottom();
                     blur3_InvalidateBlur();
                     checkUi_fadeView();
@@ -5592,6 +5690,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                 }
             }
         }
+        updateBottomFolderMargin();
 
         if (fragmentSearchField != null) {
             fragmentSearchField.setupBlurredBackground(iBlur3FactoryLiquidGlass.create(fragmentSearchField, BlurredBackgroundProviderImpl.topPanel(resourceProvider)));
@@ -5786,7 +5885,15 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         // as a compact capsule over the top of the chat list. Visibility + Y are driven from
         // checkUi_searchFieldVisibility so it only shows in the idle home list with hideSearchBar on.
         if (!onlySelect && initialDialogsType == DIALOGS_TYPE_DEFAULT && folderId == 0 && communityId == 0) {
-            homeInfoCards = new app.nimarkogram.messenger.infocards.InfoCardStripView(context, resourceProvider);
+            homeInfoCards = new app.nimarkogram.messenger.infocards.InfoCardStripView(context, resourceProvider) {
+                @Override
+                public boolean dispatchTouchEvent(MotionEvent event) {
+                    if (event.getActionMasked() == MotionEvent.ACTION_DOWN && getAlpha() <= 0.01f) {
+                        return false;
+                    }
+                    return super.dispatchTouchEvent(event);
+                }
+            };
             homeInfoCards.setOpaqueCards(true); // floats over the chat list -> flat cards must be opaque
             homeInfoCards.setVisibilityFactor(0f); // start hidden (factor 0 => alpha 0 + GONE); fades in via checkUi
             // v7276 placement: the strip is added DIRECTLY to contentView, right-aligned, WRAP width. Its
@@ -5794,7 +5901,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             contentView.addView(homeInfoCards, LayoutHelper.createFrame(
                     LayoutHelper.WRAP_CONTENT, 40,
                     Gravity.TOP | (LocaleController.isRTL ? Gravity.LEFT : Gravity.RIGHT),
-                    0, 0, 10, 0));
+                    LocaleController.isRTL ? 10 : 0, 0, LocaleController.isRTL ? 0 : 10, 0));
         }
 
 
@@ -7106,7 +7213,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                 totalOffset - searchOffset,
                 -dp(3) - (searchTabsView == null ? dp(44) : 0),
                 animatorSearchVisible.getFloatValue()));
-            topPanelsVisibility = topPanelLayout.getMetadata().getTotalVisibility();
+            topPanelsVisibility = topPanelLayout.getLayoutVisibility();
             topPanelsHeight = topPanelLayout.getAnimatedHeightWithPadding(0);
         }
 
@@ -7545,8 +7652,6 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                 viewPages[1].dialogsAdapter.setDialogsType(0);
                 viewPages[1].dialogsType = initialDialogsType;
                 viewPages[1].dialogsAdapter.notifyDataSetChanged();
-                canShowFilterTabsView = false;
-                updateFilterTabsVisibility(animated && !filterTabsBootstrapPending);
                 for (int a = 0; a < viewPages.length; a++) {
                     if (viewPages[a].dialogsType == DIALOGS_TYPE_DEFAULT && viewPages[a].archivePullViewState == ARCHIVE_ITEM_STATE_HIDDEN && hasHiddenArchive()) {
                         int p = viewPages[a].layoutManager.findFirstVisibleItemPosition();
@@ -7576,6 +7681,8 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                     }
                 }
             }
+            canShowFilterTabsView = false;
+            updateFilterTabsVisibility(animated && !filterTabsBootstrapPending);
         }
         completeFilterTabsBootstrapIfReady();
         updateCounters(false);
@@ -7621,8 +7728,9 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         filterTabsBootstrapPending = false;
         if (filterTabsView != null && canShowFilterTabsView) {
             filterTabsView.checkTabsCounter(false);
-            updateFilterTabsVisibility(false);
+            updateFilterTabsVisibility(foldersAtBottom());
         }
+        checkUi_searchFieldVisibility();
     }
 
     @Override
@@ -7672,6 +7780,9 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
     @Override
     public void onResume() {
         super.onResume();
+        if (foldersAtBottom() && !filterTabsBootstrapPending) {
+            updateFilterTabsVisibility(true);
+        }
         blur3_InvalidateBlur();
         normalizeCommunityHeaderGlassState();
         updateUnreadBackBadge();
@@ -7827,7 +7938,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                 if (undoView[0] != null && undoView[0].getVisibility() == View.VISIBLE) {
                     return;
                 }
-                additionalFloatingTranslation = Math.max(0, offset - navigationBarHeight - additionFloatingButtonOffset);
+                additionalFloatingTranslation = Math.max(0, offset - navigationBarHeight - additionFloatingButtonOffset - getBottomFolderOffset());
                 updateFloatingButtonOffset();
             }
 
@@ -8429,6 +8540,13 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
     private void updateFilterTabsVisibility(boolean animated) {
         if (fragmentView == null) {
             return;
+        }
+        if (foldersAtBottom() && canShowFilterTabsView
+                && animatorFilterTabsVisible.getFloatValue() == 0f && databaseMigrationHint == null) {
+            if (isPaused) {
+                return;
+            }
+            animated = true;
         }
         if (isPaused || databaseMigrationHint != null) {
             animated = false;
@@ -9663,11 +9781,15 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             floatingButtonStories.setButtonVisible(storiesFabVisible, animated);
         }
     }
+    private float getBottomFolderOffset() {
+        return foldersAtBottom() && filterTabsView != null
+                ? dp(SEARCH_TABS_HEIGHT) * getFilterTabsVisibilityFactor(true) : 0f;
+    }
 
     private void updateFloatingButtonOffset() {
         float floatingButtonsOffset = NimarkoFoldersHelper.getFloatingButtonsOffset(filterTabsView);
 
-        final float top = -navigationBarHeight - additionFloatingButtonOffset - additionalFloatingTranslation;
+        final float top = -navigationBarHeight - additionFloatingButtonOffset - getBottomFolderOffset() - additionalFloatingTranslation;
         final float baseTranslationY = top
             - floatingButtonPanOffset;
 
@@ -11419,6 +11541,9 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             // Safe while detached: checkUi self-guards (fragmentSearchField==null) and only sets visibility
             // flags, which persist until the view re-attaches and rebuilds the pills.
             checkUi_searchFieldVisibility();
+            if (fragmentView != null) {
+                fragmentView.requestLayout();
+            }
             return;
         }
         if (id == NotificationCenter.pluginMenuItemsUpdated) {
@@ -14696,10 +14821,22 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
     private ItemOptions nimarkoOpenItemOptions;
 
     private void showItemOptions() {
-        ItemOptions io = ItemOptions.makeOptions(this, optionsItem);
+        ItemOptions io = ItemOptions.makeOptions(this, optionsItem, true);
         nimarkoOpenItemOptions = io;
-        io.setColors(getThemedColor(Theme.key_actionBarDefaultTitle), getThemedColor(Theme.key_actionBarDefaultTitle));
-        io.setDimAlpha(0x08);
+        io.setGravity(Gravity.RIGHT);
+        io.setSwipebackGravity(true, false);
+        io.translate(0, -dp(4));
+        ItemOptions extras = io.makeSwipeback();
+        extras.add(R.drawable.msg_arrow_back, getString(R.string.Back), io::closeSwipeback);
+        extras.addGap();
+        extras.setOnDismiss(io::dismiss);
+        app.nimarkogram.messenger.utils.chats.NimarkoChatMenuInjector.injectArchived(extras, this);
+        app.nimarkogram.messenger.utils.chats.NimarkoChatMenuInjector.injectCalls(extras, this);
+        app.nimarkogram.messenger.utils.chats.NimarkoChatMenuInjector.injectScanQR(extras, this);
+        app.nimarkogram.messenger.utils.chats.NimarkoChatMenuInjector.injectCreateChannel(extras, this);
+        app.nimarkogram.messenger.utils.chats.NimarkoChatMenuInjector.injectGifts(extras, currentAccount, getContext());
+        app.nimarkogram.messenger.utils.chats.NimarkoChatMenuInjector.injectProxySettings(extras, this);
+        io.add(R.drawable.ic_ab_other, getString(R.string.NM_Menu_More), () -> io.openSwipeback(extras));
 
         final Activity activity = getParentActivity();
         final LaunchActivity launchActivity;
@@ -14736,7 +14873,6 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                 });
             }
             io.show();
-            io.setTranslationY(-dp(64));
             return;
         }
 
@@ -14744,7 +14880,6 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             io.add(R.drawable.msg_customize, getString(R.string.ArchiveSettings), () -> presentFragment(new ArchiveSettingsActivity()));
             io.add(R.drawable.msg_help, getString(R.string.HowDoesItWork), this::showArchiveHelp);
             io.show();
-            io.setTranslationY(-dp(64));
             return;
         }
 
@@ -14809,12 +14944,6 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         // NimarkoGram: CG-parity drawer shortcuts (Archived / Calls / Scan QR /
         // New Channel / Buy a Gift / Proxy Settings). Each row is internally
         // gated; see NimarkoChatMenuInjector for per-row CG-derived conditions.
-        app.nimarkogram.messenger.utils.chats.NimarkoChatMenuInjector.injectArchived(io, this);
-        app.nimarkogram.messenger.utils.chats.NimarkoChatMenuInjector.injectCalls(io, this);
-        app.nimarkogram.messenger.utils.chats.NimarkoChatMenuInjector.injectScanQR(io, this);
-        app.nimarkogram.messenger.utils.chats.NimarkoChatMenuInjector.injectCreateChannel(io, this);
-        app.nimarkogram.messenger.utils.chats.NimarkoChatMenuInjector.injectGifts(io, currentAccount, getContext());
-        app.nimarkogram.messenger.utils.chats.NimarkoChatMenuInjector.injectProxySettings(io, this);
         if (ApplicationLoader.applicationLoaderInstance != null) {
             ApplicationLoader.applicationLoaderInstance.addItemOptions(io);
         }
@@ -14898,7 +15027,10 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                 }
             }
             if (!nimarkoItems.isEmpty()) {
-                io.addGap();
+                ItemOptions pluginOptions = io.makeSwipeback();
+                pluginOptions.add(R.drawable.msg_arrow_back, getString(R.string.Back), io::closeSwipeback);
+                pluginOptions.addGap();
+                pluginOptions.setOnDismiss(io::dismiss);
                 java.util.Set<String> seen = new java.util.HashSet<>();
                 // Controller already pre-filtered via checkCondition; skip duplicate eval.
                 for (final app.nimarkogram.messenger.plugins.hooks.MenuItemRecord rec : nimarkoItems) {
@@ -14909,7 +15041,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                     if (!seen.add(key)) continue;
                     // C12: consistent neutral fallback drawable across all item sites.
                     int iconRes = rec.iconResId != 0 ? rec.iconResId : R.drawable.msg_plugins;
-                    io.add(iconRes, rec.text.toString(), () -> {
+                    pluginOptions.add(iconRes, rec.text.toString(), () -> {
                         try {
                             // C3: re-check the owning plugin is still active right
                             // before crossing into Python — the menu was built when
@@ -14923,13 +15055,16 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                         }
                     });
                 }
+                if (pluginOptions.getLinearLayout().getChildCount() > 2) {
+                    io.add(R.drawable.msg_plugins, getString(R.string.Plugins), () -> io.openSwipeback(pluginOptions));
+                    io.getLast().setRightIcon(R.drawable.msg_arrowright);
+                }
             }
         } catch (Throwable t) {
             FileLog.e("nimarko: DialogsActivity plugin inject failed", t);
         }
 
         io.show();
-        io.setTranslationY(-dp(64));
     }
 
     @Override
@@ -14982,7 +15117,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         // MainTabs strip, so we must push the tabs up by navigationBarHeight +
         // additionNavigationBarHeight to sit ABOVE both. Mirrors the undoView loop.
         if (filterTabsView != null && foldersAtBottom()) {
-            final int filterTabsBottomMargin = navigationBarHeight + additionNavigationBarHeight;
+            final int filterTabsBottomMargin = getBottomFolderMargin();
             final ViewGroup.MarginLayoutParams ftLp = (ViewGroup.MarginLayoutParams) filterTabsView.getLayoutParams();
             if (ftLp != null && ftLp.bottomMargin != filterTabsBottomMargin) {
                 ftLp.bottomMargin = filterTabsBottomMargin;
@@ -15126,6 +15261,8 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         if (chatInputViewsContainer != null) {
             chatInputViewsContainer.setAlpha(factor);
             chatInputViewsContainer.setVisibility(factor > 0 ? View.VISIBLE : View.GONE);
+            updateBottomFolderMargin();
+            checkUi_chatListViewPaddingsBottom();
             chatInputViewsContainer.getFadeView().setAlpha(factor);
             chatInputViewsContainer.getFadeView().setVisibility(factor > 0 ? View.VISIBLE : View.GONE);
         }
@@ -15159,7 +15296,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             // hideSearchBar-off case (where the delta dp(48)-getSearchFieldReservedHeight() is already 0) are
             // left untouched.
             final float callBarVisibility = topPanelLayout != null
-                ? topPanelLayout.getMetadata().getTotalVisibility()
+                ? topPanelLayout.getLayoutVisibility()
                 : 0f;
             final int reservedFieldCollapse =
                 (int) ((dp(SEARCH_FIELD_HEIGHT) - getSearchFieldReservedHeight()) * callBarVisibility);
@@ -15195,6 +15332,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                 viewPages[0].listView.requestLayout();
             }
         }
+        updateFloatingButtonOffset();
         updateContextViewPosition();
     }
 
@@ -15216,6 +15354,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         final float actionModeVisible = Math.max(progressToActionMode, animatorActionModeVisible.getFloatValue());
         final float searchFieldVisible = animatorSearchVisible.getFloatValue();
         final boolean hideHomeSearchField = shouldHideHomeSearchField();
+        fragmentSearchField.setInfoCardsSuppressed(hideHomeSearchField && homeInfoCards != null);
 
         final float factor0 = isSupportSearch() ? 1 : 0;
         final float factor1 = (1f - actionModeVisible) * (1f - animatorDoneButtonVisible.getFloatValue());
@@ -15235,7 +15374,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         if (homeInfoCards != null) {
             final boolean show = app.nimarkogram.messenger.infocards.InfoCardsConfig.isEnabled()
                     && hideHomeSearchField
-                    && alpha <= 0.01f
+                    && !filterTabsBootstrapPending
                     && actionModeVisible <= 0.01f
                     && getRightSlidingProgress() <= 0.01f;
             // Is the capsule ACTUALLY in the visual state our `show` flag claims? A ValueAnimator is paused by
@@ -15274,6 +15413,12 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             positionHomeInfoCards();
         }
     }
+    private boolean useInlineHomeInfoCards() {
+        return homeInfoCards != null && filterTabsView != null && canShowFilterTabsView
+                && shouldHideHomeSearchField()
+                && app.nimarkogram.messenger.infocards.InfoCardsConfig.isEnabled()
+                && homeInfoCards.getChildCount() > 0;
+    }
 
     /**
      * Anchor the home info-cards capsule just below the WHOLE top chrome (action bar, then stories, then the
@@ -15287,6 +15432,18 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         if (homeInfoCards == null || homeInfoCards.getVisibility() != View.VISIBLE) {
             return;
         }
+        final float visibility = homeInfoCards.getVisibilityFactor() * (1f - animatorSearchVisible.getFloatValue());
+        if (useInlineHomeInfoCards() && (homeInfoCardSlotWidth == 0 || filterTabsView.getHeight() == 0)) {
+            homeInfoCards.setAlpha(0f);
+            return;
+        }
+        if (homeInfoCardSlotWidth > 0 && useInlineHomeInfoCards()) {
+            homeInfoCards.setTranslationY(filterTabsView.getY()
+                    + (filterTabsView.getHeight() - homeInfoCards.getHeight()) / 2f - homeInfoCards.getTop());
+            homeInfoCards.setAlpha(homeInfoCards.getVisibilityFactor() * filterTabsView.getAlpha());
+            return;
+        }
+        homeInfoCards.setAlpha(visibility);
         float y;
         if (actionBar != null && actionBar.getMeasuredHeight() > 0) {
             y = actionBar.getY() + actionBar.getMeasuredHeight();
@@ -15309,12 +15466,12 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         // bar height. getAnimatedHeightWithPadding scales by panel visibility, so this collapses to a no-op
         // (and the gate skips it) when nothing is playing.
         if (topPanelLayout != null && topPanelLayout.getMetadata() != null
-                && topPanelLayout.getMetadata().getTotalVisibility() > 0.01f) {
+                && topPanelLayout.getLayoutVisibility() > 0.01f) {
             float panelBottom = topPanelLayout.getY()
                     + topPanelLayout.getAnimatedHeightWithPadding(AndroidUtilities.dp(21));
             y = Math.max(y, panelBottom);
         }
-        homeInfoCards.setTranslationY(y + AndroidUtilities.dp(2));
+        homeInfoCards.setTranslationY(y + AndroidUtilities.dp(2) - homeInfoCards.getTop());
     }
 
     private void checkUi_searchFieldStyle() {
@@ -15456,7 +15613,24 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
     // both fight for the screen bottom). In DIALOGS_TYPE_FORWARD the bottom is owned by the comment bar,
     // so treat foldersAtBottom as OFF there → the folder tabs stay at the TOP (stock layout, no overlap).
     // Single source of truth: every foldersAtBottom branch in this fragment routes through here.
-    private boolean foldersAtBottom() { return NimarkoConfig.foldersAtBottom && initialDialogsType != DIALOGS_TYPE_FORWARD; }
+    private boolean foldersAtBottom() { return NimarkoConfig.foldersAtBottom; }
+    private int getBottomFolderMargin() {
+        if (commentView != null && chatInputViewsContainer != null) {
+            return Math.round(windowInsetsStateHolder.getAnimatedMaxBottomInset()
+                    + (dp(16) + chatInputViewsContainer.getInputBubbleHeight()) * animatorForwardButtonVisible.getFloatValue());
+        }
+        return navigationBarHeight + additionNavigationBarHeight;
+    }
+    private void updateBottomFolderMargin() {
+        if (!foldersAtBottom() || filterTabsView == null
+                || !(filterTabsView.getLayoutParams() instanceof ViewGroup.MarginLayoutParams)) return;
+        ViewGroup.MarginLayoutParams params = (ViewGroup.MarginLayoutParams) filterTabsView.getLayoutParams();
+        int bottom = getBottomFolderMargin();
+        if (params.bottomMargin != bottom) {
+            params.bottomMargin = bottom;
+            filterTabsView.setLayoutParams(params);
+        }
+    }
 
     public FilterTabsView getFilterTabsView() {
         return filterTabsView;
@@ -15542,7 +15716,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
 
     private int calculateListViewPaddingBottom() {
         if (commentView != null) {
-            return (int) (windowInsetsStateHolder.getAnimatedMaxBottomInset() + dp(9) + chatInputViewsContainer.getInputBubbleHeight() + dp(7) + dp(2));
+            return getBottomFolderMargin() + dp(2) + Math.round(getBottomFolderOffset());
         } else if (communityId != 0) {
             return navigationBarHeight + dp(12 + 48 + 12);
         } else {
@@ -15550,9 +15724,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             // NimarkoGram: foldersAtBottom anchors filterTabsView to the bottom edge,
             // sitting above MainTabs / nav bar. Reserve its 36 + 7 + 7 dp so the last
             // chat row isn't hidden under the strip.
-            if (filterTabsView != null && filterTabsView.getVisibility() == View.VISIBLE && foldersAtBottom()) {
-                padding += dp(36 + 7 + 7);
-            }
+            padding += Math.round(getBottomFolderOffset());
             return padding;
         }
     }
@@ -15562,6 +15734,14 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         return iBlur3SourceGlass;
     }
 
+    @Override
+    public BlurredBackgroundDrawableViewFactory getNotificationGlassFactory() {
+        return iBlur3FactoryFrostedLiquidGlass;
+    }
+    @Override
+    public org.telegram.ui.Components.AnimatedLinearLayout getInAppNotificationPanel() {
+        return topPanelLayout;
+    }
     @Override
     public void onParentScrollToTop() {
         scrollToTop(true, true);
@@ -15585,10 +15765,11 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
     }
 
     public float getTopPanelVisibility() {
-        return topPanelLayout != null ? topPanelLayout.getMetadata().getTotalVisibility() : 0;
+        return topPanelLayout != null ? topPanelLayout.getLayoutVisibility() : 0;
     }
 
     private void checkInsets() {
+        updateBottomFolderMargin();
         if (chatInputViewsContainer != null) {
             chatInputViewsContainer.checkInsets();
         }

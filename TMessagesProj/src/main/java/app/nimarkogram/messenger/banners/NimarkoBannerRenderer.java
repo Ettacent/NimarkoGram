@@ -174,6 +174,7 @@ public final class NimarkoBannerRenderer {
     private double firstCommitTime;
     private float headerExtraHint;
     private float frameLastExtra = -999f;
+    private float frameLastExpand = -1f;
     private double setupVideoAfter;
     private String curBf;
     private boolean curIv, curLoading;
@@ -353,7 +354,8 @@ public final class NimarkoBannerRenderer {
         if (!settling) {
             try {
                 long eid = viewedProfileId;
-                if (eid != 0 && avAlpha.containsKey(eid) && ctrl.shouldHideAvatar(eid)) {
+                if (eid != 0 && avAlpha.containsKey(eid) && !avBase.containsKey(eid)
+                        && !avShow.contains(eid) && ctrl.shouldHideAvatar(eid)) {
                     float ca = getOr(avAlpha, eid, 1f);
                     if (ca > 0.01f && ca < 0.999f) {
                         avAnim.add(eid);
@@ -388,6 +390,7 @@ public final class NimarkoBannerRenderer {
             resumeWatchGen++;
             firstCommitTime = 0;
             frameLastExtra = -999f;
+            frameLastExpand = -1f;
             setupVideoAfter = 0;
             suppressBg = false;
             profileExitActive = false;
@@ -622,6 +625,7 @@ public final class NimarkoBannerRenderer {
         isProfileOpen = false; openAnimDone = false; animDoneTime = 0; frameTime = 0;
         firstCommitTime = 0;
         frameLastExtra = -999f; setupVideoAfter = 0; videoPausedByTab = false;
+        frameLastExpand = -1f;
         videoHierarchyGeneration++;
         destroyVideo();
         avAlpha.clear(); avTimes.clear(); avBase.clear(); avAnim.clear(); avShow.clear();
@@ -695,7 +699,7 @@ public final class NimarkoBannerRenderer {
 
             markFirstCommit(now);
 
-            if (extra == frameLastExtra && avAnim.isEmpty() && blurFadeStart == 0.0
+            if (extra == frameLastExtra && expand == frameLastExpand && avAnim.isEmpty() && blurFadeStart == 0.0
                     && videoPlayer != null && isVideoAttachedTo(topView)
                     && curVidPath != null && curVidPath.equals(curBf) && curBf != null
                     && !showingPh && !curLoading
@@ -707,6 +711,7 @@ public final class NimarkoBannerRenderer {
                 return decision;
             }
             frameLastExtra = extra;
+            frameLastExpand = expand;
             boolean animNow = (openAnim || transAnim) && !profileClosing;
 
             if (hasMainTabs) {
@@ -916,6 +921,7 @@ public final class NimarkoBannerRenderer {
             if (ca < 0) {
                 if (exp > 0.05f) {
                     float na = clamp01(exp);
+                    avBase.put(eid, 0f);
                     avAlpha.put(eid, na);
                     setAvAlpha(na, 0f);
                     return;
@@ -929,17 +935,17 @@ public final class NimarkoBannerRenderer {
             if (wasShowing) { avAnim.add(eid); anchorFadeStart(eid, ca, now); }
             boolean inExp = exp > 0.02f || (hasBl && exp > 0.001f);
             if (inExp) {
-                if (isA) { avBase.put(eid, ca); avAnim.remove(eid); }
-                else if (!hasBl) avBase.put(eid, ca);
+                if (!hasBl) avBase.put(eid, ca);
+                avAnim.remove(eid);
                 float bl = getOr(avBase, eid, 0f);
                 float na = clamp01(bl + exp * (1f - bl));
                 if (Math.abs(na - ca) >= 0.002f) { setAvAlpha(na, bl); avAlpha.put(eid, na); }
                 return;
             }
             if (hasBl) {
-                float bl = avBase.remove(eid);
-                if (bl > 0.01f) {
-                    avAnim.add(eid); anchorFadeStart(eid, bl, now); postInv();
+                avBase.remove(eid);
+                if (ca > 0.001f) {
+                    avAnim.add(eid); anchorFadeStart(eid, ca, now); postInv();
                     return;
                 }
                 avAlpha.put(eid, 0f); setAvAlpha(0f, 0f);
@@ -1653,14 +1659,14 @@ public final class NimarkoBannerRenderer {
 
     private boolean prepVideo(String path) {
         try {
-            if (t() - getOrD(failVids, path) < FAIL_CD_S) {  return false; }
+            if (t() - getOrD(failVids, path) < FAIL_CD_S) {                                                   return false; }
             File f = new File(path);
             if (!f.exists() || f.length() < MIN_VID) {
 
                 failVids.put(path, t()); return false;
             }
-            if (videoPlayer != null && path.equals(curVidPath)) {  return true; }
-            if (path.equals(videoPreparing)) {  return false; }
+            if (videoPlayer != null && path.equals(curVidPath)) {                                            return true; }
+            if (path.equals(videoPreparing)) {                                             return false; }
 
             if (videoPlayer != null) destroyVideo();
             if (path.equals(ctrl.placeholderPath())) curVidSound = false;
@@ -1704,8 +1710,8 @@ public final class NimarkoBannerRenderer {
 
     private void addVidViews(ViewGroup tv) {
         try {
-            if (videoPlayer == null) { reparentCover = false;  return; }
-            try { if (tv.getWindowToken() == null) { reparentCover = false;  return; } } catch (Throwable ignored) {}
+            if (videoPlayer == null) { reparentCover = false;                                            return; }
+            try { if (tv.getWindowToken() == null) { reparentCover = false;                                         return; } } catch (Throwable ignored) {}
 
             int vh = Math.max(videoViewH, 1);
             maxVh = vh; lastLh = vh; lastDa = -1; lastBa = -1f; lastVol = -1f;
@@ -2036,7 +2042,7 @@ public final class NimarkoBannerRenderer {
 
     private void dismissFreeze() {
         try {
-            if (vidW <= 0 || vidH <= 0) {  return; }
+            if (vidW <= 0 || vidH <= 0) {                                                                                    return; }
             try { updateVidTransform(0, 0); } catch (Throwable ignored) {}
             if (vidFirstFrameTime != 0) { waitFrame = false; return; }
             waitFrame = false;

@@ -638,13 +638,13 @@ public class ChatsPreferencesActivity extends NimarkoUniversalPreferencesActivit
 
     public static void showChatMenuItemsConfigurator(BaseFragment fragment) {
         List<MenuItemConfig> menuItems = Arrays.asList(
-                new MenuItemConfig(getString(R.string.NM_JumpToBeginning), R.drawable.ic_upward_solar,
+                new MenuItemConfig(getString(R.string.NM_JumpToBeginning), R.drawable.msg_go_up,
                         () -> NimarkoConfig.chatShortcutJumpToBegin, () -> NimarkoConfig.toggleChatShortcutJumpToBegin(), false, false),
                 new MenuItemConfig(getString(R.string.NM_DeleteAllFromSelf), R.drawable.msg_delete,
                         () -> NimarkoConfig.shortcutDeleteAll, () -> NimarkoConfig.toggleShortcutDeleteAll(), false, false),
                 new MenuItemConfig(getString(R.string.SavedMessages), R.drawable.msg_saved,
                         () -> NimarkoConfig.chatShortcutSavedMessages, () -> NimarkoConfig.toggleChatShortcutSavedMessages(), false, false),
-                new MenuItemConfig("Telegram Browser", R.drawable.msg_language,
+                new MenuItemConfig(getString(R.string.NM_CMS_TelegramBrowser), R.drawable.msg_language,
                         () -> NimarkoConfig.shortcutBrowser, () -> NimarkoConfig.toggleShortcutBrowser(), true, false),
                 new MenuItemConfig(getString(R.string.CP_AdminActions), R.drawable.msg_admins,
                         () -> false, () -> showChatAdminItemsConfigurator(fragment), false, true)

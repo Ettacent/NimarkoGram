@@ -457,6 +457,7 @@ public class UserConfig extends BaseController {
     }
 
     public void clearConfig() {
+        app.nimarkogram.messenger.notifications.NimarkoInAppNotifications.onAccountLoggedOut(currentAccount);
         
         app.nimarkogram.messenger.security.NimarkoBiometricPrompt.clearVerifiedForAccount(currentAccount);
         app.nimarkogram.messenger.utils.LockedChats.onAccountLoggedOut(currentAccount, clientUserId);

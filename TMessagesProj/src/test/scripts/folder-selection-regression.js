@@ -19,6 +19,7 @@ function method(source, signature) {
 }
 const java = `import java.util.*;
 public class FolderSelection {
+    ${method(dialogs, 'private static float getFolderSwipeProgress(')}
     static int checks;
     static void check(boolean condition) {
         checks++;
@@ -28,14 +29,32 @@ public class FolderSelection {
         int get(int key, int fallback) { return getOrDefault(key, fallback); }
         int get(int key) { return get(key, 0); }
     }
-    static class ListView { void invalidateViews() {} void invalidate() {} }
+    static class ListView { void invalidateViews() {} void invalidate() {} int getScrollState(){return 0;} }
+    static class MotionEvent {float x;MotionEvent(float x){this.x=x;}float getX(){return x;}}
+    static class View {
+        static final int VISIBLE=0;
+        int selectedType;float translationX;
+        void setEnabled(boolean e){}void setVisibility(int v){}void setTranslationX(float x){translationX=x;}
+        int getMeasuredWidth(){return 1080;}void requestDisallowInterceptTouchEvent(boolean b){}
+    }
+    static class Motion {
+        static class Tabs extends View {int next=1;int getNextPageId(boolean forward){return next;}}
+        Tabs filterTabsView=new Tabs();View actionBar=new View(),parent=new View();
+        View[] viewPages={new View(),new View()};
+        boolean maybeStartTracking,startedTracking,animatingForward;int startedTrackingX;float additionalOffset;
+        View getParent(){return parent;}void showScrollbars(boolean b){}void switchToCurrentSelectedMode(boolean b){}
+        ${method(dialogs, 'private boolean prepareForMoving(MotionEvent ev, boolean forward)')}
+    }
     static class Tabs {
         IntMap positionToStableId = new IntMap(), positionToId = new IntMap(), idToPosition = new IntMap();
         List<Integer> tabs = new ArrayList<>();
         int currentPosition, selectedTabId, manualScrollingToPosition = -1, manualScrollingToId = -1;
+        int scrollingToChild=-1,resizeReferenceWidth;int getWidth(){return 400;}
+        boolean animatingIndicator;
+        void scrollWithPage(int position,float progress){scrollingToChild=position;}
         float animatingIndicatorProgress;
         ListView listView = new ListView();
-        void invalidate() {} void scrollToChild(int position) {}
+        void invalidate() {} void scrollToChild(int position) {scrollingToChild=position;}
         void fill(int... stableIds) {
             tabs.clear(); positionToStableId.clear(); positionToId.clear(); idToPosition.clear();
             for (int i = 0; i < stableIds.length; i++) {
@@ -69,6 +88,18 @@ public class FolderSelection {
         ${method(dialogs, 'private void selectDialogFilter(MessagesController.DialogFilter filter, int index)')}
     }
     public static void main(String[] args) {
+        for(int origin:new int[]{0,120,600,1000})for(int offset:new int[]{-300,0,300})for(int dx:new int[]{-60,-8,8,60}){
+            Motion m=new Motion();m.startedTracking=true;m.startedTrackingX=origin;m.additionalOffset=offset;
+            MotionEvent event=new MotionEvent(origin-offset+dx);
+            check(m.prepareForMoving(event,dx<0));
+            check((int)(event.getX()-m.startedTrackingX+m.additionalOffset)==dx);
+            check((int)(event.getX()+2-m.startedTrackingX+m.additionalOffset)==dx+2);
+            check(m.animatingForward==(dx<0));
+        }
+        Motion fresh=new Motion();fresh.additionalOffset=35;fresh.prepareForMoving(new MotionEvent(600),true);
+        check(fresh.startedTrackingX==635&&fresh.startedTracking);
+        Motion edge=new Motion();edge.startedTracking=true;edge.startedTrackingX=100;edge.filterTabsView.next=-1;
+        check(!edge.prepareForMoving(new MotionEvent(115),false)&&edge.startedTrackingX==100);
         Tabs t = new Tabs();
         t.fill(42, 0, 93, 71);
         for (int from = 0; from < 4; from++) for (int to = 0; to < 4; to++) {
@@ -91,6 +122,19 @@ public class FolderSelection {
             check(t.currentPosition == to && t.selectedTabId == id);
         }
         t.selectTabWithStableId(93);
+        Tabs gesture = new Tabs();
+        gesture.fill(11, 22, 33);
+        for (int width : new int[]{320, 480, 1080, 1600}) for (int target : new int[]{0, 2}) {
+            gesture.selectTabWithStableId(22);
+            int id = gesture.positionToId.get(target);
+            for (float distance : new float[]{0, .4f, .95f, 1, 1.6f, 1, .2f, 0}) {
+                gesture.selectTabWithId(id, getFolderSwipeProgress((target == 0 ? 1 : -1) * width * distance, width));
+                check(gesture.getCurrentTabStableId() == 22);
+            }
+            gesture.selectTabWithId(id, 1);
+            check(gesture.currentPosition == target);
+        }
+        check(getFolderSwipeProgress(100, 0) == 0);
         int stable = t.getCurrentTabStableId();
         t.fill(71, 93, 42, 0);
         check(t.selectTabWithStableId(stable));
@@ -128,6 +172,8 @@ try {
     compile(java);
     cp.execFileSync('java', ['FolderSelection'], { cwd: directory, stdio: 'inherit', timeout: 30000 });
     for (const [before, after] of [
+        ['if (!startedTracking) {', 'if (true) {'],
+        ['Math.min(.999f, Math.abs(offset) / width)', 'Math.min(1f, Math.abs(offset) / width)'],
         ['if (progress >= 1.0f)', 'if (progress > 0)'],
         ['return onlySelect && initialDialogsType == DIALOGS_TYPE_FORWARD;', 'return false;'],
     ]) {

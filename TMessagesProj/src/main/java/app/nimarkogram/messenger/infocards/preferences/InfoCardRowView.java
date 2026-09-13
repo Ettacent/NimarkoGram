@@ -8,12 +8,9 @@ import android.util.TypedValue;
 import android.view.Gravity;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
-import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.view.accessibility.AccessibilityNodeInfo;
 
-import org.telegram.messenger.AndroidUtilities;
-import org.telegram.messenger.R;
 import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.Components.LayoutHelper;
 import org.telegram.ui.Components.Switch;
@@ -32,7 +29,6 @@ public class InfoCardRowView extends FrameLayout {
     private final FrameLayout badge;
     private final ImageView badgeIcon;
     private final TextView title;
-    private final TextView value;
     private final Switch switchView;
 
     private int pillId = -1;
@@ -54,25 +50,16 @@ public class InfoCardRowView extends FrameLayout {
         badgeIcon.setColorFilter(MonetHelper.getSettingsIconForegroundColor(0xffffffff));
         badge.addView(badgeIcon, LayoutHelper.createFrame(20, 20, Gravity.CENTER));
 
-        LinearLayout textColumn = new LinearLayout(context);
-        textColumn.setOrientation(LinearLayout.VERTICAL);
         LayoutParams textParams = LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT,
                 Gravity.CENTER_VERTICAL | Gravity.START);
         textParams.setMarginStart(dp(66));
         textParams.setMarginEnd(dp(62));
-        addView(textColumn, textParams);
 
         title = new TextView(context);
         title.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 16);
         title.setMaxLines(1);
         title.setEllipsize(android.text.TextUtils.TruncateAt.END);
-        textColumn.addView(title, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT));
-
-        value = new TextView(context);
-        value.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 13);
-        value.setMaxLines(1);
-        value.setEllipsize(android.text.TextUtils.TruncateAt.END);
-        textColumn.addView(value, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, 0, 1, 0, 0));
+        addView(title, textParams);
 
         switchView = new Switch(context, rp);
         switchView.setColors(Theme.key_switchTrack, Theme.key_switchTrackChecked,
@@ -96,8 +83,7 @@ public class InfoCardRowView extends FrameLayout {
         this.listener = l;
     }
 
-    public void bind(InfoCardRegistry.CardInfo info, boolean active, CharSequence valueText,
-                     boolean draggable, boolean clickable) {
+    public void bind(InfoCardRegistry.CardInfo info, boolean active, boolean clickable) {
         this.pillId = info.id;
         this.active = active;
 
@@ -112,14 +98,10 @@ public class InfoCardRowView extends FrameLayout {
 
         title.setText(info.getName());
         title.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText, rp));
-        value.setText(valueText);
-        value.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteGrayText, rp));
-        value.setVisibility(android.text.TextUtils.isEmpty(valueText) ? GONE : VISIBLE);
 
         switchView.setChecked(active, false);
         switchView.setContentDescription(info.getName());
-        setContentDescription(android.text.TextUtils.isEmpty(valueText)
-                ? info.getName() : info.getName() + ": " + valueText);
+        setContentDescription(info.getName());
 
         setClickable(clickable);
         setBackground(clickable ? Theme.getSelectorDrawable(false, rp) : null);
@@ -127,7 +109,6 @@ public class InfoCardRowView extends FrameLayout {
         float alpha = active ? 1f : 0.55f;
         badge.setAlpha(alpha);
         title.setAlpha(alpha);
-        value.setAlpha(alpha);
     }
 
     @Override

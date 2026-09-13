@@ -109,6 +109,7 @@ import org.telegram.ui.Components.CubicBezierInterpolator;
 import org.telegram.ui.Components.DialogCellTags;
 import org.telegram.ui.Components.EmptyStubSpan;
 import org.telegram.ui.Components.ForegroundColorSpanThemable;
+import org.telegram.ui.Components.URLSpanMono;
 import org.telegram.ui.Components.Forum.ForumBubbleDrawable;
 import org.telegram.ui.Components.Forum.ForumUtilities;
 import org.telegram.ui.Components.PhotoBubbleClip;
@@ -2815,12 +2816,18 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
         try {
             CharSequence messageStringFinal;
             // Removing links and bold spans to get rid of underlining and boldness
-            if (messageString instanceof Spannable) {
-                Spannable messageStringSpannable = (Spannable) messageString;
-                for (Object span : messageStringSpannable.getSpans(0, messageStringSpannable.length(), Object.class)) {
-                    if (span instanceof ClickableSpan || span instanceof CodeHighlighting.Span || currentDialogCommunityId == 0 && !isFolderCell() && span instanceof TypefaceSpan || span instanceof CodeHighlighting.ColorSpan || span instanceof QuoteSpan || span instanceof QuoteSpan.QuoteStyleSpan || (span instanceof StyleSpan && ((StyleSpan) span).getStyle() == android.graphics.Typeface.BOLD)) {
+            if (messageString instanceof Spanned) {
+                Spannable messageStringSpannable = null;
+                for (Object span : ((Spanned) messageString).getSpans(0, messageString.length(), Object.class)) {
+                    if (span instanceof ClickableSpan || span instanceof URLSpanMono || span instanceof CodeHighlighting.Span || currentDialogCommunityId == 0 && !isFolderCell() && span instanceof TypefaceSpan || span instanceof CodeHighlighting.ColorSpan || span instanceof QuoteSpan || span instanceof QuoteSpan.QuoteStyleSpan || (span instanceof StyleSpan && ((StyleSpan) span).getStyle() == android.graphics.Typeface.BOLD)) {
+                        if (messageStringSpannable == null) {
+                            messageStringSpannable = new SpannableStringBuilder(messageString);
+                        }
                         messageStringSpannable.removeSpan(span);
                     }
+                }
+                if (messageStringSpannable != null) {
+                    messageString = messageStringSpannable;
                 }
             }
             if ((useForceThreeLines || SharedConfig.useThreeLinesLayout) && !hasTags() && currentDialogFolderId != 0 && currentDialogFolderDialogsCount > 1) {

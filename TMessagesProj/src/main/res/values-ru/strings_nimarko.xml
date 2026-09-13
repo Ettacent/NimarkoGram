@@ -443,7 +443,7 @@
     <string name="NM_SettingsDesc_GifSpoilers">Применять эффект спойлера к GIF</string>
     <string name="NM_SettingsDesc_NotificationSound">Выберите звук сообщений в открытом чате</string>
     <string name="NM_SettingsDesc_ChatVibration">Выберите вибрацию сообщений в открытом чате</string>
-    <string name="NM_SettingsDesc_ChatShortcuts">Выберите быстрые действия в меню чата</string>
+    <string name="NM_SettingsDesc_ChatShortcuts">Выберите пункты разделов «Дополнительно» и «Управление»</string>
     <string name="NM_SettingsDesc_HideKeyboardOnScroll">Задайте расстояние прокрутки для скрытия клавиатуры</string>
     <string name="NM_SettingsDesc_VideoSeek">Задайте шаг перемотки видео в секундах</string>
     <string name="NM_SettingsDesc_HideProxy">Скрыть рекламный прокси-чат из списка чатов</string>
@@ -497,4 +497,8 @@
     <string name="NM_MP_ProfileBusinessPreview_Desc">Показывать данные бизнеса в профиле</string>
     <string name="NM_MP_ProfileBackgroundColor_Desc">Использовать цвета профиля в раскрытой шапке</string>
     <string name="NM_MP_ProfileBackgroundEmoji_Desc">Показывать эмодзи профиля в раскрытой шапке</string>
+    <string name="NM_InAppNotifications">Уведомления внутри приложения</string>
+    <string name="NM_InAppNotificationsDesc">Новые сообщения появляются сверху. Потяните вниз, чтобы раскрыть текст, вверх — свернуть или скрыть. Нажатие открывает чат.</string>
+    <string name="NM_InAppNotificationsPreview">Показать пример</string>
+    <string name="NM_InAppNotificationsSample">Здесь появятся новые сообщения</string>
 </resources>

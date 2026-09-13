@@ -251,6 +251,18 @@ public abstract class BotWebViewContainer extends FrameLayout implements Notific
     private BotStorage storage;
     private BotStorage secureStorage;
     public final boolean bot;
+    private final BrowserContentReveal browserContentReveal;
+    public void holdBrowserContentReveal(boolean hold) {
+        if (browserContentReveal != null) browserContentReveal.hold(hold);
+    }
+    public void resumeBrowserContentReveal() {
+        if (browserContentReveal != null && webView != null) {
+            browserContentReveal.resume(webView, webView.isPageLoaded || webView.browserContentReady);
+        }
+    }
+    public void cancelBrowserContentReveal() {
+        if (browserContentReveal != null) browserContentReveal.detached();
+    }
 
     private BotSensors sensors;
 
@@ -266,6 +278,7 @@ public abstract class BotWebViewContainer extends FrameLayout implements Notific
     ) {
         super(context);
         this.bot = isBot;
+        browserContentReveal = isBot ? null : new BrowserContentReveal(this);
         this.resourcesProvider = resourcesProvider;
 
         d("created new webview container");
@@ -539,6 +552,9 @@ public abstract class BotWebViewContainer extends FrameLayout implements Notific
                 webViewProxy.setContainer(this);
             }
         }
+        if (browserContentReveal != null) {
+            browserContentReveal.prepare(webView, restoringWebView && (webView.isPageLoaded || webView.browserContentReady));
+        }
 
         onWebViewCreated(webView);
         firstWebView = false;
@@ -632,6 +648,10 @@ public abstract class BotWebViewContainer extends FrameLayout implements Notific
     }
 
     public void setPageLoaded(String url, boolean animated) {
+        if (browserContentReveal != null && webView != null
+                && (TextUtils.equals(webView.currentUrl, url) || TextUtils.equals(webView.getUrl(), url))) {
+            browserContentReveal.ready(webView);
+        }
         onURLChanged(webView != null && webView.dangerousUrl ? webView.urlFallback : url, !(webView != null && webView.canGoBack()), !(webView != null && webView.canGoForward()));
 
         if (webView != null) {
@@ -1128,6 +1148,7 @@ public abstract class BotWebViewContainer extends FrameLayout implements Notific
     @Override
     protected void onAttachedToWindow() {
         super.onAttachedToWindow();
+        if (browserContentReveal != null) browserContentReveal.attached();
         d("attached");
 
         NotificationCenter.getGlobalInstance().addObserver(this, NotificationCenter.didSetNewTheme);
@@ -1148,6 +1169,7 @@ public abstract class BotWebViewContainer extends FrameLayout implements Notific
 
     @Override
     protected void onDetachedFromWindow() {
+        if (browserContentReveal != null) browserContentReveal.detached();
         super.onDetachedFromWindow();
         d("detached");
 
@@ -1209,6 +1231,7 @@ public abstract class BotWebViewContainer extends FrameLayout implements Notific
     }
 
     public void destroyWebView() {
+        if (browserContentReveal != null) browserContentReveal.clear();
         d("destroyWebView preserving=" + preserving);
         cancelPendingWebViewStart();
         final MyWebView oldWebView = webView;
@@ -1305,6 +1328,7 @@ public abstract class BotWebViewContainer extends FrameLayout implements Notific
     }
 
     public void resetWebView() {
+        if (browserContentReveal != null) browserContentReveal.clear();
         webView = null;
     }
 
@@ -3955,6 +3979,7 @@ public abstract class BotWebViewContainer extends FrameLayout implements Notific
     public static class MyWebView extends WebView {
         private final int tag = tags++;
         private boolean isPageLoaded;
+        private boolean browserContentReady;
         private Runnable whenPageLoaded;
         public final boolean bot;
 
@@ -4215,6 +4240,12 @@ public abstract class BotWebViewContainer extends FrameLayout implements Notific
 
                 @Override
                 public void onPageCommitVisible(WebView view, String url) {
+                    if (!bot && (TextUtils.equals(currentUrl, url) || TextUtils.equals(view.getUrl(), url))) {
+                        browserContentReady = true;
+                        if (botWebViewContainer != null && botWebViewContainer.browserContentReveal != null) {
+                            botWebViewContainer.browserContentReveal.ready(view);
+                        }
+                    }
                     if (MyWebView.this.whenPageLoaded != null) {
                         Runnable callback = MyWebView.this.whenPageLoaded;
                         MyWebView.this.whenPageLoaded = null;
@@ -4399,6 +4430,14 @@ public abstract class BotWebViewContainer extends FrameLayout implements Notific
                     }
                     currentHistoryEntry = null;
                     currentUrl = url;
+                    if (!bot) {
+                        isPageLoaded = false;
+                        browserContentReady = false;
+                        if (botWebViewContainer != null && botWebViewContainer.getWebView() == view
+                                && botWebViewContainer.browserContentReveal != null) {
+                            botWebViewContainer.browserContentReveal.prepare(view, false);
+                        }
+                    }
                     lastSiteName = null;
                     lastActionBarColorGot = false;
                     lastBackgroundColorGot = false;
@@ -5427,6 +5466,10 @@ public abstract class BotWebViewContainer extends FrameLayout implements Notific
         public void stopLoading() {
             d("stopLoading");
             super.stopLoading();
+            if (!bot && botWebViewContainer != null && botWebViewContainer.browserContentReveal != null) {
+                browserContentReady = true;
+                botWebViewContainer.browserContentReveal.ready(this);
+            }
         }
 
         @Override

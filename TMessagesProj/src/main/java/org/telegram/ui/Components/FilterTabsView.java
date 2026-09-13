@@ -968,6 +968,7 @@ public class FilterTabsView extends FrameLayout {
 
     private int scrollingToChild = -1;
     private final GradientDrawable selectorDrawable;
+    private float selectorCornerRadius;
 
     private int tabLineColorKey = Theme.key_actionBarTabLine;
     private int activeTextColorKey = Theme.key_actionBarTabActiveText;
@@ -1069,7 +1070,7 @@ public class FilterTabsView extends FrameLayout {
         deletePaint.setStrokeWidth(dp(1.5f));
 
         selectorDrawable = new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, null);
-        float rad = AndroidUtilities.dpf2(14);
+        float rad = selectorCornerRadius = AndroidUtilities.dpf2(14);
         selectorDrawable.setCornerRadii(new float[]{rad, rad, rad, rad, rad, rad, rad, rad});
         selectorDrawable.setColor(Theme.getColor(tabLineColorKey, resourcesProvider));
 
@@ -1358,7 +1359,12 @@ public class FilterTabsView extends FrameLayout {
         if (delegate != null) {
             delegate.onPageSelected(tab, scrollingForward);
         }
-        scrollToChild(position);
+        if (resizeReferenceWidth > 0) {
+            pageScrollFrom = pageScrollTo = -1;
+            scrollWithPage(position, 0f);
+        } else {
+            scrollToChild(position);
+        }
     }
 
     public void selectFirstTab() {
@@ -1381,6 +1387,7 @@ public class FilterTabsView extends FrameLayout {
 
     public void setAnimationIdicatorProgress(float value) {
         animatingIndicatorProgress = value;
+        if (resizeReferenceWidth > 0) scrollWithPage(currentPosition, value);
         listView.invalidateViews();
         listView.invalidate();
         invalidate();
@@ -1584,7 +1591,7 @@ public class FilterTabsView extends FrameLayout {
     @Override
     protected boolean drawChild(@NonNull Canvas canvas, View child, long drawingTime) {
         boolean result = super.drawChild(canvas, child, drawingTime);
-        if (child == listView) {
+        if (child == listView && drawSelectorWithChildren()) {
             drawSelector(canvas);
         }
         long newTime = SystemClock.elapsedRealtime();
@@ -1639,9 +1646,20 @@ public class FilterTabsView extends FrameLayout {
         }
         return result;
     }
+    protected boolean drawSelectorWithChildren() {
+        return true;
+    }
 
     private void drawSelector(Canvas canvas) {
+        drawSelector(canvas, -Float.MAX_VALUE, Float.MAX_VALUE);
+    }
+    protected void drawSelector(Canvas canvas, float visibleLeft, float visibleRight) {
         final int height = getMeasuredHeight();
+        final float radius = visibleLeft == -Float.MAX_VALUE ? AndroidUtilities.dpf2(14) : dp(28) / 2f;
+        if (selectorCornerRadius != radius) {
+            selectorDrawable.setCornerRadius(radius);
+            selectorCornerRadius = radius;
+        }
         selectorDrawable.setAlpha((int) (255 * listView.getAlpha()));
         float indicatorX = 0;
         float indicatorWidth = 0;
@@ -1660,18 +1678,11 @@ public class FilterTabsView extends FrameLayout {
                         idx1 = currentPosition;
                         idx2 = manualScrollingToPosition;
                     }
-                    int prevX = positionToX.get(idx1);
-                    int newX = positionToX.get(idx2);
                     int prevW = positionToWidth.get(idx1);
                     int newW = positionToWidth.get(idx2);
                     float prevH = positionToCount.get(idx1) != 0 ? 1 : 0;
                     float newH = positionToCount.get(idx2) != 0 ? 1 : 0;
-                    if (additionalTabWidth != 0) {
-                        indicatorX = lerp(prevX, newX, animatingIndicatorProgress) + dp(TAB_PADDING_WIDTH / 2f);
-                    } else {
-                        int x = positionToX.get(position);
-                        indicatorX = lerp(prevX, newX, animatingIndicatorProgress) - (x - holder.itemView.getLeft()) + dp(TAB_PADDING_WIDTH / 2f);
-                    }
+                    indicatorX = getIndicatorX(idx1, idx2, position, holder.itemView.getLeft(), animatingIndicatorProgress);
                     indicatorWidth = lerp(prevW, newW, animatingIndicatorProgress);
                     counterVisible = lerp(prevH, newH, animatingIndicatorProgress);
                 }
@@ -1699,14 +1710,24 @@ public class FilterTabsView extends FrameLayout {
             selectorDrawable.setColor(ColorUtils.setAlphaComponent(Theme.getColor(tabLineColorKey), 50));
         }
         if (indicatorWidth != 0) {
-            canvas.save();
-            canvas.translate(listView.getTranslationX(), 0);
-            canvas.scale(listView.getScaleX(), 1f, listView.getPivotX() + listView.getX(), listView.getPivotY());
 
             final float add = additionalTabWidth / 2f;
+            final float scale = listView.getScaleX();
+            if (scale <= 0f) return;
+            final float pivot = listView.getPivotX() + listView.getX();
+            final float translation = listView.getTranslationX();
+            final int left = (int) Math.max(indicatorX - dp(TAB_INTERNAL_PADDING) - add,
+                    (visibleLeft - translation - pivot) / scale + pivot);
+            final int right = (int) Math.min(indicatorX + indicatorWidth + dp(TAB_INTERNAL_PADDING) + add,
+                    (visibleRight - translation - pivot) / scale + pivot);
+            if (right <= left) return;
 
             final int y = height / 2 - dp(14);
-            selectorDrawable.setBounds((int) (indicatorX - dp(TAB_INTERNAL_PADDING) - add), y, (int) (indicatorX + indicatorWidth + dp(TAB_INTERNAL_PADDING) + add), y + dp(28));
+            final float offsetY = visibleLeft == -Float.MAX_VALUE ? 0f : (height - dp(28)) / 2f - y;
+            canvas.save();
+            canvas.translate(translation, offsetY);
+            canvas.scale(scale, 1f, pivot, listView.getPivotY());
+            selectorDrawable.setBounds(left, y, right, y + dp(28));
             if (!app.nimarkogram.messenger.NimarkoConfig.tabStyleStroke) selectorDrawable.setAlpha(31);
             selectorDrawable.draw(canvas);
             canvas.restore();
@@ -1813,15 +1834,43 @@ public class FilterTabsView extends FrameLayout {
         scrollingToChild = position;
         listView.smoothScrollToPosition(position);
     }
+    private int resizeReferenceWidth;
+    private int previousResizeReferenceWidth;
+    private int pageScrollFrom = -1, pageScrollTo = -1;
+    private int pageScrollStart, pageScrollEnd;
+    private float pageScrollProgressStart;
+    public void setTrailingOverlayInset(int inset, boolean rtl) {
+        int trailing = listViewPaddingH + Math.max(0, inset - dp(6.666f));
+        int left = rtl ? trailing : listViewPaddingH;
+        int right = rtl ? listViewPaddingH : trailing;
+        if (listView.getPaddingLeft() == left && listView.getPaddingRight() == right) return;
+        int last = tabs.size() - 1;
+        View end = layoutManager.findViewByPosition(last);
+        boolean atEnd = end != null && getTabContentWidth() > listView.getWidth()
+                - listView.getPaddingLeft() - listView.getPaddingRight()
+                && Math.abs(rtl ? end.getLeft() - listView.getPaddingLeft()
+                : end.getRight() - listView.getWidth() + listView.getPaddingRight()) <= 1;
+        listView.setPadding(left, 0, right, 0);
+        if (atEnd) layoutManager.scrollToPositionWithOffset(last, 0, !rtl);
+        pageScrollFrom = pageScrollTo = -1;
+    }
+    public void setResizeReferenceWidth(int width) {
+        resizeReferenceWidth = width;
+    }
 
     @Override
     protected void onLayout(boolean changed, int l, int t, int r, int b) {
         super.onLayout(changed, l, t, r, b);
+        final int referenceWidth = resizeReferenceWidth > 0 ? resizeReferenceWidth : r - l;
+        final boolean hostResized = previousResizeReferenceWidth != referenceWidth;
+        previousResizeReferenceWidth = referenceWidth;
 
         if (prevLayoutWidth != r - l) {
             prevLayoutWidth = r - l;
-            scrollingToChild = -1;
-            if (animatingIndicator) {
+            if (hostResized) {
+                scrollingToChild = -1;
+            }
+            if (animatingIndicator && hostResized) {
                 AndroidUtilities.cancelRunOnUIThread(animationRunnable);
                 animatingIndicator = false;
                 setEnabled(true);
@@ -1854,7 +1903,11 @@ public class FilterTabsView extends FrameLayout {
         listView.invalidateViews();
         listView.invalidate();
         invalidate();
-        scrollToChild(position);
+        if (resizeReferenceWidth > 0 && !animatingIndicator) {
+            scrollWithPage(position, progress);
+        } else {
+            scrollToChild(position);
+        }
 
         if (progress >= 1.0f) {
             manualScrollingToPosition = -1;
@@ -1862,6 +1915,51 @@ public class FilterTabsView extends FrameLayout {
             currentPosition = position;
             selectedTabId = id;
         }
+    }
+    private float getIndicatorX(int from, int to, int first, int firstLeft, float progress) {
+        return lerp(positionToX.get(from), positionToX.get(to), progress)
+                - positionToX.get(first) + firstLeft + additionalTabWidth / 2f + dp(TAB_PADDING_WIDTH / 2f);
+    }
+    private int getTabCellWidth(int position) {
+        return positionToWidth.get(position) + dp(TAB_PADDING_WIDTH) + additionalTabWidth;
+    }
+    private int getTabContentWidth() {
+        int last = tabs.size() - 1;
+        return last < 0 ? 0 : positionToX.get(last) - additionalTabWidth / 2 - listViewPaddingH + getTabCellWidth(last);
+    }
+    private int getTabContentLeft(int position) {
+        int prefix = positionToX.get(position) - additionalTabWidth / 2 - listViewPaddingH;
+        return listView.getPaddingLeft() + (LocaleController.isRTL
+                ? getTabContentWidth() - prefix - getTabCellWidth(position) : prefix);
+    }
+    private void scrollWithPage(int position, float progress) {
+        int first = layoutManager.findFirstVisibleItemPosition();
+        View child = layoutManager.findViewByPosition(first);
+        if (child == null || first < 0 || first >= tabs.size() || listView.isComputingLayout()) return;
+        int currentScroll = getTabContentLeft(first) - child.getLeft();
+        if (pageScrollFrom != currentPosition || pageScrollTo != position) {
+            listView.stopScroll();
+            pageScrollFrom = currentPosition;
+            pageScrollTo = position;
+            pageScrollStart = currentScroll;
+            pageScrollProgressStart = progress < 1f ? progress : 0f;
+            int left = getTabContentLeft(position);
+            int right = left + getTabCellWidth(position);
+            int reveal = currentScroll;
+            if (left - reveal < listView.getPaddingLeft()) {
+                reveal = left - listView.getPaddingLeft();
+            } else if (right - reveal > listView.getWidth() - listView.getPaddingRight()) {
+                reveal = right - listView.getWidth() + listView.getPaddingRight();
+            }
+            int maxScroll = Math.max(0, getTabContentWidth() + listView.getPaddingLeft()
+                    + listView.getPaddingRight() - listView.getWidth());
+            pageScrollEnd = Math.max(0, Math.min(maxScroll, reveal));
+        }
+        float fraction = Math.max(0f, Math.min(1f, (progress - pageScrollProgressStart) / (1f - pageScrollProgressStart)));
+        int target = Math.round(lerp((float) pageScrollStart, pageScrollEnd, fraction));
+        listView.scrollBy(target - currentScroll, 0);
+        scrollingToChild = position;
+        if (progress <= 0f || progress >= 1f) pageScrollFrom = pageScrollTo = -1;
     }
 
     private int getChildWidth(TextView child) {

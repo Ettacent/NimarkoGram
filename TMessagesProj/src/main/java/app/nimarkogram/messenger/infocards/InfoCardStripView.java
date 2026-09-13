@@ -45,6 +45,7 @@ public class InfoCardStripView extends FrameLayout implements NotificationCenter
     private boolean dragUp;       
     private int incomingIndex = -1;
     private ValueAnimator animator;
+    private boolean settlingToNext;
     
     private int pendingActiveCardId = -1;
     
@@ -69,6 +70,15 @@ public class InfoCardStripView extends FrameLayout implements NotificationCenter
     private float visibilityFactor = 1f;
     
     private boolean opaqueCards;
+    private boolean inlineFolderStyle;
+    public void setInlineFolderStyle(boolean inline) {
+        if (inlineFolderStyle == inline) return;
+        inlineFolderStyle = inline;
+        for (BaseInfoCard pill : pills) {
+            pill.setInlineFolderStyle(inline);
+        }
+        requestLayout();
+    }
 
     public InfoCardStripView(Context context, Theme.ResourcesProvider resourcesProvider) {
         super(context);
@@ -129,6 +139,7 @@ public class InfoCardStripView extends FrameLayout implements NotificationCenter
             BaseInfoCard pill = InfoCardRegistry.create(id, getContext(), resourcesProvider);
             if (pill != null) {
                 pill.setOpaqueFlat(opaqueCards); 
+                pill.setInlineFolderStyle(inlineFolderStyle);
                 pill.setAccessibilityDelegate(new View.AccessibilityDelegate() {
                     @Override
                     public void onInitializeAccessibilityNodeInfo(View host, AccessibilityNodeInfo info) {
@@ -160,7 +171,8 @@ public class InfoCardStripView extends FrameLayout implements NotificationCenter
                 pills.add(pill);
                 
                 int g = Gravity.CENTER_VERTICAL | (LocaleController.isRTL ? Gravity.LEFT : Gravity.RIGHT);
-                addView(pill, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, g));
+                addView(pill, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT,
+                        LayoutHelper.WRAP_CONTENT, g));
             }
         }
         
@@ -187,6 +199,16 @@ public class InfoCardStripView extends FrameLayout implements NotificationCenter
 
     public boolean canAnimateCardResize() {
         return !isLayoutSuppressed() && visibilityFactor > 0.999f;
+    }
+    private int carouselWidth() {
+        BaseInfoCard cur = current();
+        if (cur == null) return 0;
+        int width = cur.getMeasuredWidth();
+        if (incomingIndex >= 0 && incomingIndex < pills.size()) {
+            float progress = Math.max(0f, Math.min(1f, dragProgress));
+            width = Math.round(width + (pills.get(incomingIndex).getMeasuredWidth() - width) * progress);
+        }
+        return width;
     }
 
     private int usableCardWidth() {
@@ -225,6 +247,9 @@ public class InfoCardStripView extends FrameLayout implements NotificationCenter
             pill.setMaxChipWidth(measuredCardWidthLimit);
         }
         super.onMeasure(widthMeasureSpec, heightMeasureSpec);
+        if (inlineFolderStyle && MeasureSpec.getMode(widthMeasureSpec) == MeasureSpec.AT_MOST) {
+            setMeasuredDimension(Math.min(MeasureSpec.getSize(widthMeasureSpec), carouselWidth()), getMeasuredHeight());
+        }
     }
 
     private void applyResting() {
@@ -305,8 +330,8 @@ public class InfoCardStripView extends FrameLayout implements NotificationCenter
             }
         }
         BaseInfoCard cur = current();
-        if (cur != null) cur.renderNextInstant(); 
-        applyResting(notifySelected);
+        applyResting(false);
+        if (notifySelected && cur != null) cur.updateDataInstantly();
     }
 
     private int neighbor(boolean up) {
@@ -379,7 +404,11 @@ public class InfoCardStripView extends FrameLayout implements NotificationCenter
                 cancelAnimResume();
                 restartGlobalTicker(); 
                 
-                potentialTap = true;
+                if (dragging) {
+                    downY += (dragUp ? 1f : -1f) * dragProgress * h;
+                    if (getParent() != null) getParent().requestDisallowInterceptTouchEvent(true);
+                }
+                potentialTap = !dragging;
                 longPressFired = false;
                 setCardsPressed(true);
                 removeCallbacks(longPressRunnable);
@@ -431,6 +460,7 @@ public class InfoCardStripView extends FrameLayout implements NotificationCenter
                     setCardsPressed(false);
                     if (cur != null) cur.onCardClicked();
                     potentialTap = false;
+                    releaseTracker();
                     return true;
                 }
                 potentialTap = false;
@@ -446,7 +476,7 @@ public class InfoCardStripView extends FrameLayout implements NotificationCenter
                 
                 boolean flingMatches = Math.abs(vy) > AndroidUtilities.dp(FLING_DP_PER_S)
                         && (vy < 0) == dragUp;
-                boolean commit = dragging && nb >= 0
+                boolean commit = ev.getActionMasked() == MotionEvent.ACTION_UP && dragging && nb >= 0
                         && (dragProgress > COMMIT_FRACTION || flingMatches);
                 if (commit) animateCommit(nb);
                 else animateSnapBack(nb);
@@ -483,9 +513,8 @@ public class InfoCardStripView extends FrameLayout implements NotificationCenter
         if (nb >= 0 && nb < pills.size()) {
             BaseInfoCard in = pills.get(nb);
             
-            in.renderNextInstant(); 
             in.setVisibility(VISIBLE);
-            try { in.onUpdateData(false); } catch (Throwable ignore) {}
+            try { in.updateDataInstantly(); } catch (Throwable ignore) {}
             
             int sw = getWidth(), sh = getHeight();
             if (sw > 0 && sh > 0) {
@@ -509,6 +538,8 @@ public class InfoCardStripView extends FrameLayout implements NotificationCenter
     }
 
     private void applyDrag(int incomingIdx, float prog, boolean up, float h) {
+        dragProgress = Math.max(0f, Math.min(1f, prog));
+        if (inlineFolderStyle && carouselWidth() != getMeasuredWidth()) requestLayout();
         
         BaseInfoCard cur = current();
         if (cur != null) {
@@ -536,11 +567,12 @@ public class InfoCardStripView extends FrameLayout implements NotificationCenter
         final boolean up = dragUp;
         final float h = dragHeight();
         cancelAnim();
+        settlingToNext = true;
         final boolean[] cancelled = {false};
         animator = ValueAnimator.ofFloat(dragProgress, 1f);
-        animator.setDuration(330);
-        
-        animator.setInterpolator(new android.view.animation.OvershootInterpolator(2.2f));
+        animator.setDuration(inlineFolderStyle ? Math.round(330 * (1f - dragProgress)) : 330);
+        animator.setInterpolator(inlineFolderStyle ? CubicBezierInterpolator.EASE_OUT
+                : new android.view.animation.OvershootInterpolator(2.2f));
         animator.addUpdateListener(a -> applyDrag(incomingIdx, (float) a.getAnimatedValue(), up, h));
         animator.addListener(new AnimatorListenerAdapter() {
             @Override
@@ -571,9 +603,10 @@ public class InfoCardStripView extends FrameLayout implements NotificationCenter
         final boolean up = dragUp;
         final float h = dragHeight();
         cancelAnim();
+        settlingToNext = false;
         final boolean[] cancelled = {false};
         animator = ValueAnimator.ofFloat(dragProgress, 0f);
-        animator.setDuration(200);
+        animator.setDuration(inlineFolderStyle ? Math.round(200 * dragProgress) : 200);
         animator.setInterpolator(CubicBezierInterpolator.EASE_OUT_QUINT);
         animator.addUpdateListener(a -> applyDrag(incomingIdx, (float) a.getAnimatedValue(), up, h));
         animator.addListener(new AnimatorListenerAdapter() {
@@ -614,6 +647,18 @@ public class InfoCardStripView extends FrameLayout implements NotificationCenter
     private void cancelAnimResume() {
         ValueAnimator a = animator;
         if (a != null) {
+            if (inlineFolderStyle) {
+                float target = settlingToNext ? 1f : 0f;
+                if (Math.abs(target - dragProgress) * dragHeight() * 1.35f <= 1f) {
+                    animator = null;
+                    dragging = false;
+                    a.end();
+                    return;
+                }
+                cancelAnim();
+                dragging = true;
+                return;
+            }
             animator = null;
             a.end();
         }

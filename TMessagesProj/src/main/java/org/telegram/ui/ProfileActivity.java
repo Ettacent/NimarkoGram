@@ -4706,6 +4706,9 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             @Override
             protected void onAllAnimationsDone() {
                 super.onAllAnimationsDone();
+                if (!profileLifecycleDestroyed && !isPaused) {
+                    fixLayout();
+                }
                 AndroidUtilities.runOnUIThread(() -> {
                     getNotificationCenter().onAnimationFinish(animationIndex);
                 });
@@ -18005,10 +18008,24 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
     }
 
     private boolean fullyVisible;
+    private void synchronizeVisibleHeader() {
+        if (profileLifecycleDestroyed || fragmentView == null || listView == null
+                || transitionAnimationInProress || openAnimationInProgress) {
+            return;
+        }
+        isFragmentOpened = true;
+        if (!fragmentOpened) {
+            fragmentOpened = true;
+            invalidateScroll = true;
+            fragmentView.requestLayout();
+        }
+        fixLayout();
+    }
 
     @Override
     public void onBecomeFullyVisible() {
         super.onBecomeFullyVisible();
+        synchronizeVisibleHeader();
         if (app.nimarkogram.messenger.banners.NimarkoBannerConfig.enabled) {
             try {
                 app.nimarkogram.messenger.banners.NimarkoBannerRenderer rr = app.nimarkogram.messenger.banners.NimarkoBannerRenderer.getInstance();
@@ -19494,6 +19511,10 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
         return iBlur3SourceGlass;
     }
 
+    @Override
+    public BlurredBackgroundDrawableViewFactory getNotificationGlassFactory() {
+        return iBlur3FactoryLiquidGlass;
+    }
     @Override
     public void onParentScrollToTop() {
         listView.smoothScrollToPosition(0);

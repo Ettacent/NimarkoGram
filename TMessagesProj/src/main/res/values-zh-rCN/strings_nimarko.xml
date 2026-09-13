@@ -435,7 +435,7 @@
     <string name="NM_SettingsDesc_GifSpoilers">为 GIF 应用剧透效果</string>
     <string name="NM_SettingsDesc_NotificationSound">选择打开聊天时的消息提示音</string>
     <string name="NM_SettingsDesc_ChatVibration">选择打开聊天时的消息振动</string>
-    <string name="NM_SettingsDesc_ChatShortcuts">选择聊天菜单中显示的快捷操作</string>
+    <string name="NM_SettingsDesc_ChatShortcuts">选择「更多操作」和「管理」子菜单中的操作</string>
     <string name="NM_SettingsDesc_HideKeyboardOnScroll">设置滚动多远后隐藏键盘</string>
     <string name="NM_SettingsDesc_VideoSeek">设置视频快进和后退的秒数</string>
     <string name="NM_SettingsDesc_HideProxy">从聊天列表隐藏推广代理聊天</string>
@@ -489,4 +489,8 @@
     <string name="NM_MP_ProfileBusinessPreview_Desc">在个人资料中显示企业信息</string>
     <string name="NM_MP_ProfileBackgroundColor_Desc">在展开的顶部区域使用个人资料颜色</string>
     <string name="NM_MP_ProfileBackgroundEmoji_Desc">在展开的顶部区域显示个人资料表情</string>
+    <string name="NM_InAppNotifications">应用内通知横幅</string>
+    <string name="NM_InAppNotificationsDesc">新消息显示在顶部。向下拖动展开内容，向上滑动收起或关闭，点按打开聊天。</string>
+    <string name="NM_InAppNotificationsPreview">显示示例</string>
+    <string name="NM_InAppNotificationsSample">新消息将显示在这里</string>
 </resources>

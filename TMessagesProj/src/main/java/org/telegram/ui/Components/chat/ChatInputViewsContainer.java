@@ -467,6 +467,9 @@ public class ChatInputViewsContainer extends FrameLayout {
 
     private void drawComposerBackground(@NonNull Canvas canvas, int alpha) {
         if (blurredBackgroundDrawable == null || alpha <= 0) {
+            inputCenterTouchBounds.setEmpty();
+            inputLeadingTouchBounds.setEmpty();
+            inputTrailingTouchBounds.setEmpty();
             return;
         }
         syncLeadingComposerExpansion();
