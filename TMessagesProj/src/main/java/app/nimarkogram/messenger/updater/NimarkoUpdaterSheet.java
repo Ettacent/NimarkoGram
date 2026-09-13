@@ -569,7 +569,7 @@ public class NimarkoUpdaterSheet extends BottomSheet implements NimarkoUpdater.D
         if (fragment == null || fragment.getParentActivity() == null || fragment.getContext() == null) {
             return;
         }
-        boolean effectiveAvailable = available;
+        boolean effectiveAvailable = available && update != null && update.isNew();
         NimarkoUpdater.Update effectiveUpdate = update;
         if (!effectiveAvailable) {
             NimarkoUpdater.DownloadUiState state = NimarkoUpdater.getDownloadUiState();

@@ -118,6 +118,7 @@ class AnimatedLinearLayout extends FrameLayout {
     AnimatedLinearLayout(){super(null);}
     void setPriority(View view,int priority){} void setTrackChildSize(View view){}
     void setViewVisible(View view,boolean visible,boolean animated){requestedVisible.put(view,visible);}
+    boolean isViewVisible(View view){return Boolean.TRUE.equals(requestedVisible.get(view));}
     ListAnimator.Entry<Holder> entry(View view,float visibility,float top,float bottom){
         ListAnimator.Entry<Holder> entry=new ListAnimator.Entry<>(new Holder(view),visibility,top,bottom);
         listAnimator.add(entry);return entry;
@@ -211,6 +212,33 @@ public class NotificationSlotGeometryTest {
         slot.release(second);measure(slot,360);
         check(slot.getLayoutCoverage()==0&&slot.getMinimumHeight()==0,"detached empty slot keeps zero coverage during native cleanup");
     }
+    static void spacing(){
+        AnimatedLinearLayout panel=new AnimatedLinearLayout();Slot slot=Slot.obtain(panel);
+        View pinned=new View(),translation=new View();panel.addView(pinned,null);panel.addView(translation,null);
+        Banner card=new Banner(80,0);slot.attach(card);
+        measure(slot,360);equal(slot.getMeasuredHeight(),80,"hidden panels add no gap");
+        panel.setViewVisible(pinned,true,true);
+        measure(slot,360);equal(slot.getMeasuredHeight(),88,"visible pinned panel adds gap");
+        panel.setViewVisible(translation,true,true);
+        measure(slot,360);equal(slot.getMeasuredHeight(),88,"multiple shared panels add only one gap");
+        for(int pull=0;pull>=-80;pull--){
+            card.pullOffset=pull;measure(slot,360);
+            equal(slot.getMeasuredHeight(),80+pull+Math.round(8*(80+pull)/80f),"gap collapses with swipe coverage");
+        }
+        slot.release(card);measure(slot,360);
+        equal(slot.getMeasuredHeight(),0,"fully swiped notification leaves no gap");
+        card=new Banner(80,0);slot.attach(card);measure(slot,360);
+        slot.release(card);measure(slot,360);equal(slot.getMeasuredHeight(),88,"animated removal retains gap exactly once");
+        measure(slot,360);equal(slot.getMeasuredHeight(),88,"repeated removal measurement cannot accumulate gap");
+        slot.attach(card);measure(slot,360);equal(slot.getMeasuredHeight(),88,"reattachment resets retained spacing");
+        Banner next=new Banner(64,0);slot.attach(next);measure(slot,360);
+        equal(slot.getMeasuredHeight(),88,"overlapping notifications share one gap");
+        slot.release(card);measure(slot,360);equal(slot.getMeasuredHeight(),72,"replacement uses its own height plus gap");
+        panel.setViewVisible(pinned,false,true);panel.setViewVisible(translation,false,true);
+        measure(slot,360);equal(slot.getMeasuredHeight(),64,"hiding shared panels removes gap");
+        Slot other=Slot.obtain(new AnimatedLinearLayout());
+        other.attach(new Banner(64,0));measure(other,360);equal(other.getMeasuredHeight(),64,"standalone notification has no extra gap");
+    }
     static void replacement(){
         currentPanel=new AnimatedLinearLayout();banner=retiringBanner=null;
         check(show(new Banner(80,24)),"first show accepted");Slot slot=banner.slot;measure(slot,360);
@@ -278,7 +306,7 @@ public class NotificationSlotGeometryTest {
         equal(panel.getSharedBackgroundOffset(),0,"negative current shared top clamps to zero");
     }
     public static void main(String[] args){
-        geometry();replacement();backgrounds();
+        geometry();spacing();replacement();backgrounds();
         System.out.println("PASS: "+checks+" extracted slot geometry, replacement and shared-background checks");
     }
 }
@@ -306,6 +334,18 @@ try {
     assert.equal(constantResult.status, 1, constantResult.error || constantResult.stderr);
     assert.match(constantResult.stderr, /AssertionError: positive pull reserves shifted bottom/);
     console.log('PASS: compiled old-constant-measure negative control rejected');
+    const noGap = measure.replace('height += Math.round(dp(8) * getLayoutCoverage());', 'height += 0;');
+    assert.notEqual(noGap, measure);
+    const noGapResult = run(harness(noGap));
+    assert.equal(noGapResult.status, 1, noGapResult.error || noGapResult.stderr);
+    assert.match(noGapResult.stderr, /AssertionError: visible pinned panel adds gap/);
+    console.log('PASS: missing shared-panel gap negative control rejected');
+    const fixedGap = measure.replace('dp(8) * getLayoutCoverage()', 'dp(8) * 1f');
+    assert.notEqual(fixedGap, measure);
+    const fixedGapResult = run(harness(fixedGap));
+    assert.equal(fixedGapResult.status, 1, fixedGapResult.error || fixedGapResult.stderr);
+    assert.match(fixedGapResult.stderr, /AssertionError: gap collapses with swipe coverage/);
+    console.log('PASS: fixed gap during dismissal negative control rejected');
 
     const zero = background.slice(0, background.indexOf('{')) + '{ return 0f; }';
     assert.notEqual(zero, background, 'Always-zero mutation must affect extracted background method');

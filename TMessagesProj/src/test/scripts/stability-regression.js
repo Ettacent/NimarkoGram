@@ -2,6 +2,7 @@ const cp = require('node:child_process');
 const path = require('node:path');
 
 const tests = [
+    'updater-installed-state-regression.js',
     'in-app-notifications-regression.js',
     'notification-foreground-delivery-regression.js',
     'notification-inline-regression.js',
@@ -11,6 +12,7 @@ const tests = [
     'notification-burst-regression.js',
     'notification-avatar-regression.js',
     'notification-glass-regression.js',
+    'notification-material-readiness-regression.js',
     'notification-color-trace-regression.js',
     'account-switch-motion-regression.js',
     'notification-account-navigation-regression.js',

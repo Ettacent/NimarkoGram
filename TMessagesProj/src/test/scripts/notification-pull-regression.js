@@ -11,7 +11,7 @@ function method(signature,sourceText=source){
 const bannerSource=method('private static final class Banner');
 const slotSource=method('private static final class Slot');
 const methods=['void cancelExpansion()','void setExpansion(float value)','void setPullOffset(float offset)','void settlePull(float target, long duration, Runnable completion)','void settleGeometry(', 'void settleExpansion(boolean open)','void beginGesture(MotionEvent e)','void restoreGesture()','public boolean dispatchTouchEvent(MotionEvent e)','public boolean onInterceptTouchEvent(MotionEvent e)','public boolean onTouchEvent(MotionEvent e)','protected void onMeasure(int w, int h)','protected void onLayout(boolean changed, int left, int top, int right, int bottom)','private void centerCollapsedContent(View child, int contentHeight, int childHeight)'].map(signature=>method(signature,bannerSource)).join('\n');
-const slotMethods=['void attach(Banner value)','protected void onMeasure(int widthSpec, int heightSpec)','public boolean dispatchTouchEvent(MotionEvent event)'].map(signature=>method(signature,slotSource)).join('\n');
+const slotMethods=['void attach(Banner value)','public float getLayoutCoverage()','protected void onMeasure(int widthSpec, int heightSpec)','public boolean dispatchTouchEvent(MotionEvent event)'].map(signature=>method(signature,slotSource)).join('\n');
 for(const signature of ['private static void remove(Banner old)','void hide()','void animateOpenChat()','protected void onDetachedFromWindow()'])assert(method(signature).includes('cancelExpansion();'));
 assert.match(method('void pauseInteraction()'),/settleExpansion\(expanded\)/);
 assert.match(source,/expandedBody.setText\(body.getText\(\)\)/);
@@ -73,7 +73,10 @@ class Base extends View {
 }
 class LayoutHelper {static int MATCH_PARENT=-1,WRAP_CONTENT=-2;static Object createFrame(int w,int h,int gravity){return new Object();}}
 class Gravity {static int TOP=1,CENTER_HORIZONTAL=2;}
+class AnimatedLinearLayout {interface IndependentPanel {}}
 class Panel {float totalHeight;int paddingTop;boolean visible,animated;int getPaddingTop(){return paddingTop;}Panel getMetadata(){return this;}float getTotalHeight(){return totalHeight;}
+ ArrayList<View> children=new ArrayList<>();int getChildCount(){return children.size();}View getChildAt(int i){return children.get(i);}
+ boolean isViewVisible(View child){return children.contains(child)&&child.getVisibility()!=View.GONE;}
  void setViewVisible(Slot s,boolean v,boolean a){visible=v;animated=a;}}
 class Slot extends Base {
  boolean directResize;float retainedCoverage;int minimumHeight;Panel panel=new Panel();ArrayList<Banner> children=new ArrayList<>();
