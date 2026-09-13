@@ -3418,6 +3418,12 @@ public class NotificationsController extends BaseController implements Notificat
     }
 
     private void scheduleNotificationDelay(boolean onlineReason) {
+        if (NimarkoInAppNotifications.isAvailable()
+                && getAccountInstance().getNotificationsSettings().getBoolean("EnableInAppPopup", true)) {
+            notificationsQueue.cancelRunnable(notificationDelayRunnable);
+            notificationDelayRunnable.run();
+            return;
+        }
         try {
             if (BuildVars.LOGS_ENABLED) {
                 FileLog.d("delay notification start, onlineReason = " + onlineReason);
@@ -4155,6 +4161,9 @@ public class NotificationsController extends BaseController implements Notificat
 
     private void showOrUpdateNotification(boolean notifyAboutLast) {
         cancelBannerDelivery();
+        showOrUpdateNotification(notifyAboutLast, null);
+    }
+    private void showOrUpdateNotification(boolean notifyAboutLast, Boolean inAppHandled) {
         final int bannerDelivery = bannerDeliveryGeneration;
         final long bannerPrivacy = bannerPrivacyRevision.get();
         final long bannerSession = app.nimarkogram.messenger.notifications.NimarkoInAppNotifications.session(currentAccount);
@@ -4422,7 +4431,7 @@ public class NotificationsController extends BaseController implements Notificat
                 notifyDisabled = true;
             }
 
-            if (!notifyDisabled && dialog_id == override_dialog_id && chat != null) {
+            if (inAppHandled == null && !notifyDisabled && dialog_id == override_dialog_id && chat != null) {
                 int notifyMaxCount;
                 int notifyDelay;
                 if (preferences.getBoolean("custom_" + dialog_id, false)) {
@@ -4461,6 +4470,40 @@ public class NotificationsController extends BaseController implements Notificat
 
             boolean isDefault = true;
             boolean isInApp = !ApplicationLoader.mainInterfacePaused;
+            if (isInApp && notifyAboutLast && !notifyDisabled && inAppHandled == null
+                    && NimarkoInAppNotifications.isAvailable()) {
+                final long bannerDialog = dialog_id, bannerTopic = topicId;
+                final boolean previewAllowed = NimarkoInAppNotifications.canPreview(currentAccount, bannerDialog, bannerTopic);
+                final NimarkoInAppNotifications.Delivery delivery = new NimarkoInAppNotifications.Delivery();
+                pendingBannerDelivery = delivery;
+                final Runnable fallback = () -> {
+                    if (bannerDelivery == bannerDeliveryGeneration && delivery.complete()) {
+                        delivery.cancel();
+                        showOrUpdateNotification(false);
+                    }
+                };
+                if (offerInAppNotification(lastMessageObject, bannerOwner, bannerSession, delivery, handled -> {
+                    if (!delivery.complete()) return;
+                    notificationsQueue.cancelRunnable(fallback);
+                    notificationsQueue.postRunnable(() -> {
+                        if (bannerDelivery != bannerDeliveryGeneration
+                                || !NimarkoInAppNotifications.isCurrent(currentAccount, bannerOwner, bannerSession)
+                                || !SharedConfig.showNotificationsForAllAccounts && currentAccount != UserConfig.selectedAccount) return;
+                        if (bannerPrivacy != bannerPrivacyRevision.get()
+                                || previewAllowed != NimarkoInAppNotifications.canPreview(currentAccount, bannerDialog, bannerTopic)
+                                || pushMessages.isEmpty() || pushMessages.get(0) != lastMessageObject) {
+                            showOrUpdateNotification(false);
+                            return;
+                        }
+                        showOrUpdateNotification(notifyAboutLast, handled && NimarkoInAppNotifications.isAvailable());
+                    });
+                })) {
+                    notificationsQueue.postRunnable(fallback, 5000);
+                    return;
+                }
+                delivery.cancel();
+                pendingBannerDelivery = null;
+            }
             int chatType = TYPE_PRIVATE;
 
             String customSoundPath;
@@ -4589,6 +4632,7 @@ public class NotificationsController extends BaseController implements Notificat
                     FileLog.e(e);
                 }
             }
+            notifyDisabled |= Boolean.TRUE.equals(inAppHandled) && NimarkoInAppNotifications.isAvailable();
 
             if (notifyDisabled) {
                 vibrate = 0;
@@ -4825,54 +4869,8 @@ public class NotificationsController extends BaseController implements Notificat
                     mBuilder.addAction(R.drawable.ic_ab_reply, LocaleController.getString(R.string.Reply), PendingIntent.getBroadcast(ApplicationLoader.applicationContext, 2, replyIntent, PendingIntent.FLAG_MUTABLE | PendingIntent.FLAG_UPDATE_CURRENT));
                 }
             }
-            if (isInApp && notifyAboutLast && !notifyDisabled
-                    && app.nimarkogram.messenger.notifications.NimarkoInAppNotifications.isAvailable()) {
-                final String bannerDetail = detailText, bannerChatName = chatName;
-                final long bannerDialog = dialog_id, bannerTopic = topicId;
-                final long[] bannerVibration = vibrationPattern;
-                final int bannerLed = ledColor, bannerImportance = configImportance, bannerChatType = chatType;
-                final Uri bannerSound = sound;
-                final boolean bannerDefault = isDefault;
-                final boolean previewAllowed = NimarkoInAppNotifications.canPreview(currentAccount, bannerDialog, bannerTopic);
-                final NimarkoInAppNotifications.Delivery delivery = new NimarkoInAppNotifications.Delivery();
-                pendingBannerDelivery = delivery;
-                final Runnable fallback = () -> {
-                    if (bannerDelivery == bannerDeliveryGeneration && delivery.complete()) {
-                        delivery.cancel();
-                        showOrUpdateNotification(false);
-                    }
-                };
-                if (offerInAppNotification(lastMessageObject, bannerOwner, bannerSession, delivery, handled -> {
-                    if (!delivery.complete()) return;
-                    notificationsQueue.cancelRunnable(fallback);
-                    notificationsQueue.postRunnable(() -> {
-                        if (bannerDelivery != bannerDeliveryGeneration
-                                || !NimarkoInAppNotifications.isCurrent(currentAccount, bannerOwner, bannerSession)
-                                || !SharedConfig.showNotificationsForAllAccounts && currentAccount != UserConfig.selectedAccount) return;
-                        if (!NimarkoInAppNotifications.isAvailable()
-                                || bannerPrivacy != bannerPrivacyRevision.get()
-                                || previewAllowed != NimarkoInAppNotifications.canPreview(currentAccount, bannerDialog, bannerTopic)) {
-                            showOrUpdateNotification(false);
-                            return;
-                        }
-                        try {
-                            if (handled) mBuilder.setPriority(NotificationCompat.PRIORITY_DEFAULT);
-                            showExtraNotifications(mBuilder, bannerDetail, bannerDialog, bannerTopic, bannerChatName,
-                                    bannerVibration, bannerLed, bannerSound, handled ? NotificationManager.IMPORTANCE_DEFAULT : bannerImportance,
-                                    bannerDefault, true, false, bannerChatType);
-                            scheduleNotificationRepeat();
-                        } catch (Exception e) {
-                            FileLog.e(e);
-                        }
-                    });
-                })) {
-                    notificationsQueue.postRunnable(fallback, 5000);
-                    return;
-                }
-                delivery.cancel();
-                pendingBannerDelivery = null;
-            }
-            showExtraNotifications(mBuilder, detailText, dialog_id, topicId, chatName, vibrationPattern, ledColor, sound, configImportance, isDefault, isInApp, notifyDisabled, chatType);
+            showExtraNotifications(mBuilder, detailText, dialog_id, topicId, chatName, vibrationPattern, ledColor, sound,
+                    configImportance, isDefault, isInApp, notifyDisabled, chatType);
             scheduleNotificationRepeat();
         } catch (Exception e) {
             FileLog.e(e);
@@ -4991,6 +4989,7 @@ public class NotificationsController extends BaseController implements Notificat
     @SuppressLint("InlinedApi")
     private void showExtraNotifications(NotificationCompat.Builder notificationBuilder, String summary, long lastDialogId, long lastTopicId, String chatName, long[] vibrationPattern, int ledColor, Uri sound, int importance, boolean isDefault, boolean isInApp, boolean isSilent, int chatType) {
         FileLog.d("showExtraNotifications pushMessages.size()=" + pushMessages.size());
+        notificationBuilder.setSilent(isSilent);
         if (Build.VERSION.SDK_INT >= 26) {
             notificationBuilder.setChannelId(validateChannelId(lastDialogId, lastTopicId, chatName, vibrationPattern, ledColor, sound, importance, isDefault, isInApp, isSilent, chatType));
         }
@@ -5761,6 +5760,7 @@ public class NotificationsController extends BaseController implements Notificat
             }
 
             NotificationCompat.Builder builder = new NotificationCompat.Builder(ApplicationLoader.applicationContext)
+                    .setSilent(isSilent)
                     .setContentTitle(name)
                     .setSmallIcon(R.drawable.notification)
                     .setContentText(text.toString())

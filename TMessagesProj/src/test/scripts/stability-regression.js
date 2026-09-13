@@ -3,6 +3,7 @@ const path = require('node:path');
 
 const tests = [
     'in-app-notifications-regression.js',
+    'notification-foreground-delivery-regression.js',
     'notification-inline-regression.js',
     'notification-padding-tail-regression.js',
     'notification-slot-geometry-regression.js',
@@ -46,6 +47,7 @@ const tests = [
     'folder-overlay-regression.js',
     'folder-edge-regression.js',
     'folder-synced-scroll-regression.js',
+    'folder-row-height-regression.js',
     'diagnostics-cleanup-regression.js',
     'rich-message-viewport-regression.js',
     'composer-controls-width-regression.js',

@@ -453,6 +453,7 @@ public final class NimarkoInAppNotifications {
         TextView title, body, expandedBody;
         BackupImageView avatar;
         LinearLayout text;
+        FrameLayout bodies;
         ImageView close;
         String avatarHeading;
         long avatarPhotoId = Long.MIN_VALUE, avatarVolumeId;
@@ -546,7 +547,7 @@ public final class NimarkoInAppNotifications {
             title = label(activity, 15, 1);
             title.setTypeface(Typeface.DEFAULT_BOLD);
             String name = preview ? heading : getString(R.string.AppName);
-            if (preview && !sample && UserConfig.getActivatedAccountsCount() > 1) {
+            if (preview && !sample && account != UserConfig.selectedAccount) {
                 name += " · " + UserObject.getFirstName(UserConfig.getInstance(account).getCurrentUser());
             }
             title.setText(name);
@@ -557,7 +558,7 @@ public final class NimarkoInAppNotifications {
             body.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteGrayText));
             LinearLayout.LayoutParams bodyParams = new LinearLayout.LayoutParams(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT);
             bodyParams.topMargin = dp(3);
-            FrameLayout bodies = new FrameLayout(activity);
+            bodies = new FrameLayout(activity);
             bodies.addView(body, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
             expandedBody = label(activity, 14, 8);
             expandedBody.setText(body.getText());
@@ -603,7 +604,7 @@ public final class NimarkoInAppNotifications {
             this.messageId = messageId;
             avatarHeading = heading;
             String name = preview ? heading : getString(R.string.AppName);
-            if (preview && UserConfig.getActivatedAccountsCount() > 1) {
+            if (preview && account != UserConfig.selectedAccount) {
                 name += " · " + UserObject.getFirstName(UserConfig.getInstance(account).getCurrentUser());
             }
             replaceText(name, preview ? message : getString(R.string.NotificationHiddenMessage));
@@ -613,9 +614,11 @@ public final class NimarkoInAppNotifications {
         }
 
         void replaceText(String name, String message) {
+            boolean wasChangingTitle = !TextUtils.equals(title.getText(), pendingName);
             pendingName = name;
             pendingMessage = message;
-            if (contentAnimator != null && contentFadeOut) return;
+            boolean changingTitle = !TextUtils.equals(title.getText(), name);
+            if (contentAnimator != null && contentFadeOut && wasChangingTitle == changingTitle) return;
             fadeText(true);
         }
 
@@ -626,18 +629,24 @@ public final class NimarkoInAppNotifications {
                 previous.cancel();
             }
             contentFadeOut = out;
-            ValueAnimator animator = ValueAnimator.ofFloat(text.getAlpha(), out ? 0 : 1);
+            float titleAlpha = title.getAlpha();
+            float targetTitleAlpha = out && !TextUtils.equals(title.getText(), pendingName) ? 0f : 1f;
+            ValueAnimator animator = ValueAnimator.ofFloat(bodies.getAlpha(), out ? 0 : 1);
             contentAnimator = animator;
             animator.setDuration(out ? 100 : 160);
             animator.setInterpolator(CubicBezierInterpolator.EASE_OUT_QUINT);
-            animator.addUpdateListener(a -> { if (contentAnimator == a) text.setAlpha((float) a.getAnimatedValue()); });
+            animator.addUpdateListener(a -> {
+                if (contentAnimator != a) return;
+                bodies.setAlpha((float) a.getAnimatedValue());
+                title.setAlpha(titleAlpha + (targetTitleAlpha - titleAlpha) * a.getAnimatedFraction());
+            });
             animator.addListener(new AnimatorListenerAdapter() {
                 @Override public void onAnimationEnd(Animator animation) {
                     if (contentAnimator != animation) return;
                     contentAnimator = null;
                     if (out && !closing) {
                         if (slot != null) slot.directResize = false;
-                        title.setText(pendingName);
+                        if (!TextUtils.equals(title.getText(), pendingName)) title.setText(pendingName);
                         body.setText(pendingMessage);
                         expandedBody.setText(body.getText());
                         pendingName = pendingMessage = null;
@@ -655,12 +664,15 @@ public final class NimarkoInAppNotifications {
                 previous.cancel();
             }
             if (pendingName != null && !closing) {
-                title.setText(pendingName);
+                if (!TextUtils.equals(title.getText(), pendingName)) title.setText(pendingName);
                 body.setText(pendingMessage);
                 expandedBody.setText(body.getText());
             }
             pendingName = pendingMessage = null;
-            if (!closing) text.setAlpha(1f);
+            if (!closing) {
+                title.setAlpha(1f);
+                bodies.setAlpha(1f);
+            }
         }
 
         private void refreshAvatar() {
