@@ -213,11 +213,12 @@ public class NimarkoUpdater {
     private static volatile boolean checkingForUpdates = false;
 
     public static boolean isUpdateDownloaded() {
-        return updateDownloaded && apkFile != null && apkFile.isFile();
+        return updateDownloaded && apkFile != null && apkFile.isFile()
+                && getOrRestoreLastUpdate() != null;
     }
 
     public static Update getOrRestoreLastUpdate() {
-        if (lastUpdate != null) return lastUpdate;
+        if (lastUpdate != null) return lastUpdate.isNew() ? lastUpdate : null;
         String v = NimarkoUpdateConfig.getLastUpdateVersion();
         String url = NimarkoUpdateConfig.getLastUpdateUrl();
         if (v == null || v.isEmpty() || url == null || url.isEmpty()) return null;
@@ -228,7 +229,7 @@ public class NimarkoUpdater {
                 NimarkoUpdateConfig.getLastUpdateSize(),
                 url,
                 NimarkoUpdateConfig.getLastUpdateDate());
-        return lastUpdate;
+        return lastUpdate.isNew() ? lastUpdate : null;
     }
 
     private static Runnable progressRunnable;
@@ -505,7 +506,7 @@ public class NimarkoUpdater {
                 progress = Math.max(0, Math.round(NimarkoUpdateConfig.getUpdateDownloadingProgress()));
             }
             boolean paused = downloadPaused || !downloading && hasPersistedDownloadLocked();
-            return new DownloadUiState(downloading, paused, updateDownloaded,
+            return new DownloadUiState(downloading, paused, isUpdateDownloaded(),
                     Math.max(0, Math.min(100, progress)));
         }
     }
@@ -1026,8 +1027,20 @@ public class NimarkoUpdater {
     }
 
     public static void cleanOtaDir() {
-        if (!checkDirs()) return;
-        cleanFolder(otaPath);
+        synchronized (downloadBindingLock) {
+            if (downloading || downloadPaused || hasPersistedDownloadLocked()) return;
+            File external = ApplicationLoader.applicationContext.getExternalFilesDir(null);
+            if (external != null) cleanFolder(new File(external, "ota"));
+            updateDownloaded = false;
+            validatedApk = null;
+            apkFile = null;
+            dlRealProgress = dlShownProgress = 0;
+            NimarkoUpdateConfig.setUpdateIsDownloading(false);
+            NimarkoUpdateConfig.setUpdateDownloadingProgress(0f);
+            NimarkoUpdateConfig.setApkSha256("");
+            NimarkoUpdateConfig.clearPausedDownload();
+            cancelUpdateNotification();
+        }
     }
 
     public static void cleanFolder(File folder) {

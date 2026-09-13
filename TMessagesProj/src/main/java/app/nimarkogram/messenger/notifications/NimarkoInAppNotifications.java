@@ -155,6 +155,15 @@ public final class NimarkoInAppNotifications {
                         MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED));
                 height = Math.max(height, Math.max(0, child.getMeasuredHeight() + Math.round(child.pullOffset)));
             }
+            if (getChildCount() > 0 && height > 0) {
+                for (int i = 0; i < panel.getChildCount(); i++) {
+                    View sibling = panel.getChildAt(i);
+                    if (!(sibling instanceof AnimatedLinearLayout.IndependentPanel) && panel.isViewVisible(sibling)) {
+                        height += Math.round(dp(8) * getLayoutCoverage());
+                        break;
+                    }
+                }
+            }
             setMeasuredDimension(width, height);
         }
         @Override public boolean dispatchTouchEvent(MotionEvent event) {
@@ -163,6 +172,15 @@ public final class NimarkoInAppNotifications {
                 if (event.getY() < 0 || event.getY() >= Math.min(getHeight(), bottom)) return false;
             }
             return super.dispatchTouchEvent(event);
+        }
+        @Override protected boolean drawChild(android.graphics.Canvas canvas, View child, long drawingTime) {
+            Banner value = (Banner) child;
+            int save = canvas.save();
+            canvas.translate(child.getLeft(), child.getTop());
+            canvas.concat(child.getMatrix());
+            value.surface.drawShadow(canvas, child.getAlpha());
+            canvas.restoreToCount(save);
+            return super.drawChild(canvas, child, drawingTime);
         }
     }
 
@@ -419,7 +437,7 @@ public final class NimarkoInAppNotifications {
                                    String heading, boolean preview, boolean sample) {
         avatar.getImageReceiver().setCurrentAccount(account);
         avatar.getImageReceiver().setCrossfadeDuration(180);
-        avatar.getImageReceiver().setForceCrossfade(true);
+        avatar.getImageReceiver().setForceCrossfade(avatar.isAttachedToWindow());
         avatar.getImageReceiver().setCrossfadeWithOldImage(true);
         TLObject peer = preview && !sample ? dialogId > 0
                 ? MessagesController.getInstance(account).getUser(dialogId)
@@ -526,8 +544,10 @@ public final class NimarkoInAppNotifications {
             setMinimumHeight(dp(64));
             setPadding(0, dp(10), 0, dp(10));
             surface = new NotificationGlassSurface(this);
+            animate().setUpdateListener(animation -> {
+                if (slot != null) slot.invalidate();
+            });
             setForeground(Theme.createSelectorDrawable(Theme.getColor(Theme.key_listSelector), 2));
-            setElevation(dp(6));
             setClipToOutline(true);
             setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
 
@@ -1076,6 +1096,7 @@ public final class NimarkoInAppNotifications {
         }
 
         @Override protected void onDetachedFromWindow() {
+            avatar.getImageReceiver().setForceCrossfade(false);
             surface.detach();
             if (!moving) {
                 closing = true;

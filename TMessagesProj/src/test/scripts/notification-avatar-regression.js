@@ -15,6 +15,7 @@ assert(refreshStart>0&&refreshEnd>refreshStart);
 assert(source.includes('avatar.setRoundRadius(dp(18))'));
 assert(source.includes('LayoutHelper.createFrame(36, 36, Gravity.START | Gravity.TOP)'));
 assert(!source.includes('R.drawable.msg_notifications'));
+assert.match(source, /onDetachedFromWindow\(\)\s*\{\s*avatar.getImageReceiver\(\).setForceCrossfade\(false\);/);
 const java = `
 class TLObject {}
 class ImageLocation {static int TYPE_SMALL=1;static ImageLocation getForUserOrChat(int a,TLObject p,int type){return new ImageLocation();}}
@@ -37,10 +38,11 @@ class AvatarDrawable {int account;long id;String name;TLObject peer;
 }
 class BackupImageView {
  static class Receiver {int account,duration;boolean force,old;void setCurrentAccount(int a){account=a;}void setCrossfadeDuration(int d){duration=d;}void setForceCrossfade(boolean v){force=v;}void setCrossfadeWithOldImage(boolean v){old=v;}}
- Receiver receiver=new Receiver();TLObject peer;AvatarDrawable drawable;int binds;
+ Receiver receiver=new Receiver();TLObject peer;AvatarDrawable drawable;int binds;boolean attached;
+ boolean isAttachedToWindow(){return attached;}
  Receiver getImageReceiver(){return receiver;}
  void setForUserOrChat(TLObject p,AvatarDrawable d){peer=p;drawable=d;binds++;}
- void setImage(ImageLocation l,String filter,AvatarDrawable d,int size,Object p){if(!receiver.force||!receiver.old)throw new AssertionError("cached and late photos must fade");peer=(TLObject)p;drawable=d;binds++;}
+ void setImage(ImageLocation l,String filter,AvatarDrawable d,int size,Object p){if(receiver.force!=attached||!receiver.old)throw new AssertionError("force fade only when replacing visible avatar");peer=(TLObject)p;drawable=d;binds++;}
  void setImageDrawable(AvatarDrawable d){peer=null;drawable=d;binds++;}
 }
 public class NotificationAvatarTest {
@@ -57,6 +59,8 @@ public class NotificationAvatarTest {
   bindAvatar(a,3,123,"Alice",true,false);
   check(a.peer==MessagesController.user&&a.drawable.peer==a.peer&&a.drawable.account==3);
   check(a.receiver.account==3&&MessagesController.account==3&&a.receiver.duration==180);
+  check(!a.receiver.force);
+  a.attached=true;
   bindAvatar(a,2,-456,"Group",true,false);check(a.peer==MessagesController.chat&&MessagesController.id==456);
   MessagesController.user=null;
   for(String name:new String[]{"Alice Smith","Иван","张三","😀 Test"}){
@@ -70,10 +74,15 @@ public class NotificationAvatarTest {
   check(MessagesController.lookups==lookups&&a.peer==null&&a.drawable.id==0&&"NimarkoGram".equals(a.drawable.name));
   NotificationAvatarTest t=new NotificationAvatarTest();MessagesController.user=null;t.refreshAvatar();
   check(t.avatar.binds==1&&t.avatar.peer==null);
+  check(!t.avatar.receiver.force);t.avatar.attached=true;
   TLRPC.User user=new TLRPC.User();MessagesController.user=user;t.refreshAvatar();check(t.avatar.binds==2&&t.avatar.peer==user);
   user.photo=new TLRPC.UserProfilePhoto();user.photo.photo_id=456;user.photo.dc_id=4;t.refreshAvatar();
   check(t.avatar.binds==3&&t.avatarPhotoId==456&&t.avatar.receiver.account==2);
+  check(t.avatar.receiver.force&&t.avatar.receiver.old&&t.avatar.receiver.duration==180);
   for(int i=0;i<1000;i++){t.refreshAvatar();check(t.avatar.binds==3);}
+  NotificationAvatarTest repeated=new NotificationAvatarTest();repeated.refreshAvatar();
+  check(repeated.avatar.binds==1&&!repeated.avatar.receiver.force);
+  repeated.avatar.attached=true;repeated.refreshAvatar();check(repeated.avatar.binds==1);
   user.photo.dc_id=5;t.refreshAvatar();check(t.avatar.binds==4);
   user.photo.photo_small=new TLRPC.FileLocation();user.photo.photo_small.volume_id=987;t.refreshAvatar();check(t.avatar.binds==5);
   user.photo.photo_small.local_id=7;t.refreshAvatar();check(t.avatar.binds==6);
@@ -94,7 +103,8 @@ try {
     process.stdout.write(cp.execFileSync('java',['NotificationAvatarTest'],{cwd:dir,encoding:'utf8'}));
     for (const broken of [
         java.replace('String name = preview && heading', 'String name = heading'),
-        java.replace('setForceCrossfade(true)', 'setForceCrossfade(false)'),
+        java.replace('setForceCrossfade(avatar.isAttachedToWindow())', 'setForceCrossfade(false)'),
+        java.replace('setForceCrossfade(avatar.isAttachedToWindow())', 'setForceCrossfade(true)'),
         java.replace('setCrossfadeWithOldImage(true)', 'setCrossfadeWithOldImage(false)'),
     ]) {
         assert.notEqual(broken, java);

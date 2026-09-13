@@ -2799,7 +2799,7 @@ public class ChatActivity extends BaseFragment implements
     public boolean isInsideContainer;
     @Override
     public BlurredBackgroundDrawableViewFactory getNotificationGlassFactory() {
-        return glassBackgroundDrawableFactoryFrosted;
+        return glassBackgroundDrawableFactory;
     }
     public boolean reversed;
     private long wallpaperRandomSeed;

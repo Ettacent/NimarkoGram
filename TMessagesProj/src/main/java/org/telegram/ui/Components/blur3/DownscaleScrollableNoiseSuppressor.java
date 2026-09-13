@@ -69,19 +69,30 @@ public class DownscaleScrollableNoiseSuppressor {
         }
     }
 
-    public void drawInline(Canvas canvas, int index) {
-        final int a;
+    private int resolveInlineIndex(int index) {
         if (!isLiquidGlassEnabled && simpleMode) {
-            a = 0;
+            return 0;
         } else if (index == DRAW_GLASS) {
-            a = isLiquidGlassEnabled ? 0 : 1;
+            return isLiquidGlassEnabled ? 0 : 1;
         } else if (index == DRAW_FROSTED_GLASS_NO_SATURATION) {
-            a = 0;
+            return 0;
         } else if (index == DRAW_FROSTED_GLASS) {
-            a = 1;
-        } else {
-            return;
+            return 1;
         }
+        return -1;
+    }
+    public boolean isDisplayListReady(int index) {
+        int a = resolveInlineIndex(index);
+        if (a < 0 || recordingPos != null || rectRenderNodesCount == 0) return false;
+        for (int b = 0; b < rectRenderNodesCount; b++) {
+            RenderNode node = getRenderNode(a, b);
+            if (!node.hasDisplayList() || node.getWidth() <= 0 || node.getHeight() <= 0) return false;
+        }
+        return true;
+    }
+    public void drawInline(Canvas canvas, int index) {
+        final int a = resolveInlineIndex(index);
+        if (a < 0) return;
 
         for (int b = 0; b < rectRenderNodesCount; b++) {
             final SourcePart sourcePart = rectRenderNodes.get(b);
