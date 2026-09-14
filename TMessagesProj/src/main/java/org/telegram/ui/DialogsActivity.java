@@ -440,7 +440,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                             position = 1;
                             offset = tabsTranslation;
                         }
-                        layoutManager.scrollToPositionWithOffset(position, (int) offset);
+                        listView.restoreUpdateAnchor(position, (int) offset);
                     }
                 }
             }
@@ -1838,6 +1838,19 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         private int appliedPaddingTop;
         private int lastTop;
         private int lastListPadding;
+        private int lastNotificationInset;
+        private int measuredNotificationInset;
+        private boolean restoringUpdateAnchor;
+        private int updateAnchorPosition;
+        private int updateAnchorOffset;
+        private int updateAnchorInset;
+        private void restoreUpdateAnchor(int position, int offset) {
+            parentPage.layoutManager.scrollToPositionWithOffset(position, offset);
+            restoringUpdateAnchor = true;
+            updateAnchorPosition = position;
+            updateAnchorOffset = offset;
+            updateAnchorInset = lastNotificationInset;
+        }
         private float rightFragmentOpenedProgress;
 
         Paint paint = new Paint();
@@ -2183,15 +2196,38 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         protected void onMeasure(int widthSpec, int heightSpec) {
             int t = 0;
             int pos = parentPage.layoutManager.findFirstVisibleItemPosition();
-            if (pos != RecyclerView.NO_POSITION && parentPage.itemTouchhelper.isIdle() && !parentPage.layoutManager.hasPendingScrollPosition() && parentPage.listView.getScrollState() != RecyclerView.SCROLL_STATE_DRAGGING) {
+            float notificationTabs = foldersAtBottom() ? 0f : getFilterTabsVisibilityFactor(false);
+            measuredNotificationInset = topPanelLayout == null ? 0 : topPanelLayout.getNotificationListInset(
+                    lerp((float) dp(14), dp(7), notificationTabs), notificationTabs);
+            int notificationDelta = measuredNotificationInset - lastNotificationInset;
+            if (restoringUpdateAnchor && parentPage.layoutManager.hasPendingScrollPosition()) {
+                int firstChat = parentPage.dialogsType == DIALOGS_TYPE_DEFAULT && hasHiddenArchive()
+                        && parentPage.archivePullViewState == ARCHIVE_ITEM_STATE_HIDDEN ? 1 : 0;
+                View startView = parentPage.layoutManager.findViewByPosition(firstChat);
+                int compensation = notificationScrollCompensation(updateAnchorPosition, lastListPadding + updateAnchorOffset,
+                        firstChat, measuredNotificationInset - updateAnchorInset,
+                        startView == null ? Integer.MIN_VALUE : startView.getTop());
+                ignoreLayout = true;
+                parentPage.layoutManager.scrollToPositionWithOffset(updateAnchorPosition, updateAnchorOffset - compensation);
+                restoringUpdateAnchor = true;
+                ignoreLayout = false;
+            }
+            if (pos != RecyclerView.NO_POSITION && parentPage.itemTouchhelper.isIdle() && !parentPage.layoutManager.hasPendingScrollPosition()
+                    && (parentPage.listView.getScrollState() != RecyclerView.SCROLL_STATE_DRAGGING || notificationDelta != 0)) {
                 RecyclerView.ViewHolder holder = parentPage.listView.findViewHolderForAdapterPosition(pos);
                 if (holder != null) {
                     int top = holder.itemView.getTop();
+                    int firstChat = parentPage.dialogsType == DIALOGS_TYPE_DEFAULT && hasHiddenArchive()
+                            && parentPage.archivePullViewState == ARCHIVE_ITEM_STATE_HIDDEN ? 1 : 0;
+                    View startView = parentPage.layoutManager.findViewByPosition(firstChat);
+                    int notificationCompensation = notificationScrollCompensation(pos, top, firstChat, notificationDelta,
+                            startView == null ? Integer.MIN_VALUE : startView.getTop());
                     if (parentPage.dialogsType == DIALOGS_TYPE_DEFAULT && hasHiddenArchive() && parentPage.archivePullViewState == ARCHIVE_ITEM_STATE_HIDDEN) {
                         pos = Math.max(1, pos);
                     }
                     ignoreLayout = true;
-                    parentPage.layoutManager.scrollToPositionWithOffset(pos, (int) (top - lastListPadding + scrollAdditionalOffset + parentPage.pageAdditionalOffset));
+                    parentPage.layoutManager.scrollToPositionWithOffset(pos, (int) (top - lastListPadding + scrollAdditionalOffset + parentPage.pageAdditionalOffset)
+                            - notificationCompensation);
                     ignoreLayout = false;
                 }
             } else if (pos == RecyclerView.NO_POSITION && firstLayout) {
@@ -2265,11 +2301,21 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                 }
             }
         }
+        private int notificationScrollCompensation(int position, int top, int firstChat, int delta, int startTop) {
+            if (firstLayout || position < 0 || position < firstChat && startTop == Integer.MIN_VALUE) return 0;
+            int restingTop = lastListPadding + (int) scrollYOffset;
+            if (startTop == Integer.MIN_VALUE && position > firstChat) return delta;
+            int scrolledPastStart = Math.max(0, restingTop - (startTop == Integer.MIN_VALUE ? top : startTop));
+            if (delta < 0) return -Math.min(-delta, scrolledPastStart);
+            return scrolledPastStart > 1 ? delta : 0;
+        }
 
         @Override
         protected void onLayout(boolean changed, int l, int t, int r, int b) {
             super.onLayout(changed, l, t, r, b);
+            restoringUpdateAnchor = false;
             lastListPadding = getPaddingTop();
+            lastNotificationInset = measuredNotificationInset;
             lastTop = t;
             scrollAdditionalOffset = 0;
             parentPage.pageAdditionalOffset = 0;
@@ -4620,6 +4666,16 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                     super.scrollToPositionWithOffset(position, offset);
                 }
 
+                @Override
+                public void scrollToPositionWithOffset(int position, int offset, boolean bottom) {
+                    viewPage.listView.restoringUpdateAnchor = false;
+                    super.scrollToPositionWithOffset(position, offset, bottom);
+                }
+                @Override
+                public void scrollToPosition(int position) {
+                    viewPage.listView.restoringUpdateAnchor = false;
+                    super.scrollToPosition(position);
+                }
                 @Override
                 public void prepareForDrop(@NonNull View view, @NonNull View target, int x, int y) {
                     fixOffset = true;
@@ -7213,14 +7269,14 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                 totalOffset - searchOffset,
                 -dp(3) - (searchTabsView == null ? dp(44) : 0),
                 animatorSearchVisible.getFloatValue()));
-            topPanelsVisibility = topPanelLayout.getLayoutVisibility();
-            topPanelsHeight = topPanelLayout.getAnimatedHeightWithPadding(0);
+            topPanelsVisibility = topPanelLayout.getSharedContentVisibility();
+            topPanelsHeight = topPanelLayout.getSharedContentHeight();
         }
 
         if (topBubblesFadeView != null) {
             topBubblesFadeView.setTranslationY(fadeViewT - searchOffset);
             final float s = lerp(dp(7), dp(50), Math.min(topPanelsVisibility, filtersTabVisibility));
-            topBubblesFadeView.setPosition(s, Math.min(dp(40), topPanelsHeight + filtersTabHeight - s));
+            topBubblesFadeView.setPosition(s, Math.max(0f, Math.min(dp(40), topPanelsHeight + filtersTabHeight - s)));
             topBubblesFadeView.setAlpha(Math.max(filtersTabVisibility, topPanelsVisibility));
         }
         positionHomeInfoCards(); // panels just moved — keep the capsule below the now-playing bar

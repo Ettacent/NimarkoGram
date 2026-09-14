@@ -35,6 +35,9 @@ public class LiquidGlassEffect {
     private float intensity;
     private float index;
     private int foregroundColor;
+    public int getForegroundColor() {
+        return foregroundColor;
+    }
 
     public void update(
         float left, float top, float right, float bottom,
