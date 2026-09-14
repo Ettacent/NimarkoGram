@@ -2250,6 +2250,7 @@ public class StarsController {
         if (!currentPendingReactions.applied) return 0;
         return currentPendingReactions.amount;
     }
+    private static final int STAR_GIFTS_CATALOG_CACHE_REVISION = 1;
 
 
     // ===== STAR GIFTS =====
@@ -2290,10 +2291,6 @@ public class StarsController {
                 giftsHash = hash;
                 giftsRemoteTime = time;
                 giftsLoading = false;
-                // NG: re-inject the curated "deleted gifts" list (no-op when the
-                // toggle is off). Cached branch — runs before the remote
-                // refresh fires.
-                app.nimarkogram.messenger.gifts.NimarkoDeletedGiftsManager.maybeInject(currentAccount);
                 NotificationCenter.getInstance(currentAccount).postNotificationName(NotificationCenter.starGiftsLoaded);
 
                 loadStarGifts();
@@ -2317,13 +2314,6 @@ public class StarsController {
                     Collections.sort(sortedGifts, Comparator.comparingInt((TL_stars.StarGift a) -> (a.sold_out ? 1 : 0)));
                     giftsHash = res.hash;
                     giftsRemoteTime = System.currentTimeMillis();
-                    // NG: re-inject the curated "deleted gifts" list (no-op
-                    // when toggle is off). Remote branch — the server returned
-                    // a fresh authoritative list, so re-add our entries before
-                    // we notify listeners or persist the cache. saveStarGiftsCached
-                    // below uses res.gifts (server-only), so our entries never
-                    // end up on disk.
-                    app.nimarkogram.messenger.gifts.NimarkoDeletedGiftsManager.maybeInject(currentAccount);
                     NotificationCenter.getInstance(currentAccount).postNotificationName(NotificationCenter.starGiftsLoaded);
                     saveStarGiftsCached(res.gifts, giftsHash, giftsRemoteTime);
                 } else if (giftsRemote instanceof TL_stars.TL_starGiftsNotModified) {
@@ -2352,6 +2342,11 @@ public class StarsController {
             long time = 0;
             SQLiteCursor cursor = null;
             try {
+                final android.content.SharedPreferences preferences = MessagesController.getMainSettings(currentAccount);
+                if (preferences.getInt("starGiftsCatalogCacheRevision", 0) < STAR_GIFTS_CATALOG_CACHE_REVISION) {
+                    db.executeFast("DELETE FROM star_gifts2").stepThis().dispose();
+                    preferences.edit().putInt("starGiftsCatalogCacheRevision", STAR_GIFTS_CATALOG_CACHE_REVISION).commit();
+                }
                 cursor = db.queryFinalized("SELECT data, hash, time FROM star_gifts2 ORDER BY pos ASC");
                 while (cursor.next()) {
                     final NativeByteBuffer data = cursor.byteBufferValue(0);

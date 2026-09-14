@@ -596,8 +596,6 @@
     <string name="NM_EXP_DiscussInsteadOfMute">Обсуждение вместо отключения по свайпу</string>
     <string name="NM_EXP_Footer">Эти параметры экспериментальные — возможны ошибки.</string>
     <string name="NM_GEN_MiscHeader">Разное</string>
-    <string name="NM_GEN_DeletedGifts">Удалённые подарки в каталоге</string>
-    <string name="NM_GEN_DeletedGifts_Desc">Возвращает скрытые подарки в каталог, чтобы их можно было отправить.</string>
     <string name="NM_GEN_LocalPremiumEmoji">Локальные премиум-эмодзи</string>
     <string name="NM_GEN_LocalPremiumEmoji_Desc">Отправляйте премиум-эмодзи без подписки Premium.</string>
 

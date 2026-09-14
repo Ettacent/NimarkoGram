@@ -1075,7 +1075,9 @@ public class ApplicationLoader extends Application {
     @Override
     public void onTrimMemory(int level) {
         super.onTrimMemory(level);
-        if (level >= ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW) {
+        if (level >= ComponentCallbacks2.TRIM_MEMORY_BACKGROUND
+                || (level >= ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW
+                && level < ComponentCallbacks2.TRIM_MEMORY_UI_HIDDEN)) {
             ImageLoader.clearMemoryIfInitialized();
         }
     }

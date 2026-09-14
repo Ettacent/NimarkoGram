@@ -53,6 +53,15 @@ import app.nimarkogram.messenger.preferences.helpers.PopupHelper;
 import app.nimarkogram.messenger.preferences.helpers.SettingsHelper;
 
 public class GeneralPreferencesActivity extends NimarkoUniversalPreferencesActivity {
+    @Override
+    public org.telegram.ui.Components.AnimatedLinearLayout getInAppNotificationPanel() {
+        org.telegram.ui.Components.AnimatedLinearLayout panel = super.getInAppNotificationPanel();
+        int verticalPadding = AndroidUtilities.dp(7);
+        if (panel != null && (panel.getPaddingTop() != verticalPadding || panel.getPaddingBottom() != 0)) {
+            panel.setPadding(panel.getPaddingLeft(), verticalPadding, panel.getPaddingRight(), 0);
+        }
+        return panel;
+    }
 
     private static final int PAGE_OVERVIEW = 0;
     private static final int PAGE_SYSTEM = 1;
@@ -95,7 +104,6 @@ public class GeneralPreferencesActivity extends NimarkoUniversalPreferencesActiv
     private static final int uploadSpeedBoostRow = 13;
     private static final int slowNetworkMode = 14;
 
-    private static final int deletedGiftsRow = 15;
     private static final int localPremiumEmojisRow = 16;
 
     private boolean uiAlive;
@@ -118,7 +126,7 @@ public class GeneralPreferencesActivity extends NimarkoUniversalPreferencesActiv
                     notificationReactionEmojiRow, hideStoriesRow, archiveStoriesRow,
                     inAppNotificationsRow, inAppNotificationsPreviewRow -> PAGE_NOTIFICATIONS;
             case downloadSpeedBoostRow, uploadSpeedBoostRow, slowNetworkMode -> PAGE_CONNECTION;
-            case deletedGiftsRow, localPremiumEmojisRow -> PAGE_CONTENT;
+            case localPremiumEmojisRow -> PAGE_CONTENT;
             case exportConfigRow, importConfigRow -> PAGE_BACKUP;
             default -> PAGE_OVERVIEW;
         };
@@ -297,11 +305,6 @@ public class GeneralPreferencesActivity extends NimarkoUniversalPreferencesActiv
     }
 
     private void fillContent(ArrayList<UItem> items) {
-        items.add(SettingsHelper.asSwitchCG(deletedGiftsRow,
-                        getString(R.string.NM_GEN_DeletedGifts),
-                        getString(R.string.NM_GEN_DeletedGifts_Desc))
-                .setChecked(NimarkoConfig.deletedGiftsInject)
-        );
         items.add(SettingsHelper.asSwitchCG(localPremiumEmojisRow,
                         getString(R.string.NM_GEN_LocalPremiumEmoji),
                         getString(R.string.NM_GEN_LocalPremiumEmoji_Desc))
@@ -430,21 +433,6 @@ public class GeneralPreferencesActivity extends NimarkoUniversalPreferencesActiv
             SettingsHelper.updateCheckState(view, NimarkoConfig.slowNetworkMode);
 
             showRestartBulletin();
-        } else if (item.id == deletedGiftsRow) {
-            NimarkoConfig.toggleDeletedGiftsInject();
-            SettingsHelper.updateCheckState(view, NimarkoConfig.deletedGiftsInject);
-
-            for (int account = 0; account < org.telegram.messenger.UserConfig.MAX_ACCOUNT_COUNT; account++) {
-                if (NimarkoConfig.deletedGiftsInject) {
-                    app.nimarkogram.messenger.gifts.NimarkoDeletedGiftsManager.maybeInject(account);
-                } else {
-                    app.nimarkogram.messenger.gifts.NimarkoDeletedGiftsManager.removeInjected(account);
-                }
-                try {
-                    org.telegram.messenger.NotificationCenter.getInstance(account)
-                            .postNotificationName(org.telegram.messenger.NotificationCenter.starGiftsLoaded);
-                } catch (Throwable ignored) {}
-            }
         } else if (item.id == localPremiumEmojisRow) {
             NimarkoConfig.toggleLocalPremiumEmojis();
             SettingsHelper.updateCheckState(view, NimarkoConfig.localPremiumEmojis);

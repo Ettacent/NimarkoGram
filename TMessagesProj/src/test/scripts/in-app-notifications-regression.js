@@ -551,6 +551,8 @@ assert.match(settings, /asSwitchCG\(inAppNotificationsRow,[\s\S]*?\.setChecked\(
 assert.match(settings, /if\s*\(NimarkoConfig.inAppNotifications\)\s*\{[\s\S]*?inAppNotificationsPreviewRow/);
 assert.match(settings, /item.id == inAppNotificationsRow[\s\S]*?toggleInAppNotifications\(\)[\s\S]*?NimarkoInAppNotifications.dismiss\(\)/);
 assert.match(settings, /item.id == inAppNotificationsPreviewRow[\s\S]*?NimarkoInAppNotifications.preview\(\)/);
+assert.match(extract(settings, 'public org.telegram.ui.Components.AnimatedLinearLayout getInAppNotificationPanel()'),
+    /verticalPadding\s*=\s*AndroidUtilities\.dp\(7\)[\s\S]*?setPadding\(panel\.getPaddingLeft\(\), verticalPadding, panel\.getPaddingRight\(\), 0\)/);
 const row = settings.match(/inAppNotificationsRow\s*=\s*(\d+)/);
 assert(row, 'settings row ID');
 assert(new RegExp(`SCREEN_GENERAL,\\s*${row[1]},\\s*R.string.NM_InAppNotifications,`).test(search), 'search routes to actual settings row');

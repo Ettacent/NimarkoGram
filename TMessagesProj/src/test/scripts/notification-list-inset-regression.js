@@ -6,11 +6,12 @@ const java = `
 class FrameLayout {static class LayoutParams {int topMargin=20;}}
 class View {}
 class LinearLayoutManager {
- int offset,position=-1; View first=new View();
+ int offset,position=-1,firstPosition=0,decoratedTop=12; boolean pendingScroll; View first=new View();
+ boolean hasPendingScrollPosition(){return pendingScroll;}
  int getOrientation(){return 1;}boolean getReverseLayout(){return false;}boolean getStackFromEnd(){return false;}
- boolean isSmoothScrolling(){return false;}int findFirstVisibleItemPosition(){return 3;}
- View findViewByPosition(int p){return first;}int getDecoratedTop(View v){return 7;}
- void scrollToPositionWithOffset(int p,int o){position=p;offset=o;}
+ boolean isSmoothScrolling(){return false;}int findFirstVisibleItemPosition(){return firstPosition;}
+ View findViewByPosition(int p){return first;}int getDecoratedTop(View v){return decoratedTop;}
+ void scrollToPositionWithOffset(int p,int o){position=p;offset=o;pendingScroll=true;}
 }
 class RecyclerView {
  static final int VERTICAL=1,NO_POSITION=-1;boolean pending;
@@ -43,9 +44,30 @@ public class InsetTest {
    inset.release();check(list.top==30&&list.params.topMargin==20&&list.clip==clip);
   }
   RecyclerView list=new RecyclerView();NotificationListInset inset=new NotificationListInset(list);
-  inset.apply(80,0,1);check(list.manager.position==3&&list.manager.offset==-5);
-  inset.apply(90,0,1);check(list.manager.offset==-5);
-  list.pending=false;inset.release();check(list.manager.offset==7-102&&list.top==12);
+  inset.apply(80,0,1);check(list.manager.position==0&&list.manager.offset==0&&list.top==92);
+  inset.apply(90,0,1);check(list.manager.offset==0&&list.top==102);
+  list.pending=false;list.manager.pendingScroll=false;list.manager.decoratedTop=102;inset.release();check(list.manager.offset==0&&list.top==12);
+  RecyclerView measuring=new RecyclerView();measuring.pending=true;
+  NotificationListInset duringLayout=new NotificationListInset(measuring);
+  duringLayout.apply(80,0,1);check(measuring.manager.position==0&&measuring.manager.offset==0&&measuring.top==92);
+  duringLayout.apply(90,0,1);check(measuring.manager.position==0&&measuring.manager.offset==0&&measuring.top==102);
+  RecyclerView targeted=new RecyclerView();targeted.manager.firstPosition=3;targeted.manager.decoratedTop=-25;
+  targeted.manager.pendingScroll=true;targeted.manager.position=9;targeted.manager.offset=27;
+  new NotificationListInset(targeted).apply(80,0,1);check(targeted.manager.position==9&&targeted.manager.offset==27);
+  for(int first:new int[]{1,3,20}){
+   RecyclerView scrolled=new RecyclerView();scrolled.manager.firstPosition=first;scrolled.manager.decoratedTop=-25;
+   NotificationListInset floating=new NotificationListInset(scrolled);floating.apply(90,80,1);
+   check(scrolled.top==150&&scrolled.manager.position==first&&scrolled.manager.offset==-175&&!scrolled.clip);
+   scrolled.manager.pendingScroll=false;scrolled.manager.firstPosition=0;scrolled.manager.decoratedTop=150;
+   floating.apply(80,80,1);check(scrolled.top==140&&scrolled.manager.position==0&&scrolled.manager.offset==0);
+   floating.apply(0,0,0);check(scrolled.top==12&&scrolled.clip);
+  }
+  RecyclerView partial=new RecyclerView();partial.manager.decoratedTop=10;
+  new NotificationListInset(partial).apply(80,0,1);check(partial.top==92&&partial.manager.position==0&&partial.manager.offset==-82);
+  RecyclerView bounded=new RecyclerView();NotificationListInset boundedInset=new NotificationListInset(bounded);
+  boundedInset.apply(90,80,1);check(bounded.top==150&&bounded.manager.offset==0);
+  bounded.manager.pendingScroll=false;bounded.manager.decoratedTop=100;boundedInset.release();
+  check(bounded.top==12&&bounded.manager.offset==0&&bounded.clip);
   System.out.println("PASS: list viewport preserved, rounded edges remain backed by scrolling content, repeated frames, expansion, insets and release");
  }
 }
@@ -54,5 +76,17 @@ try {
  fs.writeFileSync(path.join(dir, 'InsetTest.java'), java);
  cp.execFileSync('javac', [path.join(dir, 'InsetTest.java')]);
  cp.execFileSync('java', ['-cp', dir, 'InsetTest'], {stdio:'inherit'});
+ for (const [label, broken] of [
+  ['pending target', java.replace('&& !layout.hasPendingScrollPosition()', '')],
+  ['old anchor', java.replace('targetTop - writtenTop', 'top - previousPadding')],
+  ['missing reservation', java.replace('int next = height + Math.round', 'int next = 0 * height + Math.round')]
+ ]) {
+  assert.notEqual(broken, java);
+  fs.writeFileSync(path.join(dir, 'InsetTest.java'), broken);
+  cp.execFileSync('javac', [path.join(dir, 'InsetTest.java')]);
+  const result = cp.spawnSync('java', ['-cp', dir, 'InsetTest'], {encoding:'utf8'});
+  assert.notEqual(result.status, 0, `${label} negative control must fail`);
+  assert.match(result.stderr, /AssertionError/);
+ }
  assert(!source.includes('setBackground'));
 } finally {fs.rmSync(dir, {recursive:true,force:true});}

@@ -29,21 +29,38 @@ final class NotificationListInset {
         }
         boolean changed = next != applied;
         if (changed) {
-            if (!list.isLayoutRequested() && !list.hasPendingAdapterUpdates() && !list.isComputingLayout()
+            int previous = applied;
+            int previousPadding = list.getPaddingTop();
+            LinearLayoutManager layout = null;
+            int position = RecyclerView.NO_POSITION;
+            int top = 0;
+            if (!list.hasPendingAdapterUpdates() && !list.isComputingLayout()
                     && list.getLayoutManager() instanceof LinearLayoutManager) {
-                LinearLayoutManager layout = (LinearLayoutManager) list.getLayoutManager();
+                layout = (LinearLayoutManager) list.getLayoutManager();
                 if (layout.getOrientation() == RecyclerView.VERTICAL && !layout.getReverseLayout()
-                        && !layout.getStackFromEnd() && !layout.isSmoothScrolling()) {
-                    int position = layout.findFirstVisibleItemPosition();
+                        && !layout.getStackFromEnd() && !layout.isSmoothScrolling()
+                        && !layout.hasPendingScrollPosition()) {
+                    position = layout.findFirstVisibleItemPosition();
                     View first = layout.findViewByPosition(position);
                     if (position != RecyclerView.NO_POSITION && first != null) {
-                        layout.scrollToPositionWithOffset(position, layout.getDecoratedTop(first) - list.getPaddingTop());
+                        top = layout.getDecoratedTop(first);
                     }
                 }
             }
             applied = next;
             writtenTop = base + next;
             list.setPadding(list.getPaddingLeft(), writtenTop, list.getPaddingRight(), list.getPaddingBottom());
+            if (layout != null && position != RecyclerView.NO_POSITION) {
+                int targetTop;
+                if (position > 0) {
+                    targetTop = top;
+                } else if (next > previous) {
+                    targetTop = top < previousPadding - 1 ? top : writtenTop;
+                } else {
+                    targetTop = Math.min(top, writtenTop);
+                }
+                layout.scrollToPositionWithOffset(position, targetTop - writtenTop);
+            }
         }
         if (next == 0 && active) {
             list.setClipToPadding(originalClip);

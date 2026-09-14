@@ -354,7 +354,7 @@
     <string name="NM_SettingsSectionDiagnosticsCompatibility">診斷與相容性</string>
     <string name="NM_SettingsSectionAvatarsStickers">頭像與貼圖</string>
     <string name="NM_SettingsSectionSystemAnimations">系統與動畫</string>
-    <string name="NM_SettingsSectionGiftsEmoji">禮物與表情符號</string>
+    <string name="NM_SettingsSectionGiftsEmoji">表情符號</string>
     <string name="NM_SettingsSectionNavigationLayout">導覽與版面配置</string>
     <string name="NM_SettingsSectionChatAppearance">聊天外觀</string>
     <string name="NM_SettingsSectionDataContent">資料與內容</string>
@@ -372,7 +372,7 @@
     <string name="NM_SettingsSummaryGeneralInterface">動畫、表情符號與字型</string>
     <string name="NM_SettingsSummaryNotificationsStories">通知、表情回應與限時動態</string>
     <string name="NM_SettingsSummaryConnection">下載、上傳與弱網路</string>
-    <string name="NM_SettingsSummaryContent">禮物與進階表情符號</string>
+    <string name="NM_SettingsSummaryContent">本機進階表情符號</string>
     <string name="NM_SettingsSummaryDataBackup">匯出或還原設定</string>
     <string name="NM_SettingsSummaryAppearanceLayout">資料夾、分頁與個人資料樣式</string>
     <string name="NM_SettingsSummaryAppearanceInterface">圖示、開關、分隔線與模糊</string>
