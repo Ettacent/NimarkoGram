@@ -58,7 +58,8 @@ class View {
     void setMeasuredDimension(int width,int height){measuredWidth=width;measuredHeight=height;}
     protected void onMeasure(int width,int height){setMeasuredDimension(MeasureSpec.getSize(width),desiredHeight);}
     void measure(int width,int height){onMeasure(width,height);}
-    ViewGroup getParent(){return parent;} boolean isAttachedToWindow(){return true;}
+    boolean attached=true,shown=true;
+    ViewGroup getParent(){return parent;} boolean isAttachedToWindow(){return attached;} boolean isShown(){return shown;}
     void setPressed(boolean value){} void setImportantForAccessibility(int value){}
     void setAlpha(float value){} void setScaleX(float value){} void setScaleY(float value){}
     void setTranslationY(float value){translationY=value;}
@@ -155,11 +156,15 @@ public class NotificationSlotGeometryTest {
         ${slotMethods}
         ${measureMethod}
     }
+    static class NotificationInlinePanel extends AnimatedLinearLayout {
+        int reservation=80,updates;
+        void onContentRemoved(){updates++;Slot s=(Slot)getChildAt(0);int compact=s.getCompactHeight();float visible=s.getCompactVisibleHeight();reservation=Math.round(visible+(compact>0?8*Math.min(1f,visible/compact):0));}
+    }
     static class Banner extends View {
         Object previewTrace;
         float pullOffset;Slot slot;Delivery delivery;
         int collapsedHeight = 68;
-        boolean closing,opening,touching,sample;int account;long owner,loginSession,dialogId,expiresAt;
+        boolean closing,opening,touching,sample,moving;int account;long owner,loginSession,dialogId,expiresAt;
         final Runnable watch=()->{};
         Banner(int height,float pull){desiredHeight=height;pullOffset=pull;}
         void tracePreview(String stage){} void cancelExpansion(){} void cancelContentTransition(){}
@@ -216,6 +221,20 @@ public class NotificationSlotGeometryTest {
         check(slot.getLayoutCoverage()==0&&slot.getMinimumHeight()==0,"detached empty slot keeps zero coverage during native cleanup");
     }
     static void spacing(){
+        for(int reason=0;reason<4;reason++){
+            NotificationInlinePanel oldPanel=new NotificationInlinePanel();Slot oldSlot=Slot.obtain(oldPanel);
+            Banner old=new Banner(80,0);oldSlot.attach(old);measure(oldSlot,360);
+            if(reason==0)oldSlot.attached=false;
+            if(reason==1)oldSlot.shown=false;
+            if(reason==2)old.setVisibility(View.INVISIBLE);
+            if(reason==3)old.moving=true;
+            oldSlot.release(old);
+            equal(oldPanel.reservation,0,"leaving profile clears reservation without another panel layout");
+            equal(oldSlot.getMinimumHeight(),0,"hidden removal cannot retain the old notification height");
+            oldSlot.attached=oldSlot.shown=true;measure(oldSlot,360);
+            equal(oldSlot.getCompactVisibleHeight(),0,"return cannot resurrect an empty retained slot");
+            equal(oldSlot.getMeasuredHeight(),0,"return does not depend on a touch or animation callback");
+        }
         AnimatedLinearLayout panel=new AnimatedLinearLayout();Slot slot=Slot.obtain(panel);
         View pinned=new View(),translation=new View();panel.addView(pinned,null);panel.addView(translation,null);
         Banner card=new Banner(80,0);slot.attach(card);
@@ -327,6 +346,9 @@ try {
             {cwd: dir, encoding: 'utf8', timeout: 10000});
     }
     const result = run(harness());
+    const stale = run(harness().replace('retainedCompactHeight = 0;', '').replace('retainedCompactVisibleHeight = 0f;', ''));
+    assert.notEqual(stale.status, 0, 'retaining the old slot must reproduce the empty profile gap');
+    assert.match(stale.stderr, /leaving profile clears reservation/);
     assert.equal(result.status, 0, result.error || result.stderr);
     process.stdout.write(result.stdout);
 

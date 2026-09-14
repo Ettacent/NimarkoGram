@@ -165,6 +165,7 @@ public final class NimarkoInAppNotifications {
             panel.setViewVisible(this, true, true);
         }
         void release(Banner value) {
+            boolean animate = isAttachedToWindow() && isShown() && value.getVisibility() == VISIBLE && !value.moving;
             if (value.getParent() == this && getChildCount() == 1) {
                 retainedCoverage = getLayoutCoverage();
                 retainedCompactHeight = getCompactHeight();
@@ -172,7 +173,18 @@ public final class NimarkoInAppNotifications {
                 setMinimumHeight(retainedCoverage == 0f ? 0 : getMeasuredHeight());
             }
             if (value.getParent() == this) removeView(value);
-            if (getChildCount() == 0) panel.setViewVisible(this, false, isAttachedToWindow());
+            if (getChildCount() == 0) {
+                if (!animate) {
+                    retainedCoverage = 0f;
+                    retainedCompactHeight = 0;
+                    retainedCompactVisibleHeight = 0f;
+                    setMinimumHeight(0);
+                }
+                panel.setViewVisible(this, false, animate);
+                if (!animate && panel instanceof NotificationInlinePanel) {
+                    ((NotificationInlinePanel) panel).onContentRemoved();
+                }
+            }
         }
         @Override protected void onMeasure(int widthSpec, int heightSpec) {
             int height = getMinimumHeight();

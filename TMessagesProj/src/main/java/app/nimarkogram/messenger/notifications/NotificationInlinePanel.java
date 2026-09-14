@@ -43,6 +43,9 @@ public final class NotificationInlinePanel extends AnimatedLinearLayout implemen
         reservationLayout = layout;
         return this;
     }
+    void onContentRemoved() {
+        updateCompactReservation();
+    }
     private void updateCompactReservation() {
         if (reservationListener == null) return;
         float height = 0f;
@@ -206,6 +209,8 @@ public final class NotificationInlinePanel extends AnimatedLinearLayout implemen
     @Override protected void onDetachedFromWindow() {
         if (observer != null && observer.isAlive()) observer.removeOnPreDrawListener(this);
         observer = null;
+        if (reservationListener != null) reservationListener.accept(0);
+        if (overlayPositionListener != null) overlayPositionListener.accept(-1);
         super.onDetachedFromWindow();
     }
 }
