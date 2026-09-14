@@ -18079,14 +18079,21 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
     }
     private void updateProfileNotificationControls(int notificationTop) {
         if (sharedMediaLayout != null) {
-            float height = notificationInlinePanel == null ? 0 : notificationInlinePanel.getAnimatedHeightWithPadding();
+            if (notificationTop < 0 || profileLifecycleDestroyed || fragmentView == null
+                    || fragmentView.getParent() == null || notificationInlinePanel == null
+                    || notificationInlinePanel.getParent() != fragmentView.getParent()) {
+                sharedMediaLayout.setNotificationControlsOffset(0);
+                return;
+            }
+            android.view.ViewParent host = fragmentView.getParent();
+            float height = notificationInlinePanel.getAnimatedHeightWithPadding();
             float mediaTop = sharedMediaLayout.getY();
             android.view.ViewParent parent = sharedMediaLayout.getParent();
-            while (parent instanceof View && parent != fragmentView.getParent()) {
+            while (parent instanceof View && parent != host) {
                 mediaTop += ((View) parent).getY() - ((View) parent).getScrollY();
                 parent = parent.getParent();
             }
-            float offset = notificationTop >= 0 && height > 0 && parent == fragmentView.getParent()
+            float offset = height > 0 && parent == host
                     ? Math.max(0, notificationTop + height
                             + (dp(8) - notificationInlinePanel.getPaddingBottom()) * notificationInlinePanel.getLayoutVisibility()
                             - mediaTop - sharedMediaLayout.getNotificationTabsVisibleTop()) : 0;
