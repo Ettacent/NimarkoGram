@@ -62,6 +62,10 @@ final class NotificationGlassSurface implements ViewTreeObserver.OnPreDrawListen
         });
         update(0);
     }
+    float getShadowOutset() {
+        return (float) Math.ceil(3f * panelColors.getShadowRadius()
+                + Math.max(Math.abs(panelColors.getShadowDx()), Math.abs(panelColors.getShadowDy())) + 1f);
+    }
     void drawShadow(Canvas canvas, float alpha) {
         int color = animatedShadow.get();
         if (alpha <= 0 || Color.alpha(color) == 0) return;

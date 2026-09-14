@@ -74,6 +74,36 @@ public class DialogsActivityTopPanelLayout extends AnimatedLinearLayout {
     }
 
     private int defaultRadiusDp = 24;
+    public float getSharedContentHeight() {
+        float offset = getSharedBackgroundOffset();
+        return offset < 0 ? 0 : Math.max(0f, getMetadata().getTotalHeight() - offset);
+    }
+    public float getSharedContentVisibility() {
+        float appearing = 0f, retiring = 0f;
+        for (int i = 0; i < getEntriesCount(); i++) {
+            var entry = getEntry(i);
+            if (entry.item.view instanceof IndependentPanel) continue;
+            if (entry.isAffectingList()) appearing = Math.max(appearing, entry.getVisibility());
+            else retiring = Math.max(retiring, entry.getVisibility());
+        }
+        return Math.min(1f, appearing + retiring);
+    }
+    public int getNotificationListInset(float padding, float tabsVisibility) {
+        float independentHeight = getSharedBackgroundOffset();
+        if (independentHeight == 0) return 0;
+        if (independentHeight < 0) independentHeight = getMetadata().getTotalHeight();
+        float nativeVisibility = 0;
+        for (int i = 0; i < getEntriesCount(); i++) {
+            var entry = getEntry(i);
+            if (!(entry.item.view instanceof IndependentPanel)) nativeVisibility += entry.getVisibility();
+        }
+        nativeVisibility = Math.min(getMetadata().getTotalVisibility(), nativeVisibility);
+        float nativeHeight = Math.max(0, getMetadata().getTotalHeight() - independentHeight);
+        return (int) getAnimatedHeightWithPadding(padding)
+                - (int) (nativeHeight + padding * nativeVisibility + .001f)
+                - dp(5 * Math.max(tabsVisibility, getLayoutVisibility()))
+                + dp(5 * Math.max(tabsVisibility, nativeVisibility));
+    }
 
     public void setDefaultRadiusDp(int defaultRadius) {
         this.defaultRadiusDp = defaultRadius;

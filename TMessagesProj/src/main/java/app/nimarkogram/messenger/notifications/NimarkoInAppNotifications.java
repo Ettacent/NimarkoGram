@@ -102,6 +102,11 @@ public final class NimarkoInAppNotifications {
 
     private static final class Slot extends FrameLayout implements AnimatedLinearLayout.IndependentPanel, NotificationInlinePanel.CompactContent {
         final AnimatedLinearLayout panel;
+        private Paint edgeFadePaint;
+        private int contentAlpha = 255;
+        private final android.graphics.RectF contentBounds = new android.graphics.RectF();
+        private final android.graphics.RectF childBounds = new android.graphics.RectF();
+        private final android.graphics.Matrix edgeFadeMatrix = new android.graphics.Matrix();
         boolean directResize;
         float retainedCoverage = 1f;
         int retainedCompactHeight;
@@ -197,14 +202,63 @@ public final class NimarkoInAppNotifications {
             }
             return super.dispatchTouchEvent(event);
         }
+        @Override protected boolean onSetAlpha(int alpha) {
+            contentAlpha = alpha;
+            invalidate();
+            return true;
+        }
+        @Override protected void dispatchDraw(android.graphics.Canvas canvas) {
+            if (contentAlpha == 0) return;
+            int layer = -1;
+            if (contentAlpha < 255) {
+                contentBounds.set(0, 0, getWidth(), getHeight());
+                for (int i = 0; i < getChildCount(); i++) {
+                    Banner child = (Banner) getChildAt(i);
+                    if (child.getVisibility() != VISIBLE) continue;
+                    float outset = child.surface.getShadowOutset();
+                    childBounds.set(-outset, -outset, child.getWidth() + outset, child.getHeight() + outset);
+                    child.getMatrix().mapRect(childBounds);
+                    childBounds.offset(child.getLeft(), child.getTop());
+                    contentBounds.union(childBounds);
+                }
+                layer = canvas.saveLayerAlpha(contentBounds.left, contentBounds.top,
+                        contentBounds.right, contentBounds.bottom, contentAlpha);
+            }
+            super.dispatchDraw(canvas);
+            if (layer != -1) canvas.restoreToCount(layer);
+        }
+        private float getEdgeFadeHeight(float offset) {
+            return Math.min(dp(12), Math.max(0f, -offset));
+        }
+        private float getVisibleCardHeight(float height, float offset) {
+            return Math.max(0f, Math.min(getHeight(), height + offset));
+        }
         @Override protected boolean drawChild(android.graphics.Canvas canvas, View child, long drawingTime) {
             Banner value = (Banner) child;
+            float visibleHeight = getVisibleCardHeight(child.getHeight(), value.pullOffset);
+            if (getWidth() <= 0 || visibleHeight <= 0f) return false;
+            float fadeHeight = getEdgeFadeHeight(value.pullOffset);
+            if (fadeHeight > 0f && edgeFadePaint == null) {
+                edgeFadePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+                edgeFadePaint.setShader(new android.graphics.LinearGradient(0, 0, 0, 1,
+                        android.graphics.Color.BLACK, android.graphics.Color.TRANSPARENT, android.graphics.Shader.TileMode.CLAMP));
+                edgeFadePaint.setXfermode(new android.graphics.PorterDuffXfermode(android.graphics.PorterDuff.Mode.DST_OUT));
+            }
+            float outset = value.surface.getShadowOutset();
+            int layer = fadeHeight > 0f ? canvas.saveLayer(-outset, 0, getWidth() + outset, visibleHeight + outset, null) : -1;
             int save = canvas.save();
             canvas.translate(child.getLeft(), child.getTop());
             canvas.concat(child.getMatrix());
             value.surface.drawShadow(canvas, child.getAlpha());
             canvas.restoreToCount(save);
-            return super.drawChild(canvas, child, drawingTime);
+            boolean result = super.drawChild(canvas, child, drawingTime);
+            if (layer != -1) {
+                edgeFadeMatrix.setScale(1f, fadeHeight);
+                edgeFadePaint.getShader().setLocalMatrix(edgeFadeMatrix);
+                canvas.drawRect(-outset, 0, getWidth() + outset, fadeHeight, edgeFadePaint);
+                canvas.restoreToCount(layer);
+            }
+            return result;
         }
     }
 
@@ -950,14 +1004,15 @@ public final class NimarkoInAppNotifications {
             if (closing || opening || banner != this) return;
             opening = true;
             touching = true;
+            setPressed(false);
             cancelExpansion();
             animate().cancel();
             if (!sample && account != UserConfig.selectedAccount) {
                 openChat();
                 return;
             }
-            animate().alpha(0f).scaleX(.98f).scaleY(.98f)
-                    .setDuration(160).setInterpolator(CubicBezierInterpolator.EASE_BOTH)
+            animate().withLayer().alpha(0f).scaleX(.98f).scaleY(.98f)
+                    .setDuration(220).setInterpolator(CubicBezierInterpolator.EASE_OUT)
                     .withEndAction(() -> { if (banner == this && opening) openChat(); }).start();
         }
 

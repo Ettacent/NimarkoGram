@@ -130,8 +130,10 @@ public class BlurredBackgroundDrawableRenderNode extends BlurredBackgroundDrawab
         renderNodeFill.endRecording();
 
         c = renderNode.beginRecording();
-        if (Color.alpha(backgroundColor) == 255) {
-            c.drawColor(backgroundColor);
+        final int effectiveBackgroundColor = liquidGlassEffect != null && Build.VERSION.SDK_INT >= 33
+                ? liquidGlassEffect.getForegroundColor() : backgroundColor;
+        if (Color.alpha(effectiveBackgroundColor) == 255) {
+            c.drawColor(effectiveBackgroundColor);
         } else {
             c.drawRenderNode(renderNodeFill);
             if (liquidGlassEffect == null && Color.alpha(backgroundColor) != 0) {

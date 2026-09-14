@@ -5355,10 +5355,13 @@ public class StarGiftSheet extends BottomSheetWithRecyclerListView implements No
     private void openInProfile() {
         final long dialogId = getDialogId();
         if (dialogId == 0) return;
-        openProfile(dialogId);
+        openProfile(dialogId, true);
     }
 
     private void openProfile(long did) {
+        openProfile(did, false);
+    }
+    private void openProfile(long did, boolean openGifts) {
         if (currentHintView != null) {
             currentHintView.hide();
             currentHintView = null;
@@ -5376,7 +5379,7 @@ public class StarGiftSheet extends BottomSheetWithRecyclerListView implements No
             } else {
                 args.putLong("chat_id", -did);
             }
-            args.putBoolean("open_gifts", true);
+            args.putBoolean("open_gifts", openGifts);
             lastFragment.presentFragment(new ProfileActivity(args));
         }
     }

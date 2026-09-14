@@ -7017,12 +7017,17 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
 
     private void collapseAvatarInstant() {
         if (allowPullingDown && currentExpandAnimatorValue > 0) {
+            final int generation = profileLifecycleGeneration;
             layoutManager.scrollToPositionWithOffset(0, getHeaderExtraHeight() - listView.getPaddingTop());
             listView.post(() -> {
+                if (profileLifecycleDestroyed || generation != profileLifecycleGeneration || listView == null) return;
+                extraHeight = getHeaderExtraHeight();
                 needLayout(true);
                 if (expandAnimator.isRunning()) {
                     expandAnimator.cancel();
                 }
+                expandAnimatorValues[0] = 0f;
+                expandAnimatorValues[1] = 0f;
                 setAvatarExpandProgress(1f);
                 // Terminal collapse with no edge taking over: cancelling an in-flight expand here would
                 // otherwise leave pager ownership (and a stale full-screen height) stuck. Hard-reset.
@@ -17914,6 +17919,9 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
         pendingProfileRowsOnlineCount = false;
         pendingProfileRowsSelectedMediaText = false;
         updateListAnimated(updateOnlineCount, false);
+        if (updateOnlineCount) {
+            updateProfileData(false);
+        }
         if (updateSelectedMediaText) {
             updateSelectedMediaTabText();
         }

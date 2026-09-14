@@ -103,6 +103,12 @@ public class PlacementTest {
   check(list.callbacks.size()==1,"coalesce mutations during layout");int passes=list.layoutPasses;place.prepareForDraw();check(list.layoutPasses==passes,"no reentrant layout");
   list.computing=false;list.frame();list.finishLayout();place.getItemOffsets(offsets,first,list,new RecyclerView.State());check(offsets.bottom==93,"apply latest pending height");
   list.pending=true;place.setReservedHeight(94);check(list.callbacks.size()==1,"wait for adapter updates");list.pending=false;list.frame();list.finishLayout();
+  list.shown=false;list.pending=true;int hiddenScrolls=layout.scrollCalls;
+  place.setReservedHeight(0);place.getItemOffsets(offsets,first,list,new RecyclerView.State());
+  check(offsets.bottom==0,"notification moved to chats clears the hidden profile reservation immediately");
+  check(list.callbacks.isEmpty()&&layout.scrollCalls==hiddenScrolls,"hidden profile neither spins pending adapter retries nor overwrites its saved scroll");
+  list.pending=false;list.shown=true;list.finishLayout();place.getItemOffsets(offsets,first,list,new RecyclerView.State());
+  check(offsets.bottom==0,"return to profile needs no new notification or gesture to remove stale space");
   list.shown=false;place.setReservedHeight(95);check(list.callbacks.isEmpty(),"hidden profile cannot block drawing or spin retries");
   list.shown=true;place.setReservedHeight(95);list.finishLayout();place.getItemOffsets(offsets,first,list,new RecyclerView.State());check(offsets.bottom==95,"resume reservation when visible");
   int previous=Integer.MAX_VALUE;
@@ -126,6 +132,7 @@ try {
         ['outRect.bottom = reservedHeight;', 'outRect.top = reservedHeight;'],
         ['Math.round(list.getY()) + anchor.getBottom()', 'Math.round(list.getY()) + anchor.getBottom() + reservedHeight'],
         ['Math.min(child.collapsedHeight,', 'Math.min(child.getMeasuredHeight(),'],
+        ['requestedHeight = Math.max(0, height);', 'requestedHeight = Math.max(0, height); if (!list.isShown()) return;'],
     ];
     for (const [from,to] of mutants) {
         assert(java.includes(from), from);
@@ -135,5 +142,5 @@ try {
         assert.notEqual(run.status,0,'negative control must fail: '+to);
         assert.match(run.stderr,/AssertionError/);
     }
-    console.log('PASS: 3 negative controls reject header displacement, feedback and expansion-sized reservation');
+    console.log('PASS: 4 negative controls reject header displacement, feedback, expansion-sized reservation and stale hidden reservation');
 } finally {fs.rmSync(tmp,{recursive:true,force:true});}

@@ -54,7 +54,8 @@ public class MotionTest {
   ${method(cards, 'private void cancelAnimResume()')}
  }
  static class Animation {
-  Runnable end; int starts; long duration;
+  Runnable end; int starts; long duration; boolean layered;
+  Animation withLayer(){layered=true;return this;}
   void cancel(){end=null;} Animation alpha(float a){return this;} Animation scaleX(float a){return this;}
   Animation scaleY(float a){return this;} Animation translationY(float a){return this;}
   Animation setDuration(long d){duration=d;return this;} Animation setInterpolator(Object i){return this;}
@@ -136,7 +137,7 @@ public class MotionTest {
   n.animateOpenChat();check(n.opens==1);
   for(int height:new int[]{64,160,420}){
    n=new Banner();Banner.banner=n;n.height=height;n.animateOpenChat();
-   check(n.opening&&n.touching&&n.opens==0&&n.animator.duration==160&&n.pullAnimator==null);
+   check(n.opening&&n.touching&&n.opens==0&&n.animator.duration==220&&n.animator.layered&&n.pullAnimator==null);
    n.animateOpenChat();check(n.animator.starts==1&&n.pullAnimator==null);
    check(n.slot.layouts==0&&n.pullOffset==0&&n.translationY==0);
    n.animator.finish();check(n.opens==1);n.animator.finish();check(n.opens==1);

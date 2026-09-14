@@ -30,8 +30,7 @@ public final class ProfileNotificationPlacement extends RecyclerView.ItemDecorat
         requestedHeight = Math.max(0, height);
         list.removeCallbacks(this);
         if (requestedHeight == reservedHeight) return;
-        if (!list.isShown()) return;
-        if (list.isComputingLayout() || list.hasPendingAdapterUpdates()) {
+        if (list.isComputingLayout() || list.isShown() && list.hasPendingAdapterUpdates()) {
             list.postOnAnimation(this);
         } else {
             run();
@@ -40,15 +39,14 @@ public final class ProfileNotificationPlacement extends RecyclerView.ItemDecorat
 
     @Override public void run() {
         if (released || requestedHeight == reservedHeight) return;
-        if (!list.isShown()) return;
-        if (list.isComputingLayout() || list.hasPendingAdapterUpdates()) {
+        if (list.isComputingLayout() || list.isShown() && list.hasPendingAdapterUpdates()) {
             list.removeCallbacks(this);
             list.postOnAnimation(this);
             return;
         }
 
         View first = layout.findViewByPosition(0);
-        if (first != null && !layout.hasPendingScrollPosition() && !layout.isSmoothScrolling()) {
+        if (list.isShown() && first != null && !layout.hasPendingScrollPosition() && !layout.isSmoothScrolling()) {
             layout.scrollToPositionWithOffset(0, layout.getDecoratedTop(first) - list.getPaddingTop());
         }
         reservedHeight = requestedHeight;
