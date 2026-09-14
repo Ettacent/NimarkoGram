@@ -15,6 +15,7 @@ const tests = [
     'notification-foreground-delivery-regression.js',
     'notification-inline-regression.js',
     'notification-list-inset-regression.js',
+    'profile-notification-destroy-regression.js',
     'notification-padding-tail-regression.js',
     'notification-slot-geometry-regression.js',
     'notification-panel-clipping-regression.js',
