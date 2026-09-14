@@ -263,6 +263,8 @@ public abstract class BaseFragment {
             java.util.ArrayList<View> contents = new java.util.ArrayList<>();
             for (int i = 0; i < root.getChildCount(); i++) {
                 View child = root.getChildAt(i);
+                if (root instanceof org.telegram.ui.Components.SizeNotifierFrameLayout
+                        && child == ((org.telegram.ui.Components.SizeNotifierFrameLayout) root).backgroundView) continue;
                 if (child.getLayoutParams().height == ViewGroup.LayoutParams.MATCH_PARENT) contents.add(child);
             }
             if (contents.isEmpty()) return null;
