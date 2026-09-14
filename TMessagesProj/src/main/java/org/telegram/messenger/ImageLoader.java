@@ -2497,7 +2497,6 @@ public class ImageLoader {
             final SparseArray<File> paths = createMediaPaths();
             AndroidUtilities.runOnUIThread(() -> {
                 FileLoader.setMediaDirs(paths);
-                app.nimarkogram.messenger.gifts.NimarkoDeletedGiftsManager.onMediaDirectoriesChanged();
                 if (after != null) {
                     after.run();
                 }

@@ -421,11 +421,6 @@ public final class NimarkoConfig {
         getEditor().putBoolean("localPremiumEmojis", localPremiumEmojis).apply();
     }
 
-    public static boolean deletedGiftsInject = getPreferences().getBoolean("deletedGiftsInject", true);
-    public static void toggleDeletedGiftsInject() {
-        deletedGiftsInject = !deletedGiftsInject;
-        getEditor().putBoolean("deletedGiftsInject", deletedGiftsInject).apply();
-    }
 
     public static boolean showDetails = getPreferences().getBoolean("showDetails", false);
     public static void toggleShowDetails() {

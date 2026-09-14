@@ -11532,8 +11532,6 @@
     <string name="NM_EXP_DiscussInsteadOfMute">Discuss instead of mute on swipe</string>
     <string name="NM_EXP_Footer">These options are experimental — expect bugs.</string>
     <string name="NM_GEN_MiscHeader">Miscellaneous</string>
-    <string name="NM_GEN_DeletedGifts">Show deleted Star gifts</string>
-    <string name="NM_GEN_DeletedGifts_Desc">Re-injects hidden Star gifts into the catalog so you can still send them.</string>
     <string name="NM_GEN_LocalPremiumEmoji">Local premium emoji</string>
     <string name="NM_GEN_LocalPremiumEmoji_Desc">Send premium emoji without a Premium subscription.</string>
 

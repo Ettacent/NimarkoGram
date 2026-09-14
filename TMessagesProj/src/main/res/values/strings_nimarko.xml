@@ -364,7 +364,7 @@
     <string name="NM_SettingsSectionDiagnosticsCompatibility">Diagnostics and compatibility</string>
     <string name="NM_SettingsSectionAvatarsStickers">Avatars and stickers</string>
     <string name="NM_SettingsSectionSystemAnimations">System and animations</string>
-    <string name="NM_SettingsSectionGiftsEmoji">Gifts and emoji</string>
+    <string name="NM_SettingsSectionGiftsEmoji">Emoji</string>
     <string name="NM_SettingsSectionNavigationLayout">Navigation and layout</string>
     <string name="NM_SettingsSectionChatAppearance">Chat appearance</string>
     <string name="NM_SettingsSectionDataContent">Data and content</string>
@@ -382,7 +382,7 @@
     <string name="NM_SettingsSummaryGeneralInterface">Animations, emoji and fonts</string>
     <string name="NM_SettingsSummaryNotificationsStories">Alerts, reactions and stories</string>
     <string name="NM_SettingsSummaryConnection">Downloads, uploads and weak networks</string>
-    <string name="NM_SettingsSummaryContent">Gifts and premium emoji</string>
+    <string name="NM_SettingsSummaryContent">Local premium emoji</string>
     <string name="NM_SettingsSummaryDataBackup">Export or restore settings</string>
     <string name="NM_SettingsSummaryAppearanceLayout">Folders, tabs and profile style</string>
     <string name="NM_SettingsSummaryAppearanceInterface">Icons, switches, dividers and blur</string>

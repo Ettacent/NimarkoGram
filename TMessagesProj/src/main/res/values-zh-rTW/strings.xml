@@ -575,8 +575,6 @@
     <string name="NM_EXP_DiscussInsteadOfMute">滑動時討論而非靜音</string>
     <string name="NM_EXP_Footer">這些選項為實驗性功能，可能存在問題。</string>
     <string name="NM_GEN_MiscHeader">雜項</string>
-    <string name="NM_GEN_DeletedGifts">顯示已刪除的星星禮物</string>
-    <string name="NM_GEN_DeletedGifts_Desc">將隱藏的星星禮物重新注入目錄，讓你仍可傳送它們。</string>
     <string name="NM_GEN_LocalPremiumEmoji">本機高級表情</string>
     <string name="NM_GEN_LocalPremiumEmoji_Desc">無需 Premium 訂閱即可傳送高級表情。</string>
     <string name="NM_AP_IconReplacement_Solar">Solar 圖示，作者 @Design480</string>

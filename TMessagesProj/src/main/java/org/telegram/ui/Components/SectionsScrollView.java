@@ -100,11 +100,13 @@ public class SectionsScrollView extends ScrollView {
         }
     }
     private float getChildX(View child) {
-        if (child == contentView || !(child.getParent() instanceof View)) return child.getX();
+        if (child == contentView) return 0;
+        if (!(child.getParent() instanceof View)) return child.getX();
         return getChildX((View) child.getParent()) + child.getX();
     }
     private float getChildY(View child) {
-        if (child == contentView || !(child.getParent() instanceof View)) return child.getY();
+        if (child == contentView) return 0;
+        if (!(child.getParent() instanceof View)) return child.getY();
         return getChildY((View) child.getParent()) + child.getY();
     }
 
@@ -144,7 +146,7 @@ public class SectionsScrollView extends ScrollView {
             fromTopMargin = ((MarginLayoutParams) fromLp).topMargin;
         }
         if (to.getParent() != contentView && toLp instanceof MarginLayoutParams) {
-            toBottomMargin = ((MarginLayoutParams) toLp).topMargin;
+            toBottomMargin = ((MarginLayoutParams) toLp).bottomMargin;
         }
 
         AndroidUtilities.rectTmp.set(
@@ -182,9 +184,9 @@ public class SectionsScrollView extends ScrollView {
 
         AndroidUtilities.rectTmp.set(
             child.getX(),
-            Math.max(getScrollY() - dp(16), contentView.getY() + child.getY()),
+            Math.max(getScrollY() - contentView.getY() - dp(16), child.getY()),
             child.getX() + child.getWidth(),
-            Math.min(getHeight() + getScrollY() + dp(16), contentView.getY() + child.getY() + child.getHeight())
+            Math.min(getHeight() + getScrollY() - contentView.getY() + dp(16), child.getY() + child.getHeight())
         );
         if (prev && next) {
             prev = child.getY() >= AndroidUtilities.rectTmp.top;

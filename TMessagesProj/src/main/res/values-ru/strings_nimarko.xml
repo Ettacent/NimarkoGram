@@ -362,7 +362,7 @@
     <string name="NM_SettingsSectionDiagnosticsCompatibility">Диагностика и совместимость</string>
     <string name="NM_SettingsSectionAvatarsStickers">Аватары и стикеры</string>
     <string name="NM_SettingsSectionSystemAnimations">Система и анимации</string>
-    <string name="NM_SettingsSectionGiftsEmoji">Подарки и эмодзи</string>
+    <string name="NM_SettingsSectionGiftsEmoji">Эмодзи</string>
     <string name="NM_SettingsSectionNavigationLayout">Разделы и навигация</string>
     <string name="NM_SettingsSectionChatAppearance">Оформление чата</string>
     <string name="NM_SettingsSectionDataContent">Данные и контент</string>
@@ -380,7 +380,7 @@
     <string name="NM_SettingsSummaryGeneralInterface">Анимации, эмодзи и шрифты</string>
     <string name="NM_SettingsSummaryNotificationsStories">Оповещения, реакции и истории</string>
     <string name="NM_SettingsSummaryConnection">Загрузка, отправка и слабая сеть</string>
-    <string name="NM_SettingsSummaryContent">Подарки и премиум-эмодзи</string>
+    <string name="NM_SettingsSummaryContent">Локальные премиум-эмодзи</string>
     <string name="NM_SettingsSummaryDataBackup">Экспорт и восстановление настроек</string>
     <string name="NM_SettingsSummaryAppearanceLayout">Папки, вкладки и оформление профилей</string>
     <string name="NM_SettingsSummaryAppearanceInterface">Иконки, переключатели, линии и блюр</string>

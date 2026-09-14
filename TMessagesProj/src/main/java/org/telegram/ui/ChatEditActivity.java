@@ -48,6 +48,7 @@ import android.widget.LinearLayout;
 import android.widget.ScrollView;
 
 import androidx.annotation.NonNull;
+import androidx.core.view.ViewCompat;
 
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.ApplicationLoader;
@@ -658,7 +659,7 @@ public class ChatEditActivity extends BaseFragment implements ImageUpdater.Image
 
         LinearLayout linearLayout1 = linearLayout = new SectionsScrollView.SectionsLinearLayout(context);
 
-        scrollView = new SectionsScrollView(context, linearLayout, resourceProvider, false);
+        scrollView = new app.nimarkogram.messenger.notifications.NotificationSectionsScrollView(context, linearLayout, resourceProvider);
         scrollView.setFillViewport(true);
         sizeNotifierFrameLayout.addView(scrollView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT));
         actionBar.setAdaptiveBackground(scrollView);
@@ -1629,6 +1630,8 @@ public class ChatEditActivity extends BaseFragment implements ImageUpdater.Image
         }
         setAvatar();
         updateFields(true, false);
+        ViewCompat.setOnApplyWindowInsetsListener(fragmentView, this::onInsetsInternal);
+        ViewCompat.requestApplyInsets(fragmentView);
 
         return fragmentView;
     }
@@ -2772,6 +2775,10 @@ public class ChatEditActivity extends BaseFragment implements ImageUpdater.Image
     @Override
     public boolean isSupportEdgeToEdge() {
         return true;
+    }
+    @Override
+    public boolean drawEdgeNavigationBar() {
+        return false;
     }
     @Override
     public void onInsets(int left, int top, int right, int bottom) {
