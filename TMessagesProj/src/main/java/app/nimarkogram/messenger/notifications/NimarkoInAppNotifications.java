@@ -100,10 +100,32 @@ public final class NimarkoInAppNotifications {
         return panel != null && panel.isAttachedToWindow() && panel.isShown() ? panel : null;
     }
 
-    private static final class Slot extends FrameLayout implements AnimatedLinearLayout.IndependentPanel {
+    private static final class Slot extends FrameLayout implements AnimatedLinearLayout.IndependentPanel, NotificationInlinePanel.CompactContent {
         final AnimatedLinearLayout panel;
         boolean directResize;
         float retainedCoverage = 1f;
+        int retainedCompactHeight;
+        float retainedCompactVisibleHeight;
+        @Override public int getCompactHeight() {
+            if (getChildCount() == 0) return retainedCompactHeight;
+            int height = 0;
+            for (int i = 0; i < getChildCount(); i++) {
+                Banner child = (Banner) getChildAt(i);
+                if (child.getVisibility() != GONE) height = Math.max(height, child.collapsedHeight);
+            }
+            return height;
+        }
+        @Override public float getCompactVisibleHeight() {
+            if (getChildCount() == 0) return retainedCompactVisibleHeight;
+            float height = 0f;
+            for (int i = 0; i < getChildCount(); i++) {
+                Banner child = (Banner) getChildAt(i);
+                if (child.getVisibility() == GONE) continue;
+                height = Math.max(height, Math.max(0f, Math.min(child.collapsedHeight,
+                        child.getMeasuredHeight() + child.pullOffset)));
+            }
+            return height;
+        }
         @Override public boolean isDirectResize() { return directResize; }
         @Override public float getLayoutCoverage() {
             if (getChildCount() == 0) return retainedCoverage;
@@ -140,6 +162,8 @@ public final class NimarkoInAppNotifications {
         void release(Banner value) {
             if (value.getParent() == this && getChildCount() == 1) {
                 retainedCoverage = getLayoutCoverage();
+                retainedCompactHeight = getCompactHeight();
+                retainedCompactVisibleHeight = getCompactVisibleHeight();
                 setMinimumHeight(retainedCoverage == 0f ? 0 : getMeasuredHeight());
             }
             if (value.getParent() == this) removeView(value);
@@ -759,6 +783,13 @@ public final class NimarkoInAppNotifications {
             }
             if (!visibleFrame.isEmpty()) bottom = Math.min(bottom, visibleFrame.bottom);
             else bottom -= inset;
+            if (slot != null && slot.panel instanceof NotificationInlinePanel) {
+                NotificationInlinePanel inline = (NotificationInlinePanel) slot.panel;
+                if (inline.isOverlay() && inline.getParent() instanceof View) {
+                    ((View) inline.getParent()).getLocationOnScreen(viewportLocation);
+                    return inline.getAvailableContentHeight(bottom - viewportLocation[1]);
+                }
+            }
             View anchor = slot != null ? slot : this;
             anchor.getLocationOnScreen(viewportLocation);
             return Math.max(dp(68), bottom - viewportLocation[1] - dp(64));

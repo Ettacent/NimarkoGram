@@ -437,6 +437,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
     private int lastMeasuredContentWidth;
     private int lastMeasuredContentHeight;
     private int listContentHeight;
+    private app.nimarkogram.messenger.notifications.ProfileNotificationPlacement notificationPlacement;
     private boolean openingAvatar;
     private boolean fragmentViewAttached;
 
@@ -2675,6 +2676,15 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
 
     @Override
     public void onFragmentDestroy() {
+        if (sharedMediaLayout != null) sharedMediaLayout.setNotificationControlsOffset(0);
+        if (notificationPlacement != null) {
+            notificationPlacement.release();
+            notificationPlacement = null;
+        }
+        if (notificationInlinePanel != null) {
+            notificationInlinePanel.release();
+            notificationInlinePanel = null;
+        }
         delayedProfileOpenLayoutGeneration++;
         profileLifecycleDestroyed = true;
         pendingProfileRowsUpdate = false;
@@ -2934,6 +2944,15 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
 
     @Override
     public View createView(Context context) {
+        if (sharedMediaLayout != null) sharedMediaLayout.setNotificationControlsOffset(0);
+        if (notificationPlacement != null) {
+            notificationPlacement.release();
+            notificationPlacement = null;
+        }
+        if (notificationInlinePanel != null) {
+            notificationInlinePanel.release();
+            notificationInlinePanel = null;
+        }
         if (deferredSearchAdapterPreDrawListener != null && fragmentView != null) {
             ViewTreeObserver observer = fragmentView.getViewTreeObserver();
             if (observer.isAlive()) {
@@ -4240,10 +4259,12 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                     if (bottomButtonContainer[0] != null) {
                         final float x = sharedMediaLayout.getTabTranslationX(SharedMediaLayout.TAB_STORIES, true);
                         bottomButtonContainer[0].setTranslationX(x);
+                        bottomButtonContainer[0].setVisibility(sharedMediaLayout.getTabVisibility(SharedMediaLayout.TAB_STORIES, true) > 0 ? VISIBLE : INVISIBLE);
                     }
                     if (bottomButtonContainer[1] != null) {
                         final float x = sharedMediaLayout.getTabTranslationX(SharedMediaLayout.TAB_ARCHIVED_STORIES, false);
                         bottomButtonContainer[1].setTranslationX(x);
+                        bottomButtonContainer[1].setVisibility(sharedMediaLayout.getTabVisibility(SharedMediaLayout.TAB_ARCHIVED_STORIES, false) > 0 ? VISIBLE : INVISIBLE);
                     }
                     checkStoriesButtonText(lastStoriesSelectedCount, true);
                     updateBottomButtonY();
@@ -10456,9 +10477,11 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                 }
                 updateAutoDeleteItem();
                 updateTtlIcon();
-                if (profileChannelMessageFetcher == null && !isSettings()) {
-                    profileChannelMessageFetcher = new ProfileChannelCell.ChannelMessageFetcher(currentAccount);
-                    profileChannelMessageFetcher.subscribe(this::onProfileChannelMessagesLoaded);
+                if (!isSettings()) {
+                    if (profileChannelMessageFetcher == null) {
+                        profileChannelMessageFetcher = new ProfileChannelCell.ChannelMessageFetcher(currentAccount);
+                        profileChannelMessageFetcher.subscribe(this::onProfileChannelMessagesLoaded);
+                    }
                     profileChannelMessageFetcher.fetch(userInfo);
                 }
                 if (!isSettings()) {
@@ -10487,6 +10510,18 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             final boolean scheduled = (Boolean) args[2];
             if (scheduled) {
                 return;
+            }
+            if (userId == getUserConfig().getClientUserId()) {
+                ArrayList<MessageObject> messages = (ArrayList<MessageObject>) args[1];
+                for (MessageObject message : messages) {
+                    if (message.isStarGiftAction()) {
+                        refreshGiftsOnReturn = true;
+                        if (fullyVisible && !transitionAnimationInProress && !openAnimationInProgress) {
+                            refreshVisibleProfile();
+                        }
+                        break;
+                    }
+                }
             }
             final long did = getDialogId();
             if (did == (Long) args[0]) {
@@ -12567,7 +12602,8 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
         if (!hasMedia && userInfo != null && userInfo.bot_info != null) {
             hasMedia = userInfo.bot_info.has_preview_medias;
         }
-        if (!hasMedia && (userInfo != null && userInfo.stargifts_count > 0 || chatInfo != null && chatInfo.stargifts_count > 0)) {
+        if (!hasMedia && (userInfo != null && userInfo.stargifts_count > 0 || chatInfo != null && chatInfo.stargifts_count > 0
+                || StarsController.getInstance(currentAccount).hasProfileGifts(getDialogId()))) {
             hasMedia = true;
         }
         if (!hasMedia && userInfo == null && chatInfo == null) {
@@ -18008,6 +18044,97 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
     }
 
     private boolean fullyVisible;
+    private boolean refreshGiftsOnReturn = true;
+    @Override
+    public org.telegram.ui.Components.AnimatedLinearLayout getInAppNotificationPanel() {
+        if (profileLifecycleDestroyed || fragmentView == null || actionBar == null || listView == null || layoutManager == null
+                || !(fragmentView.getParent() instanceof FrameLayout)) return null;
+        FrameLayout host = (FrameLayout) fragmentView.getParent();
+        if (notificationInlinePanel == null || notificationInlinePanel.getParent() != host) {
+            if (notificationInlinePanel != null) notificationInlinePanel.release();
+            if (notificationPlacement != null) notificationPlacement.release();
+            notificationPlacement = new app.nimarkogram.messenger.notifications.ProfileNotificationPlacement(
+                    listView, layoutManager, () -> emptyRow >= 0 ? emptyRow : emptyRow2);
+            notificationInlinePanel = new app.nimarkogram.messenger.notifications.NotificationInlinePanel(this, host)
+                    .withOverlayAnchor(this::getProfileNotificationTop)
+                    .withOverlayPositionListener(this::updateProfileNotificationControls)
+                    .withCompactReservation(this::setProfileNotificationReservation, notificationPlacement::prepareForDraw);
+        }
+        return notificationInlinePanel;
+    }
+    private int getProfileNotificationTop() {
+        int toolbarHeight = ActionBar.getCurrentActionBarHeight()
+                + (actionBar.getOccupyStatusBar() ? AndroidUtilities.statusBarHeight : 0);
+        int anchor = notificationPlacement == null ? toolbarHeight
+                : notificationPlacement.getAnchorBottom(toolbarHeight);
+        int nativeGap = emptyRow >= 0 ? dp(6) : emptyRow2 >= 0 ? dp(12) : 0;
+        return fragmentView.getTop() + Math.max(toolbarHeight + dp(4), anchor - nativeGap + dp(4));
+    }
+    private void setProfileNotificationReservation(int height) {
+        if (notificationPlacement == null) return;
+        int nativeGap = emptyRow >= 0 ? dp(6) : emptyRow2 >= 0 ? dp(12) : 0;
+        float visibility = notificationInlinePanel == null ? 0 : notificationInlinePanel.getLayoutVisibility();
+        notificationPlacement.setReservedHeight(height <= 0 ? 0
+                : Math.max(0, height + Math.round((dp(8) - nativeGap) * visibility)));
+    }
+    private void updateProfileNotificationControls(int notificationTop) {
+        if (sharedMediaLayout != null) {
+            float height = notificationInlinePanel == null ? 0 : notificationInlinePanel.getAnimatedHeightWithPadding();
+            float mediaTop = sharedMediaLayout.getY();
+            android.view.ViewParent parent = sharedMediaLayout.getParent();
+            while (parent instanceof View && parent != fragmentView.getParent()) {
+                mediaTop += ((View) parent).getY() - ((View) parent).getScrollY();
+                parent = parent.getParent();
+            }
+            float offset = notificationTop >= 0 && height > 0 && parent == fragmentView.getParent()
+                    ? Math.max(0, notificationTop + height
+                            + (dp(8) - notificationInlinePanel.getPaddingBottom()) * notificationInlinePanel.getLayoutVisibility()
+                            - mediaTop - sharedMediaLayout.getNotificationTabsVisibleTop()) : 0;
+            sharedMediaLayout.setNotificationControlsOffset(offset);
+        }
+    }
+    public void resetMainTabScroll() {
+        if (!myProfile || listView == null || layoutManager == null || profileLifecycleDestroyed) return;
+        refreshGiftsOnReturn = true;
+        listView.stopScroll();
+        if (sharedMediaLayout != null) {
+            RecyclerListView media = sharedMediaLayout.getCurrentListView();
+            if (media != null) {
+                media.stopScroll();
+                media.scrollToPosition(0);
+            }
+        }
+        savedScrollPosition = -1;
+        savedScrollToSharedMedia = false;
+        layoutManager.scrollToPositionWithOffset(0, getHeaderExtraHeight() - listView.getPaddingTop());
+        collapseAvatarInstant();
+    }
+    private void refreshVisibleProfile() {
+        if (profileLifecycleDestroyed || isSettings()) return;
+        if (userId != 0) {
+            getMessagesController().loadFullUser(getMessagesController().getUser(userId), classGuid, true);
+        } else if (chatId != 0) {
+            getMessagesController().loadFullChat(chatId, classGuid, true);
+        }
+        if (refreshGiftsOnReturn) {
+            refreshGiftsOnReturn = false;
+            StarsController.GiftsList gifts = StarsController.getInstance(currentAccount).getProfileGiftsList(getDialogId(), false);
+            if (gifts == null) {
+                gifts = StarsController.getInstance(currentAccount).getProfileGiftsList(getDialogId());
+            } else {
+                gifts.refresh();
+            }
+            if (sharedMediaLayout != null && sharedMediaLayout.giftsContainer != null) {
+                StarsController.GiftsList selected = sharedMediaLayout.giftsContainer.getCurrentList();
+                if (selected != null && selected != gifts) selected.refresh();
+            }
+        }
+        if (sharedMediaPreloader != null) sharedMediaPreloader.refreshMediaCounts();
+        if (userId == getUserConfig().getClientUserId() && currentAccount == UserConfig.selectedAccount
+                && app.nimarkogram.messenger.banners.NimarkoBannerConfig.enabled) {
+            app.nimarkogram.messenger.banners.NimarkoBannerController.getInstance().refreshStatus(false);
+        }
+    }
     private void synchronizeVisibleHeader() {
         if (profileLifecycleDestroyed || fragmentView == null || listView == null
                 || transitionAnimationInProress || openAnimationInProgress) {
@@ -18036,6 +18163,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
         writeButtonSetBackground();
         fullyVisible = true;
         createBirthdayEffect();
+        refreshVisibleProfile();
     }
 
     private void writeButtonSetBackground() {
@@ -19479,6 +19607,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
     private final BlurredBackgroundDrawableViewFactory scrimBlur3Factory = new BlurredBackgroundDrawableViewFactory(scrimBlur3SourceBitmap);
 
     private ViewPositionWatcher viewPositionWatcher;
+    private final android.graphics.PointF notificationControlsCapturePosition = new android.graphics.PointF();
 
     private IBlur3Capture iBlur3Capture;
     private boolean iBlur3Invalidated;
@@ -19502,7 +19631,24 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
         iBlur3PositionMainTabs.set(0, mainTabTop, fragmentView.getMeasuredWidth(), mainTabBottom);
         iBlur3PositionMainTabs.inset(0, LiteMode.isEnabled(LiteMode.FLAG_LIQUID_GLASS) ? 0 : -dp(48));
 
-        scrollableViewNoiseSuppressor.setupRenderNodes(iBlur3Positions, 2);
+        float notificationHeight = notificationInlinePanel == null ? 0 : notificationInlinePanel.getAnimatedHeightWithPadding();
+        int captureCount = 2;
+        if (notificationHeight > 0 && notificationInlinePanel.getParent() == fragmentView.getParent()) {
+            float top = notificationInlinePanel.getY() - fragmentView.getY();
+            iBlur3PositionActionBar.bottom = Math.max(iBlur3PositionActionBar.bottom,
+                    Math.min(fragmentView.getMeasuredHeight(), top + notificationHeight + additionalList));
+            if (sharedMediaLayout != null && sharedMediaLayout.getNotificationControlsBottom() > 0
+                    && ViewPositionWatcher.computeCoordinatesInParent(sharedMediaLayout, (ViewGroup) fragmentView, notificationControlsCapturePosition)) {
+                iBlur3PositionActionBar.bottom = Math.max(iBlur3PositionActionBar.bottom,
+                        Math.min(fragmentView.getMeasuredHeight(), notificationControlsCapturePosition.y
+                                + sharedMediaLayout.getNotificationControlsBottom() + additionalList));
+            }
+            if (iBlur3PositionActionBar.bottom >= iBlur3PositionMainTabs.top) {
+                iBlur3PositionActionBar.union(iBlur3PositionMainTabs);
+                captureCount = 1;
+            }
+        }
+        scrollableViewNoiseSuppressor.setupRenderNodes(iBlur3Positions, captureCount);
         scrollableViewNoiseSuppressor.invalidateResultRenderNodes(iBlur3Capture, fragmentView.getMeasuredWidth(), fragmentView.getMeasuredHeight());
     }
 

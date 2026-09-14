@@ -39,29 +39,43 @@ assert.match(read('org/telegram/ui/ChatActivity.java'), /return inPreviewMode \|
 assert.match(extract(read('org/telegram/ui/DialogsActivity.java'), 'getInAppNotificationPanel()'), /return topPanelLayout;/);
 const java = `
 import java.util.*;
+import java.util.function.IntSupplier;
 class View {
- Object parent; FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(); int padding, updates;
+ Object parent; FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(); int padding, updates, invalidations;
+ void invalidate(){invalidations++;}
+ int getTop(){return 0;}
  Object getParent(){return parent;} Object getLayoutParams(){return params;} int getPaddingTop(){return padding;}
  void setLayoutParams(FrameLayout.LayoutParams p){params=p;updates++;}
 }
-class FrameLayout {int updates; void requestLayout(){updates++;}
+class FrameLayout {int updates,height=2354;int getHeight(){return height;} void requestLayout(){updates++;}
  static class LayoutParams {int topMargin, bottomMargin;}
 }
 class Metadata {float visibility;float getTotalVisibility(){return visibility;}}
 class Canvas {float clip;int save(){return 1;}void clipRect(int l,int t,int r,float b){clip=b;}void restoreToCount(int count){}}
 class DrawingBase {protected void dispatchDraw(Canvas c){}}
+class ActionBar extends View {static int getCurrentActionBarHeight(){return 168;}boolean getOccupyStatusBar(){return true;}}
+class AndroidUtilities {static int statusBarHeight=120;static int dp(int value){return value*3;}}
+class Fragment {View view=new View();View getFragmentView(){return view;}ActionBar getActionBar(){return new ActionBar();}}
 public class NotificationInlineTest extends DrawingBase {
+ final Fragment fragment=new Fragment();
+ IntSupplier overlayAnchor;
+ void updateCompactReservation(){} // Tested with the extracted compact-content methods separately.
+ int getPaddingTop(){return 12;}int getPaddingBottom(){return 12;}
  final FrameLayout root = new FrameLayout(); View[] contents; int[] offsets; int reserved,anchorTop;
+ FrameLayout.LayoutParams[] contentParams=new FrameLayout.LayoutParams[1];
  float clipHeight=-1;boolean dirty=true;int invalidations;
  int physicalHeight;void invalidate(){dirty=true;invalidations++;}int getWidth(){return 1080;}int getHeight(){return physicalHeight;}
  float height; final Metadata metadata = new Metadata();
  float getAnimatedHeightWithPadding(){return height;} Metadata getMetadata(){return metadata;}
+ boolean isOverlay(){return contents.length==0;}
  float getLayoutVisibility(){return metadata.visibility;}
  NotificationInlineTest(int top,int padding){
   View content = new View();content.parent=root;content.params.topMargin=top;content.params.bottomMargin=27;content.padding=padding;
   contents=new View[]{content};offsets=new int[1];
  }
  ${extract(inline, 'private void updateReservedHeight()')}
+ ${extract(inline, 'private int overlayTop()')}
+ ${extract(inline, 'public int getAvailableContentHeight(int viewportBottom)')}
  ${extract(inline, 'protected void dispatchDraw(Canvas canvas)')}
  void render(Canvas canvas){if(dirty){dispatchDraw(canvas);dirty=false;}}
  static int checks;
@@ -82,6 +96,30 @@ public class NotificationInlineTest extends DrawingBase {
   check(displayList.clip==100.2f&&cold.root.updates==layouts,"subpixel clip refresh does not require rounded inset change");
   cold.physicalHeight=260;cold.dirty=true;cold.render(displayList);
   check(displayList.clip==260,"expanded card is not cut to a trailing animated clip");
+  NotificationInlineTest profile=new NotificationInlineTest(0,0);
+  View profileContent=profile.contents[0];profile.contents=new View[0];profile.offsets=new int[0];profile.contentParams=new FrameLayout.LayoutParams[0];
+  for(int cycle=0;cycle<4;cycle++)for(int i=0;i<=120;i++){
+   float f=i<=60?i/60f:(120-i)/60f;profile.anchorTop=84;
+   profile.frame(f,240);
+   check(profileContent.params.topMargin==0&&profileContent.updates==0,"overlay must never move or resize the profile");
+   check(profileContent.params.bottomMargin==27,"profile keeps bottom inset");
+  }
+  check(profile.fragment.view.invalidations>0,"overlay geometry invalidates profile glass source");
+  check(profile.root.updates==0,"overlay animation cannot relayout the whole profile");
+  profile.fragment.view.parent=profile.root;
+  profile.overlayAnchor=()->288+678+24;
+  check(profile.overlayTop()==990,"expanded profile notification sits below full header, not on avatar");
+  profile.overlayAnchor=()->288+222+24;
+  check(profile.overlayTop()==534,"collapsed profile follows its current header edge");
+  for(int extra=222;extra<=678;extra++){
+   final int header=extra;profile.overlayAnchor=()->288+header+24;
+   check(profile.overlayTop()==288+extra+24,"header movement maps continuously without another animator");
+  }
+  profile.root.height=900;profile.overlayAnchor=()->1400;
+  check(profile.overlayTop()+profile.getAvailableContentHeight(900)+24+192<=900,"landscape keeps compact notification above bottom controls");
+  NotificationInlineTest rebound=new NotificationInlineTest(0,0);
+  rebound.frame(1,72);rebound.contents[0].params=new FrameLayout.LayoutParams();rebound.contents[0].params.topMargin=13;rebound.frame(0,72);
+  check(rebound.contents[0].params.topMargin==13,"pager rebind with fresh parameters must not subtract old inset");
   for(int top:new int[]{0,12,56,80})for(int padding:new int[]{0,24,80})for(int anchor:new int[]{0,56,80}){
    NotificationInlineTest p=new NotificationInlineTest(top,padding);p.anchorTop=anchor;
    for(int cycle=0;cycle<5;cycle++){

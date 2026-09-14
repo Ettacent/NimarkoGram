@@ -1030,7 +1030,6 @@ public class ProfileGiftsContainer extends FrameLayout implements NotificationCe
         } else {
             this.dialogId = did;
         }
-        StarsController.getInstance(currentAccount).invalidateProfileGifts(dialogId);
         this.list = StarsController.getInstance(currentAccount).getProfileGiftsList(dialogId);
         this.collections = StarsController.getInstance(currentAccount).getProfileGiftCollectionsList(dialogId, true);
         this.collections.all = list;
@@ -2468,7 +2467,7 @@ public class ProfileGiftsContainer extends FrameLayout implements NotificationCe
         iBlur3Capture = (canvas, position) -> {
             View[] pages = viewPager.getViewPages();
             for (View view : pages) {
-                if (view instanceof Page) {
+                if (view instanceof Page && view.getVisibility() == VISIBLE) {
                     Page page = (Page) view;
                     if (page.iBlur3Capture == null) {
                         page.iBlur3Capture = new ViewGroupPartRenderer(page.listView, iBlur3CaptureParent, page.listView::drawChild);

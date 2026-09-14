@@ -3027,6 +3027,10 @@ public class StarsController {
     public GiftsList getProfileGiftsList(long dialogId) {
         return getProfileGiftsList(dialogId, true);
     }
+    public boolean hasProfileGifts(long dialogId) {
+        GiftsList list = getProfileGiftsList(dialogId, false);
+        return list != null && !list.gifts.isEmpty();
+    }
     public GiftsList getProfileGiftsList(long dialogId, boolean create) {
         GiftsList list = giftLists.get(dialogId);
         if (list == null && create) {
@@ -3058,7 +3062,7 @@ public class StarsController {
         long dialogId = userFull.id;
         GiftsList list = getProfileGiftsList(dialogId, false);
         if (list != null && list.totalCount != userFull.stargifts_count) {
-            list.invalidate(false);
+            list.refresh();
         }
         GiftsCollections collections = giftCollections.get(dialogId);
         if (collections != null) {
@@ -3153,7 +3157,11 @@ public class StarsController {
             final TL_stars.getStarGiftCollections req = new TL_stars.getStarGiftCollections();
             req.peer = MessagesController.getInstance(currentAccount).getInputPeer(dialogId);
             req.hash = getHash(collections);
-            currentRequestId = ConnectionsManager.getInstance(currentAccount).sendRequest(req, (res, err) -> AndroidUtilities.runOnUIThread(() -> {
+            final int[] requestId = new int[1];
+            requestId[0] = currentRequestId = ConnectionsManager.getInstance(currentAccount).sendRequest(req, (res, err) -> AndroidUtilities.runOnUIThread(() -> {
+                if (requestId[0] != currentRequestId) return;
+                currentRequestId = -1;
+                loading = false;
                 if (res instanceof TL_stars.TL_starGiftCollections) {
                     final TL_stars.TL_starGiftCollections r = (TL_stars.TL_starGiftCollections) res;
 
@@ -3170,7 +3178,6 @@ public class StarsController {
                     }
 
                     loaded = true;
-                    loading = false;
 
                     NotificationCenter.getInstance(currentAccount).postNotificationName(NotificationCenter.starUserGiftCollectionsLoaded, dialogId, GiftsCollections.this);
 
@@ -3178,7 +3185,6 @@ public class StarsController {
                     refilterCollections();
 
                     loaded = true;
-                    loading = false;
 
                     NotificationCenter.getInstance(currentAccount).postNotificationName(NotificationCenter.starUserGiftCollectionsLoaded, dialogId, GiftsCollections.this);
                 }
@@ -3663,20 +3669,31 @@ public class StarsController {
             }
             loading = false;
             gifts.clear();
+            refreshPending = false;
             lastOffset = null;
             endReached = false;
             if (load || shown) load();
         }
 
         private long craftingGiftId = 0;
+        private boolean refreshPending;
+        public void refresh() {
+            if (loading) {
+                refreshPending = true;
+            } else {
+                load(true);
+            }
+        }
         public void forCrafting(long gift_id) {
             craftingGiftId = gift_id;
         }
 
         public void load() {
-            if (loading || endReached) return;
-
-            boolean first = lastOffset == null;
+            load(false);
+        }
+        private void load(boolean refreshing) {
+            if (loading || endReached && !refreshing) return;
+            boolean first = refreshing || lastOffset == null;
             loading = true;
             final TLObject request;
             if (craftingGiftId != 0) {
@@ -3726,14 +3743,19 @@ public class StarsController {
                     totalCount = rez.count;
                     chat_notifications_enabled = (rez.flags & 2) != 0 ? rez.chat_notifications_enabled : null;
                     endReached = gifts.size() > totalCount || lastOffset == null;
-                } else {
+                } else if (!refreshing) {
                     endReached = true;
                 }
                 NotificationCenter.getInstance(currentAccount).postNotificationName(NotificationCenter.starUserGiftsLoaded, dialogId, GiftsList.this);
+                if (refreshPending) {
+                    refreshPending = false;
+                    refresh();
+                }
             }));
         }
 
         public void cancel() {
+            refreshPending = false;
             if (currentRequestId != -1) {
                 ConnectionsManager.getInstance(currentAccount).cancelRequest(currentRequestId, true);
                 currentRequestId = -1;

@@ -306,6 +306,9 @@ public class ProfileChannelCell extends FrameLayout implements Theme.Colorable {
         public void fetch(TLRPC.UserFull userInfo) {
             if (userInfo == null || (userInfo.flags2 & 64) == 0) {
                 searchId++;
+                loading = false;
+                channel_id = 0;
+                message_id = 0;
                 loaded = true;
                 messageObjects.clear();
                 done(false);

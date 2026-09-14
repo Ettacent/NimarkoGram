@@ -10,13 +10,20 @@ function method(source, signature) {
 const chat = read('org/telegram/ui/Components/ChatActivityTopPanelLayout.java');
 const dialogs = read('org/telegram/ui/Components/DialogsActivityTopPanelLayout.java');
 const notifications = read('app/nimarkogram/messenger/notifications/NimarkoInAppNotifications.java');
+const inline = read('app/nimarkogram/messenger/notifications/NotificationInlinePanel.java');
 for (const source of [chat, dialogs]) {
     assert.match(source, /setClipChildren\(false\)/);
     assert.match(source, /setClipToPadding\(false\)/);
     assert.match(source, /canvas.restore\(\);\s*super.dispatchDraw\(canvas\)/);
 }
 const java = `
-class View {boolean call;int top,height,width=400;int getWidth(){return width;}int getHeight(){return height;}void getLocationOnScreen(int[] a){a[1]=top;}}
+class View {boolean call;View parent;int top,height,width=400;int getWidth(){return width;}int getHeight(){return height;}void getLocationOnScreen(int[] a){a[1]=top;}Object getParent(){return parent;}}
+class AndroidUtilities {static int dp(int n){return n;}}
+class NotificationInlinePanel extends View {
+ View root=new View();int anchor=80;boolean isOverlay(){return true;}int overlayTop(){return anchor;}int getPaddingTop(){return 4;}int getPaddingBottom(){return 4;}
+ ${method(inline, 'public int getAvailableContentHeight(int viewportBottom)')}
+}
+class ViewportSlot extends View {View panel;}
 class Rect {int bottom;boolean isEmpty(){return bottom<=0;}}
 class WindowInsetsCompat {
  int bottom;WindowInsetsCompat getInsets(int type){return this;}
@@ -24,7 +31,7 @@ class WindowInsetsCompat {
 }
 class ViewCompat {static WindowInsetsCompat insets=new WindowInsetsCompat();static WindowInsetsCompat getRootWindowInsets(View v){return insets;}}
 class Viewport extends View {
- View root=new View(),slot=new View();Rect visibleFrame=new Rect();int reportedBottom;int[] viewportLocation=new int[2];
+ View root=new View();ViewportSlot slot=new ViewportSlot();Rect visibleFrame=new Rect();int reportedBottom;int[] viewportLocation=new int[2];
  int viewportWidth=-1,viewportHeight,viewportTop,viewportInset,frameReads;
  View getRootView(){return root;}int dp(int value){return value;}
  void getWindowVisibleDisplayFrame(Rect out){frameReads++;out.bottom=reportedBottom;}
@@ -65,6 +72,13 @@ public class NotificationPanelClipTest {
   viewport.root.height=700;check(viewport.availableHeight()==556,"resized window must not subtract keyboard twice");
   viewport.root.height=1000;viewport.reportedBottom=0;check(viewport.availableHeight()==556,"insets fallback handles unavailable visible frame");
   viewport.slot.top=650;check(viewport.availableHeight()==68,"tiny viewport retains compact lower bound");
+  NotificationInlinePanel inline=new NotificationInlinePanel();inline.root.height=1000;inline.parent=viewport.root;viewport.slot.panel=inline;
+  viewport.reportedBottom=0;ViewCompat.insets.bottom=0;
+  int room=viewport.availableHeight();check(room==260,"profile expansion has bounded height");
+  for(int y=-100;y<900;y+=5){viewport.slot.top=y;inline.top=y;check(viewport.availableHeight()==room,"animated slot position cannot resize profile notification");}
+  inline.root.height=320;viewport.root.height=320;
+  check(viewport.availableHeight()==128,"landscape expansion respects profile viewport");
+  ViewCompat.insets.bottom=160;check(viewport.availableHeight()==68,"keyboard constrains profile expansion");
   for(int h:new int[]{68,100,180,260,500}){
    Canvas canvas=new Canvas();Chat chat=new Chat();chat.height=h;
    check(chat.drawChild(canvas,new Slot(),0)&&chat.drawnBottom==h,"notification uses physical height, not trailing shared clip");
