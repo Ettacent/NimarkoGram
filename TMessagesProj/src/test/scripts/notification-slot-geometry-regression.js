@@ -32,7 +32,7 @@ const measure = extract(notifications, 'protected void onMeasure(');
 assert.equal(measure, extract(slot, 'protected void onMeasure('), 'First onMeasure must belong to Slot');
 const background = extract(panels, 'protected float getSharedBackgroundOffset()');
 const show = extract(notifications, 'private static boolean show(Banner next)');
-const slotMethods = ['static Slot obtain(', 'void attach(', 'void release(', 'public float getLayoutCoverage(']
+const slotMethods = ['static Slot obtain(', 'void attach(', 'void release(', 'public float getLayoutCoverage(', 'public int getCompactHeight(', 'public float getCompactVisibleHeight(']
     .map(signature => extract(slot, signature)).join('\n');
 const lifecycle = ['private static void removeCurrent()', 'private static void remove(Banner old)']
     .map(signature => extract(notifications, signature)).join('\n');
@@ -147,6 +147,8 @@ public class NotificationSlotGeometryTest {
         final AnimatedLinearLayout panel;
         boolean directResize;
         float retainedCoverage = 1f;
+        int retainedCompactHeight;
+        float retainedCompactVisibleHeight;
         public boolean isDirectResize(){return directResize;}
         // Constructor-only Android wiring shim; geometry/lifecycle below is extracted verbatim.
         Slot(AnimatedLinearLayout panel){super(panel.getContext());this.panel=panel;panel.addView(this,null);}
@@ -156,6 +158,7 @@ public class NotificationSlotGeometryTest {
     static class Banner extends View {
         Object previewTrace;
         float pullOffset;Slot slot;Delivery delivery;
+        int collapsedHeight = 68;
         boolean closing,opening,touching,sample;int account;long owner,loginSession,dialogId,expiresAt;
         final Runnable watch=()->{};
         Banner(int height,float pull){desiredHeight=height;pullOffset=pull;}

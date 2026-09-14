@@ -2,6 +2,14 @@ const cp = require('node:child_process');
 const path = require('node:path');
 
 const tests = [
+    'profile-notification-background-regression.js',
+    'profile-tab-colors-regression.js',
+    'profile-blur-visibility-regression.js',
+    'profile-notification-inset-regression.js',
+    'profile-notification-placement-regression.js',
+    'profile-notification-tab-glass-regression.js',
+    'profile-tab-refresh-regression.js',
+    'profile-refresh-regression.js',
     'updater-installed-state-regression.js',
     'in-app-notifications-regression.js',
     'notification-foreground-delivery-regression.js',

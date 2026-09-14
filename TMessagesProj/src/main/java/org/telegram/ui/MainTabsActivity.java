@@ -856,6 +856,13 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
 
         if (viewPager != null) {
             final int currentPosition = viewPager.getCurrentPosition();
+            final int profilePosition = posProfile();
+            if (currentPosition != profilePosition && viewPager.getPositionVisibility(profilePosition) == 0) {
+                FragmentState state = fragmentsArr.get(profilePosition);
+                if (state != null && state.fragment instanceof ProfileActivity) {
+                    ((ProfileActivity) state.fragment).resetMainTabScroll();
+                }
+            }
             if (currentPosition != posSettings() && dropCallsFragmentAfterPageScroll) {
                 dropFragmentAtPosition(posSettings());
                 dropCallsFragmentAfterPageScroll = false;

@@ -101,6 +101,9 @@ public class ScrollSlidingTextTabStrip extends HorizontalScrollView implements T
     private int activeTextColorKey = Theme.key_actionBarTabActiveText;
     private int unactiveTextColorKey = Theme.key_actionBarTabUnactiveText;
     private int selectorColorKey = Theme.key_actionBarTabSelector;
+    private boolean appliedColors;
+    private int appliedActiveColor;
+    private int appliedInactiveColor;
 
     private CubicBezierInterpolator interpolator = CubicBezierInterpolator.EASE_OUT_QUINT;
 
@@ -644,19 +647,28 @@ public class ScrollSlidingTextTabStrip extends HorizontalScrollView implements T
 
     @Override
     public void updateColors() {
+        int active = processColor(Theme.getColor(activeTextColorKey, resourcesProvider));
+        int inactive = processColor(Theme.getColor(unactiveTextColorKey, resourcesProvider));
+        boolean changed = !appliedColors || active != appliedActiveColor || inactive != appliedInactiveColor;
         int count = tabsContainer.getChildCount();
         for (int a = 0; a < count; a++) {
             TextView tab = (TextView) tabsContainer.getChildAt(a);
-            tab.setTextColor(processColor(Theme.getColor(currentPosition == a ? activeTextColorKey : unactiveTextColorKey, resourcesProvider)));
+            if (!changed && tab.getBackground() != null) continue;
+            tab.setTextColor(currentPosition == a ? active : inactive);
             tab.setBackground(
                 new InsetDrawable(
-                    Theme.createSelectorDrawable(Theme.multAlpha(processColor(Theme.getColor(activeTextColorKey, resourcesProvider)), .15f), Theme.RIPPLE_MASK_ROUNDRECT_6DP, dp(14)),
+                    Theme.createSelectorDrawable(Theme.multAlpha(active, .15f), Theme.RIPPLE_MASK_ROUNDRECT_6DP, dp(14)),
                     dp(4), dp(4), dp(4), dp(4)
                 )
             );
         }
-        selectorDrawable.setColor(Theme.multAlpha(processColor(Theme.getColor(activeTextColorKey, resourcesProvider)), .15f));
-        invalidate();
+        if (changed) {
+            selectorDrawable.setColor(Theme.multAlpha(active, .15f));
+            appliedColors = true;
+            appliedActiveColor = active;
+            appliedInactiveColor = inactive;
+            invalidate();
+        }
     }
 
     public int getCurrentTabId() {
