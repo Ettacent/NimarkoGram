@@ -24,6 +24,7 @@ public final class NotificationInlinePanel extends AnimatedLinearLayout implemen
     private final View[] contents;
     private final int[] offsets;
     private final FrameLayout.LayoutParams[] contentParams;
+    private final NotificationListInset[] listInsets;
     private final int[] location = new int[2];
     private ViewTreeObserver observer;
     private int reserved;
@@ -88,6 +89,12 @@ public final class NotificationInlinePanel extends AnimatedLinearLayout implemen
         this.contents = contents;
         offsets = new int[contents.length];
         contentParams = new FrameLayout.LayoutParams[contents.length];
+        listInsets = new NotificationListInset[contents.length];
+        for (int i = 0; i < contents.length; i++) {
+            if (contents[i] instanceof androidx.recyclerview.widget.RecyclerView) {
+                listInsets[i] = new NotificationListInset((androidx.recyclerview.widget.RecyclerView) contents[i]);
+            }
+        }
         setOrientation(VERTICAL);
         setPadding(AndroidUtilities.dp(8), AndroidUtilities.dp(4), AndroidUtilities.dp(8), AndroidUtilities.dp(4));
         setOnAnimatedHeightChangedListener(this::updateReservedHeight);
@@ -102,6 +109,10 @@ public final class NotificationInlinePanel extends AnimatedLinearLayout implemen
         reservationLayout = null;
         for (int i = 0; i < contents.length; i++) {
             View child = contents[i];
+            if (listInsets[i] != null) {
+                listInsets[i].release();
+                continue;
+            }
             if (child.getParent() == root && child.getLayoutParams() == contentParams[i]) {
                 FrameLayout.LayoutParams params = (FrameLayout.LayoutParams) child.getLayoutParams();
                 params.topMargin -= offsets[i];
@@ -125,6 +136,10 @@ public final class NotificationInlinePanel extends AnimatedLinearLayout implemen
         for (int i = 0; i < contents.length; i++) {
             View child = contents[i];
             if (child.getParent() != root || !(child.getLayoutParams() instanceof FrameLayout.LayoutParams)) continue;
+            if (listInsets[i] != null) {
+                changed |= listInsets[i].apply(next, anchorTop, getLayoutVisibility());
+                continue;
+            }
             FrameLayout.LayoutParams params = (FrameLayout.LayoutParams) child.getLayoutParams();
             if (contentParams[i] != params) {
                 contentParams[i] = params;

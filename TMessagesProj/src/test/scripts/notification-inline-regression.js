@@ -40,6 +40,7 @@ assert.match(extract(read('org/telegram/ui/DialogsActivity.java'), 'getInAppNoti
 const java = `
 import java.util.*;
 import java.util.function.IntSupplier;
+class NotificationListInset {boolean apply(int h,int a,float v){return false;}}
 class View {
  Object parent; FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(); int padding, updates, invalidations;
  void invalidate(){invalidations++;}
@@ -63,6 +64,7 @@ public class NotificationInlineTest extends DrawingBase {
  int getPaddingTop(){return 12;}int getPaddingBottom(){return 12;}
  final FrameLayout root = new FrameLayout(); View[] contents; int[] offsets; int reserved,anchorTop;
  FrameLayout.LayoutParams[] contentParams=new FrameLayout.LayoutParams[1];
+ NotificationListInset[] listInsets=new NotificationListInset[1];
  float clipHeight=-1;boolean dirty=true;int invalidations;
  int physicalHeight;void invalidate(){dirty=true;invalidations++;}int getWidth(){return 1080;}int getHeight(){return physicalHeight;}
  float height; final Metadata metadata = new Metadata();
