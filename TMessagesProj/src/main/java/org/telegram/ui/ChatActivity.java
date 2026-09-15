@@ -31694,11 +31694,6 @@ public class ChatActivity extends BaseFragment implements
         if (actionBar.isActionModeShowed() || isReport()) {
             return false;
         }
-        final boolean telegramPlusMessageMenu =
-                app.nimarkogram.messenger.ui.MessageMenuTelegramPlus.isEnabled(ordinaryTap);
-        final boolean telegramPlusGlassBlur = telegramPlusMessageMenu
-                && SharedConfig.getDevicePerformanceClass() != SharedConfig.PERFORMANCE_CLASS_LOW
-                && BlurredBackgroundProviderImpl.checkBlurEnabled(currentAccount, themeDelegate);
         if (chatActivityEnterView != null) {
             chatActivityEnterView.hideHints();
         }
@@ -31718,6 +31713,12 @@ public class ChatActivity extends BaseFragment implements
         if (message == null) {
             return false;
         }
+        final boolean telegramPlusMessageMenu =
+                app.nimarkogram.messenger.ui.MessageMenuTelegramPlus.isEnabled(!suggestEdit
+                        && (ordinaryTap || message.isMusic() || message.type == MessageObject.TYPE_PHONE_CALL));
+        final boolean telegramPlusGlassBlur = telegramPlusMessageMenu
+                && SharedConfig.getDevicePerformanceClass() != SharedConfig.PERFORMANCE_CLASS_LOW
+                && BlurredBackgroundProviderImpl.checkBlurEnabled(currentAccount, themeDelegate);
         if (!single && TlUtils.isInstance(message.messageOwner.action,
                 TLRPC.TL_messageActionChangeCommunity.class,
                 TLRPC.TL_messageActionGiftPremium.class,
@@ -41273,7 +41274,7 @@ public class ChatActivity extends BaseFragment implements
                     VoIPHelper.startCall(currentUser, messageObject.isVideoCall(), userInfo != null && userInfo.video_calls_available, getParentActivity(), getMessagesController().getUserFull(currentUser.id), getAccountInstance());
                 }
             } else {
-                createMenu(cell, true, false, otherX, otherY, messageObject.isMusic(), false);
+                createMenu(cell, true, false, otherX, otherY, messageObject.isMusic(), false, false, true);
             }
         }
 
