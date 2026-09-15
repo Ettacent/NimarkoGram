@@ -10788,11 +10788,10 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             }
             View rowZero = layoutManager.findViewByPosition(0);
             boolean geometryReady = !listView.isComputingLayout()
-                    && listView.getPaddingTop() == targetHeaderHeight
                     && rowZero != null
-                    && Math.abs(rowZero.getTop() - targetHeaderHeight) <= 1;
+                    && rowZero.getTop() == getHeaderExtraHeight();
             if (!geometryReady && attempts[0]++ < 4) {
-                layoutManager.scrollToPositionWithOffset(0, 0);
+                layoutManager.scrollToPositionWithOffset(0, getHeaderExtraHeight() - listView.getPaddingTop());
                 listView.requestLayout();
                 fragmentView.postOnAnimation(ready[0]);
                 return;
@@ -18054,7 +18053,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                     savedScrollOffset = getHeaderExtraHeight();
                 }
 
-                layoutManager.scrollToPositionWithOffset(position, view.getTop() - listView.getPaddingTop());
+                layoutManager.scrollToPositionWithOffset(savedScrollPosition, savedScrollOffset - listView.getPaddingTop());
             }
         }
     }
