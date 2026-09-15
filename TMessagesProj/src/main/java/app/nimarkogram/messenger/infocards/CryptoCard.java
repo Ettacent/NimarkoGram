@@ -199,7 +199,7 @@ public class CryptoCard extends BaseInfoCard {
     }
 
     private boolean compactTonValue() {
-        return pillId == InfoCardType.TON.id && NimarkoConfig.systemFonts;
+        return pillId == InfoCardType.TON.id && !NimarkoConfig.systemFonts;
     }
     private static String format(double value, String ccy, boolean compact) {
         String iso = ccy == null ? "USD" : ccy.trim().toUpperCase(Locale.ROOT);
@@ -301,7 +301,7 @@ public class CryptoCard extends BaseInfoCard {
         String ccy = resolveCurrency(InfoCardsConfig.getTargetCurrency(cardId));
         double value = coin != null ? InfoCardRates.coinInFiat(coin, ccy) : InfoCardRates.fiatRate(ccy);
         if (Double.isNaN(value) || value <= 0) return null;
-        return format(value, ccy, cardId == InfoCardType.TON.id && NimarkoConfig.systemFonts);
+        return format(value, ccy, cardId == InfoCardType.TON.id && !NimarkoConfig.systemFonts);
     }
 
     private static String resolveCurrency(String stored) {
