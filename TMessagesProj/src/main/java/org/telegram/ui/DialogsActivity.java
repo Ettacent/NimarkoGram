@@ -2214,6 +2214,10 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             }
             if (pos != RecyclerView.NO_POSITION && parentPage.itemTouchhelper.isIdle() && !parentPage.layoutManager.hasPendingScrollPosition()
                     && (parentPage.listView.getScrollState() != RecyclerView.SCROLL_STATE_DRAGGING || notificationDelta != 0)) {
+                if (parentPage.dialogsType == DIALOGS_TYPE_DEFAULT && hasHiddenArchive()
+                        && parentPage.archivePullViewState == ARCHIVE_ITEM_STATE_HIDDEN) {
+                    pos = Math.max(1, pos);
+                }
                 RecyclerView.ViewHolder holder = parentPage.listView.findViewHolderForAdapterPosition(pos);
                 if (holder != null) {
                     int top = holder.itemView.getTop();
@@ -2222,9 +2226,6 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                     View startView = parentPage.layoutManager.findViewByPosition(firstChat);
                     int notificationCompensation = notificationScrollCompensation(pos, top, firstChat, notificationDelta,
                             startView == null ? Integer.MIN_VALUE : startView.getTop());
-                    if (parentPage.dialogsType == DIALOGS_TYPE_DEFAULT && hasHiddenArchive() && parentPage.archivePullViewState == ARCHIVE_ITEM_STATE_HIDDEN) {
-                        pos = Math.max(1, pos);
-                    }
                     ignoreLayout = true;
                     parentPage.layoutManager.scrollToPositionWithOffset(pos, (int) (top - lastListPadding + scrollAdditionalOffset + parentPage.pageAdditionalOffset)
                             - notificationCompensation);
@@ -4783,6 +4784,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                                 if ((viewPage.scroller.isRunning() || dialogStoriesCell.isExpanded()) && !rightSlidingDialogContainer.hasFragment() && !fixScrollYAfterArchiveOpened && !(actionBar != null && actionBar.isActionModeShowed())) {
                                     canScrollDy += getSearchFieldReservedHeight();
                                 }
+                                canScrollDy = Math.max(0, canScrollDy);
                                 int positiveDy = Math.abs(dy);
                                 if (canScrollDy < positiveDy) {
                                     measuredDy = -canScrollDy;
