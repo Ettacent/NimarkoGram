@@ -4371,6 +4371,11 @@ public class MediaDataController extends BaseController {
                     }
                     if (!req.filters.isEmpty()) {
                         int reqId = getConnectionsManager().sendRequest(req, (response, error) -> {
+                            if (!(response instanceof Vector)) {
+                                AndroidUtilities.runOnUIThread(() -> getNotificationCenter().postNotificationName(
+                                        NotificationCenter.mediaCountsDidLoad, dialogId, topicId, countsFinal, false));
+                                return;
+                            }
                             for (int i = 0; i < counts.length; i++) {
                                 if (counts[i] < 0) {
                                     counts[i] = 0;

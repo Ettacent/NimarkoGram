@@ -933,7 +933,7 @@ public final class NimarkoConfig {
     public static boolean systemEmoji = getPreferences().getBoolean("systemEmoji", false);
     public static void toggleSystemEmoji() { systemEmoji = !systemEmoji; getEditor().putBoolean("systemEmoji", systemEmoji).apply(); }
 
-    public static boolean systemFonts = getPreferences().getBoolean("systemFonts", true);
+    public static boolean systemFonts = getPreferences().getBoolean("systemFonts", false);
     public static void toggleSystemFonts() { systemFonts = !systemFonts; getEditor().putBoolean("systemFonts", systemFonts).apply(); }
 
     public static final int SPRING_SPRING = 0;

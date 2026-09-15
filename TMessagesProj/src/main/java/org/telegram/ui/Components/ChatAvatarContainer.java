@@ -2596,7 +2596,7 @@ public class ChatAvatarContainer extends FrameLayout implements FactorAnimator.T
             final int avatarWidth = avatarImageView.getMeasuredWidth() > 0
                     ? avatarImageView.getMeasuredWidth() : dp(avatarSizeInDp) - 2;
 
-            width += avatarWidth + dp(8) + dp(4) * 2;
+            width += avatarWidth + dp(8) + dp(6) * 2;
         } else if (hasVisibleAvatar()) {
             width += dp(52 + 18);
         } else {

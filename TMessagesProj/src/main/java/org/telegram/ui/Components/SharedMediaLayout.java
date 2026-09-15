@@ -732,6 +732,7 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
     private DialogsActivityTopPanelLayout topPanelLayout;
     private FrameLayout fragmentContextViewWrapper;
     private FragmentContextView fragmentContextView;
+    private boolean preparingFragmentContextView;
 
     private int maximumVelocity;
 
@@ -743,6 +744,10 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
 
     private int[] hasMedia;
     private int initialTab;
+    private boolean showGroupUsersTab;
+    private int groupUsersExpectedCount;
+    private int chatUsersStateHash;
+    private boolean chatUsersStateInitialized;
     private boolean forceGiftsTabUntilInfoLoaded;
 
     private SparseArray<MessageObject>[] selectedFiles = new SparseArray[]{new SparseArray<>(), new SparseArray<>()};
@@ -793,6 +798,13 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
         private BaseFragment parentFragment;
         private ArrayList<SharedMediaPreloaderDelegate> delegates = new ArrayList<>();
         private boolean mediaWasLoaded;
+        private boolean destroyed;
+        private boolean mediaCountRetryPosted;
+        private int mediaCountRetryCount;
+        private final Runnable mediaCountRetry = () -> {
+            mediaCountRetryPosted = false;
+            if (!destroyed) loadMediaCounts();
+        };
 
         public long getTopicId() {
             return topicId;
@@ -929,6 +941,9 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
             if (fragment != parentFragment) {
                 return;
             }
+            destroyed = true;
+            AndroidUtilities.cancelRunOnUIThread(mediaCountRetry);
+            mediaCountRetryPosted = false;
             delegates.clear();
             if (observersGroup != null) {
                 observersGroup.removeAllObservers();
@@ -949,11 +964,18 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
                 long did = (Long) args[0];
                 long topicId = (Long) args[1];
                 if (this.topicId == topicId && (did == dialogId || did == mergeDialogId)) {
+                    if (destroyed) return;
+                    if (args.length > 3 && Boolean.FALSE.equals(args[3])) {
+                        if (!mediaCountRetryPosted && mediaCountRetryCount < 2) {
+                            mediaCountRetryPosted = true;
+                            AndroidUtilities.runOnUIThread(mediaCountRetry, ++mediaCountRetryCount * 1000L);
+                        }
+                        return;
+                    }
                     int[] counts = (int[]) args[2];
-                    if (did == dialogId) {
-                        mediaCount = counts;
-                    } else {
-                        mediaMergeCount = counts;
+                    int[] targetCounts = did == dialogId ? mediaCount : mediaMergeCount;
+                    for (int a = 0; a < Math.min(counts.length, targetCounts.length); a++) {
+                        if (counts[a] >= 0) targetCounts[a] = counts[a];
                     }
                     for (int a = 0; a < counts.length; a++) {
                         if (mediaCount[a] >= 0 && mediaMergeCount[a] >= 0) {
@@ -961,9 +983,9 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
                         } else if (mediaCount[a] >= 0) {
                             lastMediaCount[a] = mediaCount[a];
                         } else {
-                            lastMediaCount[a] = Math.max(mediaMergeCount[a], 0);
+                            lastMediaCount[a] = mediaMergeCount[a];
                         }
-                        if (did == dialogId && lastMediaCount[a] != 0 && lastLoadMediaCount[a] != mediaCount[a]) {
+                        if (did == dialogId && mediaCount[a] > 0 && lastLoadMediaCount[a] != mediaCount[a]) {
                             int type = a;
                             if (type == 0) {
                                 if (sharedMediaData[0].filterType == FILTER_PHOTOS_ONLY) {
@@ -974,7 +996,7 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
                             }
                             parentFragment.getMediaDataController().loadMedia(did, lastLoadMediaCount[a] == -1 ? 30 : 20, 0, 0, type, topicId, 1, parentFragment.getClassGuid(), sharedMediaData[a].requestIndex, null, null);
                             lastLoadMediaCount[a] = mediaCount[a];
-                        } else if (did == mergeDialogId && lastMediaCount[a] != 0 && lastLoadMergeMediaCount[a] != mediaMergeCount[a]) {
+                        } else if (did == mergeDialogId && mediaMergeCount[a] > 0 && lastLoadMergeMediaCount[a] != mediaMergeCount[a]) {
                             int type = a;
                             if (type == 0) {
                                 if (sharedMediaData[0].filterType == FILTER_PHOTOS_ONLY) {
@@ -1234,6 +1256,10 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
             }
         }
         public void refreshMediaCounts() {
+            if (destroyed) return;
+            AndroidUtilities.cancelRunOnUIThread(mediaCountRetry);
+            mediaCountRetryPosted = false;
+            mediaCountRetryCount = 0;
             loadMediaCounts();
         }
 
@@ -1632,7 +1658,7 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
         } else {
             main_tab = null;
         }
-        if (initialTab == TAB_GIFTS || initialTab == TAB_RECOMMENDED_CHANNELS || initialTab == TAB_SAVED_DIALOGS || initialTab == TAB_COMMON_GROUPS) {
+        if (initialTab == TAB_GIFTS || initialTab == TAB_RECOMMENDED_CHANNELS || initialTab == TAB_SAVED_DIALOGS || initialTab == TAB_COMMON_GROUPS || initialTab == TAB_GROUPUSERS) {
             this.initialTab = initialTab;
         } else if (user != null && user.bot && user.bot_has_main_app && user.bot_can_edit) {
             this.initialTab = TAB_BOT_PREVIEWS;
@@ -1666,6 +1692,8 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
                 }
             }
         }
+        showGroupUsersTab = this.initialTab == TAB_GROUPUSERS;
+        groupUsersExpectedCount = chatInfo != null ? chatInfo.participants_count : 0;
         onTabProgress(initialTab);
         info = chatInfo;
         this.userInfo = userInfo;
@@ -2347,7 +2375,7 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
         chatUsersAdapter = new ChatUsersAdapter(context);
         if (topicId == 0) {
             chatUsersAdapter.sortedUsers = sortedUsers;
-            chatUsersAdapter.chatInfo = initialTab == TAB_GROUPUSERS ? chatInfo : null;
+            chatUsersAdapter.chatInfo = showGroupUsersTab && chatInfo != null && chatInfo.participants != null ? chatInfo : null;
         }
         storiesAdapter = new StoriesAdapter(context, false) {
             @Override
@@ -3744,7 +3772,7 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
 
             fragmentContextViewWrapper = new FrameLayout(context);
             topPanelLayout.addView(fragmentContextViewWrapper);
-            topPanelLayout.setViewVisible(fragmentContextViewWrapper, true, false);
+            topPanelLayout.setViewVisible(fragmentContextViewWrapper, false, false);
             topPanelLayout.setOnAnimatedHeightChangedListener(() -> {
                 topLayoutPadding = (int) topPanelLayout.getAnimatedHeightWithPadding(dp(14));
 
@@ -3772,10 +3800,16 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
             fragmentContextView = new FragmentContextView(context, parent, this, false, resourcesProvider) {
                 @Override
                 public void setVisibility(int visibility) {
-                    topPanelLayout.setViewVisible(fragmentContextViewWrapper, visibility == VISIBLE);
+                    if (!preparingFragmentContextView) {
+                        topPanelLayout.setViewVisible(fragmentContextViewWrapper, visibility == VISIBLE);
+                    }
                 }
             };
+            preparingFragmentContextView = true;
+            fragmentContextView.prepareCurrentState();
+            preparingFragmentContextView = false;
             fragmentContextViewWrapper.addView(fragmentContextView);
+            topPanelLayout.setViewVisible(fragmentContextViewWrapper, fragmentContextView.getTopPadding() > 0, false);
             topPanelLayout.setCallFragmentContextView(fragmentContextView);
             addView(topPanelLayout, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, Gravity.TOP, 0, 48 -14, 0, 0));
 
@@ -5093,6 +5127,11 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
         adaptersUpdatePending = false;
         photoVideoAdapterUpdatePending = false;
         adaptersUpdatePosted = false;
+        if (topPanelLayout != null) {
+            topPanelLayout.animate().cancel();
+        }
+        profileTransitionActive = false;
+        profileTransitionOpening = false;
 
         if (storiesAdapter != null && storiesAdapter.storiesList != null) {
             storiesAdapter.destroy();
@@ -6723,8 +6762,7 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
             case TAB_COMMON_GROUPS:
                 return boundedProfileLoadingRows(hasMedia[type]);
             case TAB_GROUPUSERS:
-                return boundedProfileLoadingRows(chatUsersAdapter.chatInfo != null
-                        ? chatUsersAdapter.chatInfo.participants_count : 0);
+                return boundedProfileLoadingRows(groupUsersExpectedCount);
             case TAB_SAVED_DIALOGS:
             case TAB_RECOMMENDED_CHANNELS:
                 return boundedProfileLoadingRows(0);
@@ -6904,6 +6942,36 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
             switchToCurrentSelectedMode(false);
         }
     }
+    public void setGroupUsersTabVisible(boolean visible, int expectedCount) {
+        if (topicId != 0) {
+            visible = false;
+        }
+        int normalizedExpectedCount = Math.max(0, expectedCount);
+        boolean expectedCountChanged = groupUsersExpectedCount != normalizedExpectedCount;
+        groupUsersExpectedCount = normalizedExpectedCount;
+        if (showGroupUsersTab == visible) {
+            if (visible && expectedCountChanged) {
+                notifyGroupUsersPageChanged();
+            }
+            return;
+        }
+        showGroupUsersTab = visible;
+        if (!visible) {
+            chatUsersAdapter.chatInfo = null;
+            chatUsersAdapter.sortedUsers = null;
+            chatUsersStateInitialized = false;
+        }
+        updateTabs(true);
+        checkCurrentTabValid();
+    }
+    private void notifyGroupUsersPageChanged() {
+        for (MediaPage mediaPage : mediaPages) {
+            if (mediaPage != null && mediaPage.selectedType == TAB_GROUPUSERS
+                    && mediaPage.listView.getAdapter() != null) {
+                AndroidUtilities.notifyDataSetChanged(mediaPage.listView);
+            }
+        }
+    }
 
     public void setUserInfo(TLRPC.UserFull userInfo) {
         boolean stories_pinned_available = this.userInfo != null && this.userInfo.stories_pinned_available;
@@ -6925,16 +6993,57 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
                 }
             }
         }
+        boolean tabVisibilityChanged = false;
+        boolean firstData = false;
+        boolean dataChanged = false;
         if (topicId == 0) {
+            boolean showUsers = chatInfo != null && chatInfo.participants != null
+                    && chatInfo.participants.participants.size() > 5;
+            tabVisibilityChanged = showGroupUsersTab != showUsers;
+            showGroupUsersTab = showUsers;
+            int oldCount = chatUsersAdapter.getItemCount();
+            if (chatInfo != null) {
+                groupUsersExpectedCount = Math.max(groupUsersExpectedCount, chatInfo.participants_count);
+            }
+            int stateHash = getChatUsersStateHash(sortedUsers, chatInfo);
+            dataChanged = !chatUsersStateInitialized || chatUsersStateHash != stateHash;
+            chatUsersStateInitialized = true;
+            chatUsersStateHash = stateHash;
             chatUsersAdapter.chatInfo = chatInfo;
             chatUsersAdapter.sortedUsers = sortedUsers;
+            firstData = oldCount == 0 && chatUsersAdapter.getItemCount() > 0;
         }
-        updateTabs(true);
+        if (tabVisibilityChanged) {
+            updateTabs(true);
+            checkCurrentTabValid();
+        }
+        if (!dataChanged) {
+            return;
+        }
         for (int a = 0; a < mediaPages.length; a++) {
             if (mediaPages[a].selectedType == TAB_GROUPUSERS && mediaPages[a].listView.getAdapter() != null) {
                 AndroidUtilities.notifyDataSetChanged(mediaPages[a].listView);
+                if (firstData) {
+                    animateItemsEnter(mediaPages[a].listView, 0, null);
+                }
             }
         }
+    }
+    private static int getChatUsersStateHash(ArrayList<Integer> sortedUsers, TLRPC.ChatFull chatInfo) {
+        int result = 1;
+        if (chatInfo != null && chatInfo.participants != null) {
+            result = 31 * result + chatInfo.participants.participants.size();
+            for (TLRPC.ChatParticipant participant : chatInfo.participants.participants) {
+                result = 31 * result + Long.hashCode(participant.user_id);
+            }
+        }
+        if (sortedUsers != null) {
+            result = 31 * result + sortedUsers.size();
+            for (int index : sortedUsers) {
+                result = 31 * result + index;
+            }
+        }
+        return result;
     }
 
     public void updateAdapters() {
@@ -7061,8 +7170,30 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
     private int firstTab = -1;
     private boolean updateTabsAfterProfileTransition;
     private boolean animateTabsAfterProfileTransition;
+    private boolean profileTransitionActive;
+    private boolean profileTransitionOpening;
+    public void beginProfileTransition(boolean opening) {
+        if (topPanelLayout == null) return;
+        topPanelLayout.animate().cancel();
+        profileTransitionActive = true;
+        profileTransitionOpening = opening;
+        if (opening) {
+            topPanelLayout.setAlpha(0f);
+        }
+    }
+    private void finishProfilePanelTransition() {
+        if (!profileTransitionActive || !profileTransitionOpening || topPanelLayout == null) return;
+        profileTransitionActive = false;
+        profileTransitionOpening = false;
+        topPanelLayout.animate()
+                .alpha(1f)
+                .setDuration(140)
+                .setInterpolator(CubicBezierInterpolator.EASE_OUT_QUINT)
+                .start();
+    }
 
     public void onProfileTransitionFinished() {
+        finishProfilePanelTransition();
         if (!updateTabsAfterProfileTransition) {
             return;
         }
@@ -7071,6 +7202,20 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
         animateTabsAfterProfileTransition = false;
         updateTabs(animated, true);
         checkCurrentTabValid();
+    }
+    public void setProfileTransitionProgress(float progress) {
+        if (topPanelLayout == null || !profileTransitionActive) return;
+        float value = Utilities.clamp01(progress);
+        if (!profileTransitionOpening) {
+            topPanelLayout.setAlpha(value);
+            return;
+        }
+        float entrance = Utilities.clamp01((value - 0.6f) / 0.4f);
+        entrance = entrance * entrance * (3f - 2f * entrance);
+        topPanelLayout.setAlpha(0.4f * entrance);
+        if (value >= 1f) {
+            finishProfilePanelTransition();
+        }
     }
 
     public void updateTabs(boolean animated) {
@@ -7233,7 +7378,7 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
             if (hasSavedDialogs) {
                 tabs.add(new Pair<>(TAB_SAVED_DIALOGS, getString(R.string.SavedDialogsTab)));
             }
-            if (chatUsersAdapter.chatInfo != null) {
+            if (showGroupUsersTab || chatUsersAdapter.chatInfo != null) {
                 tabs.add(new Pair<>(TAB_GROUPUSERS, getString(R.string.GroupMembers)));
             }
             if (hasMedia[0] > 0) {
