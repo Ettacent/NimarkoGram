@@ -68,4 +68,3 @@ try {
  cp.execFileSync('javac',['ProfileAnchorTest.java'],{cwd:tmp,stdio:'pipe'});
  process.stdout.write(cp.execFileSync('java',['ProfileAnchorTest'],{cwd:tmp,encoding:'utf8'}));
 } finally { fs.rmSync(tmp,{recursive:true,force:true}); }
-
