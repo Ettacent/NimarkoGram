@@ -73,6 +73,7 @@ public class ProfileLoadingRowsHarness {
         int rowHeight(int width) { return getCellHeight(width); }
     }
     int[] hasMedia = new int[9];
+    int groupUsersExpectedCount = -1;
     int[] mediaColumnsCount = {3, 3};
     static class ChatInfo { int participants_count; }
     static class ChatUsersAdapter { ChatInfo chatInfo; }
@@ -101,6 +102,7 @@ public class ProfileLoadingRowsHarness {
                     Arrays.fill(host.hasMedia, count);
                     host.chatUsersAdapter.chatInfo = new ChatInfo();
                     host.chatUsersAdapter.chatInfo.participants_count = count;
+                    host.groupUsersExpectedCount = count;
                     int expectedRows = type == TAB_SAVED_DIALOGS || type == TAB_RECOMMENDED_CHANNELS
                         ? 3 : Math.min(8, count > 0 ? count : 3);
                     check(host.getProfileLoadingRows(type) == expectedRows, "bounded/unknown count " + type);
@@ -120,6 +122,7 @@ public class ProfileLoadingRowsHarness {
                 }
             }
             host.chatUsersAdapter.chatInfo = null;
+            host.groupUsersExpectedCount = -1;
             check(host.getProfileLoadingRows(TAB_GROUPUSERS) == 3, "unknown participants");
             for (int type : new int[]{TAB_PHOTOVIDEO, TAB_GIF, TAB_STORIES, TAB_ARCHIVED_STORIES, 65537, TAB_GIFTS, TAB_BOT_PREVIEWS}) {
                 host.mediaPage.selectedType = type;
