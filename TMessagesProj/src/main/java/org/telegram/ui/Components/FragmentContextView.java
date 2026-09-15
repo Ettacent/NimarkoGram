@@ -1459,19 +1459,7 @@ public class FragmentContextView extends FrameLayout implements NotificationCent
             NotificationCenter.getGlobalInstance().addObserver(this, NotificationCenter.webRtcMicAmplitudeEvent);
             NotificationCenter.getGlobalInstance().addObserver(this, NotificationCenter.groupCallVisibilityChanged);
 
-            if (LivePlayer.recording != null) {
-                checkLiveStory(true);
-            } else if (VoIPService.getSharedInstance() != null && !VoIPService.getSharedInstance().isHangingUp() && VoIPService.getSharedInstance().getCallState() != VoIPService.STATE_WAITING_INCOMING && !GroupCallPip.isShowing()) {
-                checkCall(true);
-            } else if (chatActivity != null && fragment.getSendMessagesHelper().getImportingHistory(chatActivity.getDialogId()) != null && !isPlayingVoice()) {
-                checkImport(true);
-            } else if (chatActivity != null && chatActivity.getGroupCall() != null && chatActivity.getGroupCall().shouldShowPanel() && !GroupCallPip.isShowing() && !isPlayingVoice()) {
-                checkCall(true);
-            } else {
-                checkCall(true);
-                checkPlayer(true);
-                updatePlaybackButton(false);
-            }
+            prepareCurrentState();
         }
 
         if (currentStyle == STYLE_ACTIVE_GROUP_CALL || currentStyle == STYLE_CONNECTING_GROUP_CALL) {
@@ -1500,6 +1488,24 @@ public class FragmentContextView extends FrameLayout implements NotificationCent
 
         speakerAmplitude = 0;
         micAmplitude = 0;
+    }
+    public void prepareCurrentState() {
+        if (isLocation) {
+            return;
+        }
+        if (LivePlayer.recording != null) {
+            checkLiveStory(true);
+        } else if (VoIPService.getSharedInstance() != null && !VoIPService.getSharedInstance().isHangingUp() && VoIPService.getSharedInstance().getCallState() != VoIPService.STATE_WAITING_INCOMING && !GroupCallPip.isShowing()) {
+            checkCall(true);
+        } else if (chatActivity != null && fragment.getSendMessagesHelper().getImportingHistory(chatActivity.getDialogId()) != null && !isPlayingVoice()) {
+            checkImport(true);
+        } else if (chatActivity != null && chatActivity.getGroupCall() != null && chatActivity.getGroupCall().shouldShowPanel() && !GroupCallPip.isShowing() && !isPlayingVoice()) {
+            checkCall(true);
+        } else {
+            checkCall(true);
+            checkPlayer(true);
+            updatePlaybackButton(false);
+        }
     }
 
     @Override
