@@ -463,6 +463,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
     private ActionBarMenuSubItem setUsernameItem;
     private ImageView ttlIconView;
     private ActionBarMenuSubItem autoDeleteItem;
+    private android.widget.ScrollView profileMoreMenu;
     AutoDeletePopupWrapper autoDeletePopupWrapper;
     protected float headerShadowAlpha = 1.0f;
     private int actionBarBackgroundColor;
@@ -14381,6 +14382,12 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             return;
         }
         Context context = actionBar.getContext();
+        if (profileMoreMenu != null) {
+            if (profileMoreMenu.getParent() instanceof ViewGroup) {
+                ((ViewGroup) profileMoreMenu.getParent()).removeView(profileMoreMenu);
+            }
+            profileMoreMenu = null;
+        }
         otherItem.removeAllSubItems();
         animatingItem = null;
 
@@ -14775,7 +14782,63 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
         // calls otherItem.removeAllSubItems() at the top, so this must run on every
         // rebuild as well as on pluginMenuItemsUpdated.
         nimarkoRebuildProfilePluginsMenu();
+        createProfileMoreMenu();
         updateStoriesViewBounds(false);
+    }
+
+    private void createProfileMoreMenu() {
+        final int[] extraIds = {
+                add_shortcut, share_contact, edit_contact, delete_contact, start_secret_chat,
+                enable_no_forwards, disable_no_forwards, bot_privacy,
+                app.nimarkogram.messenger.utils.NimarkoProfileActivityHelper.OPTION_RESTART,
+                app.nimarkogram.messenger.utils.NimarkoProfileActivityHelper.OPTION_GET_PROFILE_BACKGROUND,
+                app.nimarkogram.messenger.utils.NimarkoProfileActivityHelper.OPTION_APPLY_PROFILE_BACKGROUND,
+                app.nimarkogram.messenger.utils.NimarkoProfileActivityHelper.OPTION_USER_INFO
+        };
+        ArrayList<View> items = new ArrayList<>();
+        boolean hasVisibleItems = false;
+        for (int id : extraIds) {
+            View item = otherItem.getSubItem(id);
+            if (item != null) {
+                items.add(item);
+                hasVisibleItems |= item.getVisibility() == View.VISIBLE;
+            }
+        }
+        if (!hasVisibleItems) return;
+
+        Context context = otherItem.getContext();
+        LinearLayout content = new LinearLayout(context);
+        content.setOrientation(LinearLayout.VERTICAL);
+        ActionBarMenuSubItem back = new ActionBarMenuSubItem(context, false, false, resourcesProvider);
+        back.setTextAndIcon(getString(R.string.Back), R.drawable.msg_arrow_back);
+        back.setOnClickListener(v -> otherItem.getPopupLayout().getSwipeBack().closeForeground());
+        content.addView(back, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(48)));
+        for (View item : items) {
+            ((ViewGroup) item.getParent()).removeView(item);
+            content.addView(item, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(48)));
+        }
+        profileMoreMenu = new android.widget.ScrollView(context);
+        profileMoreMenu.setVerticalScrollBarEnabled(false);
+        profileMoreMenu.addView(content, new android.widget.ScrollView.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        ActionBarMenuSubItem more = otherItem.addSwipeBackItem(
+                R.drawable.ic_ab_other, null, getString(R.string.NM_Menu_More), profileMoreMenu);
+        more.setRightIcon(0);
+        LinearLayout parent = (LinearLayout) more.getParent();
+        parent.removeView(more);
+        int insertion = -1;
+        for (int i = 0; i < parent.getChildCount(); i++) {
+            if (parent.getChildAt(i) instanceof ActionBarPopupWindow.GapView) {
+                insertion = i + 1;
+                break;
+            }
+        }
+        if (insertion < 0) {
+            otherItem.addColoredGap();
+            insertion = parent.getChildCount();
+        }
+        parent.addView(more, insertion, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(48)));
     }
 
     /** NimarkoGram (C1): (re)build the "Plugins (N)" item in the profile three-dots
