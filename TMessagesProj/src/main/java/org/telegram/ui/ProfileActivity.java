@@ -14787,22 +14787,26 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
     }
 
     private void createProfileMoreMenu() {
-        final int[] extraIds = {
-                add_shortcut, share_contact, edit_contact, delete_contact, start_secret_chat,
-                enable_no_forwards, disable_no_forwards, bot_privacy,
-                app.nimarkogram.messenger.utils.NimarkoProfileActivityHelper.OPTION_RESTART,
-                app.nimarkogram.messenger.utils.NimarkoProfileActivityHelper.OPTION_GET_PROFILE_BACKGROUND,
-                app.nimarkogram.messenger.utils.NimarkoProfileActivityHelper.OPTION_APPLY_PROFILE_BACKGROUND,
-                app.nimarkogram.messenger.utils.NimarkoProfileActivityHelper.OPTION_USER_INFO
+        final int[][] extraGroups = {
+                {share_contact, edit_contact, delete_contact},
+                {start_secret_chat, enable_no_forwards, disable_no_forwards, bot_privacy},
+                {app.nimarkogram.messenger.utils.NimarkoProfileActivityHelper.OPTION_GET_PROFILE_BACKGROUND,
+                        app.nimarkogram.messenger.utils.NimarkoProfileActivityHelper.OPTION_APPLY_PROFILE_BACKGROUND},
+                {app.nimarkogram.messenger.utils.NimarkoProfileActivityHelper.OPTION_USER_INFO, add_shortcut},
+                {app.nimarkogram.messenger.utils.NimarkoProfileActivityHelper.OPTION_RESTART}
         };
-        ArrayList<View> items = new ArrayList<>();
+        ArrayList<ArrayList<View>> groups = new ArrayList<>();
         boolean hasVisibleItems = false;
-        for (int id : extraIds) {
-            View item = otherItem.getSubItem(id);
-            if (item != null) {
-                items.add(item);
-                hasVisibleItems |= item.getVisibility() == View.VISIBLE;
+        for (int[] ids : extraGroups) {
+            ArrayList<View> items = new ArrayList<>();
+            for (int id : ids) {
+                View item = otherItem.getSubItem(id);
+                if (item != null) {
+                    items.add(item);
+                    hasVisibleItems |= item.getVisibility() == View.VISIBLE;
+                }
             }
+            groups.add(items);
         }
         if (!hasVisibleItems) return;
 
@@ -14813,9 +14817,20 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
         back.setTextAndIcon(getString(R.string.Back), R.drawable.msg_arrow_back);
         back.setOnClickListener(v -> otherItem.getPopupLayout().getSwipeBack().closeForeground());
         content.addView(back, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(48)));
-        for (View item : items) {
-            ((ViewGroup) item.getParent()).removeView(item);
-            content.addView(item, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(48)));
+        for (ArrayList<View> items : groups) {
+            boolean groupVisible = false;
+            for (View item : items) {
+                groupVisible |= item.getVisibility() == View.VISIBLE;
+            }
+            if (groupVisible) {
+                content.addView(new ActionBarPopupWindow.GapView(context, resourcesProvider,
+                        Theme.key_actionBarDefaultSubmenuSeparator),
+                        LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 8));
+            }
+            for (View item : items) {
+                ((ViewGroup) item.getParent()).removeView(item);
+                content.addView(item, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(48)));
+            }
         }
         profileMoreMenu = new android.widget.ScrollView(context);
         profileMoreMenu.setVerticalScrollBarEnabled(false);

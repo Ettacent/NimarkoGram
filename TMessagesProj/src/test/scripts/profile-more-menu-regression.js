@@ -4,7 +4,9 @@ const start = src.indexOf('private void createProfileMoreMenu()');
 const end = src.indexOf('\n    /**', start);
 const method = src.slice(start,end);
 assert(start>0 && end>start);
-const ids = method.match(/final int\[\] extraIds = \{([\s\S]*?)\};/)[1].split(',').map(s=>s.trim().split('.').pop());
+const groupSource = method.match(/final int\[\]\[\] extraGroups = \{([\s\S]*?)\n        \};/)[1];
+const groups = [...groupSource.matchAll(/\{([^{}]+)\}/g)].map(m => m[1].split(',').map(s=>s.trim().split('.').pop()));
+const ids = groups.flat();
 assert.equal(new Set(ids).size,ids.length);
 for (const id of ['gift_premium','block_contact','report','leave_group','autoDeleteItem','gallery_menu_save'])
  assert(!ids.includes(id),id+' must stay in the main menu');
@@ -15,6 +17,23 @@ assert(method.includes('if (!hasVisibleItems) return'));
 assert(method.includes('insertion = i + 1'));
 assert(method.includes('more.setRightIcon(0)'));
 assert(method.includes('getSwipeBack().closeForeground()'));
+assert(method.includes('if (groupVisible)'));
+assert(method.includes('new ActionBarPopupWindow.GapView(context, resourcesProvider,'));
+assert(method.includes('Theme.key_actionBarDefaultSubmenuSeparator'));
+assert(method.includes('LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 8)'));
+assert(!method.includes('new TextView'), 'no section headings');
+for (let mask = 0; mask < (1 << ids.length); mask++) {
+ const visible = new Set(ids.filter((_, i) => mask & (1 << i)));
+ const rows = ['back'];
+ for (const group of groups) {
+  const items = group.filter(id => visible.has(id));
+  if (items.length) rows.push('gap', ...items);
+ }
+ assert.notEqual(rows.at(-1), 'gap');
+ assert(!rows.some((r,i) => r==='gap' && rows[i+1]==='gap'));
+ assert.deepEqual(rows.filter(r=>r!=='back'&&r!=='gap'), ids.filter(id=>visible.has(id)));
+ assert.equal(rows.filter(r=>r==='gap').length,groups.filter(g=>g.some(id=>visible.has(id))).length);
+}
 const build=src.slice(src.indexOf('private void createActionBarMenu(boolean animated)'), start);
 assert(build.indexOf('removeView(profileMoreMenu)') < build.indexOf('otherItem.removeAllSubItems()'));
 assert(build.indexOf('createProfileMoreMenu();') > build.indexOf('nimarkoRebuildProfilePluginsMenu();'));
