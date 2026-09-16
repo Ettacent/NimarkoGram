@@ -87,6 +87,7 @@ public class SimpleTextView extends View implements Drawable.Callback {
 
     private boolean scrollNonFitText;
     private boolean textDoesNotFit;
+    private float textOverflow;
     private float scrollingOffset;
     private long lastUpdateTime;
     private int currentScrollDelay;
@@ -409,6 +410,10 @@ public class SimpleTextView extends View implements Drawable.Callback {
                     ? getRightDrawablesWidth() : 0;
             if ((gravity & Gravity.HORIZONTAL_GRAVITY_MASK) == Gravity.CENTER_HORIZONTAL) {
                 offsetX = (width - textWidth - rightDrawableWidth) / 2 - (int) layout.getLineLeft(0);
+                if (ellipsizeByGradient && !scrollNonFitText && textWidth + rightDrawableWidth > width) {
+                    offsetX = (ellipsizeByGradientLeft ? width - textWidth - rightDrawableWidth : 0)
+                            - (int) layout.getLineLeft(0);
+                }
             } else if ((gravity & Gravity.HORIZONTAL_GRAVITY_MASK) == Gravity.LEFT) {
                 if (firstLineLayout != null) {
                     offsetX = -(int) firstLineLayout.getLineLeft(0);
@@ -426,6 +431,7 @@ public class SimpleTextView extends View implements Drawable.Callback {
             }
             offsetX += getPaddingLeft();
             textDoesNotFit = textWidth + rightDrawableWidth > (width - paddingRight);
+            textOverflow = Math.max(0f, layout.getLineWidth(0) + rightDrawableWidth - (width - paddingRight));
             checkUi_layerType();
 
             if (fullLayout != null && fullLayoutAdditionalWidth > 0) {
@@ -1188,6 +1194,8 @@ public class SimpleTextView extends View implements Drawable.Callback {
             } else if (ellipsizeByGradient && textDoesNotFit && fadeEllpsizePaint != null) {
                 canvas.save();
                 updateFadePaints();
+                fadeEllpsizePaint.setAlpha(Math.round(255f * Math.min(1f,
+                        textOverflow / Math.max(1, fadeEllpsizePaintWidth))));
                 if (!ellipsizeByGradientLeft) {
                     canvas.translate(getMaxTextWidth() - paddingRight - fadeEllpsizePaintWidth
                             - getOutsideRightDrawableTextClipInset(), 0);

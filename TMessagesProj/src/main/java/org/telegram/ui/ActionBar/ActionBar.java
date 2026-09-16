@@ -535,6 +535,7 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
             return;
         }
         subtitleTextView = new SimpleTextView(getContext());
+        subtitleTextView.setEllipsizeByGradient(true, LocaleController.isRTL);
 
         subtitleTextView.setGravity(getSubtitleGravity());
         subtitleTextView.setVisibility(GONE);
@@ -548,6 +549,7 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
             return;
         }
         additionalSubtitleTextView = new SimpleTextView(getContext());
+        additionalSubtitleTextView.setEllipsizeByGradient(true, LocaleController.isRTL);
 
         additionalSubtitleTextView.setGravity(getSubtitleGravity());
         additionalSubtitleTextView.setVisibility(GONE);
@@ -596,6 +598,7 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
             return;
         }
         titleTextView[i] = new SimpleTextView(getContext());
+        titleTextView[i].setEllipsizeByGradient(true, LocaleController.isRTL);
         titleTextView[i].setGravity(getTitleGravity());
         if (titleColorToSet != 0) {
             titleTextView[i].setTextColor(titleColorToSet);

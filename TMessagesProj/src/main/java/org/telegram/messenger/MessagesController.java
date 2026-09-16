@@ -23081,6 +23081,11 @@ public class MessagesController extends BaseController implements NotificationCe
                 new AlertDialog(fragment.getParentActivity(), AlertDialog.ALERT_TYPE_SPINNER)
             };
             boolean[] canceled = new boolean[]{false};
+            final java.util.function.BooleanSupplier navigationCurrent = fragment.captureNavigationRequest();
+            if (progress != null) {
+                progress.onCancel(() -> canceled[0] = true);
+                progress.init();
+            }
             getMessagesController().getUserNameResolver().resolve(username, (peerId) -> {
                 try {
                     if (progress != null) {
@@ -23089,9 +23094,11 @@ public class MessagesController extends BaseController implements NotificationCe
                         progressDialog[0].dismiss();
                     }
                 } catch (Exception ignored) {}
+                if (fragment.getVisibleDialog() == progressDialog[0]) {
+                    fragment.setVisibleDialog(null);
+                }
                 progressDialog[0] = null;
-                fragment.setVisibleDialog(null);
-                if (canceled[0]) {
+                if (canceled[0] || !navigationCurrent.getAsBoolean()) {
                     return;
                 }
                 if (peerId != null) {
@@ -23113,12 +23120,9 @@ public class MessagesController extends BaseController implements NotificationCe
                     }
                 }
             });
-            if (progress != null) {
-                progress.onCancel(() -> canceled[0] = true);
-                progress.init();
-            } else {
+            if (progress == null) {
                 AndroidUtilities.runOnUIThread(() -> {
-                    if (progressDialog[0] == null) {
+                    if (progressDialog[0] == null || canceled[0] || !navigationCurrent.getAsBoolean()) {
                         return;
                     }
                     progressDialog[0].setOnCancelListener(dialog -> canceled[0] = true);

@@ -116,7 +116,7 @@ public class ChatAvatarContainer extends FrameLayout implements FactorAnimator.T
             subtitleTextView.setGravity(value ? Gravity.CENTER_HORIZONTAL : Gravity.LEFT);
             subtitleTextView.setPadding(value ? dp(10) : 0, 0, dp(10), 0);
             subtitleTextView.setEllipsizeByGradient(
-                    !value && !useChatTitleLayoutOutsideChat,
+                    true,
                     useChatTitleLayoutOutsideChat ? LocaleController.isRTL : null);
         }
         if (animatedSubtitleTextView != null) {
@@ -438,7 +438,7 @@ public class ChatAvatarContainer extends FrameLayout implements FactorAnimator.T
         } else {
             subtitleTextView = new SimpleTextConnectedView(context, subtitleTextLargerCopyView);
             subtitleTextView.setEllipsizeByGradient(
-                    !centerChatTitle && !useChatTitleLayoutOutsideChat,
+                    true,
                     useChatTitleLayoutOutsideChat ? LocaleController.isRTL : null);
             subtitleTextView.setTextColor(getThemedColor(Theme.key_actionBarDefaultSubtitle));
             subtitleTextView.setTag(Theme.key_actionBarDefaultSubtitle);
@@ -1017,6 +1017,8 @@ public class ChatAvatarContainer extends FrameLayout implements FactorAnimator.T
             removeView(titleTextLargerCopyView);
         }
         titleTextLargerCopyView = new SimpleTextView(getContext());
+        titleTextLargerCopyView.setEllipsizeByGradient(true,
+                useChatTitleLayoutOutsideChat ? LocaleController.isRTL : null);
         this.titleTextLargerCopyView.set(titleTextLargerCopyView);
         titleTextLargerCopyView.setTextColor(getThemedColor(Theme.key_actionBarDefaultTitle));
         titleTextLargerCopyView.setTextSizePx(dp(glassMode ? 17.5f : 18));
@@ -1044,6 +1046,8 @@ public class ChatAvatarContainer extends FrameLayout implements FactorAnimator.T
             removeView(subtitleTextLargerCopyView);
         }
         subtitleTextLargerCopyView = new SimpleTextView(getContext());
+        subtitleTextLargerCopyView.setEllipsizeByGradient(true,
+                useChatTitleLayoutOutsideChat ? LocaleController.isRTL : null);
         this.subtitleTextLargerCopyView.set(subtitleTextLargerCopyView);
         subtitleTextLargerCopyView.setTextColor(getThemedColor(Theme.key_actionBarDefaultSubtitle));
         subtitleTextLargerCopyView.setTag(Theme.key_actionBarDefaultSubtitle);

@@ -2671,7 +2671,7 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
         boolean preview = params.preview;
         ActionBarPopupWindow.ActionBarPopupWindowLayout menu = params.menuView;
 
-        if (fragment == null || animationInProgress || checkTransitionAnimation()
+        if (fragment == null || animationInProgress || startedTracking || predictiveBackInProgress || predictiveInput || checkTransitionAnimation()
                 || delegate != null && check && !delegate.needPresentFragment(this, params)) {
             return false;
         }
@@ -3409,7 +3409,7 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
         if (fragment != null && fragment.closeLastFragment()) {
             return;
         }
-        if (delegate != null && !delegate.needCloseLastFragment(this) || animationInProgress || checkTransitionAnimation() || fragmentsStack.isEmpty() || getLastFragment() != fragment) {
+        if (delegate != null && !delegate.needCloseLastFragment(this) || animationInProgress || startedTracking || predictiveBackInProgress || predictiveInput || checkTransitionAnimation() || fragmentsStack.isEmpty() || getLastFragment() != fragment) {
             return;
         }
         if (parentActivity.getCurrentFocus() != null) {

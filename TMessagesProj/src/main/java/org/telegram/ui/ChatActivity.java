@@ -12513,10 +12513,6 @@ public class ChatActivity extends BaseFragment implements
                     }
                 }
             }
-
-            if (!isThreadChat() && !wasManualScroll && unreadMessageObject != null && chatListView != null && !(translateButton != null && translateButton.getVisibility() == View.VISIBLE)) {
-                chatListView.scrollBy(0, (int) (oldPadding - chatListViewPaddingTop));
-            }
         }
 
         invalidateChatListViewTopPadding = false;

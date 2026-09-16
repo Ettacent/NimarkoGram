@@ -3757,10 +3757,13 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
         }
         final long requestGeneration = navigationRequestGeneration.incrementAndGet();
         TLRPC.TL_messages_getDiscussionMessage req = new TLRPC.TL_messages_getDiscussionMessage();
+        final BaseFragment source = getSafeLastFragment();
+        final java.util.function.BooleanSupplier sourceCurrent = source == null
+                ? () -> true : source.captureNavigationRequest();
         req.peer = MessagesController.getInputPeer(chat);
         req.msg_id = commentId != null ? messageId : (int) (long) threadId;
         return ConnectionsManager.getInstance(targetAccount).sendRequest(req, (response, error) -> AndroidUtilities.runOnUIThread(() -> {
-            if (!isNavigationRequestCurrent(targetAccount, requestGeneration)) {
+            if (!isNavigationRequestCurrent(targetAccount, requestGeneration) || !sourceCurrent.getAsBoolean()) {
                 if (dismissLoading != null) {
                     dismissLoading.run();
                 }
@@ -3777,7 +3780,7 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
                 }
                 if (!arrayList.isEmpty() || chat.forum && threadId != null && threadId == 1) {
                     if (chat.forum) {
-                        openTopicRequest(targetAccount, requestGeneration, (int) (long) threadId, chat, commentId != null ? commentId : messageId, null, onOpened, quote, taskId, pollOptionId, fromMessageId, arrayList, quoteOffset);
+                        openTopicRequest(targetAccount, requestGeneration, sourceCurrent, (int) (long) threadId, chat, commentId != null ? commentId : messageId, null, onOpened, quote, taskId, pollOptionId, fromMessageId, arrayList, quoteOffset);
                         chatOpened = true;
                     } else {
                         Bundle args = new Bundle();
@@ -3835,8 +3838,8 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
         }));
     }
 
-    private void openTopicRequest(int targetAccount, long requestGeneration, int topicId, TLRPC.Chat chat, int messageId, TLRPC.TL_forumTopic forumTopic, Runnable whenDone, String quote, Integer taskId, byte[] pollOptionId, int fromMessageId, ArrayList<MessageObject> arrayList, int quoteOffset) {
-        if (!isNavigationRequestCurrent(targetAccount, requestGeneration)) {
+    private void openTopicRequest(int targetAccount, long requestGeneration, java.util.function.BooleanSupplier sourceCurrent, int topicId, TLRPC.Chat chat, int messageId, TLRPC.TL_forumTopic forumTopic, Runnable whenDone, String quote, Integer taskId, byte[] pollOptionId, int fromMessageId, ArrayList<MessageObject> arrayList, int quoteOffset) {
+        if (!isNavigationRequestCurrent(targetAccount, requestGeneration) || !sourceCurrent.getAsBoolean()) {
             return;
         }
         if (forumTopic == null) {
@@ -3847,7 +3850,7 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
             getForumTopicsByID.peer = MessagesController.getInstance(targetAccount).getInputPeer(-chat.id);
             getForumTopicsByID.topics.add(topicId);
             ConnectionsManager.getInstance(targetAccount).sendRequest(getForumTopicsByID, (response2, error2) -> AndroidUtilities.runOnUIThread(() -> {
-                if (!isNavigationRequestCurrent(targetAccount, requestGeneration)) {
+                if (!isNavigationRequestCurrent(targetAccount, requestGeneration) || !sourceCurrent.getAsBoolean()) {
                     return;
                 }
                 if (error2 == null && response2 instanceof TLRPC.TL_messages_forumTopics) {
@@ -3862,7 +3865,7 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
                     MessagesController.getInstance(targetAccount).getTopicsController().processTopics(chat.id, topics.topics, messagesMap, false, TopicsController.LOAD_TYPE_LOAD_UNKNOWN, -1);
 
                     TLRPC.TL_forumTopic topic = MessagesController.getInstance(targetAccount).getTopicsController().findTopic(chat.id, topicId);
-                    openTopicRequest(targetAccount, requestGeneration, topicId, chat, messageId, topic, whenDone, quote, taskId, pollOptionId, fromMessageId, arrayList, quoteOffset);
+                    openTopicRequest(targetAccount, requestGeneration, sourceCurrent, topicId, chat, messageId, topic, whenDone, quote, taskId, pollOptionId, fromMessageId, arrayList, quoteOffset);
                 }
             }));
             return;
@@ -4478,10 +4481,22 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
                 }
             }));
         } else if (username != null) {
+            final BaseFragment linkSource = getSafeLastFragment();
+            final java.util.function.BooleanSupplier navigationCurrent = linkSource == null
+                    ? () -> true
+                    : linkSource.captureNavigationRequest();
+            final boolean[] linkCanceled = {false};
+            final java.util.function.BooleanSupplier canOpenLink = () -> !linkCanceled[0]
+                    && !isFinishing() && currentAccount == intentAccount && navigationCurrent.getAsBoolean();
             if (progress != null) {
+                progress.onCancel(() -> linkCanceled[0] = true);
                 progress.init();
             }
             MessagesController.getInstance(intentAccount).getUserNameResolver().resolve(username, referrer, (peerId) -> {
+                if (!canOpenLink.getAsBoolean()) {
+                    dismissLoading.run();
+                    return;
+                }
                 if (peerId != null && peerId == Long.MAX_VALUE) {
                     try {
                         dismissLoading.run();
@@ -4505,6 +4520,7 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
                             } catch (Exception e) {
                                 FileLog.e(e);
                             }
+                            if (!canOpenLink.getAsBoolean()) return;
                             BaseFragment baseFragment = getLastFragment();
                             if (storyItem == null) {
                                 BulletinFactory factory = BulletinFactory.global();
@@ -4534,6 +4550,7 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
                             } catch (Exception e) {
                                 FileLog.e(e);
                             }
+                            if (!canOpenLink.getAsBoolean()) return;
                             BaseFragment baseFragment = getLastFragment();
                             if (storyItem == null) {
                                 BulletinFactory factory = BulletinFactory.global();
@@ -4895,6 +4912,10 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
                                         final TLRPC.TL_channels_getFullChannel req = new TLRPC.TL_channels_getFullChannel();
                                         req.channel = MessagesController.getInputChannel(chat);
                                         ConnectionsManager.getInstance(intentAccount).sendRequest(req, (res3, err) -> AndroidUtilities.runOnUIThread(() -> {
+                                            if (!canOpenLink.getAsBoolean()) {
+                                                dismissLoading.run();
+                                                return;
+                                            }
                                             if (res3 instanceof TLRPC.TL_messages_chatFull) {
                                                 final TLRPC.TL_messages_chatFull r = (TLRPC.TL_messages_chatFull) res3;
                                                 MessagesController.getInstance(intentAccount).putUsers(r.users, false);
@@ -5042,7 +5063,7 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
                                                 } catch (Exception e) {
                                                     FileLog.e(e);
                                                 }
-                                                if (!LaunchActivity.this.isFinishing()) {
+                                                if (canOpenLink.getAsBoolean()) {
                                                     BaseFragment voipLastFragment;
                                                     if (livestream == null || !(lastFragment instanceof ChatActivity) || ((ChatActivity) lastFragment).getDialogId() != dialog_id) {
                                                         if (lastFragment instanceof ChatActivity && ((ChatActivity) lastFragment).getDialogId() == dialog_id && messageId == null) {
@@ -5097,7 +5118,7 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
 
                                             @Override
                                             public void onError() {
-                                                if (!LaunchActivity.this.isFinishing()) {
+                                                if (canOpenLink.getAsBoolean() && !mainFragmentsStack.isEmpty()) {
                                                     BaseFragment fragment = mainFragmentsStack.get(mainFragmentsStack.size() - 1);
                                                     AlertsCreator.showSimpleAlert(fragment, LocaleController.getString(R.string.JoinToGroupErrorNotExist));
                                                 }
@@ -6101,11 +6122,19 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
             }
             return;
         }
+        final int targetAccount = currentAccount;
+        final BaseFragment source = getSafeLastFragment();
+        final java.util.function.BooleanSupplier navigationCurrent = source == null
+                ? () -> true : source.captureNavigationRequest();
         TLRPC.TL_channels_getMessages req = new TLRPC.TL_channels_getMessages();
         req.channel = MessagesController.getInstance(currentAccount).getInputChannel(-dialogId);
         req.id.add(messageId);
         ConnectionsManager.getInstance(currentAccount).sendRequest(req, (res, err) -> {
             AndroidUtilities.runOnUIThread(() -> {
+                if (isFinishing() || currentAccount != targetAccount || !navigationCurrent.getAsBoolean()) {
+                    if (onOpened != null) onOpened.run();
+                    return;
+                }
                 TLRPC.Message message = null;
                 if (res instanceof TLRPC.messages_Messages) {
                     ArrayList<TLRPC.Message> messages = ((TLRPC.messages_Messages) res).messages;
@@ -7340,6 +7369,7 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
         NotificationCenter.getGlobalInstance().postNotificationName(NotificationCenter.startAllHeavyOperations, 4096);
         MediaController.getInstance().setFeedbackView(feedbackView = actionBarLayout.getView(), true);
         ApplicationLoader.mainInterfacePaused = false;
+        app.nimarkogram.messenger.badges.BadgesController.getInstance().refresh();
         // Keep pause/resume delivery symmetrical. The banner setting can still be loading while
         // LaunchActivity resumes; gating this callback used to leave the singleton permanently
         // paused even after the feature became enabled.

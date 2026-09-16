@@ -5360,7 +5360,11 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         if (!onlySelect && initialDialogsType == 0) {
             topPanelLayout = new DialogsActivityTopPanelLayout(context);
             topPanelLayout.setOnAnimatedHeightChangedListener(() -> {
-                viewPages[0].listView.requestLayout();
+                for (ViewPage page : viewPages) {
+                    if (page != null && page.getVisibility() != View.GONE && page.listView != null) {
+                        page.listView.requestLayout();
+                    }
+                }
                 blur3_InvalidateBlur();
 
                 TopicsFragment topicsFragment = null;
