@@ -935,7 +935,7 @@ public final class NimarkoInAppNotifications {
             animator.setDuration(duration);
             if (closing) {
                 float distance = Math.max(1f, fromOffset - targetOffset);
-                final float slope = Math.max(1f, Math.min(3f, -releaseVelocity * duration / (1000f * distance)));
+                final float slope = Math.max(1.5f, Math.min(3f, -releaseVelocity * duration / (1000f * distance)));
                 animator.setInterpolator(t -> t * (slope + t * (3f - 2f * slope + t * (slope - 2f))));
             } else {
                 animator.setInterpolator(CubicBezierInterpolator.EASE_OUT);
@@ -1008,7 +1008,7 @@ public final class NimarkoInAppNotifications {
             cancelContentTransition();
             float distance = Math.max(0, getHeight() + pullOffset);
             long duration = releaseVelocity < -dp(100)
-                    ? Math.max(100, Math.min(240, Math.round(2000f * distance / -releaseVelocity))) : 220;
+                    ? Math.max(100, Math.min(200, Math.round(2000f * distance / -releaseVelocity))) : 180;
             settlePull(-getHeight(), duration, () -> { if (banner == this) removeCurrent(); });
         }
 

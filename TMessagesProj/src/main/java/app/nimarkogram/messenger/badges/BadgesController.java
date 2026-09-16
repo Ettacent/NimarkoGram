@@ -31,6 +31,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 public final class BadgesController {
 
@@ -57,12 +58,13 @@ public final class BadgesController {
     private static final String KEY_API_CHATS = "api_chats";
     private static final String KEY_STORE_VERSION = "store_version";
     private static final int STORE_VERSION_SEPARATE_OWNERS = 2;
-    private static final long REFRESH_INTERVAL_MIN = 30L;
+    private static final long REFRESH_INTERVAL_SECONDS = 60L;
     private static final long PERSIST_DEBOUNCE_MS = 350L;
     private static final long BOOTSTRAP_USER_ID = 0L;
 
     private volatile boolean initialized = false;
     private volatile long lastRefreshAtMs = 0L;
+    private final AtomicBoolean refreshPending = new AtomicBoolean();
     private static final class ServerBadgeSnapshot {
         final Map<Long, BadgeEntry> users;
         final Map<Long, BadgeEntry> chats;
@@ -121,8 +123,9 @@ public final class BadgesController {
         } catch (Throwable ignored) {}
         seedBootstrapEntry();
         loadFromDisk(context);
-        scheduler.scheduleWithFixedDelay(this::refreshSync, 0L,
-                REFRESH_INTERVAL_MIN, TimeUnit.MINUTES);
+        scheduler.scheduleWithFixedDelay(() -> {
+            if (!ApplicationLoader.mainInterfacePaused) refresh();
+        }, 0L, REFRESH_INTERVAL_SECONDS, TimeUnit.SECONDS);
         
         scheduler.scheduleWithFixedDelay(new Runnable() {
             long lastHash = computeBadgeHash();
@@ -152,21 +155,6 @@ public final class BadgesController {
                 h *= 0x100000001b3L;
                 h ^= v == null ? 0 : v.hashCode();
                 h *= 0x100000001b3L;
-            }
-            ServerBadgeSnapshot server = serverBadges;
-            ArrayList<Map.Entry<Long, BadgeEntry>> serverUsers = new ArrayList<>(server.users.entrySet());
-            serverUsers.sort(Comparator.comparingLong(Map.Entry::getKey));
-            for (Map.Entry<Long, BadgeEntry> e : serverUsers) {
-                h ^= 1; h *= 0x100000001b3L;
-                h ^= e.getKey(); h *= 0x100000001b3L;
-                h ^= e.getValue() == null ? 0 : e.getValue().hashCode(); h *= 0x100000001b3L;
-            }
-            ArrayList<Map.Entry<Long, BadgeEntry>> serverChats = new ArrayList<>(server.chats.entrySet());
-            serverChats.sort(Comparator.comparingLong(Map.Entry::getKey));
-            for (Map.Entry<Long, BadgeEntry> e : serverChats) {
-                h ^= 2; h *= 0x100000001b3L;
-                h ^= e.getKey(); h *= 0x100000001b3L;
-                h ^= e.getValue() == null ? 0 : e.getValue().hashCode(); h *= 0x100000001b3L;
             }
         } catch (Throwable ignored) {}
         return h;
@@ -369,7 +357,14 @@ public final class BadgesController {
     }
 
     public void refresh() {
-        scheduler.execute(this::refreshSync);
+        if (!initialized || !refreshPending.compareAndSet(false, true)) return;
+        scheduler.execute(() -> {
+            try {
+                refreshSync();
+            } finally {
+                refreshPending.set(false);
+            }
+        });
     }
 
     private void seedBootstrapEntry() {
@@ -395,7 +390,7 @@ public final class BadgesController {
 
     private void refreshSync() {
         long now = SystemClock.elapsedRealtime();
-        if (now - lastRefreshAtMs < TimeUnit.SECONDS.toMillis(20)) {
+        if (lastRefreshAtMs != 0L && now - lastRefreshAtMs < TimeUnit.SECONDS.toMillis(20)) {
             return;
         }
         lastRefreshAtMs = now;
@@ -428,6 +423,9 @@ public final class BadgesController {
             ServerBadgeSnapshot nextServer = new ServerBadgeSnapshot(
                     Collections.unmodifiableMap(nextUsers),
                     Collections.unmodifiableMap(nextChats));
+            if (beforeServer.users.equals(nextServer.users) && beforeServer.chats.equals(nextServer.chats)) {
+                return;
+            }
             synchronized (persistLock) {
                 serverBadges = nextServer;
                 schedulePersistLocked();

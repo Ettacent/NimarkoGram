@@ -73,6 +73,17 @@ import java.util.ArrayList;
 public abstract class BaseFragment {
 
     public boolean isFinished;
+    private long navigationRequestGeneration;
+    public java.util.function.BooleanSupplier captureNavigationRequest() {
+        final long generation = ++navigationRequestGeneration;
+        final INavigationLayout layout = parentLayout;
+        final BaseFragment top = layout == null ? null : layout.getLastFragment();
+        final long topGeneration = top == null ? 0 : top.navigationRequestGeneration;
+        return () -> !isFinished && generation == navigationRequestGeneration
+                && layout != null && parentLayout == layout && layout.getLastFragment() == top
+                && top != null && top.navigationRequestGeneration == topGeneration
+                && !layout.isSwipeInProgress() && !layout.isTransitionAnimationInProgress();
+    }
     protected boolean finishing;
     public Dialog visibleDialog;
     protected int currentAccount = UserConfig.selectedAccount;
@@ -542,6 +553,7 @@ public abstract class BaseFragment {
 
     @CallSuper
     public void onFragmentDestroy() {
+        navigationRequestGeneration++;
         getConnectionsManager().cancelRequestsForGuid(classGuid);
         getMessagesStorage().cancelTasksForGuid(classGuid);
         isFinished = true;
@@ -603,6 +615,7 @@ public abstract class BaseFragment {
 
     @CallSuper
     public void onPause() {
+        navigationRequestGeneration++;
         if (actionBar != null) {
             actionBar.onPause();
         }
@@ -774,6 +787,7 @@ public abstract class BaseFragment {
     }
 
     public void onBeginSlide() {
+        navigationRequestGeneration++;
         try {
             if (visibleDialog != null && visibleDialog.isShowing()) {
                 visibleDialog.dismiss();

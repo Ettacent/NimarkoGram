@@ -10819,6 +10819,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
     @Override
     public void onResume() {
         super.onResume();
+        app.nimarkogram.messenger.badges.BadgesController.getInstance().refresh();
         final boolean initialResume = skipInitialResumeRefresh;
         skipInitialResumeRefresh = false;
         if (sharedMediaLayout != null) {

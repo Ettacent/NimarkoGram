@@ -61,6 +61,63 @@ public class ApiBadgeSource {
         }
 
         @Override
+        public void putAll(Map<? extends Long, ? extends BadgeEntry> values) {
+            values.forEach(this::put);
+        }
+        @Override
+        public BadgeEntry putIfAbsent(Long key, BadgeEntry value) {
+            return BadgeEntry.fromReal(real.cache.putIfAbsent(key, value.toReal()));
+        }
+        @Override
+        public boolean remove(Object key, Object value) {
+            return value instanceof BadgeEntry && real.cache.remove(key, ((BadgeEntry) value).toReal());
+        }
+        @Override
+        public BadgeEntry replace(Long key, BadgeEntry value) {
+            return BadgeEntry.fromReal(real.cache.replace(key, value.toReal()));
+        }
+        @Override
+        public boolean replace(Long key, BadgeEntry previous, BadgeEntry value) {
+            return real.cache.replace(key, previous.toReal(), value.toReal());
+        }
+        @Override
+        public BadgeEntry computeIfAbsent(Long key, java.util.function.Function<? super Long, ? extends BadgeEntry> function) {
+            java.util.Objects.requireNonNull(function);
+            return BadgeEntry.fromReal(real.cache.computeIfAbsent(key, id -> {
+                BadgeEntry value = function.apply(id);
+                return value == null ? null : value.toReal();
+            }));
+        }
+        @Override
+        public BadgeEntry computeIfPresent(Long key, java.util.function.BiFunction<? super Long, ? super BadgeEntry, ? extends BadgeEntry> function) {
+            java.util.Objects.requireNonNull(function);
+            return BadgeEntry.fromReal(real.cache.computeIfPresent(key, (id, previous) -> {
+                BadgeEntry value = function.apply(id, BadgeEntry.fromReal(previous));
+                return value == null ? null : value.toReal();
+            }));
+        }
+        @Override
+        public BadgeEntry compute(Long key, java.util.function.BiFunction<? super Long, ? super BadgeEntry, ? extends BadgeEntry> function) {
+            java.util.Objects.requireNonNull(function);
+            return BadgeEntry.fromReal(real.cache.compute(key, (id, previous) -> {
+                BadgeEntry value = function.apply(id, BadgeEntry.fromReal(previous));
+                return value == null ? null : value.toReal();
+            }));
+        }
+        @Override
+        public BadgeEntry merge(Long key, BadgeEntry value, java.util.function.BiFunction<? super BadgeEntry, ? super BadgeEntry, ? extends BadgeEntry> function) {
+            java.util.Objects.requireNonNull(function);
+            return BadgeEntry.fromReal(real.cache.merge(key, value.toReal(), (previous, incoming) -> {
+                BadgeEntry merged = function.apply(BadgeEntry.fromReal(previous), BadgeEntry.fromReal(incoming));
+                return merged == null ? null : merged.toReal();
+            }));
+        }
+        @Override
+        public void replaceAll(java.util.function.BiFunction<? super Long, ? super BadgeEntry, ? extends BadgeEntry> function) {
+            java.util.Objects.requireNonNull(function);
+            real.cache.replaceAll((id, value) -> function.apply(id, BadgeEntry.fromReal(value)).toReal());
+        }
+        @Override
         public void clear() {
             real.cache.clear();
         }
