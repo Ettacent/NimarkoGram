@@ -447,20 +447,14 @@ public class ProfileGiftsView extends View implements NotificationCenter.Notific
                     break;
             }
 
-            final float collapseProgressWithEnter;
-            if (isOpening || enter >= 1f) {
-                collapseProgressWithEnter = collapseProgress;
-            } else {
-                collapseProgressWithEnter = Math.min(enter, collapseProgress);
-            }
 
             final float delayFraction = 0.2f;
             final float maxDelayFraction = 1.6f * delayFraction;
             final float intervalFraction = 1f - maxDelayFraction;
 
             float delay = delayValue * delayFraction;
-            float collapse = collapseProgressWithEnter >= 1f - delay ? 1f
-                    : Utilities.clamp01((collapseProgressWithEnter - maxDelayFraction + delay) / intervalFraction);
+            float collapse = collapseProgress >= 1f - delay ? 1f
+                    : Utilities.clamp01((collapseProgress - maxDelayFraction + delay) / intervalFraction);
             if (collapse < 1f) {
                 gx = AndroidUtilities.lerp(realCX, gx, giftCollapseXInterpolator.getInterpolation(collapse));
                 gy = AndroidUtilities.lerp(realCY, gy, giftCollapseYInterpolator.getInterpolation(collapse));
