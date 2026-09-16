@@ -787,64 +787,81 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
         }
 
         public void rebuildPhoto(boolean highQuality) {
-            final Pair<Integer, Integer> orientation = AndroidUtilities.getImageOrientation(filterPath != null ? filterPath : path);
-            final Bitmap.CompressFormat compressFormat = Bitmap.CompressFormat.JPEG;
-            final Bitmap bitmap = StoryEntry.getScaledBitmap(opts -> BitmapFactory.decodeFile(filterPath != null ? filterPath : path, opts), AndroidUtilities.getPhotoSize(highQuality), AndroidUtilities.getPhotoSize(highQuality), false, true);
-            if (imagePath != null) {
-                new File(imagePath).delete(); imagePath = null;
-            }
-
-            Bitmap b;
-            if (cropState != null) {
-                b = PhotoViewer.createCroppedBitmap(bitmap, cropState, new int[] { orientation.first, orientation.second }, true);
-                bitmap.recycle();
-            } else {
-                if (orientation.first != 0) {
-                    Matrix matrix = new Matrix();
-                    matrix.postRotate(orientation.first);
-                    if (orientation.second == 1) {
-                        matrix.postScale(-1, 1);
-                    } else if (orientation.second == 2) {
-                        matrix.postScale(1, -1);
-                    }
-                    b = Bitmaps.createBitmap(bitmap, 0, 0, bitmap.getWidth(), bitmap.getHeight(), matrix, true);
-                    bitmap.recycle();
-                } else {
-                    b = bitmap;
-                }
-            }
-            if (fullPaintPath == null) {
-                TLRPC.PhotoSize size = ImageLoader.scaleAndSaveImage(b, compressFormat, AndroidUtilities.getPhotoSize(highQuality), AndroidUtilities.getPhotoSize(highQuality), highQuality ? 99 : 87, false, 101, 101);
-                imagePath = FileLoader.getInstance(UserConfig.selectedAccount).getPathToAttach(size, true).toString();
-            } else {
-                Bitmap paintBitmap;
+            Bitmap bitmap = null;
+            Bitmap b = null;
+            Bitmap paintSource = null;
+            Bitmap paintBitmap = null;
+            Bitmap resultBitmap = null;
+            String outputPath = null;
+            try {
+                final Pair<Integer, Integer> orientation = AndroidUtilities.getImageOrientation(filterPath != null ? filterPath : path);
+                final Bitmap.CompressFormat compressFormat = Bitmap.CompressFormat.JPEG;
+                bitmap = StoryEntry.getScaledBitmap(opts -> BitmapFactory.decodeFile(filterPath != null ? filterPath : path, opts), AndroidUtilities.getPhotoSize(highQuality), AndroidUtilities.getPhotoSize(highQuality), false, true);
+                if (bitmap == null) return;
                 if (cropState != null) {
-                    Bitmap b2 = BitmapFactory.decodeFile(fullPaintPath);
-                    paintBitmap = PhotoViewer.createCroppedBitmap(b2, cropState, null, false);
-                    b2.recycle();
+                    b = PhotoViewer.createCroppedBitmap(bitmap, cropState, new int[] { orientation.first, orientation.second }, true);
                 } else {
-                    paintBitmap = BitmapFactory.decodeFile(fullPaintPath);
+                    if (orientation.first != 0) {
+                        Matrix matrix = new Matrix();
+                        matrix.postRotate(orientation.first);
+                        if (orientation.second == 1) {
+                            matrix.postScale(-1, 1);
+                        } else if (orientation.second == 2) {
+                            matrix.postScale(1, -1);
+                        }
+                        b = Bitmaps.createBitmap(bitmap, 0, 0, bitmap.getWidth(), bitmap.getHeight(), matrix, true);
+                    } else {
+                        b = bitmap;
+                    }
                 }
-                try {
+                if (b == null) return;
+                if (b != bitmap && !bitmap.isRecycled()) bitmap.recycle();
+                if (fullPaintPath == null) {
+                    TLRPC.PhotoSize size = ImageLoader.scaleAndSaveImage(b, compressFormat, AndroidUtilities.getPhotoSize(highQuality), AndroidUtilities.getPhotoSize(highQuality), highQuality ? 99 : 87, false, 101, 101);
+                    if (size == null) return;
+                    outputPath = FileLoader.getInstance(UserConfig.selectedAccount).getPathToAttach(size, true).toString();
+                } else {
+                    paintSource = BitmapFactory.decodeFile(fullPaintPath);
+                    if (paintSource == null) return;
+                    if (cropState != null) {
+                        paintBitmap = PhotoViewer.createCroppedBitmap(paintSource, cropState, null, false);
+                    } else {
+                        paintBitmap = paintSource;
+                    }
+                    if (paintBitmap == null) return;
+                    if (paintBitmap != paintSource && !paintSource.isRecycled()) paintSource.recycle();
                     final Paint bitmapPaint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
-                    final Bitmap resultBitmap = Bitmap.createBitmap(b.getWidth(), b.getHeight(), Bitmap.Config.ARGB_8888);
+                    resultBitmap = Bitmap.createBitmap(b.getWidth(), b.getHeight(), Bitmap.Config.ARGB_8888);
                     final Canvas canvas = new Canvas(resultBitmap);
 
                     canvas.drawBitmap(b, 0, 0, bitmapPaint);
                     canvas.scale(b.getWidth() / (float) paintBitmap.getWidth(), b.getHeight() / (float) paintBitmap.getHeight());
                     canvas.drawBitmap(paintBitmap, 0, 0, bitmapPaint);
 
-                    imagePath = getTempFileAbsolutePath();
-                    resultBitmap.compress(Bitmap.CompressFormat.JPEG, highQuality ? 99 : 87, new FileOutputStream(imagePath));
-                } catch (Exception e) {
-                    FileLog.e(e);
+                    outputPath = getTempFileAbsolutePath();
+                    try (FileOutputStream stream = new FileOutputStream(outputPath)) {
+                        if (!resultBitmap.compress(Bitmap.CompressFormat.JPEG, highQuality ? 99 : 87, stream)) return;
+                    }
                 }
-                if (paintBitmap != null) {
-                    paintBitmap.recycle();
+                File output = new File(outputPath);
+                if (!output.isFile() || output.length() == 0) return;
+                String previousPath = imagePath;
+                imagePath = outputPath;
+                outputPath = null;
+                if (previousPath != null && !previousPath.equals(imagePath)
+                        && !previousPath.equals(path) && !previousPath.equals(filterPath)
+                        && !previousPath.equals(fullPaintPath)) {
+                    new File(previousPath).delete();
                 }
-            }
-            if (b != null) {
-                b.recycle();
+            } catch (Exception e) {
+                FileLog.e(e);
+            } finally {
+                if (outputPath != null && !outputPath.equals(imagePath)) new File(outputPath).delete();
+                if (resultBitmap != null && !resultBitmap.isRecycled()) resultBitmap.recycle();
+                if (paintBitmap != null && !paintBitmap.isRecycled()) paintBitmap.recycle();
+                if (paintSource != null && !paintSource.isRecycled()) paintSource.recycle();
+                if (b != null && !b.isRecycled()) b.recycle();
+                if (bitmap != null && !bitmap.isRecycled()) bitmap.recycle();
             }
         }
     }
@@ -3238,7 +3255,7 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
                     if (pipRoundVideoView != closingPip) {
                         return;
                     }
-                        pipRoundVideoView = null;
+                    pipRoundVideoView = null;
                     pipClosingToInline = false;
                     if (showPipAfterInlineClose) {
                         showPipAfterInlineClose = false;
@@ -3287,10 +3304,10 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
         }
         if (!set) {
             if (currentTextureView == textureView) {
-            pipSwitchingState = 1;
-            currentTextureView = null;
-            currentAspectRatioFrameLayout = null;
-            currentTextureViewContainer = null;
+                pipSwitchingState = 1;
+                currentTextureView = null;
+                currentAspectRatioFrameLayout = null;
+                currentTextureViewContainer = null;
             }
             return;
         }
