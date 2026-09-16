@@ -126,6 +126,12 @@ public class QrActivity extends BaseFragment {
     private static final ArrayMap<String, int[]> qrColorsMap = new ArrayMap<>();
     private static final int LOGO_OPTIMAL_FRAME = 33;
     private static List<EmojiThemes> cachedThemes;
+    private static final android.util.LruCache<String, Bitmap> qrPatternCache = new android.util.LruCache<String, Bitmap>(24 * 1024 * 1024) {
+        @Override
+        protected int sizeOf(String key, Bitmap value) {
+            return value.getAllocationByteCount();
+        }
+    };
 
     static {
         qrColorsMap.put("\uD83C\uDFE0d",    new int[]{ 0xFF71B654, 0xFF2C9077, 0xFF9ABB3E, 0xFF68B55E });
@@ -157,6 +163,9 @@ public class QrActivity extends BaseFragment {
     private ThemeListViewController themesViewController;
     private MotionBackgroundDrawable currMotionDrawable = new MotionBackgroundDrawable();
     private MotionBackgroundDrawable prevMotionDrawable;
+    private MotionBackgroundDrawable patternPreviousDrawable;
+    private float backgroundTransitionProgress = 1f;
+    private float patternTransitionProgress = 1f;
     private MotionBackgroundDrawable tempMotionDrawable;
     private ValueAnimator patternAlphaAnimator;
     private ValueAnimator patternIntensityAnimator;
@@ -180,8 +189,6 @@ public class QrActivity extends BaseFragment {
     private int selectedPosition = -1;
     private int themesLoadGeneration;
     private boolean openTransitionFinished;
-    private boolean initialThemeColorsReady;
-    private boolean initialThemeApplied;
     private boolean initialBackgroundReady;
     private List<EmojiThemes> pendingLoadedThemes;
     private int pendingThemesGeneration;
@@ -200,6 +207,7 @@ public class QrActivity extends BaseFragment {
     }
 
     private boolean isFragmentViewPortrait;
+    private float initialPageAlpha = 1f;
 
     @Override
     public View createView(Context context) {
@@ -207,8 +215,6 @@ public class QrActivity extends BaseFragment {
         initialPageRevealed = false;
         setHasOwnBackground(true);
         openTransitionFinished = false;
-        initialThemeColorsReady = false;
-        initialThemeApplied = false;
         initialBackgroundReady = false;
         pendingLoadedThemes = null;
 
@@ -218,6 +224,21 @@ public class QrActivity extends BaseFragment {
         actionBar.setItemsColor(0xffffffff, false);
 
         FrameLayout rootLayout = new FrameLayout(context) {
+            @Override
+            protected void dispatchDraw(Canvas canvas) {
+                if (initialPageAlpha <= 0f) return;
+                if (initialPageAlpha >= 1f) {
+                    super.dispatchDraw(canvas);
+                    return;
+                }
+                int layer = canvas.saveLayerAlpha(0, 0, getWidth(), getHeight(),
+                        Math.round(255 * initialPageAlpha));
+                try {
+                    super.dispatchDraw(canvas);
+                } finally {
+                    canvas.restoreToCount(layer);
+                }
+            }
             @Override
             public boolean dispatchTouchEvent(MotionEvent ev) {
                 super.dispatchTouchEvent(ev);
@@ -271,16 +292,6 @@ public class QrActivity extends BaseFragment {
                 final int height = getMeasuredHeight();
                 final boolean isPortrait = width < height;
 
-                if (themeLayout.getVisibility() == VISIBLE) {
-                    if (isPortrait) {
-                        AndroidUtilities.rectTmp2.set(0, 0, width, height - themeLayout.getMeasuredHeight() + dp(25));
-                    } else {
-                        AndroidUtilities.rectTmp2.set(0, 0, width - themeLayout.getWidth() + dp(25), height);
-                    }
-                    backgroundView.setClipBounds(AndroidUtilities.rectTmp2);
-                } else {
-                    backgroundView.setClipBounds(null);
-                }
 
                 backgroundView.layout(0, 0, width, height);
 
@@ -333,7 +344,19 @@ public class QrActivity extends BaseFragment {
 
                 if (prevMotionDrawable != null)
                     prevMotionDrawable.draw(canvas);
+                int themeLayer = backgroundTransitionProgress < 1f
+                        ? canvas.saveLayerAlpha(0, 0, getWidth(), getHeight(), Math.round(255 * backgroundTransitionProgress))
+                        : canvas.save();
+                if (patternPreviousDrawable != null) {
+                    patternPreviousDrawable.setBounds(0, 0, getWidth(), getHeight());
+                    patternPreviousDrawable.draw(canvas);
+                }
+                int patternLayer = patternTransitionProgress < 1f
+                        ? canvas.saveLayerAlpha(0, 0, getWidth(), getHeight(), Math.round(255 * patternTransitionProgress))
+                        : canvas.save();
                 currMotionDrawable.draw(canvas);
+                canvas.restoreToCount(patternLayer);
+                canvas.restoreToCount(themeLayer);
                 super.onDraw(canvas);
             }
         };
@@ -455,6 +478,21 @@ public class QrActivity extends BaseFragment {
         final boolean openingDark = isCurrentThemeDark;
         Utilities.themeQueue.postRunnable(() -> {
             openingTheme.loadPreviewColors(currentAccount);
+            final String patternKey = qrPatternKey(openingTheme, openingDark);
+            Bitmap preparedPattern = qrPatternCache.get(patternKey);
+            if (preparedPattern != null && preparedPattern.isRecycled()) {
+                preparedPattern = null;
+            }
+            final TLRPC.WallPaper openingWallpaper = openingTheme.getWallpaper(openingDark ? 1 : 0);
+            if (preparedPattern == null && openingWallpaper == null) {
+                int width = Math.max(1, AndroidUtilities.displaySize.x);
+                int height = Math.max(1, AndroidUtilities.displaySize.y);
+                preparedPattern = SvgHelper.getBitmap(R.raw.default_pattern, width, height, Color.BLACK);
+                if (preparedPattern != null) {
+                    qrPatternCache.put(patternKey, preparedPattern);
+                }
+            }
+            final Bitmap finalPreparedPattern = preparedPattern;
             AndroidUtilities.runOnUIThread(() -> {
                 if (fragmentView != openingView || themesViewController == null) return;
                 if (!initialBackgroundReady && currentTheme == openingTheme && isCurrentThemeDark == openingDark) {
@@ -463,19 +501,39 @@ public class QrActivity extends BaseFragment {
                             item.patternBgGradientColor2, item.patternBgGradientColor3);
                     currMotionDrawable.setParentView(backgroundView);
                     currMotionDrawable.setCallback(backgroundView);
+                    if (finalPreparedPattern != null && !finalPreparedPattern.isRecycled()) {
+                        currMotionDrawable.setPatternBitmap(openingWallpaper != null && openingWallpaper.settings != null ? openingWallpaper.settings.intensity : 34, finalPreparedPattern, true);
+                        currMotionDrawable.setPatternColorFilter(currMotionDrawable.getPatternColor());
+                    }
                     int[] colors = qrColorsMap.get(openingTheme.emoji + (openingDark ? "n" : "d"));
                     if (colors != null) {
                         prevQrColors = colors.clone();
                         qrView.setColors(colors[0], colors[1], colors[2], colors[3]);
                     }
-                    initialBackgroundReady = true;
+                    initialBackgroundReady = finalPreparedPattern != null || openingWallpaper == null;
                     resourcesProvider.initColors(openingTheme, openingDark);
                     for (ThemeDescription description : getThemeDescriptions()) {
                         description.setColor(getThemedColor(description.getCurrentKey()), false, false);
                     }
                     backgroundView.invalidate();
                 }
-                revealInitialPage();
+                if (initialBackgroundReady) {
+                    revealInitialPage();
+                } else {
+                    openingTheme.loadWallpaper(openingDark ? 1 : 0, pair -> {
+                        if (fragmentView != openingView || themesViewController == null || currentTheme != openingTheme) return;
+                        Bitmap loadedPattern = pair == null || pair.second == null ? null : pair.second.bitmap;
+                        if (loadedPattern != null) {
+                            qrPatternCache.put(patternKey, loadedPattern);
+                            int intensity = openingWallpaper.settings == null ? 34 : openingWallpaper.settings.intensity;
+                            currMotionDrawable.setPatternBitmap(intensity, loadedPattern, true);
+                            currMotionDrawable.setPatternColorFilter(currMotionDrawable.getPatternColor());
+                        }
+                        initialBackgroundReady = true;
+                        backgroundView.invalidate();
+                        revealInitialPage();
+                    });
+                }
                 resumeDelayedFragmentAnimation();
             });
             Bitmap preparedLogo = null;
@@ -502,8 +560,6 @@ public class QrActivity extends BaseFragment {
                 } else if (finalPreparedLogo != null) {
                     finalPreparedLogo.recycle();
                 }
-                initialThemeColorsReady = true;
-                applyInitialThemeAfterTransition();
             });
         }, 25);
 
@@ -599,6 +655,7 @@ public class QrActivity extends BaseFragment {
             patternIntensityAnimator = null;
         }
         themesLoadGeneration++;
+        patternPreviousDrawable = null;
         pendingLoadedThemes = null;
         if (themesViewController != null) {
             themesViewController.onDestroy();
@@ -630,33 +687,26 @@ public class QrActivity extends BaseFragment {
             return;
         }
         openTransitionFinished = true;
-        applyInitialThemeAfterTransition();
-        if (pendingLoadedThemes != null) {
-            List<EmojiThemes> themes = pendingLoadedThemes;
-            int generation = pendingThemesGeneration;
-            pendingLoadedThemes = null;
-            applyLoadedThemes(themes, generation);
-        }
+        applyPendingThemesWhenReady();
         if (qrView != null) {
             qrView.setDeferredAnimationsAllowed(true);
             qrView.checkTimerToken.run();
         }
     }
 
-    private void applyInitialThemeAfterTransition() {
-        if (!openTransitionFinished || !initialThemeColorsReady || initialThemeApplied || themesViewController == null) {
-            return;
+    private void applyPendingThemesWhenReady() {
+        if (openTransitionFinished && initialPageRevealed && initialPageAnimator == null
+                && pendingLoadedThemes != null) {
+            List<EmojiThemes> themes = pendingLoadedThemes;
+            int generation = pendingThemesGeneration;
+            pendingLoadedThemes = null;
+            applyLoadedThemes(themes, generation);
         }
-        initialThemeApplied = true;
-        onItemSelected(currentTheme, Math.max(0, selectedPosition), false);
     }
 
     private void setInitialPageAlpha(float alpha) {
-        backgroundView.setAlpha(alpha);
-        qrView.setAlpha(alpha);
-        avatarImageView.setAlpha(alpha);
-        logoImageView.setAlpha(alpha);
-        themeLayout.setAlpha(alpha);
+        initialPageAlpha = alpha;
+        if (fragmentView != null) fragmentView.invalidate();
     }
 
     private void cancelInitialPageAnimation() {
@@ -672,6 +722,7 @@ public class QrActivity extends BaseFragment {
         initialPageRevealed = true;
         if (!SharedConfig.animationsEnabled()) {
             setInitialPageAlpha(1f);
+            applyPendingThemesWhenReady();
             return;
         }
         final View openingView = fragmentView;
@@ -691,6 +742,7 @@ public class QrActivity extends BaseFragment {
                     initialPageAnimator = null;
                     if (fragmentView == openingView && themesViewController != null) {
                         setInitialPageAlpha(1f);
+                        applyPendingThemesWhenReady();
                     }
                 }
             }
@@ -735,7 +787,7 @@ public class QrActivity extends BaseFragment {
                 if (fragmentView == null || themesViewController == null || generation != themesLoadGeneration) {
                     return;
                 }
-                if (!openTransitionFinished) {
+                if (!openTransitionFinished || !initialPageRevealed || initialPageAnimator != null) {
                     pendingLoadedThemes = themes;
                     pendingThemesGeneration = generation;
                     return;
@@ -798,26 +850,59 @@ public class QrActivity extends BaseFragment {
             return emojiThemeIcon;
         }
     }
+    private String qrPatternKey(EmojiThemes theme, boolean dark) {
+        TLRPC.WallPaper wallpaper = theme.getWallpaper(dark ? 1 : 0);
+        EmojiThemes.ThemeItem item = theme.getThemeItem(dark ? 1 : 0);
+        return currentAccount + ":" + dark + ":" + theme.getThemeId(dark ? 1 : 0)
+                + ":" + (wallpaper == null ? 0 : wallpaper.id)
+                + ":" + (wallpaper == null || wallpaper.settings == null ? 34 : wallpaper.settings.intensity)
+                + ":" + item.patternBgColor + ":" + item.patternBgGradientColor1
+                + ":" + item.patternBgGradientColor2 + ":" + item.patternBgGradientColor3;
+    }
 
     private void onPatternLoaded(Bitmap bitmap, int intensity, boolean withAnimation) {
         if (bitmap != null) {
+            qrPatternCache.put(qrPatternKey(currentTheme, isCurrentThemeDark), bitmap);
             if (patternIntensityAnimator != null) {
                 patternIntensityAnimator.cancel();
                 patternIntensityAnimator = null;
             }
             final MotionBackgroundDrawable drawable = currMotionDrawable;
             final boolean animate = withAnimation && SharedConfig.animationsEnabled();
-            drawable.setPatternAlpha(animate ? 0f : 1f);
+            patternPreviousDrawable = null;
+            if (animate) {
+                patternPreviousDrawable = new MotionBackgroundDrawable();
+                int[] colors = drawable.getColors();
+                patternPreviousDrawable.setColors(colors[0], colors[1], colors[2], colors[3]);
+                patternPreviousDrawable.setPhase(drawable.getPhase());
+                patternPreviousDrawable.setPosAnimationProgress(drawable.getPosAnimationProgress());
+                patternPreviousDrawable.setPatternBitmap(drawable.getIntensity(), drawable.getPatternBitmap(), true);
+                patternPreviousDrawable.setPatternColorFilter(drawable.getPatternColor());
+            }
+            patternTransitionProgress = animate ? 0f : 1f;
+            drawable.setPatternAlpha(1f);
             drawable.setPatternBitmap(intensity, bitmap, true);
             if (animate) {
                 patternIntensityAnimator = ValueAnimator.ofFloat(0, 1f);
                 patternIntensityAnimator.addUpdateListener(animator -> {
                     if (currMotionDrawable == drawable) {
-                        drawable.setPatternAlpha((float) animator.getAnimatedValue());
+                        patternTransitionProgress = (float) animator.getAnimatedValue();
+                        backgroundView.invalidate();
                     }
                 });
                 patternIntensityAnimator.setDuration(350);
                 patternIntensityAnimator.setInterpolator(CubicBezierInterpolator.EASE_BOTH);
+                patternIntensityAnimator.addListener(new AnimatorListenerAdapter() {
+                    @Override
+                    public void onAnimationEnd(Animator animation) {
+                        if (patternIntensityAnimator == animation) {
+                            patternIntensityAnimator = null;
+                            patternPreviousDrawable = null;
+                            patternTransitionProgress = 1f;
+                            backgroundView.invalidate();
+                        }
+                    }
+                });
                 patternIntensityAnimator.start();
             }
         }
@@ -828,7 +913,8 @@ public class QrActivity extends BaseFragment {
             patternIntensityAnimator.cancel();
             patternIntensityAnimator = null;
         }
-        initialThemeApplied = true;
+        patternPreviousDrawable = null;
+        patternTransitionProgress = 1f;
         initialBackgroundReady = true;
         selectedPosition = position;
         final EmojiThemes prevTheme = currentTheme;
@@ -855,8 +941,10 @@ public class QrActivity extends BaseFragment {
         currMotionDrawable.setIndeterminateAnimation(true);
         final MotionBackgroundDrawable requestedDrawable = currMotionDrawable;
         revealInitialPage();
-        if (prevMotionDrawable != null)
-            currMotionDrawable.posAnimationProgress = prevMotionDrawable.posAnimationProgress;
+        if (prevMotionDrawable != null) {
+            currMotionDrawable.setPhase(prevMotionDrawable.getPhase());
+            currMotionDrawable.setPosAnimationProgress(prevMotionDrawable.getPosAnimationProgress());
+        }
         qrView.setPosAnimationProgress(currMotionDrawable.posAnimationProgress);
 
         TLRPC.WallPaper wallPaper = currentTheme.getWallpaper(isDarkTheme ? 1 : 0);
@@ -892,16 +980,11 @@ public class QrActivity extends BaseFragment {
         }
         if (withAnimation) {
             currMotionDrawable.setAlpha(255);
-            currMotionDrawable.setBackgroundAlpha(0f);
+            backgroundTransitionProgress = 0f;
             patternAlphaAnimator = ValueAnimator.ofFloat(0f, 1f);
             patternAlphaAnimator.addUpdateListener(animation -> {
                 float progress = (float) animation.getAnimatedValue();
-                if (prevMotionDrawable != null) {
-                    prevMotionDrawable.setBackgroundAlpha(1f);
-                    prevMotionDrawable.setPatternAlpha(1f - progress);
-                }
-                currMotionDrawable.setBackgroundAlpha(progress);
-                currMotionDrawable.setPatternAlpha(progress);
+                backgroundTransitionProgress = progress;
 
                 if (newQrColors != null) {
                     int color1 = ColorUtils.blendARGB(prevQrColors[0], newQrColors[0], progress);
@@ -921,8 +1004,7 @@ public class QrActivity extends BaseFragment {
                     }
                     prevMotionDrawable = null;
                     patternAlphaAnimator = null;
-                    currMotionDrawable.setBackgroundAlpha(1f);
-                    currMotionDrawable.setPatternAlpha(1f);
+                    backgroundTransitionProgress = 1f;
                 }
 
                 @Override
@@ -942,6 +1024,7 @@ public class QrActivity extends BaseFragment {
             patternAlphaAnimator.setDuration((int) (250 * duration));
             patternAlphaAnimator.start();
         } else {
+            backgroundTransitionProgress = 1f;
             if (newQrColors != null) {
                 qrView.setColors(newQrColors[0], newQrColors[1], newQrColors[2], newQrColors[3]);
                 System.arraycopy(newQrColors, 0, prevQrColors, 0, 4);
@@ -1122,7 +1205,8 @@ public class QrActivity extends BaseFragment {
 
         @Override
         public int getColor(int key) {
-            return colors != null ? colors.get(key) : Theme.getColor(key);
+            int color = colors != null ? colors.get(key) : Theme.getColor(key);
+            return color;
         }
     }
 

@@ -5215,6 +5215,9 @@ public class ChatActivity extends BaseFragment implements
                 }
 
                 float iconProgress = slidingDrawableVisibilityProgress.getValue() / springMultiplier;
+                if (iconProgress <= 0f) {
+                    return;
+                }
                 MessageObject slidingMsg = getSlidingMessageObject();
                 float x = getMeasuredWidth() + translationX * (slidingMsg != null && slidingMsg.isOut() ? 0.5f : 1f);
                 float y = slidingView.getTop() + slidingView.getMeasuredHeight() / 2f;
@@ -27025,6 +27028,8 @@ public class ChatActivity extends BaseFragment implements
         boolean updatedReplies = false;
         boolean updateMessagesSearchAdapter = false;
         final boolean bulkDeleteRefresh = size > MAX_ANIMATED_BULK_DELETE_COUNT;
+        final int oldMessagesStartRow = chatAdapter == null ? -1 : chatAdapter.messagesStartRow;
+        boolean deletionRowsRebound = false;
         final boolean allowThanos = thanos && size <= MAX_THANOS_BULK_DELETE_COUNT && supportsThanosEffect();
 
         if (threadMessageObject != null && !isTopic && parentLayout != null) {
@@ -27321,14 +27326,32 @@ public class ChatActivity extends BaseFragment implements
                             chatAdapter.notifyItemRemoved(0);
                         }
                     } else {
-                        chatAdapter.notifyItemRangeChanged(chatAdapter.messagesStartRow, chatAdapter.getMessages().size());
+                        final ArrayList<MessageObject> remaining = chatAdapter.getMessages();
+                        int[] range = singleDeletionRefreshRange(removedIndexes, oldMessagesStartRow,
+                                chatAdapter.messagesStartRow, remaining.size());
+                        boolean localRefresh = size == 1 && newGroups == null
+                                && !chatAdapter.isFiltered && range != null;
+                        if (localRefresh) {
+                            for (int i = range[0]; i < range[1]; i++) {
+                                if (remaining.get(i).getGroupId() != 0) {
+                                    localRefresh = false;
+                                    break;
+                                }
+                            }
+                        }
+                        if (localRefresh) {
+                            chatAdapter.notifyItemRangeChanged(chatAdapter.messagesStartRow + range[0], range[1] - range[0]);
+                            deletionRowsRebound = true;
+                        } else {
+                            chatAdapter.notifyItemRangeChanged(chatAdapter.messagesStartRow, remaining.size());
+                        }
                     }
                 }
                 if (!isThreadChat() || messages.size() <= 3) {
                     removeUnreadPlane(false);
                 }
             }
-            updateVisibleRows();
+            updateVisibleRows(deletionRowsRebound);
             if (isQuickRepliesOrWelcomeMessagesMode()) {
                 updateBottomOverlay();
             }
@@ -27354,6 +27377,17 @@ public class ChatActivity extends BaseFragment implements
         if (chatMode == MODE_QUICK_REPLIES && messages != null && messages.isEmpty()) {
             threadMessageId = 0;
         }
+    }
+    private static int[] singleDeletionRefreshRange(ArrayList<Integer> removed, int oldStart, int newStart, int count) {
+        if (removed.isEmpty() || oldStart != newStart || count <= 0) return null;
+        int first = count, last = 0;
+        for (int position : removed) {
+            int index = position - oldStart;
+            if (index < 0 || index > count + removed.size()) return null;
+            first = Math.min(first, Math.max(0, index - 2));
+            last = Math.max(last, Math.min(count, index + 2));
+        }
+        return first < last ? new int[]{first, last} : null;
     }
 
     private final BotForumHelper.BotDraftAnimationsPool botDraftAnimationsPool = new BotForumHelper.BotDraftAnimationsPool();
@@ -46149,6 +46183,17 @@ public class ChatActivity extends BaseFragment implements
             contentView.addView(thanosEffect, 1 + contentView.indexOfChild(chatListView), LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT));
         }
         return chatListThanosEffect;
+    }
+    public void prepareDeleteThanosEffect() {
+        getChatThanosEffect();
+    }
+    public void releasePreparedDeleteThanosEffect() {
+        if (chatListThanosEffect != null && chatListThanosEffect.isIdle()) {
+            ThanosEffect effect = chatListThanosEffect;
+            chatListThanosEffect = null;
+            effect.kill();
+            AndroidUtilities.removeFromParent(effect);
+        }
     }
 
     private StarReactionsOverlay starReactionsOverlay;
