@@ -13229,6 +13229,38 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
         updateEmojiStatusDrawableColor();
         return botVerificationDrawable[a];
     }
+    private AnimatedEmojiDrawable.SwapAnimatedEmojiDrawable createNimarkoProfileBadge(int a) {
+        AnimatedEmojiDrawable.SwapAnimatedEmojiDrawable badge = new AnimatedEmojiDrawable.SwapAnimatedEmojiDrawable(
+                nameTextView[a], dp(24), a == 0 ? AnimatedEmojiDrawable.CACHE_TYPE_EMOJI_STATUS
+                        : AnimatedEmojiDrawable.CACHE_TYPE_KEYBOARD) {
+            private final AnimatedFloat appearance = new AnimatedFloat(nameTextView[a], 0, 180, CubicBezierInterpolator.EASE_OUT);
+            private boolean imageReady;
+            @Override
+            public void draw(Canvas canvas) {
+                if (!imageReady) {
+                    Drawable drawable = getDrawable();
+                    if (!(drawable instanceof AnimatedEmojiDrawable)) return;
+                    ImageReceiver receiver = ((AnimatedEmojiDrawable) drawable).getImageReceiver();
+                    if (receiver == null || !receiver.hasBitmapImage()) return;
+                    imageReady = true;
+                    appearance.force(0f);
+                }
+                float alpha = appearance.set(1f);
+                if (alpha < 1f) {
+                    Rect bounds = getBounds();
+                    int padding = dp(12);
+                    int save = canvas.saveLayerAlpha(bounds.left - padding, bounds.top - padding,
+                            bounds.right + padding, bounds.bottom + padding, Math.round(255 * alpha));
+                    super.draw(canvas);
+                    canvas.restoreToCount(save);
+                } else {
+                    super.draw(canvas);
+                }
+            }
+        };
+        badge.setCurrentAccount(currentAccount);
+        return badge;
+    }
 
     // NimarkoGram: extera-style badge slot on the profile name. Slot 2 if free,
     // otherwise slot 1 (replacing premium star). Scam/verified always win.
@@ -13250,10 +13282,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             // opens. Bind without animation in that case.
             boolean justCreated = (nimarkoBadgeDrawable[a] == null);
             if (justCreated) {
-                nimarkoBadgeDrawable[a] = new AnimatedEmojiDrawable.SwapAnimatedEmojiDrawable(
-                        nameTextView[a], AndroidUtilities.dp(24),
-                        a == 0 ? AnimatedEmojiDrawable.CACHE_TYPE_EMOJI_STATUS
-                               : AnimatedEmojiDrawable.CACHE_TYPE_KEYBOARD);
+                nimarkoBadgeDrawable[a] = createNimarkoProfileBadge(a);
                 if (fragmentViewAttached) {
                     nimarkoBadgeDrawable[a].attach();
                 }
@@ -13289,10 +13318,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             }
             boolean justCreated = (nimarkoBadgeDrawable[a] == null);
             if (justCreated) {
-                nimarkoBadgeDrawable[a] = new AnimatedEmojiDrawable.SwapAnimatedEmojiDrawable(
-                        nameTextView[a], AndroidUtilities.dp(24),
-                        a == 0 ? AnimatedEmojiDrawable.CACHE_TYPE_EMOJI_STATUS
-                               : AnimatedEmojiDrawable.CACHE_TYPE_KEYBOARD);
+                nimarkoBadgeDrawable[a] = createNimarkoProfileBadge(a);
                 if (fragmentViewAttached) {
                     nimarkoBadgeDrawable[a].attach();
                 }
