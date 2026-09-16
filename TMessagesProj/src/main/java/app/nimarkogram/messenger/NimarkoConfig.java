@@ -476,7 +476,7 @@ public final class NimarkoConfig {
     public static final int ICON_REPLACE_MD3 = 2;
     public static final int ICON_REPLACE_LIQUID_GLASS = 3;
     public static final int ICON_REPLACE_PLUMPY = 4;
-    public static volatile int iconReplacement = getIntSafe("iconReplacement", ICON_REPLACE_NONE);
+    public static volatile int iconReplacement = getIntSafe("iconReplacement", ICON_REPLACE_SOLAR);
     public static void setIconReplacement(int v) { iconReplacement = v; getEditor().putInt("iconReplacement", v).apply(); }
 
 

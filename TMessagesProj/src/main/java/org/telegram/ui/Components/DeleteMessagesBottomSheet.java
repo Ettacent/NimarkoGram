@@ -65,6 +65,13 @@ public class DeleteMessagesBottomSheet extends BottomSheetWithRecyclerListView {
     private int topicId;
     private int mode;
     private Runnable onDelete;
+    private ChatActivity deleteChatActivity;
+    private boolean deleteConfirmed;
+    private final Runnable prepareThanosRunnable = () -> {
+        if (isShowing() && deleteChatActivity != null) {
+            deleteChatActivity.prepareDeleteThanosEffect();
+        }
+    };
 
     private boolean restrict = false;
 
@@ -351,6 +358,12 @@ public class DeleteMessagesBottomSheet extends BottomSheetWithRecyclerListView {
         this.topicId = topicId;
         this.mode = mode;
         this.onDelete = onDelete;
+        this.deleteChatActivity = !reactionsOnly && fragment instanceof ChatActivity
+                && messages != null && !messages.isEmpty() && messages.size() <= 4
+                ? (ChatActivity) fragment : null;
+        if (deleteChatActivity != null) {
+            AndroidUtilities.runOnUIThread(prepareThanosRunnable, 350);
+        }
 
         this.defaultBannedRights = inChat.default_banned_rights;
         this.bannedRights = new TLRPC.TL_chatBannedRights();
@@ -1237,6 +1250,14 @@ public class DeleteMessagesBottomSheet extends BottomSheetWithRecyclerListView {
 
     @Override
     public void dismiss() {
+        AndroidUtilities.cancelRunOnUIThread(prepareThanosRunnable);
+        if (deleteChatActivity != null) {
+            if (deleteConfirmed) {
+                AndroidUtilities.runOnUIThread(deleteChatActivity::releasePreparedDeleteThanosEffect, 700);
+            } else {
+                deleteChatActivity.releasePreparedDeleteThanosEffect();
+            }
+        }
         savePreferences();
         super.dismiss();
     }
@@ -1258,6 +1279,7 @@ public class DeleteMessagesBottomSheet extends BottomSheetWithRecyclerListView {
             });
             return;
         }
+        deleteConfirmed = true;
 
         dismiss();
         if (onDelete != null) {

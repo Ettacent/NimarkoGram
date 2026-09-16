@@ -120,8 +120,7 @@ public class ThanosEffect extends TextureView {
                     drawThread.kill();
                     drawThread = null;
                 }
-                drawThread = new DrawingThread(surface, ThanosEffect.this::invalidate, ThanosEffect.this::destroy, width, height);
-                drawThread.isEmulator = EmuDetector.with(getContext()).detect();
+                drawThread = new DrawingThread(getContext().getApplicationContext(), surface, ThanosEffect.this::invalidate, ThanosEffect.this::destroy, width, height);
                 if (!toSet.isEmpty()) {
                     for (int i = 0; i < toSet.size(); ++i) {
                         ToSet toSetObj = toSet.get(i);
@@ -196,6 +195,9 @@ public class ThanosEffect extends TextureView {
             whenDone = null;
             ensureRunOnUIThread(runnable);
         }
+    }
+    public boolean isIdle() {
+        return toSet.isEmpty() && (drawThread == null || !drawThread.running);
     }
 
     public void scroll(int dx, int dy) {
@@ -274,13 +276,16 @@ public class ThanosEffect extends TextureView {
 
         private boolean isEmulator;
         private AtomicBoolean alive = new AtomicBoolean(true);
+        private final AtomicBoolean drawPending = new AtomicBoolean();
+        private final Context context;
         private final SurfaceTexture surfaceTexture;
         private final Runnable invalidate;
         private Runnable destroy;
         private int width, height;
 
-        public DrawingThread(SurfaceTexture surfaceTexture, Runnable invalidate, Runnable destroy, int width, int height) {
+        public DrawingThread(Context context, SurfaceTexture surfaceTexture, Runnable invalidate, Runnable destroy, int width, int height) {
             super("ThanosEffect.DrawingThread", false);
+            this.context = context;
 
             this.surfaceTexture = surfaceTexture;
             this.invalidate = invalidate;
@@ -302,7 +307,11 @@ public class ThanosEffect extends TextureView {
         public void handleMessage(Message inputMessage) {
             switch (inputMessage.what) {
                 case DO_DRAW: {
-                    draw();
+                    try {
+                        draw();
+                    } finally {
+                        drawPending.set(false);
+                    }
                     return;
                 }
                 case DO_RESIZE: {
@@ -336,6 +345,7 @@ public class ThanosEffect extends TextureView {
         @Override
         public void run() {
             try {
+                isEmulator = EmuDetector.with(context).detect();
                 init();
             } catch (Exception e) {
                 FileLog.e(e);
@@ -364,8 +374,10 @@ public class ThanosEffect extends TextureView {
 
         public void requestDraw() {
             Handler handler = getHandler();
-            if (handler != null && alive.get()) {
-                handler.sendMessage(handler.obtainMessage(DO_DRAW));
+            if (handler != null && alive.get() && drawPending.compareAndSet(false, true)) {
+                if (!handler.sendMessage(handler.obtainMessage(DO_DRAW))) {
+                    drawPending.set(false);
+                }
             }
         }
 
@@ -587,6 +599,8 @@ public class ThanosEffect extends TextureView {
             GLES31.glUseProgram(drawProgram);
 
             GLES31.glUniform2f(sizeHandle, width, height);
+            GLES31.glClear(GLES31.GL_COLOR_BUFFER_BIT);
+            egl.eglSwapBuffers(eglDisplay, eglSurface);
         }
 
         private final ArrayList<Animation> toRunStartCallback = new ArrayList<>();
@@ -1111,18 +1125,18 @@ public class ThanosEffect extends TextureView {
                 int maxParticlesCount;
                 switch (SharedConfig.getDevicePerformanceClass()) {
                     case SharedConfig.PERFORMANCE_CLASS_HIGH:
-                        maxParticlesCount = 120_000;
+                        maxParticlesCount = AndroidUtilities.screenRefreshRate >= 90 ? 60_000 : 90_000;
                         break;
                     case SharedConfig.PERFORMANCE_CLASS_AVERAGE:
-                        maxParticlesCount = 60_000;
+                        maxParticlesCount = AndroidUtilities.screenRefreshRate >= 90 ? 40_000 : 50_000;
                         break;
                     case SharedConfig.PERFORMANCE_CLASS_LOW:
                     default:
-                        maxParticlesCount = 30_000;
+                        maxParticlesCount = 24_000;
                         break;
                 }
                 if (isEmulator) {
-                    maxParticlesCount = 120_000;
+                    maxParticlesCount = 60_000;
                 }
                 if (isPhotoEditor) {
                     maxParticlesCount /= 2;

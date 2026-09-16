@@ -53,7 +53,9 @@ public final class NimarkoTextAnim {
     private static final int PARTICLE_COUNT = 5;
     private static final float PARTICLE_SPEED = 1.0f;
     private static final float PARTICLE_SIZE = 1.0f;
-    private static final int MASS_DELETE_THRESHOLD = 3;
+    private static final int MASS_DELETE_THRESHOLD = 24;
+    private static final int MAX_DELETE_GLYPHS = 3;
+    private static final int MAX_DELETE_PARTICLES = 60;
     
     private static final int MASS_INSERT_THRESHOLD = 24;
     
@@ -455,16 +457,21 @@ public final class NimarkoTextAnim {
         int insCount = newEnd - prefix;
         boolean hadEdit = (delCount > 0) || (insCount > 0);
 
-        if (delCount > 0 && deleteEnabled) {
+        if (delCount > MASS_DELETE_THRESHOLD) {
+            st.particles.clear();
+        }
+        if (delCount > 0 && delCount <= MASS_DELETE_THRESHOLD && deleteEnabled) {
             String removed = st.prevText.substring(prefix, oldEnd);
-            boolean massDelete = (newLen == 0 && delCount > MASS_DELETE_THRESHOLD);
-            if (!massDelete) {
-                int i = 0;
-                while (i < removed.length()) {
-                    int step = Character.charCount(removed.codePointAt(i));
-                    spawnDeleteParticles(edit, st, prefix + i, removed.substring(i, i + step));
-                    i += step;
+            int i = 0;
+            int glyphs = 0;
+            while (i < removed.length() && glyphs < MAX_DELETE_GLYPHS) {
+                int step = Character.charCount(removed.codePointAt(i));
+                String glyph = removed.substring(i, i + step);
+                if (!glyph.trim().isEmpty()) {
+                    spawnDeleteParticles(edit, st, prefix + i, glyph);
+                    glyphs++;
                 }
+                i += step;
             }
         }
 
@@ -595,8 +602,8 @@ public final class NimarkoTextAnim {
 
             int appearDur = data.replace ? REPLACE_DURATION : APPEAR_DURATION;
             int blurDur = data.replace ? REPLACE_DURATION : BLUR_DURATION;
-            float pAppear = easeOutQuint(Math.min(1f, elapsed / (float) appearDur));
-            float pBlur = easeOutQuint(Math.min(1f, elapsed / (float) blurDur));
+            float pAppear = appearanceProgress(elapsed, appearDur, data.replace);
+            float pBlur = appearanceProgress(elapsed, blurDur, data.replace);
             float yOff = (appearEnabled && !data.replace) ? (-SLIDE_DIST_PX * (1f - pAppear)) : 0f;
             float yDraw = y + yOff;
 
@@ -800,7 +807,7 @@ public final class NimarkoTextAnim {
                 - edit.getScrollX();
         float y = edit.getPaddingTop() + layout.getLineBaseline(line);
         float w = paint.measureText(ch);
-        for (int i = 0; i < PARTICLE_COUNT; i++) {
+        for (int i = 0; i < PARTICLE_COUNT && st.particles.size() < MAX_DELETE_PARTICLES; i++) {
             st.particles.add(new Particle(
                     x + r.nextFloat() * w,
                     y - r.nextFloat() * (0.6f * textSize),
@@ -1032,7 +1039,9 @@ public final class NimarkoTextAnim {
                             = st.charStartTimes.entrySet().iterator();
                     while (it.hasNext()) {
                         Map.Entry<Integer, CharData> e = it.next();
-                        if (now - e.getValue().startTime >= maxDuration) {
+                        int duration = e.getValue().replace
+                                ? (spoilerEnabled ? SPOILER_DURATION : 0) + REPLACE_DURATION : maxDuration;
+                        if (now - e.getValue().startTime >= duration) {
                             it.remove();
                             List<SpoilerParticle> sp = st.spoilerParticles.remove(e.getKey());
                             if (sp != null) for (SpoilerParticle p : sp) {
@@ -1072,6 +1081,10 @@ public final class NimarkoTextAnim {
 
     private static float easeOutQuint(float t) {
         return 1f - (float) Math.pow(1f - t, 5.0);
+    }
+    private static float appearanceProgress(long elapsed, int duration, boolean replacement) {
+        float t = Math.max(0f, Math.min(1f, elapsed / (float) duration));
+        return replacement ? t * t * (3f - 2f * t) : easeOutQuint(t);
     }
 
     private static final class State {

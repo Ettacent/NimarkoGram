@@ -29,6 +29,8 @@ assert(qr.indexOf('resumeDelayedFragmentAnimation();') < qr.indexOf('Bitmap prep
 assert(qr.includes('fragmentView != openingView'));
 assert(qr.includes('currMotionDrawable != requestedDrawable'));
 assert(qr.includes('prevQrColors = newQrColors.clone();'));
+assert(!qr.includes('applyInitialThemeAfterTransition'));
+assert(!qr.includes('onItemSelected(currentTheme, Math.max(0, selectedPosition)'));
 const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'nimarko-quote-qr-'));
 const java = `import java.util.*;
 public class Regression {
@@ -55,14 +57,6 @@ public class Regression {
   Reactions reactionsLayoutInBubble = new Reactions(); Params transitionParams = new Params();
   ${method(cell, 'private boolean areReactionsVisible(')}
   boolean areReactionsVisible() { return areReactionsVisible(canvas); }
- }
- static class Qr {
-  boolean openTransitionFinished, initialThemeColorsReady, initialThemeApplied, initialBackgroundReady;
-  Object themesViewController = new Object(), currentTheme = new Object();
-  int selectedPosition = -1, count, lastPosition; boolean lastAnimated;
-  void onItemSelected(Object theme, int pos, boolean animated) { count++; lastPosition=pos; lastAnimated=animated; }
-  ${method(qr, 'private void applyInitialThemeAfterTransition(')}
-  ${method(qr, 'public boolean needDelayOpenAnimation(')}
  }
  public static void main(String[] args) {
   int checks = 0;
@@ -154,18 +148,7 @@ public class Regression {
    or.lastDrawnY=1571; or.lastDrawTotalHeight=138; or.outButtons.add(new Object());
    check(observed.areReactionsVisible());
   }
-  for (boolean colorsFirst : new boolean[]{true,false}) {
-   Qr q=new Qr(); check(q.needDelayOpenAnimation());
-   if (colorsFirst) q.initialThemeColorsReady=true; else q.openTransitionFinished=true;
-   q.applyInitialThemeAfterTransition(); check(q.count==0);
-   q.initialThemeColorsReady=true; q.openTransitionFinished=true; q.initialBackgroundReady=true;
-   q.applyInitialThemeAfterTransition(); check(q.count==1 && !q.lastAnimated && q.lastPosition==0);
-   q.applyInitialThemeAfterTransition(); check(q.count==1 && !q.needDelayOpenAnimation());
-  }
-  Qr q=new Qr(); q.openTransitionFinished=q.initialThemeColorsReady=true;
-  q.initialThemeApplied=true; q.selectedPosition=4; q.applyInitialThemeAfterTransition(); check(q.count==0);
-  q.initialThemeApplied=false; q.themesViewController=null; q.applyInitialThemeAfterTransition(); check(q.count==0);
-  System.out.println("PASS: " + checks + " reaction viewport checks; close/open handoff, cancellation, overlays, outgoing reactions and QR ordering");
+  System.out.println("PASS: " + checks + " reaction viewport checks; close/open handoff, cancellation, overlays and outgoing reactions");
  }
 }`;
 fs.writeFileSync(path.join(temp, 'Regression.java'), java);

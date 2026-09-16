@@ -933,7 +933,13 @@ public class EditTextCaption extends EditTextBoldCursor implements FloatingToolb
                 canvas.restoreToCount(saveCount);
             }
         } finally {
-            app.nimarkogram.messenger.textanim.NimarkoTextAnim.afterEditorDraw(this, canvas);
+            final int animationSaveCount = canvas.save();
+            try {
+                canvas.translate(0, offsetY);
+                app.nimarkogram.messenger.textanim.NimarkoTextAnim.afterEditorDraw(this, canvas);
+            } finally {
+                canvas.restoreToCount(animationSaveCount);
+            }
         }
     }
 

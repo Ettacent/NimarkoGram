@@ -1,0 +1,12 @@
+const fs = require('node:fs');
+const path = require('node:path');
+const assert = require('node:assert/strict');
+const source = fs.readFileSync(path.resolve(__dirname, '../../main/java/org/telegram/ui/ChatActivity.java'), 'utf8');
+const start = source.indexOf('float iconProgress = slidingDrawableVisibilityProgress.getValue() / springMultiplier;');
+const end = source.indexOf('private void processTouchEvent(', start);
+assert(start >= 0 && end > start);
+const draw = source.slice(start, end);
+assert.match(draw, /if \(iconProgress <= 0f\) \{\s+return;/);
+assert(draw.indexOf('if (iconProgress <= 0f)') < draw.indexOf('getContext().getResources().getDrawable('));
+assert(source.lastIndexOf('slidingDrawableVisibilitySpring.start();', start) > source.lastIndexOf('private void drawReplyButton', start));
+console.log('PASS: invisible swipe skips drawable allocation while retaining spring state updates');
