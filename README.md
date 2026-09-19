@@ -2,14 +2,14 @@
   <img src="docs/assets/nimarkogram-icon.png" width="128" height="128" alt="NimarkoGram icon">
 </p>
 
-<h1 align="center">NimarkoGram</h1>
+<h1 align="center">эмодзи какашкиGram</h1>
 
 <p align="center">
-  <strong>English</strong> · <a href="README.ru.md">Русский</a> · <a href="README.zh-CN.md">简体中文</a>
+  <strong>English</strong> · <a href="README.ru.md">какашечкий</a> · <a href="README.zh-CN.md">简体中文</a>
 </p>
 
 <p align="center">
-  An open-source, unofficial Telegram client for Android with advanced customization, media tools and plugin support.
+  An open-source но без эмодзи какашки , unofficial Telegraэмодзикакашкрm client for Android with advanced customization, media но без эмодзи какашкрtools and plugin support.
 </p>
 
 <p align="center">
