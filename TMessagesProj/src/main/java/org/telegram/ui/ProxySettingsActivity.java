@@ -18,17 +18,12 @@ import android.graphics.Canvas;
 import android.graphics.PorterDuff;
 import android.graphics.PorterDuffColorFilter;
 import android.graphics.Typeface;
-import android.os.Build;
+import android.net.Uri;
 import android.text.Editable;
 import android.text.InputType;
 import android.text.TextUtils;
 import android.text.TextWatcher;
 import android.text.method.PasswordTransformationMethod;
-import android.transition.ChangeBounds;
-import android.transition.Fade;
-import android.transition.Transition;
-import android.transition.TransitionManager;
-import android.transition.TransitionSet;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.View;
@@ -40,6 +35,7 @@ import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
+import androidx.annotation.NonNull;
 
 import androidx.core.graphics.ColorUtils;
 
@@ -51,6 +47,8 @@ import org.telegram.messenger.R;
 import org.telegram.messenger.SharedConfig;
 import org.telegram.messenger.SvgHelper;
 import org.telegram.messenger.Utilities;
+import org.telegram.proxy.WebProxyTransport;
+import org.telegram.proxy.ProxySettings;
 import org.telegram.tgnet.ConnectionsManager;
 import org.telegram.ui.ActionBar.ActionBar;
 import org.telegram.ui.ActionBar.ActionBarMenuItem;
@@ -75,8 +73,6 @@ import java.util.ArrayList;
 
 public class ProxySettingsActivity extends BaseFragment {
 
-    private final static int TYPE_SOCKS5 = 0;
-    private final static int TYPE_MTPROTO = 1;
 
     private final static int FIELD_IP = 0;
     private final static int FIELD_PORT = 1;
@@ -90,16 +86,15 @@ public class ProxySettingsActivity extends BaseFragment {
     private LinearLayout inputFieldsContainer;
     private HeaderCell headerCell;
     private ShadowSectionCell[] sectionCell = new ShadowSectionCell[3];
-    private TextInfoPrivacyCell[] bottomCells = new TextInfoPrivacyCell[2];
+    private TextInfoPrivacyCell[] bottomCells = new TextInfoPrivacyCell[3];
+    private ValueAnimator proxyTypeAnimator;
     private TextSettingsCell shareCell;
     private TextSettingsCell pasteCell;
     private ActionBarMenuItem doneItem;
-    private RadioCell[] typeCell = new RadioCell[2];
-    private int currentType = -1;
-
-    private int pasteType = -1;
+    private RadioCell[] typeCell = new RadioCell[3];
+    private ProxySettings.Type currentType;
+    private ProxySettings pasteProxySettings;
     private String pasteString;
-    private String[] pasteFields;
 
     private float shareDoneProgress = 1f;
     private float[] shareDoneProgressAnimValues = new float[2];
@@ -168,7 +163,7 @@ public class ProxySettingsActivity extends BaseFragment {
 
     public ProxySettingsActivity() {
         super();
-        currentProxyInfo = new SharedConfig.ProxyInfo("", 1080, "", "", "");
+        currentProxyInfo = new SharedConfig.ProxyInfo(ProxySettings.EMPTY);
         addingNewProxy = true;
     }
 
@@ -211,17 +206,18 @@ public class ProxySettingsActivity extends BaseFragment {
                     if (getParentActivity() == null) {
                         return;
                     }
-                    currentProxyInfo.address = inputFields[FIELD_IP].getText().toString();
-                    currentProxyInfo.port = Utilities.parseInt(inputFields[FIELD_PORT].getText().toString());
-                    if (currentType == 0) {
-                        currentProxyInfo.secret = "";
-                        currentProxyInfo.username = inputFields[FIELD_USER].getText().toString();
-                        currentProxyInfo.password = inputFields[FIELD_PASSWORD].getText().toString();
-                    } else {
-                        currentProxyInfo.secret = inputFields[FIELD_SECRET].getText().toString();
-                        currentProxyInfo.username = "";
-                        currentProxyInfo.password = "";
-                    }
+                    currentProxyInfo.settings = ProxySettings.builder()
+                        .setType(currentType)
+                        .setAddress(currentType == ProxySettings.Type.WEB
+                                ? WebProxyTransport.normalizeHost(inputFields[FIELD_IP].getText().toString())
+                                : inputFields[FIELD_IP].getText().toString())
+                        .setPort(currentType == ProxySettings.Type.WEB
+                                ? 443
+                                : Utilities.parseInt(inputFields[FIELD_PORT].getText().toString()))
+                        .setUser(currentType == ProxySettings.Type.SOCKS5 ? inputFields[FIELD_USER].getText().toString() : "")
+                        .setPassword(currentType == ProxySettings.Type.SOCKS5 ? inputFields[FIELD_PASSWORD].getText().toString() : "")
+                        .setSecret(currentType != ProxySettings.Type.SOCKS5 ? inputFields[FIELD_SECRET].getText().toString() : "")
+                        .build();
 
                     SharedPreferences preferences = MessagesController.getGlobalMainSettings();
                     SharedPreferences.Editor editor = preferences.edit();
@@ -236,12 +232,8 @@ public class ProxySettingsActivity extends BaseFragment {
                         SharedConfig.saveProxyList();
                     }
                     if (addingNewProxy || SharedConfig.currentProxy == currentProxyInfo) {
-                        editor.putString("proxy_ip", currentProxyInfo.address);
-                        editor.putString("proxy_pass", currentProxyInfo.password);
-                        editor.putString("proxy_user", currentProxyInfo.username);
-                        editor.putInt("proxy_port", currentProxyInfo.port);
-                        editor.putString("proxy_secret", currentProxyInfo.secret);
-                        ConnectionsManager.setProxySettings(enabled, currentProxyInfo.address, currentProxyInfo.port, currentProxyInfo.username, currentProxyInfo.password, currentProxyInfo.secret);
+                        currentProxyInfo.settings.toSharedPreferences(editor);
+                        ConnectionsManager.setProxySettings(enabled, currentProxyInfo.settings);
                     }
                     editor.commit();
 
@@ -261,25 +253,41 @@ public class ProxySettingsActivity extends BaseFragment {
 
 //        linearLayout2 = new SectionsScrollView.SectionsLinearLayout(context);
 //        scrollView = new SectionsScrollView(context, linearLayout2, resourceProvider);
-        scrollView = new ScrollView(context);
+        linearLayout2 = new SectionsScrollView.SectionsLinearLayout(context) {
+            @Override
+            protected void dispatchDraw(@NonNull Canvas canvas) {
+                super.dispatchDraw(canvas);
+                invalidate();
+            }
+        };
+        SectionsScrollView sectionsScrollView;
+        scrollView = sectionsScrollView = new SectionsScrollView(context, linearLayout2, resourceProvider) {
+            @Override
+            protected void dispatchDraw(@NonNull Canvas canvas) {
+                super.dispatchDraw(canvas);
+                invalidate();
+            }
+        };
+        actionBar.setAdaptiveBackground(sectionsScrollView);
         scrollView.setFillViewport(true);
         AndroidUtilities.setScrollViewEdgeEffectColor(scrollView, Theme.getColor(Theme.key_actionBarDefault));
         frameLayout.addView(scrollView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT));
 
-        linearLayout2 = new LinearLayout(context);
         linearLayout2.setOrientation(LinearLayout.VERTICAL);
         scrollView.addView(linearLayout2, new ScrollView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
-        final View.OnClickListener typeCellClickListener = view -> setProxyType((Integer) view.getTag(), true);
-
-        for (int a = 0; a < 2; a++) {
+        final View.OnClickListener typeCellClickListener = view -> setProxyType(ProxySettings.intToType((Integer) view.getTag()), true);
+        for (int a = 0; a < 3; a++) {
+            ProxySettings.Type t = ProxySettings.intToType(a);
             typeCell[a] = new RadioCell(context);
             typeCell[a].setBackground(Theme.getSelectorDrawable(true));
             typeCell[a].setTag(a);
             if (a == 0) {
-                typeCell[a].setText(LocaleController.getString(R.string.UseProxySocks5), a == currentType, true);
+                typeCell[a].setText(LocaleController.getString(R.string.UseProxySocks5), t == currentType, true);
+            } else if (a == 1) {
+                typeCell[a].setText(LocaleController.getString(R.string.UseProxyTelegram), t == currentType, true);
             } else {
-                typeCell[a].setText(LocaleController.getString(R.string.UseProxyTelegram), a == currentType, false);
+                typeCell[a].setText(LocaleController.getString(R.string.UseProxyWeb), t == currentType, false);
             }
             linearLayout2.addView(typeCell[a], LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 50));
             typeCell[a].setOnClickListener(typeCellClickListener);
@@ -290,12 +298,8 @@ public class ProxySettingsActivity extends BaseFragment {
 
         inputFieldsContainer = new LinearLayout(context);
         inputFieldsContainer.setOrientation(LinearLayout.VERTICAL);
-        inputFieldsContainer.setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundWhite));
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-            // bring to front for transitions
-            inputFieldsContainer.setElevation(AndroidUtilities.dp(1f));
-            inputFieldsContainer.setOutlineProvider(null);
-        }
+        inputFieldsContainer.setElevation(AndroidUtilities.dp(1f));
+        inputFieldsContainer.setOutlineProvider(null);
         linearLayout2.addView(inputFieldsContainer, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
 
         inputFields = new EditTextBoldCursor[5];
@@ -392,27 +396,41 @@ public class ProxySettingsActivity extends BaseFragment {
             } else {
                 inputFields[a].setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
             }
+            if (a == FIELD_SECRET) {
+                inputFields[a].addTextChangedListener(new TextWatcher() {
+                    @Override
+                    public void beforeTextChanged(CharSequence s, int start, int count, int after) {
+                    }
+                    @Override
+                    public void onTextChanged(CharSequence s, int start, int before, int count) {
+                    }
+                    @Override
+                    public void afterTextChanged(Editable s) {
+                        checkShareDone(true);
+                    }
+                });
+            }
             inputFields[a].setImeOptions(EditorInfo.IME_ACTION_NEXT | EditorInfo.IME_FLAG_NO_EXTRACT_UI);
             switch (a) {
                 case FIELD_IP:
                     inputFields[a].setHintText(LocaleController.getString(R.string.UseProxyAddress));
-                    inputFields[a].setText(currentProxyInfo.address);
+                    inputFields[a].setText(currentProxyInfo.settings.getAddress());
                     break;
                 case FIELD_PASSWORD:
                     inputFields[a].setHintText(LocaleController.getString(R.string.UseProxyPassword));
-                    inputFields[a].setText(currentProxyInfo.password);
+                    inputFields[a].setText(currentProxyInfo.settings.getPassword());
                     break;
                 case FIELD_PORT:
                     inputFields[a].setHintText(LocaleController.getString(R.string.UseProxyPort));
-                    inputFields[a].setText("" + currentProxyInfo.port);
+                    inputFields[a].setText(Integer.toString(currentProxyInfo.settings.getPort()));
                     break;
                 case FIELD_USER:
                     inputFields[a].setHintText(LocaleController.getString(R.string.UseProxyUsername));
-                    inputFields[a].setText(currentProxyInfo.username);
+                    inputFields[a].setText(currentProxyInfo.settings.getUser());
                     break;
                 case FIELD_SECRET:
                     inputFields[a].setHintText(LocaleController.getString(R.string.UseProxySecret));
-                    inputFields[a].setText(currentProxyInfo.secret);
+                    inputFields[a].setText(currentProxyInfo.settings.getSecret());
                     break;
             }
             inputFields[a].setSelection(inputFields[a].length());
@@ -436,13 +454,23 @@ public class ProxySettingsActivity extends BaseFragment {
             });
         }
 
-        for (int i = 0; i < 2; i++) {
-            bottomCells[i] = new TextInfoPrivacyCell(context);
-            bottomCells[i].setBackground(Theme.getThemedDrawableByKey(context, R.drawable.greydivider_bottom, Theme.key_windowBackgroundGrayShadow));
+        for (int i = 0; i < bottomCells.length; i++) {
+            bottomCells[i] = new TextInfoPrivacyCell(context) {
+                @Override
+                protected void onMeasure(int widthSpec, int heightSpec) {
+                    super.onMeasure(widthSpec, heightSpec);
+                    if (proxyTypeAnimator != null && getLayoutParams().height >= 0) {
+                        setMeasuredDimension(getMeasuredWidth(), getLayoutParams().height);
+                    }
+                }
+            };
             if (i == 0) {
                 bottomCells[i].setText(LocaleController.getString(R.string.UseProxyInfo));
-            } else {
+            } else if (i == 1) {
                 bottomCells[i].setText(LocaleController.getString(R.string.UseProxyTelegramInfo) + "\n\n" + LocaleController.getString(R.string.UseProxyTelegramInfo2));
+                bottomCells[i].setVisibility(View.GONE);
+            } else {
+                bottomCells[i].setText(LocaleController.getString(R.string.UseProxyWebInfo));
                 bottomCells[i].setVisibility(View.GONE);
             }
             linearLayout2.addView(bottomCells[i], LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
@@ -453,19 +481,33 @@ public class ProxySettingsActivity extends BaseFragment {
         pasteCell.setText(LocaleController.getString(R.string.PasteFromClipboard), false);
         pasteCell.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlueText4));
         pasteCell.setOnClickListener(v -> {
-            if (pasteType != -1) {
-                for (int i = 0; i < pasteFields.length; i++) {
-                    if (pasteType == TYPE_SOCKS5 && i == FIELD_SECRET) {
+            if (pasteProxySettings != null) {
+                final ProxySettings.Type pasteType = pasteProxySettings.getType();
+                for (int i = 0; i < inputFields.length; i++) {
+                    if (pasteType == ProxySettings.Type.SOCKS5 && i == FIELD_SECRET) {
                         continue;
                     }
-                    if (pasteType == TYPE_MTPROTO && (i == FIELD_USER || i == FIELD_PASSWORD)) {
+                    if (pasteType == ProxySettings.Type.MTPROTO && (i == FIELD_USER || i == FIELD_PASSWORD)) {
                         continue;
                     }
-                    if (pasteFields[i] != null) {
+                    String field = null;
+                    if (i == FIELD_IP) {
+                        field = pasteProxySettings.getAddress();
+                    } else if (i == FIELD_PORT) {
+                        final int port = pasteProxySettings.getPort();
+                        field = port != 0 ? Integer.toString(port) : null;
+                    } else if (i == FIELD_USER) {
+                        field = pasteProxySettings.getUser();
+                    } else if (i == FIELD_PASSWORD) {
+                        field = pasteProxySettings.getPassword();
+                    } else if (i == FIELD_SECRET) {
+                        field = pasteProxySettings.getSecret();
+                    }
+                    if (!TextUtils.isEmpty(field)) {
                         try {
-                            inputFields[i].setText(URLDecoder.decode(pasteFields[i], "UTF-8"));
+                            inputFields[i].setText(URLDecoder.decode(field, "UTF-8"));
                         } catch (UnsupportedEncodingException e) {
-                            inputFields[i].setText(pasteFields[i]);
+                            inputFields[i].setText(field);
                         }
                     } else {
                         inputFields[i].setText(null);
@@ -474,12 +516,24 @@ public class ProxySettingsActivity extends BaseFragment {
                 inputFields[0].setSelection(inputFields[0].length());
                 setProxyType(pasteType, true, () -> {
                     AndroidUtilities.hideKeyboard(inputFieldsContainer.findFocus());
-                    for (int i = 0; i < pasteFields.length; i++) {
-                        if (pasteType == TYPE_SOCKS5 && i != FIELD_SECRET) {
+                    for (int i = 0; i < inputFields.length; i++) {
+                        if (i == FIELD_IP) {
                             continue;
                         }
-                        if (pasteType == TYPE_MTPROTO && i != FIELD_USER && i != FIELD_PASSWORD) {
-                            continue;
+                        if (pasteType == ProxySettings.Type.WEB) {
+                            if (i == FIELD_SECRET) {
+                                continue;
+                            }
+                        }
+                        if (pasteType == ProxySettings.Type.MTPROTO) {
+                            if (i == FIELD_SECRET || i == FIELD_PORT) {
+                                continue;
+                            }
+                        }
+                        if (pasteType == ProxySettings.Type.SOCKS5) {
+                            if (i == FIELD_PORT || i == FIELD_USER || i == FIELD_PASSWORD) {
+                                continue;
+                            }
                         }
                         inputFields[i].setText(null);
                     }
@@ -489,11 +543,18 @@ public class ProxySettingsActivity extends BaseFragment {
         linearLayout2.addView(pasteCell, 0, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
         pasteCell.setVisibility(View.GONE);
         sectionCell[2] = new ShadowSectionCell(fragmentView.getContext());
-        sectionCell[2].setBackground(Theme.getThemedDrawableByKey(fragmentView.getContext(), R.drawable.greydivider_bottom, Theme.key_windowBackgroundGrayShadow));
         linearLayout2.addView(sectionCell[2], 1, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
         sectionCell[2].setVisibility(View.GONE);
 
-        shareCell = new TextSettingsCell(context);
+        shareCell = new TextSettingsCell(context) {
+            @Override
+            protected void onMeasure(int widthSpec, int heightSpec) {
+                super.onMeasure(widthSpec, heightSpec);
+                if (proxyTypeAnimator != null && getLayoutParams().height >= 0) {
+                    setMeasuredDimension(getMeasuredWidth(), getLayoutParams().height);
+                }
+            }
+        };
         shareCell.setBackgroundDrawable(Theme.getSelectorDrawable(true));
         shareCell.setText(LocaleController.getString(R.string.ShareFile), false);
         shareCell.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlueText4));
@@ -516,7 +577,7 @@ public class ProxySettingsActivity extends BaseFragment {
                     }
                     params.append("port=").append(URLEncoder.encode(port, "UTF-8"));
                 }
-                if (currentType == 1) {
+                if (currentType == ProxySettings.Type.MTPROTO) {
                     url = "https://t.me/proxy?";
                     if (params.length() != 0) {
                         params.append("&");
@@ -550,8 +611,15 @@ public class ProxySettingsActivity extends BaseFragment {
             showDialog(alert);
         });
 
-        sectionCell[1] = new ShadowSectionCell(context);
-        sectionCell[1].setBackgroundDrawable(Theme.getThemedDrawableByKey(context, R.drawable.greydivider_bottom, Theme.key_windowBackgroundGrayShadow));
+        sectionCell[1] = new ShadowSectionCell(context) {
+            @Override
+            protected void onMeasure(int widthSpec, int heightSpec) {
+                super.onMeasure(widthSpec, heightSpec);
+                if (proxyTypeAnimator != null && getLayoutParams().height >= 0) {
+                    setMeasuredDimension(getMeasuredWidth(), getLayoutParams().height);
+                }
+            }
+        };
         linearLayout2.addView(sectionCell[1], LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
 
         clipboardManager = (ClipboardManager) context.getSystemService(Context.CLIPBOARD_SERVICE);
@@ -560,10 +628,9 @@ public class ProxySettingsActivity extends BaseFragment {
         shareDoneProgress = 1f;
         checkShareDone(false);
 
-        currentType = -1;
-        setProxyType(TextUtils.isEmpty(currentProxyInfo.secret) ? 0 : 1, false);
-
-        pasteType = -1;
+        currentType = null;
+        setProxyType(currentProxyInfo.settings.getType(), false);
+        pasteProxySettings = null;
         pasteString = null;
         updatePasteCell();
 
@@ -588,66 +655,21 @@ public class ProxySettingsActivity extends BaseFragment {
             return;
         }
 
-        pasteType = -1;
+        pasteProxySettings = null;
         pasteString = clipText;
-        pasteFields = new String[inputFields.length];
         if (clipText != null) {
-            String[] params = null;
-
-            final String[] socksStrings = {"t.me/socks?", "tg://socks?"};
-            for (int i = 0; i < socksStrings.length; i++) {
-                final int index = clipText.indexOf(socksStrings[i]);
-                if (index >= 0) {
-                    pasteType = TYPE_SOCKS5;
-                    params = clipText.substring(index + socksStrings[i].length()).split("&");
-                    break;
-                }
+            ProxySettings pasteProxySettings = null;
+            try {
+                pasteProxySettings = ProxySettings.fromUri(Uri.parse(clipText));
+            } catch (Exception ignoreE) {
             }
 
-            if (params == null) {
-                final String[] proxyStrings = {"t.me/proxy?", "tg://proxy?"};
-                for (int i = 0; i < proxyStrings.length; i++) {
-                    final int index = clipText.indexOf(proxyStrings[i]);
-                    if (index >= 0) {
-                        pasteType = TYPE_MTPROTO;
-                        params = clipText.substring(index + proxyStrings[i].length()).split("&");
-                        break;
-                    }
-                }
-            }
-
-            if (params != null) {
-                for (int i = 0; i < params.length; i++) {
-                    final String[] pair = params[i].split("=");
-                    if (pair.length != 2) continue;
-                    switch (pair[0].toLowerCase()) {
-                        case "server":
-                            pasteFields[FIELD_IP] = pair[1];
-                            break;
-                        case "port":
-                            pasteFields[FIELD_PORT] = pair[1];
-                            break;
-                        case "user":
-                            if (pasteType == TYPE_SOCKS5) {
-                                pasteFields[FIELD_USER] = pair[1];
-                            }
-                            break;
-                        case "pass":
-                            if (pasteType == TYPE_SOCKS5) {
-                                pasteFields[FIELD_PASSWORD] = pair[1];
-                            }
-                            break;
-                        case "secret":
-                            if (pasteType == TYPE_MTPROTO) {
-                                pasteFields[FIELD_SECRET] = pair[1];
-                            }
-                            break;
-                    }
-                }
+            if (pasteProxySettings != null && pasteProxySettings.isValid()) {
+                this.pasteProxySettings = pasteProxySettings;
             }
         }
 
-        if (pasteType != -1) {
+        if (pasteProxySettings != null) {
             if (pasteCell.getVisibility() != View.VISIBLE) {
                 pasteCell.setVisibility(View.VISIBLE);
                 sectionCell[2].setVisibility(View.VISIBLE);
@@ -692,70 +714,127 @@ public class ProxySettingsActivity extends BaseFragment {
         if (shareCell == null || doneItem == null || inputFields[FIELD_IP] == null || inputFields[FIELD_PORT] == null) {
             return;
         }
-        setShareDoneEnabled(inputFields[FIELD_IP].length() != 0 && Utilities.parseInt(inputFields[FIELD_PORT].getText().toString()) != 0, animated);
+        boolean enabled = currentType == ProxySettings.Type.WEB
+                ? !TextUtils.isEmpty(WebProxyTransport.normalizeHost(inputFields[FIELD_IP].getText().toString()))
+                    && WebProxyTransport.isValidSecret(inputFields[FIELD_SECRET].getText().toString())
+                : inputFields[FIELD_IP].length() != 0
+                    && Utilities.parseInt(inputFields[FIELD_PORT].getText().toString()) != 0;
+        setShareDoneEnabled(enabled, animated);
     }
 
-    private void setProxyType(int type, boolean animated) {
+    private void setProxyType(ProxySettings.Type type, boolean animated) {
         setProxyType(type, animated, null);
     }
 
-    private void setProxyType(int type, boolean animated, Runnable onTransitionEnd) {
-        if (currentType != type) {
-            currentType = type;
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                TransitionManager.endTransitions(linearLayout2);
-            }
-            if (animated && Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                final TransitionSet transitionSet = new TransitionSet()
-                        .addTransition(new Fade(Fade.OUT))
-                        .addTransition(new ChangeBounds())
-                        .addTransition(new Fade(Fade.IN))
-                        .setInterpolator(CubicBezierInterpolator.DEFAULT)
-                        .setDuration(250);
-
-                if (onTransitionEnd != null) {
-                    transitionSet.addListener(new Transition.TransitionListener() {
-                        @Override
-                        public void onTransitionStart(Transition transition) {
-                        }
-
-                        @Override
-                        public void onTransitionEnd(Transition transition) {
-                            onTransitionEnd.run();
-                        }
-
-                        @Override
-                        public void onTransitionCancel(Transition transition) {
-                        }
-
-                        @Override
-                        public void onTransitionPause(Transition transition) {
-                        }
-
-                        @Override
-                        public void onTransitionResume(Transition transition) {
-                        }
-                    });
-                }
-
-                TransitionManager.beginDelayedTransition(linearLayout2, transitionSet);
-            }
-            if (currentType == 0) {
-                bottomCells[0].setVisibility(View.VISIBLE);
-                bottomCells[1].setVisibility(View.GONE);
-                ((View) inputFields[FIELD_SECRET].getParent()).setVisibility(View.GONE);
-                ((View) inputFields[FIELD_PASSWORD].getParent()).setVisibility(View.VISIBLE);
-                ((View) inputFields[FIELD_USER].getParent()).setVisibility(View.VISIBLE);
-            } else if (currentType == 1) {
-                bottomCells[0].setVisibility(View.GONE);
-                bottomCells[1].setVisibility(View.VISIBLE);
-                ((View) inputFields[FIELD_SECRET].getParent()).setVisibility(View.VISIBLE);
-                ((View) inputFields[FIELD_PASSWORD].getParent()).setVisibility(View.GONE);
-                ((View) inputFields[FIELD_USER].getParent()).setVisibility(View.GONE);
-            }
-            typeCell[0].setChecked(currentType == 0, animated);
-            typeCell[1].setChecked(currentType == 1, animated);
+    private void setProxyType(ProxySettings.Type type, boolean animated, Runnable onTransitionEnd) {
+        if (currentType == type) {
+            if (onTransitionEnd != null) onTransitionEnd.run();
+            return;
         }
+        cancelProxyTypeAnimation();
+        currentType = type;
+        boolean socks = type == ProxySettings.Type.SOCKS5;
+        boolean web = type == ProxySettings.Type.WEB;
+        View[] rows = {
+                (View) inputFields[FIELD_PORT].getParent(),
+                (View) inputFields[FIELD_USER].getParent(),
+                (View) inputFields[FIELD_PASSWORD].getParent(),
+                (View) inputFields[FIELD_SECRET].getParent(),
+                bottomCells[0], bottomCells[1], bottomCells[2], shareCell, sectionCell[1]
+        };
+        boolean[] visible = { !web, socks, socks, !socks, socks, !socks && !web, web, !web, !web };
+        if (web) inputFields[FIELD_PORT].setText("443");
+        for (int i = 0; i < typeCell.length; i++) {
+            typeCell[i].setChecked(ProxySettings.intToType(i) == type, animated);
+        }
+        checkShareDone(animated);
+        animated &= linearLayout2.isLaidOut() && linearLayout2.getWidth() > 0;
+        if (!animated) {
+            finishProxyTypeRows(rows, visible);
+            if (onTransitionEnd != null) onTransitionEnd.run();
+            return;
+        }
+        final int[] start = new int[rows.length];
+        final int[] target = new int[rows.length];
+        final float[] alpha = new float[rows.length];
+        int width = linearLayout2.getWidth() - linearLayout2.getPaddingLeft() - linearLayout2.getPaddingRight();
+        for (int i = 0; i < rows.length; i++) {
+            View row = rows[i];
+            boolean shown = row.getVisibility() == View.VISIBLE;
+            start[i] = shown ? (row.getLayoutParams().height >= 0 ? row.getLayoutParams().height : row.getHeight()) : 0;
+            View fadeView = i < 4 ? inputFields[i + 1] : row;
+            alpha[i] = shown ? fadeView.getAlpha() : 0f;
+            if (visible[i]) {
+                row.forceLayout();
+                row.measure(View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY),
+                        View.MeasureSpec.makeMeasureSpec(i < 4 ? AndroidUtilities.dp(64) : 0,
+                                i < 4 ? View.MeasureSpec.EXACTLY : View.MeasureSpec.UNSPECIFIED));
+                target[i] = row.getMeasuredHeight();
+            } else if (row.hasFocus()) {
+                inputFields[FIELD_IP].requestFocus();
+            }
+            row.setVisibility(shown || visible[i] ? View.VISIBLE : View.GONE);
+            row.getLayoutParams().height = start[i];
+            if (i < 4) {
+                inputFields[i + 1].getLayoutParams().height = AndroidUtilities.dp(64);
+                inputFields[i + 1].requestLayout();
+            }
+            row.requestLayout();
+            fadeView.setAlpha(alpha[i]);
+        }
+        ValueAnimator animator = ValueAnimator.ofFloat(0f, 1f);
+        proxyTypeAnimator = animator;
+        animator.setDuration(220);
+        animator.setInterpolator(CubicBezierInterpolator.DEFAULT);
+        animator.addUpdateListener(a -> {
+            float progress = (float) a.getAnimatedValue();
+            for (int i = 0; i < rows.length; i++) {
+                rows[i].getLayoutParams().height = Math.round(start[i] + (target[i] - start[i]) * progress);
+                rows[i].requestLayout();
+                View fadeView = i < 4 ? inputFields[i + 1] : rows[i];
+                fadeView.setAlpha(alpha[i] + ((visible[i] ? 1f : 0f) - alpha[i]) * progress);
+            }
+            linearLayout2.requestLayout();
+            scrollView.invalidate();
+        });
+        animator.addListener(new android.animation.AnimatorListenerAdapter() {
+            @Override
+            public void onAnimationEnd(android.animation.Animator animation) {
+                if (proxyTypeAnimator != animation) return;
+                proxyTypeAnimator = null;
+                finishProxyTypeRows(rows, visible);
+                if (onTransitionEnd != null) onTransitionEnd.run();
+            }
+        });
+        linearLayout2.requestLayout();
+        animator.start();
+    }
+    private void finishProxyTypeRows(View[] rows, boolean[] visible) {
+        for (int i = 0; i < rows.length; i++) {
+            rows[i].setVisibility(visible[i] ? View.VISIBLE : View.GONE);
+            rows[i].getLayoutParams().height = i < 4 ? AndroidUtilities.dp(64) : ViewGroup.LayoutParams.WRAP_CONTENT;
+            (i < 4 ? inputFields[i + 1] : rows[i]).setAlpha(1f);
+            if (i < 4) {
+                inputFields[i + 1].getLayoutParams().height = ViewGroup.LayoutParams.MATCH_PARENT;
+                inputFields[i + 1].requestLayout();
+            }
+            rows[i].requestLayout();
+        }
+        linearLayout2.requestLayout();
+        scrollView.invalidate();
+    }
+    private void cancelProxyTypeAnimation() {
+        if (proxyTypeAnimator == null) return;
+        ValueAnimator animator = proxyTypeAnimator;
+        proxyTypeAnimator = null;
+        animator.removeAllListeners();
+        animator.removeAllUpdateListeners();
+        animator.cancel();
+    }
+    @Override
+    public void onFragmentDestroy() {
+        cancelProxyTypeAnimation();
+        super.onFragmentDestroy();
     }
 
     @Override

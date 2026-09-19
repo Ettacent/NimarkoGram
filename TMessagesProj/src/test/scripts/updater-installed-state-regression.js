@@ -22,10 +22,18 @@ const java = `
 class File {boolean present=true;File(){}File(File parent,String child){}boolean isFile(){return present;}}
 class Context {File external=new File();File getExternalFilesDir(Object ignored){return external;}}
 class ApplicationLoader {static Context applicationContext=new Context();}
-class BaseFragment {Object getParentActivity(){return this;}Context getContext(){return ApplicationLoader.applicationContext;}}
+class BaseFragment {
+ boolean alive=true;int generation;
+ Object getParentActivity(){return this;}Context getContext(){return ApplicationLoader.applicationContext;}
+ java.util.function.BooleanSupplier captureNavigationRequest(){int g=++generation;return () -> alive&&g==generation;}
+}
+class Queue {java.util.ArrayList<Runnable> tasks=new java.util.ArrayList<>();void postRunnable(Runnable r){tasks.add(r);}void drain(){while(!tasks.isEmpty())tasks.remove(0).run();}}
+class Utilities {static Queue globalQueue=new Queue();}
+class AndroidUtilities {static Queue ui=new Queue();static void runOnUIThread(Runnable r){ui.postRunnable(r);}}
 class NimarkoUpdateConfig {
  static int code;static boolean available,inProgress;static float progress;static String hash="digest";
  static void setUpdateAvailable(boolean v){available=v;}
+ static boolean getAutoOTA(){return true;}
  static void setUpdateIsDownloading(boolean v){inProgress=v;}
  static void setUpdateDownloadingProgress(float v){progress=v;}
  static float getUpdateDownloadingProgress(){return progress;}
@@ -52,7 +60,9 @@ public class UpdaterInstalledStateTest {
  static int checks;static boolean shownAvailable;
  static void check(boolean value,String reason){checks++;if(!value)throw new AssertionError(reason);}
  static void showPreparedAlert(BaseFragment f,boolean available,NimarkoUpdater.Update update){shownAvailable=available;}
- ${extract(sheet, 'public static void showAlert(')}
+ ${extract(sheet, 'public static void showAlert(').replace('void showAlert(', 'void requestAlert(')}
+ ${extract(sheet, 'private static void showAlertWithPreparedConfig(')}
+ static void showAlert(BaseFragment f,boolean available,NimarkoUpdater.Update update){requestAlert(f,available,update);Utilities.globalQueue.drain();AndroidUtilities.ui.drain();}
  static NimarkoUpdater.Update update(int code){return new NimarkoUpdater.Update("12.10.1",code,"Changes","1 MB","https://example.org/update.apk","");}
  static void setup(int target){
   NimarkoUpdater.lastUpdate=update(target);NimarkoUpdateConfig.code=target;
@@ -88,6 +98,17 @@ public class UpdaterInstalledStateTest {
   }
   setup(100);NimarkoUpdater.updateDownloaded=false;
   showAlert(f,true,update(100));check(!shownAvailable,"explicit obsolete sheet blocked without download state");
+  setup(101);shownAvailable=false;
+  requestAlert(f,true,update(101));
+  check(!shownAvailable,"sheet waits for background config preparation");
+  f.alive=false;Utilities.globalQueue.drain();AndroidUtilities.ui.drain();
+  check(!shownAvailable,"navigation away cancels late sheet");f.alive=true;
+  requestAlert(f,true,update(101));requestAlert(f,false,null);
+  NimarkoUpdater.updateDownloaded=false;
+  Utilities.globalQueue.drain();AndroidUtilities.ui.drain();
+  check(!shownAvailable,"latest request wins and download state is resolved after preparation");
+  NimarkoUpdateConfig.available=false;update(101).isNew();
+  check(!NimarkoUpdateConfig.available,"version predicate has no preference write side effects");
   System.out.println("PASS: "+checks+" actual updater state checks, warm/cold metadata, cleanup, same versionName, active downloads");
  }
 }`;

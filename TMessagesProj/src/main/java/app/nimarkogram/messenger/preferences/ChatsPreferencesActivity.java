@@ -373,8 +373,9 @@ public class ChatsPreferencesActivity extends NimarkoUniversalPreferencesActivit
             updateCheckState(view, NimarkoConfig.forwardWithoutAuthor);
         } else if (id == customChatRow) {
             NimarkoConfig.toggleCustomChatForSavedMessages();
+            item.checked = NimarkoConfig.customChatForSavedMessages;
             updateCheckState(view, NimarkoConfig.customChatForSavedMessages);
-            listView.adapter.update(true);
+            updateItemsAfterToggle();
         } else if (id == recentEmojisStickersRow) {
             NimarkoAlertDialogSwitchers.showRecentEmojisAndStickers(this);
         } else if (id == disableSendHintsRow) {

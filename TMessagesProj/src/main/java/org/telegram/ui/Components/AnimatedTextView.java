@@ -102,8 +102,13 @@ public class AnimatedTextView extends View {
             }
 
             public void draw(Canvas canvas, float alpha) {
+                if (stableBaseline) {
+                    canvas.save();
+                    canvas.translate(0, -textPaint.ascent() - layout.getLineBaseline(0));
+                }
                 layout.draw(canvas);
                 AnimatedEmojiSpan.drawAnimatedEmojis(canvas, layout, emoji, 0, null, 0, 0, 0, alpha, emojiColorFilter);
+                if (stableBaseline) canvas.restore();
             }
         }
 
@@ -125,6 +130,14 @@ public class AnimatedTextView extends View {
         private float moveAmplitude = .3f;
 
         private float scaleAmplitude = 0;
+        private boolean stableBaseline;
+        public void setStableBaseline(boolean enabled) {
+            stableBaseline = enabled;
+            invalidateSelf();
+        }
+        private float getDrawingHeight(float layoutHeight) {
+            return stableBaseline ? textPaint.descent() - textPaint.ascent() : layoutHeight;
+        }
 
         private int alpha = 255;
         private final Rect bounds = new Rect();
@@ -155,6 +168,11 @@ public class AnimatedTextView extends View {
 
         private float rightPadding;
         private boolean ellipsizeByGradient;
+        private boolean fadeOverflow;
+        public void setFadeOverflow(boolean enabled) {
+            fadeOverflow = enabled;
+            invalidateSelf();
+        }
         private LinearGradient ellipsizeGradient;
         private Matrix ellipsizeGradientMatrix;
         private Paint ellipsizePaint;
@@ -212,6 +230,11 @@ public class AnimatedTextView extends View {
         }
 
         private boolean needsEllipsizeGradient() {
+            if (fadeOverflow) {
+                float available = Math.max(0, bounds.width() - rightPadding);
+                return currentWidth > available
+                        || (oldParts != null && t < 1f && oldWidth > available);
+            }
             if (!ellipsizeByGradient) {
                 return false;
             }
@@ -226,6 +249,9 @@ public class AnimatedTextView extends View {
                 AndroidUtilities.rectTmp.set(bounds);
                 AndroidUtilities.rectTmp.right -= rightPadding;
                 canvas.saveLayerAlpha(AndroidUtilities.rectTmp, 255, Canvas.ALL_SAVE_FLAG);
+                if (fadeOverflow) {
+                    canvas.clipRect(AndroidUtilities.rectTmp);
+                }
             }
             canvas.save();
             canvas.translate(bounds.left, bounds.top);
@@ -233,7 +259,7 @@ public class AnimatedTextView extends View {
             int fullHeight = bounds.height();
             if (currentParts != null && oldParts != null && t != 1) {
                 float width = lerp(oldWidth, currentWidth, t);
-                float height = lerp(oldHeight, currentHeight, t);
+                float height = getDrawingHeight(lerp(oldHeight, currentHeight, t));
                 if (centerY) canvas.translate(0, (fullHeight - height) / 2f);
                 for (int i = 0; i < currentParts.length; ++i) {
                     Part current = currentParts[i];
@@ -273,7 +299,7 @@ public class AnimatedTextView extends View {
                     canvas.translate(x, y);
                     if (j < 0 && scaleAmplitude > 0) {
                         final float s = lerp(1f - scaleAmplitude, 1f, t);
-                        canvas.scale(s, s, current.width / 2f, current.layout.getHeight() / 2f);
+                        canvas.scale(s, stableBaseline ? 1f : s, current.width / 2f, current.layout.getHeight() / 2f);
                     }
                     current.draw(canvas, j >= 0 ? 1f : t);
                     canvas.restore();
@@ -308,13 +334,13 @@ public class AnimatedTextView extends View {
                     canvas.translate(x, y);
                     if (scaleAmplitude > 0) {
                         final float s = lerp(1f, 1f - scaleAmplitude, t);
-                        canvas.scale(s, s, old.width / 2f, old.layout.getHeight() / 2f);
+                        canvas.scale(s, stableBaseline ? 1f : s, old.width / 2f, old.layout.getHeight() / 2f);
                     }
                     old.draw(canvas, 1f - localT);
                     canvas.restore();
                 }
             } else {
-                if (centerY) canvas.translate(0, (fullHeight - currentHeight) / 2f);
+                if (centerY) canvas.translate(0, (fullHeight - getDrawingHeight(currentHeight)) / 2f);
                 if (currentParts != null) {
                     applyAlphaInternal(1f);
                     for (int i = 0; i < currentParts.length; ++i) {
@@ -351,9 +377,28 @@ public class AnimatedTextView extends View {
                     ellipsizePaint.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.DST_OUT));
                 }
                 ellipsizeGradientMatrix.reset();
-                ellipsizeGradientMatrix.postTranslate(bounds.right - rightPadding - w, 0);
+                final boolean fadeLeft = fadeOverflow && isRTL && !ignoreRTL;
+                if (fadeLeft) {
+                    ellipsizeGradientMatrix.setScale(-1, 1);
+                    ellipsizeGradientMatrix.postTranslate(bounds.left + w, 0);
+                } else {
+                    ellipsizeGradientMatrix.postTranslate(bounds.right - rightPadding - w, 0);
+                }
                 ellipsizeGradient.setLocalMatrix(ellipsizeGradientMatrix);
-                canvas.drawRect(bounds.right - rightPadding - w, bounds.top, bounds.right - rightPadding + AndroidUtilities.dp(1), bounds.bottom, ellipsizePaint);
+                if (fadeOverflow) {
+                    float available = Math.max(0, bounds.width() - rightPadding);
+                    float strength = Math.max(0f, Math.min(1f, (currentWidth - available) / w));
+                    if (oldParts != null) {
+                        float oldStrength = Math.max(0f, Math.min(1f, (oldWidth - available) / w));
+                        strength = lerp(oldStrength, strength, t);
+                    }
+                    ellipsizePaint.setAlpha(Math.round(255 * strength));
+                } else {
+                    ellipsizePaint.setAlpha(255);
+                }
+                canvas.drawRect(fadeLeft ? bounds.left : bounds.right - rightPadding - w,
+                        bounds.top, fadeLeft ? bounds.left + w : bounds.right - rightPadding + AndroidUtilities.dp(1),
+                        bounds.bottom, ellipsizePaint);
                 canvas.restore();
             }
         }
@@ -570,6 +615,14 @@ public class AnimatedTextView extends View {
         public float getAnimateToWidth() {
             return currentWidth;
         }
+        public float getCurrentWidth(float maxWidth) {
+            float limit = Math.max(0, maxWidth);
+            float target = Math.min(currentWidth, limit);
+            if (currentParts != null && oldParts != null) {
+                return lerp(Math.min(oldWidth, limit), target, t);
+            }
+            return target;
+        }
 
         public float getMaxWidth(AnimatedTextDrawable otherTextDrawable) {
             if (oldParts == null || otherTextDrawable.oldParts == null) {
@@ -587,6 +640,9 @@ public class AnimatedTextView extends View {
         }
 
         private StaticLayout makeLayout(CharSequence textPart, int width) {
+            if (fadeOverflow) {
+                width = Math.max(1, (int) Math.ceil(Layout.getDesiredWidth(textPart, textPaint)) + 1);
+            }
             if (width <= 0) {
                 width = Math.min(AndroidUtilities.displaySize.x, AndroidUtilities.displaySize.y);
             }
@@ -1188,7 +1244,9 @@ public class AnimatedTextView extends View {
         }
         if (lastMaxWidth != width && getLayoutParams().width != 0) {
             drawable.setBounds(getPaddingLeft(), getPaddingTop(), width - getPaddingRight(), height - getPaddingBottom());
-            drawable.setText(drawable.getText(), false, true);
+            if (!drawable.fadeOverflow) {
+                drawable.setText(drawable.getText(), false, true);
+            }
         }
         lastMaxWidth = width;
         if (adaptWidth && MeasureSpec.getMode(widthMeasureSpec) == MeasureSpec.AT_MOST) {

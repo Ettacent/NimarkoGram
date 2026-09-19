@@ -255,10 +255,12 @@ public class NotificationsSettingsFacade {
             TLRPC.TL_notificationSoundRingtone soundRingtone = (TLRPC.TL_notificationSoundRingtone) settings;
             editor.putLong(soundDocPref, soundRingtone.id);
             MediaDataController.getInstance(currentAccount).checkRingtones(true);
-            if (serverUpdate && dialogId != 0) {
-                editor.putBoolean("custom_" + dialogId, true);
-            }
             MediaDataController.getInstance(currentAccount).ringtoneDataStore.getDocument(soundRingtone.id);
+        }
+        if (dialogId != 0 && (settings instanceof TLRPC.TL_notificationSoundRingtone
+                || settings instanceof TLRPC.TL_notificationSoundLocal
+                || settings instanceof TLRPC.TL_notificationSoundNone)) {
+            editor.putBoolean("custom_" + NotificationsController.getSharedPrefKey(dialogId, topicId, true), true);
         }
     }
 

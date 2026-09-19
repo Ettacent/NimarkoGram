@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="UseProxyWeb">WEB-проксі</string>
+    <string name="UseProxyWebInfo">WEB-проксі выкарыстоўвае HTTPS-старонку ў асобным WebView. Увядзіце імя хоста без схемы і шляху, а таксама 16-байтавы сакрэт MTProxy. Гэта эксперыментальная рэалізацыя для тэставання ў адкрытай праграме. Патрэбна актуальная версія Android System WebView.</string>
     <string name="NM_Menu_TelegramPlus">Сучаснае меню паведамленняў</string>
     <string name="NM_Menu_TelegramPlus_Desc">Кампактнае меню ў стылі Liquid Glass з групаваннем дзеянняў, спружыннымі анімацыямі і жывым водгукам. Кампактная кампаноўка застаецца даступнай.</string>
     <!-- NimarkoGram plugin strings ported from exteraGram (values-be) -->

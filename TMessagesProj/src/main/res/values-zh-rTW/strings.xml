@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="UseProxyWeb">WEB 代理</string>
+    <string name="UseProxyWebInfo">WEB 代理透過獨立 WebView 中的 HTTPS 網頁連線。請輸入不含通訊協定前綴和路徑的主機名稱，以及 16 位元組的 MTProxy 金鑰。此功能為實驗性實作，僅供應用程式在前景執行時測試，需要最新版本的 Android System WebView。</string>
     <string name="AppName">NimarkoGram</string>
     <string name="NM_CP_Header_ChatView">聊天檢視</string>
     <string name="NM_CP_Header_Interaction">互動</string>

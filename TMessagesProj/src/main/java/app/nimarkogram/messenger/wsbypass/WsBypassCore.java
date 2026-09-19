@@ -35,6 +35,7 @@ public final class WsBypassCore {
     public static final String LOCAL_PROXY_HOST = "127.0.0.1";
 
     private volatile long lastBridgeOkAtMs = 0L;
+    private final WlRetryGate wlRetryGate = new WlRetryGate();
     public long getLastBridgeOkAtMs() { return lastBridgeOkAtMs; }
     private final Object bridgeStateLock = new Object();
     private int activeBridges;
@@ -373,6 +374,7 @@ public final class WsBypassCore {
 
     private void stopLocked() {
         running = false;
+        wlRetryGate.reset();
         invalidateBridgeGeneration();
         ServerSocket s = listener;
         listener = null;
@@ -554,6 +556,9 @@ public final class WsBypassCore {
     private RawWebSocket connectWsCf(int dc, boolean isMedia, long deadlineNanos,
                                      long generation) throws IOException {
         if (WlAccess.enabled()) {
+            if (wlRetryGate.remaining(nowElapsedMs()) > 0L) {
+                throw new IOException("wl_rate_limited");
+            }
             WlAccess.Grant grant = WlAccess.cached();
             if (grant == null) {
                 WlAccess.warm();
@@ -566,6 +571,9 @@ public final class WsBypassCore {
                         () -> isBridgeGenerationCurrent(generation) && WlAccess.enabled()
                                 && WlAccess.isCurrent(grant));
             } catch (RawWebSocket.HandshakeException error) {
+                if (error.statusCode == 429 && isBridgeGenerationCurrent(generation)) {
+                    wlRetryGate.rejected(nowElapsedMs(), error.retryAfterMillis);
+                }
                 if (error.statusCode == 401 || error.statusCode == 403) WlAccess.rejected(grant);
                 throw error;
             }

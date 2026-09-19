@@ -177,7 +177,7 @@ public final class RawWebSocket {
             if (code != 101) {
                 String loc = headers.get("location");
                 throw new HandshakeException(statusLine == null || statusLine.isEmpty()
-                        ? "bad websocket handshake" : statusLine, code, loc);
+                        ? "bad websocket handshake" : statusLine, code, loc, headers.get("retry-after"));
             }
             if (!containsToken(headers.get("upgrade"), "websocket")
                     || !containsToken(headers.get("connection"), "upgrade")) {
@@ -532,10 +532,19 @@ public final class RawWebSocket {
     public static final class HandshakeException extends IOException {
         public final int statusCode;
         public final String location;
+        public final long retryAfterMillis;
         HandshakeException(String message, int statusCode, String location) {
+            this(message, statusCode, location, null);
+        }
+        HandshakeException(String message, int statusCode, String location, String retryAfter) {
             super(location == null || location.isEmpty() ? message : message + " -> " + location);
             this.statusCode = statusCode;
             this.location = location;
+            long delay = 0L;
+            try {
+                if (retryAfter != null) delay = Math.min(60L, Math.max(0L, Long.parseLong(retryAfter.trim()))) * 1000L;
+            } catch (NumberFormatException ignored) { }
+            retryAfterMillis = delay;
         }
         public boolean isRedirect() {
             return statusCode == 301 || statusCode == 302 || statusCode == 303

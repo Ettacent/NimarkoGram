@@ -6320,6 +6320,8 @@ public class NotificationsController extends BaseController implements Notificat
         } else if (soundPath != null) {
             if (soundPath.equalsIgnoreCase("NoSound")) {
                 req.settings.sound = new TLRPC.TL_notificationSoundNone();
+            } else if (soundPath.equalsIgnoreCase("Default")) {
+                req.settings.sound = new TLRPC.TL_notificationSoundDefault();
             } else {
                 TLRPC.TL_notificationSoundLocal localSound = new TLRPC.TL_notificationSoundLocal();
                 localSound.title = preferences.getString("sound_" + NotificationsController.getSharedPrefKey(dialogId, topicId), null);

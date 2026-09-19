@@ -24,7 +24,9 @@ import org.telegram.ui.Components.CubicBezierInterpolator;
 import org.telegram.ui.Components.LayoutHelper;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 public class InfoCardStripView extends FrameLayout implements NotificationCenter.NotificationCenterDelegate {
 
@@ -126,17 +128,32 @@ public class InfoCardStripView extends FrameLayout implements NotificationCenter
 
     public void rebuild() {
         cancelAnim();
+        dragging = false;
+        dragProgress = 0f;
+        incomingIndex = -1;
+        potentialTap = false;
+        longPressFired = false;
+        removeCallbacks(longPressRunnable);
+        setCardsPressed(false);
+        releaseTracker();
+        if (getParent() != null) getParent().requestDisallowInterceptTouchEvent(false);
         pendingActiveCardId = -1;
-        removeAllViews();
         
         int prevId = -1;
         BaseInfoCard prev = current();
         if (prev != null) prevId = prev.getCardId();
-        pills.clear();
+        Map<Integer, BaseInfoCard> reusable = new HashMap<>();
+        for (BaseInfoCard pill : pills) {
+            reusable.put(pill.getCardId(), pill);
+        }
+        ArrayList<BaseInfoCard> nextPills = new ArrayList<>();
         currentIndex = 0;
         List<Integer> active = InfoCardsConfig.getActiveCards();
         for (int id : active) {
-            BaseInfoCard pill = InfoCardRegistry.create(id, getContext(), resourcesProvider);
+            BaseInfoCard pill = reusable.remove(id);
+            if (pill == null) {
+                pill = InfoCardRegistry.create(id, getContext(), resourcesProvider);
+            }
             if (pill != null) {
                 pill.setOpaqueFlat(opaqueCards); 
                 pill.setInlineFolderStyle(inlineFolderStyle);
@@ -168,12 +185,21 @@ public class InfoCardStripView extends FrameLayout implements NotificationCenter
                         return super.performAccessibilityAction(host, action, args);
                     }
                 });
-                pills.add(pill);
-                
-                int g = Gravity.CENTER_VERTICAL | (LocaleController.isRTL ? Gravity.LEFT : Gravity.RIGHT);
-                addView(pill, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT,
-                        LayoutHelper.WRAP_CONTENT, g));
+                nextPills.add(pill);
+                if (pill.getParent() == null) {
+                    int g = Gravity.CENTER_VERTICAL | (LocaleController.isRTL ? Gravity.LEFT : Gravity.RIGHT);
+                    addView(pill, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT,
+                            LayoutHelper.WRAP_CONTENT, g));
+                }
             }
+        }
+        for (BaseInfoCard removed : reusable.values()) {
+            removeView(removed);
+        }
+        pills.clear();
+        pills.addAll(nextPills);
+        for (BaseInfoCard pill : pills) {
+            bringChildToFront(pill);
         }
         
         int target = prevId >= 0 ? prevId : InfoCardsConfig.getLastActiveCardId();
@@ -183,14 +209,8 @@ public class InfoCardStripView extends FrameLayout implements NotificationCenter
             }
         }
         
-        int cap = usableCardWidth();
-        int hSpec = android.view.View.MeasureSpec.makeMeasureSpec(AndroidUtilities.dp(40), android.view.View.MeasureSpec.AT_MOST);
-        for (BaseInfoCard p : pills) {
-            p.setMaxChipWidth(cap); 
-            p.measure(android.view.View.MeasureSpec.makeMeasureSpec(cap, android.view.View.MeasureSpec.AT_MOST), hSpec);
-        }
+        applyResting(false);
         requestLayout();
-        applyResting();
     }
 
     public boolean isLayoutSuppressed() {
@@ -270,6 +290,7 @@ public class InfoCardStripView extends FrameLayout implements NotificationCenter
             p.setScaleY(cur ? 1f : 0.8f);
             p.setTranslationX(0);
             p.setTranslationY(0);
+            p.setCardLayerType(View.LAYER_TYPE_NONE);
         }
         incomingIndex = -1;
         BaseInfoCard cur = current();

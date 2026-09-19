@@ -194,12 +194,17 @@ public class NimarkoUpdater {
     public static String getCurrentVersionName() {
         return BuildVars.BUILD_VERSION_STRING;
     }
+    private static volatile int installedVersionCode;
 
     public static int getCurrentVersionCode() {
+        int cached = installedVersionCode;
+        if (cached > 0) return cached;
         try {
-            Context ctx = ApplicationLoader.applicationContext;
-            android.content.pm.PackageInfo pInfo = ctx.getPackageManager().getPackageInfo(ctx.getPackageName(), 0);
-            return (int) androidx.core.content.pm.PackageInfoCompat.getLongVersionCode(pInfo);
+            Context context = ApplicationLoader.applicationContext;
+            android.content.pm.PackageInfo info = context.getPackageManager().getPackageInfo(context.getPackageName(), 0);
+            int installed = (int) androidx.core.content.pm.PackageInfoCompat.getLongVersionCode(info);
+            if (installed > 0) installedVersionCode = installed;
+            return installed;
         } catch (Exception e) {
             FileLog.e(e);
             return 0;
@@ -391,7 +396,9 @@ public class NimarkoUpdater {
                 Update update = new Update(version, versionCode, changelog, size, downloadURL, uploadDate);
                 lastUpdate = update;
                 NimarkoUpdateConfig.setLastUpdate(version, versionCode, downloadURL, changelog, size, uploadDate);
-                if (update.isNew() && fragment != null && fragment.getContext() != null) {
+                boolean newer = update.isNew();
+                NimarkoUpdateConfig.setUpdateAvailable(newer);
+                if (newer && fragment != null && fragment.getContext() != null) {
                     checkDirs();
                     AndroidUtilities.runOnUIThread(() -> {
                         if (onUpdateFound != null) {
@@ -403,7 +410,6 @@ public class NimarkoUpdater {
                         }
                     });
                     NimarkoUpdateConfig.setUpdateIsDownloading(false);
-                    NimarkoUpdateConfig.setUpdateAvailable(true);
                     if (version != null && !version.isEmpty()) NimarkoUpdateConfig.setUpdateVersionName(version);
                     NimarkoUpdateConfig.setUpdateSize(size);
                 } else {
@@ -1165,9 +1171,7 @@ public class NimarkoUpdater {
         }
 
         public boolean isNew() {
-            boolean isNew = versionCode > getCurrentVersionCode();
-            NimarkoUpdateConfig.setUpdateAvailable(isNew);
-            return isNew;
+            return versionCode > getCurrentVersionCode();
         }
     }
 }

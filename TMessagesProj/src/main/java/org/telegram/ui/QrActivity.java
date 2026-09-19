@@ -541,7 +541,7 @@ public class QrActivity extends BaseFragment {
                 final int size = dp(60);
                 preparedLogo = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888);
                 RLottieNative lottie = RLottieNative.createFromRawJson(
-                        readRes(R.raw.plane_logo_plain), "plane_logo_plain", null);
+                        readRes(R.raw.plane_logo_plain));
                 if (lottie != null) {
                     lottie.getFrame(LOGO_OPTIMAL_FRAME, preparedLogo, false);
                     lottie.recycle();
@@ -1447,7 +1447,7 @@ public class QrActivity extends BaseFragment {
                 return;
             }
             if (hasTimer && loadingMatrix == null && deferredAnimationsAllowed) {
-                loadingMatrix = new RLottieDrawable(R.raw.qr_matrix, "qr_matrix", AndroidUtilities.dp(200), AndroidUtilities.dp(200));
+                loadingMatrix = new RLottieDrawable(R.raw.qr_matrix, AndroidUtilities.dp(200), AndroidUtilities.dp(200));
                 loadingMatrix.setMasterParent(this);
                 loadingMatrix.getPaint().setXfermode(new PorterDuffXfermode(PorterDuff.Mode.DST_IN));
                 loadingMatrix.setAutoRepeat(1);
@@ -1823,7 +1823,7 @@ public class QrActivity extends BaseFragment {
 
             int drawableColor = fragment.getThemedColor(Theme.key_featuredStickers_addButton);
             int drawableSize = dp(28);
-            darkThemeDrawable = new RLottieDrawable(R.raw.sun_outline, "" + R.raw.sun_outline, drawableSize, drawableSize, false, null);
+            darkThemeDrawable = new RLottieDrawable(R.raw.sun_outline, drawableSize, drawableSize, false, null);
             forceDark = !Theme.getActiveTheme().isDark();
             setForceDark(Theme.getActiveTheme().isDark(), false);
             darkThemeDrawable.setPlayInDirectionOfCustomEndFrame(true);

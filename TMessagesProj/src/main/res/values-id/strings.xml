@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="UseProxyWeb">Proksi WEB</string>
+    <string name="UseProxyWebInfo">Proksi WEB menggunakan halaman HTTPS dalam WebView terpisah. Masukkan nama host tanpa skema protokol atau jalur serta secret MTProxy sepanjang 16 byte. Implementasi eksperimental ini ditujukan untuk pengujian saat aplikasi berada di latar depan dan memerlukan versi Android System WebView terbaru.</string>
     <string name="NM_Menu_TelegramPlus">Menu pesan modern</string>
     <string name="NM_Menu_TelegramPlus_Desc">Menu ringkas dengan efek Liquid Glass, tindakan yang dikelompokkan, animasi pegas, dan efek responsif. Tata letak ringkas tetap tersedia.</string>
     <!-- NimarkoGram plugin engine strings -->

@@ -110,9 +110,10 @@ public class ChatAvatarContainer extends FrameLayout implements FactorAnimator.T
             titleTextView.setGravity(value ? Gravity.CENTER_HORIZONTAL : Gravity.LEFT);
 
             titleTextView.setRightDrawableOutside(true);
-            titleTextView.setScrollNonFitText(value);
+            titleTextView.setScrollNonFitText(true);
         }
         if (subtitleTextView != null) {
+            subtitleTextView.setScrollNonFitText(false);
             subtitleTextView.setGravity(value ? Gravity.CENTER_HORIZONTAL : Gravity.LEFT);
             subtitleTextView.setPadding(value ? dp(10) : 0, 0, dp(10), 0);
             subtitleTextView.setEllipsizeByGradient(
@@ -230,6 +231,12 @@ public class ChatAvatarContainer extends FrameLayout implements FactorAnimator.T
 
     private float inlineSubtitleWidthReserve;
     private int subtitleTransitionGeneration;
+    private CharSequence subtitleTransitionTarget;
+    private boolean subtitleTransitionRunning;
+    private boolean subtitleFadingOut;
+    private int requestedTypingType = -1;
+    private int appliedTypingType = -1;
+    private int subtitleTransitionTypingType = -1;
     private boolean subtitleHiddenByPreference;
 
     private boolean inlineTextClipEnabled;
@@ -418,9 +425,10 @@ public class ChatAvatarContainer extends FrameLayout implements FactorAnimator.T
         titleTextView.setCanHideRightDrawable(false);
 
         titleTextView.setRightDrawableOutside(true);
+        titleTextView.setOutsideRightDrawableTextClipInset(0);
 
         titleTextView.setPadding(0, dp(6), 0, dp(12));
-        titleTextView.setScrollNonFitText(centerChatTitle);
+        titleTextView.setScrollNonFitText(true);
         addView(titleTextView);
 
         if (useAnimatedSubtitle()) {
@@ -445,6 +453,7 @@ public class ChatAvatarContainer extends FrameLayout implements FactorAnimator.T
             subtitleTextView.setTextSize(14);
             subtitleTextView.setGravity(centerChatTitle ? Gravity.CENTER_HORIZONTAL : Gravity.LEFT);
             subtitleTextView.setPadding(centerChatTitle ? dp(10) : 0, 0, dp(10), 0);
+            subtitleTextView.setScrollNonFitText(false);
             addView(subtitleTextView);
         }
 
@@ -582,6 +591,18 @@ public class ChatAvatarContainer extends FrameLayout implements FactorAnimator.T
         canvas.scale(s, s, getPivotX(), getHeight() - ActionBar.getCurrentActionBarHeight() / 2f);
         super.dispatchDraw(canvas);
         canvas.restore();
+    }
+    public void drawProfileTransitionText(Canvas canvas, View title, View subtitle) {
+        final int save = canvas.save();
+        final float s = bounce.getScale(.02f);
+        canvas.scale(s, s, getPivotX(), getHeight() - ActionBar.getCurrentActionBarHeight() / 2f);
+        if (title == titleTextView && title.getVisibility() == VISIBLE) {
+            drawChild(canvas, title, getDrawingTime());
+        }
+        if (subtitle != null && subtitle == getSubtitleTextView() && subtitle.getVisibility() == VISIBLE) {
+            drawChild(canvas, subtitle, getDrawingTime());
+        }
+        canvas.restoreToCount(save);
     }
 
     @Override
@@ -891,8 +912,19 @@ public class ChatAvatarContainer extends FrameLayout implements FactorAnimator.T
 
         final boolean inlineCenteredAvatar = isInlineCenteredAvatar();
         int padding = centerChatTitle && !inlineCenteredAvatar ? dp(40) : 0;
-        int width = MeasureSpec.getSize(widthMeasureSpec) + padding + titleTextView.getPaddingRight();
+        int width = MeasureSpec.getSize(widthMeasureSpec)
+                + (centerChatTitle ? padding + titleTextView.getPaddingRight() : 0);
         int availableWidth = width - dp(((avatarImageView.getVisibility() == VISIBLE || centerChatTitle) ? 54 : 0) + 16);
+        if (glassMode && !centerChatTitle && !useChatTitleLayoutOutsideChat
+                && getParent() instanceof ActionBar) {
+            int contentRight = ((ActionBar) getParent()).getChatAvatarAnimatedContentRight(this);
+            if (contentRight >= 0) {
+                final int textLeft = leftPadding
+                        + dp(avatarImageView.getVisibility() == VISIBLE ? 49.66f : 12)
+                        + rightAvatarPadding;
+                availableWidth = Math.max(0, contentRight - textLeft - dp(10));
+            }
+        }
         if (useChatTitleLayoutOutsideChat
                 && !inlineCenteredAvatar
                 && getParent() instanceof ActionBar) {
@@ -916,7 +948,7 @@ public class ChatAvatarContainer extends FrameLayout implements FactorAnimator.T
         final int inlineCommunityReserve = getInlineCommunityIndicatorSpace();
         final int subtitleAvailableWidth = Math.max(0, availableWidth - centeredTitleReserve);
 
-        final int titleTrailingSafety = titleTextView.getRightDrawableOutside()
+        final int titleTrailingSafety = centerChatTitle && titleTextView.getRightDrawableOutside()
                 && titleTextView.getRightDrawablesWidth() > 0 ? dp(4) : 0;
         final int titleAvailableWidth = Math.max(
                 0, subtitleAvailableWidth - inlineCommunityReserve - titleTrailingSafety);
@@ -949,7 +981,9 @@ public class ChatAvatarContainer extends FrameLayout implements FactorAnimator.T
                 }
             }
         }
-        titleTextView.measure(MeasureSpec.makeMeasureSpec(titleAvailableWidth, MeasureSpec.AT_MOST), MeasureSpec.makeMeasureSpec(dp(24 + 8) + titleTextView.getPaddingRight(), MeasureSpec.AT_MOST));
+        final int titleHeight = dp(24 + 8)
+                + (centerChatTitle ? titleTextView.getPaddingRight() : 0);
+        titleTextView.measure(MeasureSpec.makeMeasureSpec(titleAvailableWidth, MeasureSpec.AT_MOST), MeasureSpec.makeMeasureSpec(titleHeight, MeasureSpec.AT_MOST));
         if (centerChatTitle && titleTextView.getMeasuredWidth() > 0) {
 
             final int exactTitleWidth = Math.max(1, Math.min(centeredTitleCapacity,
@@ -957,7 +991,7 @@ public class ChatAvatarContainer extends FrameLayout implements FactorAnimator.T
             if (exactTitleWidth != titleTextView.getMeasuredWidth()) {
                 titleTextView.measure(
                         MeasureSpec.makeMeasureSpec(exactTitleWidth, MeasureSpec.EXACTLY),
-                        MeasureSpec.makeMeasureSpec(dp(24 + 8) + titleTextView.getPaddingRight(), MeasureSpec.AT_MOST));
+                        MeasureSpec.makeMeasureSpec(titleHeight, MeasureSpec.AT_MOST));
             }
         }
         if (subtitleTextView != null) {
@@ -1006,7 +1040,7 @@ public class ChatAvatarContainer extends FrameLayout implements FactorAnimator.T
 
         updateCenterChatTitleState();
 
-        if (centerChatTitle || useChatTitleLayoutOutsideChat) {
+        if (glassMode || centerChatTitle || useChatTitleLayoutOutsideChat) {
             clearLargerTextCopies();
             return;
         }
@@ -1123,7 +1157,7 @@ public class ChatAvatarContainer extends FrameLayout implements FactorAnimator.T
             avatarImageView.layout(1 + leftPadding, 1 + viewTop, 1 + leftPadding + avatarImageView.getMeasuredWidth(), 1 + viewTop + avatarImageView.getMeasuredHeight());
         }
 
-        int l = leftPadding + (avatarImageView.getVisibility() == VISIBLE && !centerChatTitle ? dp(glassMode ? 48.66f : 55) : dp(glassMode ? 12 : 1)) + rightAvatarPadding;
+        int l = leftPadding + (avatarImageView.getVisibility() == VISIBLE && !centerChatTitle ? dp(glassMode ? 49.66f : 55) : dp(glassMode ? 12 : 1)) + rightAvatarPadding;
 
         float ovalCenterLocal = -1f;
         int compactContentWidth = 0;
@@ -1465,7 +1499,26 @@ public class ChatAvatarContainer extends FrameLayout implements FactorAnimator.T
 
         if (badge != null) {
             if (badgeEmojiDrawable == null) {
-                badgeEmojiDrawable = new AnimatedEmojiDrawable.SwapAnimatedEmojiDrawable(titleTextView, dp(24));
+                badgeEmojiDrawable = new AnimatedEmojiDrawable.SwapAnimatedEmojiDrawable(titleTextView, dp(24)) {
+                    private int compositedAlpha = 255;
+                    @Override
+                    public void setAlpha(int alpha) {
+                        compositedAlpha = alpha;
+                        super.setAlpha(255);
+                    }
+                    @Override
+                    public void draw(Canvas canvas) {
+                        if (compositedAlpha <= 0) return;
+                        if (compositedAlpha < 255) {
+                            int save = canvas.saveLayerAlpha(null, compositedAlpha);
+                            super.draw(canvas);
+                            canvas.restoreToCount(save);
+                        } else {
+                            super.draw(canvas);
+                        }
+                    }
+                };
+                badgeEmojiDrawable.setCurrentAccount(currentAccount);
                 if (isAttachedToWindow()) badgeEmojiDrawable.attach();
             }
             boolean animateBadge = animated && lastNimarkoBadgeDocId != 0L && lastNimarkoBadgeDocId != badge.getDocumentId();
@@ -1533,10 +1586,12 @@ public class ChatAvatarContainer extends FrameLayout implements FactorAnimator.T
             }
             if (emojiStatusPresent) {
                 emojiStatusDrawable.set(DialogObject.getEmojiStatusDocumentId(emojiStatus), animated);
+                emojiStatusDrawable.setParticles(emojiStatus instanceof TLRPC.TL_emojiStatusCollectible, animated);
                 primaryTitleDrawable = emojiStatusDrawable;
             } else if (premium && badge != null) {
 
                 emojiStatusDrawable.set(badgeEmojiDrawable, animated);
+                emojiStatusDrawable.setParticles(false, animated);
                 primaryTitleDrawable = emojiStatusDrawable;
             } else if (premium) {
 
@@ -1546,9 +1601,11 @@ public class ChatAvatarContainer extends FrameLayout implements FactorAnimator.T
                 ).mutate();
                 emojiStatusDefaultDrawable.setColorFilter(new PorterDuffColorFilter(getThemedColor(Theme.key_profile_verifiedBackground), PorterDuff.Mode.MULTIPLY));
                 emojiStatusDrawable.set((Drawable) null, false);
+                emojiStatusDrawable.setParticles(false, false);
                 primaryTitleDrawable = emojiStatusDefaultDrawable;
             } else {
                 emojiStatusDrawable.set((Drawable) null, animated);
+                emojiStatusDrawable.setParticles(false, animated);
             }
             emojiStatusDrawable.setColor(getThemedColor(Theme.key_profile_verifiedBackground));
             titleTextView.setRightDrawable(primaryTitleDrawable);
@@ -1659,6 +1716,7 @@ public class ChatAvatarContainer extends FrameLayout implements FactorAnimator.T
             subtitleHiddenByPreference = true;
             inlineSubtitleWidthReserve = 0f;
             subtitleTransitionGeneration++;
+            subtitleTransitionRunning = false;
             if (subtitleTextView != null) {
                 subtitleTextView.animate().cancel();
                 subtitleTextView.setText("");
@@ -1696,12 +1754,39 @@ public class ChatAvatarContainer extends FrameLayout implements FactorAnimator.T
         if (subtitleTextView == null) {
             return;
         }
+        final int targetTypingType = getSubtitleTypingType();
+        if (subtitleTransitionRunning && subtitleTransitionTypingType == targetTypingType
+                && TextUtils.equals(subtitleTransitionTarget, value)
+                && subtitleTextView.isLaidOut()) {
+            return;
+        }
+        subtitleTransitionTarget = value == null ? "" : TextUtils.stringOrSpannedString(value);
+        subtitleTransitionTypingType = targetTypingType;
+        if (subtitleTransitionRunning && subtitleFadingOut
+                && (!TextUtils.equals(subtitleTextView.getText(), value)
+                    || appliedTypingType != targetTypingType)) {
+            return;
+        }
         final int transitionGeneration = ++subtitleTransitionGeneration;
         subtitleTextView.animate().cancel();
+        subtitleTransitionRunning = false;
+        subtitleFadingOut = false;
         CharSequence current = subtitleTextView.getText();
-        if (android.text.TextUtils.equals(current, value)) {
+        if (android.text.TextUtils.equals(current, value) && appliedTypingType == targetTypingType) {
             inlineSubtitleWidthReserve = 0f;
-            subtitleTextView.setAlpha(TextUtils.isEmpty(value) ? 0f : 1f);
+            final float targetAlpha = TextUtils.isEmpty(value) ? 0f : 1f;
+            if (subtitleTextView.isLaidOut() && subtitleTextView.getAlpha() != targetAlpha) {
+                subtitleTransitionRunning = true;
+                subtitleTextView.animate().alpha(targetAlpha).setDuration(150)
+                        .setInterpolator(CubicBezierInterpolator.EASE_OUT_QUINT)
+                        .withEndAction(() -> {
+                            if (transitionGeneration == subtitleTransitionGeneration) {
+                                subtitleTransitionRunning = false;
+                            }
+                        }).start();
+            } else {
+                subtitleTextView.setAlpha(targetAlpha);
+            }
             return;
         }
         if (isInlineCenteredAvatar() && !TextUtils.isEmpty(value)) {
@@ -1715,14 +1800,29 @@ public class ChatAvatarContainer extends FrameLayout implements FactorAnimator.T
         } else {
             inlineSubtitleWidthReserve = 0f;
         }
+        if (!subtitleTextView.isLaidOut()) {
+            applyTypingAnimation();
+            subtitleTextView.setText(value);
+            subtitleTextView.setAlpha(TextUtils.isEmpty(value) ? 0f : 1f);
+            inlineSubtitleWidthReserve = 0f;
+            return;
+        }
+        subtitleTransitionRunning = true;
         if (android.text.TextUtils.isEmpty(current)) {
+            applyTypingAnimation();
 
             subtitleTextView.setText(value);
             inlineSubtitleWidthReserve = 0f;
             subtitleTextView.setAlpha(0f);
             subtitleTextView.animate().alpha(1f).setDuration(180)
-                    .setInterpolator(CubicBezierInterpolator.EASE_OUT_QUINT).start();
+                    .setInterpolator(CubicBezierInterpolator.EASE_OUT_QUINT)
+                    .withEndAction(() -> {
+                        if (transitionGeneration == subtitleTransitionGeneration) {
+                            subtitleTransitionRunning = false;
+                        }
+                    }).start();
         } else {
+            subtitleFadingOut = true;
 
             subtitleTextView.animate().alpha(0f).setDuration(120)
                     .setInterpolator(CubicBezierInterpolator.EASE_OUT_QUINT)
@@ -1730,16 +1830,25 @@ public class ChatAvatarContainer extends FrameLayout implements FactorAnimator.T
                         if (transitionGeneration != subtitleTransitionGeneration) {
                             return;
                         }
-                        subtitleTextView.setText(value);
+                        subtitleFadingOut = false;
+                        final CharSequence nextSubtitle = subtitleTransitionTarget;
+                        applyTypingAnimation();
+                        subtitleTextView.setText(nextSubtitle);
                         inlineSubtitleWidthReserve = 0f;
                         requestLayout();
                         checkActionBar(true);
-                        if (android.text.TextUtils.isEmpty(value)) {
+                        if (android.text.TextUtils.isEmpty(nextSubtitle)) {
                             subtitleTextView.setAlpha(0f);
+                            subtitleTransitionRunning = false;
                         } else {
                             subtitleTextView.setAlpha(0f);
                             subtitleTextView.animate().alpha(1f).setDuration(150)
-                                    .setInterpolator(CubicBezierInterpolator.EASE_OUT_QUINT).start();
+                                    .setInterpolator(CubicBezierInterpolator.EASE_OUT_QUINT)
+                                    .withEndAction(() -> {
+                                        if (transitionGeneration == subtitleTransitionGeneration) {
+                                            subtitleTransitionRunning = false;
+                                        }
+                                    }).start();
                         }
                     }).start();
         }
@@ -1779,10 +1888,28 @@ public class ChatAvatarContainer extends FrameLayout implements FactorAnimator.T
     }
 
     private void setTypingAnimation(boolean start) {
+        Integer type = start && parentFragment != null
+                ? (subtitleIsThinkingBot ? Integer.valueOf(0) : MessagesController.getInstance(currentAccount)
+                    .getPrintingStringType(parentFragment.getDialogId(), parentFragment.getThreadId()))
+                : null;
+        requestedTypingType = type != null && type >= 0 && type < statusDrawables.length
+                && statusDrawables[type] != null ? type : -1;
+        if (app.nimarkogram.messenger.NimarkoConfig.hideActionBarStatus) {
+            requestedTypingType = -1;
+            applyTypingAnimation();
+        }
+    }
+    private int getSubtitleTypingType() {
+        return lastSubtitle != null || app.nimarkogram.messenger.NimarkoConfig.hideActionBarStatus
+                ? -1 : requestedTypingType;
+    }
+    private void applyTypingAnimation() {
         if (subtitleTextView == null) return;
-        if (start) {
+        applySubtitleColor();
+        appliedTypingType = getSubtitleTypingType();
+        if (appliedTypingType >= 0) {
             try {
-                int type = subtitleIsThinkingBot ? 0 : MessagesController.getInstance(currentAccount).getPrintingStringType(parentFragment.getDialogId(), parentFragment.getThreadId());
+                int type = appliedTypingType;
                 if (statusDrawables[type] == null) return;
                 if (type == 5) {
                     subtitleTextView.replaceTextWithDrawable(statusDrawables[type], "**oo**");
@@ -1819,6 +1946,14 @@ public class ChatAvatarContainer extends FrameLayout implements FactorAnimator.T
 
     public void updateSubtitle() {
         updateSubtitle(false);
+    }
+    private void applySubtitleColor() {
+        if (subtitleTextView == null) return;
+        int colorKey = lastSubtitle != null ? Theme.key_actionBarDefaultSubtitle : lastSubtitleColorKey;
+        if (overrideSubtitleColor == null && colorKey < 0) return;
+        subtitleTextView.setTextColor(overrideSubtitleColor != null
+                ? overrideSubtitleColor : getThemedColor(colorKey));
+        if (overrideSubtitleColor == null) subtitleTextView.setTag(colorKey);
     }
 
     private boolean subtitleIsThinkingBot;
@@ -2034,13 +2169,8 @@ public class ChatAvatarContainer extends FrameLayout implements FactorAnimator.T
         lastSubtitleColorKey = useOnlineColor ? Theme.key_chat_status : Theme.key_actionBarDefaultSubtitle;
         if (lastSubtitle == null) {
             if (subtitleTextView != null) {
-                subtitleTextView.setText(newSubtitle);
-                if (overrideSubtitleColor == null) {
-                    subtitleTextView.setTextColor(getThemedColor(lastSubtitleColorKey));
-                    subtitleTextView.setTag(lastSubtitleColorKey);
-                } else {
-                    subtitleTextView.setTextColor(overrideSubtitleColor);
-                }
+                setSubtitleTextSmooth(newSubtitle);
+                if (!subtitleTransitionRunning) applySubtitleColor();
             } else {
                 animatedSubtitleTextView.setText(newSubtitle, animated);
                 if (overrideSubtitleColor == null) {
@@ -2316,6 +2446,8 @@ public class ChatAvatarContainer extends FrameLayout implements FactorAnimator.T
             actionBar.clearChatAvatarContainer(this);
         }
         clearLargerTextCopies();
+        subtitleTransitionGeneration++;
+        subtitleTransitionRunning = false;
         if (titleTextView != null) {
             titleTextView.animate().cancel();
         }
@@ -2386,14 +2518,10 @@ public class ChatAvatarContainer extends FrameLayout implements FactorAnimator.T
         if (title == null) {
             if (lastSubtitle != null) {
                 if (subtitleTextView != null) {
-                    subtitleTextView.setText(lastSubtitle);
+                    CharSequence restoredSubtitle = lastSubtitle;
                     lastSubtitle = null;
-                    if (overrideSubtitleColor != null) {
-                        subtitleTextView.setTextColor(overrideSubtitleColor);
-                    } else if (lastSubtitleColorKey >= 0) {
-                        subtitleTextView.setTextColor(getThemedColor(lastSubtitleColorKey));
-                        subtitleTextView.setTag(lastSubtitleColorKey);
-                    }
+                    setSubtitleTextSmooth(restoredSubtitle);
+                    if (!subtitleTransitionRunning) applySubtitleColor();
                 } else if (animatedSubtitleTextView != null) {
                     animatedSubtitleTextView.setText(lastSubtitle, !LocaleController.isRTL);
                     lastSubtitle = null;
@@ -2408,15 +2536,11 @@ public class ChatAvatarContainer extends FrameLayout implements FactorAnimator.T
         } else {
             if (subtitleTextView != null) {
                 if (lastSubtitle == null) {
-                    lastSubtitle = subtitleTextView.getText();
+                    lastSubtitle = subtitleTransitionRunning ? subtitleTransitionTarget : subtitleTextView.getText();
+                    if (lastSubtitle == null) lastSubtitle = "";
                 }
-                subtitleTextView.setText(title);
-                if (overrideSubtitleColor != null) {
-                    subtitleTextView.setTextColor(overrideSubtitleColor);
-                } else {
-                    subtitleTextView.setTextColor(getThemedColor(Theme.key_actionBarDefaultSubtitle));
-                    subtitleTextView.setTag(Theme.key_actionBarDefaultSubtitle);
-                }
+                setSubtitleTextSmooth(title);
+                if (!subtitleTransitionRunning) applySubtitleColor();
             } else if (animatedSubtitleTextView != null) {
                 if (lastSubtitle == null) {
                     lastSubtitle = animatedSubtitleTextView.getText();
@@ -2573,23 +2697,14 @@ public class ChatAvatarContainer extends FrameLayout implements FactorAnimator.T
 
     public int getVisualWidth() {
         float width = 0;
-        final boolean compactTitle = shouldUseCompactTitleIsland();
 
         if (titleTextView != null) {
-            float titleWidth = compactTitle
-                    ? getInlineDesiredWidth(titleTextView)
-                    : titleTextView.getExactWidthIncludeDrawables()
-                            + titleTextView.getPaddingLeft()
-                            + titleTextView.getPaddingRight();
+            float titleWidth = getInlineDesiredWidth(titleTextView);
             titleWidth += getInlineCommunityIndicatorSpace();
             width = Math.max(width, titleWidth);
         }
         if (subtitleTextView != null && subtitleTextView.getVisibility() != GONE) {
-            final float subtitleWidth = compactTitle
-                    ? getInlineDesiredWidth(subtitleTextView)
-                    : subtitleTextView.getExactWidthIncludeDrawables()
-                            + subtitleTextView.getPaddingLeft()
-                            + subtitleTextView.getPaddingRight();
+            final float subtitleWidth = getInlineDesiredWidth(subtitleTextView);
             width = Math.max(width, Math.max(
                     subtitleWidth,
                     inlineSubtitleWidthReserve

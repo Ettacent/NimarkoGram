@@ -59,7 +59,7 @@ public class NimarkoTextAnimPreferencesActivity extends BasePreferencesActivity 
             case ID_MASTER:
                 NimarkoConfig.toggleNimarkoTextAnim();
                 applyCheck(uItem, view, NimarkoConfig.nimarkoTextAnim);
-                reload();
+                updateItemsAfterToggle();
                 break;
             case ID_APPEAR:
                 NimarkoConfig.toggleNimarkoTextAnimAppear();
@@ -85,9 +85,4 @@ public class NimarkoTextAnimPreferencesActivity extends BasePreferencesActivity 
         updateCheckState(view, value);
     }
 
-    private void reload() {
-        if (listView != null && listView.adapter != null) {
-            listView.adapter.update(true);
-        }
-    }
 }

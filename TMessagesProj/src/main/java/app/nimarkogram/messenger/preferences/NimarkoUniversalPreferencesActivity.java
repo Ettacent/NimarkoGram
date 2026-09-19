@@ -10,12 +10,19 @@ import org.telegram.ui.Components.IconBackgroundColors;
 import org.telegram.ui.Components.UItem;
 import org.telegram.ui.Components.UniversalAdapter;
 import org.telegram.ui.Components.UniversalFragment;
+import org.telegram.messenger.AndroidUtilities;
 
 import java.util.ArrayList;
 
 public abstract class NimarkoUniversalPreferencesActivity extends UniversalFragment {
 
     private int initialSearchItemId;
+    private SettingsSearchHighlight searchHighlight;
+    private final Runnable toggleRowsRefresh = () -> {
+        if (listView != null && listView.adapter != null) {
+            listView.adapter.update(true);
+        }
+    };
 
     @Override
     public boolean isSupportEdgeToEdge() {
@@ -84,8 +91,22 @@ public abstract class NimarkoUniversalPreferencesActivity extends UniversalFragm
         if (position < 0 || position >= listView.adapter.getItemCount()) {
             return;
         }
-        listView.layoutManager.scrollToPositionWithOffset(position, org.telegram.messenger.AndroidUtilities.dp(80));
-        listView.highlightRow(() -> listView.findPositionByItemId(itemId));
+        highlightAfterNextLayout(itemId);
+        listView.layoutManager.scrollToPositionWithOffset(position, AndroidUtilities.dp(80));
+    }
+    private void highlightAfterNextLayout(int itemId) {
+        if (searchHighlight != null) searchHighlight.run();
+        searchHighlight = new SettingsSearchHighlight(listView, itemId);
+    }
+    protected void updateItemsAfterToggle() {
+        AndroidUtilities.cancelRunOnUIThread(toggleRowsRefresh);
+        AndroidUtilities.runOnUIThread(toggleRowsRefresh, 32);
+    }
+    @Override
+    public void onFragmentDestroy() {
+        if (searchHighlight != null) searchHighlight.run();
+        AndroidUtilities.cancelRunOnUIThread(toggleRowsRefresh);
+        super.onFragmentDestroy();
     }
 
     @Override

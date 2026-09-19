@@ -20,6 +20,7 @@ public class RotationTest {
  BaseFragment previewRotationCloseFragment; Delegate delegate;
  Runnable onCloseAnimationEndRunnable,onOpenAnimationEndRunnable,delayedOpenAnimationRunnable;
  boolean inPreviewMode=true,transitionAnimationPreviewMode,transitionAnimationInProgress,animationInProgress;
+ boolean startedTracking,predictiveBackInProgress,predictiveInput;
  long transitionAnimationStartTime; int closes;
  RotationTest(){fragmentsStack.add(new BaseFragment());fragmentsStack.add(new BaseFragment());}
  BaseFragment getLastFragment(){return fragmentsStack.isEmpty()?null:fragmentsStack.get(fragmentsStack.size()-1);}
@@ -53,6 +54,10 @@ public class RotationTest {
   RotationTest t=new RotationTest();t.schedulePreviewCloseAfterRotation();BaseFragment other=new BaseFragment();t.fragmentsStack.add(other);t.drain();check(t.closes==0&&t.getLastFragment()==other);
   t=new RotationTest();t.schedulePreviewCloseAfterRotation();t.previewRotationCloseFragment=null;t.drain();check(t.closes==0);
   t=new RotationTest();t.closeLastFragment(true);t.closeLastFragment(true);check(t.closes==1&&t.fragmentsStack.size()==1);
+  for(int gesture=0;gesture<3;gesture++){
+   t=new RotationTest();t.startedTracking=gesture==0;t.predictiveBackInProgress=gesture==1;t.predictiveInput=gesture==2;
+   t.closeLastFragment(true);check(t.closes==0&&t.fragmentsStack.size()==2);
+  }
   System.out.println("PASS: double container rotation, opening/closing previews, repeated close, stale stack callbacks and root preservation");
  }
 }`);

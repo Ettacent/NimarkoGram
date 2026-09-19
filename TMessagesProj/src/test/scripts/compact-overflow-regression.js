@@ -25,7 +25,7 @@ function block(marker, sourceText = source) {
 const methods = ['public static ItemOptions createHeaderSubmenu(', 'public static void addHeaderAction(',
     'public static ActionBarMenuItem.Item attachHeaderSubmenu(', 'public static void injectAdminShortcuts('].map(marker => block(marker)).join('\n');
 const move = block('public void moveLazyItemToStart(', read('java/org/telegram/ui/ActionBar/ActionBarMenuItem.java'));
-assert(config.includes('iconReplacement = getIntSafe("iconReplacement", ICON_REPLACE_NONE)'));
+assert(config.includes('iconReplacement = getIntSafe("iconReplacement", ICON_REPLACE_SOLAR)'));
 assert(!config.includes('nmForcePlumpyOnce') && !config.includes('PLUMPY_DEFAULT_VERSION'));
 assert(config.includes('putInt("iconReplacement", v)'));
 assert(dialogs.includes('ItemOptions.makeOptions(this, optionsItem, true)'));

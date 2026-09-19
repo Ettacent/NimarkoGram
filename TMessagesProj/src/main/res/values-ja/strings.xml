@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="UseProxyWeb">WEBプロキシ</string>
+    <string name="UseProxyWebInfo">WEBプロキシは専用のWebView内のHTTPSページを使用します。プロトコルのスキームやパスを含まないホスト名と、16バイトのMTProxyシークレットを入力してください。この実験的な実装はアプリを前面で開いた状態でのテスト用です。最新のAndroid System WebViewが必要です。</string>
     <string name="NM_Menu_TelegramPlus">モダンメッセージメニュー</string>
     <string name="NM_Menu_TelegramPlus_Desc">操作のグループ化、スプリングアニメーション、レスポンシブ効果を備えたコンパクトな Liquid Glass メニューです。コンパクトレイアウトも引き続き利用できます。</string>
     <!-- NimarkoGram plugin strings ported from exteraGram (values-ja) -->

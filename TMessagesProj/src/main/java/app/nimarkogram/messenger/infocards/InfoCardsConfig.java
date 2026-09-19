@@ -109,12 +109,19 @@ public final class InfoCardsConfig {
     }
 
     public static String getTargetCurrency(int pillId) {
-        return prefs().getString("ccy_" + pillId, "AUTO");
+        return normalizeTargetCurrency(pillId, prefs().getString("ccy_" + pillId, "AUTO"));
     }
 
     public static void setTargetCurrency(int pillId, String ccy) {
-        prefs().edit().putString("ccy_" + pillId, ccy).apply();
+        prefs().edit().putString("ccy_" + pillId, normalizeTargetCurrency(pillId, ccy)).apply();
         notifySettingsChanged(pillId);
+    }
+    public static boolean isTargetCurrencyAllowed(int pillId, String ccy) {
+        return pillId != InfoCardType.USD.id || !"USD".equalsIgnoreCase(ccy == null ? "" : ccy.trim());
+    }
+    private static String normalizeTargetCurrency(int pillId, String ccy) {
+        if (ccy == null || !isTargetCurrencyAllowed(pillId, ccy)) return "AUTO";
+        return ccy.trim().toUpperCase(java.util.Locale.ROOT);
     }
 
     public static boolean isInfiniteScrolling() {

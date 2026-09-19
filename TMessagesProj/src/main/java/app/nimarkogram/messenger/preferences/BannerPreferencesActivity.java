@@ -216,10 +216,11 @@ public class BannerPreferencesActivity extends BasePreferencesActivity {
         switch (item.id) {
             case ID_ENABLED:
                 NimarkoBannerConfig.toggleEnabled();
+                item.checked = NimarkoBannerConfig.enabled;
                 ctrl.setPollingEnabled(NimarkoBannerConfig.enabled);
                 if (NimarkoBannerConfig.enabled) ctrl.refreshStatus(false);
                 updateCheckState(view, NimarkoBannerConfig.enabled);
-                reload();
+                updateItemsAfterToggle();
                 break;
             case ID_HIDE_AVATAR: {
                 boolean nv = !ctrl.hideAvatarFlag();
@@ -228,13 +229,15 @@ public class BannerPreferencesActivity extends BasePreferencesActivity {
             }
             case ID_USE_AVATAR:
                 NimarkoBannerConfig.setUseAvatar(!NimarkoBannerConfig.useAvatar);
+                item.checked = NimarkoBannerConfig.useAvatar;
                 updateCheckState(view, NimarkoBannerConfig.useAvatar);
-                reload();
+                updateItemsAfterToggle();
                 break;
             case ID_LITE:
                 NimarkoBannerConfig.setLiteMode(!NimarkoBannerConfig.liteMode);
+                item.checked = NimarkoBannerConfig.liteMode;
                 updateCheckState(view, NimarkoBannerConfig.liteMode);
-                reload();
+                updateItemsAfterToggle();
                 break;
             case ID_CHANGE_GLOBAL:
             case ID_SUBMIT:

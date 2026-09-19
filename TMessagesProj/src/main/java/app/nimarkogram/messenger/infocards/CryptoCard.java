@@ -73,6 +73,8 @@ public class CryptoCard extends BaseInfoCard {
         this.coinKey = coinKeyOrNull;
         this.iconRes = iconRes;
         setIcon(iconRes);
+        CharSequence cachedValue = liveValueText(pillId);
+        if (cachedValue != null) setText(cachedValue, false);
     }
 
     @Override
@@ -147,7 +149,7 @@ public class CryptoCard extends BaseInfoCard {
         retryAttempt = 0;              
         setIcon(iconRes);
         
-        String ccy = resolveCurrency(InfoCardsConfig.getTargetCurrency(getCardId()));
+        String ccy = resolveCardCurrency(getCardId(), InfoCardsConfig.getTargetCurrency(getCardId()));
         double value;
         if (coinKey == null) {
             value = InfoCardRates.fiatRate(ccy);       
@@ -263,7 +265,7 @@ public class CryptoCard extends BaseInfoCard {
         }
         
         final String stored = InfoCardsConfig.getTargetCurrency(getCardId());
-        final ItemOptions options = ItemOptions.makeOptions(fragment, this);
+        final ItemOptions options = ItemOptions.makeOptions(fragment, this).setDrawScrim(false);
         options.add(R.drawable.msg_language, menuCurrencyLabel(stored),
                 () -> AndroidUtilities.runOnUIThread(this::showCurrencyPicker));
         options.addGap();
@@ -279,8 +281,9 @@ public class CryptoCard extends BaseInfoCard {
         BaseFragment fragment = getCurrentFragment();
         if (fragment == null) return;
         final String stored = InfoCardsConfig.getTargetCurrency(getCardId());
-        final ItemOptions picker = ItemOptions.makeOptions(fragment, this);
+        final ItemOptions picker = ItemOptions.makeOptions(fragment, this).setDrawScrim(false);
         for (final String ccy : TARGET_CURRENCIES) {
+            if (!InfoCardsConfig.isTargetCurrencyAllowed(getCardId(), ccy)) continue;
             picker.addChecked(ccy.equalsIgnoreCase(stored), currencyLabel(ccy), () -> {
                 if (!ccy.equalsIgnoreCase(stored)) {
                     InfoCardsConfig.setTargetCurrency(getCardId(), ccy);
@@ -298,7 +301,7 @@ public class CryptoCard extends BaseInfoCard {
         if (cardId == InfoCardType.TON.id) coin = "ton";
         else if (cardId == InfoCardType.BTC.id) coin = "btc";
         else coin = null; 
-        String ccy = resolveCurrency(InfoCardsConfig.getTargetCurrency(cardId));
+        String ccy = resolveCardCurrency(cardId, InfoCardsConfig.getTargetCurrency(cardId));
         double value = coin != null ? InfoCardRates.coinInFiat(coin, ccy) : InfoCardRates.fiatRate(ccy);
         if (Double.isNaN(value) || value <= 0) return null;
         return format(value, ccy, cardId == InfoCardType.TON.id && !NimarkoConfig.systemFonts);
@@ -318,6 +321,10 @@ public class CryptoCard extends BaseInfoCard {
         }
         return isValidCurrency(sel) ? sel : "USD";
     }
+    private static String resolveCardCurrency(int cardId, String stored) {
+        String resolved = resolveCurrency(stored);
+        return InfoCardsConfig.isTargetCurrencyAllowed(cardId, resolved) ? resolved : "EUR";
+    }
 
     private static boolean isValidCurrency(String iso) {
         try {
@@ -328,9 +335,9 @@ public class CryptoCard extends BaseInfoCard {
         }
     }
 
-    private static CharSequence menuCurrencyLabel(String stored) {
+    private CharSequence menuCurrencyLabel(String stored) {
         if (stored == null || AUTO.equalsIgnoreCase(stored)) {
-            return LocaleController.getString(R.string.QualityAuto) + " · " + resolveCurrency(AUTO);
+            return LocaleController.getString(R.string.QualityAuto) + " · " + resolveCardCurrency(getCardId(), AUTO);
         }
         return currencyLabel(stored);
     }

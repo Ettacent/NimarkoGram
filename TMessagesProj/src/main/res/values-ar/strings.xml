@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="UseProxyWeb">وكيل WEB</string>
+    <string name="UseProxyWebInfo">يستخدم وكيل WEB صفحة HTTPS داخل WebView منفصل. أدخل اسم المضيف دون بادئة البروتوكول أو المسار، ومفتاح MTProxy سريًا بطول 16 بايت. هذا تنفيذ تجريبي مخصص للاختبار أثناء تشغيل التطبيق في المقدمة، ويتطلب إصدارًا حديثًا من Android System WebView.</string>
     <string name="NM_Menu_TelegramPlus">قائمة الرسائل الحديثة</string>
     <string name="NM_Menu_TelegramPlus_Desc">قائمة مدمجة بتأثير Liquid Glass، مع إجراءات مجمعة وحركات نابضية وتأثيرات تفاعلية. يظل التخطيط المدمج متاحًا.</string>
     <string name="AppName">NimarkoGram</string>

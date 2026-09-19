@@ -12,6 +12,7 @@ import org.telegram.messenger.NotificationCenter;
 import org.telegram.messenger.R;
 import org.telegram.messenger.SharedConfig;
 import org.telegram.messenger.UserConfig;
+import org.telegram.proxy.ProxySettings;
 import org.telegram.tgnet.ConnectionsManager;
 import org.telegram.ui.ActionBar.BaseFragment;
 import org.telegram.ui.ActionBar.INavigationLayout;
@@ -21,6 +22,8 @@ import org.telegram.ui.LaunchActivity;
 import org.telegram.ui.ProxyListActivity;
 
 import app.nimarkogram.messenger.infocards.preferences.InfoCardsPreferencesActivity;
+import app.nimarkogram.messenger.wsbypass.NimarkoWsBypassConfig;
+import app.nimarkogram.messenger.wsbypass.WsBypassCore;
 
 public class ProxyCard extends BaseInfoCard implements NotificationCenter.NotificationCenterDelegate {
 
@@ -41,6 +44,7 @@ public class ProxyCard extends BaseInfoCard implements NotificationCenter.Notifi
         super(context, resourcesProvider);
         this.iconRes = iconRes;
         setIcon(iconRes);
+        renderState(false);
     }
 
     @Override
@@ -51,7 +55,9 @@ public class ProxyCard extends BaseInfoCard implements NotificationCenter.Notifi
     @Override
     public long getRefreshInterval() {
         
-        return 30000; 
+        SharedConfig.ProxyInfo proxy = SharedConfig.currentProxy;
+        return connected && SharedConfig.isProxyEnabled() && proxy != null && displayPing(proxy, UserConfig.selectedAccount) <= 0
+                ? 500 : 5000;
     }
 
     @Override
@@ -95,8 +101,14 @@ public class ProxyCard extends BaseInfoCard implements NotificationCenter.Notifi
     public void didReceivedNotification(int id, int account, Object... args) {
         if (!lifecycleAttached || !isAttachedToWindow()) return;
         if (id == NotificationCenter.didUpdateConnectionState && account != observedAccount) return;
+        if (id == NotificationCenter.proxyCheckDone) {
+            if (args.length > 0 && args[0] == SharedConfig.currentProxy) {
+                AndroidUtilities.cancelRunOnUIThread(coalescedUpdate);
+                onUpdateData(false);
+            }
+            return;
+        }
         if (id == NotificationCenter.proxySettingsChanged
-                || id == NotificationCenter.proxyCheckDone
                 || id == NotificationCenter.didUpdateConnectionState) {
             
             AndroidUtilities.cancelRunOnUIThread(coalescedUpdate);
@@ -108,9 +120,13 @@ public class ProxyCard extends BaseInfoCard implements NotificationCenter.Notifi
     public void onUpdateData(boolean force) {
         if (!lifecycleAttached || !isAttachedToWindow()) return;
         bindAccountObserver();
+        renderState(true);
+        markDataUpdated();
+    }
+    private void renderState(boolean animated) {
         SharedConfig.ProxyInfo proxy = SharedConfig.currentProxy;
         boolean enabled = SharedConfig.isProxyEnabled() && proxy != null;
-        final int account = observedAccount;
+        final int account = lifecycleAttached ? observedAccount : UserConfig.selectedAccount;
         int connectionState = ConnectionsManager.getInstance(account).getConnectionState();
         boolean isConnected = connectionState == STATE_CONNECTED || connectionState == STATE_UPDATING;
 
@@ -118,31 +134,30 @@ public class ProxyCard extends BaseInfoCard implements NotificationCenter.Notifi
             
             setIcon(R.drawable.pill_proxy);
             
-            kickProxyCheck(proxy);
-            if (proxy.ping > 0) {
-                int ping = Math.max(0, Math.min(9999, (int) proxy.ping));
-                setText(ping + " ms", true);
+            if (lifecycleAttached) kickProxyCheck(proxy, !connected);
+            long measuredPing = displayPing(proxy, account);
+            if (measuredPing > 0) {
+                setText(measuredPing + " ms", animated);
             } else {
-                setText(LocaleController.getString(R.string.MenuProxyConnected), true);
+                setText(LocaleController.getString(R.string.MenuProxyConnected), animated);
             }
             stopLoading();
             connected = true;
         } else if (enabled) {
             
             setIcon(R.drawable.pill_proxy_off);
-            setText(LocaleController.getString(R.string.MenuProxyConnecting), true);
+            setText(LocaleController.getString(R.string.MenuProxyConnecting), animated);
             startLoading();
             connected = false;
         } else {
             
             setIcon(R.drawable.pill_proxy_off);
-            setText(LocaleController.getString(R.string.Proxy), true);
+            setText(LocaleController.getString(R.string.Proxy), animated);
             stopLoading();
             connected = false;
         }
         
         applyColorMode();
-        markDataUpdated();
     }
 
     public static CharSequence liveValueText() {
@@ -151,9 +166,9 @@ public class ProxyCard extends BaseInfoCard implements NotificationCenter.Notifi
         int connectionState = ConnectionsManager.getInstance(UserConfig.selectedAccount).getConnectionState();
         boolean isConnected = connectionState == STATE_CONNECTED || connectionState == STATE_UPDATING;
         if (enabled && isConnected) {
-            if (proxy.ping > 0) {
-                int ping = Math.max(0, Math.min(9999, (int) proxy.ping));
-                return ping + " ms";
+            long measuredPing = displayPing(proxy, UserConfig.selectedAccount);
+            if (measuredPing > 0) {
+                return measuredPing + " ms";
             }
             return LocaleController.getString(R.string.MenuProxyConnected);
         } else if (enabled) {
@@ -163,21 +178,34 @@ public class ProxyCard extends BaseInfoCard implements NotificationCenter.Notifi
         return null;
     }
 
-    private void kickProxyCheck(SharedConfig.ProxyInfo proxy) {
-        if (proxy == null || proxy.checking
-                || SystemClock.elapsedRealtime() - proxy.availableCheckTime < 2 * 60 * 1000) {
+    private static boolean isOwnBypass(SharedConfig.ProxyInfo proxy) {
+        return proxy != null && proxy.settings != null
+                && WsBypassCore.LOCAL_PROXY_HOST.equals(proxy.settings.getAddress())
+                && proxy.settings.getPort() == NimarkoWsBypassConfig.localPort;
+    }
+    private static long displayPing(SharedConfig.ProxyInfo proxy, int account) {
+        return isOwnBypass(proxy) ? ConnectionsManager.native_getCurrentMainPingTime(account) : proxy.ping;
+    }
+    private void kickProxyCheck(SharedConfig.ProxyInfo proxy, boolean justConnected) {
+        if (proxy == null) return;
+        final ProxySettings checkedSettings = proxy.settings;
+        if (checkedSettings == null || !checkedSettings.isValid()) return;
+        final int acc = observedAccount;
+        if (isOwnBypass(proxy)) {
             return;
         }
-        final int acc = observedAccount;
+        long retryInterval = proxy.ping > 0 ? 120000L : 15000L;
+        if (proxy.checking || (!justConnected && proxy.availableCheckTime > 0
+                && SystemClock.elapsedRealtime() - proxy.availableCheckTime < retryInterval)) {
+            return;
+        }
         proxy.checking = true;
-        proxy.proxyCheckPingId = ConnectionsManager.getInstance(acc).checkProxy(
-                proxy.address, proxy.port, proxy.username, proxy.password, proxy.secret,
+        ConnectionsManager.getInstance(acc).checkProxy(
+                checkedSettings,
                 time -> AndroidUtilities.runOnUIThread(() -> {
-                    proxy.availableCheckTime = SystemClock.elapsedRealtime();
                     proxy.checking = false;
-                    if (acc != UserConfig.selectedAccount || proxy != SharedConfig.currentProxy) {
-                        return;
-                    }
+                    if (!checkedSettings.equals(proxy.settings)) return;
+                    proxy.availableCheckTime = SystemClock.elapsedRealtime();
                     if (time == -1) {
                         proxy.available = false;
                         proxy.ping = 0;
@@ -192,12 +220,6 @@ public class ProxyCard extends BaseInfoCard implements NotificationCenter.Notifi
     @Override
     protected int contentColorOverride() {
         return connected ? Theme.getColor(Theme.key_windowBackgroundWhiteGreenText, resourcesProvider) : 0;
-    }
-
-    @Override
-    protected int fillColorOverride() {
-        
-        return connected ? Theme.getColor(Theme.key_windowBackgroundWhite, resourcesProvider) : 0;
     }
 
     @Override
@@ -224,7 +246,7 @@ public class ProxyCard extends BaseInfoCard implements NotificationCenter.Notifi
             return false;
         }
         
-        final ItemOptions options = ItemOptions.makeOptions(fragment, this);
+        final ItemOptions options = ItemOptions.makeOptions(fragment, this).setDrawScrim(false);
         options.add(R.drawable.msg_settings, LocaleController.getString(R.string.Settings),
                 () -> fragment.presentFragment(new InfoCardsPreferencesActivity()));
         

@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="UseProxyWeb">WEB proksi</string>
+    <string name="UseProxyWebInfo">WEB proksi alohida WebView ichidagi HTTPS sahifasidan foydalanadi. Protokol sxemasi va yoʻlsiz host nomini hamda 16 baytli MTProxy maxfiy kalitini kiriting. Bu tajribaviy yechim ilova old planda ochiq turganda sinash uchun moʻljallangan va Android System WebView komponentining yangilangan versiyasini talab qiladi.</string>
     <string name="NM_Menu_TelegramPlus">Zamonaviy xabarlar menyusi</string>
     <string name="NM_Menu_TelegramPlus_Desc">Guruhlangan amallar, prujinali animatsiyalar va moslashuvchan effektlarga ega ixcham Liquid Glass menyusi. Ixcham tartib mavjud bo‘lib qoladi.</string>
     <!-- NimarkoGram plugin strings ported from exteraGram (values-uz) -->

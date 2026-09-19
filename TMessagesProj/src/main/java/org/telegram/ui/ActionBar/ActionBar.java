@@ -2735,6 +2735,15 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
                 drawableContentWidth,
                 Math.round(animatorAvatarContainerWidth.getFactor())));
     }
+    public int getChatAvatarAnimatedContentRight(ChatAvatarContainer container) {
+        if (container == null || container != chatAvatarContainer
+                || !container.isLaidOut()
+                || container.isCenterChatTitleEnabled()
+                || !calculateChatAvatarOvalBounds(chatAvatarOvalBounds)) {
+            return -1;
+        }
+        return Math.round(chatAvatarOvalBounds.right - container.getX()) - dp(6);
+    }
 
     public float getChatAvatarOvalCenterInContainer(ChatAvatarContainer container) {
         if (container == null
@@ -2769,7 +2778,9 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
         if (chatAvatarContainer != null
                 && (chatAvatarContainer.isInlineCenteredAvatar()
                 || compactTitleWidthChanged
-                || compactMenuGeometryChanged)) {
+                || compactMenuGeometryChanged
+                || callee == animatorMenuItemsWidth
+                || animatorHasMenuItems.isAnimating())) {
 
             chatAvatarContainer.requestLayout();
         }

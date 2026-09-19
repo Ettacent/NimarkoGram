@@ -4,7 +4,6 @@ import android.util.SparseArray;
 import android.view.View;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 
 import org.telegram.messenger.LocaleController;
@@ -154,11 +153,15 @@ public class InfoCardsPreferencesActivity extends BasePreferencesActivity implem
 
 
     private void showCurrencyPicker(int pillId) {
-        ArrayList<String> labels = new ArrayList<>(Arrays.asList(CURRENCIES));
+        ArrayList<String> currencies = new ArrayList<>();
+        for (String currency : CURRENCIES) {
+            if (InfoCardsConfig.isTargetCurrencyAllowed(pillId, currency)) currencies.add(currency);
+        }
+        ArrayList<String> labels = new ArrayList<>(currencies);
         labels.set(0, LocaleController.getString(R.string.Default));
-        int selected = Math.max(0, Arrays.asList(CURRENCIES).indexOf(InfoCardsConfig.getTargetCurrency(pillId)));
+        int selected = Math.max(0, currencies.indexOf(InfoCardsConfig.getTargetCurrency(pillId)));
         PopupHelper.show(labels, LocaleController.getString(R.string.NM_CARDS_Title), selected, getParentActivity(), i -> {
-            InfoCardsConfig.setTargetCurrency(pillId, CURRENCIES[i]);
+            InfoCardsConfig.setTargetCurrency(pillId, currencies.get(i));
             reload();
         });
     }
