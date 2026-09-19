@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="UseProxyWeb">Proxy WEB</string>
+    <string name="UseProxyWebInfo">Il proxy WEB utilizza una pagina HTTPS in una WebView separata. Inserisci un nome host senza schema del protocollo né percorso e un segreto MTProxy di 16 byte. Questa implementazione sperimentale è destinata ai test con l’app in primo piano e richiede una versione aggiornata di Android System WebView.</string>
     <string name="NM_Menu_TelegramPlus">Menu messaggi moderno</string>
     <string name="NM_Menu_TelegramPlus_Desc">Un menu compatto con effetto Liquid Glass, azioni raggruppate, animazioni elastiche ed effetti reattivi. Il layout compatto resta disponibile.</string>
     <string name="AppName">NimarkoGram</string>

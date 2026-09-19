@@ -358,9 +358,10 @@ public class GeneralPreferencesActivity extends NimarkoUniversalPreferencesActiv
             showRestartBulletin();
         } else if (item.id == inAppNotificationsRow) {
             NimarkoConfig.toggleInAppNotifications();
+            item.checked = NimarkoConfig.inAppNotifications;
             SettingsHelper.updateCheckState(view, NimarkoConfig.inAppNotifications);
             app.nimarkogram.messenger.notifications.NimarkoInAppNotifications.dismiss();
-            listView.adapter.update(true);
+            updateItemsAfterToggle();
         } else if (item.id == inAppNotificationsPreviewRow) {
             app.nimarkogram.messenger.notifications.NimarkoInAppNotifications.preview();
         } else if (item.id == silenceNonContactsRow) {
@@ -376,8 +377,9 @@ public class GeneralPreferencesActivity extends NimarkoUniversalPreferencesActiv
             showRestartBulletin();
         } else if (item.id == notificationReactionsRow) {
             NimarkoConfig.toggleNotificationReactions();
+            item.checked = NimarkoConfig.notificationReactions;
             SettingsHelper.updateCheckState(view, NimarkoConfig.notificationReactions);
-            listView.adapter.update(true);
+            updateItemsAfterToggle();
         } else if (item.id == notificationReactionEmojiRow) {
             showNotificationReactionDialog(view);
         } else if (item.id == hideStoriesRow) {

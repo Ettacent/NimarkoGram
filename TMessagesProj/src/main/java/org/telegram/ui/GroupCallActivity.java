@@ -797,7 +797,7 @@ public class GroupCallActivity extends BottomSheet implements NotificationCenter
 
             setPadding(dp(12), 0, dp(12), 0);
 
-            speakerDrawable = new RLottieDrawable(R.raw.speaker, "" + R.raw.speaker, dp(24), dp(24), true, null);
+            speakerDrawable = new RLottieDrawable(R.raw.speaker, dp(24), dp(24), true, null);
 
             imageView = new RLottieImageView(context);
             imageView.setScaleType(ImageView.ScaleType.CENTER);
@@ -2455,8 +2455,8 @@ public class GroupCallActivity extends BottomSheet implements NotificationCenter
 
         shadowDrawable = context.getResources().getDrawable(R.drawable.sheet_shadow_round).mutate();
 
-        bigMicDrawable = new RLottieDrawable(R.raw.voip_filled, "" + R.raw.voip_filled, dp(46), dp(46), true, null);
-        handDrawables = new RLottieDrawable(R.raw.hand_2, "" + R.raw.hand_2, dp(46), dp(46), true, null);
+        bigMicDrawable = new RLottieDrawable(R.raw.voip_filled, dp(46), dp(46), true, null);
+        handDrawables = new RLottieDrawable(R.raw.hand_2, dp(46), dp(46), true, null);
 
         containerView = sizeNotifierFrameLayout = new SizeNotifierFrameLayout(context) {
             private boolean ignoreLayout = false;
@@ -4320,7 +4320,7 @@ public class GroupCallActivity extends BottomSheet implements NotificationCenter
         flipButton.showText(false, false);
         RLottieImageView flipIconView = new RLottieImageView(context);
         flipButton.addView(flipIconView, LayoutHelper.createFrame(32, 32, Gravity.CENTER_HORIZONTAL, 0, 10, 0, 0));
-        flipIcon = new RLottieDrawable(R.raw.camera_flip, "" + R.raw.camera_flip, dp(24), dp(24), true, null);
+        flipIcon = new RLottieDrawable(R.raw.camera_flip, dp(24), dp(24), true, null);
         flipIconView.setAnimation(flipIcon);
         flipButton.setOnClickListener(view -> {
             renderersContainer.delayHideUi();
@@ -8558,7 +8558,7 @@ public class GroupCallActivity extends BottomSheet implements NotificationCenter
             rowsCount = 0;
             hasSelfUser = call.participants.indexOfKey(MessageObject.getPeerId(selfPeer)) >= 0;
 
-            if (isConference() ) {
+            if (isConference()                                    ) {
                 encryptionRow = rowsCount++;
             }
 
@@ -8818,7 +8818,7 @@ public class GroupCallActivity extends BottomSheet implements NotificationCenter
         @Override
         public boolean isEnabled(RecyclerView.ViewHolder holder) {
             int type = holder.getItemViewType();
-            return !(type == VIEW_TYPE_LAST_PADDING || type == VIEW_TYPE_GRID || type == VIEW_TYPE_VIDEO_GRID_DIVIDER || type == VIEW_TYPE_VIDEO_NOT_AVAILABLE );
+            return !(type == VIEW_TYPE_LAST_PADDING || type == VIEW_TYPE_GRID || type == VIEW_TYPE_VIDEO_GRID_DIVIDER || type == VIEW_TYPE_VIDEO_NOT_AVAILABLE                                    );
         }
 
         @NonNull

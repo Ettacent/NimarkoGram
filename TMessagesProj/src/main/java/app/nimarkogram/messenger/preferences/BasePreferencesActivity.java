@@ -10,7 +10,7 @@ import android.view.HapticFeedbackConstants;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.core.view.ViewCompat;
 import app.nimarkogram.messenger.utils.ui.PopupUtils;
-import com.google.android.exoplayer2.util.Consumer;
+import androidx.core.util.Consumer;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.function.ToIntFunction;
@@ -48,6 +48,12 @@ public abstract class BasePreferencesActivity extends BaseFragment {
     protected LinearLayoutManager layoutManager;
     protected UniversalRecyclerView listView;
     private int initialSearchItemId;
+    private SettingsSearchHighlight searchHighlight;
+    private final Runnable toggleRowsRefresh = () -> {
+        if (listView != null && listView.adapter != null) {
+            listView.adapter.update(true);
+        }
+    };
 
     @Override
     public View createView(Context context) {
@@ -187,8 +193,19 @@ public abstract class BasePreferencesActivity extends BaseFragment {
         if (iFindPositionByItemId < 0 || iFindPositionByItemId >= listView.adapter.getItemCount()) {
             return;
         }
+        if (searchHighlight != null) searchHighlight.run();
+        searchHighlight = new SettingsSearchHighlight(listView, i);
         layoutManager.scrollToPositionWithOffset(iFindPositionByItemId, AndroidUtilities.dp(80.0f));
-        listView.highlightRow(() -> listView.findPositionByItemId(i));
+    }
+    protected void updateItemsAfterToggle() {
+        AndroidUtilities.cancelRunOnUIThread(toggleRowsRefresh);
+        AndroidUtilities.runOnUIThread(toggleRowsRefresh, 32);
+    }
+    @Override
+    public void onFragmentDestroy() {
+        if (searchHighlight != null) searchHighlight.run();
+        AndroidUtilities.cancelRunOnUIThread(toggleRowsRefresh);
+        super.onFragmentDestroy();
     }
 
     public BasePreferencesActivity openAtSetting(int itemId) {
@@ -263,7 +280,7 @@ public abstract class BasePreferencesActivity extends BaseFragment {
         } else if (viewFindViewByItemId instanceof TextCheckCell) {
             ((TextCheckCell) viewFindViewByItemId).setChecked(z);
         }
-        this.listView.adapter.update(true);
+        updateItemsAfterToggle();
     }
 
     /**

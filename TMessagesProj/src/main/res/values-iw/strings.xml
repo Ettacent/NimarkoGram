@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="UseProxyWeb">פרוקסי WEB</string>
+    <string name="UseProxyWebInfo">פרוקסי WEB משתמש בדף HTTPS בתוך WebView נפרד. יש להזין שם מארח ללא קידומת פרוטוקול או נתיב, ומפתח סודי של MTProxy באורך 16 בתים. זהו מימוש ניסיוני לבדיקות כשהיישום פתוח בחזית, והוא דורש גרסה עדכנית של Android System WebView.</string>
     <string name="NM_Menu_TelegramPlus">תפריט הודעות מודרני</string>
     <string name="NM_Menu_TelegramPlus_Desc">תפריט קומפקטי עם אפקט Liquid Glass, פעולות מקובצות, אנימציות קפיץ ומשוב דינמי. הפריסה הקומפקטית נשארת זמינה.</string>
     <!-- NimarkoGram plugin strings ported from exteraGram (values-iw) -->

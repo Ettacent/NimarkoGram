@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="UseProxyWeb">WEB-proxy</string>
+    <string name="UseProxyWebInfo">WEB-proxyen bruker en HTTPS-side i en separat WebView. Oppgi et vertsnavn uten protokollskjema eller sti og en MTProxy-hemmelighet på 16 byte. Denne eksperimentelle løsningen er beregnet på testing med appen i forgrunnen og krever en oppdatert versjon av Android System WebView.</string>
     <string name="NM_Menu_TelegramPlus">Moderne meldingsmeny</string>
     <string name="NM_Menu_TelegramPlus_Desc">En kompakt Liquid Glass-meny med grupperte handlinger, fjæranimasjoner og responsive effekter. Kompakt oppsett er fortsatt tilgjengelig.</string>
     <!-- NimarkoGram plugin strings ported from exteraGram (values-nb) -->

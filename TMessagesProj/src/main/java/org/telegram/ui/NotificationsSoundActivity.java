@@ -164,7 +164,7 @@ public class NotificationsSoundActivity extends BaseFragment implements ChatAtta
 
         SharedPreferences preferences = getNotificationsSettings();
         long documentId = preferences.getLong(prefDocId, 0);
-        String localUri = preferences.getString(prefPath, "NoSound");
+        String localUri = preferences.getString(prefPath, "Default");
 
         startSelectedTone = new Tone();
         if (documentId != 0) {
@@ -466,7 +466,8 @@ public class NotificationsSoundActivity extends BaseFragment implements ChatAtta
             tone.stableId = stableIds++;
             tone.fromServer = true;
             tone.localId = cachedTone.localId;
-            tone.title = cachedTone.document.file_name_fixed;
+            tone.title = cachedTone.document != null ? cachedTone.document.file_name_fixed
+                    : new File(cachedTone.localUri).getName();
             tone.document = cachedTone.document;
             trimTitle(tone);
 
@@ -525,7 +526,6 @@ public class NotificationsSoundActivity extends BaseFragment implements ChatAtta
         }
         if (getMediaDataController().ringtoneDataStore.isLoaded() && selectedTone == null) {
             selectedTone = defaultTone;
-            selectedToneChanged = true;
         }
         updateRows();
     }
@@ -800,14 +800,18 @@ public class NotificationsSoundActivity extends BaseFragment implements ChatAtta
     public void didReceivedNotification(int id, int account, Object... args) {
         if (id == NotificationCenter.onUserRingtonesUpdated) {
             HashMap<Integer, Tone> currentTones = new HashMap<>();
+            HashMap<Long, Tone> currentDocuments = new HashMap<>();
             for (int i = 0; i < serverTones.size(); i++) {
-                currentTones.put(serverTones.get(i).localId, serverTones.get(i));
+                Tone tone = serverTones.get(i);
+                currentTones.put(tone.localId, tone);
+                if (tone.document != null) currentDocuments.put(tone.document.id, tone);
             }
             serverTones.clear();
             for (int i = 0; i < getMediaDataController().ringtoneDataStore.userRingtones.size(); i++) {
                 RingtoneDataStore.CachedTone cachedTone = getMediaDataController().ringtoneDataStore.userRingtones.get(i);
                 Tone tone = new Tone();
-                Tone currentTone = currentTones.get(cachedTone.localId);
+                Tone currentTone = cachedTone.document != null
+                        ? currentDocuments.get(cachedTone.document.id) : currentTones.get(cachedTone.localId);
                 if (currentTone != null) {
                     if (currentTone == selectedTone) {
                         selectedTone = tone;
@@ -837,9 +841,8 @@ public class NotificationsSoundActivity extends BaseFragment implements ChatAtta
             updateRows();
             adapter.notifyDataSetChanged();
 
-            if (getMediaDataController().ringtoneDataStore.isLoaded() && selectedTone == null && systemTones.size() > 0) {
-                startSelectedTone = null;
-                selectedTone = systemTones.get(0);
+            if (getMediaDataController().ringtoneDataStore.isLoaded() && selectedTone == null && systemTones.size() > 1) {
+                selectedTone = systemTones.get(1);
             }
         }
     }
@@ -920,9 +923,13 @@ public class NotificationsSoundActivity extends BaseFragment implements ChatAtta
                 editor.putString(prefPath, "NoSound");
                 editor.remove(prefDocId);
             }
+            if (dialogId != 0) {
+                editor.putBoolean("custom_" + NotificationsController.getSharedPrefKey(dialogId, topicId), true);
+            }
 
             editor.apply();
             if (dialogId != 0) {
+                getNotificationsController().deleteNotificationChannel(dialogId, topicId);
                 getNotificationsController().updateServerNotificationsSettings(dialogId, topicId);
             } else {
                 getNotificationsController().updateServerNotificationsSettings(currentType);

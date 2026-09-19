@@ -580,6 +580,12 @@ int32_t ConnectionsManager::getCurrentPingTime() {
     return (int32_t) currentPingTimeLive;
 }
 
+int32_t ConnectionsManager::getCurrentMainPingTime() {
+    struct timespec now{};
+    clock_gettime(CLOCK_BOOTTIME, &now);
+    return mainConnectionRtt.value(int64_t(now.tv_sec) * 1000 + now.tv_nsec / 1000000);
+}
+
 uint32_t ConnectionsManager::getCurrentDatacenterId() {
     Datacenter *datacenter = getDatacenterWithId(DEFAULT_DATACENTER_ID);
     return datacenter != nullptr ? datacenter->getDatacenterId() : INT_MAX;
@@ -695,6 +701,7 @@ void ConnectionsManager::onConnectionClosed(Connection *connection, int reason) 
     }
     if (connection->getConnectionType() == ConnectionTypeGeneric) {
         if (datacenter->getDatacenterId() == currentDatacenterId) {
+            if (connection->getConnectionNum() == 0) mainConnectionRtt.reset();
             sendingPing = false;
             if (!connection->isSuspended() && (proxyAddress.empty() || connection->hasTlsHashMismatch())) {
                 if (reason == 2) {
@@ -808,6 +815,14 @@ void ConnectionsManager::onConnectionConnected(Connection *connection) {
                 lastPauseTime = getCurrentTimeMonotonicMillis();
             }
             processRequestQueue(connection->getConnectionType(), datacenter->getDatacenterId());
+            // A busy request queue need not send a ping during connection setup. Do not leave the
+            // proxy's first RTT unavailable until the 19-second keepalive interval expires.
+            // Use the authenticated main connection, not a separate proxy-check connection.
+            if (connectionType == ConnectionTypeGeneric && connection->getConnectionNum() == 0
+                    && datacenter->getDatacenterId() == currentDatacenterId
+                    && !proxyAddress.empty() && mainConnectionRtt.value(getCurrentTimeMonotonicMillis()) == 0 && !sendingPing) {
+                sendPing(datacenter, false);
+            }
         }
     }
 }
@@ -1200,9 +1215,14 @@ void ConnectionsManager::processServerResponse(TLObject *message, int64_t messag
                         break;
                     }
                 }
-            } else if (response->ping_id == lastPingId) {
+            } else if (connection->getConnectionType() == ConnectionTypeGeneric
+                    && connection->getConnectionNum() == 0
+                    && datacenter->getDatacenterId() == currentDatacenterId
+                    && mainConnectionRtt.matches(response->ping_id, connection->getConnectionToken(), currentDatacenterId)) {
                 int32_t diff = (int32_t) (getCurrentTimeMonotonicMillis() / 1000) - pingTime;
                 currentPingTimeLive = ((getCurrentTimeMonotonicMillis() - pingTimeMs) + currentPingTimeLive) / 2;
+                const auto measured = mainConnectionRtt.received(response->ping_id, connection->getConnectionToken(),
+                        currentDatacenterId, getCurrentTimeMonotonicMillis());
                 if (abs(diff) < 10) {
                     currentPingTime = (diff + currentPingTime) / 2;
                     if (messageId != 0) {
@@ -1210,6 +1230,9 @@ void ConnectionsManager::processServerResponse(TLObject *message, int64_t messag
                     }
                 }
                 sendingPing = false;
+                if (measured == MainConnectionRtt::WarmedUp && !proxyAddress.empty() && !networkPaused) {
+                    sendPing(datacenter, false);
+                }
             }
         }
     } else if (typeInfo == typeid(TL_future_salts)) {
@@ -1785,6 +1808,8 @@ void ConnectionsManager::sendPing(Datacenter *datacenter, bool usePushConnection
     } else {
         request->disconnect_delay = testBackend ? 10 : 35;
         pingTimeMs = getCurrentTimeMonotonicMillis();
+        lastPingTime = pingTimeMs;
+        mainConnectionRtt.sent(request->ping_id, connection->getConnectionToken(), datacenter->getDatacenterId(), pingTimeMs);
         pingTime = (int32_t) (pingTimeMs / 1000);
     }
 
@@ -2040,6 +2065,7 @@ void ConnectionsManager::setUserId(int64_t userId) {
 
 void ConnectionsManager::switchBackend(bool restart) {
     scheduleTask([&, restart] {
+        mainConnectionRtt.reset();
         currentDatacenterId = 1;
         testBackend = !testBackend;
         if (!restart) {
@@ -2781,6 +2807,7 @@ void ConnectionsManager::processRequestQueue(uint32_t connectionTypes, uint32_t 
                     updatingDcStartTime = currentTime;
                     request->datacenterId = datacenterId;
                 } else {
+                    mainConnectionRtt.reset();
                     currentDatacenterId = datacenterId;
                 }
             }
@@ -3507,6 +3534,7 @@ void ConnectionsManager::authorizeOnMovingDatacenter() {
 
 void ConnectionsManager::authorizedOnMovingDatacenter() {
     movingAuthorization.reset();
+    mainConnectionRtt.reset();
     currentDatacenterId = movingToDatacenterId;
     movingToDatacenterId = DEFAULT_DATACENTER_ID;
     saveConfig();
@@ -3737,6 +3765,7 @@ void ConnectionsManager::setProxySettings(std::string address, uint16_t port, st
             }
         }
         if (reconnect) {
+            mainConnectionRtt.reset();
             for (auto & datacenter : datacenters) {
                 datacenter.second->suspendConnections(true);
             }

@@ -196,6 +196,9 @@ public class FragmentSearchField extends FrameLayout implements FactorAnimator.T
         checkUi_editTextPaddings();
         updateColors();
     }
+    public void setHintText(CharSequence text, boolean animated) {
+        editText.setHintText(text, animated);
+    }
 
     public void addAdditionalIcon(View icon) {
         additionalIconsLayout.addView(icon);

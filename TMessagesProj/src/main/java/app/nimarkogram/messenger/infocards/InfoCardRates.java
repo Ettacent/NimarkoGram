@@ -4,6 +4,7 @@ import android.util.Log;
 
 import org.json.JSONObject;
 import org.telegram.messenger.AndroidUtilities;
+import org.telegram.messenger.ApplicationLoader;
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
@@ -15,7 +16,10 @@ import java.util.ArrayList;
 public final class InfoCardRates {
 
     private static final String TAG = "NimarkoCardRates";
-    private static final String RATES_URL = org.telegram.messenger.BuildConfig.NIMARKO_INFOCARD_RATES_URL;
+    private static final String RATES_URL = "https://ettacent.dev/rates.json";
+    private static final String PREFS_NAME = "nm_pillstack_rates";
+    private static final String PREFS_DATA = "snapshot";
+    private static final String PREFS_TIME = "snapshot_time";
 
     private static final long MIN_REFETCH_MS = 60_000L;
 
@@ -30,6 +34,44 @@ public final class InfoCardRates {
     }
 
     private static volatile RateSnapshot snapshot;
+    private static volatile boolean persistedLoaded;
+    private static RateSnapshot currentSnapshot() {
+        if (ApplicationLoader.applicationContext == null) {
+            return snapshot;
+        }
+        if (!persistedLoaded) {
+            synchronized (InfoCardRates.class) {
+                if (!persistedLoaded) {
+                    try {
+                        android.content.SharedPreferences prefs = ApplicationLoader.applicationContext
+                                .getSharedPreferences(PREFS_NAME, android.content.Context.MODE_PRIVATE);
+                        String raw = prefs.getString(PREFS_DATA, null);
+                        long time = prefs.getLong(PREFS_TIME, 0L);
+                        if (raw != null && !raw.isEmpty() && time > 0L) {
+                            snapshot = new RateSnapshot(new JSONObject(raw), time);
+                        }
+                    } catch (Throwable t) {
+                        Log.e(TAG, "restore snapshot failed", t);
+                    }
+                    persistedLoaded = true;
+                }
+            }
+        }
+        return snapshot;
+    }
+    private static void persistSnapshot(RateSnapshot value) {
+        if (value == null || value.data == null || ApplicationLoader.applicationContext == null) return;
+        try {
+            ApplicationLoader.applicationContext.getSharedPreferences(
+                            PREFS_NAME, android.content.Context.MODE_PRIVATE)
+                    .edit()
+                    .putString(PREFS_DATA, value.data.toString())
+                    .putLong(PREFS_TIME, value.fetchedAtMs)
+                    .apply();
+        } catch (Throwable t) {
+            Log.e(TAG, "persist snapshot failed", t);
+        }
+    }
 
     private static final ArrayList<Runnable> pending = new ArrayList<>();
     private static final ArrayList<WeakReference<CallbackHandle>> weakPending = new ArrayList<>();
@@ -82,13 +124,8 @@ public final class InfoCardRates {
 
     private static void fetchInternal(final boolean force, final Runnable onDone,
                                       final CallbackHandle weakCallback) {
-        if (RATES_URL == null || RATES_URL.trim().isEmpty()) {
-            if (onDone != null) AndroidUtilities.runOnUIThread(onDone);
-            if (weakCallback != null) postWeak(weakCallback);
-            return;
-        }
         final long now = System.currentTimeMillis();
-        RateSnapshot current = snapshot;
+        RateSnapshot current = currentSnapshot();
         if (!force && isFresh(current, now)) {
             if (onDone != null) AndroidUtilities.runOnUIThread(onDone);
             if (weakCallback != null) postWeak(weakCallback);
@@ -99,7 +136,7 @@ public final class InfoCardRates {
         final boolean becameFresh;
         synchronized (pending) {
             
-            becameFresh = !force && isFresh(snapshot, System.currentTimeMillis());
+            becameFresh = !force && isFresh(currentSnapshot(), System.currentTimeMillis());
             if (!becameFresh) {
                 if (onDone != null) {
                     pending.add(onDone);
@@ -123,7 +160,9 @@ public final class InfoCardRates {
             try {
                 JSONObject o = doFetch();
                 if (o != null) {
-                    snapshot = new RateSnapshot(o, System.currentTimeMillis());
+                    RateSnapshot value = new RateSnapshot(o, System.currentTimeMillis());
+                    snapshot = value;
+                    persistSnapshot(value);
                 }
             } catch (Throwable t) {
                 Log.e(TAG, "fetch failed: " + t);
@@ -161,7 +200,6 @@ public final class InfoCardRates {
     }
 
     private static JSONObject doFetch() {
-        if (RATES_URL == null || RATES_URL.trim().isEmpty()) return null;
         HttpURLConnection con = null;
         try {
             URL url = new URL(RATES_URL);
@@ -188,11 +226,11 @@ public final class InfoCardRates {
     }
 
     public static boolean hasCached() {
-        return snapshot != null;
+        return currentSnapshot() != null;
     }
 
     public static JSONObject cached() {
-        RateSnapshot value = snapshot;
+        RateSnapshot value = currentSnapshot();
         if (value == null) return null;
         try {
             return new JSONObject(value.data.toString());
@@ -202,7 +240,7 @@ public final class InfoCardRates {
     }
 
     public static double coinUsd(String coin) {
-        return coinUsd(snapshot, coin);
+        return coinUsd(currentSnapshot(), coin);
     }
 
     private static double coinUsd(RateSnapshot value, String coin) {
@@ -216,7 +254,7 @@ public final class InfoCardRates {
     }
 
     public static double fiatRate(String ccy) {
-        return fiatRate(snapshot, ccy);
+        return fiatRate(currentSnapshot(), ccy);
     }
 
     private static double fiatRate(RateSnapshot value, String ccy) {
@@ -230,7 +268,7 @@ public final class InfoCardRates {
     }
 
     public static double coinInFiat(String coin, String ccy) {
-        RateSnapshot value = snapshot;
+        RateSnapshot value = currentSnapshot();
         return coinUsd(value, coin) * fiatRate(value, ccy);
     }
 
@@ -243,7 +281,7 @@ public final class InfoCardRates {
     }
 
     private static Double coinChange(String coin, String key) {
-        RateSnapshot value = snapshot;
+        RateSnapshot value = currentSnapshot();
         JSONObject s = value != null ? value.data : null;
         if (s == null || coin == null) return null;
         JSONObject coins = s.optJSONObject("coins");

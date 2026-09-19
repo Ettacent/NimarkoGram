@@ -9,6 +9,7 @@ import org.telegram.messenger.NotificationCenter;
 import org.telegram.messenger.SharedConfig;
 import org.telegram.messenger.UserConfig;
 import org.telegram.messenger.Utilities;
+import org.telegram.proxy.ProxySettings;
 import org.telegram.tgnet.ConnectionsManager;
 
 import java.util.ArrayList;
@@ -33,6 +34,7 @@ public final class ProxyApplier {
     private static final String SNAP_USER = "tgws_proxy_snap_user";
     private static final String SNAP_PASS = "tgws_proxy_snap_pass";
     private static final String SNAP_SECRET = "tgws_proxy_snap_secret";
+    private static final String SNAP_TYPE = "tgws_proxy_snap_type";
     private static final String SNAP_CALLS = "tgws_proxy_snap_calls";
     private static final String SNAP_VPN_SUSPENDED = "tgws_proxy_snap_vpn_suspended";
 
@@ -42,20 +44,11 @@ public final class ProxyApplier {
 
     private static final class ProxySnapshot {
         final boolean enabled;
-        final String host;
-        final int port;
-        final String user;
-        final String password;
-        final String secret;
+        final ProxySettings settings;
         final boolean callsEnabled;
-        ProxySnapshot(boolean enabled, String host, int port, String user, String password, String secret,
-                      boolean callsEnabled) {
+        ProxySnapshot(boolean enabled, ProxySettings settings, boolean callsEnabled) {
             this.enabled = enabled;
-            this.host = host == null ? "" : host;
-            this.port = port;
-            this.user = user == null ? "" : user;
-            this.password = password == null ? "" : password;
-            this.secret = secret == null ? "" : secret;
+            this.settings = settings;
             this.callsEnabled = callsEnabled;
         }
     }
@@ -76,20 +69,15 @@ public final class ProxyApplier {
                 SharedPreferences settings = MessagesController.getGlobalMainSettings();
                 SharedConfig.ProxyInfo curr = SharedConfig.currentProxy;
                 if (curr == null && settings.getBoolean("proxy_enabled", false)) {
-                    String configuredHost = settings.getString("proxy_ip", "");
-                    int configuredPort = settings.getInt("proxy_port", 0);
-                    if (!configuredHost.isEmpty() && configuredPort > 0) {
-                        curr = new SharedConfig.ProxyInfo(configuredHost, configuredPort,
-                                settings.getString("proxy_user", ""),
-                                settings.getString("proxy_pass", ""),
-                                settings.getString("proxy_secret", ""));
+                    ProxySettings configured = ProxySettings.fromSharedPreferences(settings);
+                    if (configured.isValid()) {
+                        curr = new SharedConfig.ProxyInfo(configured);
                         SharedConfig.currentProxy = curr;
                     }
                 }
-                String host = curr == null ? "" : (curr.address == null ? "" : curr.address);
-                if (curr != null && localHost != null && localHost.equals(host) && curr.port == NimarkoWsBypassConfig.localPort) {
-                    
-                    snapshot = new ProxySnapshot(false, "", 0, "", "", "", false);
+                String host = curr == null ? "" : curr.settings.getAddress();
+                if (curr != null && localHost != null && localHost.equals(host) && curr.settings.getPort() == NimarkoWsBypassConfig.localPort) {
+                    snapshot = new ProxySnapshot(false, ProxySettings.EMPTY, false);
                     persistSnapshot(snapshot);
                     return;
                 }
@@ -98,20 +86,12 @@ public final class ProxyApplier {
                 if (curr != null) {
                     snapshot = new ProxySnapshot(
                             enabled,
-                            curr.address,
-                            curr.port,
-                            curr.username,
-                            curr.password,
-                            curr.secret,
+                            curr.settings,
                             callsEnabled);
                 } else {
                     
                     snapshot = new ProxySnapshot(enabled,
-                            settings.getString("proxy_ip", ""),
-                            settings.getInt("proxy_port", 0),
-                            settings.getString("proxy_user", ""),
-                            settings.getString("proxy_pass", ""),
-                            settings.getString("proxy_secret", ""), callsEnabled);
+                            ProxySettings.fromSharedPreferences(settings), callsEnabled);
                 }
                 persistSnapshot(snapshot);
             }
@@ -123,45 +103,60 @@ public final class ProxyApplier {
     private static boolean loadPersistedSnapshot() {
         try {
             SharedPreferences p = MessagesController.getGlobalMainSettings();
-            if (!p.getBoolean(SNAP_PRESENT, false)) return false;
-            snapshot = new ProxySnapshot(
-                    p.getBoolean(SNAP_ENABLED, false),
-                    p.getString(SNAP_HOST, ""),
-                    p.getInt(SNAP_PORT, 0),
-                    p.getString(SNAP_USER, ""),
-                    p.getString(SNAP_PASS, ""),
-                    p.getString(SNAP_SECRET, ""),
-                    p.getBoolean(SNAP_CALLS, false));
+            ProxySnapshot saved = readSnapshot(p);
+            if (saved == null) return false;
+            snapshot = saved;
             return true;
         } catch (Throwable ignored) {
             return false;
         }
     }
+    private static ProxySnapshot readSnapshot(SharedPreferences p) {
+        if (!p.getBoolean(SNAP_PRESENT, false)) return null;
+        String secret = p.getString(SNAP_SECRET, "");
+        ProxySettings.Type type = p.contains(SNAP_TYPE)
+                ? ProxySettings.intToType(p.getInt(SNAP_TYPE, 0))
+                : (secret == null || secret.isEmpty() ? ProxySettings.Type.SOCKS5 : ProxySettings.Type.MTPROTO);
+        return new ProxySnapshot(
+                p.getBoolean(SNAP_ENABLED, false),
+                ProxySettings.builder().setType(type)
+                        .setAddress(p.getString(SNAP_HOST, ""))
+                        .setPort(p.getInt(SNAP_PORT, 0))
+                        .setUser(p.getString(SNAP_USER, ""))
+                        .setPassword(p.getString(SNAP_PASS, ""))
+                        .setSecret(secret).build(),
+                p.getBoolean(SNAP_CALLS, false));
+    }
 
     private static void persistSnapshot(ProxySnapshot snap) {
         try {
             SharedPreferences.Editor ed = MessagesController.getGlobalMainSettings().edit();
-            if (snap == null) {
-                ed.remove(SNAP_PRESENT)
-                        .remove(SNAP_ENABLED)
-                        .remove(SNAP_HOST)
-                        .remove(SNAP_PORT)
-                        .remove(SNAP_USER)
-                        .remove(SNAP_PASS)
-                        .remove(SNAP_SECRET)
-                        .remove(SNAP_CALLS);
-            } else {
-                ed.putBoolean(SNAP_PRESENT, true)
-                        .putBoolean(SNAP_ENABLED, snap.enabled)
-                        .putString(SNAP_HOST, snap.host)
-                        .putInt(SNAP_PORT, snap.port)
-                        .putString(SNAP_USER, snap.user)
-                        .putString(SNAP_PASS, snap.password)
-                        .putString(SNAP_SECRET, snap.secret)
-                        .putBoolean(SNAP_CALLS, snap.callsEnabled);
-            }
+            writeSnapshot(ed, snap);
             ed.apply();
         } catch (Throwable ignored) {
+        }
+    }
+    private static void writeSnapshot(SharedPreferences.Editor ed, ProxySnapshot snap) {
+        if (snap == null) {
+            ed.remove(SNAP_PRESENT)
+                    .remove(SNAP_ENABLED)
+                    .remove(SNAP_HOST)
+                    .remove(SNAP_PORT)
+                    .remove(SNAP_USER)
+                    .remove(SNAP_PASS)
+                    .remove(SNAP_SECRET)
+                    .remove(SNAP_TYPE)
+                    .remove(SNAP_CALLS);
+        } else {
+            ed.putBoolean(SNAP_PRESENT, true)
+                    .putBoolean(SNAP_ENABLED, snap.enabled)
+                    .putString(SNAP_HOST, snap.settings.getAddress())
+                    .putInt(SNAP_PORT, snap.settings.getPort())
+                    .putString(SNAP_USER, snap.settings.getUser())
+                    .putString(SNAP_PASS, snap.settings.getPassword())
+                    .putString(SNAP_SECRET, snap.settings.getSecret())
+                    .putInt(SNAP_TYPE, ProxySettings.typeToInt(snap.settings.getType()))
+                    .putBoolean(SNAP_CALLS, snap.callsEnabled);
         }
     }
 
@@ -189,11 +184,7 @@ public final class ProxyApplier {
 
         try {
             SharedPreferences.Editor ed = MessagesController.getGlobalMainSettings().edit();
-            ed.putString("proxy_ip", snap.host);
-            ed.putInt("proxy_port", snap.port);
-            ed.putString("proxy_user", snap.user);
-            ed.putString("proxy_pass", snap.password);
-            ed.putString("proxy_secret", snap.secret);
+            snap.settings.toSharedPreferences(ed);
             ed.putBoolean("proxy_enabled", snap.enabled);
             ed.putBoolean("proxy_enabled_calls", snap.callsEnabled);
             ed.putBoolean("proxy_calls_enabled", snap.callsEnabled);
@@ -202,26 +193,26 @@ public final class ProxyApplier {
 
             boolean accountsApplied;
             synchronized (PROXY_LIST_LOCK) {
-                if (snap.enabled && !snap.host.isEmpty() && snap.port > 0) {
+                if (snap.settings.isValid()) {
                     try {
                         SharedConfig.ProxyInfo info = new SharedConfig.ProxyInfo(
-                                snap.host, snap.port, snap.user, snap.password, snap.secret);
+                                snap.settings);
                         SharedConfig.ProxyInfo added = SharedConfig.addProxy(info);
                         SharedConfig.currentProxy = added != null ? added : info;
                     } catch (Throwable t) {
                         FileLog.e(t);
                     }
                     accountsApplied = applyToAllAccounts(
-                            true, snap.host, snap.port, snap.user, snap.password, snap.secret);
+                            snap.enabled, snap.settings);
                 } else {
                     SharedConfig.currentProxy = null;
-                    accountsApplied = applyToAllAccounts(false, "", 0, "", "", "");
+                    accountsApplied = applyToAllAccounts(false, ProxySettings.EMPTY);
                 }
                 try { SharedConfig.saveProxyList(); } catch (Throwable ignored) {}
             }
             try { SharedConfig.saveConfig(); } catch (Throwable ignored) {}
             boolean restored = accountsApplied
-                    && isApplyVerified(snap.enabled, snap.host, snap.port, snap.secret);
+                    && isApplyVerified(snap.enabled, snap.settings);
             if (restored) {
                 snapshot = null;
                 persistSnapshot(null);
@@ -240,8 +231,8 @@ public final class ProxyApplier {
             synchronized (PROXY_LIST_LOCK) {
                 SharedConfig.ProxyInfo curr = SharedConfig.currentProxy;
                 boolean currentIsOurs = curr != null
-                        && host.equals(curr.address == null ? "" : curr.address)
-                        && curr.port == NimarkoWsBypassConfig.localPort;
+                        && host.equals(curr.settings.getAddress())
+                        && curr.settings.getPort() == NimarkoWsBypassConfig.localPort;
                 SharedPreferences settings = MessagesController.getGlobalMainSettings();
                 boolean persistedIsOurs = settings.getBoolean("proxy_enabled", false)
                         && host.equals(settings.getString("proxy_ip", ""))
@@ -261,7 +252,7 @@ public final class ProxyApplier {
                         .putBoolean("proxy_calls_enabled", false)
                         .putBoolean("calls_use_proxy", false)
                         .apply();
-                applyToAllAccounts(false, "", 0, "", "", "");
+                applyToAllAccounts(false, ProxySettings.EMPTY);
             }
             AndroidUtilities.runOnUIThread(NOTIFY_RUNNABLE, NOTIFY_DELAY_MS);
         } catch (Throwable ignored) {
@@ -291,12 +282,11 @@ public final class ProxyApplier {
         } catch (Throwable ignored) {}
     }
 
-    private static boolean applyToAllAccounts(boolean enable, String host, int port,
-                                              String user, String pass, String secret) {
+    private static boolean applyToAllAccounts(boolean enable, ProxySettings settings) {
         
         boolean applied = true;
         try {
-            ConnectionsManager.setProxySettings(enable, host, port, user, pass, secret);
+            ConnectionsManager.setProxySettings(enable, settings);
         } catch (Throwable t) {
             FileLog.e(t);
             applied = false;
@@ -322,8 +312,7 @@ public final class ProxyApplier {
             final int ownPort = port > 0 ? port : NimarkoWsBypassConfig.localPort;
             final String sec = secret == null ? "" : secret.trim();
             
-            final String user = "";
-            final String pass = "";
+            final ProxySettings localSettings = localSettings(host, port, sec);
 
             if (enable && NimarkoWsBypassConfig.suspendOnVpn && isSystemVpnActive()) {
                 return false;
@@ -339,6 +328,7 @@ public final class ProxyApplier {
                     AndroidUtilities.runOnUIThread(NOTIFY_RUNNABLE, NOTIFY_DELAY_MS);
                     return true;
                 }
+                if (snapshot != null && !(NimarkoWsBypassConfig.suspendOnVpn && isSystemVpnActive())) return false;
             }
 
             try {
@@ -358,7 +348,7 @@ public final class ProxyApplier {
                 for (int i = 0; i < snapshot.size(); i++) {
                     SharedConfig.ProxyInfo p = snapshot.get(i);
                     if (p == null) continue;
-                    if (host.equals(p.address) && p.port == ownPort) {
+                    if (host.equals(p.settings.getAddress()) && p.settings.getPort() == ownPort) {
                         if (localProxy == null) {
                             localProxy = p;
                         } else {
@@ -384,7 +374,7 @@ public final class ProxyApplier {
 
                 try {
                     SharedConfig.ProxyInfo curr = SharedConfig.currentProxy;
-                    if (curr != null && host.equals(curr.address) && curr.port == ownPort) {
+                    if (curr != null && host.equals(curr.settings.getAddress()) && curr.settings.getPort() == ownPort) {
                         SharedConfig.currentProxy = null;
                     }
                 } catch (Throwable ignored) {}
@@ -393,16 +383,13 @@ public final class ProxyApplier {
                 if (enable) {
                     if (localProxy != null) {
                         try {
-                            localProxy.port = port;
-                            localProxy.username = user;
-                            localProxy.password = pass;
-                            localProxy.secret = sec;
+                            localProxy.settings = localSettings;
                         } catch (Throwable ignored) {}
                         proxyObj = localProxy;
                     } else {
                         try {
                             SharedConfig.ProxyInfo info =
-                                    new SharedConfig.ProxyInfo(host, port, user, pass, sec);
+                                    new SharedConfig.ProxyInfo(localSettings);
                             proxyObj = SharedConfig.addProxy(info);
                             if (proxyObj == null) proxyObj = info;
                         } catch (Throwable t) {
@@ -414,14 +401,10 @@ public final class ProxyApplier {
                         SharedConfig.currentProxy = proxyObj;
                     }
 
-                    ed.putString("proxy_ip", host);
-                    ed.putInt("proxy_port", port);
-                    ed.putString("proxy_user", user);
-                    ed.putString("proxy_pass", pass);
-                    ed.putString("proxy_secret", sec);
+                    localSettings.toSharedPreferences(ed);
                     ed.putBoolean("proxy_enabled", true);
 
-                    boolean callsEnabled = sec.length() == 0;
+                    boolean callsEnabled = localSettings.getType() == ProxySettings.Type.SOCKS5;
                     ed.putBoolean("proxy_enabled_calls", callsEnabled);
                     ed.putBoolean("proxy_calls_enabled", callsEnabled);
                     ed.putBoolean("calls_use_proxy", callsEnabled);
@@ -473,8 +456,8 @@ public final class ProxyApplier {
 
                 proxyRevision = SharedConfig.markProxyListChanged();
                 accountsApplied = enable
-                        ? applyToAllAccounts(true, host, port, user, pass, sec)
-                        : applyToAllAccounts(false, "", 0, "", "", "");
+                        ? applyToAllAccounts(true, localSettings)
+                        : applyToAllAccounts(false, ProxySettings.EMPTY);
             }
 
             Utilities.globalQueue.postRunnable(() -> {
@@ -487,33 +470,44 @@ public final class ProxyApplier {
             });
 
             AndroidUtilities.runOnUIThread(NOTIFY_RUNNABLE, NOTIFY_DELAY_MS);
-            return preferencesApplied && accountsApplied && isApplyVerified(enable, host, port, sec);
+            return preferencesApplied && accountsApplied && (enable
+                    ? isApplyVerified(true, localSettings)
+                    : !MessagesController.getGlobalMainSettings().getBoolean("proxy_enabled", false));
         } catch (Throwable e) {
             FileLog.e("ProxyApplier.apply error", e);
             return false;
         }
     }
 
-    private static boolean isApplyVerified(boolean enable, String host, int port, String secret) {
+    private static ProxySettings localSettings(String host, int port, String secret) {
+        return ProxySettings.builder().setType(ProxySettings.Type.MTPROTO)
+                .setAddress(host).setPort(port).setSecret(secret).build();
+    }
+    private static boolean isApplyVerified(boolean enable, ProxySettings expected) {
         try {
-            SharedPreferences settings = MessagesController.getGlobalMainSettings();
-            if (settings.getBoolean("proxy_enabled", false) != enable) return false;
-            if (!enable) return true;
-
-            SharedConfig.ProxyInfo current = SharedConfig.currentProxy;
-            if (current == null
-                    || !host.equals(current.address == null ? "" : current.address)
-                    || current.port != port
-                    || !secret.equals(current.secret == null ? "" : current.secret)) {
-                return false;
+            synchronized (PROXY_LIST_LOCK) {
+                return isApplyVerified(enable, expected, MessagesController.getGlobalMainSettings(),
+                        SharedConfig.currentProxy, SharedConfig.proxyList);
             }
-            return host.equals(settings.getString("proxy_ip", ""))
-                    && port == settings.getInt("proxy_port", 0)
-                    && secret.equals(settings.getString("proxy_secret", ""))
-                    && isLocalEntryPresent(host, port);
         } catch (Throwable ignored) {
             return false;
         }
+    }
+    private static boolean isApplyVerified(boolean enable, ProxySettings expected,
+                                           SharedPreferences settings, SharedConfig.ProxyInfo current,
+                                           ArrayList<SharedConfig.ProxyInfo> proxies) {
+        if (settings.getBoolean("proxy_enabled", false) != enable) return false;
+        if (!expected.equals(ProxySettings.fromSharedPreferences(settings))) return false;
+        if (!enable && !expected.isValid()) return true;
+        if (current == null || !expected.equals(current.settings)) {
+            return false;
+        }
+        if (proxies != null) {
+            for (SharedConfig.ProxyInfo info : proxies) {
+                if (info != null && expected.equals(info.settings)) return true;
+            }
+        }
+        return false;
     }
 
     public static boolean isLocalEntryPresent(String localHost, int port) {
@@ -527,7 +521,7 @@ public final class ProxyApplier {
                 for (int i = 0; i < snap.size(); i++) {
                     SharedConfig.ProxyInfo p = snap.get(i);
                     if (p == null) continue;
-                    if (host.equals(p.address) && p.port == port) return true;
+                    if (host.equals(p.settings.getAddress()) && p.settings.getPort() == port) return true;
                 }
             }
         } catch (Throwable t) {
@@ -539,7 +533,7 @@ public final class ProxyApplier {
     public static boolean isLocalProxyActive(String localHost, int port, String secret) {
         String host = localHost == null ? "" : localHost;
         String sec = secret == null ? "" : secret;
-        return isApplyVerified(true, host, port, sec);
+        return isApplyVerified(true, localSettings(host, port, sec));
     }
 
     public static synchronized void forceClearCurrent(String localHost) {
@@ -548,8 +542,8 @@ public final class ProxyApplier {
             synchronized (PROXY_LIST_LOCK) {
                 SharedConfig.ProxyInfo curr = SharedConfig.currentProxy;
                 if (curr == null) return;
-                String addr = curr.address == null ? "" : curr.address;
-                if (host.equals(addr) && curr.port == NimarkoWsBypassConfig.localPort) {
+                String addr = curr.settings.getAddress();
+                if (host.equals(addr) && curr.settings.getPort() == NimarkoWsBypassConfig.localPort) {
                     SharedConfig.currentProxy = null;
                     SharedConfig.markProxyListChanged();
                 }
@@ -576,7 +570,7 @@ public final class ProxyApplier {
                 for (int i = 0; i < snap.size(); i++) {
                     SharedConfig.ProxyInfo p = snap.get(i);
                     if (p == null) continue;
-                    if (host.equals(p.address) && p.port == NimarkoWsBypassConfig.localPort) {
+                    if (host.equals(p.settings.getAddress()) && p.settings.getPort() == NimarkoWsBypassConfig.localPort) {
                         toRemove.add(p);
                     }
                 }

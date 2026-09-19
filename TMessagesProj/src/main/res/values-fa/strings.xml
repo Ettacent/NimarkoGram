@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="UseProxyWeb">پروکسی WEB</string>
+    <string name="UseProxyWebInfo">پروکسی WEB از یک صفحهٔ HTTPS در WebView جداگانه استفاده می‌کند. نام میزبان را بدون پیشوند پروتکل یا مسیر، به‌همراه کلید محرمانهٔ ۱۶ بایتی MTProxy وارد کنید. این پیاده‌سازی آزمایشی برای تست هنگام باز بودن برنامه در پیش‌زمینه است و به نسخهٔ به‌روز Android System WebView نیاز دارد.</string>
     <string name="NM_Menu_TelegramPlus">منوی مدرن پیام‌ها</string>
     <string name="NM_Menu_TelegramPlus_Desc">یک منوی جمع‌وجور با افکت Liquid Glass، کنش‌های گروه‌بندی‌شده، پویانمایی فنری و بازخورد پویا. چیدمان فشرده همچنان در دسترس است.</string>
     <!-- NimarkoGram plugin engine strings -->

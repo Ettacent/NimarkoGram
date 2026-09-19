@@ -569,6 +569,17 @@ public class NimarkoUpdaterSheet extends BottomSheet implements NimarkoUpdater.D
         if (fragment == null || fragment.getParentActivity() == null || fragment.getContext() == null) {
             return;
         }
+        java.util.function.BooleanSupplier navigation = fragment.captureNavigationRequest();
+        Utilities.globalQueue.postRunnable(() -> {
+            NimarkoUpdater.getCurrentVersionCode();
+            NimarkoUpdateConfig.getAutoOTA();
+            AndroidUtilities.runOnUIThread(() -> {
+                if (!navigation.getAsBoolean() || fragment.getParentActivity() == null) return;
+                showAlertWithPreparedConfig(fragment, available, update);
+            });
+        });
+    }
+    private static void showAlertWithPreparedConfig(BaseFragment fragment, boolean available, NimarkoUpdater.Update update) {
         boolean effectiveAvailable = available && update != null && update.isNew();
         NimarkoUpdater.Update effectiveUpdate = update;
         if (!effectiveAvailable) {

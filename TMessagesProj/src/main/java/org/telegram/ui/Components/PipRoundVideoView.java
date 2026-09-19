@@ -40,7 +40,7 @@ import android.view.animation.DecelerateInterpolator;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
 
-import com.google.android.exoplayer2.ui.AspectRatioFrameLayout;
+import org.telegram.ui.AspectRatioFrameLayout;
 
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.ApplicationLoader;
@@ -207,7 +207,7 @@ public class PipRoundVideoView implements NotificationCenter.NotificationCenterD
 
             @Override
             protected void onDraw(Canvas canvas) {
-                if (Theme.chat_roundVideoShadow != null ) {
+                if (Theme.chat_roundVideoShadow != null                                               ) {
                     final int previousShadowAlpha = Theme.chat_roundVideoShadow.getAlpha();
                     final int previousPaintColor = Theme.chat_docBackPaint.getColor();
                     final int previousPaintAlpha = Theme.chat_docBackPaint.getAlpha();

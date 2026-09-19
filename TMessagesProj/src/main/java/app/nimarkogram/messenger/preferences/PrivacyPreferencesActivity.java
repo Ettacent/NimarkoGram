@@ -149,14 +149,14 @@ public class PrivacyPreferencesActivity extends BasePreferencesActivity {
                     NotificationCenter.getInstance(account).postNotificationName(NotificationCenter.dialogsNeedReload);
                 }
             }
-            refreshItems();
+            updateItemsAfterToggle();
         } else if (id == ID_OPEN_ARCHIVE) {
             NimarkoChatMenuInjector.openArchivedChats(this);
         } else if (id == ID_PROTECT_SELECTED_CHATS) {
             changeProtectedSetting(NimarkoConfig.askBiometricsToOpenChat, () -> {
                 NimarkoConfig.toggleAskBiometricsToOpenChat();
                 applyCheck(item, view, NimarkoConfig.askBiometricsToOpenChat);
-                refreshItems();
+                updateItemsAfterToggle();
             });
         } else if (id == ID_PROTECT_SAVED_MESSAGES) {
             changeProtectedSetting(NimarkoConfig.askBiometricsToOpenSavedMessages, () -> {

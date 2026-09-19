@@ -1844,12 +1844,17 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         private int updateAnchorPosition;
         private int updateAnchorOffset;
         private int updateAnchorInset;
+        private int updateAnchorPendingOffset;
         private void restoreUpdateAnchor(int position, int offset) {
-            parentPage.layoutManager.scrollToPositionWithOffset(position, offset);
-            restoringUpdateAnchor = true;
             updateAnchorPosition = position;
             updateAnchorOffset = offset;
             updateAnchorInset = lastNotificationInset;
+            applyUpdateAnchor(offset);
+        }
+        private void applyUpdateAnchor(int offset) {
+            parentPage.layoutManager.scrollToPositionWithOffset(updateAnchorPosition, offset);
+            updateAnchorPendingOffset = offset;
+            restoringUpdateAnchor = true;
         }
         private float rightFragmentOpenedProgress;
 
@@ -2200,7 +2205,10 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             measuredNotificationInset = topPanelLayout == null ? 0 : topPanelLayout.getNotificationListInset(
                     lerp((float) dp(14), dp(7), notificationTabs), notificationTabs);
             int notificationDelta = measuredNotificationInset - lastNotificationInset;
-            if (restoringUpdateAnchor && parentPage.layoutManager.hasPendingScrollPosition()) {
+            if (restoringUpdateAnchor && !parentPage.layoutManager.hasPendingScrollPosition(updateAnchorPosition, updateAnchorPendingOffset)) {
+                restoringUpdateAnchor = false;
+            }
+            if (restoringUpdateAnchor) {
                 int firstChat = parentPage.dialogsType == DIALOGS_TYPE_DEFAULT && hasHiddenArchive()
                         && parentPage.archivePullViewState == ARCHIVE_ITEM_STATE_HIDDEN ? 1 : 0;
                 View startView = parentPage.layoutManager.findViewByPosition(firstChat);
@@ -2208,8 +2216,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                         firstChat, measuredNotificationInset - updateAnchorInset,
                         startView == null ? Integer.MIN_VALUE : startView.getTop());
                 ignoreLayout = true;
-                parentPage.layoutManager.scrollToPositionWithOffset(updateAnchorPosition, updateAnchorOffset - compensation);
-                restoringUpdateAnchor = true;
+                applyUpdateAnchor(updateAnchorOffset - compensation);
                 ignoreLayout = false;
             }
             if (pos != RecyclerView.NO_POSITION && parentPage.itemTouchhelper.isIdle() && !parentPage.layoutManager.hasPendingScrollPosition()
@@ -2218,17 +2225,17 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                         && parentPage.archivePullViewState == ARCHIVE_ITEM_STATE_HIDDEN) {
                     pos = Math.max(1, pos);
                 }
-                RecyclerView.ViewHolder holder = parentPage.listView.findViewHolderForAdapterPosition(pos);
-                if (holder != null) {
-                    int top = holder.itemView.getTop();
+                View anchorView = parentPage.layoutManager.findViewByPosition(pos);
+                if (anchorView != null) {
+                    int top = anchorView.getTop();
                     int firstChat = parentPage.dialogsType == DIALOGS_TYPE_DEFAULT && hasHiddenArchive()
                             && parentPage.archivePullViewState == ARCHIVE_ITEM_STATE_HIDDEN ? 1 : 0;
                     View startView = parentPage.layoutManager.findViewByPosition(firstChat);
                     int notificationCompensation = notificationScrollCompensation(pos, top, firstChat, notificationDelta,
                             startView == null ? Integer.MIN_VALUE : startView.getTop());
                     ignoreLayout = true;
-                    parentPage.layoutManager.scrollToPositionWithOffset(pos, (int) (top - lastListPadding + scrollAdditionalOffset + parentPage.pageAdditionalOffset)
-                            - notificationCompensation);
+                    restoreUpdateAnchor(pos, (int) (top - lastListPadding + scrollAdditionalOffset + parentPage.pageAdditionalOffset));
+                    applyUpdateAnchor(updateAnchorOffset - notificationCompensation);
                     ignoreLayout = false;
                 }
             } else if (pos == RecyclerView.NO_POSITION && firstLayout) {
@@ -2474,7 +2481,8 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                         int diff = (view.getTop() - pTop) + view.getMeasuredHeight();
 
                         long pullingTime = System.currentTimeMillis() - startArchivePullingTime;
-                        if (diff < height || pullingTime < PullForegroundDrawable.minPullingTime) {
+                        if (action == MotionEvent.ACTION_CANCEL
+                                || diff < height || pullingTime < PullForegroundDrawable.minPullingTime) {
                             disableActionBarScrolling = true;
                             smoothScrollBy(0, diff, CubicBezierInterpolator.EASE_OUT_QUINT);
                             parentPage.archivePullViewState = ARCHIVE_ITEM_STATE_HIDDEN;
@@ -5374,8 +5382,8 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                 if (topicsFragment != null) {
                     topicsFragment.checkUi_listViewPadding();
                 }
-                checkUi_searchPagesPaddings(false);
                 updateContextViewPosition();
+                checkUi_searchPagesPaddings(false);
                 if (searchViewPager != null) {
                     searchViewPager.invalidate();
                 }
@@ -7271,9 +7279,15 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         }
 
         if (topPanelLayout != null) {
+            final ViewGroup.LayoutParams panelParams = topPanelLayout.getLayoutParams();
+            final int panelTopMargin = panelParams instanceof ViewGroup.MarginLayoutParams
+                    ? ((ViewGroup.MarginLayoutParams) panelParams).topMargin : 0;
+            final float searchPanelOffset = (searchTabsView != null ? dp(SEARCH_TABS_HEIGHT) : 0)
+                    - getSearchFieldReservedHeight() - panelTopMargin
+                    - topPanelLayout.getPaddingTop() + dp(7);
             topPanelLayout.setTranslationY(lerp(
                 totalOffset - searchOffset,
-                -dp(3) - (searchTabsView == null ? dp(44) : 0),
+                searchPanelOffset,
                 animatorSearchVisible.getFloatValue()));
             topPanelsVisibility = topPanelLayout.getSharedContentVisibility();
             topPanelsHeight = topPanelLayout.getSharedContentHeight();
@@ -8584,6 +8598,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         }
         if (!show) {
             initialSearchType = -1;
+            updateFilterTabs(true, animated);
         }
         if (show && startFromDownloads && searchViewPager != null) {
             searchViewPager.showDownloads();
@@ -11602,9 +11617,14 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             // onAttachedToWindow / didReceivedNotification(infoCardsLayoutChanged); this owns only the host.
             // Safe while detached: checkUi self-guards (fragmentSearchField==null) and only sets visibility
             // flags, which persist until the view re-attaches and rebuilds the pills.
-            checkUi_searchFieldVisibility();
             if (fragmentView != null) {
-                fragmentView.requestLayout();
+                final View host = fragmentView;
+                host.post(() -> {
+                    if (!dialogsLifecycleDestroyed && fragmentView == host) {
+                        checkUi_searchFieldVisibility();
+                        host.requestLayout();
+                    }
+                });
             }
             return;
         }
@@ -14239,8 +14259,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                     final int t = actionBar.getMeasuredHeight()
                         + dp(ADDITIONAL_LIST_HEIGHT_DP)
                         - dp(2)
-                        - (communityId != 0 ? h : 0)
-                        + (topPanelLayout != null ? (int) topPanelLayout.getAnimatedHeightWithPadding(dp(7)) : 0);
+                        - (communityId != 0 ? h : 0);
 
                     gradientDrawable.setColor(Theme.multAlpha(getThemedColor(Theme.key_windowBackgroundWhite), 0.7f));
                     gradientDrawable.setInsets(0, t, 0, 0);
@@ -15357,18 +15376,12 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             // call bar is actually present (its totalVisibility), so the no-call case (visibility 0) and the
             // hideSearchBar-off case (where the delta dp(48)-getSearchFieldReservedHeight() is already 0) are
             // left untouched.
-            final float callBarVisibility = topPanelLayout != null
-                ? topPanelLayout.getLayoutVisibility()
-                : 0f;
-            final int reservedFieldCollapse =
-                (int) ((dp(SEARCH_FIELD_HEIGHT) - getSearchFieldReservedHeight()) * callBarVisibility);
-            final int top = dp(ADDITIONAL_LIST_HEIGHT_DP)
-                + actionBar.getMeasuredHeight()
-                + (searchTabsView != null ? dp(50) : 0)
-                + (topPanelLayout != null ? (int) topPanelLayout.getAnimatedHeightWithPadding(dp(7)) : 0)
-                - reservedFieldCollapse;
-
-            searchViewPager.setPagesPadding(top, bottom, doNotRequestLayout);
+            final int contentTop = actionBar.getMeasuredHeight()
+                    + (searchTabsView != null ? dp(SEARCH_TABS_HEIGHT) : 0);
+            final int panelInset = topPanelLayout == null ? 0
+                    : Math.round(topPanelLayout.getAnimatedHeightWithPadding(dp(14)));
+            final int top = dp(ADDITIONAL_LIST_HEIGHT_DP) + contentTop + panelInset;
+            searchViewPager.setPagesPaddingWithPanel(top, bottom, panelInset, doNotRequestLayout);
         }
     }
 
@@ -15437,7 +15450,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             final boolean show = app.nimarkogram.messenger.infocards.InfoCardsConfig.isEnabled()
                     && hideHomeSearchField
                     && !filterTabsBootstrapPending
-                    && actionModeVisible <= 0.01f
+                    && (actionModeVisible <= 0.01f || useInlineHomeInfoCards())
                     && getRightSlidingProgress() <= 0.01f;
             // Is the capsule ACTUALLY in the visual state our `show` flag claims? A ValueAnimator is paused by
             // Android while the app is backgrounded; if `show` flipped to false right before we were paused, the

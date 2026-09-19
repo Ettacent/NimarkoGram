@@ -201,7 +201,7 @@ public abstract class QrCodeLoginView extends SlideView {
         private void drawLoading(Canvas canvas, int i, int i2, float f) {
             RLottieDrawable rLottieDrawable = this.loadingMatrix;
             if (rLottieDrawable == null) {
-                RLottieDrawable rLottieDrawable2 = new RLottieDrawable(R.raw.qr_matrix, "qr_matrix", AndroidUtilities.dp(200.0f), AndroidUtilities.dp(200.0f));
+                RLottieDrawable rLottieDrawable2 = new RLottieDrawable(R.raw.qr_matrix, AndroidUtilities.dp(200.0f), AndroidUtilities.dp(200.0f));
                 this.loadingMatrix = rLottieDrawable2;
                 rLottieDrawable2.setMasterParent(this);
                 this.loadingMatrix.setAutoRepeat(1);

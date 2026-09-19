@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="UseProxyWeb">WEB 프록시</string>
+    <string name="UseProxyWebInfo">WEB 프록시는 별도의 WebView에서 HTTPS 페이지를 사용합니다. 프로토콜 스킴이나 경로를 제외한 호스트 이름과 16바이트 MTProxy 비밀 키를 입력하세요. 이 실험적 구현은 앱이 포그라운드에서 실행 중일 때 테스트하기 위한 것으로, 최신 Android System WebView가 필요합니다.</string>
     <string name="NM_Menu_TelegramPlus">모던 메시지 메뉴</string>
     <string name="NM_Menu_TelegramPlus_Desc">그룹화된 동작, 스프링 애니메이션 및 반응형 효과를 갖춘 컴팩트 Liquid Glass 메뉴입니다. 컴팩트 레이아웃도 계속 사용할 수 있습니다.</string>
     <string name="AppName">NimarkoGram</string>

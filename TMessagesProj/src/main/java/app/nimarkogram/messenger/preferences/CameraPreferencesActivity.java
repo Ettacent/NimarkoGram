@@ -1,7 +1,10 @@
-/*
- * This file is part of NimarkoGram for Android.
- * Licensed under GNU GPL v2 or later. See LICENSE.
- * Copyright Ettacent, 2026.
+/**
+ * This is the source code of Nimarko for Android.
+ * It is licensed under GNU GPL v. 2 or later.
+ * You should have received a copy of the license in this archive (see LICENSE).
+ * Please, be respectful and credit the original author if you use this code.
+ *
+ * Copyright github.com/arsLan4k1390, 2022-2026.
  */
 
 package app.nimarkogram.messenger.preferences;
@@ -166,9 +169,10 @@ public class CameraPreferencesActivity extends NimarkoUniversalPreferencesActivi
             showRestartBulletin();
         } else if (item.id == cameraUseDualCameraRow) {
             NimarkoConfig.toggleUseDualCamera();
+            item.checked = NimarkoConfig.useDualCamera;
             updateCheckState(view, app.nimarkogram.messenger.NimarkoConfig.useDualCamera);
 
-            if (CameraXUtils.isCurrentCameraNotCameraX()) listView.adapter.update(true);
+            if (CameraXUtils.isCurrentCameraNotCameraX()) updateItemsAfterToggle();
         } else if (item.id == rearCamRow) {
             ArrayList<CharSequence> opts = new ArrayList<>();
             opts.add(getString(R.string.NM_CAM_FrontCamera));
@@ -269,7 +273,7 @@ public class CameraPreferencesActivity extends NimarkoUniversalPreferencesActivi
                     && app.nimarkogram.messenger.NimarkoConfig.cameraXFpsRange
                     == NimarkoConfig.CameraXFpsRange30to60) {
                 NimarkoConfig.setCameraXFpsRange(NimarkoConfig.CameraXFpsRange30to30);
-                listView.adapter.update(true);
+                updateItemsAfterToggle();
             }
         }
     }

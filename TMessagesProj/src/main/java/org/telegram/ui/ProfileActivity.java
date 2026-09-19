@@ -1297,7 +1297,6 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
         // It follows the renderer through a time-based low-pass filter below:
         // unlike a fixed per-frame lerp, its speed is identical at 60/90/120/144 Hz.
         private float ngBannerForegroundProgress;
-        private long ngBannerForegroundFrameTime;
         private Boolean ngBannerLightStatusBar;
         public int color1, color2;
         private final AnimatedColor color1Animated = new AnimatedColor(this, 350, CubicBezierInterpolator.EASE_OUT_QUINT);
@@ -1468,7 +1467,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             if (app.nimarkogram.messenger.banners.NimarkoBannerConfig.enabled && bannerY1 > 0) {
                 try {
                     nimarkoSuppress = app.nimarkogram.messenger.banners.NimarkoBannerRenderer.getInstance().prepareFrame(
-                            TopView.this, getDialogId(), bannerExtraHeight, getMeasuredWidth(), bannerY1,
+                            TopView.this, currentAccount, getDialogId(), bannerExtraHeight, getMeasuredWidth(), bannerY1,
                             openAnimationInProgress, transitionAnimationInProress, searchMode,
                             bannerExpand, playProfileAnimation, hasMainTabs,
                             nimarkoBannerExitTransition,
@@ -1480,7 +1479,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                 try {
                     bannerForegroundForBackground = Utilities.clamp01(
                             app.nimarkogram.messenger.banners.NimarkoBannerRenderer.getInstance()
-                                    .getForegroundProgress(TopView.this, getDialogId()) * nimarkoBannerTransitionAlpha);
+                                    .getForegroundProgress(TopView.this, currentAccount, getDialogId()) * nimarkoBannerTransitionAlpha);
                 } catch (Throwable ignored) {}
             }
             // Keep the normal profile header fully opaque below the banner while
@@ -1549,8 +1548,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                     }
                 }
                 if (previousTransitionFragment != null
-                        && (!profileTransitionUsesFloatingHeader
-                        || profileTransitionStartRunnable == null)) {
+                        && profileTransitionStartRunnable == null) {
                     final float profileArrowAlpha = Utilities.clamp01(avatarAnimationProgress);
                     final float sourceArrowAlpha = 1f - profileArrowAlpha;
                     final ActionBar previousActionBar = previousTransitionFragment.getActionBar();
@@ -1596,17 +1594,17 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                         bannerLayer = canvas.saveLayerAlpha(0, 0, getMeasuredWidth(), bannerY1,
                                 Math.round(255 * nimarkoBannerTransitionAlpha));
                     }
-                    r.drawImageBanner(canvas, getMeasuredWidth(), bannerY1, bannerExtraHeight, getDialogId());
+                    r.drawImageBanner(canvas, getMeasuredWidth(), bannerY1, bannerExtraHeight, currentAccount, getDialogId());
                     if (bannerLayer >= 0) {
                         canvas.restoreToCount(bannerLayer);
                     }
-                    float bannerForegroundBase = r.getForegroundProgress(TopView.this, getDialogId());
-                    if (r.isCurrentProfile(TopView.this, getDialogId())) {
+                    float bannerForegroundBase = r.getForegroundProgress(TopView.this, currentAccount, getDialogId());
+                    if (r.isCurrentProfile(TopView.this, currentAccount, getDialogId())) {
                         if (nimarkoBannerExitTransition) {
-                            r.applyProfileExitAlpha(getDialogId(), nimarkoBannerTransitionAlpha);
+                            r.applyProfileExitAlpha(currentAccount, getDialogId(), nimarkoBannerTransitionAlpha);
                         } else {
                             r.applyVideoFx(bannerExtraHeight, bannerY1, bannerExpand);
-                            bannerForegroundBase = r.getForegroundProgress(TopView.this, getDialogId());
+                            bannerForegroundBase = r.getForegroundProgress(TopView.this, currentAccount, getDialogId());
                         }
                         r.reassertAvatarFade();
                     }
@@ -1620,20 +1618,8 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                 } catch (Throwable ignored) {}
             }
             boolean hadNgBannerForeground = ngBannerForegroundProgress > 0f;
-            final float paintedNgBannerForegroundProgress;
-            if (nimarkoBannerMorph) {
-                // The native profile morph is already time-based and vsync
-                // driven.  A second low-pass would lag behind the painted banner
-                // and then catch up on the last frame, recreating the flash.
-                ngBannerForegroundProgress =
-                        Utilities.clamp01(nextNgBannerForegroundProgress);
-                ngBannerForegroundFrameTime = SystemClock.uptimeMillis();
-                paintedNgBannerForegroundProgress =
-                        ngBannerForegroundProgress;
-            } else {
-                paintedNgBannerForegroundProgress =
-                        smoothNimarkoBannerForeground(nextNgBannerForegroundProgress);
-            }
+            final float paintedNgBannerForegroundProgress = ngBannerForegroundProgress =
+                    Utilities.clamp01(nextNgBannerForegroundProgress);
             if (paintedNgBannerForegroundProgress > 0f || nextNgBannerForegroundProgress > 0f || hadNgBannerForeground) {
                 applyNimarkoBannerForeground(paintedNgBannerForegroundProgress);
             }
@@ -1651,8 +1637,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             }
             if (previousTransitionFragment != null
                     && !profileTransitionSingleBackArrow
-                    && (!profileTransitionUsesFloatingHeader
-                    || profileTransitionStartRunnable == null)) {
+                    && profileTransitionStartRunnable == null) {
                 ActionBar previousActionBar = previousTransitionFragment.getActionBar();
                 View previousBackButton = previousActionBar != null
                         ? previousActionBar.getBackButton() : null;
@@ -1696,27 +1681,6 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
          * which finishes twice as fast. A slightly softer release prevents a
          * visible colour snap when a banner is replaced or disappears.
          */
-        private float smoothNimarkoBannerForeground(float target) {
-            target = Utilities.clamp01(target);
-            final long now = SystemClock.uptimeMillis();
-            if (ngBannerForegroundFrameTime == 0L) {
-                ngBannerForegroundFrameTime = now;
-            } else {
-                final float dt = Math.min(0.064f, Math.max(0f,
-                        (now - ngBannerForegroundFrameTime) / 1000f));
-                final float responseSeconds = target >= ngBannerForegroundProgress ? 0.18f : 0.24f;
-                final float amount = 1f - (float) Math.exp(-dt / responseSeconds);
-                ngBannerForegroundProgress += (target - ngBannerForegroundProgress) * amount;
-            }
-            ngBannerForegroundFrameTime = now;
-
-            if (Math.abs(target - ngBannerForegroundProgress) < 0.001f) {
-                ngBannerForegroundProgress = target;
-            } else {
-                postInvalidateOnAnimation();
-            }
-            return ngBannerForegroundProgress;
-        }
     }
 
     private class OverlaysView extends View implements ProfileGalleryView.Callback {
@@ -2708,7 +2672,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
         // NimarkoGram: ALWAYS tear down (null/no-op safe) regardless of feature toggle —
         // a profile destroyed after the feature was switched OFF must still release the
         // ExoPlayer/texture/views/blur worker instead of leaking them.
-        try { app.nimarkogram.messenger.banners.NimarkoBannerRenderer.getInstance().onProfileDestroyed(topView, getDialogId()); } catch (Throwable ignored) {}
+        try { app.nimarkogram.messenger.banners.NimarkoBannerRenderer.getInstance().onProfileDestroyed(topView, currentAccount, getDialogId()); } catch (Throwable ignored) {}
         if (sharedMediaLayout != null) {
             sharedMediaLayout.onDestroy();
         }
@@ -5762,70 +5726,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             @Override
             protected void dispatchDraw(Canvas canvas) {
                 super.dispatchDraw(canvas);
-                if (transitionTitleText != null
-                        && transitionTitleText.getVisibility() == View.VISIBLE
-                        && transitionTitleText.getAlpha() > 0f
-                        && transitionTitleText.getMeasuredWidth() > 0
-                        && transitionTitleText.getMeasuredHeight() > 0) {
-                    canvas.save();
-                    boolean hasLiveTitleRect = false;
-                    if (profileTransitionUsesFloatingHeader) {
-                        SizeNotifierFrameLayout targetContent = previousTransitionFragment.getContentView();
-                        if (targetContent != null) {
-                            hasLiveTitleRect = ViewPositionWatcher.computeRectInParent(
-                                    transitionTitleText, targetContent, profileTransitionLiveTitleRect);
-                        }
-                    }
-                    final float targetX = hasLiveTitleRect
-                            ? profileTransitionLiveTitleRect.left
-                            : profileTransitionHasTitleRect ? profileTransitionTitleRect.left
-                            : nameTextView[0] != null ? nameTextView[0].getX() : 0f;
-                    final float targetY = hasLiveTitleRect
-                            ? profileTransitionLiveTitleRect.top
-                            : profileTransitionHasTitleRect ? profileTransitionTitleRect.top
-                            : nameTextView[0] != null ? nameTextView[0].getY() : 0f;
-                    canvas.translate(targetX, targetY);
-                    // This is the real live floating-header title. Its measured width can
-                    // change while the centred glass island settles; combining
-                    // that live width with a frozen rect produced a transient
-                    // non-uniform scale and visibly stretched marquee glyphs.
-                    // Draw at identity scale using geometry from the same frame.
-                    canvas.saveLayerAlpha(
-                            0, 0,
-                            transitionTitleText.getMeasuredWidth(),
-                            transitionTitleText.getMeasuredHeight(),
-                            Math.round(255 * (1f - avatarAnimationProgress)
-                                    * transitionTitleText.getAlpha()),
-                            Canvas.ALL_SAVE_FLAG);
-                    transitionTitleText.draw(canvas);
-                    canvas.restore();
-                    canvas.restore();
-                    invalidate();
-                }
-                if (transitionOnlineText != null
-                        && transitionOnlineText.getVisibility() == View.VISIBLE
-                        && transitionOnlineText.getAlpha() > 0f) {
-                    canvas.save();
-                    final float targetX = profileTransitionUsesFloatingHeader
-                            && profileTransitionHasSubtitleRect
-                            ? profileTransitionSubtitleRect.left
-                            : onlineTextView[0].getX();
-                    final float targetY = profileTransitionUsesFloatingHeader
-                            && profileTransitionHasSubtitleRect
-                            ? profileTransitionSubtitleRect.top
-                            : onlineTextView[0].getY();
-                    canvas.translate(targetX, targetY);
-                    canvas.saveLayerAlpha(
-                            0, 0,
-                            transitionOnlineText.getMeasuredWidth(),
-                            transitionOnlineText.getMeasuredHeight(),
-                            Math.round(255 * (1f - avatarAnimationProgress) * transitionOnlineText.getAlpha()),
-                            Canvas.ALL_SAVE_FLAG);
-                    transitionOnlineText.draw(canvas);
-                    canvas.restore();
-                    canvas.restore();
-                    invalidate();
-                }
+                drawProfileTransitionHeader(canvas);
                 if (hasFallbackPhoto && photoDescriptionProgress != 0 && customAvatarProgress != 1f) {
                     float cy = onlineTextView[1].getY() + onlineTextView[1].getMeasuredHeight() / 2f;
                     float size = dp(22);
@@ -6289,8 +6190,8 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
         writeButtonSetBackground();
         if (userId != 0) {
             if (imageUpdater != null) {
-                cameraDrawable = new RLottieDrawable(R.raw.camera_outline, String.valueOf(R.raw.camera_outline), AndroidUtilities.dp(56), AndroidUtilities.dp(56), false, null);
-                cellCameraDrawable = new RLottieDrawable(R.raw.camera_outline, R.raw.camera_outline + "_cell", AndroidUtilities.dp(42), AndroidUtilities.dp(42), false, null);
+                cameraDrawable = new RLottieDrawable(R.raw.camera_outline, AndroidUtilities.dp(56), AndroidUtilities.dp(56), false, null);
+                cellCameraDrawable = new RLottieDrawable(R.raw.camera_outline, AndroidUtilities.dp(42), AndroidUtilities.dp(42), false, null);
 
                 if (actionsView != null) {
                     actionsView.beginApplyingActions();
@@ -7090,8 +6991,10 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
         try {
             app.nimarkogram.messenger.banners.NimarkoBannerRenderer banner =
                 app.nimarkogram.messenger.banners.NimarkoBannerRenderer.getInstance();
-            banner.setPagerOwnedByProfile(false);
-            banner.setCollapseSettling(false);
+            if (banner.isCurrentProfile(topView, currentAccount, getDialogId())) {
+                banner.setPagerOwnedByProfile(false);
+                banner.setCollapseSettling(false);
+            }
         } catch (Throwable ignore) {}
         scheduleMusicHeaderAnimation();
     }
@@ -9354,7 +9257,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             float targetNameY = minNameY;
             float targetOnlineX = targetNameX;
             float targetOnlineY = minOnlineY;
-            if (a == 0 && profileTransitionUsesFloatingHeader) {
+            if (a == 0) {
                 if (profileTransitionHasTitleRect) {
                     targetNameX = profileTransitionTitleRect.left - nameTextView[a].getLeft();
                     targetNameY = profileTransitionTitleRect.top - nameTextView[a].getTop();
@@ -9596,7 +9499,10 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                             expandAnimator.setInterpolator(CubicBezierInterpolator.EASE_BOTH);
                             expandAnimator.setDuration((long) ((1f - value) * 250f / durationFactor));
                         }
+                        final TopView expandOwner = topView;
+                        final int expandGeneration = profileLifecycleGeneration;
                         expandAnimator.addListener(new AnimatorListenerAdapter() {
+                            private boolean cancelled;
                             @Override
                             public void onAnimationStart(Animator animation) {
                                 setForegroundImage(false);
@@ -9606,9 +9512,14 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
 
                             @Override
                             public void onAnimationEnd(Animator animation) {
+                                animation.removeListener(this);
+                                if (cancelled || profileLifecycleDestroyed
+                                        || expandGeneration != profileLifecycleGeneration
+                                        || expandOwner != topView) {
+                                    return;
+                                }
                                 justFullyExpanded = false;
                                 listView.canStopFlinger = true;
-                                expandAnimator.removeListener(this);
                                 topView.setBackgroundColor(Color.BLACK);
                                 avatarContainer.setVisibility(View.GONE);
                                 avatarsViewPager.setVisibility(View.VISIBLE);
@@ -9620,13 +9531,22 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                                 try {
                                     app.nimarkogram.messenger.banners.NimarkoBannerRenderer banner =
                                         app.nimarkogram.messenger.banners.NimarkoBannerRenderer.getInstance();
-                                    banner.setPagerOwnedByProfile(false);
-                                    banner.setCollapseSettling(false);
+                                    if (banner.isCurrentProfile(expandOwner, currentAccount, getDialogId())) {
+                                        banner.setPagerOwnedByProfile(false);
+                                        banner.setCollapseSettling(false);
+                                    }
                                 } catch (Throwable ignore) {}
                             }
 
                             @Override
                             public void onAnimationCancel(Animator animation) {
+                                cancelled = true;
+                                animation.removeListener(this);
+                                if (profileLifecycleDestroyed
+                                        || expandGeneration != profileLifecycleGeneration
+                                        || expandOwner != topView) {
+                                    return;
+                                }
                                 justFullyExpanded = false;
                                 listView.canStopFlinger = true;
                                 // Self-remove on cancel too (DrKLO only removed in END), so cancelled
@@ -9634,7 +9554,6 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                                 // rapid toggles. Do NOT release pager ownership here: a cancel means
                                 // another expand/collapse edge is taking over and will manage the
                                 // pager (and the ownership flag) itself.
-                                expandAnimator.removeListener(this);
                             }
                         });
                         final View view = layoutManager.findViewByPosition(0);
@@ -9656,7 +9575,11 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                         // setPagerOwnedByProfile gates ONLY the pager write, so the small-avatar
                         // overlay fade the banner runs on avatarImage/container is untouched.
                         try {
-                            app.nimarkogram.messenger.banners.NimarkoBannerRenderer.getInstance().setPagerOwnedByProfile(true);
+                            app.nimarkogram.messenger.banners.NimarkoBannerRenderer banner =
+                                    app.nimarkogram.messenger.banners.NimarkoBannerRenderer.getInstance();
+                            if (banner.isCurrentProfile(topView, currentAccount, getDialogId())) {
+                                banner.setPagerOwnedByProfile(true);
+                            }
                         } catch (Throwable ignore) {}
 
                         try {
@@ -9738,26 +9661,24 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                                 }
                             }
                         }
+                        final TopView collapseOwner = topView;
+                        final int collapseGeneration = profileLifecycleGeneration;
                         expandAnimator.addListener(new AnimatorListenerAdapter() {
                             @Override
                             public void onAnimationEnd(Animator animation) {
-                                expandAnimator.removeListener(this);
-                                // Only finalize if this collapse is still the owner of the pending
-                                // state. A racing re-expand sets collapsePagerPending = false and we
-                                // must NOT slam the pager GONE/alpha 1 underneath the new expand.
-                                if (collapsePagerPending) {
+                                animation.removeListener(this);
+                                if (!profileLifecycleDestroyed
+                                        && collapseGeneration == profileLifecycleGeneration
+                                        && collapseOwner == topView && collapsePagerPending) {
                                     finalizeCollapsePager();
                                 }
                             }
                             @Override
                             public void onAnimationCancel(Animator animation) {
-                                expandAnimator.removeListener(this);
-                                // Re-expand / instant-collapse cancels the settle before END fires.
-                                // If the cancel came from a re-EXPAND it already cleared
-                                // collapsePagerPending and took ownership of the pager (VISIBLE), so
-                                // we must not tear it down here. Otherwise (collapse->collapse, or a
-                                // bare stop) fully finalize so the pager never stays full-screen.
-                                if (collapsePagerPending) {
+                                animation.removeListener(this);
+                                if (!profileLifecycleDestroyed
+                                        && collapseGeneration == profileLifecycleGeneration
+                                        && collapseOwner == topView && collapsePagerPending) {
                                     finalizeCollapsePager();
                                 }
                             }
@@ -9776,10 +9697,10 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                         try {
                             app.nimarkogram.messenger.banners.NimarkoBannerRenderer banner =
                                 app.nimarkogram.messenger.banners.NimarkoBannerRenderer.getInstance();
-                            banner.setCollapseSettling(true);
-                            // Collapse owns the pager for the settle: suppress the banner's pager
-                            // alpha write (line 919) until the finalizer hides it.
-                            banner.setPagerOwnedByProfile(true);
+                            if (banner.isCurrentProfile(topView, currentAccount, getDialogId())) {
+                                banner.setCollapseSettling(true);
+                                banner.setPagerOwnedByProfile(true);
+                            }
                         } catch (Throwable ignore) {}
                         // This collapse now owns the pager teardown; the END/CANCEL finalizer below
                         // will hide+shrink it. Suppresses the full-screen height stamp in needLayout
@@ -9819,8 +9740,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                                 + actionBar.getTranslationY();
 //                metaball.setVisibility(View.GONE);
 
-                if (profileTransitionUsesFloatingHeader
-                        && profileTransitionHasTitleRect) {
+                if (profileTransitionHasTitleRect) {
                     nameTextView[0].setTranslationX(
                             profileTransitionTitleRect.left - nameTextView[0].getLeft());
                     nameTextView[0].setTranslationY(
@@ -9829,8 +9749,15 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                     nameTextView[0].setTranslationX((prevAvatarTranslation - dp(109) + dp(48)));
                     nameTextView[0].setTranslationY((float) Math.floor(avY) + AndroidUtilities.dp(1.3f));
                 }
-                onlineTextView[0].setTranslationX((prevAvatarTranslation - dp(109) + dp(48)));
-                onlineTextView[0].setTranslationY((float) Math.floor(avY) + AndroidUtilities.dp(24));
+                if (profileTransitionHasSubtitleRect) {
+                    onlineTextView[0].setTranslationX(
+                            profileTransitionSubtitleRect.left - onlineTextView[0].getLeft());
+                    onlineTextView[0].setTranslationY(
+                            profileTransitionSubtitleRect.top - onlineTextView[0].getTop());
+                } else {
+                    onlineTextView[0].setTranslationX((prevAvatarTranslation - dp(109) + dp(48)));
+                    onlineTextView[0].setTranslationY((float) Math.floor(avY) + AndroidUtilities.dp(24));
+                }
                 nameTextView[0].setScaleX(1.0f);
                 nameTextView[0].setScaleY(1.0f);
 
@@ -9980,9 +9907,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                     }
                     float minimizedNameX = minimizedX;
                     float resolvedNameY = nameY;
-                    if (a == 0
-                            && profileTransitionUsesFloatingHeader
-                            && profileTransitionHasTitleRect) {
+                    if (a == 0 && profileTransitionHasTitleRect) {
                         minimizedNameX = profileTransitionTitleRect.left - nameTextView[a].getLeft();
                         final float minimizedNameY =
                                 profileTransitionTitleRect.top - nameTextView[a].getTop();
@@ -10828,8 +10753,8 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
         if (app.nimarkogram.messenger.banners.NimarkoBannerConfig.enabled) {
             try {
                 app.nimarkogram.messenger.banners.NimarkoBannerRenderer rr = app.nimarkogram.messenger.banners.NimarkoBannerRenderer.getInstance();
-                rr.setAvatarViews(avatarImage, avatarContainer, avatarsViewPager, storyView, giftsView, avatarGooey);
-                rr.onProfileResumed(topView, getDialogId());
+                rr.setAvatarViews(currentAccount, avatarImage, avatarContainer, avatarsViewPager, storyView, giftsView, avatarGooey);
+                rr.onProfileResumed(topView, currentAccount, getDialogId());
             } catch (Throwable ignored) {}
         }
         invalidateIsInLandscapeMode();
@@ -10880,8 +10805,10 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                     try {
                         app.nimarkogram.messenger.banners.NimarkoBannerRenderer banner =
                             app.nimarkogram.messenger.banners.NimarkoBannerRenderer.getInstance();
-                        banner.setPagerOwnedByProfile(false);
-                        banner.setCollapseSettling(false);
+                        if (banner.isCurrentProfile(topView, currentAccount, getDialogId())) {
+                            banner.setPagerOwnedByProfile(false);
+                            banner.setCollapseSettling(false);
+                        }
                     } catch (Throwable ignore) {}
                     extraHeight = getHeaderExtraHeight();
                     allowPullingDown = false;
@@ -10916,7 +10843,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
         // NimarkoGram: ALWAYS tear down (null/no-op safe) so toggling the feature OFF
         // while a video banner is live still pauses ExoPlayer + the blur worker. Only
         // CREATION/draw is gated on NimarkoBannerConfig.enabled, never teardown.
-        try { app.nimarkogram.messenger.banners.NimarkoBannerRenderer.getInstance().onProfilePaused(topView); } catch (Throwable ignored) {}
+        try { app.nimarkogram.messenger.banners.NimarkoBannerRenderer.getInstance().onProfilePaused(topView, currentAccount); } catch (Throwable ignored) {}
         if (undoView != null) {
             undoView.hide(true, 0);
         }
@@ -10988,7 +10915,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
     @Override
     public void onBecomeFullyHidden() {
         // NimarkoGram: ALWAYS tear down (null/no-op safe) regardless of feature toggle.
-        try { app.nimarkogram.messenger.banners.NimarkoBannerRenderer.getInstance().onProfilePaused(topView); } catch (Throwable ignored) {}
+        try { app.nimarkogram.messenger.banners.NimarkoBannerRenderer.getInstance().onProfilePaused(topView, currentAccount); } catch (Throwable ignored) {}
         if (undoView != null) {
             undoView.hide(true, 0);
         }
@@ -11286,7 +11213,51 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
     private float profileTransitionAvatarY = Float.NaN;
     private float profileTransitionAvatarSizeDp = 42f;
     private final RectF profileTransitionTitleRect = new RectF();
-    private final RectF profileTransitionLiveTitleRect = new RectF();
+    private final android.graphics.Matrix profileTransitionHeaderMatrix = new android.graphics.Matrix();
+    private final android.graphics.Matrix profileTransitionParentMatrix = new android.graphics.Matrix();
+    private final RectF profileTransitionHeaderBounds = new RectF();
+    private static void profileViewToRoot(View view, android.graphics.Matrix matrix) {
+        if (view.getParent() instanceof View) {
+            View parent = (View) view.getParent();
+            profileViewToRoot(parent, matrix);
+            matrix.preTranslate(-parent.getScrollX(), -parent.getScrollY());
+        }
+        matrix.preTranslate(view.getLeft(), view.getTop());
+        matrix.preConcat(view.getMatrix());
+    }
+    private boolean profileTransitionMatrix(View source, View destination) {
+        if (source.getRootView() != destination.getRootView()) {
+            return false;
+        }
+        profileTransitionParentMatrix.reset();
+        profileViewToRoot(destination, profileTransitionParentMatrix);
+        if (!profileTransitionParentMatrix.invert(profileTransitionHeaderMatrix)) {
+            return false;
+        }
+        profileTransitionParentMatrix.reset();
+        profileViewToRoot(source, profileTransitionParentMatrix);
+        profileTransitionHeaderMatrix.preConcat(profileTransitionParentMatrix);
+        return true;
+    }
+    private void drawProfileTransitionHeader(Canvas canvas) {
+        if (previousTransitionFragment == null
+                || (transitionTitleText == null && transitionOnlineText == null)) {
+            return;
+        }
+        ChatAvatarContainer source = previousTransitionFragment.getAvatarContainer();
+        if (source == null || !profileTransitionMatrix(source, avatarContainer2)) {
+            return;
+        }
+        profileTransitionHeaderBounds.set(0, 0, source.getWidth(), source.getHeight());
+        profileTransitionHeaderBounds.inset(-dp(12), -dp(12));
+        profileTransitionHeaderMatrix.mapRect(profileTransitionHeaderBounds);
+        final int save = canvas.saveLayerAlpha(profileTransitionHeaderBounds,
+                Math.round(255 * Utilities.clamp01(1f - avatarAnimationProgress) * source.getAlpha()));
+        canvas.concat(profileTransitionHeaderMatrix);
+        source.drawProfileTransitionText(canvas, transitionTitleText, transitionOnlineText);
+        canvas.restoreToCount(save);
+        avatarContainer2.invalidate();
+    }
     private final RectF profileTransitionSubtitleRect = new RectF();
     private final RectF profileTransitionTimeItemRect = new RectF();
     private boolean profileTransitionHasTitleRect;
@@ -11586,7 +11557,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
     }
 
     private void prepareProfileTransitionStart(boolean isOpen, ActionBar previousActionBar) {
-        if (profileTransitionUsesFloatingHeader && previousActionBar != null) {
+        if (previousActionBar != null) {
             // Keep the source's real title/subtitle/drawables on screen throughout
             // the 50 ms scheduling window. The transition copies take
             // ownership atomically with AnimatorSet.start().
@@ -11617,7 +11588,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             profileBackSelectorFading = true;
         }
 
-        if (!profileTransitionUsesFloatingHeader) {
+        if (previousTransitionFragment == null) {
             return;
         }
 
@@ -11700,7 +11671,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                             * (1f - mediaHeaderAnimationProgress)));
             try {
                 app.nimarkogram.messenger.banners.NimarkoBannerRenderer.getInstance()
-                        .beginProfileExit(topView, getDialogId());
+                        .beginProfileExit(topView, currentAccount, getDialogId());
             } catch (Throwable ignored) {}
         }
 
@@ -11753,14 +11724,17 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
         final ActionBar previousActionBar;
         if (previousTransitionFragment != null && previousTransitionFragment.getActionBar() != null) {
             previousActionBar = previousTransitionFragment.getActionBar();
-            if (!profileTransitionUsesFloatingHeader) {
-                previousActionBar.setSkipDrawChild(true);
-            }
         } else {
             previousActionBar = null;
         }
 
         final boolean fromFloatingHeader = profileTransitionUsesFloatingHeader;
+        final boolean fromExactTitle = sourceAvatarContainer != null
+                && sourceAvatarContainer.getTitleTextView() != null
+                && sourceAvatarContainer.getTitleTextView().getVisibility() == View.VISIBLE;
+        final boolean fromExactSubtitle = sourceAvatarContainer != null
+                && sourceAvatarContainer.getSubtitleTextView() != null
+                && sourceAvatarContainer.getSubtitleTextView().getVisibility() == View.VISIBLE;
         profileTransitionSourceActionBar = previousActionBar;
         profileTransitionSourceItemsColor = previousActionBar != null
                 ? previousActionBar.getItemsColor()
@@ -11790,7 +11764,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             // header. Hide the destination copy to avoid drawing two arrows on
             // top of each other; prepareProfileTransitionStart swaps ownership
             // in one UI turn, so there is no empty frame.
-            actionBar.getBackButton().setAlpha(fromFloatingHeader ? 0f : 1f);
+            actionBar.getBackButton().setAlpha(0f);
         }
         if (profileTransitionOwnsActionBarColors) {
             applyProfileTransitionActionBarColors(isOpen ? 0f : 1f);
@@ -11805,7 +11779,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
         animatorSet.setDuration(playProfileAnimation == 2 ? 250 : fromTopics ? 220 : 180);
         listView.setLayerType(View.LAYER_TYPE_HARDWARE, null);
         ActionBarMenu menu = actionBar.createMenu();
-        if (isOpen && fromFloatingHeader) {
+        if (isOpen && previousActionBar != null) {
             // The source header menu remains the sole visible owner during the
             // 50 ms scheduling window. It is atomically replaced at start.
             menu.setAlpha(0f);
@@ -11867,7 +11841,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                 overlaysView.setOverlaysVisible();
             }
             for (int a = 0; a < 2; a++) {
-                if (fromFloatingHeader && a == 0) {
+                if (fromExactTitle && a == 0) {
                     nameTextView[a].setAlpha(0f);
                     continue;
                 }
@@ -11935,7 +11909,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
 
             boolean onlineTextCrosafade = false;
 
-            if (fromFloatingHeader) {
+            if (fromExactSubtitle) {
                 // Until the delayed start, the source continues drawing its own
                 // subtitle. At start it is handed to transitionOnlineText and
                 // the profile subtitle begins its fade from alpha 0.
@@ -11945,10 +11919,8 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                 animators.add(ObjectAnimator.ofFloat(onlineTextView[1], View.ALPHA, 1.0f));
             } else if (previousTransitionFragment != null) {
                 ChatAvatarContainer avatarContainer = previousTransitionFragment.getAvatarContainer();
-                if (avatarContainer != null
-                        && (avatarContainer.getSubtitleTextView() instanceof SimpleTextView
-                        && ((SimpleTextView) avatarContainer.getSubtitleTextView()).getLeftDrawable() != null
-                        || avatarContainer.statusMadeShorter[0])) {
+                if (avatarContainer != null && avatarContainer.getSubtitleTextView() != null
+                        && avatarContainer.getSubtitleTextView().getVisibility() == View.VISIBLE) {
                     transitionOnlineText = avatarContainer.getSubtitleTextView();
                     avatarContainer2.invalidate();
                     onlineTextCrosafade = true;
@@ -11986,7 +11958,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                 animators.add(ObjectAnimator.ofFloat(writeButton, View.ALPHA, 0.0f));
             }
             for (int a = 0; a < 2; a++) {
-                if (fromFloatingHeader && a == 0) {
+                if (fromExactTitle && a == 0) {
                     nameTextView[a].setAlpha(0f);
                     continue;
                 }
@@ -12051,7 +12023,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
 
             boolean crossfadeOnlineText = false;
             BaseFragment previousFragment = parentLayout.getFragmentStack().size() > 1 ? parentLayout.getFragmentStack().get(parentLayout.getFragmentStack().size() - 2) : null;
-            if (fromFloatingHeader) {
+            if (fromExactSubtitle) {
                 // The exact source subtitle is installed at animation start.
                 // Preserve the profile subtitle during the scheduling delay and
                 // fade it out only once the animator is running.
@@ -12061,7 +12033,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             } else if (previousFragment instanceof ChatActivity) {
                 ChatAvatarContainer avatarContainer = ((ChatActivity) previousFragment).getAvatarContainer();
                 View subtitleTextView = avatarContainer.getSubtitleTextView();
-                if (subtitleTextView instanceof SimpleTextView && ((SimpleTextView) subtitleTextView).getLeftDrawable() != null || avatarContainer.statusMadeShorter[0]) {
+                if (subtitleTextView != null && subtitleTextView.getVisibility() == View.VISIBLE) {
                     transitionOnlineText = avatarContainer.getSubtitleTextView();
                     avatarContainer2.invalidate();
                     crossfadeOnlineText = true;
@@ -12144,7 +12116,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             if (nimarkoBannerExitTransition) {
                 try {
                     app.nimarkogram.messenger.banners.NimarkoBannerRenderer.getInstance()
-                            .endProfileExit(topView, getDialogId());
+                            .endProfileExit(topView, currentAccount, getDialogId());
                 } catch (Throwable ignored) {}
                 nimarkoBannerExitTransition = false;
             }
@@ -13233,24 +13205,19 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
         AnimatedEmojiDrawable.SwapAnimatedEmojiDrawable badge = new AnimatedEmojiDrawable.SwapAnimatedEmojiDrawable(
                 nameTextView[a], dp(24), a == 0 ? AnimatedEmojiDrawable.CACHE_TYPE_EMOJI_STATUS
                         : AnimatedEmojiDrawable.CACHE_TYPE_KEYBOARD) {
-            private final AnimatedFloat appearance = new AnimatedFloat(nameTextView[a], 0, 180, CubicBezierInterpolator.EASE_OUT);
-            private boolean imageReady;
+            private int compositedAlpha = 255;
+            @Override
+            public void setAlpha(int alpha) {
+                compositedAlpha = alpha;
+                super.setAlpha(255);
+            }
             @Override
             public void draw(Canvas canvas) {
-                if (!imageReady) {
-                    Drawable drawable = getDrawable();
-                    if (!(drawable instanceof AnimatedEmojiDrawable)) return;
-                    ImageReceiver receiver = ((AnimatedEmojiDrawable) drawable).getImageReceiver();
-                    if (receiver == null || !receiver.hasBitmapImage()) return;
-                    imageReady = true;
-                    appearance.force(0f);
+                if (compositedAlpha <= 0) {
+                    return;
                 }
-                float alpha = appearance.set(1f);
-                if (alpha < 1f) {
-                    Rect bounds = getBounds();
-                    int padding = dp(12);
-                    int save = canvas.saveLayerAlpha(bounds.left - padding, bounds.top - padding,
-                            bounds.right + padding, bounds.bottom + padding, Math.round(255 * alpha));
+                if (compositedAlpha < 255) {
+                    int save = canvas.saveLayerAlpha(null, compositedAlpha);
                     super.draw(canvas);
                     canvas.restoreToCount(save);
                 } else {
@@ -13703,7 +13670,12 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                 isOnline[0] = false;
                 // NimarkoGram: when premium status emoji is hidden, append " | TG Premium" so user is still marked as premium.
                 String tgPremium = getMessagesController().isPremiumUser(user) && app.nimarkogram.messenger.NimarkoConfig.disablePremiumStatuses ? " | TG Premium" : "";
-                newString2 = LocaleController.formatUserStatus(currentAccount, user, isOnline, shortStatus ? new boolean[1] : null) + tgPremium;
+                boolean[] profileStatusMadeShorter = new boolean[1];
+                newString2 = (app.nimarkogram.messenger.NimarkoConfig.oldTimeStyle
+                        ? LocaleController.formatUserStatus(currentAccount, user, isOnline,
+                                profileStatusMadeShorter)
+                        : LocaleController.formatUserStatusIOS(currentAccount, user, isOnline,
+                                profileStatusMadeShorter)) + tgPremium;
                 hiddenStatusButton = user != null && !isOnline[0] && !getUserConfig().isPremium() && user.status != null && (user.status instanceof TLRPC.TL_userStatusRecently || user.status instanceof TLRPC.TL_userStatusLastMonth || user.status instanceof TLRPC.TL_userStatusLastWeek) && user.status.by_me;
                 if (onlineTextView[1] != null && !mediaHeaderVisible) {
                     int key = isOnline[0] && peerColor == null ? Theme.key_profile_status : Theme.key_actionBarDefaultSubtitle;
@@ -14881,6 +14853,24 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
         }
         parent.addView(more, insertion, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, dp(48)));
+        boolean hasItemAfter = false;
+        for (int i = parent.getChildCount() - 1; i >= 0; i--) {
+            View child = parent.getChildAt(i);
+            if (child instanceof ActionBarPopupWindow.GapView) {
+                child.setVisibility(hasItemAfter ? View.VISIBLE : View.GONE);
+                hasItemAfter = false;
+            } else if (child.getVisibility() == View.VISIBLE) {
+                hasItemAfter = true;
+            }
+        }
+        for (int i = 0; i < parent.getChildCount(); i++) {
+            View child = parent.getChildAt(i);
+            if (child instanceof ActionBarPopupWindow.GapView) {
+                child.setVisibility(View.GONE);
+            } else if (child.getVisibility() == View.VISIBLE) {
+                break;
+            }
+        }
     }
 
     /** NimarkoGram (C1): (re)build the "Plugins (N)" item in the profile three-dots
@@ -18326,8 +18316,8 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
         if (app.nimarkogram.messenger.banners.NimarkoBannerConfig.enabled) {
             try {
                 app.nimarkogram.messenger.banners.NimarkoBannerRenderer rr = app.nimarkogram.messenger.banners.NimarkoBannerRenderer.getInstance();
-                rr.setAvatarViews(avatarImage, avatarContainer, avatarsViewPager, storyView, giftsView, avatarGooey);
-                rr.onProfileResumed(topView, getDialogId());
+                rr.setAvatarViews(currentAccount, avatarImage, avatarContainer, avatarsViewPager, storyView, giftsView, avatarGooey);
+                rr.onProfileResumed(topView, currentAccount, getDialogId());
             } catch (Throwable ignored) {}
         }
         writeButtonSetBackground();
@@ -18394,8 +18384,10 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                     try {
                         app.nimarkogram.messenger.banners.NimarkoBannerRenderer banner =
                             app.nimarkogram.messenger.banners.NimarkoBannerRenderer.getInstance();
-                        banner.setPagerOwnedByProfile(false);
-                        banner.setCollapseSettling(false);
+                        if (banner.isCurrentProfile(topView, currentAccount, getDialogId())) {
+                            banner.setPagerOwnedByProfile(false);
+                            banner.setCollapseSettling(false);
+                        }
                     } catch (Throwable ignore) {}
                     extraHeight = getHeaderExtraHeight();
                 } else {

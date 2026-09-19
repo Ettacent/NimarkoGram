@@ -2237,6 +2237,10 @@ public class LinearLayoutManager extends RecyclerView.LayoutManager implements
     public boolean hasPendingScrollPosition() {
         return mPendingScrollPosition >= 0;
     }
+    public boolean hasPendingScrollPosition(int position, int offset) {
+        return mPendingScrollPosition == position && mPendingScrollPositionOffset == offset
+                && !mPendingScrollPositionBottom;
+    }
 
     /**
      * Helper class that keeps temporary state while {LayoutManager} is filling out the empty

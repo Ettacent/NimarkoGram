@@ -1199,8 +1199,10 @@ public class SimpleTextView extends View implements Drawable.Callback {
                 if (!ellipsizeByGradientLeft) {
                     canvas.translate(getMaxTextWidth() - paddingRight - fadeEllpsizePaintWidth
                             - getOutsideRightDrawableTextClipInset(), 0);
+                } else {
+                    canvas.translate(textOffsetX, 0);
                 }
-                canvas.drawRect(textOffsetX, 0, fadeEllpsizePaintWidth, getMeasuredHeight(), fadeEllpsizePaint);
+                canvas.drawRect(0, 0, fadeEllpsizePaintWidth, getMeasuredHeight(), fadeEllpsizePaint);
                 canvas.restore();
             }
             updateScrollAnimation();
@@ -1341,7 +1343,8 @@ public class SimpleTextView extends View implements Drawable.Callback {
             return;
         }
         long newUpdateTime = SystemClock.elapsedRealtime();
-        long dt = newUpdateTime - lastUpdateTime;
+        long dt = Math.max(0, newUpdateTime - lastUpdateTime);
+        lastUpdateTime = newUpdateTime;
         if (dt > 17) {
             dt = 17;
         }

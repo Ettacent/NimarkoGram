@@ -199,6 +199,10 @@ public final class NimarkoBannerRenderer {
     private final Set<String> preloading = ConcurrentSet();
     private final Set<String> blurReq = ConcurrentSet();
     private final Set<Long> avLoading = ConcurrentSet();
+    private volatile int rendererAccount = UserConfig.selectedAccount;
+    private volatile long rendererUserId = UserConfig.getInstance(rendererAccount).getClientUserId();
+    private volatile int accountGeneration;
+    private int viewedAccount = -1;
     private static final int AV_BMP_MAX = 6;
     private final LinkedHashMap<Long, Bitmap> avBmpByEid =
             new LinkedHashMap<Long, Bitmap>(AV_BMP_MAX, 0.75f, true) {
@@ -259,6 +263,50 @@ public final class NimarkoBannerRenderer {
     private volatile int blurGen;
 
     private NimarkoBannerRenderer() {}
+    public void onAccountSwitched(int account) {
+        if (Looper.myLooper() != Looper.getMainLooper()) {
+            AndroidUtilities.runOnUIThread(() -> onAccountSwitched(account));
+            return;
+        }
+        if (account != UserConfig.selectedAccount) return;
+        long userId = UserConfig.getInstance(account).getClientUserId();
+        if (rendererAccount == account && rendererUserId == userId) return;
+        if (lastFadeA >= 0f) setAvAlpha(1f, 1f);
+        rendererAccount = account;
+        rendererUserId = userId;
+        accountGeneration++;
+        resetState();
+        photoFadeKey.clear();
+        photoFadeStart.clear();
+        frameBfByEid.clear();
+        frameIvByEid.clear();
+        preloading.clear();
+        blurReq.clear();
+        avLoading.clear();
+        for (Bitmap bitmap : avBmpByEid.values()) recycle(bitmap);
+        avBmpByEid.clear();
+        clearBmps();
+        pausedAvatarStates.clear();
+        avatarImage = null;
+        avatarContainer = null;
+        avatarsViewPager = null;
+        storyView = null;
+        avatarGooey = null;
+        giftsView = null;
+        currentTopView = null;
+    }
+    private boolean ensureAccount(int account) {
+        if (account != UserConfig.selectedAccount) return false;
+        onAccountSwitched(account);
+        return isActiveAccount(account);
+    }
+    private boolean isActiveAccount(int account) {
+        return account == rendererAccount && account == UserConfig.selectedAccount
+                && rendererUserId == UserConfig.getInstance(account).getClientUserId();
+    }
+    private boolean isCurrentAccountGeneration(int generation) {
+        return generation == accountGeneration && isActiveAccount(rendererAccount);
+    }
 
     private static <T> Set<T> ConcurrentSet() { return java.util.Collections.newSetFromMap(new java.util.concurrent.ConcurrentHashMap<>()); }
 
@@ -295,8 +343,9 @@ public final class NimarkoBannerRenderer {
     }
 
 
-    public void setAvatarViews(View avatarImage, View avatarContainer, View avatarsViewPager,
+    public void setAvatarViews(int account, View avatarImage, View avatarContainer, View avatarsViewPager,
                                View storyView, View giftsView, View avatarGooey) {
+        if (!ensureAccount(account)) return;
         this.avatarImage = avatarImage;
         this.avatarContainer = avatarContainer;
         this.avatarsViewPager = avatarsViewPager;
@@ -376,13 +425,14 @@ public final class NimarkoBannerRenderer {
         setCollapseSettling(false);
     }
 
-    public void onProfileResumed(ViewGroup topView, long dialogId) {
-        if (isProfileOpen && viewedProfileId == dialogId && currentTopView == topView) {
+    public void onProfileResumed(ViewGroup topView, int account, long dialogId) {
+        if (!ensureAccount(account)) return;
+        if (isProfileOpen && viewedAccount == account && viewedProfileId == dialogId && currentTopView == topView) {
             postInv();
             return;
         }
         ViewGroup prevTopView = currentTopView;
-        boolean samePeer = viewedProfileId != 0 && viewedProfileId == dialogId;
+        boolean samePeer = viewedAccount == account && viewedProfileId != 0 && viewedProfileId == dialogId;
         boolean topViewChanged = samePeer && prevTopView != topView;
         currentTopView = topView;
         if (topViewChanged) {
@@ -396,7 +446,8 @@ public final class NimarkoBannerRenderer {
             profileExitActive = false;
             profileExitEid = 0;
         }
-        if (viewedProfileId != 0 && viewedProfileId != dialogId) resetState();
+        if (viewedAccount != account || viewedProfileId != 0 && viewedProfileId != dialogId) resetState();
+        viewedAccount = account;
         viewedProfileId = dialogId;
         isProfileOpen = true;
         openAnimDone = false;
@@ -423,10 +474,11 @@ public final class NimarkoBannerRenderer {
     }
 
     public void onProfilePaused() {
-        onProfilePaused(null);
+        onProfilePaused(null, rendererAccount);
     }
 
-    public void onProfilePaused(ViewGroup topView) {
+    public void onProfilePaused(ViewGroup topView, int account) {
+        if (!isActiveAccount(account) || viewedAccount != account) return;
         if (topView != null && currentTopView != null && topView != currentTopView) {
             return;
         }
@@ -444,10 +496,11 @@ public final class NimarkoBannerRenderer {
     }
 
     public void onProfileDestroyed(long dialogId) {
-        onProfileDestroyed(null, dialogId);
+        onProfileDestroyed(null, rendererAccount, dialogId);
     }
 
-    public void onProfileDestroyed(ViewGroup topView, long dialogId) {
+    public void onProfileDestroyed(ViewGroup topView, int account, long dialogId) {
+        if (!isActiveAccount(account) || viewedAccount != account) return;
         if (topView != null) pausedAvatarStates.remove(topView);
         if (dialogId != 0 && viewedProfileId != 0 && dialogId != viewedProfileId) {
             frameBfByEid.remove(dialogId);
@@ -624,6 +677,8 @@ public final class NimarkoBannerRenderer {
     private void resetState() {
         isProfileOpen = false; openAnimDone = false; animDoneTime = 0; frameTime = 0;
         firstCommitTime = 0;
+        suppressBg = false;
+        headerExtraHint = 0;
         frameLastExtra = -999f; setupVideoAfter = 0; videoPausedByTab = false;
         frameLastExpand = -1f;
         videoHierarchyGeneration++;
@@ -633,7 +688,7 @@ public final class NimarkoBannerRenderer {
         clearSettleState();
         maxEh = 0; matKeyW = -1; matKeyY1 = -1; matKeyBw = -1; matKeyBh = -1; grad = null; gradKeyY1q = -1;
         lastDa = -1; lastBa = -1f; lastLh = 0; lastVol = -1f;
-        viewedProfileId = 0; maxVh = 0;
+        viewedAccount = -1; viewedProfileId = 0; maxVh = 0;
         curBf = null; curIv = false; curLoading = false;
         avViewsKey = 0; avLastAlpha = -1f; avLastGifts = -1f; avSvVis = -1;
         lastFadeA = -1f; lastFadeGifts = -1f; vidFirstFrameTime = 0;
@@ -672,21 +727,26 @@ public final class NimarkoBannerRenderer {
     }
 
 
-    public boolean isCurrentProfile(ViewGroup topView, long eid) {
-        return topView != null && currentTopView == topView && viewedProfileId == eid;
+    public boolean isCurrentProfile(ViewGroup topView, int account, long eid) {
+        return isActiveAccount(account) && viewedAccount == account
+                && topView != null && currentTopView == topView && viewedProfileId == eid;
     }
 
     private boolean isVideoAttachedTo(ViewGroup topView) {
         return topView != null && videoTexture != null && videoTexture.getParent() == topView;
     }
 
-    public FrameDecision prepareFrame(ViewGroup topView, long eid, float extra, int w, int y1Hint,
+    public FrameDecision prepareFrame(ViewGroup topView, int account, long eid, float extra, int w, int y1Hint,
                                       boolean openAnim, boolean transAnim, boolean searchMode,
                                       float expand, int playProfileAnimation, boolean hasMainTabs,
                                       boolean profileClosing,
                                       int headerExtra) {
         try {
-            if (!isCurrentProfile(topView, eid)) {
+            if (!ensureAccount(account)) {
+                decision.suppressBackground = false;
+                return decision;
+            }
+            if (!isCurrentProfile(topView, account, eid)) {
                 return prepareFrameNonCommitted(topView, eid);
             }
             if (headerExtra > 0) headerExtraHint = headerExtra;
@@ -1029,12 +1089,12 @@ public final class NimarkoBannerRenderer {
         } catch (Throwable ignored) {}
     }
 
-    public float getForegroundProgress(ViewGroup topView, long eid) {
+    public float getForegroundProgress(ViewGroup topView, int account, long eid) {
         try {
-            if (eid == 0) return 0f;
+            if (!isActiveAccount(account) || eid == 0) return 0f;
             String bf = frameBfByEid.get(eid);
             boolean iv = Boolean.TRUE.equals(frameIvByEid.get(eid));
-            boolean committed = isCurrentProfile(topView, eid);
+            boolean committed = isCurrentProfile(topView, account, eid);
             if (bf != null && iv) {
                 return isVideoAttachedTo(topView) && pathEq(bf, curVidPath) ? videoVisualProgress() : 0f;
             }
@@ -1057,7 +1117,7 @@ public final class NimarkoBannerRenderer {
             if (!okBmp(bmp) || !key.equals(photoFadeKey.get(eid))) return 0f;
             double fs = photoFadeStart.getOrDefault(eid, 0.0);
             if (fs <= 0) return 0f;
-            double progress = clamp01(((frameTime != 0 ? frameTime : t()) - fs) / FADE_DUR);
+            double progress = clamp01((t() - fs) / FADE_DUR);
             progress = 1.0 - Math.pow(1.0 - progress, 2);
             if (avAnim.contains(eid) && ctrl.shouldHideAvatar(eid)) {
                 progress = Math.max(progress, 1.0 - getOr(avAlpha, eid, 1f));
@@ -1087,18 +1147,19 @@ public final class NimarkoBannerRenderer {
     }
 
 
-    public void drawImageBanner(Canvas canvas, int w, int y1, float extra, long callerEid) {
+    public void drawImageBanner(Canvas canvas, int w, int y1, float extra, int account, long callerEid) {
         try {
-            if (canvas == null || w <= 0) return;
+            if (!isActiveAccount(account) || canvas == null || w <= 0 || y1 <= 0) return;
             long eid = callerEid;
             if (eid == 0) return;
-            double now = frameTime != 0 ? frameTime : t();
+            double now = t();
+            boolean ownsXfade = viewedAccount == account && viewedProfileId == eid;
 
             String bf = frameBfByEid.get(eid);
             Boolean ivBoxed = frameIvByEid.get(eid);
             boolean iv = ivBoxed != null && ivBoxed;
 
-            if (bf != null && !iv) {
+            if (ownsXfade && bf != null && !iv) {
                 String prevKey = photoFadeKey.get(eid);
                 if (prevKey != null && prevKey.length() > 1 && prevKey.charAt(0) == 'f') {
                     String prevPath = prevKey.substring(1);
@@ -1112,7 +1173,11 @@ public final class NimarkoBannerRenderer {
             if (bf != null && !iv) {
                 Bitmap cached = bitmaps.get(bf);
                 if (okBmp(cached)) bmp = cached;
-                else { drawXfadeOnly(canvas, w, y1); preloadBmp(bf); return; }
+                else {
+                    if (ownsXfade) drawXfadeOnly(canvas, w, y1);
+                    preloadBmp(bf);
+                    return;
+                }
             }
             if (!okBmp(bmp) && NimarkoBannerConfig.useAvatar && ctrl.hasNoRealBanner(eid)) {
                 Bitmap ab = avatarBitmapFor(eid);
@@ -1163,6 +1228,7 @@ public final class NimarkoBannerRenderer {
                 if (bb == null && !blurReq.contains(bk)) {
                     blurReq.add(bk);
                     final Bitmap ref = bmp;
+                    final int generation = accountGeneration;
                     executor.submit(() -> {
                         Bitmap bl = null;
                         try {
@@ -1178,7 +1244,7 @@ public final class NimarkoBannerRenderer {
                         final Bitmap result = bl;
                         AndroidUtilities.runOnUIThread(() -> {
                             try {
-                                if (okBmp(result)) {
+                                if (isCurrentAccountGeneration(generation) && okBmp(result)) {
                                     Bitmap previous = blurBmps.put(bk, result);
                                     if (previous != null && previous != result) {
                                         recycle(previous);
@@ -1188,7 +1254,7 @@ public final class NimarkoBannerRenderer {
                                     recycle(result);
                                 }
                             } finally {
-                                blurReq.remove(bk);
+                                if (generation == accountGeneration) blurReq.remove(bk);
                             }
                         });
                     });
@@ -1207,7 +1273,7 @@ public final class NimarkoBannerRenderer {
             try {
                 canvas.clipRect(0, 0, w, y1);
                 int xa = 0;
-                if (okBmp(xfadeBmp) && xfadeStart > 0 && fa < 255) {
+                if (ownsXfade && okBmp(xfadeBmp) && xfadeStart > 0 && fa < 255) {
                     xa = 255 - fa;
                     int xbw = xfadeBmp.getWidth(), xbh = xfadeBmp.getHeight();
                     if (xbw > 0 && xbh > 0) {
@@ -1234,7 +1300,7 @@ public final class NimarkoBannerRenderer {
                     pGrad.setShader(grad); pGrad.setAlpha((int) (255 * visFactor));
                     int gh = Math.max(1, (int) (y1 * 0.4)); canvas.drawRect(0, y1 - gh, w, y1, pGrad);
                 }
-                if (xa <= 0 && xfadeBmp != null) { try { clearXfade(); } catch (Throwable ignored) {} }
+                if (ownsXfade && xa <= 0 && xfadeBmp != null) { try { clearXfade(); } catch (Throwable ignored) {} }
             } finally {
                 try { canvas.restoreToCount(sid); } catch (Throwable e) { try { canvas.restore(); } catch (Throwable ignored) {} }
             }
@@ -1303,6 +1369,7 @@ public final class NimarkoBannerRenderer {
         if (path == null || isVideoPath(path) || preloading.contains(path)) return;
         if (okBmp(bitmaps.get(path))) return;
         preloading.add(path);
+        final int generation = accountGeneration;
         executor.submit(() -> {
             Bitmap decoded = null;
             try {
@@ -1313,7 +1380,7 @@ public final class NimarkoBannerRenderer {
             final Bitmap result = decoded;
             AndroidUtilities.runOnUIThread(() -> {
                 try {
-                    if (okBmp(result)) {
+                    if (isCurrentAccountGeneration(generation) && okBmp(result)) {
                         Bitmap previous = bitmaps.put(path, result);
                         if (previous != null && previous != result) {
                             recycle(previous);
@@ -1323,15 +1390,14 @@ public final class NimarkoBannerRenderer {
                         recycle(result);
                     }
                 } finally {
-                    preloading.remove(path);
+                    if (generation == accountGeneration) preloading.remove(path);
                 }
             });
         });
     }
 
-    private Bitmap loadAvatar(long eid) {
+    private Bitmap loadAvatar(long eid, int account) {
         try {
-            int account = UserConfig.selectedAccount;
             MessagesController mc = MessagesController.getInstance(account);
             TLRPC.FileLocation fl = null;
             if (eid > 0) {
@@ -1357,27 +1423,37 @@ public final class NimarkoBannerRenderer {
 
     private void kickAvatarDecode(long eid) {
         if (!avLoading.add(eid)) return;
+        final int generation = accountGeneration;
+        final int account = rendererAccount;
         executor.submit(() -> {
             Bitmap ab = null;
-            try { ab = loadAvatar(eid); } catch (Throwable ignored) {}
+            try {
+                if (isCurrentAccountGeneration(generation) && account == rendererAccount) {
+                    ab = loadAvatar(eid, account);
+                }
+            } catch (Throwable ignored) {}
             final Bitmap fab = ab;
             AndroidUtilities.runOnUIThread(() -> {
                 try {
-                    if (okBmp(fab)) {
+                    if (isCurrentAccountGeneration(generation) && account == rendererAccount && okBmp(fab)) {
                         Bitmap previous = avBmpByEid.put(eid, fab);
                         if (previous != null && previous != fab) recycle(previous);
+                    } else {
+                        recycle(fab);
                     }
                 } catch (Throwable ignored) {
                     recycle(fab);
                 }
-                avLoading.remove(eid);
-                if (okBmp(fab)) invalidateTopView();
+                if (isCurrentAccountGeneration(generation) && account == rendererAccount) {
+                    avLoading.remove(eid);
+                    if (okBmp(fab)) invalidateTopView();
+                }
             });
         });
     }
 
-    public void beginProfileExit(ViewGroup topView, long eid) {
-        if (!isCurrentProfile(topView, eid)) return;
+    public void beginProfileExit(ViewGroup topView, int account, long eid) {
+        if (!isCurrentProfile(topView, account, eid)) return;
         profileExitActive = true;
         profileExitEid = eid;
         profileExitAvatarProgress = 1f;
@@ -1401,8 +1477,9 @@ public final class NimarkoBannerRenderer {
         } catch (Throwable ignored) {}
     }
 
-    public void applyProfileExitAlpha(long eid, float alpha) {
-        if (!profileExitActive || profileExitEid != eid) return;
+    public void applyProfileExitAlpha(int account, long eid, float alpha) {
+        if (!isActiveAccount(account) || viewedAccount != account
+                || !profileExitActive || profileExitEid != eid) return;
         alpha = clamp01(alpha);
         profileExitAvatarProgress = alpha;
         try { if (videoTexture != null) videoTexture.setAlpha(profileExitTextureAlpha * alpha); } catch (Throwable ignored) {}
@@ -1425,8 +1502,8 @@ public final class NimarkoBannerRenderer {
         }
     }
 
-    public void endProfileExit(ViewGroup topView, long eid) {
-        if (!isCurrentProfile(topView, eid)) return;
+    public void endProfileExit(ViewGroup topView, int account, long eid) {
+        if (!isCurrentProfile(topView, account, eid)) return;
         if (!profileExitActive || profileExitEid != eid) return;
         try { if (videoTexture != null) videoTexture.setAlpha(profileExitTextureAlpha); } catch (Throwable ignored) {}
         try { if (vidFreeze != null) vidFreeze.setAlpha(profileExitFreezeAlpha); } catch (Throwable ignored) {}

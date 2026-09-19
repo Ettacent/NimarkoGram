@@ -37,9 +37,9 @@ public abstract class BaseInfoCard extends FrameLayout {
     private static final int CHIP_HEIGHT_DP = 28;
     private static final int CORNER_RADIUS_DP = 14;
 
-    private static final long RESIZE_DURATION_MS = 350;
+    private static final long RESIZE_DURATION_MS = 300;
     private static final float RESIZE_TEXT_SCALE_POP = 0.12f; 
-    private static final TimeInterpolator RESIZE_INTERPOLATOR = CubicBezierInterpolator.EASE_BOTH; 
+    private static final TimeInterpolator RESIZE_INTERPOLATOR = CubicBezierInterpolator.EASE_OUT_QUINT;
 
     private final LinearLayout content;
     protected final ImageView iconView;
@@ -54,6 +54,7 @@ public abstract class BaseInfoCard extends FrameLayout {
     
     private boolean inlineFolderStyle;
     private boolean renderingInstantly;
+    private boolean hasRenderedValue;
     private int lastIconRes;
     
     private int maxChipWidth;
@@ -117,6 +118,8 @@ public abstract class BaseInfoCard extends FrameLayout {
         content.addView(iconView, LayoutHelper.createLinear(16, 16, Gravity.CENTER_VERTICAL, 0, 0, 4, 0));
 
         textView = new ChipTextView(context, true, true, true);
+        textView.getDrawable().setFadeOverflow(true);
+        textView.getDrawable().setStableBaseline(true);
         textView.adaptWidth = true;
         textView.setTextSize(AndroidUtilities.dp(13));
         textView.setTypeface(AndroidUtilities.bold());
@@ -268,10 +271,19 @@ public abstract class BaseInfoCard extends FrameLayout {
     protected void setText(CharSequence text, boolean animated) {
         accessibilityValue = text;
         updateAccessibilityDescription();
+        if (!android.text.TextUtils.isEmpty(text) && !hasRenderedValue) {
+            hasRenderedValue = true;
+            boolean laidOutColdLoad = animated && isAttachedToWindow() && isLaidOut()
+                    && getVisibility() == VISIBLE
+                    && getParent() instanceof InfoCardStripView
+                    && ((InfoCardStripView) getParent()).canAnimateCardResize();
+            animated = laidOutColdLoad;
+        }
         
         animated &= !renderingInstantly;
         boolean changed = !android.text.TextUtils.equals(textView.getText(), text);
         if (!changed) {
+            if (renderingInstantly) finishResizeAnimation();
             return;
         }
         
@@ -347,6 +359,19 @@ public abstract class BaseInfoCard extends FrameLayout {
             renderingInstantly = previous;
         }
     }
+    void restoreRenderedValue() {
+        if (accessibilityValue == null) {
+            return;
+        }
+        if (!android.text.TextUtils.isEmpty(accessibilityValue)) {
+            hasRenderedValue = true;
+        }
+        textView.cancelAnimation();
+        textView.setText(accessibilityValue, false, false);
+        updateAccessibilityDescription();
+        content.requestLayout();
+        content.invalidateOutline();
+    }
 
     public void setMaxChipWidth(int maxTextWidth) {
         maxChipWidth = Math.max(0, maxTextWidth);
@@ -392,6 +417,7 @@ public abstract class BaseInfoCard extends FrameLayout {
     @Override
     protected void onAttachedToWindow() {
         super.onAttachedToWindow();
+        restoreRenderedValue();
         updateColors();
         applyColorMode();
         
@@ -481,14 +507,32 @@ public abstract class BaseInfoCard extends FrameLayout {
     }
 
     private static final class ChipTextView extends AnimatedTextView {
+        private int textWidthLimit;
         ChipTextView(android.content.Context c, boolean splitByWords, boolean preserveIndex, boolean startFromEnd) {
             super(c, splitByWords, preserveIndex, startFromEnd);
         }
 
         @Override
+        public void setMaxWidth(int width) {
+            super.setMaxWidth(width);
+            if (textWidthLimit != width) {
+                textWidthLimit = width;
+                requestLayout();
+                invalidate();
+            }
+        }
+        @Override
         public void requestLayout() {
             
-            if (getVisibility() == GONE || !isShown()) return;
+            if (getVisibility() == GONE || !isShown()) {
+                forceLayout();
+                android.view.ViewParent parent = getParent();
+                while (parent instanceof View && !(parent instanceof InfoCardStripView)) {
+                    ((View) parent).forceLayout();
+                    parent = parent.getParent();
+                }
+                return;
+            }
             super.requestLayout();
         }
 
@@ -497,8 +541,10 @@ public abstract class BaseInfoCard extends FrameLayout {
             super.onMeasure(widthMeasureSpec, heightMeasureSpec);
             if (adaptWidth && View.MeasureSpec.getMode(widthMeasureSpec) == View.MeasureSpec.AT_MOST) {
                 
-                int want = isAnimating() ? width() : finalWidth();
                 int avail = View.MeasureSpec.getSize(widthMeasureSpec);
+                if (textWidthLimit > 0) avail = Math.min(avail, textWidthLimit);
+                int padding = getPaddingLeft() + getPaddingRight();
+                int want = padding + (int) Math.ceil(getDrawable().getCurrentWidth(Math.max(0, avail - padding)));
                 setMeasuredDimension(Math.min(want, avail), getMeasuredHeight());
             }
         }

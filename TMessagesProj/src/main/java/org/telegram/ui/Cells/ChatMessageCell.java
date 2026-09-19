@@ -39,7 +39,6 @@ import android.graphics.ColorMatrix;
 import android.graphics.ColorMatrixColorFilter;
 import android.graphics.CornerPathEffect;
 import android.graphics.LinearGradient;
-import android.graphics.Matrix;
 import android.graphics.Paint;
 import android.graphics.Path;
 import android.graphics.PixelFormat;
@@ -74,7 +73,6 @@ import android.text.style.DynamicDrawableSpan;
 import android.text.style.LeadingMarginSpan;
 import android.text.style.StrikethroughSpan;
 import android.text.style.URLSpan;
-import android.util.Log;
 import android.util.Pair;
 import android.util.Property;
 import android.util.SparseArray;
@@ -15737,7 +15735,7 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
                 final float s = (1f - scale) * .7f;
                 canvas.scale(s, s, radialProgress.progressRect.centerX(), AndroidUtilities.lerp(radialProgress.progressRect.top, radialProgress.progressRect.bottom, .5f));
                 if (onceFire == null) {
-                    onceFire = new RLottieDrawable(R.raw.fire_once, "fire_once", dp(32), dp(32), true, null);
+                    onceFire = new RLottieDrawable(R.raw.fire_once, dp(32), dp(32), true, null);
                     onceFire.setMasterParent(this);
                     onceFire.setAllowDecodeSingleFrame(true);
                     onceFire.setAutoRepeat(1);
@@ -15953,7 +15951,7 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
                     if (alpha != 1f) {
                         photoImage.setAlpha(alpha);
                         if (allowDrawPhotoImage()) {
-                            imageDrawn = photoImage.draw(canvas);
+                            imageDrawn = drawPhotoImage(canvas);
                         } else {
                             imageDrawn = true;
                         }
@@ -15965,7 +15963,7 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
                         photoImage.setAlpha(1f);
                     } else {
                         if (allowDrawPhotoImage()) {
-                            imageDrawn = photoImage.draw(canvas);
+                            imageDrawn = drawPhotoImage(canvas);
                         } else {
                             imageDrawn = true;
                         }
@@ -16151,7 +16149,7 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
                         if (alpha != 1f) {
                             photoImage.setAlpha(alpha);
                             if (allowDrawPhotoImage()) {
-                                imageDrawn = photoImage.draw(canvas);
+                                imageDrawn = drawPhotoImage(canvas);
                             } else {
                                 imageDrawn = true;
                             }
@@ -16163,7 +16161,7 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
                             photoImage.setAlpha(1f);
                         } else {
                             if (allowDrawPhotoImage()) {
-                                imageDrawn = photoImage.draw(canvas);
+                                imageDrawn = drawPhotoImage(canvas);
                             } else {
                                 imageDrawn = true;
                             }
@@ -16295,7 +16293,7 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
                     if (alpha != 1f) {
                         photoImage.setAlpha(alpha);
                         if (allowDrawPhotoImage()) {
-                            imageDrawn = photoImage.draw(canvas);
+                            imageDrawn = drawPhotoImage(canvas);
                         } else {
                             imageDrawn = true;
                         }
@@ -16307,7 +16305,7 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
                         photoImage.setAlpha(1f);
                     } else {
                         if (allowDrawPhotoImage()) {
-                            imageDrawn = photoImage.draw(canvas);
+                            imageDrawn = drawPhotoImage(canvas);
                         } else {
                             imageDrawn = true;
                         }
@@ -20737,6 +20735,14 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
         drawInternal(canvas);
     }
     public void drawInternal(Canvas canvas) {
+        View previousEmojiView = Emoji.setDrawingView(this);
+        try {
+            drawInternalWithEmojiFade(canvas);
+        } finally {
+            Emoji.setDrawingView(previousEmojiView);
+        }
+    }
+    private void drawInternalWithEmojiFade(Canvas canvas) {
         final long frameTime = SystemClock.uptimeMillis();
         frameAnimationDelta = lastDrawFrameTime == 0 ? 16f : Math.max(0f, Math.min(64f, frameTime - lastDrawFrameTime));
         lastDrawFrameTime = frameTime;
@@ -29900,6 +29906,16 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
     }
 
     protected boolean drawPhotoImage(Canvas canvas) {
+        photoImage.setSkipUpdateFrame(skipFrameUpdate || drawForBlur
+                || SizeNotifierFrameLayout.drawingBlur
+                || canvas instanceof SizeNotifierFrameLayout.SimplerCanvas);
+        try {
+            return drawPhotoImageInternal(canvas);
+        } finally {
+            photoImage.setSkipUpdateFrame(skipFrameUpdate);
+        }
+    }
+    private boolean drawPhotoImageInternal(Canvas canvas) {
         if (currentMessageObject != null && currentMessageObject.isLivePhoto()) {
             final AnimatedFileDrawable animation = photoImage.getAnimation();
             if (animation != null && animation.getDurationMs() > 0) {

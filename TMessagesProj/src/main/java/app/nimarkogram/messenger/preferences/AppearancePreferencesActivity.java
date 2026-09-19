@@ -1,7 +1,10 @@
-/*
- * This file is part of NimarkoGram for Android.
- * Licensed under GNU GPL v2 or later. See LICENSE.
- * Copyright Ettacent, 2026.
+/**
+ * This is the source code of Nimarko for Android.
+ * It is licensed under GNU GPL v. 2 or later.
+ * You should have received a copy of the license in this archive (see LICENSE).
+ * Please, be respectful and credit the original author if you use this code.
+ *
+ * Copyright github.com/arsLan4k1390, 2022-2026.
  */
 
 package app.nimarkogram.messenger.preferences;
@@ -341,10 +344,11 @@ public class AppearancePreferencesActivity extends NimarkoUniversalPreferencesAc
                     });
         } else if (item.id == disableDividersRow) {
             NimarkoConfig.toggleDisableDividers();
+            item.checked = NimarkoConfig.disableDividers;
             updateCheckState(view, app.nimarkogram.messenger.NimarkoConfig.disableDividers);
 
             Theme.applyCommonTheme();
-            listView.adapter.update(true);
+            updateItemsAfterToggle();
             if (getParentLayout() != null) getParentLayout().rebuildAllFragmentViews(false, false);
         } else if (item.id == glareOnElementsRow) {
             NimarkoConfig.toggleGlareOnElements();
@@ -352,8 +356,9 @@ public class AppearancePreferencesActivity extends NimarkoUniversalPreferencesAc
             if (getParentLayout() != null) getParentLayout().rebuildAllFragmentViews(false, false);
         } else if (item.id == mediaGlowRow) {
             NimarkoConfig.toggleMediaGlow();
+            item.checked = NimarkoConfig.mediaGlow;
             updateCheckState(view, NimarkoConfig.mediaGlow);
-            listView.adapter.update(true);   // show/hide strength/blur/transition rows
+            updateItemsAfterToggle();
         } else if (item.id == forumAvatarsRow) {
             NimarkoConfig.toggleForumAvatarsLikeChats();
             updateCheckState(view, NimarkoConfig.forumAvatarsLikeChats);

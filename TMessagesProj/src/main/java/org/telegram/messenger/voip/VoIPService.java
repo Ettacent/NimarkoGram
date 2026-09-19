@@ -171,7 +171,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 @SuppressLint("NewApi")
-public class VoIPService extends Service implements SensorEventListener, AudioManager.OnAudioFocusChangeListener, VoIPController.ConnectionStateListener, NotificationCenter.NotificationCenterDelegate, VoIPServiceState {
+public class VoIPService extends Service implements SensorEventListener, AudioManager.OnAudioFocusChangeListener, NotificationCenter.NotificationCenterDelegate, VoIPServiceState {
 
 	public static final int CALL_MIN_LAYER = 65;
 
@@ -2623,7 +2623,7 @@ public class VoIPService extends Service implements SensorEventListener, AudioMa
 								BaseFragment lastFragment = LaunchActivity.getSafeLastFragment();
 								if (lastFragment != null) {
 									BulletinFactory.of(lastFragment)
-										.createSimpleBulletin(R.raw.linkbroken, getString(R.string.ConferenceClosed))
+										.createSimpleBulletin(R.raw.linkbroken, LocaleController.getString(R.string.ConferenceClosed))
 										.show()
 										.hideAfterBottomSheet = false;
 								}
@@ -3593,10 +3593,9 @@ public class VoIPService extends Service implements SensorEventListener, AudioMa
 
 			Instance.Proxy proxy = null;
 			if (preferences.getBoolean("proxy_enabled", false) && preferences.getBoolean("proxy_enabled_calls", false)) {
-				final String server = preferences.getString("proxy_ip", null);
-				final String secret = preferences.getString("proxy_secret", null);
-				if (!TextUtils.isEmpty(server) && TextUtils.isEmpty(secret)) {
-					proxy = new Instance.Proxy(server, preferences.getInt("proxy_port", 0), preferences.getString("proxy_user", null), preferences.getString("proxy_pass", null));
+				final org.telegram.proxy.ProxySettings settings = org.telegram.proxy.ProxySettings.fromSharedPreferences(preferences);
+				if (settings.isValid() && settings.getType() == org.telegram.proxy.ProxySettings.Type.SOCKS5) {
+					proxy = new Instance.Proxy(settings.getAddress(), settings.getPort(), settings.getUser(), settings.getPassword());
 				}
 			}
 
@@ -4937,7 +4936,7 @@ public class VoIPService extends Service implements SensorEventListener, AudioMa
 		if (currentState == STATE_ESTABLISHED) {
 			destroyConverting();
 		}
-		if (USE_CONNECTION_SERVICE && state == STATE_ESTABLISHED   && systemCallConnection != null) {
+		if (USE_CONNECTION_SERVICE && state == STATE_ESTABLISHED                        && systemCallConnection != null) {
 			systemCallConnection.setActive();
 		}
 		for (int a = 0; a < stateListeners.size(); a++) {
@@ -5680,7 +5679,6 @@ public class VoIPService extends Service implements SensorEventListener, AudioMa
 		}
 	}
 
-	@Override
 	public void onConnectionStateChanged(int newState, boolean inTransition) {
 		AndroidUtilities.runOnUIThread(() -> {
 			if (convertingVoip != null) {
@@ -5750,7 +5748,6 @@ public class VoIPService extends Service implements SensorEventListener, AudioMa
 		Utilities.globalQueue.postRunnable(() -> soundPool.play(spAllowTalkId, 0.5f, 0.5f, 0, 0, 1));
 	}
 
-	@Override
 	public void onSignalBarCountChanged(int newCount) {
 		AndroidUtilities.runOnUIThread(() -> {
 			signalBarCount = newCount;

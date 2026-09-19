@@ -74,8 +74,10 @@ import org.telegram.ui.SearchAdsInfoBottomSheet;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.Set;
+import java.util.WeakHashMap;
 
 public class SearchViewPager extends ViewPagerFixed implements FilteredSearchView.UiCallback, NotificationCenter.NotificationCenterDelegate, IBlur3Capture {
 
@@ -1266,6 +1268,80 @@ public class SearchViewPager extends ViewPagerFixed implements FilteredSearchVie
     }
 
     private int pagesPaddingTop, pagesPaddingBottom;
+    private int pagesPanelInset;
+    private final WeakHashMap<RecyclerView, PanelScrollAnchor> panelScrollAnchors = new WeakHashMap<>();
+    private static final class PanelScrollAnchor {
+        RecyclerView.Adapter adapter;
+        int position, top, offset, padding;
+    }
+    public void setPagesPaddingWithPanel(int top, int bottom, int panelInset, boolean doNotRequestLayout) {
+        final int delta = panelInset - pagesPanelInset;
+        final ArrayList<Runnable> anchors = new ArrayList<>();
+        if (pagesPaddingTop != 0 && (delta != 0 || !panelScrollAnchors.isEmpty())) {
+            Set<RecyclerView> visited = new HashSet<>();
+            capturePanelAnchors(this, top, anchors, visited);
+            capturePanelAnchors(searchListView, top, anchors, visited);
+            capturePanelAnchors(noMediaFiltersSearchView, top, anchors, visited);
+            capturePanelAnchors(channelsSearchContainer, top, anchors, visited);
+            capturePanelAnchors(botsSearchContainer, top, anchors, visited);
+            capturePanelAnchors(hashtagSearchContainer, top, anchors, visited);
+            capturePanelAnchors(postsSearchContainer, top, anchors, visited);
+            capturePanelAnchors(downloadsContainer, top, anchors, visited);
+            for (int i = 0; i < viewsByType.size(); i++) {
+                capturePanelAnchors(viewsByType.valueAt(i), top, anchors, visited);
+            }
+        }
+        pagesPanelInset = panelInset;
+        setPagesPadding(top, bottom, doNotRequestLayout);
+        for (Runnable anchor : anchors) anchor.run();
+    }
+    private void capturePanelAnchors(View view, int padding, ArrayList<Runnable> anchors, Set<RecyclerView> visited) {
+        if (view instanceof RecyclerView) {
+            RecyclerView list = (RecyclerView) view;
+            if (!visited.add(list)) return;
+            if (!(list.getLayoutManager() instanceof LinearLayoutManager) || list.isComputingLayout()
+                    || list.hasPendingAdapterUpdates()) return;
+            LinearLayoutManager layout = (LinearLayoutManager) list.getLayoutManager();
+            if (layout.getOrientation() != RecyclerView.VERTICAL || layout.getReverseLayout()
+                    || layout.getStackFromEnd() || layout.isSmoothScrolling()) return;
+            PanelScrollAnchor pending = panelScrollAnchors.remove(list);
+            boolean owned = pending != null && pending.adapter == list.getAdapter()
+                    && layout.hasPendingScrollPosition(pending.position, pending.offset);
+            if (layout.hasPendingScrollPosition() && !owned) return;
+            int position = owned ? pending.position : layout.findFirstVisibleItemPosition();
+            View first = owned ? null : layout.findViewByPosition(position);
+            if (position == RecyclerView.NO_POSITION || !owned && first == null) return;
+            int oldPadding = owned ? pending.padding : list.getPaddingTop();
+            int delta = padding - oldPadding;
+            if (delta == 0) {
+                if (owned) panelScrollAnchors.put(list, pending);
+                return;
+            }
+            int oldTop = owned ? pending.top : layout.getDecoratedTop(first);
+            int target = position == 0
+                    ? delta > 0 && oldTop >= oldPadding - 1 ? oldTop + delta
+                    : delta < 0 ? Math.min(oldTop, oldPadding + delta) : oldTop
+                    : oldTop;
+            anchors.add(() -> {
+                PanelScrollAnchor anchor = new PanelScrollAnchor();
+                anchor.adapter = list.getAdapter();
+                anchor.position = position;
+                anchor.top = target;
+                anchor.padding = list.getPaddingTop();
+                anchor.offset = target - anchor.padding;
+                panelScrollAnchors.put(list, anchor);
+                layout.scrollToPositionWithOffset(position, anchor.offset);
+            });
+            return;
+        }
+        if (view instanceof ViewGroup) {
+            ViewGroup group = (ViewGroup) view;
+            for (int i = 0; i < group.getChildCount(); i++) {
+                View child = group.getChildAt(i);
+                capturePanelAnchors(child, padding, anchors, visited);
+            }
+        }
+    }
 
     public void setPagesPadding(int top, int bottom, boolean doNotRequestLayout) {
         this.pagesPaddingTop = top;

@@ -17,6 +17,7 @@
 #include <atomic>
 #include <unordered_set>
 #include "Defines.h"
+#include "MainConnectionRtt.h"
 
 #ifdef ANDROID
 #include <jni.h>
@@ -47,6 +48,7 @@ public:
     int64_t getCurrentTimeMonotonicMillis();
     int32_t getCurrentTime();
     int32_t getCurrentPingTime();
+    int32_t getCurrentMainPingTime();
     uint32_t getCurrentDatacenterId();
     int64_t getCurrentAuthKeyId();
     bool isTestBackend();
@@ -155,6 +157,7 @@ private:
     int64_t pushSessionId = 0;
     int32_t currentPingTime = 0;
     int32_t currentPingTimeLive = 0;
+    MainConnectionRtt mainConnectionRtt;
     bool registeringForPush = false;
     int64_t lastPushPingTime = 0;
     int32_t nextPingTimeOffset = 60000 * 3;

@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="UseProxyWeb">WEB proxy</string>
+    <string name="UseProxyWebInfo">WEB proxy, ayrı bir WebView içinde bir HTTPS sayfası kullanır. Protokol şeması veya yol içermeyen bir ana makine adı ve 16 baytlık bir MTProxy gizli anahtarı girin. Bu deneysel uygulama, uygulama ön plandayken test edilmek üzere tasarlanmıştır ve güncel Android System WebView gerektirir.</string>
     <string name="NM_Menu_TelegramPlus">Modern mesaj menüsü</string>
     <string name="NM_Menu_TelegramPlus_Desc">Gruplandırılmış eylemler, yay animasyonları ve duyarlı efektler içeren kompakt bir Liquid Glass menüsü. Kompakt düzen kullanılabilir olmaya devam eder.</string>
     <!-- NimarkoGram plugin strings ported from exteraGram (values-tr) -->

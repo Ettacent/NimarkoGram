@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="UseProxyWeb">WEB-прокси</string>
+    <string name="UseProxyWebInfo">WEB-прокси использует HTTPS-страницу в отдельном WebView. Укажите имя хоста без схемы и пути, а также 16-байтовый секрет MTProxy. Это экспериментальная реализация для тестирования при открытом приложении. Требуется актуальная версия Android System WebView.</string>
     <string name="AppName">NimarkoGram</string>
     <string name="NM_CP_Header_ChatView">Вид чата</string>
     <string name="NM_CP_Header_Interaction">Взаимодействие</string>
