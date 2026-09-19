@@ -1,4 +1,4 @@
-<p align="center">
+кобилджон какашка грам<p align="center">
   <img src="docs/assets/nimarkogram-icon.png" width="128" height="128" alt="NimarkoGram icon">
 </p>
 
