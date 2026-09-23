@@ -5040,6 +5040,11 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
 
             @Override
             protected void onDraw(Canvas canvas) {
+                if (!imagesArrLocals.isEmpty() || editing
+                        || currentEditMode != EDIT_MODE_NONE
+                        || (switchingToMode >= 0 && switchingToMode != EDIT_MODE_NONE)) {
+                    return;
+                }
                 float glowDismiss = 1f;
                 float glowScale = scale;
                 float glowTranslationY = translationY;
