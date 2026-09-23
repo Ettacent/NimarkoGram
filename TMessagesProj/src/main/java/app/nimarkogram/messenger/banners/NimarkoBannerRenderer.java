@@ -273,6 +273,7 @@ public final class NimarkoBannerRenderer {
     private int resumeCaptureGeneration;
     private Runnable resumeCaptureTimeout;
     private Bitmap videoCrossfadeBitmap;
+    private boolean resumeFadeWaitingForFrame;
 
     private final View[] fxViews = new View[5];
     private double lastFxTime, lastFxExtra = -1, lastFxExpand = -1;
@@ -674,7 +675,7 @@ public final class NimarkoBannerRenderer {
         if (resumeCaptureTimeout != null) return;
         if (!player.isPlaying() && videoFrameReady && vidFirstFrameTime > 0
                 && !waitFrame && videoTexture.isAvailable() && videoTexture.getAlpha() >= 0.99f
-                && vidFreeze != null && vidFreeze.getDrawable() == null) {
+                && vidFreeze != null && !okBmp(freezeBmp)) {
             final int generation = ++resumeCaptureGeneration;
             final TextureView texture = videoTexture;
             resumeCaptureTimeout = () -> finishResumeCapture(generation, sessionId, player, path, texture, null);
@@ -771,6 +772,10 @@ public final class NimarkoBannerRenderer {
 
     private boolean isVideoAttachedTo(ViewGroup topView) {
         return topView != null && videoTexture != null && videoTexture.getParent() == topView;
+    }
+    public boolean isVideoLayer(View child) {
+        return child != null && (child == videoTexture || child == vidFreeze
+                || child == vidBlur || child == vidContrast || child == vidDark);
     }
 
     public FrameDecision prepareFrame(ViewGroup topView, int account, long eid, float extra, int w, int y1Hint,
@@ -2020,6 +2025,7 @@ public final class NimarkoBannerRenderer {
 
     private void removeVidViews(boolean keepFreeze) {
         cancelResumeCapture();
+        resumeFadeWaitingForFrame = false;
         java.util.ArrayList<Bitmap> bmps = new java.util.ArrayList<>();
         try {
             stopBlur();
@@ -2218,14 +2224,29 @@ public final class NimarkoBannerRenderer {
     }
 
     private void armResumeCrossfade(Bitmap frame) {
-        if (!okBmp(frame) || vidFreeze == null || videoTexture == null) {
+        if (vidFreeze == null || videoTexture == null) {
             recycle(frame);
             return;
         }
+        if (!okBmp(frame)) {
+            resumeFadeWaitingForFrame = okBmp(videoCrossfadeBitmap);
+            recycle(frame);
+            return;
+        }
+        vidFreeze.animate().withEndAction(null).cancel();
         vidFreeze.setImageBitmap(frame);
         vidFreeze.setAlpha(1f);
         vidFreeze.setVisibility(View.VISIBLE);
-        doFreezeSwap(videoTexture, vidFreeze, frame, RESUME_FADE);
+        Bitmap previous = videoCrossfadeBitmap;
+        videoCrossfadeBitmap = frame;
+        if (previous != frame) recycle(previous);
+        resumeFadeWaitingForFrame = true;
+    }
+    private void startResumeCrossfadeOnFrame() {
+        if (!resumeFadeWaitingForFrame || appPaused || videoPausedByTab
+                || overlayOpen || !isProfileOpen || !isVideoAttachedTo(currentTopView)) return;
+        resumeFadeWaitingForFrame = false;
+        doFreezeSwap(videoTexture, vidFreeze, videoCrossfadeBitmap, RESUME_FADE);
     }
 
     private void fadeInFreeze(ImageView fv, Bitmap bmp) {
@@ -2662,7 +2683,7 @@ public final class NimarkoBannerRenderer {
 
                     if (!appPaused && isProfileOpen && !videoPausedByTab && !overlayOpen) {
 
-                        try { player.play(); } catch (Throwable ignored) {}
+                        resumePlayerIfReady();
                     } else {
 
                     }
@@ -2711,15 +2732,19 @@ public final class NimarkoBannerRenderer {
                     videoFrameReady = true;
                     captureVideoFrameAsync(sessionId, cp, frame -> publishLatestVideoFrame(frame, cp, sessionId));
                     dismissFreeze();
+                    startResumeCrossfadeOnFrame();
                 }
             } catch (Throwable ignored) {}
         }
 
         @Override public void onSurfaceTextureUpdated(android.graphics.SurfaceTexture surfaceTexture) {
             try {
-                if (waitFrame && isCurrentVideoSession(sessionId, player, cp)
+                if (isCurrentVideoSession(sessionId, player, cp)
                         && isVideoAttachedTo(currentTopView)
-                        && videoTexture.getSurfaceTexture() == surfaceTexture) dismissFreeze();
+                        && videoTexture.getSurfaceTexture() == surfaceTexture) {
+                    if (waitFrame) dismissFreeze();
+                    startResumeCrossfadeOnFrame();
+                }
             } catch (Throwable ignored) {}
         }
 
