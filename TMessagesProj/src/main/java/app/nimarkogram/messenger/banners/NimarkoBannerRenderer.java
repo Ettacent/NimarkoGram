@@ -270,6 +270,9 @@ public final class NimarkoBannerRenderer {
     private android.graphics.Bitmap reopenFreeze;
     private String reopenFreezePath;
     private double vidFirstFrameTime;
+    private int resumeCaptureGeneration;
+    private Runnable resumeCaptureTimeout;
+    private Bitmap videoCrossfadeBitmap;
 
     private final View[] fxViews = new View[5];
     private double lastFxTime, lastFxExtra = -1, lastFxExpand = -1;
@@ -536,6 +539,7 @@ public final class NimarkoBannerRenderer {
             return;
         }
         saveAvatarState(topView);
+        cancelResumeCapture();
         isProfileOpen = false;
         openAnimDone = false;
         setupVideoAfter = 0;
@@ -581,6 +585,7 @@ public final class NimarkoBannerRenderer {
             }
             overlayOpen = true;
         }
+        cancelResumeCapture();
         stopBlur();
         VideoPlayer player = videoPlayer;
         if (player != null) {
@@ -614,6 +619,7 @@ public final class NimarkoBannerRenderer {
     public void onTabVisibilityChanged(float visibility) {
         if (visibility < 0.01f) {
             if (!videoPausedByTab) {
+                cancelResumeCapture();
                 videoPausedByTab = true;
                 if (videoPlayer != null) { try { videoPlayer.pause(); } catch (Throwable ignored) {} }
                 stopBlur();
@@ -623,8 +629,7 @@ public final class NimarkoBannerRenderer {
                 videoPausedByTab = false;
                 boolean showGate = isProfileOpen && videoPlayer != null && vidReady && !appPaused && !overlayOpen;
                 if (showGate) {
-                    try { videoPlayer.play(); } catch (Throwable ignored) {}
-                    startBlur();
+                    resumePlayerIfReady();
                 }
                 invalidateTopView();
             }
@@ -632,6 +637,7 @@ public final class NimarkoBannerRenderer {
     }
 
     public void onAppPause() {
+        cancelResumeCapture();
         appPaused = true;
         stopBlur();
         if (videoPlayer != null) { try { videoPlayer.pause(); } catch (Throwable ignored) {} }
@@ -665,6 +671,41 @@ public final class NimarkoBannerRenderer {
             invalidateTopView();
             return;
         }
+        if (resumeCaptureTimeout != null) return;
+        if (!player.isPlaying() && videoFrameReady && vidFirstFrameTime > 0
+                && !waitFrame && videoTexture.isAvailable() && videoTexture.getAlpha() >= 0.99f
+                && vidFreeze != null && vidFreeze.getDrawable() == null) {
+            final int generation = ++resumeCaptureGeneration;
+            final TextureView texture = videoTexture;
+            resumeCaptureTimeout = () -> finishResumeCapture(generation, sessionId, player, path, texture, null);
+            AndroidUtilities.runOnUIThread(resumeCaptureTimeout, 200);
+            captureVideoFrameAsync(sessionId, path, frame -> AndroidUtilities.runOnUIThread(
+                    () -> finishResumeCapture(generation, sessionId, player, path, texture, frame)));
+            return;
+        }
+        try { player.play(); } catch (Throwable ignored) {}
+        startBlur();
+        invalidateTopView();
+    }
+    private void cancelResumeCapture() {
+        ++resumeCaptureGeneration;
+        if (resumeCaptureTimeout != null) AndroidUtilities.cancelRunOnUIThread(resumeCaptureTimeout);
+        resumeCaptureTimeout = null;
+    }
+    private void finishResumeCapture(int generation, long sessionId, VideoPlayer player, String path,
+                                     TextureView texture, Bitmap frame) {
+        if (generation != resumeCaptureGeneration || resumeCaptureTimeout == null) {
+            recycle(frame);
+            return;
+        }
+        cancelResumeCapture();
+        if (!isCurrentVideoSession(sessionId, player, path) || texture != videoTexture
+                || !isVideoAttachedTo(currentTopView) || appPaused || videoPausedByTab
+                || overlayOpen || !isProfileOpen) {
+            recycle(frame);
+            return;
+        }
+        armResumeCrossfade(frame);
         try { player.play(); } catch (Throwable ignored) {}
         startBlur();
         invalidateTopView();
@@ -1978,6 +2019,7 @@ public final class NimarkoBannerRenderer {
     private void removeVidViews() { removeVidViews(false); }
 
     private void removeVidViews(boolean keepFreeze) {
+        cancelResumeCapture();
         java.util.ArrayList<Bitmap> bmps = new java.util.ArrayList<>();
         try {
             stopBlur();
@@ -1985,7 +2027,8 @@ public final class NimarkoBannerRenderer {
             try { if (vidXfade != null) { vidXfade.cancel(); vidXfade = null; } } catch (Throwable ignored) {}
             if (videoPlayer != null) { try { videoPlayer.setTextureView(null); } catch (Throwable ignored) {} }
             if (videoTexture != null) try { videoTexture.animate().cancel(); } catch (Throwable ignored) {}
-            if (vidFreeze != null) try { vidFreeze.animate().cancel(); } catch (Throwable ignored) {}
+            if (vidFreeze != null) try { vidFreeze.animate().withEndAction(null).cancel(); } catch (Throwable ignored) {}
+            if (videoCrossfadeBitmap != null) { bmps.add(videoCrossfadeBitmap); videoCrossfadeBitmap = null; }
             if (vidBlur != null) try { vidBlur.setImageBitmap(null); } catch (Throwable ignored) {}
             if (vidFreeze != null && !keepFreeze) try { vidFreeze.setImageBitmap(null); } catch (Throwable ignored) {}
             if (vidBlurBmp != null) { bmps.add(vidBlurBmp); vidBlurBmp = null; }
@@ -2014,6 +2057,7 @@ public final class NimarkoBannerRenderer {
     }
 
     private void releasePlayer() {
+        cancelResumeCapture();
         stopBlur();
         VideoPlayer p = videoPlayer; videoPlayer = null;
         videoSessionId++;
@@ -2173,23 +2217,15 @@ public final class NimarkoBannerRenderer {
         } catch (Throwable e) { return false; }
     }
 
-    private void armResumeCrossfade() {
-        if (waitFrame) { return; }
-        if (!okBmp(freezeBmp)) { return; }
-        if (!pathEq(frozenPath, curVidPath)) { return; }
-        waitFrame = true;
-        try {
-            try { if (vidXfade != null) vidXfade.cancel(); } catch (Throwable ignored) {}
-            if (vidFreeze != null && okBmp(freezeBmp)) {
-                try {
-                    vidFreeze.animate().cancel();
-                    vidFreeze.setImageBitmap(freezeBmp);
-                    vidFreeze.setAlpha(1f);
-                    vidFreeze.setVisibility(View.VISIBLE);
-                } catch (Throwable ignored) {}
-            }
-            if (videoTexture != null) { try { videoTexture.animate().cancel(); videoTexture.setAlpha(0f); videoTexture.setVisibility(View.INVISIBLE); } catch (Throwable ignored) {} }
-        } catch (Throwable ignored) {}
+    private void armResumeCrossfade(Bitmap frame) {
+        if (!okBmp(frame) || vidFreeze == null || videoTexture == null) {
+            recycle(frame);
+            return;
+        }
+        vidFreeze.setImageBitmap(frame);
+        vidFreeze.setAlpha(1f);
+        vidFreeze.setVisibility(View.VISIBLE);
+        doFreezeSwap(videoTexture, vidFreeze, frame, RESUME_FADE);
     }
 
     private void fadeInFreeze(ImageView fv, Bitmap bmp) {
@@ -2230,7 +2266,7 @@ public final class NimarkoBannerRenderer {
         doFreezeSwap(tex, fv, old, VID_FADE);
     }
 
-    private static final long RESUME_FADE = 350;
+    private static final long RESUME_FADE = 700;
 
     private void doFreezeSwap(final TextureView tex, final ImageView fv, final Bitmap old, final long dur) {
         try {
@@ -2238,14 +2274,24 @@ public final class NimarkoBannerRenderer {
             if (tex != null) { try { tex.animate().cancel(); tex.setAlpha(1f); tex.setVisibility(View.VISIBLE); } catch (Throwable ignored) {} }
             if (fv != null) {
                 fv.animate().cancel();
+                Bitmap previous = videoCrossfadeBitmap;
+                videoCrossfadeBitmap = old;
+                if (previous != old) recycle(previous);
                 fv.animate().alpha(0f).setDuration(dur)
                         .setInterpolator(new android.view.animation.LinearInterpolator())
-                        .withEndAction(() -> { try { fv.setImageBitmap(null); } catch (Throwable ignored) {} recycle(old); })
+                        .withEndAction(() -> {
+                            if (videoCrossfadeBitmap == old) {
+                                videoCrossfadeBitmap = null;
+                                try { fv.setImageBitmap(null); } catch (Throwable ignored) {}
+                            }
+                            recycle(old);
+                        })
                         .start();
             } else {
                 recycle(old);
             }
         } catch (Throwable e) {
+            if (videoCrossfadeBitmap == old) videoCrossfadeBitmap = null;
             try { if (tex != null) { tex.setVisibility(View.VISIBLE); tex.setAlpha(1f); } } catch (Throwable ignored) {}
             try { if (fv != null) { fv.setAlpha(0f); fv.setImageBitmap(null); } } catch (Throwable ignored) {}
             recycle(old);

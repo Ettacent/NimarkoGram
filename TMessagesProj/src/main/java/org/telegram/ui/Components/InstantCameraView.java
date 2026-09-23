@@ -4029,6 +4029,14 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                     }
                 }
             }
+            if (!useCameraX) {
+                if (updatedTexImage1) cameraFrameAvailable[0] = true;
+                if (updatedTexImage2) cameraFrameAvailable[1] = true;
+                if (surfaceIndex >= 0 && surfaceIndex < cameraFrameLatched.length
+                        && cameraFrameLatched[surfaceIndex]) {
+                    cameraTextureAvailable = true;
+                }
+            }
             if (useCameraX) {
                 if (updatedTexImage1 && hasCurrentCameraXFrame(0)) {
                     cameraFrameAvailable[0] = true;

@@ -139,9 +139,21 @@ public final class NimarkoTextAnim {
             else if (wasSmoothCursorEnabled && !smoothCursorEnabled) restoreAllSystemCursors();
         }
     }
+    private static boolean canAnimateEditor(EditText edit) {
+        if (edit == null || edit.getTransformationMethod() instanceof android.text.method.PasswordTransformationMethod) return false;
+        int type = edit.getInputType();
+        int inputClass = type & android.text.InputType.TYPE_MASK_CLASS;
+        int variation = type & android.text.InputType.TYPE_MASK_VARIATION;
+        return !(inputClass == android.text.InputType.TYPE_CLASS_TEXT
+                && (variation == android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD
+                || variation == android.text.InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD
+                || variation == android.text.InputType.TYPE_TEXT_VARIATION_WEB_PASSWORD))
+                && !(inputClass == android.text.InputType.TYPE_CLASS_NUMBER
+                && variation == android.text.InputType.TYPE_NUMBER_VARIATION_PASSWORD);
+    }
 
     public static void beforeEditorDraw(EditText edit) {
-        if (!masterEnabled || edit == null) return;
+        if (!masterEnabled || !canAnimateEditor(edit)) return;
         try {
             ensureDirectFields(edit.getClass());
             handleBeforeDraw(edit);
@@ -151,7 +163,7 @@ public final class NimarkoTextAnim {
     }
 
     public static void afterEditorDraw(EditText edit, Canvas canvas) {
-        if (!masterEnabled || edit == null || canvas == null) return;
+        if (!masterEnabled || !canAnimateEditor(edit) || canvas == null) return;
         try {
             handleAfterDraw(edit, canvas);
         } catch (Throwable t) {
@@ -162,7 +174,7 @@ public final class NimarkoTextAnim {
     public static void onEditorFocusChanged(EditText edit, boolean focused) {
         if (edit == null) return;
         try {
-            if (!masterEnabled) {
+            if (!masterEnabled || !canAnimateEditor(edit)) {
                 restoreSystemCursor(edit);
                 return;
             }
@@ -174,7 +186,7 @@ public final class NimarkoTextAnim {
     }
 
     public static void onEditorTouch(EditText edit) {
-        if (!masterEnabled || edit == null) return;
+        if (!masterEnabled || !canAnimateEditor(edit)) return;
         try {
             edit.invalidate();
             startHeartbeat(edit);
@@ -307,7 +319,7 @@ public final class NimarkoTextAnim {
         if (fieldResourcesProvider != null && fieldCursorWidth != null) return;
         synchronized (installLock) {
             if (fieldResourcesProvider == null || fieldCursorWidth == null) {
-                cacheFields(target);
+                cacheFields(org.telegram.ui.Components.EditTextCaption.class);
             }
         }
     }
@@ -836,7 +848,7 @@ public final class NimarkoTextAnim {
     private static int getCursorColor(View v) {
         try {
             Integer key = Theme.key_chat_messagePanelCursor;
-            if (fieldResourcesProvider != null) {
+            if (fieldResourcesProvider != null && fieldResourcesProvider.getDeclaringClass().isInstance(v)) {
                 Object rp = fieldResourcesProvider.get(v);
                 if (rp instanceof Theme.ResourcesProvider) {
                     return Theme.getColor(key, (Theme.ResourcesProvider) rp);

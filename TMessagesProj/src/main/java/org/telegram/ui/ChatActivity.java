@@ -18417,7 +18417,7 @@ public class ChatActivity extends BaseFragment implements
         private boolean isPinchPanel(View view) {
             return view == topPanelLayout || view == actionBar
                     || view == actionBarSearchTags || view == hashtagSearchTabs
-                    || view == chatInputViewsContainer;
+                    || view == chatInputViewsContainer || view == chatActivityFadeView;
         }
         private void drawPinchPanels(Canvas canvas, float alpha) {
             int save = canvas.saveLayerAlpha(0, 0, getWidth(), getHeight(),
