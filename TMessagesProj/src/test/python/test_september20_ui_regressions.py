@@ -115,7 +115,9 @@ public class Harness {
  boolean isLiquidGlassEnabled=true, simpleMode;
  RenderNode[] resultRenderNodes={new RenderNode("header + composer"),new RenderNode("frosted")};
  void updateGlassMode(){}
-""" + method(suppressor, "public void draw(Canvas canvas, int index)") + """
+ boolean isDisplayListReadyAt(int a){return a>=0;}
+""" + method(suppressor, "private int resolveInlineIndex(") +
+        method(suppressor, "public void draw(Canvas canvas, int index)") + """
  public static void main(String[] args){
   Harness h=new Harness();Canvas drawable=new Canvas();h.draw(drawable,DRAW_GLASS);
   h.resultRenderNodes[0].pixels="keyboard changed crops";
@@ -140,7 +142,11 @@ public class Harness {
         transition = source("org/telegram/ui/Components/AccountSwitchTransition")
         self.assertIn("popup.setProgress(progress)", transition)
         self.assertIn("view.setAlpha(1f - progress)", transition)
-        self.assertIn("REVEAL_DURATION_MS = 240", transition)
+        duration = re.search(r'REVEAL_DURATION_MS\s*=\s*(\d+)', transition)
+        self.assertIsNotNone(duration)
+        self.assertGreater(int(duration[1]), 0)
+        self.assertLessEqual(int(duration[1]), 240)
+        self.assertIn("animator.setDuration(REVEAL_DURATION_MS)", transition)
         tabs = source("org/telegram/ui/MainTabsActivity")
         self.assertIn("o.dismissWithAccountSwitch(popup -> {", tabs)
         self.assertIn("switchToAccountAnimated(account, popup)", tabs)

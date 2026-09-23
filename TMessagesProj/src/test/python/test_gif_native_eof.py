@@ -16,7 +16,7 @@ class GifNativeEofTests(unittest.TestCase):
     def source(self):
         jni = SRC.parent / "jni"
         reader = (jni / "gifvideo/video_frame_reader.h").read_text()
-        reader = reader[reader.index("// Pull-based reader"):]
+        reader = reader[reader.index("class VideoFrameReader {"):]
         entry = method((jni / "gifvideo.cpp").read_text(),
                        'extern "C" JNIEXPORT jint JNICALL Java_org_telegram_ui_Components_AnimatedFileNative_nGetVideoFrame(')
         return (SRC / "test/fixtures/GifNativeEofHarness.cpp.txt").read_text().replace(
@@ -86,8 +86,9 @@ class GifNativeEofTests(unittest.TestCase):
              "success must write actual frame, not an EOF placeholder"),
             ("avcodec_flush_buffers(m_dec);", "/* omitted flush */",
              "every delayed tail frame and restarted first frame must decode"),
-            ("// Aborted (stopped / seeking / canceled), Error, or Eof after looping.\n        return 0;",
-             "return 1;", "Again/abort/error must return no frame"),
+            (method(source, "if (st != VideoFrameReader::Status::Ok)"),
+             "if (st != VideoFrameReader::Status::Ok) { return 1; }",
+             "Again/abort/error must return no frame"),
         ]:
             with self.subTest(mutation=before):
                 self.assertEqual(source.count(before), 1)

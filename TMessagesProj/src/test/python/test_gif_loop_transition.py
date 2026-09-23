@@ -91,8 +91,8 @@ class GifLoopTransitionTests(unittest.TestCase):
              "if (backgroundBuffer == null)", "guard", "UI rejects an unfilled opaque buffer"),
             ("return backgroundBuffer.hasFrame ? backgroundBuffer.bitmap : null;",
              "return backgroundBuffer.bitmap;", "direct", "no bitmap before first successful decode"),
-            ("// callers must retain their previous texture, not upload these pixels.\n        backgroundBuffer.hasFrame = false;",
-             "// readiness was incorrectly retained", "direct",
+            ("backgroundBuffer.hasFrame = false;\n        if (mDecoder.getVideoFrame",
+             "if (mDecoder.getVideoFrame", "direct",
              "direct EOF tells caller to retain previous texture"),
             ("public Bitmap getBackgroundBitmap() {\n        return backgroundBuffer != null && backgroundBuffer.hasFrame",
              "public Bitmap getBackgroundBitmap() {\n        return backgroundBuffer != null", "direct",
@@ -110,9 +110,11 @@ class GifLoopTransitionTests(unittest.TestCase):
         # Restore BOTH parts of the original catch -> success-callback bug.
         bad = source.replace("if (backgroundBuffer == null || !backgroundBuffer.hasFrame)",
                              "if (backgroundBuffer == null)", 1)
-        bad = bad.replace("// a frame. Keep the displayed/prerendered frames and retry decoding.\n"
-                          "            AndroidUtilities.runOnUIThread(uiRunnableNoFrame);\n            return;",
-                          "// old fallthrough to success callback", 1)
+        spacing = r'(?:\s|//[^\n]*|/\*[\s\S]*?\*/)*'
+        catch_body = (r'FileLog\.e\(e\);' + spacing +
+                      r'AndroidUtilities\.runOnUIThread\(uiRunnableNoFrame\);' + spacing + r'return;')
+        bad, replacements = re.subn(catch_body, 'FileLog.e(e);', bad)
+        self.assertEqual(replacements, 1, "catch mutation must change exactly one handler")
         result = self.run_harness(bad, "publication")
         self.assertNotEqual(result.returncode, 0, "original catch/publication bug escaped tests")
         self.assertIn("failed decode must not publish fresh or poisoned pooled buffer", result.stderr)
