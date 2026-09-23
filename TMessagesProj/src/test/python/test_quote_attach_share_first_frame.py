@@ -4,6 +4,7 @@ These are focused ordering checks; visual timing still requires a device run.
 """
 
 from pathlib import Path
+import re
 import unittest
 
 
@@ -29,8 +30,10 @@ class QuoteAttachShareFirstFrameTest(unittest.TestCase):
 
         action = section(QUOTE, "private void completeAction(ExportAction action", "private boolean shouldSendAsDocument(")
         self.assertIn("setBusy(true, ExportAction.SAVE);", action)
-        self.assertIn("} finally {\n                    // The chooser now owns the foreground;", action)
-        self.assertIn("setBusy(false, null);", action)
+        # The chooser handoff releases busy state even if launching it throws.
+        # Comments/indentation are not part of that contract.
+        code = re.sub(r'//[^\n]*|/\*[\s\S]*?\*/', '', action)
+        self.assertRegex(code, r'finally\s*\{\s*setBusy\(false, null\);')
 
     def test_picker_visible_first_frame_is_seeded(self):
         layout = section(ATTACH, "private void showLayout(AttachAlertLayout layout, long newId, boolean animated)", "private void onCurrentLayoutAnimatorChanged(")
