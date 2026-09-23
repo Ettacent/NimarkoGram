@@ -574,6 +574,14 @@ public final class NimarkoTextAnim {
         if (smoothCursorEnabled) drawCursor(edit, canvas, st, dtNorm);
         if (!st.particles.isEmpty()) drawParticles(canvas, st, dtNorm);
     }
+    private static int animationTextTop(EditText edit) {
+        return edit instanceof org.telegram.ui.Components.EditTextCaption
+                ? edit.getPaddingTop() : edit.getTotalPaddingTop();
+    }
+    private static int animationTextLeft(EditText edit) {
+        return edit instanceof org.telegram.ui.Components.EditTextCaption
+                ? edit.getPaddingLeft() - edit.getScrollX() : edit.getCompoundPaddingLeft();
+    }
 
     private static void drawAnimatedChars(EditText edit, Canvas canvas, State st) {
         TextPaint paint = edit.getPaint();
@@ -586,9 +594,8 @@ public final class NimarkoTextAnim {
                 : (int) Math.min(now - st.lastSpoilerDrawMs, 50L);
         st.lastSpoilerDrawMs = now;
         int textLen = edit.getText().length();
-        int padL = edit.getPaddingLeft();
-        int padT = edit.getPaddingTop();
-        int scrollX = edit.getScrollX();
+        int padL = animationTextLeft(edit);
+        int padT = animationTextTop(edit);
         int paintAlpha = paint.getAlpha();
         float textSize = paint.getTextSize();
 
@@ -597,7 +604,7 @@ public final class NimarkoTextAnim {
             CharData data = e.getValue();
             if (idx < 0 || idx >= textLen) continue;
             int line = layout.getLineForOffset(idx);
-            float x = padL + layout.getPrimaryHorizontal(idx) - scrollX;
+            float x = padL + layout.getPrimaryHorizontal(idx);
             float y = padT + layout.getLineBaseline(line);
             long elapsed = now - data.startTime;
 
@@ -814,10 +821,9 @@ public final class NimarkoTextAnim {
         int color = paint.getColor();
         Random r = new Random();
         int line = layout.getLineForOffset(Math.min(idx, layout.getText().length()));
-        float x = edit.getPaddingLeft()
-                + layout.getPrimaryHorizontal(Math.min(idx, layout.getText().length()))
-                - edit.getScrollX();
-        float y = edit.getPaddingTop() + layout.getLineBaseline(line);
+        float x = animationTextLeft(edit)
+                + layout.getPrimaryHorizontal(Math.min(idx, layout.getText().length()));
+        float y = animationTextTop(edit) + layout.getLineBaseline(line);
         float w = paint.measureText(ch);
         for (int i = 0; i < PARTICLE_COUNT && st.particles.size() < MAX_DELETE_PARTICLES; i++) {
             st.particles.add(new Particle(
@@ -972,8 +978,9 @@ public final class NimarkoTextAnim {
             else alpha = (int) (((Math.sin(System.currentTimeMillis() / 1000.0 * 6.0) + 1.0)
                     / 2.0 * 0.8 + 0.2) * 255.0);
 
-            int padL = edit.getPaddingLeft();
-            float padT = edit.getPaddingTop();
+            int padL = edit instanceof org.telegram.ui.Components.EditTextCaption
+                    ? edit.getPaddingLeft() : edit.getCompoundPaddingLeft();
+            float padT = animationTextTop(edit);
             float half = (textSize * 1.25f) / 2f;
             float top = st.cursorY + padT - half;
             float bot = st.cursorY + padT + half;

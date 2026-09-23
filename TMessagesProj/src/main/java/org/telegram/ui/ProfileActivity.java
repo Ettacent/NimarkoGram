@@ -1291,6 +1291,20 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
     }
 
     private class TopView extends FrameLayout {
+        private int bannerViewportHeight;
+        @Override
+        protected boolean drawChild(Canvas canvas, View child, long drawingTime) {
+            if (!app.nimarkogram.messenger.banners.NimarkoBannerRenderer.getInstance().isVideoLayer(child)) {
+                return super.drawChild(canvas, child, drawingTime);
+            }
+            int save = canvas.save();
+            try {
+                canvas.clipRect(0, 0, getWidth(), bannerViewportHeight);
+                return super.drawChild(canvas, child, drawingTime);
+            } finally {
+                canvas.restoreToCount(save);
+            }
+        }
 
         private int currentColor;
         private Paint paint = new Paint();
@@ -1477,6 +1491,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                     ? nimarkoBannerExitExtraHeight : extraHeight;
             final int bannerY1 = nimarkoBannerExitTransition
                     ? nimarkoBannerExitY1 : y1;
+            bannerViewportHeight = Math.max(0, bannerY1);
             final float bannerExpand = nimarkoBannerExitTransition
                     ? nimarkoBannerExitExpand : currentExpandAnimatorValue;
             // A cached photo banner can be ready before the first frame of the

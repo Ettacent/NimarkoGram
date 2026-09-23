@@ -17,6 +17,7 @@ class BannerResumeCrossfadeTests(unittest.TestCase):
         production += '\n'.join(method(SOURCE, name) for name in (
             'private void resumePlayerIfReady()', 'private void cancelResumeCapture()',
             'private void finishResumeCapture(', 'private void armResumeCrossfade(Bitmap',
+            'private void startResumeCrossfadeOnFrame()',
             'private void doFreezeSwap(final TextureView tex, final ImageView fv, final Bitmap old, final long dur)'))
         source = r'''
 import java.util.*;
@@ -34,8 +35,8 @@ public class ResumeTest {
   Animator animate(){return animator;}void setAlpha(float a){alpha=a;}float getAlpha(){return alpha;}
   void setVisibility(int v){visibility=v;}}
  static class TextureView extends Surface {boolean available=true;boolean isAvailable(){return available;}}
- static class ImageView extends Surface {Bitmap bitmap;
-  void setImageBitmap(Bitmap b){bitmap=b;}Bitmap getDrawable(){return bitmap;}}
+ static class ImageView extends Surface {Bitmap bitmap;Object drawable;
+  void setImageBitmap(Bitmap b){bitmap=b;drawable=new Object();}Object getDrawable(){return drawable;}}
  static class VideoPlayer {boolean playing;int plays;
   boolean isPlaying(){return playing;}void play(){playing=true;plays++;}}
  static class android {static class view {static class animation {static class LinearInterpolator {}}}}
@@ -52,7 +53,7 @@ public class ResumeTest {
  boolean appPaused,videoPausedByTab,overlayOpen,waitFrame;
  double vidFirstFrameTime=10;Object currentTopView=new Object();
  int resumeCaptureGeneration,captures;Runnable resumeCaptureTimeout;
- Bitmap videoCrossfadeBitmap;Animator vidXfade;
+ Bitmap videoCrossfadeBitmap,freezeBmp;Animator vidXfade;boolean resumeFadeWaitingForFrame;
  VideoFrameCallback callback;
  boolean isCurrentVideoSession(long s,VideoPlayer p,String path){
   return active&&s==videoSessionId&&p==videoPlayer&&Objects.equals(path,curVidPath);}
@@ -69,11 +70,28 @@ public class ResumeTest {
   check(r.videoTexture.alpha==1&&r.videoTexture.visibility==0,"surface never hidden");
   Bitmap b=new Bitmap();r.callback.onFrame(b);
   check(r.videoPlayer.plays==1&&r.vidFreeze.bitmap==b,"last frame covers resumed video");
+  check(r.resumeFadeWaitingForFrame&&r.vidFreeze.animator.duration==0,"hold cover while decoder resumes");
+  r.appPaused=true;r.startResumeCrossfadeOnFrame();
+  check(r.resumeFadeWaitingForFrame,"background frames do not spend the fade");
+  r.appPaused=false;r.startResumeCrossfadeOnFrame();
+  check(!r.resumeFadeWaitingForFrame,"first resumed frame starts fade once");
   check(r.vidFreeze.alpha==1&&r.vidFreeze.animator.target==0,"cover fades out, not in");
   check(r.vidFreeze.animator.duration==700,"resume duration");
   check(!r.waitFrame&&r.vidFirstFrameTime==10,"no second first-frame dependency");
   r.resumePlayerIfReady();check(r.captures==1,"playing video not recaptured");
   r.vidFreeze.animator.finish();check(b.recycled&&r.vidFreeze.bitmap==null,"completed cover released");
+  check(r.vidFreeze.getDrawable()!=null,"Android retains an empty drawable wrapper");
+  for(int cycle=0;cycle<100;cycle++){
+   r.videoPlayer.playing=false;int count=r.captures;
+   r.resumePlayerIfReady();check(r.captures==count+1,"each return captures again");
+   b=new Bitmap();r.callback.onFrame(b);r.startResumeCrossfadeOnFrame();
+   r.vidFreeze.animator.finish();check(b.recycled&&r.vidFreeze.bitmap==null,"each fade completes");
+  }
+  r=new ResumeTest();r.resumePlayerIfReady();b=new Bitmap();r.callback.onFrame(b);
+  r.startResumeCrossfadeOnFrame();r.vidFreeze.alpha=.4f;r.vidFreeze.animator.cancel();
+  r.videoPlayer.playing=false;r.resumePlayerIfReady();Bitmap replacement=new Bitmap();r.callback.onFrame(replacement);
+  check(b.recycled&&r.vidFreeze.bitmap==replacement,"cancelled fade can be replaced on return");
+  r.startResumeCrossfadeOnFrame();r.vidFreeze.animator.finish();check(replacement.recycled,"replacement cleaned up");
   for(int mode=0;mode<8;mode++){
    r=new ResumeTest();r.resumePlayerIfReady();VideoFrameCallback late=r.callback;
    switch(mode){
@@ -99,8 +117,8 @@ public class ResumeTest {
   check(b.recycled&&r.vidFreeze.bitmap==fresh&&r.videoPlayer.plays==1,"rapid re-entry owns latest request");
   r=new ResumeTest();r.vidFirstFrameTime=0;r.resumePlayerIfReady();
   check(r.captures==0&&r.videoPlayer.plays==1,"cold open unchanged");
-  r=new ResumeTest();r.vidFreeze.bitmap=new Bitmap();r.vidFreeze.alpha=.4f;r.resumePlayerIfReady();
-  check(r.captures==0&&r.vidFreeze.alpha==.4f,"in-flight fade not replaced");
+  r=new ResumeTest();r.freezeBmp=new Bitmap();r.vidFreeze.setImageBitmap(r.freezeBmp);r.vidFreeze.alpha=.4f;r.resumePlayerIfReady();
+  check(r.captures==0&&r.vidFreeze.alpha==.4f,"first-frame cover not replaced");
  }
 }
 '''.replace('/* PRODUCTION */', production)
@@ -117,6 +135,10 @@ public class ResumeTest {
                           'private void removeVidViews(boolean', 'private void releasePlayer()'):
             self.assertIn('cancelResumeCapture();', method(SOURCE, signature))
         self.assertIn('resumePlayerIfReady();', method(SOURCE, 'public void onTabVisibilityChanged('))
+        ready = method(SOURCE, '@Override public void onStateChanged(')
+        self.assertIn('resumePlayerIfReady();', ready)
+        self.assertNotIn('player.play();', ready)
+        self.assertIn('startResumeCrossfadeOnFrame();', method(SOURCE, '@Override public void onSurfaceTextureUpdated('))
         teardown = method(SOURCE, 'private void removeVidViews(boolean')
         self.assertIn('bmps.add(videoCrossfadeBitmap)', teardown)
         self.assertIn('videoCrossfadeBitmap = null', teardown)
