@@ -190,7 +190,7 @@ public class StarGiftPreviewSheet extends BottomSheetWithRecyclerListView {
             glassSourceRenderNode = new BlurredBackgroundSourceRenderNode(glassSourceFallback);
             glassSourceRenderNode.setOnDrawablesRelativePositionChangeListener(this::invalidateMergedVisibleBlurredPositionsAndSourcesPositions);
             glassFactory = new BlurredBackgroundDrawableViewFactory(glassSourceRenderNode);
-            glassFactory.setLiquidGlassEffectAllowed(LiteMode.isEnabled(LiteMode.FLAG_LIQUID_GLASS));
+            glassFactory.setLiquidGlassEffectAllowed(true);
         } else {
             scrollableViewNoiseSuppressor = null;
             glassSourceRenderNode = null;
@@ -800,7 +800,7 @@ public class StarGiftPreviewSheet extends BottomSheetWithRecyclerListView {
 
         if (Build.VERSION.SDK_INT >= 31 && canvas.isHardwareAccelerated() && scrollableViewNoiseSuppressor != null) {
             if (glassSourceRenderNode != null && !glassSourceRenderNode.inRecording()) {
-                if (glassSourceRenderNode.needUpdateDisplayList(width, height)  ) {
+                if (glassSourceRenderNode.needUpdateDisplayList(width, height)                               ) {
                     final Canvas c = glassSourceRenderNode.beginRecording(width, height);
                     c.drawColor(getThemedColor(Theme.key_dialogBackgroundGray));
                     scrollableViewNoiseSuppressor.draw(c, LiteMode.isEnabled(LiteMode.FLAG_LIQUID_GLASS) ?

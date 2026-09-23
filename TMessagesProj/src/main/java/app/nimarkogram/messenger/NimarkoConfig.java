@@ -6,6 +6,7 @@ import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
 
 import org.telegram.messenger.ApplicationLoader;
+import org.telegram.messenger.AndroidUtilities;
 
 import java.util.ArrayList;
 import java.util.AbstractSet;
@@ -318,6 +319,7 @@ public final class NimarkoConfig {
     public static void toggleGlareOnElements() {
         glareOnElements = !glareOnElements;
         getEditor().putBoolean("glareOnElements", glareOnElements).apply();
+        AndroidUtilities.runOnUIThread(org.telegram.ui.Components.blur3.BlurredBackgroundDrawableViewFactory::invalidateGlassSettings);
     }
 
     public static boolean mediaGlow = getPreferences().getBoolean("mediaGlow", false);
@@ -1506,7 +1508,7 @@ public final class NimarkoConfig {
     public static final int ROUND_HD = 2;
     public static final int ROUND_FHD = 3;
     public static final int ROUND_STD = 4;
-    public static int videoMessagesResolution = getIntSafe("videoMessagesResolution", ROUND_STD);
+    public static int videoMessagesResolution = getIntSafe("videoMessagesResolution", ROUND_HD);
     public static void setVideoMessagesResolution(int v) { videoMessagesResolution = v; getEditor().putInt("videoMessagesResolution", v).apply(); }
     public static int getVideoMessagesResolutionPx(int defaultPx) {
         switch (videoMessagesResolution) {
@@ -1519,21 +1521,10 @@ public final class NimarkoConfig {
         }
     }
 
-    public static int videoMessagesBitrateKbps = getIntSafe("videoMessagesBitrateKbps", 1000);
+    public static int videoMessagesBitrateKbps = getIntSafe("videoMessagesBitrateKbps", 1500);
     public static int videoMessagesAudioBitrateKbps = getIntSafe("videoMessagesAudioBitrateKbps", 64);
     public static void setVideoMessagesBitrateKbps(int v) { videoMessagesBitrateKbps = v; getEditor().putInt("videoMessagesBitrateKbps", v).apply(); }
     public static void setVideoMessagesAudioBitrateKbps(int v) { videoMessagesAudioBitrateKbps = v; getEditor().putInt("videoMessagesAudioBitrateKbps", v).apply(); }
-    static {
-        try {
-            if (!getPreferences().getBoolean("ngRoundDefaultsClamped", false)) {
-                android.content.SharedPreferences.Editor e = getEditor();
-                if (videoMessagesBitrateKbps > 1000) { videoMessagesBitrateKbps = 1000; e.putInt("videoMessagesBitrateKbps", 1000); }
-                if (videoMessagesAudioBitrateKbps > 64) { videoMessagesAudioBitrateKbps = 64; e.putInt("videoMessagesAudioBitrateKbps", 64); }
-                if (videoMessagesResolution == ROUND_HD || videoMessagesResolution == ROUND_FHD) { videoMessagesResolution = ROUND_STD; e.putInt("videoMessagesResolution", ROUND_STD); }
-                e.putBoolean("ngRoundDefaultsClamped", true).apply();
-            }
-        } catch (Throwable ignored) {}
-    }
 
     public static boolean sendVideosAtMaxQuality = getPreferences().getBoolean("sendVideosAtMaxQuality", true);
     public static void toggleSendVideosAtMaxQuality() { sendVideosAtMaxQuality = !sendVideosAtMaxQuality; getEditor().putBoolean("sendVideosAtMaxQuality", sendVideosAtMaxQuality).apply(); }
@@ -1951,7 +1942,7 @@ public final class NimarkoConfig {
         getEditor().putBoolean("hideActionBarStatus", hideActionBarStatus).apply();
     }
 
-    public static boolean disableSendHints = getPreferences().getBoolean("disableSendHints", false);
+    public static boolean disableSendHints = getPreferences().getBoolean("disableSendHints", true);
     public static void toggleDisableSendHints() {
         disableSendHints = !disableSendHints;
         getEditor().putBoolean("disableSendHints", disableSendHints).apply();

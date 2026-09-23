@@ -21,7 +21,7 @@ const java = `import java.util.*;
 public class BannerAvatarTest {
  Map<Long,Float> avAlpha=new HashMap<>(),avBase=new HashMap<>();
  Map<Long,Double> avTimes=new HashMap<>(); Set<Long> avAnim=new HashSet<>(),avShow=new HashSet<>();
- boolean profileExitActive,collapseSettling;long profileExitEid,avatarResumeHoldDialogId,viewedProfileId=1;
+ boolean profileExitActive,collapseSettling,vidReady=true;double vidFirstFrameTime=1;long profileExitEid,avatarResumeHoldDialogId,viewedProfileId=1;
  Object avatarResumeHoldView,currentTopView=new Object();double avatarResumeHoldUntil,now;
  float lastFadeGifts=-1,painted=1;static final double AV_HIDE_DUR=1;
  static class Controller{boolean shouldHideAvatar(long id){return true;}}Controller ctrl=new Controller();
@@ -31,6 +31,7 @@ public class BannerAvatarTest {
  static double getOr(Map<Long,Double> m,long k,double d){return m.getOrDefault(k,d);}
  static float clamp01(float f){return Math.max(0,Math.min(1,f));}
  ${block('private void updateAvFade(')}
+ ${block('private boolean isVideoAvatarStateSettled(')}
  ${block('public void setCollapseSettling(')}
  ${block('private static double smoothFade(')}
  ${block('private static double fadeProgressForAlpha(')}
@@ -39,10 +40,11 @@ public class BannerAvatarTest {
  static void close(float a,float b,String s){check(Math.abs(a-b)<0.0031f,s+": "+a+" -> "+b);}
  void step(boolean hide,float exp,double dt){now+=dt;updateAvFade(1,hide,now,false,0,exp);check(Float.isFinite(painted)&&painted>=0&&painted<=1,"alpha range");}
  static boolean cached(float expand,float frameLastExpand){
+  BannerAvatarTest owner=new BannerAvatarTest();owner.avAlpha.put(1L,expand);long eid=1;
   float extra=180,frameLastExtra=180;Set<Long> avAnim=new HashSet<>();double blurFadeStart=0;
   Object videoPlayer=new Object(),topView=new Object();String curVidPath="video",curBf="video";
   boolean showingPh=false,curLoading=false,openAnimDone=true,openAnim=false,transAnim=false;
-  return ${quick};
+  return ${quick.replace('isVideoAvatarStateSettled(eid, expand)', 'owner.isVideoAvatarStateSettled(eid, expand)')};
  }
  static boolean isVideoAttachedTo(Object v){return true;}
  public static void main(String[] args){
@@ -64,6 +66,12 @@ public class BannerAvatarTest {
    close(0,r.painted,"hide must finish");
   }
   if(mode.equals("all")||mode.equals("cache")){
+   BannerAvatarTest cold=new BannerAvatarTest();
+   check(!cold.isVideoAvatarStateSettled(1,0),"decoded frame cannot skip unstarted avatar hide");
+   cold.step(true,0,0);
+   check(!cold.isVideoAvatarStateSettled(1,0),"visible avatar still needs hide frames");
+   for(int i=0;i<140;i++)cold.step(true,0,.008);
+   check(cold.isVideoAvatarStateSettled(1,0),"settled hidden avatar can cache");
    check(cached(0.5f,0.5f),"stationary video keeps fast path");
    check(!cached(0.4f,0.5f),"expansion changed while header height stayed fixed");
   }

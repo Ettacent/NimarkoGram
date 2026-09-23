@@ -100,6 +100,7 @@ public class StickerSetCell extends FrameLayout {
         this.option = option;
 
         imageView = new BackupImageView(context);
+        imageView.getImageReceiver().setCrossfadeOnReady(true);
         imageView.setAspectFit(true);
         imageView.setLayerNum(1);
         addView(imageView, LayoutHelper.createFrame(40, 40, (LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT) | Gravity.TOP, LocaleController.isRTL ? 0 : 13, 9, LocaleController.isRTL ? 13 : 0, 0));

@@ -151,6 +151,7 @@ public class SharedDocumentCell extends FrameLayout implements DownloadControlle
                 super.onDraw(canvas);
             }
         };
+        thumbImageView.getImageReceiver().setCrossfadeOnReady(true);
         thumbImageView.setRoundRadius(AndroidUtilities.dp(4));
         if (viewType == VIEW_TYPE_PICKER) {
             addView(thumbImageView, LayoutHelper.createFrame(42, 42, (LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT) | Gravity.TOP, LocaleController.isRTL ? 0 : 16, 12, LocaleController.isRTL ? 16 : 0, 0));

@@ -99,13 +99,14 @@ public class ChatInputViewsContainer extends FrameLayout {
         trailingComposerDrawable = trailingDrawable;
         configureComposerSideDrawable(leadingComposerDrawable);
         configureComposerSideDrawable(trailingComposerDrawable);
+        syncComposerDrawableAlphas();
     }
 
     private void configureComposerSideDrawable(BlurredBackgroundDrawable drawable) {
         if (drawable != null) {
             drawable.setPadding(dp(INPUT_BUBBLE_DRAWABLE_PADDING));
             drawable.setRadius(dp(SEPARATED_COMPOSER_SIDE_SIZE / 2f));
-            drawable.setAlpha(inputBubbleAlpha);
+            drawable.setAlpha(0);
         }
     }
 
@@ -281,8 +282,7 @@ public class ChatInputViewsContainer extends FrameLayout {
         final int fullLeft = Math.round(inputBubbleOffsetLeft);
         final int fullRight = getMeasuredWidth() - Math.round(inputBubbleOffsetRight);
         final int separatedInset = dp(SEPARATED_COMPOSER_SIDE_SIZE + SEPARATED_COMPOSER_GAP);
-        final float leadingExpansion = Math.max(
-                recordingComposerProgress, leadingComposerExpansionProgress);
+        final float leadingExpansion = leadingComposerExpansionProgress;
         final int separatedLeft = Math.round(lerp(
                 separatedInset, fullLeft, leadingExpansion));
         final int centerLeft = Math.round(lerp(
@@ -294,6 +294,12 @@ public class ChatInputViewsContainer extends FrameLayout {
         final int centerRight = Math.round(lerp(
                 fullRight, separatedRight, separatedComposerProgress));
         out.set(centerLeft, bubbleTop - drawablePadding, centerRight, bubbleBottom + drawablePadding);
+    }
+    public void getInputBubbleContentBounds(@NonNull RectF out) {
+        getInputBubbleDrawableBounds(tmpRect);
+        out.set(tmpRect);
+        final int padding = dp(INPUT_BUBBLE_DRAWABLE_PADDING);
+        out.inset(padding, padding);
     }
 
     private float separatedComposerProgress;
@@ -452,8 +458,10 @@ public class ChatInputViewsContainer extends FrameLayout {
         );
 
         if (drawInputBackground) {
-            drawComposerBackground(canvas, inputBubbleAlpha);
+            updateComposerBackground(canvas, inputBubbleAlpha);
         } else {
+            syncComposerDrawableAlphas();
+            inputCenterTouchBounds.setEmpty();
             inputLeadingTouchBounds.setEmpty();
             inputTrailingTouchBounds.setEmpty();
         }
@@ -465,8 +473,16 @@ public class ChatInputViewsContainer extends FrameLayout {
         super.dispatchDraw(canvas);
     }
 
-    private void drawComposerBackground(@NonNull Canvas canvas, int alpha) {
+    public void prepareBackgroundForCapture() {
+        if (drawInputBackground) {
+            updateComposerBackground(null, inputBubbleAlpha);
+        } else {
+            syncComposerDrawableAlphas();
+        }
+    }
+    private void updateComposerBackground(Canvas canvas, int alpha) {
         if (blurredBackgroundDrawable == null || alpha <= 0) {
+            syncComposerDrawableAlphas();
             inputCenterTouchBounds.setEmpty();
             inputLeadingTouchBounds.setEmpty();
             inputTrailingTouchBounds.setEmpty();
@@ -480,9 +496,9 @@ public class ChatInputViewsContainer extends FrameLayout {
         inputCenterTouchBounds.set(tmpRect);
         inputCenterTouchBounds.inset(drawablePadding, drawablePadding);
 
-        blurredBackgroundDrawable.setAlpha(alpha);
+        blurredBackgroundDrawable.setAlpha(drawInputCenterBackground ? alpha : 0);
         blurredBackgroundDrawable.setBounds(tmpRect);
-        if (drawInputCenterBackground) {
+        if (canvas != null && drawInputCenterBackground) {
             blurredBackgroundDrawable.draw(canvas);
         }
 
@@ -518,26 +534,21 @@ public class ChatInputViewsContainer extends FrameLayout {
             trailingBounds.set(trailingCenter - trailingHalf, sideOuterTop,
                     trailingCenter + trailingHalf, sideOuterBottom);
 
-            final int sideAlpha = Math.round(alpha * separatedComposerProgress
-                    * (1f - recordingComposerProgress));
-            final int trailingAlpha = Math.round(sideAlpha
-                    * (1f - getTrailingComposerTakeoverProgress()));
-            final int leadingAlpha = Math.round(sideAlpha
-                    * (1f - leadingComposerExpansionProgress)
-                    * Math.max(0f, Math.min(1f, leadingSurfaceVisibility)));
+            final int trailingAlpha = getTrailingComposerAlpha(alpha);
+            final int leadingAlpha = getLeadingComposerAlpha(alpha);
             final BlurredBackgroundDrawable leadingDrawable = leadingComposerDrawable != null
                     ? leadingComposerDrawable : blurredBackgroundDrawable;
             final BlurredBackgroundDrawable trailingDrawable = trailingComposerDrawable != null
                     ? trailingComposerDrawable : blurredBackgroundDrawable;
+            leadingDrawable.setAlpha(leadingAlpha);
             if (leadingAlpha > 0) {
-                leadingDrawable.setAlpha(leadingAlpha);
                 leadingDrawable.setBounds(leadingBounds);
-                leadingDrawable.draw(canvas);
+                if (canvas != null) leadingDrawable.draw(canvas);
             }
+            trailingDrawable.setAlpha(trailingAlpha);
             if (trailingAlpha > 0) {
-                trailingDrawable.setAlpha(trailingAlpha);
                 trailingDrawable.setBounds(trailingBounds);
-                trailingDrawable.draw(canvas);
+                if (canvas != null) trailingDrawable.draw(canvas);
             }
             inputLeadingTouchBounds.inset(drawablePadding, drawablePadding);
             inputTrailingTouchBounds.inset(drawablePadding, drawablePadding);
@@ -552,18 +563,44 @@ public class ChatInputViewsContainer extends FrameLayout {
             inputTrailingTouchBounds.setEmpty();
         }
 
-        blurredBackgroundDrawable.setAlpha(inputBubbleAlpha);
+        syncComposerDrawableAlphas();
         blurredBackgroundDrawable.setBounds(tmpRect);
-        if (leadingComposerDrawable != null) {
-            leadingComposerDrawable.setAlpha(inputBubbleAlpha);
+    }
+    private int getLeadingComposerAlpha(int alpha) {
+        final float surfaceVisibility = Math.max(getLeadingComposerVisibility(),
+                1f - leadingComposerExpansionProgress);
+        return Math.round(alpha * separatedComposerProgress
+                * (1f - leadingComposerExpansionProgress)
+                * Math.max(0f, Math.min(1f, surfaceVisibility)));
+    }
+    private int getTrailingComposerAlpha(int alpha) {
+        return Math.round(alpha * separatedComposerProgress
+                * (1f - recordingComposerProgress)
+                * (1f - getTrailingComposerTakeoverProgress()));
+    }
+    public void syncComposerDrawableAlphas() {
+        final int alpha = drawInputBackground ? inputBubbleAlpha : 0;
+        if (blurredBackgroundDrawable != null) {
+            blurredBackgroundDrawable.setAlpha(drawInputCenterBackground ? alpha : 0);
         }
-        if (trailingComposerDrawable != null) {
-            trailingComposerDrawable.setAlpha(inputBubbleAlpha);
+        if (leadingComposerDrawable != null && leadingComposerDrawable != blurredBackgroundDrawable) {
+            leadingComposerDrawable.setAlpha(getLeadingComposerAlpha(alpha));
         }
+        if (trailingComposerDrawable != null && trailingComposerDrawable != blurredBackgroundDrawable) {
+            trailingComposerDrawable.setAlpha(getTrailingComposerAlpha(alpha));
+        }
+    }
+    private View recordingComposerAnchor;
+    public void setRecordingComposerAnchor(View anchor) {
+        recordingComposerAnchor = anchor;
+        invalidate();
     }
 
     private void syncLeadingComposerExpansion() {
+        final boolean recordingPanelVisible = recordingComposerAnchor != null
+                && recordingComposerAnchor.getVisibility() == VISIBLE;
         final float target = separatedComposerProgress > 0f
+                && !recordingPanelVisible
                 && getLeadingComposerVisibility() <= 0.01f ? 1f : 0f;
         if (Math.abs(leadingComposerExpansionTarget - target) < 0.001f) {
             return;
@@ -641,15 +678,7 @@ public class ChatInputViewsContainer extends FrameLayout {
 
     public void setInputBubbleAlpha(int alpha) {
         inputBubbleAlpha = Math.max(0, Math.min(255, alpha));
-        if (blurredBackgroundDrawable != null) {
-            blurredBackgroundDrawable.setAlpha(inputBubbleAlpha);
-        }
-        if (leadingComposerDrawable != null) {
-            leadingComposerDrawable.setAlpha(inputBubbleAlpha);
-        }
-        if (trailingComposerDrawable != null) {
-            trailingComposerDrawable.setAlpha(inputBubbleAlpha);
-        }
+        syncComposerDrawableAlphas();
         invalidate();
     }
 
@@ -660,6 +689,7 @@ public class ChatInputViewsContainer extends FrameLayout {
     public void setDrawInputCenterBackground(boolean draw) {
         if (drawInputCenterBackground != draw) {
             drawInputCenterBackground = draw;
+            syncComposerDrawableAlphas();
             invalidate();
         }
     }

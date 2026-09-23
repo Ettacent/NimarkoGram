@@ -2038,6 +2038,16 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
     private AnimatorSet closeAnimatorSet;
     private PlaceProviderObject showAfterAnimation;
     private PlaceProviderObject hideAfterAnimation;
+    private void restoreDeferredPlaceReceivers() {
+        if (showAfterAnimation != null && showAfterAnimation.imageReceiver != null) {
+            showAfterAnimation.imageReceiver.setVisible(true, true);
+        }
+        if (hideAfterAnimation != null && hideAfterAnimation.imageReceiver != null) {
+            hideAfterAnimation.imageReceiver.setVisible(true, true);
+        }
+        showAfterAnimation = null;
+        hideAfterAnimation = null;
+    }
     private int animatingImageViewGeneration = -1;
     private ClippingImageView secondaryAnimatingImageView;
     private int secondaryAnimatingImageViewGeneration = -1;
@@ -14669,6 +14679,8 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
         ++openGeneration;
         ++coverOperationGeneration;
         ++segmentationGeneration;
+        showAfterAnimation = null;
+        hideAfterAnimation = null;
         classGuid = ConnectionsManager.generateClassGuid();
         customTitle = null;
         disableSelection = false;
@@ -18702,11 +18714,15 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
                         for (int i = 0; i < animatingImageViews.length; i++) {
                             animatingImageViews[i].setVisibility(View.GONE);
                         }
-                        if (showAfterAnimation != null) {
-                            showAfterAnimation.imageReceiver.setVisible(true, true);
+                        PlaceProviderObject show = showAfterAnimation;
+                        PlaceProviderObject hide = hideAfterAnimation;
+                        showAfterAnimation = null;
+                        hideAfterAnimation = null;
+                        if (show != null && show.imageReceiver != null) {
+                            show.imageReceiver.setVisible(true, true);
                         }
-                        if (hideAfterAnimation != null && !hideAfterAnimation.keepImageReceiverVisible) {
-                            hideAfterAnimation.imageReceiver.setVisible(false, true);
+                        if (hide != null && hide.imageReceiver != null && !hide.keepImageReceiverVisible) {
+                            hide.imageReceiver.setVisible(false, true);
                         }
                         if (photos != null && sendPhotoType != 3 && sendPhotoType != SELECT_TYPE_AVATAR) {
                             if (placeProvider == null || !placeProvider.closeKeyboard()) {
@@ -19617,6 +19633,7 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
         ++openGeneration;
         ++coverOperationGeneration;
         ++segmentationGeneration;
+        restoreDeferredPlaceReceivers();
         recycleCurrentBitmap();
         if (firstFrameView != null) {
             firstFrameView.clear();
@@ -19685,6 +19702,7 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
         ++openGeneration;
         ++coverOperationGeneration;
         ++segmentationGeneration;
+        restoreDeferredPlaceReceivers();
         final int closedGeneration = openGeneration;
         final ClippingImageView closingSecondaryImageView = secondaryAnimatingImageViewGeneration == transitionGeneration
                 ? secondaryAnimatingImageView : null;

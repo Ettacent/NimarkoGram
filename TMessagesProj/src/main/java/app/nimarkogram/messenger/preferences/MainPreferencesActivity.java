@@ -55,6 +55,8 @@ public class MainPreferencesActivity extends BasePreferencesActivity {
     private EmptyTextProgressView emptyView;
     private boolean searching;
     private String searchQuery = "";
+    private View searchRefreshHost;
+    private Runnable searchRefresh;
 
     private UItem category(int id, IconBackgroundColors colors, int icon, int title, int subtitle, String alias) {
         return SettingsActivity.SettingCell.Factory.of(
@@ -67,6 +69,9 @@ public class MainPreferencesActivity extends BasePreferencesActivity {
 
     @Override
     public View createView(Context context) {
+        cancelSearchRefresh();
+        searching = false;
+        searchQuery = "";
         View view = super.createView(context);
         ActionBarMenu menu = actionBar.createMenu();
         searchItem = menu.addItem(SEARCH_MENU_ID, R.drawable.outline_header_search)
@@ -190,12 +195,41 @@ public class MainPreferencesActivity extends BasePreferencesActivity {
     }
 
     private void refreshSearch(boolean animated) {
+        if (!animated) {
+            cancelSearchRefresh();
+            updateSearchList(false);
+            return;
+        }
+        if (searchRefresh != null || listView == null) return;
+        final View host = listView;
+        searchRefreshHost = host;
+        searchRefresh = () -> {
+            if (searchRefreshHost != host || listView != host || isFinished) return;
+            searchRefreshHost = null;
+            searchRefresh = null;
+            updateSearchList(true);
+        };
+        host.postOnAnimation(searchRefresh);
+    }
+    private void updateSearchList(boolean animated) {
         if (listView != null && listView.adapter != null) {
             listView.adapter.update(animated);
             if (listView.layoutManager != null) {
                 listView.layoutManager.scrollToPositionWithOffset(0, 0);
             }
         }
+    }
+    private void cancelSearchRefresh() {
+        if (searchRefreshHost != null && searchRefresh != null) {
+            searchRefreshHost.removeCallbacks(searchRefresh);
+        }
+        searchRefreshHost = null;
+        searchRefresh = null;
+    }
+    @Override
+    public void onFragmentDestroy() {
+        cancelSearchRefresh();
+        super.onFragmentDestroy();
     }
 
     private void openSearchEntry(NimarkoSettingsSearchIndex.Entry entry) {

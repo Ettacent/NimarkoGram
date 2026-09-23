@@ -64,6 +64,7 @@ public class AnimatedTextView extends View {
         private float oldWidth, oldHeight;
         private Part[] oldParts;
         private CharSequence oldText;
+        private int layoutWidth = Integer.MIN_VALUE;
 
         public void setSplitByWords(boolean b) {
             splitByWords = b;
@@ -413,13 +414,29 @@ public class AnimatedTextView extends View {
         }
 
         public void cancelAnimation() {
-            if (animator != null) {
-                animator.cancel();
+            cancelAnimationInternal();
+            invalidateSelf();
+            if (widthUpdatedListener != null) {
+                widthUpdatedListener.run();
             }
+        }
+        private void cancelAnimationInternal() {
+            toSetText = null;
+            toSetTextMoveDown = false;
+            if (animator != null) {
+                animator.removeAllListeners();
+                animator.removeAllUpdateListeners();
+                animator.cancel();
+                animator = null;
+            }
+            clearOldParts();
+            oldText = null;
+            oldWidth = oldHeight = 0;
+            t = 0;
         }
 
         public boolean isAnimating() {
-            return animator != null && animator.isRunning();
+            return animator != null && animator.isStarted();
         }
 
         public void setText(CharSequence text) {
@@ -440,14 +457,13 @@ public class AnimatedTextView extends View {
             final int width = overrideFullWidth > 0 ? overrideFullWidth : bounds.width();
             if (animated) {
                 if (TextUtils.equals(text, currentText)) {
+                    toSetText = null;
+                    toSetTextMoveDown = false;
                     return;
                 }
 
                 if (allowCancel) {
-                    if (animator != null) {
-                        animator.cancel();
-                        animator = null;
-                    }
+                    cancelAnimationInternal();
                 } else if (isAnimating()) {
                     toSetText = text;
                     toSetTextMoveDown = moveDown;
@@ -457,114 +473,60 @@ public class AnimatedTextView extends View {
                 oldText = currentText;
                 currentText = text;
 
-                ArrayList<Part> currentParts = new ArrayList<>();
-                ArrayList<Part> oldParts = new ArrayList<>();
-
-                currentWidth = currentHeight = 0;
-                oldWidth = oldHeight = 0;
-                isRTL = AndroidUtilities.isRTL(currentText);
-
-                RegionCallback onEqualRegion = (part, from, to) -> {
-                    StaticLayout layout = makeLayout(part, width - (int) Math.ceil(Math.min(currentWidth, oldWidth)));
-                    final Part currentPart = new Part(layout, currentWidth, oldParts.size());
-                    final Part oldPart = new Part(layout, oldWidth, oldParts.size());
-                    currentParts.add(currentPart);
-                    oldParts.add(oldPart);
-                    float partWidth = currentPart.width;
-                    currentWidth += partWidth;
-                    oldWidth += partWidth;
-                    currentHeight = Math.max(currentHeight, layout.getHeight());
-                    oldHeight = Math.max(oldHeight, layout.getHeight());
-                };
-                RegionCallback onNewPart = (part, from, to) -> {
-                    StaticLayout layout = makeLayout(part, width - (int) Math.ceil(currentWidth));
-                    final Part currentPart = new Part(layout, currentWidth, -1);
-                    currentParts.add(currentPart);
-                    currentWidth += currentPart.width;
-                    currentHeight = Math.max(currentHeight, layout.getHeight());
-                };
-                RegionCallback onOldPart = (part, from, to) -> {
-                    StaticLayout layout = makeLayout(part, width - (int) Math.ceil(oldWidth));
-                    final Part oldPart = new Part(layout, oldWidth, -1);
-                    oldParts.add(oldPart);
-                    oldWidth += oldPart.width;
-                    oldHeight = Math.max(oldHeight, layout.getHeight());
-                };
-
-                CharSequence from = splitByWords ? new WordSequence(oldText) : oldText;
-                CharSequence to = splitByWords ? new WordSequence(currentText) : currentText;
-
-                diff(from, to, onEqualRegion, onNewPart, onOldPart);
-
-                clearCurrentParts();
-                if (this.currentParts == null || this.currentParts.length != currentParts.size()) {
-                    this.currentParts = new Part[currentParts.size()];
-                }
-                currentParts.toArray(this.currentParts);
-                clearOldParts();
-                if (this.oldParts == null || this.oldParts.length != oldParts.size()) {
-                    this.oldParts = new Part[oldParts.size()];
-                }
-                oldParts.toArray(this.oldParts);
-                if (animator != null) {
-                    animator.cancel();
-                }
+                rebuildLayouts(width);
 
                 this.moveDown = moveDown;
-                animator = ValueAnimator.ofFloat(t = 0f, 1f);
-                if (widthUpdatedListener != null) {
-                    widthUpdatedListener.run();
-                }
-                animator.addUpdateListener(anm -> {
+                final ValueAnimator textAnimator = ValueAnimator.ofFloat(t = 0f, 1f);
+                animator = textAnimator;
+                textAnimator.addUpdateListener(anm -> {
                     t = (float) anm.getAnimatedValue();
                     invalidateSelf();
                     if (widthUpdatedListener != null) {
                         widthUpdatedListener.run();
                     }
                 });
-                animator.addListener(new AnimatorListenerAdapter() {
+                textAnimator.addListener(new AnimatorListenerAdapter() {
                     @Override
                     public void onAnimationEnd(Animator animation) {
-                        super.onAnimationEnd(animation);
+                        if (animator != animation) {
+                            return;
+                        }
+                        animator = null;
                         clearOldParts();
                         oldText = null;
-                        oldWidth = 0;
+                        oldWidth = oldHeight = 0;
                         t = 0;
+                        final CharSequence nextText = toSetText;
+                        final boolean nextMoveDown = toSetTextMoveDown;
+                        toSetText = null;
+                        toSetTextMoveDown = false;
+                        final CharSequence finishedText = currentText;
                         invalidateSelf();
                         if (widthUpdatedListener != null) {
                             widthUpdatedListener.run();
                         }
-                        animator = null;
-
-                        if (toSetText != null) {
-                            setText(toSetText, true, toSetTextMoveDown);
-                            toSetText = null;
-                            toSetTextMoveDown = false;
+                        if (animator != null || currentText != finishedText) {
+                            return;
+                        }
+                        if (nextText != null) {
+                            setText(nextText, true, nextMoveDown);
                         } else if (onAnimationFinishListener != null) {
                             onAnimationFinishListener.run();
                         }
                     }
                 });
-                animator.setStartDelay(animateDelay);
-                animator.setDuration(animateDuration);
-                animator.setInterpolator(animateInterpolator);
-                animator.start();
-            } else {
-                if (animator != null) {
-                    animator.cancel();
+                textAnimator.setStartDelay(animateDelay);
+                textAnimator.setDuration(animateDuration);
+                textAnimator.setInterpolator(animateInterpolator);
+                textAnimator.start();
+                if (animator == textAnimator && widthUpdatedListener != null) {
+                    widthUpdatedListener.run();
                 }
-                animator = null;
-                toSetText = null;
-                toSetTextMoveDown = false;
-                t = 0;
-
-                if (!text.equals(currentText)) {
-                    clearCurrentParts();
-                    currentParts = new Part[1];
-                    currentParts[0] = new Part(makeLayout(currentText = text, width), 0, -1);
-                    currentWidth = currentParts[0].width;
-                    currentHeight = currentParts[0].layout.getHeight();
-                    isRTL = AndroidUtilities.isRTL(currentText);
+            } else {
+                cancelAnimationInternal();
+                if (!text.equals(currentText) || currentParts == null || layoutWidth != width) {
+                    currentText = text;
+                    rebuildLayouts(width);
                 }
 
                 clearOldParts();
@@ -578,6 +540,64 @@ public class AnimatedTextView extends View {
                 }
             }
         }
+        private void updateLayoutWidth() {
+            final int width = overrideFullWidth > 0 ? overrideFullWidth : bounds.width();
+            if (!fadeOverflow && currentText != null && layoutWidth != width) {
+                rebuildLayouts(width);
+                invalidateSelf();
+            }
+        }
+        private void rebuildLayouts(final int width) {
+            layoutWidth = width;
+            if (currentText == null) {
+                return;
+            }
+            isRTL = AndroidUtilities.isRTL(currentText);
+            if (oldText == null) {
+                final Part part = new Part(makeLayout(currentText, width), 0, -1);
+                clearCurrentParts();
+                currentParts = new Part[] { part };
+                currentWidth = part.width;
+                currentHeight = part.layout.getHeight();
+                return;
+            }
+            ArrayList<Part> currentParts = new ArrayList<>();
+            ArrayList<Part> oldParts = new ArrayList<>();
+            currentWidth = currentHeight = 0;
+            oldWidth = oldHeight = 0;
+            RegionCallback onEqualRegion = (part, from, to) -> {
+                StaticLayout layout = makeLayout(part, width - (int) Math.ceil(Math.min(currentWidth, oldWidth)));
+                final Part currentPart = new Part(layout, currentWidth, oldParts.size());
+                final Part oldPart = new Part(layout, oldWidth, currentParts.size());
+                currentParts.add(currentPart);
+                oldParts.add(oldPart);
+                currentWidth += currentPart.width;
+                oldWidth += currentPart.width;
+                currentHeight = Math.max(currentHeight, layout.getHeight());
+                oldHeight = Math.max(oldHeight, layout.getHeight());
+            };
+            RegionCallback onNewPart = (part, from, to) -> {
+                StaticLayout layout = makeLayout(part, width - (int) Math.ceil(currentWidth));
+                final Part currentPart = new Part(layout, currentWidth, -1);
+                currentParts.add(currentPart);
+                currentWidth += currentPart.width;
+                currentHeight = Math.max(currentHeight, layout.getHeight());
+            };
+            RegionCallback onOldPart = (part, from, to) -> {
+                StaticLayout layout = makeLayout(part, width - (int) Math.ceil(oldWidth));
+                final Part oldPart = new Part(layout, oldWidth, -1);
+                oldParts.add(oldPart);
+                oldWidth += oldPart.width;
+                oldHeight = Math.max(oldHeight, layout.getHeight());
+            };
+            CharSequence from = splitByWords ? new WordSequence(oldText) : oldText;
+            CharSequence to = splitByWords ? new WordSequence(currentText) : currentText;
+            diff(from, to, onEqualRegion, onNewPart, onOldPart);
+            clearCurrentParts();
+            clearOldParts();
+            this.currentParts = currentParts.toArray(new Part[currentParts.size()]);
+            this.oldParts = oldParts.toArray(new Part[oldParts.size()]);
+        }
 
         private void clearOldParts() {
             if (oldParts != null) {
@@ -589,12 +609,12 @@ public class AnimatedTextView extends View {
         }
 
         private void clearCurrentParts() {
-            if (oldParts != null) {
-                for (int i = 0; i < oldParts.length; ++i) {
-                    oldParts[i].detach();
+            if (currentParts != null) {
+                for (int i = 0; i < currentParts.length; ++i) {
+                    currentParts[i].detach();
                 }
             }
-            oldParts = null;
+            currentParts = null;
         }
 
         public CharSequence getText() {
@@ -987,27 +1007,7 @@ public class AnimatedTextView extends View {
             textPaint.setTextSize(textSizePx);
             if (Math.abs(lastTextPaint - textSizePx) > 0.5f) {
                 final int width = overrideFullWidth > 0 ? overrideFullWidth : bounds.width();
-                if (currentParts != null) {
-                    
-                    currentWidth = 0;
-                    currentHeight = 0;
-                    for (int i = 0; i < currentParts.length; ++i) {
-                        StaticLayout layout = makeLayout(currentParts[i].layout.getText(), width - (int) Math.ceil(Math.min(currentWidth, oldWidth)));
-                        currentParts[i] = new Part(layout, currentParts[i].offset, currentParts[i].toOppositeIndex);
-                        currentWidth += currentParts[i].width;
-                        currentHeight = Math.max(currentHeight, currentParts[i].layout.getHeight());
-                    }
-                }
-                if (oldParts != null) {
-                    oldWidth = 0;
-                    oldHeight = 0;
-                    for (int i = 0; i < oldParts.length; ++i) {
-                        StaticLayout layout = makeLayout(oldParts[i].layout.getText(), width - (int) Math.ceil(Math.min(currentWidth, oldWidth)));
-                        oldParts[i] = new Part(layout, oldParts[i].offset, oldParts[i].toOppositeIndex);
-                        oldWidth += oldParts[i].width;
-                        oldHeight = Math.max(oldHeight, oldParts[i].layout.getHeight());
-                    }
-                }
+                rebuildLayouts(width);
                 invalidateSelf();
             }
         }
@@ -1034,16 +1034,24 @@ public class AnimatedTextView extends View {
         }
 
         private ValueAnimator colorAnimator;
+        private int colorAnimationTarget;
         public void setTextColor(int color, boolean animated) {
+            if (animated && colorAnimator != null && colorAnimationTarget == color) {
+                return;
+            }
             if (colorAnimator != null) {
+                colorAnimator.removeAllListeners();
+                colorAnimator.removeAllUpdateListeners();
                 colorAnimator.cancel();
                 colorAnimator = null;
             }
-            if (!animated) {
+            final int from = ColorUtils.setAlphaComponent(textPaint.getColor(), alpha);
+            if (!animated || from == color) {
                 setTextColor(color);
+                invalidateSelf();
             } else {
-                final int from = getTextColor();
                 final int to = color;
+                colorAnimationTarget = color;
                 colorAnimator = ValueAnimator.ofFloat(0, 1);
                 colorAnimator.addUpdateListener(anm -> {
                     setTextColor(ColorUtils.blendARGB(from, to, (float) anm.getAnimatedValue()));
@@ -1052,6 +1060,10 @@ public class AnimatedTextView extends View {
                 colorAnimator.addListener(new AnimatorListenerAdapter() {
                     @Override
                     public void onAnimationEnd(Animator animation) {
+                        if (colorAnimator != animation) {
+                            return;
+                        }
+                        colorAnimator = null;
                         setTextColor(to);
                     }
                 });
@@ -1222,11 +1234,16 @@ public class AnimatedTextView extends View {
         drawable = new AnimatedTextDrawable(splitByWords, preserveIndex, startFromEnd);
         drawable.setCallback(this);
         drawable.setOnAnimationFinishListener(() -> {
+            if (adaptWidth) {
+                requestLayout();
+            }
             if (toSetText != null) {
                 
-                AnimatedTextView.this.setText(toSetText, toSetMoveDown, true);
+                final CharSequence nextText = toSetText;
+                final boolean nextMoveDown = toSetMoveDown;
                 toSetText = null;
                 toSetMoveDown = false;
+                AnimatedTextView.this.setText(nextText, true, nextMoveDown);
             }
         });
     }
@@ -1242,15 +1259,13 @@ public class AnimatedTextView extends View {
         if (maxWidth > 0) {
             width = Math.min(width, maxWidth);
         }
-        if (lastMaxWidth != width && getLayoutParams().width != 0) {
+        if (getLayoutParams().width != 0) {
             drawable.setBounds(getPaddingLeft(), getPaddingTop(), width - getPaddingRight(), height - getPaddingBottom());
-            if (!drawable.fadeOverflow) {
-                drawable.setText(drawable.getText(), false, true);
-            }
+            drawable.updateLayoutWidth();
         }
         lastMaxWidth = width;
         if (adaptWidth && MeasureSpec.getMode(widthMeasureSpec) == MeasureSpec.AT_MOST) {
-            width = getPaddingLeft() + (int) Math.ceil(drawable.getWidth()) + getPaddingRight();
+            width = Math.min(width, getPaddingLeft() + (int) Math.ceil(drawable.getWidth()) + getPaddingRight());
         }
         setMeasuredDimension(width, height);
     }
@@ -1279,7 +1294,12 @@ public class AnimatedTextView extends View {
     }
 
     public void cancelAnimation() {
+        toSetText = null;
+        toSetMoveDown = false;
         drawable.cancelAnimation();
+        if (adaptWidth) {
+            requestLayout();
+        }
     }
 
     public boolean isAnimating() {
@@ -1292,20 +1312,15 @@ public class AnimatedTextView extends View {
 
     private boolean first = true;
     public void setText(CharSequence text, boolean animated, boolean moveDown) {
-        animated = !first && animated;
+        animated = !first && animated && text != null;
         first = false;
-        if (animated && !TextUtils.equals(text, drawable.getText())) {
-            if (drawable.allowCancel) {
-                if (drawable.animator != null) {
-                    drawable.animator.cancel();
-                    drawable.animator = null;
-                }
-            } else if (drawable.isAnimating()) {
-                toSetText = text;
-                toSetMoveDown = moveDown;
-                return;
-            }
+        if (animated && !drawable.allowCancel && drawable.isAnimating()) {
+            toSetText = TextUtils.equals(text, drawable.getText()) ? null : text;
+            toSetMoveDown = moveDown;
+            return;
         }
+        toSetText = null;
+        toSetMoveDown = false;
         int wasWidth = (int) drawable.getWidth();
         drawable.setBounds(getPaddingLeft(), getPaddingTop(), lastMaxWidth - getPaddingRight(), getMeasuredHeight() - getPaddingBottom());
         drawable.setText(text, animated, moveDown);

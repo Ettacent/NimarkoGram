@@ -89,6 +89,7 @@ import org.telegram.messenger.UserObject;
 import org.telegram.messenger.browser.Browser;
 import org.telegram.tgnet.ConnectionsManager;
 import org.telegram.tgnet.TLRPC;
+import org.telegram.tgnet.tl.TL_stars;
 import org.telegram.ui.ActionBar.ActionBar;
 import org.telegram.ui.ActionBar.ActionBarMenu;
 import org.telegram.ui.ActionBar.ActionBarMenuItem;
@@ -159,6 +160,7 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
     public org.telegram.ui.Components.AnimatedLinearLayout getInAppNotificationPanel() {
         if (!(fragmentView instanceof FrameLayout) || listView == null) return null;
         if (notificationInlinePanel == null || notificationInlinePanel.getParent() != fragmentView) {
+            releaseInAppNotificationPanel();
             notificationInlinePanel = new app.nimarkogram.messenger.notifications.NotificationInlinePanel(this, (FrameLayout) fragmentView, listView);
         }
         return notificationInlinePanel;
@@ -182,6 +184,21 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
     }
     private String query;
     private ProfileActivity.SearchAdapter search;
+    private ProfileActivity.SearchAdapter ensureSearchAdapter(Context context) {
+        if (search == null) {
+            search = new ProfileActivity.SearchAdapter(this, context) {
+                @Override
+                public void notifyDataSetChanged() {
+                    if (search == this && searchItem != null && searchItem.isSearchFieldVisible2()
+                            && listView != null) {
+                        listView.adapter.update(true);
+                    }
+                }
+            };
+            search.loadFaqWebPage();
+        }
+        return search;
+    }
 
     private ImageUpdater imageUpdater;
     private AnimatorSet avatarAnimation;
@@ -244,6 +261,7 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
     @Override
     public void clearViews() {
         if (ignoreClearViews) return;
+        search = null;
         super.clearViews();
     }
 
@@ -335,14 +353,14 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
             @Override
             public void onSearchExpand() {
                 animatorSearchPageVisible.setValue(true, true);
-                search.search(query = "");
+                ensureSearchAdapter(context).search(query = "");
                 updateActionBarVisible();
                 listView.adapter.update(false);
             }
 
             @Override
             public void onTextChanged(EditText editText) {
-                search.search(query = editText.getText().toString());
+                ensureSearchAdapter(context).search(query = editText.getText().toString());
             }
         });
         searchItem.setSearchFieldHint(getString(R.string.Search));
@@ -352,13 +370,6 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
         otherItem.addSubItem(2, R.drawable.msg_leave, getString(R.string.LogOut));
         otherItem.setOnClickListener(view -> showProfileMenuItemOptions(otherItem));
 
-        search = new ProfileActivity.SearchAdapter(this, context) {
-            @Override
-            public void notifyDataSetChanged() {
-                listView.adapter.update(true);
-            }
-        };
-        search.loadFaqWebPage();
 
         listView = new UniversalRecyclerView(this, this::fillItems, this::onClick, this::onLongClick);
         listView.adapter.setApplyBackground(false);
@@ -493,7 +504,17 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
         });
         topView.addView(subtitleView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, Gravity.CENTER_HORIZONTAL | Gravity.TOP, 0, 168 - 12, 0, 0));
 
-        versionView = new TextView(context);
+        versionView = new TextView(context) {
+            private boolean versionLoaded;
+            @Override
+            protected void onAttachedToWindow() {
+                super.onAttachedToWindow();
+                if (!versionLoaded) {
+                    versionLoaded = true;
+                    setText(getVersionName());
+                }
+            }
+        };
         versionView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 14);
         versionView.setTextColor(getThemedColor(Theme.key_windowBackgroundWhiteGrayText4));
         versionView.setPadding(dp(21), dp(10), dp(21), dp(10));
@@ -526,6 +547,7 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
 
     @Override
     public void onFragmentDestroy() {
+        search = null;
         super.onFragmentDestroy();
 
         getNotificationCenter().removeObserver(this, NotificationCenter.updateInterfaces);
@@ -577,7 +599,6 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
         }
         subtitleView.setText(sb);
 
-        versionView.setText(getVersionName());
     }
 
 
@@ -664,7 +685,7 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
     private void fillItems(ArrayList<UItem> items, UniversalAdapter adapter) {
         if (searchItem.isSearchFieldVisible2()) {
             items.add(UItem.asSpace(ActionBar.getCurrentActionBarHeight()));
-            search.fillItems(items);
+            ensureSearchAdapter(listView.getContext()).fillItems(items);
             return;
         }
 
@@ -755,17 +776,16 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
         }
         if (getMessagesController().starsPurchaseAvailable()) {
             StarsController c = StarsController.getInstance(currentAccount);
-            long balance = c.getBalance().amount;
-            items.add(SettingCell.Factory.of(12, 0xFFEFA612, 0xFFE77512, R.drawable.filled_earn_stars, getString(R.string.TelegramStars), null, c.balanceAvailable() && balance > 0 ? StarsIntroActivity.formatStarsAmount(c.getBalance(), 0.85f, ' ') : ""));
+            TL_stars.StarsAmount balance = c.getBalance();
+            items.add(SettingCell.Factory.of(12, 0xFFEFA612, 0xFFE77512, R.drawable.filled_earn_stars, getString(R.string.TelegramStars), null, c.balanceAvailable() && balance.amount > 0 ? StarsIntroActivity.formatStarsAmount(balance, 0.85f, ' ') : ""));
         }
-        StarsController.getInstance(currentAccount, true).getBalance();
-        if (ApplicationLoader.isBetaBuild() || ApplicationLoader.isStandaloneBuild() || ApplicationLoader.isHuaweiStoreBuild() || (StarsController.getInstance(currentAccount, true).balanceAvailable() && (StarsController.getInstance(currentAccount, true).hasTransactions() || StarsController.getInstance(currentAccount, true).getBalance().positive()))) {
-            StarsController c = StarsController.getTonInstance(currentAccount);
-            long balance = c.getBalance().amount;
-            items.add(SettingCell.Factory.of(13, 0xFF1BA4ED, 0xFF1488E1, R.drawable.settings_gram_24, getString(R.string.MyTON), null, c.balanceAvailable() && balance > 0 ? StarsIntroActivity.formatStarsAmount(c.getBalance(), 0.85f, ' ') : ""));
+        StarsController tonController = StarsController.getTonInstance(currentAccount);
+        TL_stars.StarsAmount tonBalance = tonController.getBalance();
+        if (ApplicationLoader.isBetaBuild() || ApplicationLoader.isStandaloneBuild() || ApplicationLoader.isHuaweiStoreBuild() || (tonController.balanceAvailable() && (tonController.hasTransactions() || tonBalance.positive()))) {
+            items.add(SettingCell.Factory.of(13, 0xFF1BA4ED, 0xFF1488E1, R.drawable.settings_gram_24, getString(R.string.MyTON), null, tonController.balanceAvailable() && tonBalance.amount > 0 ? StarsIntroActivity.formatStarsAmount(tonBalance, 0.85f, ' ') : ""));
         }
 
-        TLRPC.TL_attachMenuBots menuBots = MediaDataController.getInstance(UserConfig.selectedAccount).getAttachMenuBots();
+        TLRPC.TL_attachMenuBots menuBots = MediaDataController.getInstance(currentAccount).getAttachMenuBots();
         if (menuBots != null && menuBots.bots != null && !menuBots.bots.isEmpty()) {
             for (TLRPC.TL_attachMenuBot attachMenuBot : menuBots.bots) {
                 final long WALLET_BOT_ID = 1985737506L;
@@ -1025,6 +1045,8 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
 
         private final AnimatedEmojiDrawable.SwapAnimatedEmojiDrawable botDrawable;
         private final AnimatedEmojiDrawable.SwapAnimatedEmojiDrawable emojiStatusDrawable;
+        private int statusBoundAccount = -1;
+        private long statusBoundUser;
 
         public AccountCell(Context context, Theme.ResourcesProvider resourcesProvider) {
             super(context);
@@ -1099,6 +1121,14 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
 
         public void set(int account) {
             final TLRPC.User user = UserConfig.getInstance(account).getCurrentUser();
+            final boolean animateStatus = isAttachedToWindow() && statusBoundAccount == account
+                    && user != null && statusBoundUser == user.id;
+            statusBoundAccount = account;
+            statusBoundUser = user == null ? 0 : user.id;
+            if (!animateStatus) {
+                botDrawable.resetAnimation();
+                emojiStatusDrawable.resetAnimation();
+            }
 
             avatarDrawable.setInfo(account, user);
             avatarView.getImageReceiver().setCurrentAccount(account);
@@ -1108,21 +1138,24 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
             botDrawable.setCurrentAccount(account);
             emojiStatusDrawable.setCurrentAccount(account);
 
-            botDrawable.setColor(Theme.getColor(Theme.key_profile_verifiedBackground, resourcesProvider));
             if (user != null && user.bot_verification_icon != 0) {
-                botDrawable.set(user.bot_verification_icon, false);
+                botDrawable.set(user.bot_verification_icon, animateStatus);
             } else {
-                botDrawable.set((Drawable) null, false);
+                botDrawable.set((Drawable) null, animateStatus);
             }
             final Long emojiStatusId = UserObject.getEmojiStatusDocumentId(user);
-            emojiStatusDrawable.setColor(Theme.getColor(Theme.key_profile_verifiedBackground, resourcesProvider));
             if (emojiStatusId != null) {
-                emojiStatusDrawable.set(emojiStatusId, false);
+                emojiStatusDrawable.set(emojiStatusId, animateStatus);
             } else if (user != null && user.premium) {
-                emojiStatusDrawable.set(getContext().getResources().getDrawable(R.drawable.msg_premium_liststar).mutate(), false);
+                if (emojiStatusDrawable.getDrawable() == null || emojiStatusDrawable.getDrawable() instanceof AnimatedEmojiDrawable
+                        || !animateStatus) {
+                    emojiStatusDrawable.set(getContext().getResources().getDrawable(R.drawable.msg_premium_liststar).mutate(), animateStatus);
+                }
             } else {
-                emojiStatusDrawable.set((Drawable) null, false);
+                emojiStatusDrawable.set((Drawable) null, animateStatus);
             }
+            botDrawable.setColor(Theme.getColor(Theme.key_profile_verifiedBackground, resourcesProvider));
+            emojiStatusDrawable.setColor(Theme.getColor(Theme.key_profile_verifiedBackground, resourcesProvider));
             textView.setLeftDrawable(!botDrawable.isEmpty() ? botDrawable : null);
             textView.setRightDrawable(!emojiStatusDrawable.isEmpty() ? emojiStatusDrawable : null);
 
@@ -2146,7 +2179,7 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
 
         iBlur3PositionActionBar.set(0, -additionalList, fragmentView.getMeasuredWidth(), actionBar.getMeasuredHeight() + additionalList);
         iBlur3PositionMainTabs.set(0, mainTabTop, fragmentView.getMeasuredWidth(), mainTabBottom);
-        iBlur3PositionMainTabs.inset(0, LiteMode.isEnabled(LiteMode.FLAG_LIQUID_GLASS) ? 0 : -dp(48));
+        iBlur3PositionMainTabs.inset(0, -dp(LiteMode.isEnabled(LiteMode.FLAG_LIQUID_GLASS) ? 24 : 48));
 
         scrollableViewNoiseSuppressor.setupRenderNodes(iBlur3Positions, hasMainTabs ? 2 : 1);
         scrollableViewNoiseSuppressor.invalidateResultRenderNodes(iBlur3Capture, fragmentView.getMeasuredWidth(), fragmentView.getMeasuredHeight());

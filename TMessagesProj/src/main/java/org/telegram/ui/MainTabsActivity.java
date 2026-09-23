@@ -11,7 +11,6 @@ import android.content.res.Configuration;
 import android.graphics.Canvas;
 import android.graphics.Paint;
 import android.graphics.RectF;
-import android.graphics.drawable.ShapeDrawable;
 import android.os.Build;
 import android.os.Bundle;
 import android.text.SpannableStringBuilder;
@@ -396,6 +395,9 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
 
             final int tabIndex = index;
             tabs[index].setOnClickListener(v -> {
+                if (tabIndex != INDEX_CHATS) {
+                    pendingChatsSearch = false;
+                }
                 if (viewPager.isManualScrolling() || viewPager.isTouch()) {
                     return;
                 }
@@ -452,7 +454,7 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
 
         BlurredBackgroundDrawableViewFactory iBlur3FactoryGlass = new BlurredBackgroundDrawableViewFactory(iBlur3SourceTabGlass != null ? iBlur3SourceTabGlass : iBlur3SourceColor);
         iBlur3FactoryGlass.setSourceRootView(viewPositionWatcher, contentView);
-        iBlur3FactoryGlass.setLiquidGlassEffectAllowed(LiteMode.isEnabled(LiteMode.FLAG_LIQUID_GLASS));
+        iBlur3FactoryGlass.setLiquidGlassEffectAllowed(true);
 
         tabsViewBackground = iBlur3FactoryGlass.create(tabsView, BlurredBackgroundProviderImpl.mainTabs(resourceProvider));
         tabsViewBackground.setRadius(dp(DialogsActivity.MAIN_TABS_HEIGHT / 2f));
@@ -549,7 +551,7 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
 
     public boolean openCallsSelector(View anchor) {
         if (getContext() == null || getParentActivity() == null) return false;
-        final ItemOptions o = ItemOptions.makeOptions(this, anchor);
+        final ItemOptions o = ItemOptions.makeOptions(this, anchor).setDrawScrim(false);
         o.add(R.drawable.menu_call_create, getString(R.string.GroupCallCreate2), () -> CallLogActivity.openCreateCall(this));
         if (getUserConfig().showCallsTab) {
             o.add(R.drawable.msg_archive_hide, getString(R.string.HideCallTab), () -> {
@@ -566,9 +568,6 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
         }
         o.setBlur(true);
         o.translate(0, -dp(4));
-        final ShapeDrawable bg = Theme.createRoundRectDrawable(dp(28), getThemedColor(Theme.key_windowBackgroundWhite));
-        bg.getPaint().setShadowLayer(dp(6), 0, dp(1), Theme.multAlpha(0xFF000000, 0.15f));
-        o.setScrimViewBackground(bg);
         o.show();
         return true;
     }
@@ -580,7 +579,7 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
         final ArrayList<MessagesController.DialogFilter> filters = getMessagesController().getDialogFilters();
         final boolean hasFolders = filters != null && filters.size() > 1;
 
-        final ItemOptions o = ItemOptions.makeOptions(this, anchor);
+        final ItemOptions o = ItemOptions.makeOptions(this, anchor).setDrawScrim(false);
         if (hasFolders) for (int i = 0; i < filters.size(); i++) {
             final MessagesController.DialogFilter folder = filters.get(i);
             final ActionBarMenuSubItem folderItem = new ActionBarMenuSubItem(getParentActivity(), 2, false, false, getResourceProvider());
@@ -630,9 +629,6 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
         if (o.getItemsCount() == 0) return false;
         o.translate(-dp(8), -dp(4));
         o.setMaxHeight(dp(400));
-        final ShapeDrawable bg = Theme.createRoundRectDrawable(dp(28), getThemedColor(Theme.key_windowBackgroundWhite));
-        bg.getPaint().setShadowLayer(dp(6), 0, dp(1), Theme.multAlpha(0xFF000000, 0.15f));
-        o.setScrimViewBackground(bg);
         o.setGravity(Gravity.LEFT);
         o.show();
 
@@ -740,7 +736,7 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
             return 0;
         });
 
-        ItemOptions o = ItemOptions.makeOptions(this, button);
+        ItemOptions o = ItemOptions.makeOptions(this, button).setDrawScrim(false);
         if (UserConfig.getActivatedAccountsCount() < UserConfig.MAX_ACCOUNT_COUNT) {
             o.add(R.drawable.msg_addbot, getString(R.string.AddAccount), () -> {
                 int freeAccounts = 0;
@@ -775,10 +771,13 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
                 final View btn = accountView(acc, currentAccount == acc);
                 btn.setOnClickListener(v -> {
                     if (currentAccount == account) return;
-                    o.dismiss();
-                    if (LaunchActivity.instance != null) {
-                        LaunchActivity.instance.switchToAccountAnimated(account);
-                    }
+                    o.dismissWithAccountSwitch(popup -> {
+                        if (LaunchActivity.instance != null) {
+                            LaunchActivity.instance.switchToAccountAnimated(account, popup);
+                        } else if (popup != null) {
+                            popup.finish();
+                        }
+                    });
                 });
                 o.addView(btn, LayoutHelper.createLinear(230, 48));
             }
@@ -790,9 +789,6 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
 
         o.setBlur(true);
         o.translate(0, -dp(4));
-        final ShapeDrawable bg = Theme.createRoundRectDrawable(dp(28), getThemedColor(Theme.key_windowBackgroundWhite));
-        bg.getPaint().setShadowLayer(dp(6), 0, dp(1), Theme.multAlpha(0xFF000000, 0.15f));
-        o.setScrimViewBackground(bg);
         o.show();
 
         HintsController.Hint.AccountSwitchHint.doNotShowAgain();
@@ -870,6 +866,14 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
             if (pendingFolderId != null && currentPosition == posChats() && dialogsActivity != null) {
                 dialogsActivity.scrollToFolder(pendingFolderId);
                 pendingFolderId = null;
+            }
+            if (pendingChatsSearch) {
+                if (currentPosition == posChats()) {
+                    openPendingChatsSearch();
+                } else {
+                    selectTab(posChats(), true);
+                    viewPager.scrollToPosition(posChats());
+                }
             }
             if (app.nimarkogram.messenger.banners.NimarkoBannerConfig.enabled) {
                 try {
@@ -1218,6 +1222,7 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
                 tabs[INDEX_PROFILE].updateUserAvatar(currentAccount);
             }
         } else if (id == NotificationCenter.cgTabsUpdated) {
+            pendingChatsSearch = false;
             boolean showMainTabsFlag = app.nimarkogram.messenger.NimarkoConfig.showMainTabs;
             if (tabsViewWrapper != null) {
                 tabsViewWrapper.setVisibility(showMainTabsFlag ? View.VISIBLE : View.GONE);
@@ -1267,13 +1272,10 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
     @Override
     public void onFragmentDestroy() {
         lifecycleDestroyed = true;
+        pendingChatsSearch = false;
         if (accountChangeHintRunnable != null) {
             AndroidUtilities.cancelRunOnUIThread(accountChangeHintRunnable);
             accountChangeHintRunnable = null;
-        }
-        if (openSearchChatsRunnable != null) {
-            AndroidUtilities.cancelRunOnUIThread(openSearchChatsRunnable);
-            openSearchChatsRunnable = null;
         }
         if (accountSwitchHint != null) {
             accountSwitchHint.hide();
@@ -1478,7 +1480,7 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
     private HintView2 accountSwitchHint;
     private boolean accountSwitchHintShown;
     private Runnable accountChangeHintRunnable;
-    private Runnable openSearchChatsRunnable;
+    private boolean pendingChatsSearch;
 
     private void showAccountChangeHint() {
         if (accountSwitchHintShown) return;
@@ -1593,24 +1595,22 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
 
     private void openSearchChats() {
         if (viewPager == null) return;
-        if (viewPager.getCurrentPosition() != posChats()) {
+        pendingChatsSearch = true;
+        if (viewPager.isPageTransitionRunning()) return;
+        if (viewPager.getCurrentPosition() == posChats()) {
+            openPendingChatsSearch();
+        } else {
             selectTab(posChats(), true);
             viewPager.scrollToPosition(posChats());
         }
-        if (openSearchChatsRunnable != null) {
-            AndroidUtilities.cancelRunOnUIThread(openSearchChatsRunnable);
+    }
+    private void openPendingChatsSearch() {
+        if (!pendingChatsSearch || lifecycleDestroyed || isFinished || fragmentView == null) return;
+        final BaseFragment visibleFragment = getCurrentVisibleFragment();
+        if (viewPager.getCurrentPosition() == posChats() && visibleFragment instanceof DialogsActivity) {
+            pendingChatsSearch = false;
+            ((DialogsActivity) visibleFragment).search("", true);
         }
-        openSearchChatsRunnable = () -> {
-            openSearchChatsRunnable = null;
-            if (lifecycleDestroyed || isFinished || fragmentView == null) {
-                return;
-            }
-            final DialogsActivity da = getDialogsActivity();
-            if (da != null) {
-                da.search("", true);
-            }
-        };
-        AndroidUtilities.runOnUIThread(openSearchChatsRunnable, 100);
     }
 
     @Override

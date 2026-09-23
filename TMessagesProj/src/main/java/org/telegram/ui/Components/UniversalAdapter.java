@@ -131,6 +131,15 @@ public class UniversalAdapter extends AdapterWithDiffUtils {
 
     private final ArrayList<UItem> oldItems = new ArrayList<>();
     private final ArrayList<UItem> items = new ArrayList<>();
+    private boolean updatingItems;
+    private boolean updatePosted;
+    private boolean pendingUpdateAnimated;
+    private final Runnable updateRunnable = () -> {
+        if (!updatePosted) return;
+        final boolean animated = pendingUpdateAnimated;
+        updatePosted = false;
+        update(animated);
+    };
 
     private BaseChartView.SharedUiComponents chartSharedUI;
 
@@ -293,16 +302,38 @@ public class UniversalAdapter extends AdapterWithDiffUtils {
     }
 
     public void update(boolean animated) {
-        if (listView != null && listView.isComputingLayout()) {
-            listView.post(() -> updateInternal(animated));
-        } else {
+        if (updatePosted) {
+            animated &= pendingUpdateAnimated;
+        }
+        if (updatingItems || listView != null && listView.isComputingLayout()) {
+            pendingUpdateAnimated = animated;
+            if (!updatePosted) {
+                updatePosted = true;
+                if (listView != null) {
+                    listView.postOnAnimation(updateRunnable);
+                } else {
+                    AndroidUtilities.runOnUIThread(updateRunnable);
+                }
+            }
+            return;
+        }
+        if (updatePosted) {
+            updatePosted = false;
+            if (listView != null) {
+                listView.removeCallbacks(updateRunnable);
+            } else {
+                AndroidUtilities.cancelRunOnUIThread(updateRunnable);
+            }
+        }
+        updatingItems = true;
+        try {
             updateInternal(animated);
+        } finally {
+            updatingItems = false;
         }
     }
 
     private void updateInternal(boolean animated) {
-        if (listView != null && listView.isComputingLayout())
-            return;
         oldItems.clear();
         oldItems.addAll(items);
         items.clear();
@@ -727,17 +758,13 @@ public class UniversalAdapter extends AdapterWithDiffUtils {
                 break;
             case VIEW_TYPE_RADIO: {
                 DialogRadioCell radioCell = (DialogRadioCell) holder.itemView;
-                final boolean sameRadioItem = radioCell.itemId == item.id;
+                final boolean sameRadioItem = radioCell.bindItemId(item.id);
                 if (TextUtils.isEmpty(item.textValue)) {
-                    radioCell.setText(item.text, item.checked, divider);
+                    radioCell.setText(item.text, item.checked, divider, sameRadioItem);
                 } else {
-                    radioCell.setTextAndValue(item.text, item.textValue, item.checked, divider);
+                    radioCell.setTextAndValue(item.text, item.textValue, item.checked, divider, sameRadioItem);
                 }
                 radioCell.setEnabled(item.enabled, sameRadioItem);
-                if (sameRadioItem) {
-                    radioCell.setChecked(item.checked, true);
-                }
-                radioCell.itemId = item.id;
                 break;
             }
             case VIEW_TYPE_RADIO_2: {
@@ -1124,6 +1151,9 @@ public class UniversalAdapter extends AdapterWithDiffUtils {
     @Override
     public void onViewRecycled(@NonNull RecyclerView.ViewHolder holder) {
         switch (holder.getItemViewType()) {
+            case VIEW_TYPE_RADIO:
+                ((DialogRadioCell) holder.itemView).resetItemBinding();
+                break;
             case VIEW_TYPE_CUSTOM:
             case VIEW_TYPE_CUSTOM_SHADOW:
             case VIEW_TYPE_FULLY_CUSTOM:

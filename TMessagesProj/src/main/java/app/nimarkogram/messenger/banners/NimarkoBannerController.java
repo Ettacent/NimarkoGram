@@ -101,9 +101,8 @@ public final class NimarkoBannerController {
     private final Map<CacheKey, String> cachedBanners = new ConcurrentHashMap<>();
     private final Map<String, CacheKey> bannerByPath = new ConcurrentHashMap<>();
     private final Map<CacheKey, Meta> bannersMeta = new ConcurrentHashMap<>();
-    private final Set<CacheKey> loading = ConcurrentHashMap.newKeySet();
+    private final Map<CacheKey, Object> loading = new ConcurrentHashMap<>();
     private final Set<CacheKey> usersNoBanner = ConcurrentHashMap.newKeySet();
-    private final Set<CacheKey> verChecking = ConcurrentHashMap.newKeySet();
     private final Map<CacheKey, Long> failTimes = new ConcurrentHashMap<>();
     private final Map<CacheKey, Long> checkTimes = new ConcurrentHashMap<>();
     private final Map<CacheKey, Long> existsTimes = new ConcurrentHashMap<>();
@@ -229,6 +228,8 @@ public final class NimarkoBannerController {
     private void switchScope(Scope next) {
         Scope previous;
         synchronized (this) {
+            if (next.account != UserConfig.selectedAccount
+                    || next.uid != UserConfig.getInstance(next.account).getClientUserId()) return;
             previous = currentScope;
             if (next.equals(previous)) return;
             synchronized (statusStateLock) {
@@ -281,7 +282,6 @@ public final class NimarkoBannerController {
             bannersMeta.clear();
             loading.clear();
             usersNoBanner.clear();
-            verChecking.clear();
             failTimes.clear();
             checkTimes.clear();
             existsTimes.clear();
@@ -290,7 +290,7 @@ public final class NimarkoBannerController {
 
     private boolean isCurrentScope(Scope scope) {
         try {
-            return scope != null && scope.equals(currentScope)
+            return scope != null && scope == currentScope
                     && scope.account == UserConfig.selectedAccount
                     && scope.uid == UserConfig.getInstance(scope.account).getClientUserId();
         } catch (Throwable ignored) {
@@ -365,33 +365,33 @@ public final class NimarkoBannerController {
             if ("approved".equals(myStatus)) {
                 bf = findCachedBanner(k);
 
-                if (bf == null && !usersNoBanner.contains(k)) {
+                if (bf == null && shouldCheckBanner(k)) {
                     loadBannerAsync(k);
-                    isLoading = true;
                 }
             } else {
-                String lp = NimarkoBannerConfig.localBannerPath;
+                String lp = NimarkoBannerConfig.getLocalBannerPath(k.scope.account, k.scope.uid);
 
                 if (!TextUtils.isEmpty(lp)) bf = lp;
             }
         } else {
             bf = findCachedBanner(k);
-            if (bf == null && !usersNoBanner.contains(k)) {
+            if (bf == null && shouldCheckBanner(k)) {
                 loadBannerAsync(k);
-                isLoading = true;
             }
         }
+        isLoading = loading.containsKey(k);
         boolean iv = bf != null && isVideo(bf);
         return new Resolved(bf, iv, isLoading);
     }
 
     public void maybeKickLoad(long eid) {
         CacheKey k = key(eid);
-        if (!cachedBanners.containsKey(k) && !loading.contains(k)
-                && !usersNoBanner.contains(k)
-                && now() - getOr(failTimes, k) > FAIL_CD) {
+        if (!cachedBanners.containsKey(k) && shouldCheckBanner(k)) {
             loadBannerAsync(k);
         }
+    }
+    private boolean shouldCheckBanner(CacheKey k) {
+        return !usersNoBanner.contains(k) || now() - getOr(checkTimes, k) > VER_CHECK_INT;
     }
 
     public boolean shouldHideAvatar(long eid) {
@@ -400,6 +400,7 @@ public final class NimarkoBannerController {
         CacheKey k = key(eid);
         String p = cachedBanners.get(k);
         if (p == null) return false;
+        if (eid == my) return myHideAvatar;
         Meta m = bannersMeta.get(k);
         return m != null && m.hideAvatar;
     }
@@ -409,7 +410,8 @@ public final class NimarkoBannerController {
         if (eid == my) {
             if ("approved".equals(myStatus)) return false;
             if (!statusEverFetched) return false;
-            return TextUtils.isEmpty(NimarkoBannerConfig.localBannerPath);
+            Scope owner = scope();
+            return TextUtils.isEmpty(NimarkoBannerConfig.getLocalBannerPath(owner.account, owner.uid));
         }
         return usersNoBanner.contains(key(eid));
     }
@@ -461,9 +463,8 @@ public final class NimarkoBannerController {
             final String expectedPath = p;
             executor.submit(() -> verifyCachedBanner(k, expectedPath));
         }
-        if (now - getOr(checkTimes, k) > VER_CHECK_INT && verChecking.add(k)) {
-            checkTimes.put(k, now);
-            executor.submit(() -> syncBanner(k, false, true));
+        if (now - getOr(checkTimes, k) > VER_CHECK_INT) {
+            loadBannerAsync(k);
         }
         return p;
     }
@@ -473,7 +474,7 @@ public final class NimarkoBannerController {
             return;
         }
         synchronized (cacheLock) {
-            if (!expectedPath.equals(cachedBanners.get(key))) {
+            if (!isCurrentScope(key.scope) || !expectedPath.equals(cachedBanners.get(key))) {
                 return;
             }
             cachedBanners.remove(key);
@@ -488,93 +489,74 @@ public final class NimarkoBannerController {
     }
 
     private void loadBannerAsync(CacheKey k) {
-        if (k == null || !isCurrentScope(k.scope)) return;
-        if (!loading.add(k)) return;
-        executor.submit(() -> syncBanner(k, true, false));
+        final Object request = new Object();
+        synchronized (cacheLock) {
+            if (k == null || !isCurrentScope(k.scope)
+                    || now() - getOr(failTimes, k) < FAIL_CD
+                    || loading.putIfAbsent(k, request) != null) return;
+        }
+        executor.submit(() -> syncBanner(k, request));
+    }
+    private boolean ownsBannerRequest(CacheKey k, Object request) {
+        return isCurrentScope(k.scope) && loading.get(k) == request;
     }
 
-    private void syncBanner(CacheKey k, boolean download, boolean checkingClaimed) {
+    private void syncBanner(CacheKey k, Object request) {
         final long eid = k.eid;
-        boolean checking = !download;
-        if (checking && !checkingClaimed && !verChecking.add(k)) return;
+        File candidate = null;
         try {
-            if (!isCurrentScope(k.scope)) return;
+            if (!ownsBannerRequest(k, request)) return;
             NimarkoBannerHttp.BannerInfo info = NimarkoBannerHttp.getBanner(eid);
-            if (!isCurrentScope(k.scope)) return;
-
-            if (info.httpCode == 404) {
-
-                rmCached(k); usersNoBanner.add(k); invalidate(); return;
-            }
-            if (info.httpCode != 200) {
-
-                if (download) failTimes.put(k, now());
+            if (!ownsBannerRequest(k, request)) return;
+            if (info.httpCode == 404 || info.httpCode == 200 && !info.hasBanner) {
+                synchronized (cacheLock) {
+                    if (!ownsBannerRequest(k, request)) return;
+                    rmCachedUnlocked(k);
+                    usersNoBanner.add(k);
+                    checkTimes.put(k, now());
+                    failTimes.remove(k);
+                }
+                writeIndexAsync(k.scope);
                 return;
             }
-            if (!info.hasBanner) {
-
-                rmCached(k); usersNoBanner.add(k); invalidate(); return;
-            }
-            boolean needDl = false, upd = false, hasCached;
+            if (info.httpCode != 200) { recordBannerFailure(k, request); return; }
+            boolean needDl, upd = false;
             synchronized (cacheLock) {
+                if (!ownsBannerRequest(k, request)) return;
                 Meta lm = bannersMeta.get(k);
                 boolean fileCached = cachedBanners.containsKey(k)
                         && cachedBanners.get(k) != null && new File(cachedBanners.get(k)).exists();
-                if (!TextUtils.isEmpty(info.version)
-                        && (lm == null || !info.version.equals(lm.version) || !fileCached)) {
-                    rmCachedUnlocked(k);
-                    usersNoBanner.remove(k);
-                    needDl = true;
-                } else {
-                    if (lm == null) lm = new Meta();
+                needDl = lm == null || !fileCached || !TextUtils.equals(info.version, lm.version)
+                        || !TextUtils.equals(info.type, lm.type);
+                if (!needDl) {
                     if (lm.hasSound != info.hasSound) { lm.hasSound = info.hasSound; upd = true; }
                     if (lm.hideAvatar != info.hideAvatar) { lm.hideAvatar = info.hideAvatar; upd = true; }
                     if (upd) bannersMeta.put(k, lm);
+                    checkTimes.put(k, now());
+                    failTimes.remove(k);
                 }
-                hasCached = cachedBanners.containsKey(k);
             }
 
             if (!needDl) {
                 if (upd) writeIndexAsync(k.scope);
-                if (hasCached && !checking) invalidate();
                 return;
             }
-            if (checking) {
-
-                writeIndexAsync(k.scope);
-                loading.remove(k);
-                loadBannerAsync(k);
-                return;
-            }
-            if (TextUtils.isEmpty(info.url)) {  failTimes.put(k, now()); return; }
+            if (TextUtils.isEmpty(info.url)) { recordBannerFailure(k, request); return; }
             String filePrefix = k.scope.fileTag() + "_" + eid;
-            for (String oe : ALLOWED_EXT) safeRemove(new File(cacheFolder, filePrefix + oe));
-            File[] priorFiles = new File(cacheFolder).listFiles();
-            if (priorFiles != null) {
-                String verPrefix = filePrefix + "_";
-                for (File pf : priorFiles) {
-                    if (pf.getName().startsWith(verPrefix)) safeRemove(pf);
-                }
-            }
-            synchronized (cacheLock) {
-                String old = cachedBanners.remove(k);
-                if (old != null) bannerByPath.remove(old);
-            }
             String ext = "mp4".equals(info.type) ? ".mp4" : "." + info.type;
             String vtag = TextUtils.isEmpty(info.version) ? "" : "_" + info.version.replaceAll("[^A-Za-z0-9]", "");
-            File cp = new File(cacheFolder, filePrefix + vtag + ext);
-
-            boolean dlok = NimarkoBannerHttp.download(info.url, cp);
-
-            if (!dlok || !validDownload(cp, info.type)) {
-                safeRemove(cp);
-                failTimes.put(k, now());
+            candidate = new File(cacheFolder, filePrefix + vtag + "_" + java.util.UUID.randomUUID() + ext);
+            if (!NimarkoBannerHttp.download(info.url, candidate) || !validDownload(candidate, info.type)) {
+                recordBannerFailure(k, request);
                 return;
             }
-            if (!isCurrentScope(k.scope)) { safeRemove(cp); return; }
+            String previousPath;
             synchronized (cacheLock) {
-                cachedBanners.put(k, cp.getAbsolutePath());
-                bannerByPath.put(cp.getAbsolutePath(), k);
+                if (!ownsBannerRequest(k, request)) return;
+                String path = candidate.getAbsolutePath();
+                previousPath = cachedBanners.put(k, path);
+                if (previousPath != null) bannerByPath.remove(previousPath);
+                bannerByPath.put(path, k);
                 Meta m = new Meta();
                 m.version = info.version; m.type = info.type;
                 m.hasSound = info.hasSound; m.hideAvatar = info.hideAvatar;
@@ -582,21 +564,31 @@ public final class NimarkoBannerController {
                 long n = now();
                 checkTimes.put(k, n); existsTimes.put(k, n);
                 usersNoBanner.remove(k);
+                failTimes.remove(k);
+                candidate = null;
             }
+            if (previousPath != null) safeRemove(new File(previousPath));
 
             writeIndexAsync(k.scope);
-            invalidate();
         } catch (Throwable t) {
 
-            if (download) failTimes.put(k, now());
+            recordBannerFailure(k, request);
         } finally {
-            if (download) loading.remove(k);
-            if (checking) verChecking.remove(k);
+            safeRemove(candidate);
+            if (loading.remove(k, request) && isCurrentScope(k.scope)) invalidate();
+        }
+    }
+    private void recordBannerFailure(CacheKey k, Object request) {
+        synchronized (cacheLock) {
+            if (ownsBannerRequest(k, request)) failTimes.put(k, now());
         }
     }
 
     private void rmCached(CacheKey k) {
-        synchronized (cacheLock) { rmCachedUnlocked(k); }
+        synchronized (cacheLock) {
+            if (!isCurrentScope(k.scope)) return;
+            rmCachedUnlocked(k);
+        }
         writeIndexAsync(k.scope);
     }
 
@@ -675,7 +667,7 @@ public final class NimarkoBannerController {
     }
 
     private void writeIndexAsync(Scope scope) {
-        if (scope == null || scope.uid == 0L) return;
+        if (scope == null || scope.uid == 0L || !isCurrentScope(scope)) return;
         final long revision;
         synchronized (indexPersistenceLock) {
             revision = indexRevisions.getOrDefault(scope, 0L) + 1L;
@@ -818,8 +810,11 @@ public final class NimarkoBannerController {
             NimarkoBannerHttp.Status s = NimarkoBannerHttp.fetchStatus(scope.uid);
             if (!s.ok) return s.httpCode == 200 ? -1 : s.httpCode;
             final String old;
+            final boolean displayChanged;
             synchronized (statusStateLock) {
                 if (!statusRevisionMatches(scope, requestRevision)) return STATUS_SKIPPED;
+                displayChanged = !statusEverFetched || !myStatus.equals(s.status)
+                        || myHideAvatar != s.hideAvatar || myHasSound != s.hasSound;
                 statusEverFetched = true;
                 old = myStatus;
                 myStatus = s.status;
@@ -833,7 +828,7 @@ public final class NimarkoBannerController {
                 clearMyCache(ownKey);
                 loadBannerAsync(ownKey);
             }
-            if (!old.equals(myStatus)) invalidate();
+            if (displayChanged) invalidate();
             return 200;
         } finally {
             statusFetching.remove(scope);
@@ -857,6 +852,8 @@ public final class NimarkoBannerController {
 
     private void clearMyCache(CacheKey k) {
         synchronized (cacheLock) {
+            if (!isCurrentScope(k.scope)) return;
+            loading.remove(k);
             String old = cachedBanners.remove(k);
             if (old != null) { bannerByPath.remove(old); safeRemove(new File(old)); }
             bannersMeta.remove(k);
@@ -983,6 +980,7 @@ public final class NimarkoBannerController {
                     statusEverFetched = true;
                     persistCurrentStatusLocked(operationScope, committedRevision);
                 }
+                invalidate();
                 uiOk(R.string.NM_BAN_HaUpdated);
             } else if (responseCode == 429) {
                 uiErr(R.string.NM_BAN_RateLimited);
@@ -1068,7 +1066,8 @@ public final class NimarkoBannerController {
                 uiErr(R.string.NM_BAN_InvalidFormat);
                 return;
             }
-            File dest = new File(storageDir, "local_banner_" + operationScope.fileTag() + ext);
+            File dest = new File(storageDir, "local_banner_" + operationScope.fileTag()
+                    + "_" + java.util.UUID.randomUUID() + ext);
             boolean saved = false;
             synchronized (localBannerLock) {
                 if (operationGeneration != localBannerGeneration
@@ -1076,35 +1075,42 @@ public final class NimarkoBannerController {
                     safeRemove(tmp);
                     return;
                 }
-                AtomicFile atomic = new AtomicFile(dest);
-                FileOutputStream out = null;
-                try (FileInputStream in = new FileInputStream(tmp)) {
-                    out = atomic.startWrite();
-                    byte[] buffer = new byte[8192];
-                    long total = 0;
-                    int n;
-                    while ((n = in.read(buffer)) > 0) {
-                        total += n;
-                        if (total > NimarkoBannerHttp.MAX_SIZE) throw new java.io.IOException("banner too large");
-                        out.write(buffer, 0, n);
-                    }
-                    atomic.finishWrite(out);
-                    out = null;
-                    saved = true;
-                } catch (Throwable t) {
-                    if (out != null) atomic.failWrite(out);
-                    FileLog.e("nimarko-banner: local save failed", t);
-                } finally {
-                    safeRemove(tmp);
+            }
+            AtomicFile atomic = new AtomicFile(dest);
+            FileOutputStream out = null;
+            try (FileInputStream in = new FileInputStream(tmp)) {
+                out = atomic.startWrite();
+                byte[] buffer = new byte[8192];
+                long total = 0;
+                int n;
+                while ((n = in.read(buffer)) > 0) {
+                    total += n;
+                    if (total > NimarkoBannerHttp.MAX_SIZE) throw new java.io.IOException("banner too large");
+                    out.write(buffer, 0, n);
                 }
+                atomic.finishWrite(out);
+                out = null;
+                saved = true;
+            } catch (java.io.IOException | SecurityException t) {
+                if (out != null) atomic.failWrite(out);
+                FileLog.e("nimarko-banner: local save failed", t);
+            } finally {
+                safeRemove(tmp);
+            }
+            synchronized (localBannerLock) {
                 if (saved && operationGeneration == localBannerGeneration
                         && isCurrentScope(operationScope)) {
                     for (String oe : ALLOWED_EXT) {
                         File old = new File(storageDir, "local_banner_" + operationScope.fileTag() + oe);
                         if (!old.equals(dest)) safeRemove(old);
                     }
+                    String previousPath = NimarkoBannerConfig.getLocalBannerPath(
+                            operationScope.account, operationScope.uid);
                     NimarkoBannerConfig.setLocalBannerPath(
                             operationScope.account, operationScope.uid, dest.getAbsolutePath());
+                    if (!TextUtils.isEmpty(previousPath) && !previousPath.equals(dest.getAbsolutePath())) {
+                        safeRemove(new File(previousPath));
+                    }
                 } else if (saved) {
                     safeRemove(dest);
                 }
@@ -1133,6 +1139,7 @@ public final class NimarkoBannerController {
         }
         uiOk(R.string.NM_BAN_LocalDeleted);
         reloadSettings();
+        invalidate();
     }
 
     public String storageDir() { return storageDir; }
@@ -1147,14 +1154,18 @@ public final class NimarkoBannerController {
                 dlPlaceholder();
                 return;
             }
-            CacheKey k = path == null ? null : bannerByPath.get(path);
-            if (k != null && isCurrentScope(k.scope)) {
-                rmCached(k);
-                loading.remove(k);
+            final CacheKey k;
+            synchronized (cacheLock) {
+                k = path == null ? null : bannerByPath.get(path);
+                if (k == null || !isCurrentScope(k.scope) || !path.equals(cachedBanners.get(k))) {
+                    return;
+                }
+                rmCachedUnlocked(k);
                 usersNoBanner.remove(k);
-                try { Thread.sleep(5000); } catch (InterruptedException ie) { return; }
-                loadBannerAsync(k);
             }
+            writeIndexAsync(k.scope);
+            try { Thread.sleep(5000); } catch (InterruptedException ie) { return; }
+            loadBannerAsync(k);
         } catch (Throwable ignored) {}
     }
 
@@ -1168,7 +1179,7 @@ public final class NimarkoBannerController {
 
     private void invalidate() {
         NimarkoBannerRenderer r = NimarkoBannerRenderer.peek();
-        if (r != null) r.invalidateTopView();
+        if (r != null) r.invalidateBannerState();
     }
 
     private static boolean isVideo(String p) {

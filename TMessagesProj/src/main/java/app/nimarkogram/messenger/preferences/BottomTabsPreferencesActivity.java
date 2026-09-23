@@ -44,8 +44,7 @@ public class BottomTabsPreferencesActivity extends BasePreferencesActivity {
         }
         editorCell = null;
         if (listView != null && listView.adapter != null) {
-            listView.adapter.update(false);
-            listView.adapter.notifyDataSetChanged();
+            listView.adapter.update(true);
         }
     };
 

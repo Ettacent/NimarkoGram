@@ -24,6 +24,7 @@ import android.graphics.Region;
 import android.graphics.Shader;
 import android.graphics.Typeface;
 import android.graphics.drawable.Drawable;
+import android.os.Build;
 import android.os.SystemClock;
 import android.os.Bundle;
 import android.text.Layout;
@@ -61,6 +62,8 @@ public class SimpleTextView extends View implements Drawable.Callback {
     private Layout fullLayout;
     private Layout partLayout;
     private TextPaint textPaint;
+    private TextPaint naturalLayoutPaint;
+    private boolean naturalLayout;
     private int gravity = Gravity.LEFT | Gravity.TOP;
     private int maxLines = 1;
     private CharSequence text;
@@ -133,6 +136,8 @@ public class SimpleTextView extends View implements Drawable.Callback {
     private boolean usaAlphaForEmoji;
     private boolean canHideRightDrawable;
     private boolean rightDrawableHidden;
+    private int layoutRightDrawableWidth = -1;
+    private int layoutRightDrawable2Width = -1;
     private OnClickListener rightDrawableOnClickListener;
     private boolean maybeClick;
     private float touchDownX, touchDownY;
@@ -335,7 +340,12 @@ public class SimpleTextView extends View implements Drawable.Callback {
             return false;
         }
         return !(drawable instanceof AnimatedEmojiDrawable.SwapAnimatedEmojiDrawable)
-                || !((AnimatedEmojiDrawable.SwapAnimatedEmojiDrawable) drawable).isEmpty();
+                || ((AnimatedEmojiDrawable.SwapAnimatedEmojiDrawable) drawable).hasRenderableContent();
+    }
+    private boolean isRightDrawableInteractive(Drawable drawable) {
+        return !rightDrawableHidden && drawable != null && rightDrawableScale > 0f
+                && (!(drawable instanceof AnimatedEmojiDrawable.SwapAnimatedEmojiDrawable)
+                || !((AnimatedEmojiDrawable.SwapAnimatedEmojiDrawable) drawable).isEmpty());
     }
 
     private int getScaledRightDrawableWidth(Drawable drawable) {
@@ -346,6 +356,17 @@ public class SimpleTextView extends View implements Drawable.Callback {
     private int getRightDrawableSlotWidth(Drawable drawable) {
         int width = getScaledRightDrawableWidth(drawable);
         return width > 0 ? width + drawablePadding : 0;
+    }
+    private void updateRightDrawableLayoutIfNeeded() {
+        int width = getRightDrawableSlotWidth(rightDrawable);
+        int width2 = getRightDrawableSlotWidth(rightDrawable2);
+        if (width == layoutRightDrawableWidth && width2 == layoutRightDrawable2Width) {
+            return;
+        }
+        layoutRightDrawableWidth = width;
+        layoutRightDrawable2Width = width2;
+        requestLayout();
+        invalidate();
     }
 
     public int getRightDrawablesWidth() {
@@ -447,6 +468,10 @@ public class SimpleTextView extends View implements Drawable.Callback {
     }
 
     protected boolean createLayout(int width) {
+        final boolean wasNaturalLayout = naturalLayout;
+        naturalLayout = false;
+        layoutRightDrawableWidth = getRightDrawableSlotWidth(rightDrawable);
+        layoutRightDrawable2Width = getRightDrawableSlotWidth(rightDrawable2);
         CharSequence text = this.text;
         replacingDrawableTextIndex = -1;
         rightDrawableHidden = false;
@@ -531,11 +556,30 @@ public class SimpleTextView extends View implements Drawable.Callback {
                     } else {
                         string = TextUtils.ellipsize(text, textPaint, width, TextUtils.TruncateAt.END);
                     }
+                    final boolean cacheNaturalLayout = Build.VERSION.SDK_INT >= 28
+                            && (scrollNonFitText || ellipsizeByGradient) && string instanceof String;
+                    if (cacheNaturalLayout && wasNaturalLayout && layout != null
+                            && layout.getText() == string && layout.getWidth() == dp(2000)
+                            && layout.getAlignment() == getAlignment()
+                            && naturalLayoutPaint != null
+                            && textPaint.equalsForTextMeasurement(naturalLayoutPaint)) {
+                        naturalLayout = true;
+                        calcOffset(width);
+                        invalidate();
+                        return false;
+                    }
                     /*if (layout != null && TextUtils.equals(layout.getText(), string)) {
                         calcOffset(width);
                         return false;
                     }*/
                     layout = new StaticLayout(string, 0, string.length(), textPaint, scrollNonFitText || ellipsizeByGradient ? dp(2000) : width + dp(8), getAlignment(), 1.0f, 0.0f, false);
+                    if (cacheNaturalLayout) {
+                        if (naturalLayoutPaint == null) {
+                            naturalLayoutPaint = new TextPaint();
+                        }
+                        naturalLayoutPaint.set(textPaint);
+                        naturalLayout = true;
+                    }
                 }
 
                 spoilersPool.addAll(spoilers);
@@ -685,20 +729,20 @@ public class SimpleTextView extends View implements Drawable.Callback {
     }
 
     public void replaceTextWithDrawable(Drawable drawable, String replacedText) {
-        if (replacedDrawable == drawable) {
+        if (replacedDrawable == drawable && TextUtils.equals(this.replacedText, replacedText)) {
             return;
         }
         if (replacedDrawable != null) {
             replacedDrawable.setCallback(null);
         }
         replacedDrawable = drawable;
+        this.replacedText = replacedText;
         if (drawable != null) {
             drawable.setCallback(this);
         }
         if (!recreateLayoutMaybe()) {
             invalidate();
         }
-        this.replacedText = replacedText;
     }
 
     public void setMinusWidth(int value) {
@@ -775,6 +819,7 @@ public class SimpleTextView extends View implements Drawable.Callback {
             return false;
         }
         text = value;
+        naturalLayout = false;
         // A marquee draws a second copy while scrollingOffset is non-zero.
         // Keeping the old offset when the text changes makes the replacement
         // title appear twice until that obsolete marquee cycle completes.
@@ -823,7 +868,8 @@ public class SimpleTextView extends View implements Drawable.Callback {
             return true;
         }
         if (wasLayout && getMeasuredHeight() != 0 && !buildFullLayout) {
-            boolean result = createLayout(getMaxTextWidth() - getPaddingLeft() - getPaddingRight() - minusWidth);
+            boolean result = createLayout(getMaxTextWidth() - getPaddingLeft() - getPaddingRight() - minusWidth
+                    - (leftDrawableOutside && leftDrawable != null ? leftDrawable.getIntrinsicWidth() + drawablePadding : 0));
             if ((gravity & Gravity.VERTICAL_GRAVITY_MASK) == Gravity.CENTER_VERTICAL) {
                 offsetY = (getMeasuredHeight() - textHeight) / 2;
             } else {
@@ -1374,6 +1420,9 @@ public class SimpleTextView extends View implements Drawable.Callback {
 
     @Override
     public void invalidateDrawable(Drawable who) {
+        if (who == rightDrawable || who == rightDrawable2) {
+            updateRightDrawableLayoutIfNeeded();
+        }
         if (who == leftDrawable) {
             invalidate(leftDrawable.getBounds());
         } else if (who == rightDrawable) {
@@ -1397,9 +1446,9 @@ public class SimpleTextView extends View implements Drawable.Callback {
         info.setClassName("android.widget.TextView");
         info.setText(text);
         boolean rightVisible = !TextUtils.isEmpty(rightDrawableContentDescription)
-                && isRightDrawableVisible(rightDrawable);
+                && isRightDrawableInteractive(rightDrawable);
         boolean right2Visible = !TextUtils.isEmpty(rightDrawable2ContentDescription)
-                && isRightDrawableVisible(rightDrawable2);
+                && isRightDrawableInteractive(rightDrawable2);
         if (rightVisible || right2Visible) {
             StringBuilder description = new StringBuilder();
             if (!TextUtils.isEmpty(text)) description.append(text);
@@ -1428,13 +1477,13 @@ public class SimpleTextView extends View implements Drawable.Callback {
     @Override
     public boolean performAccessibilityAction(int action, Bundle arguments) {
         if (action == R.id.acc_action_right_drawable2
-                && rightDrawable2OnClickListener != null && isRightDrawableVisible(rightDrawable2)
+                && rightDrawable2OnClickListener != null && isRightDrawableInteractive(rightDrawable2)
                 && !TextUtils.isEmpty(rightDrawable2ContentDescription)) {
             rightDrawable2OnClickListener.onClick(this);
             return true;
         }
         if (action == R.id.acc_action_right_drawable
-                && rightDrawableOnClickListener != null && isRightDrawableVisible(rightDrawable)
+                && rightDrawableOnClickListener != null && isRightDrawableInteractive(rightDrawable)
                 && !TextUtils.isEmpty(rightDrawableContentDescription)) {
             rightDrawableOnClickListener.onClick(this);
             return true;
@@ -1527,7 +1576,18 @@ public class SimpleTextView extends View implements Drawable.Callback {
 
     @Override
     public boolean onTouchEvent(MotionEvent event) {
-        if (rightDrawableOnClickListener != null && isRightDrawableVisible(rightDrawable)) {
+        if (maybeClick && !isRightDrawableInteractive(rightDrawable)) {
+            maybeClick = false;
+            if (rightDrawable instanceof PressableDrawable) {
+                ((PressableDrawable) rightDrawable).setPressed(false);
+            }
+            if (getParent() != null) getParent().requestDisallowInterceptTouchEvent(false);
+        }
+        if (maybeClick2 && !isRightDrawableInteractive(rightDrawable2)) {
+            maybeClick2 = false;
+            if (getParent() != null) getParent().requestDisallowInterceptTouchEvent(false);
+        }
+        if (rightDrawableOnClickListener != null && isRightDrawableInteractive(rightDrawable)) {
             AndroidUtilities.rectTmp.set(rightDrawableX - dp(16), rightDrawableY - dp(16), rightDrawableX + dp(16), rightDrawableY + dp(16));
             if (event.getAction() == MotionEvent.ACTION_DOWN && AndroidUtilities.rectTmp.contains((int) event.getX(), (int) event.getY())) {
                 maybeClick = true;
@@ -1556,7 +1616,7 @@ public class SimpleTextView extends View implements Drawable.Callback {
                 getParent().requestDisallowInterceptTouchEvent(false);
             }
         }
-        if (rightDrawable2OnClickListener != null && isRightDrawableVisible(rightDrawable2)) {
+        if (rightDrawable2OnClickListener != null && isRightDrawableInteractive(rightDrawable2)) {
             android.graphics.Rect b = rightDrawable2.getBounds();
             AndroidUtilities.rectTmp.set(b.left - dp(8), b.top - dp(8), b.right + dp(8), b.bottom + dp(8));
             if (event.getAction() == MotionEvent.ACTION_DOWN && AndroidUtilities.rectTmp.contains((int) event.getX(), (int) event.getY())) {

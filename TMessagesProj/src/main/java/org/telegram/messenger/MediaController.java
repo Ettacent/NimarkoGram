@@ -66,9 +66,11 @@ import android.util.SparseArray;
 import android.view.HapticFeedbackConstants;
 import android.view.TextureView;
 import android.view.View;
+import android.view.ViewGroup;
 import android.view.WindowManager;
 import android.webkit.MimeTypeMap;
 import android.widget.FrameLayout;
+import android.widget.ImageView;
 
 import androidx.annotation.Nullable;
 import androidx.annotation.OptIn;
@@ -1085,6 +1087,15 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
     private View feedbackView;
     private AspectRatioFrameLayout currentAspectRatioFrameLayout;
     private boolean isDrawingWasReady;
+    private volatile long roundVideoFrameReadyAt;
+    private volatile boolean roundVideoFirstFrameRendered;
+    private volatile SurfaceTexture roundVideoPendingSurface;
+    private volatile int roundVideoOutputGeneration;
+    private ImageView roundVideoPlaybackCover;
+    private Bitmap roundVideoPlaybackBitmap;
+    private TextureView roundVideoCoverTexture;
+    private boolean roundVideoCoverPending;
+    private int roundVideoCoverGeneration;
     private FrameLayout currentTextureViewContainer;
     private int currentAspectRatioFrameLayoutRotation;
     private float currentAspectRatioFrameLayoutRatio;
@@ -2543,10 +2554,25 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
             audioPlayer = null;
             Theme.unrefAudioVisualizeDrawable(playingMessageObject);
         } else if (videoPlayer != null) {
+            if (byVoiceEnd && voiceMessagesPlaylist != null && playingMessageObject != null) {
+                int next = voiceMessagesPlaylist.indexOf(playingMessageObject) + 1;
+                if (next > 0 && next < voiceMessagesPlaylist.size()
+                        && voiceMessagesPlaylist.get(next).isRoundVideo()) {
+                    retainInlineRoundVideoFrame();
+                }
+            }
+            if (pipRoundVideoView != null && playingMessageObject != null && playingMessageObject.isRoundVideo()) {
+                pipRoundVideoView.retainPlaybackFrame();
+            }
+            ++playerNum;
+            ++roundVideoOutputGeneration;
             currentAspectRatioFrameLayout = null;
             currentTextureViewContainer = null;
             currentAspectRatioFrameLayoutReady = false;
             isDrawingWasReady = false;
+            roundVideoFrameReadyAt = 0;
+            roundVideoFirstFrameRendered = false;
+            roundVideoPendingSurface = null;
             currentTextureView = null;
             goingToShowMessageObject = null;
             if (transferPlayerToPhotoViewer) {
@@ -2627,6 +2653,9 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
                 ApplicationLoader.applicationContext.stopService(intent);
             }
         }
+        if (notify && !playingNext) {
+            clearInlineRoundVideoFrame();
+        }
         if (!playingNext && byVoiceEnd && !SharedConfig.enabledRaiseTo(true)) {
             ChatActivity chat = raiseChat;
             stopRaiseToEarSensors(raiseChat, false, false);
@@ -2646,7 +2675,10 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
     }
 
     private boolean isSamePlayingMessage(MessageObject messageObject) {
-        return playingMessageObject != null && playingMessageObject.getDialogId() == messageObject.getDialogId() && playingMessageObject.getId() == messageObject.getId() && ((playingMessageObject.eventId == 0) == (messageObject.eventId == 0));
+        return playingMessageObject != null && playingMessageObject.currentAccount == messageObject.currentAccount
+                && playingMessageObject.getDialogId() == messageObject.getDialogId()
+                && playingMessageObject.getId() == messageObject.getId()
+                && ((playingMessageObject.eventId == 0) == (messageObject.eventId == 0));
     }
 
     public boolean seekToProgress(MessageObject messageObject, float progress) {
@@ -3252,6 +3284,14 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
                 }
                 isDrawingWasReady = false;
                 currentAspectRatioFrameLayout.setDrawingReady(false);
+                if (playingMessageObject != null && playingMessageObject.isRoundVideo()) {
+                    roundVideoFirstFrameRendered |= roundVideoFrameReadyAt != 0;
+                    roundVideoFrameReadyAt = 0;
+                    roundVideoPendingSurface = null;
+                    ++roundVideoOutputGeneration;
+                    currentTextureView.animate().cancel();
+                    currentTextureView.setAlpha(0f);
+                }
 
                 videoPlayer.setTextureView(currentTextureView);
                 closingPip.close(true, () -> {
@@ -3291,7 +3331,7 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
                     }
                 }
                 if (pipRoundVideoView != null) {
-                    videoPlayer.setTextureView(pipRoundVideoView.getTextureView());
+                    bindRoundVideoPip();
                 }
             }
         }
@@ -3317,6 +3357,20 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
         if (videoPlayer == null || textureView == currentTextureView) {
             return;
         }
+        if (roundVideoCoverTexture != null && roundVideoCoverTexture != textureView) {
+            clearInlineRoundVideoFrame();
+        }
+        if (playingMessageObject != null && playingMessageObject.isRoundVideo()) {
+            roundVideoFirstFrameRendered |= roundVideoFrameReadyAt != 0;
+            roundVideoFrameReadyAt = 0;
+            roundVideoPendingSurface = null;
+            ++roundVideoOutputGeneration;
+            textureView.animate().cancel();
+            textureView.setAlpha(0f);
+            if (aspectRatioFrameLayout != null) {
+                aspectRatioFrameLayout.setDrawingReady(false);
+            }
+        }
         isDrawingWasReady = aspectRatioFrameLayout != null && aspectRatioFrameLayout.isDrawingReady();
         currentTextureView = textureView;
         if (afterPip != null && pipRoundVideoView == null) {
@@ -3328,7 +3382,7 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
             }
         }
         if (pipRoundVideoView != null && !pipClosingToInline) {
-            videoPlayer.setTextureView(pipRoundVideoView.getTextureView());
+            bindRoundVideoPip();
         } else {
             videoPlayer.setTextureView(currentTextureView);
         }
@@ -3409,11 +3463,149 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
     private void markVideoFrameAvailable() {
         if (currentAspectRatioFrameLayout != null && !currentAspectRatioFrameLayout.isDrawingReady()) {
             isDrawingWasReady = true;
+            roundVideoFrameReadyAt = SystemClock.uptimeMillis();
             currentAspectRatioFrameLayout.setDrawingReady(true);
             if (currentTextureViewContainer != null) {
                 currentTextureViewContainer.setTag(1);
             }
+            if (playingMessageObject != null && playingMessageObject.isRoundVideo()) {
+                if (currentTextureView != null) {
+                    currentTextureView.animate().cancel();
+                    if (roundVideoPlaybackCover != null && roundVideoCoverTexture == currentTextureView) {
+                        currentTextureView.setAlpha(1f);
+                        roundVideoCoverPending = false;
+                        final int generation = roundVideoCoverGeneration;
+                        roundVideoPlaybackCover.animate().alpha(0f).setDuration(180).withEndAction(() -> {
+                            if (generation == roundVideoCoverGeneration && !roundVideoCoverPending) {
+                                clearInlineRoundVideoFrame();
+                            }
+                        }).start();
+                    } else {
+                        currentTextureView.animate().alpha(1f).setDuration(180).start();
+                    }
+                }
+                NotificationCenter.getInstance(playingMessageObject.currentAccount).postNotificationName(
+                        NotificationCenter.messagePlayingProgressDidChanged, playingMessageObject.getId(), 0);
+            }
         }
+    }
+    private void markRoundVideoSurfaceFrameAvailable(SurfaceTexture surfaceTexture) {
+        if (surfaceTexture == null || roundVideoFrameReadyAt != 0 || currentTextureView == null
+                || currentTextureView.getSurfaceTexture() != surfaceTexture) {
+            return;
+        }
+        if (!roundVideoFirstFrameRendered) {
+            roundVideoPendingSurface = surfaceTexture;
+            return;
+        }
+        roundVideoPendingSurface = null;
+        markVideoFrameAvailable();
+    }
+    private void bindRoundVideoPip() {
+        pipRoundVideoView.beginPlaybackTransition(playerNum, roundVideoFirstFrameRendered);
+        videoPlayer.setTextureView(pipRoundVideoView.getTextureView());
+    }
+    private void retainInlineRoundVideoFrame() {
+        if (pipRoundVideoView != null || playingMessageObject == null || !playingMessageObject.isRoundVideo()
+                || currentTextureView == null || currentAspectRatioFrameLayout == null) return;
+        if (roundVideoCoverPending && roundVideoCoverTexture == currentTextureView) return;
+        if (!currentAspectRatioFrameLayout.isDrawingReady() && roundVideoPlaybackCover == null) return;
+        try {
+            if (!currentTextureView.isAvailable()) return;
+            Bitmap frame = currentTextureView.getBitmap(AndroidUtilities.dp(120), AndroidUtilities.dp(120));
+            if (frame == null) return;
+            if (roundVideoPlaybackBitmap != null && roundVideoPlaybackCover != null
+                    && roundVideoCoverTexture == currentTextureView) {
+                Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
+                paint.setAlpha(Math.round(255 * roundVideoPlaybackCover.getAlpha()));
+                new Canvas(frame).drawBitmap(roundVideoPlaybackBitmap, null,
+                        new android.graphics.RectF(0, 0, frame.getWidth(), frame.getHeight()), paint);
+            }
+            clearInlineRoundVideoFrame();
+            roundVideoCoverTexture = currentTextureView;
+            roundVideoPlaybackBitmap = frame;
+            roundVideoPlaybackCover = new ImageView(currentTextureView.getContext());
+            roundVideoPlaybackCover.setScaleType(ImageView.ScaleType.FIT_XY);
+            roundVideoPlaybackCover.setImageBitmap(frame);
+            roundVideoPlaybackCover.setScaleX(currentTextureView.getScaleX());
+            roundVideoPlaybackCover.setScaleY(currentTextureView.getScaleY());
+            currentAspectRatioFrameLayout.addView(roundVideoPlaybackCover,
+                    new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+            roundVideoCoverPending = true;
+        } catch (Throwable e) {
+            FileLog.e(e);
+        }
+    }
+    private void clearInlineRoundVideoFrame() {
+        ++roundVideoCoverGeneration;
+        if (roundVideoPlaybackCover != null) {
+            roundVideoPlaybackCover.animate().cancel();
+            AndroidUtilities.removeFromParent(roundVideoPlaybackCover);
+            roundVideoPlaybackCover.setImageDrawable(null);
+        }
+        roundVideoPlaybackCover = null;
+        roundVideoPlaybackBitmap = null;
+        roundVideoCoverTexture = null;
+        roundVideoCoverPending = false;
+    }
+    private void onVideoFirstFrame(int tag, boolean round) {
+        if (tag != playerNum) return;
+        if (round) {
+            roundVideoFirstFrameRendered = true;
+            if (pipRoundVideoView != null) {
+                pipRoundVideoView.onPlaybackFirstFrame(tag);
+            }
+            if (currentTextureView != null && roundVideoPendingSurface != null
+                    && roundVideoPendingSurface == currentTextureView.getSurfaceTexture()) {
+                markRoundVideoSurfaceFrameAvailable(roundVideoPendingSurface);
+            }
+        } else {
+            markVideoFrameAvailable();
+        }
+        if (videoPlayer != null && CastSync.isActive()) {
+            videoPlayer.setMute(true);
+        }
+    }
+    private void onRoundVideoSurfaceUpdated(int tag, SurfaceTexture surfaceTexture) {
+        if (tag != playerNum) return;
+        final int outputGeneration = roundVideoOutputGeneration;
+        final PipRoundVideoView pip = pipRoundVideoView;
+        if (!(pip != null && pip.needsPlaybackSurfaceUpdate(tag, surfaceTexture))
+                && !(roundVideoFrameReadyAt == 0 && currentTextureView != null
+                    && currentTextureView.getSurfaceTexture() == surfaceTexture
+                    && roundVideoPendingSurface != surfaceTexture)) {
+            return;
+        }
+        AndroidUtilities.runOnUIThread(() -> {
+            if (tag != playerNum) return;
+            if (pip != null && pip == pipRoundVideoView && pip.needsPlaybackSurfaceUpdate(tag, surfaceTexture)) {
+                pip.onPlaybackSurfaceUpdated(tag, surfaceTexture);
+            }
+            if (outputGeneration == roundVideoOutputGeneration) {
+                markRoundVideoSurfaceFrameAvailable(surfaceTexture);
+            }
+        });
+    }
+    public float getRoundVideoThumbnailAlpha() {
+        if (roundVideoPlaybackCover != null && roundVideoCoverTexture == currentTextureView) {
+            return 0f;
+        }
+        if (!isVideoDrawingReady() || roundVideoFrameReadyAt == 0) {
+            return 1f;
+        }
+        return Math.max(0f, 1f - (SystemClock.uptimeMillis() - roundVideoFrameReadyAt) / 180f);
+    }
+    public void onRoundVideoTextureDetached(TextureView textureView) {
+        if (roundVideoCoverTexture == textureView) clearInlineRoundVideoFrame();
+        if (currentTextureView == textureView && playingMessageObject != null && playingMessageObject.isRoundVideo()) {
+            roundVideoFirstFrameRendered |= roundVideoFrameReadyAt != 0;
+            roundVideoFrameReadyAt = 0;
+            roundVideoPendingSurface = null;
+            ++roundVideoOutputGeneration;
+        }
+    }
+    public boolean isRoundVideoThumbnailReadyToHide() {
+        return getRoundVideoThumbnailAlpha() <= 0f;
     }
 
     private void updateVideoState(MessageObject messageObject, int[] playCount, boolean destroyAtEnd, boolean playWhenReady, int playbackState) {
@@ -3472,9 +3664,26 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
         boolean destroyAtEnd = true;
         int[] playCount = null;
         clearPlaylist();
+        if (!messageObject.isRoundVideo()) {
+            clearInlineRoundVideoFrame();
+        }
+        if (messageObject.isRoundVideo() && !isSamePlayingMessage(messageObject)) {
+            retainInlineRoundVideoFrame();
+        }
+        if (pipRoundVideoView != null && playingMessageObject != null && !isSamePlayingMessage(messageObject)) {
+            pipRoundVideoView.retainPlaybackFrame();
+        }
         videoPlayer = player;
         playingMessageObject = messageObject;
         int tag = ++playerNum;
+        ++roundVideoOutputGeneration;
+        roundVideoFrameReadyAt = 0;
+        roundVideoPendingSurface = null;
+        roundVideoFirstFrameRendered = messageObject.isRoundVideo();
+        if (messageObject.isRoundVideo() && currentAspectRatioFrameLayout != null) {
+            isDrawingWasReady = false;
+            currentAspectRatioFrameLayout.setDrawingReady(false);
+        }
         videoPlayer.setDelegate(new VideoPlayer.VideoPlayerDelegate() {
             @Override
             public void onStateChanged(boolean playWhenReady, int playbackState) {
@@ -3506,11 +3715,16 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
 
             @Override
             public void onRenderedFirstFrame() {
-                markVideoFrameAvailable();
+                onVideoFirstFrame(tag, messageObject.isRoundVideo());
+            }
+            @Override
+            public void onSurfaceTextureUpdated(SurfaceTexture surfaceTexture) {
+                if (messageObject.isRoundVideo()) onRoundVideoSurfaceUpdated(tag, surfaceTexture);
             }
 
             @Override
             public boolean onSurfaceDestroyed(SurfaceTexture surfaceTexture) {
+                if (tag != playerNum) return false;
                 if (videoPlayer == null) {
                     // Do not leave a stale transition token behind when the
                     // player is released concurrently with TextureView.
@@ -3532,7 +3746,7 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
                             if (pipRoundVideoView.getTextureView().getSurfaceTexture() != surfaceTexture) {
                                 pipRoundVideoView.getTextureView().setSurfaceTexture(surfaceTexture);
                             }
-                            videoPlayer.setTextureView(pipRoundVideoView.getTextureView());
+                            bindRoundVideoPip();
                         }
                     }
                     pipSwitchingState = 0;
@@ -3545,7 +3759,9 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
             }
         });
         currentAspectRatioFrameLayoutReady = false;
-        if (currentTextureView != null) {
+        if (pipRoundVideoView != null && !pipClosingToInline) {
+            bindRoundVideoPip();
+        } else if (currentTextureView != null) {
             videoPlayer.setTextureView(currentTextureView);
         }
 
@@ -3726,6 +3942,9 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
         boolean saved = false;
         boolean notify = !playMusicAgain;
         MessageObject oldMessageObject = playingMessageObject;
+        if (messageObject.isRoundVideo()) {
+            retainInlineRoundVideoFrame();
+        }
         if (playingMessageObject != null) {
             if (playingMessageObject.isMusic() && messageObject.isVoice() || messageObject.isRoundVideo() || messageObject.isVideo()) {
                 saved = saveMusicPlaylistStateIfNeeded();
@@ -3737,6 +3956,7 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
             }
         }
         cleanupPlayer(notify, false);
+        if (!messageObject.isRoundVideo()) clearInlineRoundVideoFrame();
         shouldSavePositionForCurrentAudio = null;
         lastSaveTime = 0;
         playMusicAgain = false;
@@ -3785,6 +4005,9 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
         } else {
             checkIsNextVoiceFileDownloaded(messageObject.currentAccount);
         }
+        roundVideoFrameReadyAt = 0;
+        roundVideoFirstFrameRendered = false;
+        roundVideoPendingSurface = null;
         if (currentAspectRatioFrameLayout != null) {
             isDrawingWasReady = false;
             currentAspectRatioFrameLayout.setDrawingReady(false);
@@ -3832,14 +4055,16 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
 
                 @Override
                 public void onRenderedFirstFrame() {
-                    markVideoFrameAvailable();
-                    if (videoPlayer != null && CastSync.isActive()) {
-                        videoPlayer.setMute(true);
-                    }
+                    onVideoFirstFrame(tag, messageObject.isRoundVideo());
+                }
+                @Override
+                public void onSurfaceTextureUpdated(SurfaceTexture surfaceTexture) {
+                    if (messageObject.isRoundVideo()) onRoundVideoSurfaceUpdated(tag, surfaceTexture);
                 }
 
                 @Override
                 public boolean onSurfaceDestroyed(SurfaceTexture surfaceTexture) {
+                    if (tag != playerNum) return false;
                     if (videoPlayer == null) {
                         // Do not leave a stale transition token behind when the
                         // player is released concurrently with TextureView.
@@ -3861,7 +4086,7 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
                                 if (pipRoundVideoView.getTextureView().getSurfaceTexture() != surfaceTexture) {
                                     pipRoundVideoView.getTextureView().setSurfaceTexture(surfaceTexture);
                                 }
-                                videoPlayer.setTextureView(pipRoundVideoView.getTextureView());
+                                bindRoundVideoPip();
                             }
                         }
                         pipSwitchingState = 0;
@@ -3886,7 +4111,7 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
                     }
                 }
                 if (pipRoundVideoView != null) {
-                    videoPlayer.setTextureView(pipRoundVideoView.getTextureView());
+                    bindRoundVideoPip();
                 }
             } else if (currentTextureView != null) {
                 videoPlayer.setTextureView(currentTextureView);
@@ -4534,7 +4759,8 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
         if (audioPlayer == null && videoPlayer == null || messageObject == null || playingMessageObject == null) {
             return false;
         }
-        if (playingMessageObject.eventId != 0 && playingMessageObject.eventId == messageObject.eventId) {
+        if (playingMessageObject.currentAccount == messageObject.currentAccount
+                && playingMessageObject.eventId != 0 && playingMessageObject.eventId == messageObject.eventId) {
             return !downloadingCurrentMessage;
         }
         if (isSamePlayingMessage(messageObject)) {

@@ -162,6 +162,8 @@ public class SharedPhotoVideoCell2 extends FrameLayout {
         setChecked(false, false);
         imageReceiver.setParentView(this);
         imageReceiverFullSize.setParentView(this);
+        imageReceiver.setCrossfadeOnReady(true);
+        imageReceiverFullSize.setCrossfadeOnReady(true);
         blurImageReceiver.setParentView(this);
 
         imageReceiver.setDelegate((imageReceiver1, set, thumb, memCache) -> {

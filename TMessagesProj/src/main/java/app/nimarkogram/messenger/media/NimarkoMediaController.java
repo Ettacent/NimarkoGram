@@ -4,6 +4,7 @@ package app.nimarkogram.messenger.media;
 import android.app.Activity;
 import android.content.Context;
 import android.content.SharedPreferences;
+import android.view.View;
 
 import java.io.File;
 import java.util.ArrayList;
@@ -12,6 +13,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
 import org.telegram.messenger.AndroidUtilities;
@@ -105,6 +107,7 @@ public final class NimarkoMediaController implements NotificationCenter.Notifica
         final MessageObject replyToTop;
         final int account;
         final long userId;
+        final AtomicBoolean downloadStarted = new AtomicBoolean();
 
         RequestContext(SendOptions options, MessageObject replyToTop,
                        int account, long userId) {
@@ -159,10 +162,8 @@ public final class NimarkoMediaController implements NotificationCenter.Notifica
             showError(chatActivity, LocaleController.getString(R.string.NM_NM_AlreadyDownloading));
             return;
         }
-        if (!kickoff(chatActivity, chatActivity.getDialogId(), chatActivity.getCurrentAccount(),
-                match, message, chatActivity.getThreadMessage(), options)) {
-            showError(chatActivity, LocaleController.getString(R.string.NM_NM_AlreadyDownloading));
-        }
+        kickoff(chatActivity, chatActivity.getDialogId(), chatActivity.getCurrentAccount(),
+                match, message, chatActivity.getThreadMessage(), options, null);
     }
 
     public static final int INTERCEPT_NONE = 0;
@@ -170,12 +171,17 @@ public final class NimarkoMediaController implements NotificationCenter.Notifica
     public static final int INTERCEPT_HIJACKED = 1;
      
     public static final int INTERCEPT_BLOCKED = 2;
+    public static final int INTERCEPT_PENDING = 3;
 
     public int interceptOutgoingMessage(CharSequence text, ChatActivity chatActivity) {
         return interceptOutgoingMessage(text, chatActivity, SendOptions.immediate());
     }
 
     public int interceptOutgoingMessage(CharSequence text, ChatActivity chatActivity, SendOptions options) {
+        return interceptOutgoingMessage(text, chatActivity, options, null);
+    }
+    public int interceptOutgoingMessage(CharSequence text, ChatActivity chatActivity, SendOptions options,
+                                        Runnable onAccepted) {
         if (!NimarkoConfig.nimarkoMediaAuto) return INTERCEPT_NONE;
         if (text == null || chatActivity == null) return INTERCEPT_NONE;
         String trimmed = text.toString().trim();
@@ -190,12 +196,8 @@ public final class NimarkoMediaController implements NotificationCenter.Notifica
             return INTERCEPT_BLOCKED;
         }
         
-        if (kickoff(chatActivity, chatActivity.getDialogId(), chatActivity.getCurrentAccount(),
-                match, chatActivity.replyingMessageObject, chatActivity.getThreadMessage(), options)) {
-            return INTERCEPT_HIJACKED;
-        }
-        showError(chatActivity, LocaleController.getString(R.string.NM_NM_AlreadyDownloading));
-        return INTERCEPT_BLOCKED;
+        return kickoff(chatActivity, chatActivity.getDialogId(), chatActivity.getCurrentAccount(),
+                match, chatActivity.replyingMessageObject, chatActivity.getThreadMessage(), options, onAccepted);
     }
 
     public void downloadFromUrl(BaseFragment fragment, String url) {
@@ -213,25 +215,44 @@ public final class NimarkoMediaController implements NotificationCenter.Notifica
         }
         int account = fragment.getCurrentAccount();
         long savedMessages = UserConfig.getInstance(account).getClientUserId();
-        if (!kickoff(fragment, savedMessages, account, match, null, null, SendOptions.immediate())) {
-            showError(fragment, LocaleController.getString(R.string.NM_NM_AlreadyDownloading));
-        }
+        kickoff(fragment, savedMessages, account, match, null, null, SendOptions.immediate(), null);
     }
 
-    private boolean kickoff(BaseFragment fragmentForBulletins, long dialogId, int account,
+    private int kickoff(BaseFragment fragmentForBulletins, long dialogId, int account,
                          NimarkoMediaDownloader.UrlMatch match, MessageObject replyTo,
-                         MessageObject replyToTop, SendOptions options) {
+                         MessageObject replyToTop, SendOptions options, Runnable onAccepted) {
         RequestContext request = new RequestContext(
                 options, replyToTop, account, accountUserId(account));
         if (!activeRequest.compareAndSet(null, request)) {
-            return false;
+            showError(fragmentForBulletins, LocaleController.getString(R.string.NM_NM_AlreadyDownloading));
+            return INTERCEPT_BLOCKED;
         }
         String platform = match.platform.id;
 
         if ("youtube".equals(platform) && NimarkoConfig.nimarkoMediaYtAsk) {
-            Activity parent = fragmentForBulletins != null ? fragmentForBulletins.getParentActivity() : null;
-            if (parent != null) {
-                AndroidUtilities.runOnUIThread(() -> {
+            final Activity parent = fragmentForBulletins != null ? fragmentForBulletins.getParentActivity() : null;
+            final View hostView = fragmentForBulletins != null ? fragmentForBulletins.getFragmentView() : null;
+            if (parent == null || hostView == null) {
+                clearInflight(request);
+                return INTERCEPT_BLOCKED;
+            }
+            final java.util.function.BooleanSupplier canSelect = () ->
+                    isRequestIdentityValid(request, account)
+                    && !parent.isFinishing() && !parent.isDestroyed()
+                    && !fragmentForBulletins.isFinished && !fragmentForBulletins.isPaused()
+                    && fragmentForBulletins.getParentActivity() == parent
+                    && fragmentForBulletins.getFragmentView() == hostView
+                    && fragmentForBulletins.getCurrentAccount() == account
+                    && hostView.isAttachedToWindow();
+            final Runnable releasePending = () -> {
+                if (!request.downloadStarted.get()) clearInflight(request);
+            };
+            AndroidUtilities.runOnUIThread(() -> {
+                if (!canSelect.getAsBoolean()) {
+                    releasePending.run();
+                    return;
+                }
+                try {
                     AlertDialog.Builder b = new AlertDialog.Builder(parent,
                             fragmentForBulletins.getResourceProvider());
                     b.setTitle("▶️ YouTube");
@@ -239,25 +260,60 @@ public final class NimarkoMediaController implements NotificationCenter.Notifica
                             LocaleController.getString(R.string.NM_NM_FormatVideo),
                             LocaleController.getString(R.string.NM_NM_FormatAudio)
                     }, (dialog, which) -> {
+                        if (!canSelect.getAsBoolean()) {
+                            releasePending.run();
+                            return;
+                        }
                         String mt = which == 1 ? "audio" : "video";
-                        executor.submit(() -> processDownload(request, fragmentForBulletins,
-                                dialogId, account, match, mt, replyTo));
+                        startDownload(request, fragmentForBulletins,
+                                dialogId, account, match, mt, replyTo, onAccepted);
                     });
                     b.setNegativeButton(LocaleController.getString(R.string.Cancel),
-                            (dialog, which) -> {
-                        dialog.dismiss();
-                        clearInflight(request);
-                    });
+                            (dialog, which) -> releasePending.run());
                     AlertDialog d = b.create();
-                    d.setOnCancelListener(dialog -> clearInflight(request));
-                    d.show();
-                });
-                return true;
-            }
+                    d.setOnCancelListener(dialog -> releasePending.run());
+                    d.setOnDismissListener(dialog -> releasePending.run());
+                    if (fragmentForBulletins.showDialog(d, dialog -> releasePending.run()) == null) {
+                        releasePending.run();
+                    }
+                } catch (RuntimeException e) {
+                    FileLog.e(e);
+                    releasePending.run();
+                }
+            });
+            return INTERCEPT_PENDING;
         }
 
         String mediaType = resolveMediaType(match.platform);
-        executor.submit(() -> processDownload(request, fragmentForBulletins, dialogId, account, match, mediaType, replyTo));
+        return startDownload(request, fragmentForBulletins, dialogId, account, match, mediaType, replyTo, onAccepted)
+                ? INTERCEPT_HIJACKED : INTERCEPT_BLOCKED;
+    }
+    private boolean startDownload(RequestContext request, BaseFragment fragmentForBulletins,
+                                  long dialogId, int account, NimarkoMediaDownloader.UrlMatch match,
+                                  String mediaType, MessageObject replyTo, Runnable onAccepted) {
+        if (!isRequestIdentityValid(request, account)) {
+            clearInflight(request);
+            return false;
+        }
+        if (!request.downloadStarted.compareAndSet(false, true)) return false;
+        try {
+            executor.submit(() -> processDownload(request, fragmentForBulletins,
+                    dialogId, account, match, mediaType, replyTo));
+        } catch (RuntimeException e) {
+            FileLog.e(e);
+            finishWithError(request, fragmentForBulletins,
+                    LocaleController.getString(R.string.NM_NM_GenericError));
+            return false;
+        }
+        if (onAccepted != null) {
+            AndroidUtilities.executeOnUIThread(() -> {
+                try {
+                    onAccepted.run();
+                } catch (RuntimeException e) {
+                    FileLog.e(e);
+                }
+            });
+        }
         return true;
     }
 

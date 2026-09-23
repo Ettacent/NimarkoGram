@@ -5,6 +5,7 @@ const os = require('node:os');
 const assert = require('node:assert/strict');
 const source = fs.readFileSync(path.resolve(__dirname, '../../main/java/org/telegram/ui/DialogsActivity.java'), 'utf8');
 const tabsSource = fs.readFileSync(path.resolve(__dirname, '../../main/java/org/telegram/ui/Components/FilterTabsView.java'), 'utf8');
+const overlayEdge = tabsSource.match(/public int getTrailingOverlayEdge\(\) \{[^}]*\}/)[0];
 const start = source.indexOf('public void draw(Canvas canvas)', source.indexOf('private final Paint cardEdgePaint'));
 const end = source.indexOf('@Override', start);
 const draw = source.slice(start, end).trim();
@@ -65,6 +66,8 @@ public class EdgeTest {
  }
  static class Tabs extends Parent {
   int width,height,homeInfoCardSlotWidth;Card homeInfoCards=new Card();
+  int trailingOverlayInset; boolean trailingOverlayRtl;
+  ${overlayEdge}
   float cardBackgroundRadius=-1;
   Paint cardEdgePaint=new Paint(),cardClipPaint=new Paint();Path cardClipPath=new Path();
   int getWidth(){return width;}int getHeight(){return height;}float getX(){return dp(4);}
@@ -97,6 +100,7 @@ public class EdgeTest {
     for(boolean rtl:new boolean[]{false,true}){
      LocaleController.isRTL=rtl;Tabs t=new Tabs();t.width=dp(screen)-2*dp(4);t.height=dp(50);
      t.homeInfoCardSlotWidth=t.homeInfoCards.width=dp(card);
+     t.trailingOverlayInset=dp(card)+dp(8);t.trailingOverlayRtl=rtl;
      t.homeInfoCards.x=rtl?dp(10):dp(screen)-dp(10)-dp(card);
      Canvas c=new Canvas();t.draw(c);Path p=c.mask;
      check(c.layers==1&&!c.layer&&t.bg.draws==1&&p.fill==Path.FillType.INVERSE_WINDING);

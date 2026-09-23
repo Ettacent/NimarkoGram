@@ -1,0 +1,183 @@
+import java.util.*;
+
+public class Harness {
+    static final int VISIBLE=0, INVISIBLE=4, GONE=8, TAB_EMOJI=0, TAB_GIFS=1, TAB_STICKERS=2;
+    static final Object TRANSLATION_Y=new Object();
+    static class Context {}
+    static class SystemClock { static long uptimeMillis(){ return 100; } }
+    static class MotionEvent {
+        static final int ACTION_CANCEL=3;
+        static MotionEvent obtain(long a,long b,int c,int d,int e,int f){ return new MotionEvent(); }
+        void recycle(){}
+    }
+    static class Build {
+        static class VERSION { static int SDK_INT=35; }
+        static class VERSION_CODES { static final int O=26; }
+    }
+    static class ValueAnimator { static boolean enabled=true; static boolean areAnimatorsEnabled(){return enabled;} }
+    static class SharedConfig { static boolean enabled=true; static boolean animationsEnabled(){return enabled;} }
+    static class AndroidUtilities { static float scale=1; static float getAnimatorDurationScale(){return scale;} }
+    static class CubicBezierInterpolator { static Object EASE_OUT_QUINT=new Object(); }
+    static class ObjectAnimator {
+        static ObjectAnimator ofFloat(Object v,Object p,float f){ return new ObjectAnimator(); }
+        void setDuration(int d){} void setInterpolator(Object i){} void start(){}
+    }
+    static class Type { static final int EMOJIS=1; }
+    static class View {
+        int visibility=VISIBLE, layoutRequests, scrolls;
+        boolean attached=true, shown=true;
+        int windowVisibility=VISIBLE;
+        void setVisibility(int v){ if ((visibility==GONE)!=(v==GONE)) layoutRequests++; visibility=v; }
+        int getVisibility(){ return visibility; }
+        void setTranslationY(float y){} void select(int i){}
+        void smoothScrollToPosition(int i){scrolls++;} void scrollToPosition(int i){scrolls++;}
+        void scrollToPositionWithOffset(int i,int offset){scrolls++;} void stopScroll(){}
+        boolean isAttachedToWindow(){return attached;} boolean isShown(){return shown;}
+        int getWindowVisibility(){return windowVisibility;}
+        protected void onVisibilityChanged(View v,int visibility){}
+        protected void onWindowVisibilityChanged(int v){}
+        protected void onDetachedFromWindow(){attached=false;}
+    }
+    interface IconTabProvider { boolean canScrollToTab(int position); }
+    static class Adapter implements IconTabProvider {
+        boolean banned;
+        public boolean canScrollToTab(int p){return !banned;}
+    }
+    // Boundary model: AndroidX sets currentItem before settling, the public setter
+    // ignores a same-item request, and swipe release calls the four-argument method.
+    // It intentionally does not model rendering, velocity or actual Scroller timing.
+    static class ViewPager extends View {
+        static final int SCROLL_STATE_IDLE=0,SCROLL_STATE_DRAGGING=1,SCROLL_STATE_SETTLING=2;
+        int current,state,selectionEvents,smoothRequests; double x,start,target; boolean fake,drag,active;
+        Adapter adapter=new Adapter();
+        ViewPager(Context context){}
+        Adapter getAdapter(){return adapter;}
+        void setScrollState(int s){state=s;}
+        int getCurrentItem(){return current;}
+        public void setCurrentItem(int i,boolean smooth){setCurrentItemInternal(i,smooth,false,0);}
+        void setCurrentItemInternal(int i,boolean smooth,boolean always,int velocity){
+            i=Math.max(0,Math.min(2,i));
+            if(!always && i==current)return;
+            if(current!=i)selectionEvents++;
+            current=i;
+            if(smooth){smoothRequests++;smoothScrollTo(i,0,velocity);}
+            else{x=target=i;active=false;if(state==SCROLL_STATE_SETTLING)setScrollState(SCROLL_STATE_IDLE);}
+        }
+        void smoothScrollTo(int x,int y,int velocity){start=this.x;target=x;active=true;setScrollState(SCROLL_STATE_SETTLING);}
+        public void computeScroll(){
+            if(active){x+=(target-x)*.5;if(Math.abs(target-x)<.000001){x=target;active=false;setScrollState(SCROLL_STATE_IDLE);}}
+        }
+        void settle(){for(int frame=0;frame<32;frame++)computeScroll();}
+        void frame(double fraction){x=start+(target-start)*fraction;}
+        boolean isFakeDragging(){return fake;}
+        void endFakeDrag(){fake=false;setCurrentItemInternal(current,true,true,0);}
+        public boolean onTouchEvent(MotionEvent e){
+            if(drag){smoothScrollTo(current,0,0);drag=false;}return true;
+        }
+        void beginDrag(double x){this.x=x;active=false;drag=true;setScrollState(SCROLL_STATE_DRAGGING);}
+        void release(int target){setCurrentItemInternal(target,true,true,600);drag=false;}
+    }
+    /* BRIDGE */
+    static class Tab { int type; Tab(int t){type=t;} }
+    static class Keyboard {
+        ArrayList<Tab> currentTabs=new ArrayList<>();
+        View emojiGridView=new View(),gifGridView=new View(),stickersGridView=new View();
+        View gifTabs=new View(),stickersTabContainer=new View(),emojiTabs=new View(),emojiLayoutManager=new View();
+        int[] tabsMinusDy=new int[3];
+        void scrollEmojisToPosition(int i,int o){emojiGridView.scrolls++;}
+        EmojiViewPager pager=new EmojiViewPager(new Context()) {
+            /* POLICY */
+            /* SELECT */
+        };
+        Keyboard(int...types){for(int t:types)currentTabs.add(new Tab(t));}
+        /* GRIDS */
+        int scrolls(){return emojiGridView.scrolls+gifGridView.scrolls+stickersGridView.scrolls+emojiLayoutManager.scrolls;}
+    }
+    static class TabStrip {
+        EmojiViewPager pager; boolean smoothScroll;
+        TabStrip(EmojiViewPager p,boolean smooth){pager=p;smoothScroll=smooth;}
+        boolean isTabAnimationEnabled(){return pager.isPageMotionEnabled();}
+        void text(int position){ /* TEXT_CLICK */ }
+        void icon(int position){ /* ICON_CLICK */ }
+    }
+    static void check(boolean b,String message){if(!b)throw new AssertionError(message);}
+    static Keyboard keyboard(){return new Keyboard(0,1,2);}
+    static void resetPolicy(){SharedConfig.enabled=true;ValueAnimator.enabled=true;AndroidUtilities.scale=1;Build.VERSION.SDK_INT=35;}
+    public static void main(String[] args) {
+        resetPolicy();
+        for(boolean icon:new boolean[]{false,true}){
+            Keyboard k=keyboard();TabStrip t=new TabStrip(k.pager,true);
+            if(icon)t.icon(2);else t.text(2);
+            check(k.pager.active && k.pager.x==0,"tap must animate, including two-page jump");
+            k.pager.frame(.27);double painted=k.pager.x;
+            t.text(1);check(k.pager.x==painted&&k.pager.start==painted,"retarget from painted position");
+            int scrolls=k.scrolls();t.text(1);check(k.scrolls()==scrolls,"repeat target must not reset grid");
+            t.text(0);t.text(2);t.text(0);k.pager.settle();
+            check(k.pager.current==0&&k.pager.x==0&&!k.pager.isPageTransitionRunning(),"last rapid selection wins");
+            t.text(0);check(k.scrolls()==scrolls+1,"idle repeat retains scroll-to-top");
+            int events=k.pager.selectionEvents;
+            k.pager.adapter.banned=true;t.text(2);t.icon(1);
+            check(k.pager.selectionEvents==events,"banned tabs remain blocked");
+        }
+        Keyboard legacy=keyboard();new TabStrip(legacy.pager,false).text(2);
+        check(!legacy.pager.active&&legacy.pager.x==2,"non-opted-in tab strip stays immediate");
+        // Touch-controlled drag remains available; release/cancel adds no autonomous
+        // motion when either the app or Android's remove-animation switch is off.
+        for(int policy=0;policy<3;policy++){
+            resetPolicy();
+            if(policy==0)SharedConfig.enabled=false;
+            if(policy==1)ValueAnimator.enabled=false;
+            if(policy==2){Build.VERSION.SDK_INT=25;AndroidUtilities.scale=0;}
+            Keyboard k=keyboard();k.pager.beginDrag(.4);k.pager.release(1);
+            check(!k.pager.active&&k.pager.x==1&&!k.pager.isPageTransitionRunning()&&k.pager.smoothRequests==0,"reduced swipe settles immediately");
+            new TabStrip(k.pager,true).text(2);check(k.pager.x==2&&!k.pager.active,"reduced tap");
+            k.pager.beginDrag(1.7);k.pager.onTouchEvent(new MotionEvent());
+            check(k.pager.x==2&&!k.pager.drag&&!k.pager.isPageTransitionRunning(),"cancel leaves no dragging state");
+        }
+        resetPolicy();
+        for(int lifecycle=0;lifecycle<6;lifecycle++){
+            Keyboard k=keyboard();k.pager.setCurrentItem(2,true);k.pager.frame(.4);
+            if(lifecycle==0)k.pager.onVisibilityChanged(k.pager,INVISIBLE);
+            if(lifecycle==1)k.pager.onWindowVisibilityChanged(GONE);
+            if(lifecycle==2)k.pager.onDetachedFromWindow();
+            if(lifecycle==3)k.pager.finishPageTransition(); // onDestroy / adapter rebuild
+            if(lifecycle==4){SharedConfig.enabled=false;k.pager.computeScroll();}
+            if(lifecycle==5){k.pager.beginDrag(.8);k.pager.fake=true;k.pager.finishPageTransition();}
+            String reason=lifecycle==2?"detach settles":lifecycle==4?"live setting settles":"hide settles";
+            check(!k.pager.active&&k.pager.x==2&&!k.pager.isPageTransitionRunning(),reason);
+            check(!k.pager.drag&&!k.pager.fake,"cleanup releases gesture ownership");
+            int events=k.pager.selectionEvents;k.pager.finishPageTransition();
+            check(k.pager.selectionEvents==events,"cleanup idempotent, no stale selection");
+            resetPolicy();k.pager.attached=true;k.pager.setCurrentItem(0,true);k.pager.settle();
+            check(k.pager.x==0,"reuse after reopen");
+        }
+        Keyboard changed=keyboard();changed.pager.setCurrentItem(2,true);changed.pager.frame(.2);
+        SharedConfig.enabled=false;changed.pager.computeScroll();
+        check(!changed.pager.isPageTransitionRunning()&&!changed.pager.active,"live setting settles");
+        // No animation is even requested before layout/attachment or while hidden.
+        resetPolicy();for(int hidden=0;hidden<3;hidden++){
+            Keyboard k=keyboard();if(hidden==0)k.pager.attached=false;if(hidden==1)k.pager.shown=false;
+            if(hidden==2)k.pager.windowVisibility=INVISIBLE;
+            k.pager.setCurrentItem(2,true);check(!k.pager.active&&k.pager.x==2,"hidden programmatic selection");
+        }
+        // Full, filtered, singleton and empty adapters; motion never collapses a
+        // RecyclerView or exposes a third grid. Every fractional swipe is covered.
+        for(int[] types:new int[][]{{0,1,2},{0,2},{1,2},{2},{0},{}}){
+            Keyboard k=new Keyboard(types);
+            for(int pos=0;pos<Math.max(1,types.length);pos++)for(int frame=0;frame<=120;frame++){
+                float offset=frame==120?0:frame/120f;
+                k.checkGridVisibility(pos,offset);
+                View[] grids={k.emojiGridView,k.gifGridView,k.stickersGridView};
+                for(int type=0;type<3;type++){
+                    boolean visible=pos<types.length&&types[pos]==type || offset>0&&pos+1<types.length&&types[pos+1]==type;
+                    check(grids[type].getVisibility()==(visible?VISIBLE:INVISIBLE),"retains layout and exact visible pair");
+                    check(grids[type].layoutRequests==0,"retains layout during swipe/reversal");
+                }
+            }
+        }
+        Keyboard emojiOnly=new Keyboard(0);emojiOnly.gifGridView=null;emojiOnly.stickersGridView=null;
+        emojiOnly.checkGridVisibility(0,0);
+        check(emojiOnly.emojiGridView.visibility==VISIBLE,"no GIF/sticker null access");
+        System.out.println("PASS emoji pager: tap, swipe, reversal, lifecycle, policies, filtered pages and layout");
+    }
+}

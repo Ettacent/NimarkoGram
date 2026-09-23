@@ -145,6 +145,7 @@ public class ContextLinkCell extends FrameLayout implements DownloadController.F
         this.resourcesProvider = resourcesProvider;
 
         linkImageView = new ImageReceiver(this);
+        linkImageView.setCrossfadeOnReady(true);
         linkImageView.setAllowLoadingOnAttachedOnly(true);
         linkImageView.setLayerNum(1);
         linkImageView.setUseSharedAnimationQueue(true);

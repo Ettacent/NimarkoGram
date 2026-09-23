@@ -154,9 +154,12 @@ public final class ProxySettings {
         final String proxyPassword = preferences.getString("proxy_pass", "");
         final String proxySecret = preferences.getString("proxy_secret", "");
         final int proxyPort = preferences.getInt("proxy_port", 1080);
-        final ProxySettings.Type proxyType = ProxySettings.intToType(preferences.getInt("proxy_type", ProxySettings.typeToInt(TextUtils.isEmpty(proxySecret)
+        ProxySettings.Type proxyType = ProxySettings.intToType(preferences.getInt("proxy_type", ProxySettings.typeToInt(TextUtils.isEmpty(proxySecret)
             ? ProxySettings.Type.SOCKS5
             : ProxySettings.Type.MTPROTO)));
+        if (proxyType != Type.WEB || (preferences.contains("proxy_port") && proxyPort > 0)) {
+            proxyType = TextUtils.isEmpty(proxySecret) ? Type.SOCKS5 : Type.MTPROTO;
+        }
 
         return builder()
             .setAddress(proxyAddress)

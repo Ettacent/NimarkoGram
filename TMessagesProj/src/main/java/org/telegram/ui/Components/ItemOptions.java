@@ -48,6 +48,7 @@ import org.telegram.messenger.ChatObject;
 import org.telegram.messenger.DocumentObject;
 import org.telegram.messenger.Emoji;
 import org.telegram.messenger.FileLoader;
+import org.telegram.messenger.FileLog;
 import org.telegram.messenger.ImageLocation;
 import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.MediaDataController;
@@ -85,6 +86,7 @@ import org.telegram.ui.Stories.recorder.HintView2;
 
 import java.lang.ref.WeakReference;
 import java.util.HashSet;
+import java.util.function.Consumer;
 
 public class ItemOptions {
 
@@ -148,6 +150,7 @@ public class ItemOptions {
     private final float[] point = new float[2];
 
     private Runnable dismissListener;
+    private AccountSwitchPopup accountSwitchPopup;
 
     private float translateX, translateY;
     private int dimAlpha;
@@ -180,6 +183,7 @@ public class ItemOptions {
 
     private DimView dimView;
     private ViewTreeObserver.OnPreDrawListener preDrawListener;
+    private ViewTreeObserver preDrawObserver;
 
     private android.graphics.Rect viewAdditionalOffsets = new android.graphics.Rect();
     private ViewGroup layout;
@@ -1226,7 +1230,7 @@ public class ItemOptions {
         return this;
     }
     public ItemOptions show() {
-        if (actionBarPopupWindow != null || linearLayout != null) {
+        if (actionBarPopupWindow != null || linearLayout != null || accountSwitchPopup != null) {
             return this;
         }
 
@@ -1302,7 +1306,8 @@ public class ItemOptions {
                 dimViewLocal.invalidate();
                 return true;
             };
-            container.getViewTreeObserver().addOnPreDrawListener(preDrawListener);
+            preDrawObserver = container.getViewTreeObserver();
+            preDrawObserver.addOnPreDrawListener(preDrawListener);
             container.addView(dimView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT));
             dimView.setProgress(0);
             if (hideScrimUnder) {
@@ -1354,27 +1359,28 @@ public class ItemOptions {
         actionBarPopupWindow = new ActionBarPopupWindow(layout, LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT) {
             @Override
             public void dismiss() {
+                if (accountSwitchPopup != null) return;
                 super.dismiss();
                 ItemOptions.this.dismissDim(container);
 
-                if (dismissListener != null) {
-                    dismissListener.run();
-                    dismissListener = null;
-                }
+                notifyDismissListener();
+            }
+            @Override
+            public void dismiss(boolean animated) {
+                if (accountSwitchPopup != null && !accountSwitchPopup.finished) return;
+                super.dismiss(animated);
             }
         };
         actionBarPopupWindow.setOnDismissListener(new PopupWindow.OnDismissListener() {
             @Override
             public void onDismiss() {
+                if (accountSwitchPopup != null) accountSwitchPopup.finish();
                 actionBarPopupWindow = null;
                 dismissDim(container);
                 clearHoverListener();
                 removeFollowListeners();
 
-                if (dismissListener != null) {
-                    dismissListener.run();
-                    dismissListener = null;
-                }
+                notifyDismissListener();
             }
         });
         actionBarPopupWindow.setOutsideTouchable(true);
@@ -1761,6 +1767,12 @@ public class ItemOptions {
         }
         DimView dimViewFinal = dimView;
         dimView = null;
+        dimViewFinal.blurCaptureActive = false;
+        dimViewFinal.restoreBlurAnchor();
+        final ViewTreeObserver observer = preDrawObserver;
+        final ViewTreeObserver.OnPreDrawListener listener = preDrawListener;
+        preDrawObserver = null;
+        preDrawListener = null;
         if (dimAnimator != null) {
             dimAnimator.cancel();
         }
@@ -1772,11 +1784,14 @@ public class ItemOptions {
         dimAnimator.addListener(new AnimatorListenerAdapter() {
             @Override
             public void onAnimationEnd(Animator animation) {
+                if (dimAnimator == animation) dimAnimator = null;
                 dimViewFinal.setProgress(0);
                 dimViewFinal.invalidate();
 
                 AndroidUtilities.removeFromParent(dimViewFinal);
-                container.getViewTreeObserver().removeOnPreDrawListener(preDrawListener);
+                if (observer != null && observer.isAlive() && listener != null) {
+                    observer.removeOnPreDrawListener(listener);
+                }
                 if (hideScrimUnder) {
                     scrimView.setVisibility(View.VISIBLE);
                     if (scrimView instanceof GiftSheet.GiftCell) {
@@ -1806,6 +1821,109 @@ public class ItemOptions {
         this.dismissListener = dismissListener;
         return this;
     }
+    public void dismissWithAccountSwitch(Consumer<AccountSwitchTransition.Overlay> start) {
+        if (accountSwitchPopup != null) return;
+        if (!isShown()) {
+            start.accept(null);
+            return;
+        }
+        dontDismiss = false;
+        final AccountSwitchPopup popup = new AccountSwitchPopup(actionBarPopupWindow);
+        accountSwitchPopup = popup;
+        try {
+            popup.prepare();
+            start.accept(popup);
+        } catch (RuntimeException | Error e) {
+            popup.finish();
+            throw e;
+        }
+    }
+    private void notifyDismissListener() {
+        final Runnable listener = dismissListener;
+        dismissListener = null;
+        if (listener != null) listener.run();
+    }
+    private final class AccountSwitchPopup implements AccountSwitchTransition.Overlay {
+        private final ActionBarPopupWindow window;
+        private final View content;
+        private final DimView dim;
+        private final ViewTreeObserver dimObserver;
+        private final ViewTreeObserver.OnPreDrawListener dimListener;
+        private final float alpha, scaleX, scaleY, translationY;
+        private boolean dimRemoved;
+        private boolean finished;
+        private AccountSwitchPopup(ActionBarPopupWindow window) {
+            this.window = window;
+            content = window.getContentView();
+            dim = dimView;
+            dimObserver = preDrawObserver;
+            dimListener = preDrawListener;
+            alpha = content.getAlpha();
+            scaleX = content.getScaleX();
+            scaleY = content.getScaleY();
+            translationY = content.getTranslationY();
+        }
+        private void prepare() {
+            clearHoverListener();
+            removeFollowListeners();
+            if (dimAnimator != null) {
+                dimAnimator.removeAllListeners();
+                dimAnimator.removeAllUpdateListeners();
+                dimAnimator.cancel();
+                dimAnimator = null;
+            }
+            window.setTouchInterceptor((v, event) -> true);
+            window.setOutsideTouchable(false);
+            window.setFocusable(false);
+            window.setAnimationStyle(0);
+            window.update();
+        }
+        private void removeDim() {
+            if (dimRemoved) return;
+            dimRemoved = true;
+            if (dimObserver != null && dimObserver.isAlive() && dimListener != null) {
+                dimObserver.removeOnPreDrawListener(dimListener);
+            }
+            if (preDrawListener == dimListener) preDrawListener = null;
+            if (preDrawObserver == dimObserver) preDrawObserver = null;
+            if (dimView == dim) dimView = null;
+            if (dim != null) {
+                dim.blurCaptureActive = false;
+                dim.restoreBlurAnchor();
+            }
+            if (dim != null) AndroidUtilities.removeFromParent(dim);
+            if (hideScrimUnder && scrimView != null) scrimView.setVisibility(View.VISIBLE);
+        }
+        @Override
+        public void onCaptured() {
+            if (finished) return;
+            removeDim();
+            notifyDismissListener();
+        }
+        @Override
+        public void setProgress(float progress) {
+            if (finished) return;
+            content.setAlpha(alpha * (1f - progress));
+            if (scaleOut) {
+                content.setScaleX(scaleX * (1f - .2f * progress));
+                content.setScaleY(scaleY * (1f - .2f * progress));
+            } else {
+                content.setTranslationY(translationY - dp(5) * progress);
+            }
+        }
+        @Override
+        public void finish() {
+            if (finished) return;
+            finished = true;
+            removeDim();
+            try {
+                window.dismiss(false);
+            } finally {
+                if (accountSwitchPopup == this) accountSwitchPopup = null;
+                notifyDismissListener();
+            }
+        }
+    }
 
     public void dismiss() {
         if (dontDismiss) {
@@ -1814,8 +1932,8 @@ public class ItemOptions {
         }
         if (actionBarPopupWindow != null) {
             actionBarPopupWindow.dismiss();
-        } else if (dismissListener != null) {
-            dismissListener.run();
+        } else {
+            notifyDismissListener();
         }
     }
 
@@ -1958,6 +2076,16 @@ public class ItemOptions {
 
         private Bitmap blurBitmap;
         private Paint blurPaint;
+        private boolean blurCaptureActive = true;
+        private View blurHiddenAnchor;
+        private float blurHiddenAnchorAlpha;
+        private void restoreBlurAnchor() {
+            if (blurHiddenAnchor != null) {
+                View anchor = blurHiddenAnchor;
+                blurHiddenAnchor = null;
+                anchor.setAlpha(blurHiddenAnchorAlpha);
+            }
+        }
 
         public final float clipTop;
         public final float clipBottom;
@@ -2000,18 +2128,37 @@ public class ItemOptions {
 
             if (blur || blurForMenu) {
                 blurPaint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
-                scrimView.setAlpha(0.0f);
-                ScrimOptions.makeGlobalBlurBitmaps(pointContainer, (bitmapBg, bitmapOptions) -> {
-                    scrimView.setAlpha(1.0f);
-                    if (blur) blurBitmap = bitmapBg;
-                    if (scrimBlur3SourceBitmap != null) {
-                        scrimBlur3SourceBitmap.setBitmap(bitmapOptions);
-                        Blur3Utils.checkBitmapSourceMatrixScale(scrimBlur3SourceBitmap, DimView.this);
-                        if (layout != null) {
-                            layout.invalidate();
+                final boolean hideAnchorForCapture = drawScrim && scrimView != null;
+                final float anchorAlpha = hideAnchorForCapture ? scrimView.getAlpha() : 1f;
+                if (hideAnchorForCapture) {
+                    blurHiddenAnchor = scrimView;
+                    blurHiddenAnchorAlpha = anchorAlpha;
+                    scrimView.setAlpha(0.0f);
+                }
+                try {
+                    ScrimOptions.makeGlobalBlurBitmaps(pointContainer, (bitmapBg, bitmapOptions) -> {
+                        if (blurHiddenAnchor == scrimView) {
+                            blurHiddenAnchor = null;
+                            if (hideAnchorForCapture) scrimView.setAlpha(anchorAlpha);
                         }
-                    }
-                });
+                        if (!blurCaptureActive) {
+                            if (bitmapBg != null && !bitmapBg.isRecycled()) bitmapBg.recycle();
+                            if (bitmapOptions != null && !bitmapOptions.isRecycled()) bitmapOptions.recycle();
+                            return;
+                        }
+                        if (blur) blurBitmap = bitmapBg;
+                        if (scrimBlur3SourceBitmap != null) {
+                            scrimBlur3SourceBitmap.setBitmap(bitmapOptions);
+                            Blur3Utils.checkBitmapSourceMatrixScale(scrimBlur3SourceBitmap, DimView.this);
+                            if (layout != null) {
+                                layout.invalidate();
+                            }
+                        }
+                    });
+                } catch (RuntimeException | OutOfMemoryError e) {
+                    restoreBlurAnchor();
+                    FileLog.e(e);
+                }
             }
         }
 

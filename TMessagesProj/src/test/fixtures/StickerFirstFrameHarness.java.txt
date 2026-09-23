@@ -1,0 +1,196 @@
+// Shares only Android/loader/decoder fakes with EmojiFirstFrameHarness.
+class ImageLocation {
+    final String key;
+    ImageLocation(String key) { this.key = key; }
+    String getKey(Object parent, ImageLocation stripped, boolean b) { return key; }
+}
+class RecyclableDrawable extends Drawable { void recycle() {} }
+
+public class StickerFirstFrameHarness {
+    static void check(boolean value, String message) {
+        if (!value) throw new AssertionError(message);
+    }
+    static void bind(ImageReceiver photoImage, MessageObject messageObject) {
+        /* CHAT_BIND */
+    }
+    static ImageReceiver receiver() {
+        ImageReceiver r = new ImageReceiver();
+        bind(r, new MessageObject());
+        r.crossfadeByScale = 0; // ChatMessageCell resets this at bind.
+        return r;
+    }
+    static void request(ImageReceiver r, String key, Drawable placeholder) {
+        r.setImage(null, null, new ImageLocation(key), null, new ImageLocation(key + "-thumb"),
+                   null, placeholder, 0, null, new MessageObject(), 1);
+    }
+    static Drawable animation(boolean webm) { return webm ? new AnimatedFileDrawable() : new RLottieDrawable(); }
+    static void ready(Drawable d) {
+        if (d instanceof AnimatedFileDrawable) ((AnimatedFileDrawable)d).ready = true;
+        if (d instanceof RLottieDrawable) ((RLottieDrawable)d).ready = true;
+    }
+    static Drawable placeholder(int kind) {
+        switch (kind) {
+            case 0: return null;
+            case 1: return new BitmapDrawable();
+            case 2: return new SvgHelper.SvgDrawable();
+            case 3: return new LoadingStickerDrawable();
+            default: return new BitmapDrawable(); // loaded TYPE_THUMB
+        }
+    }
+    static void fade(ImageReceiver r, Drawable d, Drawable thumb, long start, boolean background) {
+        int previous = 0;
+        for (long now = start; now <= start + 300; now += 15) {
+            Canvas c = r.frame(now, background);
+            int alpha = c.alpha(d);
+            check(alpha >= previous && alpha <= 255 && alpha - previous <= 26,
+                  "monotonic fade without first-frame jump: " + alpha + " after " + previous);
+            if (thumb != null && alpha < 255) {
+                check(c.alpha(thumb) > 0 && c.alpha(thumb) + alpha >= 254,
+                      "placeholder must cover first loaded frame and fade: " + c.alpha(thumb) + "/" + alpha);
+            }
+            previous = alpha;
+        }
+        check(previous == 255, "fade completes");
+        check(r.frame(start + 1000, background).alpha(thumb) == -1, "no leftover placeholder after fade");
+    }
+    static void cold() {
+        for (boolean background : new boolean[]{false, true})
+        for (boolean cached : new boolean[]{false, true})
+        for (boolean webm : new boolean[]{false, true})
+        for (int kind = 0; kind < 5; kind++) {
+            ImageReceiver r = receiver();
+            Drawable thumb = placeholder(kind), d = animation(webm);
+            request(r, "sticker", kind == 4 ? null : thumb);
+            if (kind == 4) check(r.deliver(thumb, ImageReceiver.TYPE_THUMB, true), "thumbnail accepted");
+            r.frame(1000, background);
+            check(r.deliver(d, ImageReceiver.TYPE_IMAGE, cached), "sticker accepted");
+            for (long now = 2000; now < 15000; now += 1000) {
+                Canvas c = r.frame(now, background);
+                check(c.alpha(d) == -1, "no undecoded frame");
+                if (thumb != null) check(c.alpha(thumb) == 255, "placeholder remains visible during long decode");
+            }
+            ready(d);
+            check(r.frame(30000, background).alpha(d) == 0,
+                  "first decoded sticker frame must start fade at zero, cached=" + cached + " webm=" + webm + " thumb=" + kind);
+            fade(r, d, thumb, 30000, background);
+        }
+        for (boolean background : new boolean[]{false, true})
+        for (int kind = 0; kind < 5; kind++) {
+            ImageReceiver r = receiver();
+            Drawable thumb = placeholder(kind), d = new BitmapDrawable();
+            request(r, "static", kind == 4 ? null : thumb);
+            if (kind == 4) r.deliver(thumb, ImageReceiver.TYPE_THUMB, true);
+            r.frame(1000, background);
+            SystemClock.now = 30000;
+            r.deliver(d, ImageReceiver.TYPE_IMAGE, false);
+            // Also cover dispatch-to-draw delay, not only decoder-to-frame delay.
+            check(r.frame(60000, background).alpha(d) == 0, "async bitmap starts at zero even without thumb");
+            fade(r, d, thumb, 60000, background);
+        }
+    }
+    static void lateThumb() {
+        for (boolean background : new boolean[]{false, true})
+        for (boolean cachedThumb : new boolean[]{false, true})
+        for (boolean webm : new boolean[]{false, true}) {
+            ImageReceiver r = receiver();
+            Drawable d = animation(webm), thumb = new BitmapDrawable();
+            request(r, "late", null);
+            r.deliver(d, ImageReceiver.TYPE_IMAGE, true);
+            r.frame(1000, background);
+            check(r.deliver(thumb, ImageReceiver.TYPE_THUMB, cachedThumb), "late thumb must not be rejected by undecoded Lottie");
+            Canvas c = r.frame(20000, background);
+            check(c.alpha(thumb) == 255 && c.alpha(d) == -1, "late thumb visible throughout decoding");
+            ready(d);
+            fade(r, d, thumb, 30000, background);
+        }
+    }
+    static void cache() {
+        for (int kind = 0; kind < 3; kind++) {
+            Drawable d = kind == 0 ? new BitmapDrawable() : animation(kind == 2);
+            ready(d);
+            for (int reopen = 0; reopen < 3; reopen++) {
+                ImageReceiver r = receiver();
+                request(r, "cached", new BitmapDrawable());
+                r.deliver(d, ImageReceiver.TYPE_IMAGE, true);
+                check(r.frame(1000, false).alpha(d) == 255, "ready cache immediate on every open");
+                bind(r, new MessageObject()); request(r, "cached", new BitmapDrawable());
+                check(r.frame(2000, false).alpha(d) == 255, "same-message rebind must not restart fade");
+                r.onDetachedFromWindow();
+            }
+        }
+        ImageReceiver r = receiver();
+        Drawable d = new RLottieDrawable(), thumb = new BitmapDrawable();
+        request(r, "same", thumb); r.deliver(d, ImageReceiver.TYPE_IMAGE, false);
+        bind(r, new MessageObject()); request(r, "same", thumb);
+        check(r.crossfadeOnReadyDrawable == d, "same-key rebind retains pending frame");
+        ready(d); r.frame(1000, false); r.frame(1030, false);
+        float alpha = r.currentAlpha;
+        bind(r, new MessageObject()); request(r, "same", thumb);
+        check(r.currentAlpha == alpha, "same-key rebind retains in-flight alpha");
+    }
+    static void lifecycle() {
+        ImageReceiver r = receiver();
+        Drawable old = new RLottieDrawable();
+        request(r, "old", new BitmapDrawable());
+        r.deliver(old, ImageReceiver.TYPE_IMAGE, true);
+        int oldGuid = r.currentGuid;
+        r.cancelLoadImage();
+        // Retry the same key after cancellation, then reject queued old-generation delivery.
+        request(r, "old", new BitmapDrawable());
+        check(r.currentGuid != oldGuid && r.crossfadeOnReadyDrawable == null, "cancel/retry releases pending drawable");
+        check(!r.setImageBitmapByKey(old, "old", ImageReceiver.TYPE_IMAGE, false, oldGuid), "cancelled generation rejected");
+        Drawable next = new AnimatedFileDrawable(), thumb = new BitmapDrawable();
+        request(r, "next", thumb); r.deliver(next, ImageReceiver.TYPE_IMAGE, false);
+        ready(old);
+        check(!r.setImageBitmapByKey(old, "old", ImageReceiver.TYPE_IMAGE, false, r.currentGuid), "old key rejected after reuse");
+        check(r.crossfadeOnReadyDrawable == next && r.frame(1000, false).alpha(thumb) == 255, "replacement keeps its preview and pending frame");
+        ready(next); fade(r, next, thumb, 2000, false);
+        r.onDetachedFromWindow();
+        check(r.crossfadeOnReadyDrawable == null, "detach releases pending identity");
+        r.attachedToWindow = true; request(r, "next", thumb); r.deliver(next, ImageReceiver.TYPE_IMAGE, true);
+        check(r.frame(10000, false).alpha(next) == 255, "reattach to ready cached sticker has no fade");
+        request(r, "pending", null); r.deliver(new RLottieDrawable(), ImageReceiver.TYPE_IMAGE, true);
+        r.setImageBitmap(new BitmapDrawable());
+        check(r.crossfadeOnReadyDrawable == null && r.currentAlpha == 1, "direct bitmap replacement clears pending fade");
+        request(r, "pending2", thumb); r.deliver(new RLottieDrawable(), ImageReceiver.TYPE_IMAGE, true);
+        r.clearImage();
+        check(r.crossfadeOnReadyDrawable == null, "clear releases pending frame");
+        check(!r.setImageBitmapByKey(old, "pending2", ImageReceiver.TYPE_IMAGE, false, r.currentGuid), "delivery after clear rejected");
+    }
+    static void race() {
+        for (boolean background : new boolean[]{false, true})
+        for (boolean webm : new boolean[]{false, true}) {
+            ImageReceiver r = receiver();
+            Drawable d = animation(webm), thumb = new BitmapDrawable();
+            request(r, "race", thumb); r.deliver(d, ImageReceiver.TYPE_IMAGE, true);
+            if (webm) ((AnimatedFileDrawable)d).publishOnNextRead = true;
+            else ((RLottieDrawable)d).publishOnNextRead = true;
+            Canvas c = r.frame(10000, background);
+            check(c.alpha(d) == -1 && c.alpha(thumb) == 255, "publication race cannot pair loaded frame with preview alpha");
+            fade(r, d, thumb, 10016, background);
+        }
+    }
+    static void scope() {
+        ImageReceiver r = receiver();
+        check(r.crossfadeOnReady, "chat stickers opt in");
+        MessageObject normal = new MessageObject(); normal.sticker = false;
+        bind(r, normal);
+        check(!r.crossfadeOnReady, "recycled photo/video cell opts out");
+        MessageObject dice = new MessageObject(); dice.dice = true;
+        bind(r, dice);
+        check(!r.crossfadeOnReady, "dice keeps its own transition");
+        check(!new ImageReceiver().crossfadeOnReady, "other receivers unchanged");
+    }
+    public static void main(String[] args) {
+        switch (args[0]) {
+            case "cold": cold(); break;
+            case "late_thumb": lateThumb(); break;
+            case "cache": cache(); break;
+            case "lifecycle": lifecycle(); break;
+            case "race": race(); break;
+            case "scope": scope(); break;
+            default: throw new AssertionError(args[0]);
+        }
+        System.out.println("PASS: chat sticker " + args[0]);
+    }
+}

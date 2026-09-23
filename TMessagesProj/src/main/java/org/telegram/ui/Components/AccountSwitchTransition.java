@@ -1,4 +1,7 @@
 package org.telegram.ui.Components;
+import android.animation.Animator;
+import android.animation.AnimatorListenerAdapter;
+import android.animation.ValueAnimator;
 
 import android.graphics.Bitmap;
 import android.graphics.Rect;
@@ -15,6 +18,12 @@ import android.widget.ImageView;
 import java.util.function.BooleanSupplier;
 
 public final class AccountSwitchTransition {
+    private static final long REVEAL_DURATION_MS = 180;
+    public interface Overlay {
+        void onCaptured();
+        void setProgress(float progress);
+        void finish();
+    }
     private FrameLayout root;
     private ImageView cover;
     private Bitmap snapshot;
@@ -22,6 +31,9 @@ public final class AccountSwitchTransition {
     private ViewTreeObserver.OnPreDrawListener readyListener;
     private Runnable commit;
     private Runnable reveal;
+    private ValueAnimator animator;
+    private Overlay overlay;
+    private View.OnAttachStateChangeListener attachListener;
     private int generation;
     private boolean applying;
 
@@ -32,17 +44,41 @@ public final class AccountSwitchTransition {
     public boolean isApplying() {
         return applying;
     }
+    public boolean isPreparing() {
+        return snapshot != null && animator == null;
+    }
 
     public void start(FrameLayout parent, Window window, BooleanSupplier valid, Runnable change) {
+        start(parent, window, valid, change, null);
+    }
+    public void start(FrameLayout parent, Window window, BooleanSupplier valid, Runnable change, Overlay popup) {
+        start(parent, window, valid, change, popup, () -> true);
+    }
+    public void start(FrameLayout parent, Window window, BooleanSupplier valid, Runnable change, Overlay popup,
+                      BooleanSupplier contentReady) {
+        final int token = generation + 1;
         cancel();
-        if (!valid.getAsBoolean()) return;
-        if (Build.VERSION.SDK_INT < 26 || parent.getWidth() <= 0 || parent.getHeight() <= 0
-                || (window.getAttributes().flags & WindowManager.LayoutParams.FLAG_SECURE) != 0) {
-            applyChange(change);
+        if (token != generation || !parent.isAttachedToWindow() || !valid.getAsBoolean()) {
+            if (popup != null) popup.finish();
             return;
         }
-        final int token = generation;
+        overlay = popup;
+        if (Build.VERSION.SDK_INT < 26 || parent.getWidth() <= 0 || parent.getHeight() <= 0
+                || (window.getAttributes().flags & WindowManager.LayoutParams.FLAG_SECURE) != 0) {
+            cancel();
+            if (generation == token + 1 && valid.getAsBoolean()) applyChange(change);
+            return;
+        }
         root = parent;
+        attachListener = new View.OnAttachStateChangeListener() {
+            @Override
+            public void onViewAttachedToWindow(View v) {}
+            @Override
+            public void onViewDetachedFromWindow(View v) {
+                if (token == generation) cancel();
+            }
+        };
+        parent.addOnAttachStateChangeListener(attachListener);
         final ImageView view = cover = new ImageView(parent.getContext());
         view.setScaleType(ImageView.ScaleType.FIT_XY);
         view.setClickable(true);
@@ -57,24 +93,50 @@ public final class AccountSwitchTransition {
                 cancel();
                 return;
             }
-            applyChange(change);
-            if (token != generation) return;
             if (snapshot == null) {
                 cancel();
+                if (generation == token + 1 && valid.getAsBoolean()) applyChange(change);
                 return;
             }
+            try {
+                if (popup != null) popup.onCaptured();
+                if (token != generation) return;
+                if (!valid.getAsBoolean()) {
+                    cancel();
+                    return;
+                }
+                applyChange(change);
+            } catch (RuntimeException | Error e) {
+                if (token == generation) cancel();
+                throw e;
+            }
+            if (token != generation) return;
             reveal = () -> {
                 if (token != generation) return;
                 clearReadyListener();
                 parent.removeCallbacks(reveal);
                 reveal = null;
-                view.animate().alpha(0f).setDuration(200)
-                        .setInterpolator(CubicBezierInterpolator.EASE_OUT_QUINT)
-                        .withEndAction(() -> { if (token == generation) cancel(); }).start();
+                animator = ValueAnimator.ofFloat(0f, 1f);
+                animator.setDuration(REVEAL_DURATION_MS);
+                animator.setInterpolator(CubicBezierInterpolator.EASE_BOTH);
+                animator.addUpdateListener(animation -> {
+                    if (token != generation) return;
+                    float progress = (float) animation.getAnimatedValue();
+                    view.setAlpha(1f - progress);
+                    if (popup != null) popup.setProgress(progress);
+                });
+                animator.addListener(new AnimatorListenerAdapter() {
+                    @Override
+                    public void onAnimationEnd(Animator animation) {
+                        if (token == generation) cancel();
+                    }
+                });
+                animator.start();
             };
             observer = parent.getViewTreeObserver();
             readyListener = () -> {
                 if (token != generation) return true;
+                if (snapshot != null && !contentReady.getAsBoolean()) return true;
                 clearReadyListener();
                 if (token == generation && reveal != null) {
                     parent.removeCallbacks(reveal);
@@ -130,11 +192,12 @@ public final class AccountSwitchTransition {
     }
 
     private void applyChange(Runnable change) {
+        final int token = generation;
         applying = true;
         try {
             change.run();
         } catch (RuntimeException | Error e) {
-            cancel();
+            if (token == generation) cancel();
             throw e;
         } finally {
             applying = false;
@@ -155,13 +218,22 @@ public final class AccountSwitchTransition {
         if (root != null) {
             if (commit != null) root.removeCallbacks(commit);
             if (reveal != null) root.removeCallbacks(reveal);
+            if (attachListener != null) root.removeOnAttachStateChangeListener(attachListener);
         }
+        attachListener = null;
         commit = reveal = null;
+        if (animator != null) {
+            animator.removeAllListeners();
+            animator.removeAllUpdateListeners();
+            animator.cancel();
+            animator = null;
+        }
+        Overlay oldOverlay = overlay;
+        overlay = null;
         ImageView old = cover;
         cover = null;
         root = null;
         if (old != null) {
-            old.animate().withEndAction(null).cancel();
             old.setImageDrawable(null);
             if (old.getParent() instanceof ViewGroup) ((ViewGroup) old.getParent()).removeView(old);
         }
@@ -169,5 +241,6 @@ public final class AccountSwitchTransition {
             snapshot.recycle();
             snapshot = null;
         }
+        if (oldOverlay != null) oldOverlay.finish();
     }
 }

@@ -391,6 +391,7 @@ public class NotificationCenter {
     public static final int infoCardsColorModeChanged = totalEvents++;
     public static final int infoCardsActiveCardChanged = totalEvents++;
     public static final int messagePlayingMetadataChanged = totalEvents++;
+    public static final int nimarkoBannerDisplayChanged = totalEvents++;
 
     public static boolean alreadyLogged;
 

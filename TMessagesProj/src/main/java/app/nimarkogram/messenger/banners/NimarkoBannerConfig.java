@@ -4,6 +4,7 @@ package app.nimarkogram.messenger.banners;
 import android.content.SharedPreferences;
 
 import org.telegram.messenger.ApplicationLoader;
+import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.UserConfig;
 
 import java.io.File;
@@ -22,8 +23,10 @@ public final class NimarkoBannerConfig {
 
     public static volatile boolean enabled = prefs().getBoolean("enabled", false);
     public static void setEnabled(boolean v) {
+        if (enabled == v) return;
         enabled = v;
         editor().putBoolean("enabled", v).apply();
+        notifyDisplayChanged();
     }
     public static void toggleEnabled() {
         setEnabled(!enabled);
@@ -31,14 +34,26 @@ public final class NimarkoBannerConfig {
 
     public static volatile boolean useAvatar = prefs().getBoolean("use_avatar", false);
     public static void setUseAvatar(boolean v) {
+        if (useAvatar == v) return;
         useAvatar = v;
         editor().putBoolean("use_avatar", v).apply();
+        notifyDisplayChanged();
     }
 
     public static volatile boolean liteMode = prefs().getBoolean("lite_mode", false);
     public static void setLiteMode(boolean v) {
+        if (liteMode == v) return;
         liteMode = v;
         editor().putBoolean("lite_mode", v).apply();
+        notifyDisplayChanged();
+    }
+    private static void notifyDisplayChanged() {
+        AndroidUtilities.runOnUIThread(() -> {
+            NimarkoBannerRenderer renderer = NimarkoBannerRenderer.peek();
+            if (renderer != null) renderer.onSettingsChanged();
+            org.telegram.messenger.NotificationCenter.getGlobalInstance().postNotificationName(
+                    org.telegram.messenger.NotificationCenter.nimarkoBannerDisplayChanged);
+        });
     }
 
     private static int currentAccount() {
@@ -99,8 +114,9 @@ public final class NimarkoBannerConfig {
     }
     public static void setLocalBannerPath(int account, long uid, String v) {
         if (uid == 0L) return;
-        localBannerPath = v == null ? "" : v;
-        editor().putString(scopeKey("local_banner_path", account, uid), localBannerPath).apply();
+        String path = v == null ? "" : v;
+        editor().putString(scopeKey("local_banner_path", account, uid), path).apply();
+        if (account == currentAccount() && uid == currentUid(account)) localBannerPath = path;
     }
 
     public static volatile String authToken = getAuthToken();
@@ -118,8 +134,9 @@ public final class NimarkoBannerConfig {
     }
     public static void setAuthToken(int account, long uid, String v) {
         if (uid == 0L) return;
-        authToken = v == null ? "" : v;
-        editor().putString(scopeKey("auth_token", account, uid), authToken).apply();
+        String token = v == null ? "" : v;
+        editor().putString(scopeKey("auth_token", account, uid), token).apply();
+        if (account == currentAccount() && uid == currentUid(account)) authToken = token;
     }
 
     public static void reloadAccount() {

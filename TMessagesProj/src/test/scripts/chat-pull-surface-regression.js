@@ -18,14 +18,17 @@ function method(source, signature) {
 const update = method(chat, 'private void onBottomItemsVisibilityChanged()');
 const visibility = method(chat, 'private void checkBottomViewVisibility(');
 const setter = method(input, 'public void setInputBubbleAlpha(int alpha)');
-const render = method(input, 'private void drawComposerBackground(');
+const render = method(input, 'private void updateComposerBackground(');
 const earlyReturn = render.slice(0, render.indexOf('syncLeadingComposerExpansion();'));
 for (const name of ['inputCenterTouchBounds', 'inputLeadingTouchBounds', 'inputTrailingTouchBounds']) {
     assert(earlyReturn.includes(name + '.setEmpty();'), 'hidden surface must clear touch bounds');
 }
-for (const name of ['blurredBackgroundDrawable', 'leadingComposerDrawable', 'trailingComposerDrawable']) {
-    assert(setter.includes(name + '.setAlpha(inputBubbleAlpha)'), 'all three surfaces must share visibility');
-}
+assert(setter.includes('syncComposerDrawableAlphas();'), 'visibility must reach all composer surfaces');
+const sync = method(input, 'public void syncComposerDrawableAlphas()');
+assert(sync.includes('drawInputBackground ? inputBubbleAlpha : 0'), 'hidden host must suppress all islands');
+assert(sync.includes('blurredBackgroundDrawable.setAlpha(drawInputCenterBackground ? alpha : 0)'), 'center visibility');
+assert(sync.includes('leadingComposerDrawable.setAlpha(getLeadingComposerAlpha(alpha))'), 'leading visibility');
+assert(sync.includes('trailingComposerDrawable.setAlpha(getTrailingComposerAlpha(alpha))'), 'trailing visibility');
 const java = `
 class View {
  static int VISIBLE=0,GONE=8;float alpha=1,y,total;int visibility;

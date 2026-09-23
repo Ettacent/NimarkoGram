@@ -32,7 +32,7 @@ public class ProxyRotationController implements NotificationCenter.NotificationC
             }
             startedCheck = true;
             proxyInfo.checking = true;
-            ConnectionsManager.getInstance(currentAccount).checkProxy(proxyInfo.settings, time -> AndroidUtilities.runOnUIThread(() -> {
+            ConnectionsManager.getInstance(currentAccount).checkProxy(proxyInfo.getSettings(), time -> AndroidUtilities.runOnUIThread(() -> {
                 proxyInfo.availableCheckTime = SystemClock.elapsedRealtime();
                 proxyInfo.checking = false;
                 if (time == -1) {
@@ -73,8 +73,8 @@ public class ProxyRotationController implements NotificationCenter.NotificationC
 
             SharedPreferences.Editor editor = MessagesController.getGlobalMainSettings().edit();
             editor.putBoolean("proxy_enabled", true);
-            info.settings.toSharedPreferences(editor);
-            if (!info.settings.getSecret().isEmpty()) {
+            info.getSettings().toSharedPreferences(editor);
+            if (!info.getSettings().getSecret().isEmpty()) {
                 editor.putBoolean("proxy_enabled_calls", false);
             }
             editor.apply();
@@ -82,7 +82,7 @@ public class ProxyRotationController implements NotificationCenter.NotificationC
             SharedConfig.currentProxy = info;
             NotificationCenter.getGlobalInstance().postNotificationName(NotificationCenter.proxySettingsChanged);
             NotificationCenter.getGlobalInstance().postNotificationName(NotificationCenter.proxyChangedByRotation);
-            ConnectionsManager.setProxySettings(true, SharedConfig.currentProxy.settings);
+            ConnectionsManager.setProxySettings(true, SharedConfig.currentProxy.getSettings());
             break;
         }
     }

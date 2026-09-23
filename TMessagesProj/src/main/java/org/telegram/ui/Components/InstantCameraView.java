@@ -107,6 +107,9 @@ import org.telegram.ui.Stories.recorder.FlashViews;
 import org.telegram.ui.Stories.recorder.StoryEntry;
 
 import app.nimarkogram.messenger.camera.SlideControlView;
+import app.nimarkogram.messenger.camera.CameraXRoundLensTransition;
+import app.nimarkogram.messenger.camera.CameraXLensFrame;
+import app.nimarkogram.messenger.camera.NimarkoCameraXSurfaceSession;
 
 import java.io.File;
 import java.io.FileOutputStream;
@@ -157,13 +160,15 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
     private boolean isSecretChat;
     @Nullable
     private VideoEditedInfo videoEditedInfo;
+    private int recordedVideoBitrate = 1000000;
     private VideoPlayer videoPlayer;
     private Bitmap lastBitmap;
+    private int cameraCoverGeneration;
     private int recordingGuid;
 
     private volatile boolean cameraTextureAvailable;
     private final int[] position = new int[2];
-    private final int[] cameraTexture = new int[] { Integer.MIN_VALUE, Integer.MIN_VALUE };
+    private volatile int[] cameraTexture = new int[] { Integer.MIN_VALUE, Integer.MIN_VALUE };
     private final int[] oldCameraTexture = new int[1];
     private float cameraTextureAlpha = 1.0f;
     private float cameraTextureAlphaProgress = 1.0f;
@@ -173,7 +178,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
     private boolean deviceHasGoodCamera;
     private boolean requestingPermissions;
     private File cameraFile;
-    private File previewFile;
+    private Object pausePreviewToken;
     private long recordStartTime;
     private long recordPlusTime;
     private boolean recording;
@@ -223,7 +228,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
     public void onCameraXSessionReady(
             app.nimarkogram.messenger.camera.NimarkoCameraXSurfaceSession session,
             int width, int height) {
-        if (!useCameraX || session == null) return;
+        if (!useCameraX || session == null || !session.hasTransformationInfo()) return;
         int index = videoMessagesHelper.getSessionIndex(session);
         if (index < 0 || index >= previewSize.length) return;
         // SurfaceRequest reports the physical camera buffer. The round 1:1
@@ -236,6 +241,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             boolean currentSession = session == videoMessagesHelper.getCurrentSession();
             if (currentSession && cameraXSingleSwitchAwaitingBind
                     && session.isFrontFacing() == isFrontface) {
+                pendingCameraXSingleSessionGeneration = session.getSurfaceRequestGeneration();
                 // Do not apply the new lens mirror/rotation while the OES
                 // texture still contains the final frame of the old lens.
                 // Consume both atomically on the first replacement frame.
@@ -272,6 +278,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
      * accept the graph but never fulfill a repeating preview request.
      */
     public void onCameraXAttemptStarting(boolean dual) {
+        cancelCameraXRearLensTransition();
         if (app.nimarkogram.messenger.NimarkoCameraLog.DEBUG) app.nimarkogram.messenger.NimarkoCameraLog.log(
                 "InstantRound CX attempt dual=" + dual + " cancelled=" + cancelled
                         + " front=" + isFrontface);
@@ -292,7 +299,6 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         cameraXInitialWideWaitTimeoutMs = dual
                 ? NM_CAMERAX_DUAL_INITIAL_WIDE_TIMEOUT_MS
                 : NM_CAMERAX_INITIAL_WIDE_TIMEOUT_MS;
-        cameraXInitialWideConfirmedFrame = false;
         cameraXInitialWideTimeoutRenderPending = false;
         cameraXInitialWideWaitLogged = false;
         if (cameraXInitialWideWaitActive) {
@@ -329,6 +335,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
     }
 
     public void onCameraXDualUnavailable() {
+        cancelCameraXRearLensTransition();
         if (app.nimarkogram.messenger.NimarkoCameraLog.DEBUG) app.nimarkogram.messenger.NimarkoCameraLog.log(
                 "InstantRound CX dual unavailable/collapsing frameMask="
                         + nmCameraXFrameMask);
@@ -340,6 +347,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         cameraReady = false;
         nmCameraXActiveFrameObserved = false;
         nmCameraXFrameMask = 0;
+        pendingCameraXSwitchAfterDualCollapse |= pendingCameraXSwitchAfterInitialWide;
         cameraXSingleSwitchAwaitingBind = false;
         pendingCameraXSingleSession = null;
         nmCancelCameraXInitialWideWait();
@@ -354,6 +362,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
     /** Invalidate the old graph deadline before its asynchronous close starts. */
     public void onCameraXTransitionStarting() {
         if (!useCameraX) return;
+        cancelCameraXRearLensTransition();
         nmCancelCameraXDualFrameWatchdog();
         nmCancelCameraXInitialWideWait();
     }
@@ -471,6 +480,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
     private volatile boolean cameraXSingleSwitchAwaitingBind;
     private volatile app.nimarkogram.messenger.camera.NimarkoCameraXSurfaceSession
             pendingCameraXSingleSession;
+    private volatile int pendingCameraXSingleSessionGeneration;
     // Preserve a switch tap made while an advertised dual graph has only one
     // live stream. The intent is replayed after the surviving single CameraX
     // stream has delivered a real frame.
@@ -487,14 +497,18 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
     private boolean cameraXSingleSwitchFinishing;
     private long cameraXSingleSwitchWaitStartedMs;
     private boolean cameraXSingleSwitchZoomWaitLogged;
+    private volatile CameraXRoundLensTransition cameraXRearLensTransition;
+    private volatile NimarkoCameraXSurfaceSession cameraXRearLensSession;
+    private float cameraXPendingZoomRatio = Float.NaN;
+    private Runnable cameraXRearLensTimeout;
     // CameraX may accept 0.6x before the logical rear graph actually moves
     // from its main physical child to the ultra-wide child. Keep startup
     // covered until CaptureResult confirms the requested lens.
     private final Object cameraXInitialWideWaitLock = new Object();
     private volatile boolean cameraXInitialWideWaitActive;
+    private volatile boolean pendingCameraXSwitchAfterInitialWide;
     private volatile long cameraXInitialWideWaitStartedMs;
     private volatile long cameraXInitialWideWaitTimeoutMs;
-    private volatile boolean cameraXInitialWideConfirmedFrame;
     private volatile boolean cameraXInitialWideTimeoutRenderPending;
     private Runnable cameraXInitialWideTimeoutRunnable;
     private int cameraXInitialWideWaitGeneration;
@@ -505,6 +519,8 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
     private volatile int cameraXSingleSwitchSnapshot;
     private volatile int cameraXSingleSwitchSnapshotWidth;
     private volatile int cameraXSingleSwitchSnapshotHeight;
+    private volatile long cameraXSingleSwitchSnapshotTimestamp;
+    private volatile CameraGLThread.CameraSnapshot cameraXSingleSwitchSnapshotHandle;
     private final float[] oldScreenSTMatrix = new float[16];
     private final float[] oldScreenMVPMatrix = new float[16];
     private FloatBuffer cameraXSnapshotTextureBuffer;
@@ -535,7 +551,6 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
     private int pointerId1, pointerId2;
     private int textureViewSize;
     private boolean isMessageTransition;
-    private boolean updateTextureViewSize;
     private final Theme.ResourcesProvider resourcesProvider;
 
     private final static int audioSampleRate = 48000;
@@ -679,6 +694,13 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                 videoMessagesHelper.fallbackCameraXDualToSingle(this);
                 return;
             }
+            if (bothCameras && useCameraX && isFrontface
+                    && cameraXInitialWideWaitActive) {
+                pendingCameraXSwitchAfterInitialWide =
+                        !pendingCameraXSwitchAfterInitialWide;
+                return;
+            }
+            pendingCameraXSwitchAfterInitialWide = false;
             if (switchCameraDrawable != null) {
                 switchCameraDrawable.setCurrentFrame(0);
                 switchCameraDrawable.start();
@@ -894,22 +916,29 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
 
     @Override
     protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
-        if (updateTextureViewSize) {
-            int newSize;
-            if ((MeasureSpec.getSize(heightMeasureSpec) - getPaddingBottom()) > MeasureSpec.getSize(widthMeasureSpec) * 1.3f) {
-                newSize = AndroidUtilities.roundPlayingMessageSize;
-            } else {
-                newSize = AndroidUtilities.roundMessageSize;
-            }
+        if (!isMessageTransition) {
+            final int width = MeasureSpec.getSize(widthMeasureSpec);
+            final int height = MeasureSpec.getSize(heightMeasureSpec);
+            final int availableWidth = Math.max(0, width - getPaddingLeft() - getPaddingRight());
+            final int availableHeight = Math.max(0, height - getPaddingTop() - getPaddingBottom());
+            final int preferredSize = availableHeight > width * 1.3f
+                    ? AndroidUtilities.roundPlayingMessageSize : AndroidUtilities.roundMessageSize;
+            final int progressInset = dp(8) + (int) Math.ceil(paint.getStrokeWidth() / 2f);
+            final int newSize = Math.max(1, Math.min(preferredSize,
+                    Math.min(availableWidth, availableHeight) - 2 * progressInset));
             if (newSize != textureViewSize) {
                 textureViewSize = newSize;
                 textureOverlayView.getLayoutParams().width = textureOverlayView.getLayoutParams().height = textureViewSize;
                 cameraContainer.getLayoutParams().width = cameraContainer.getLayoutParams().height = textureViewSize;
+                cameraContainer.setPivotX(textureViewSize / 2f);
+                cameraContainer.setPivotY(textureViewSize / 2f);
+                textureOverlayView.setPivotX(textureViewSize / 2f);
+                textureOverlayView.setPivotY(textureViewSize / 2f);
                 ((LayoutParams) muteImageView.getLayoutParams()).topMargin = textureViewSize / 2 - dp(24);
                 textureOverlayView.setRoundRadius(textureViewSize / 2);
                 cameraContainer.invalidateOutline();
+                invalidate();
             }
-            updateTextureViewSize = false;
         }
 
         super.onMeasure(widthMeasureSpec, heightMeasureSpec);
@@ -956,6 +985,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
 
     @Override
     protected void onDetachedFromWindow() {
+        ++cameraCoverGeneration;
         super.onDetachedFromWindow();
         NotificationCenter.getInstance(currentAccount).removeObserver(this, NotificationCenter.fileUploaded);
         if (flashViews != null) {
@@ -980,6 +1010,9 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
     }
 
     public void destroy(boolean async) {
+        ++cameraCoverGeneration;
+        pausePreviewToken = null;
+        cancelCameraXVideoTransitions();
         nmCancelRoundFrameWatchdog();   // NimarkoGram: never let the no-frame watchdog fire after teardown
         nmCancelCameraXDualFrameWatchdog();
         nmCancelCamera2SwitchFrameWatchdog();
@@ -1102,7 +1135,10 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
     }
 
     public void togglePause() {
+        ++cameraCoverGeneration;
+        pausePreviewToken = null;
         if (recording) {
+            cancelCameraXVideoTransitions();
             cancelled = recordedTime < 800;
             recording = false;
             updateFlash();
@@ -1150,6 +1186,8 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         if (textureView != null) {
             return;
         }
+        final int coverGeneration = ++cameraCoverGeneration;
+        pausePreviewToken = null;
         ++nmPhysicalReopenGeneration;
         if (!fromPaused) {
             pendingCameraXSwitchAfterDualCollapse = false;
@@ -1174,19 +1212,13 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         }
         textureOverlayView.invalidate();
         if (lastBitmap == null) {
-            try {
-                File file = new File(ApplicationLoader.getFilesDirFixed(), "icthumb.jpg");
-                lastBitmap = BitmapFactory.decodeFile(file.getAbsolutePath());
-            } catch (Throwable ignore) {
-
-            }
-        }
-        if (lastBitmap != null) {
-            textureOverlayView.setImageBitmap(lastBitmap);
-        } else {
             textureOverlayView.setImageResource(R.drawable.icplaceholder);
+            loadLastCameraBitmapAsync(coverGeneration);
+        } else {
+            textureOverlayView.setImageBitmap(lastBitmap);
         }
         cameraReady = false;
+        cameraTextureAvailable = false;
         nmCamera2SwitchPending = false;
         selectedCamera = null;
         if (!fromPaused) {
@@ -1347,6 +1379,8 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                 if (textureView != null && textureView != callbackTextureView) {
                     return true;
                 }
+                ++cameraCoverGeneration;
+                cancelCameraXVideoTransitions();
                 ++cameraThreadGeneration;
                 ++nmCamera2SwitchGeneration;
                 ++nmPhysicalReopenGeneration;
@@ -1392,12 +1426,35 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         });
         cameraContainer.addView(callbackTextureView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT));
 
-        updateTextureViewSize = true;
         setVisibilityFromPause = fromPaused;
         setVisibility(VISIBLE);
+        requestLayout();
 
         startAnimation(true, fromPaused);
         MediaController.getInstance().requestRecordAudioFocus(true);
+    }
+    private void loadLastCameraBitmapAsync(int generation) {
+        Utilities.globalQueue.postRunnable(() -> {
+            Bitmap decoded = null;
+            try {
+                File file = new File(ApplicationLoader.getFilesDirFixed(), "icthumb.jpg");
+                decoded = BitmapFactory.decodeFile(file.getAbsolutePath());
+            } catch (Throwable error) {
+                FileLog.e(error);
+            }
+            final Bitmap result = decoded;
+            AndroidUtilities.runOnUIThread(() -> onLastCameraBitmapLoaded(generation, result));
+        });
+    }
+    private void onLastCameraBitmapLoaded(int generation, Bitmap decoded) {
+        if (decoded == null) return;
+        if (generation != cameraCoverGeneration || textureView == null || !opened
+                || cancelled || cameraReady || lastBitmap != null) {
+            decoded.recycle();
+            return;
+        }
+        lastBitmap = decoded;
+        textureOverlayView.setImageBitmap(decoded);
     }
 
     public InstantViewCameraContainer getCameraContainer() {
@@ -1461,6 +1518,16 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             });
         } else {
             setTranslationX(0);
+            final AnimatorSet openingAnimator = animatorSet;
+            openingAnimator.addListener(new AnimatorListenerAdapter() {
+                @Override
+                public void onAnimationEnd(Animator animation) {
+                    if (animation == openingAnimator && animatorSet == openingAnimator
+                            && cameraReady) {
+                        fadeCameraPreviewCover();
+                    }
+                }
+            });
         }
         animatorSet.setDuration(180);
         animatorSet.setInterpolator(new DecelerateInterpolator());
@@ -1493,6 +1560,9 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
     }
 
     public void send(int state, boolean notify, int scheduleDate, int scheduleRepeatPeriod, int ttl, long effectId, long stars) {
+        ++cameraCoverGeneration;
+        pausePreviewToken = null;
+        cancelCameraXVideoTransitions();
         if (textureView == null) {
             return;
         }
@@ -1535,7 +1605,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                 long endTime = videoEditedInfo.endTime >= 0 ? videoEditedInfo.endTime : videoEditedInfo.estimatedDuration;
                 videoEditedInfo.estimatedDuration = endTime - startTime;
                 videoEditedInfo.estimatedSize = Math.max(1, (long) (size * (videoEditedInfo.estimatedDuration / totalDuration)));
-                videoEditedInfo.bitrate = 1000000;
+                videoEditedInfo.bitrate = recordedVideoBitrate;
                 if (videoEditedInfo.startTime > 0) {
                     videoEditedInfo.startTime *= 1000;
                 }
@@ -1612,6 +1682,9 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
     }
 
     public void cancel(boolean byGesture) {
+        ++cameraCoverGeneration;
+        pausePreviewToken = null;
+        cancelCameraXVideoTransitions();
         stopProgressTimer();
         if (videoPlayer != null) {
             videoPlayer.releasePlayer(true);
@@ -1834,8 +1907,8 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             timeout = cameraXInitialWideTimeoutRunnable;
             cameraXInitialWideTimeoutRunnable = null;
             cameraXInitialWideWaitActive = false;
-            cameraXInitialWideConfirmedFrame = false;
             cameraXInitialWideTimeoutRenderPending = false;
+            pendingCameraXSwitchAfterInitialWide = false;
         }
         if (timeout != null) {
             AndroidUtilities.cancelRunOnUIThread(timeout);
@@ -1886,6 +1959,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                         // call is needed when the vendor stream has paused.
                         thread.requestRender(false, false);
                     }
+                    nmMaybeReplayCameraXSwitchAfterInitialWide();
                 }
             };
             cameraXInitialWideTimeoutRunnable = timeout;
@@ -1905,6 +1979,17 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         if (timeout != null) {
             AndroidUtilities.cancelRunOnUIThread(timeout);
         }
+        nmMaybeReplayCameraXSwitchAfterInitialWide();
+    }
+    private void nmMaybeReplayCameraXSwitchAfterInitialWide() {
+        if (!pendingCameraXSwitchAfterInitialWide || cameraXInitialWideWaitActive) return;
+        AndroidUtilities.runOnUIThread(() -> {
+            if (!pendingCameraXSwitchAfterInitialWide || cameraXInitialWideWaitActive
+                    || cancelled || !bothCameras || !isFrontface || cameraThread == null
+                    || !cameraReady || !isCameraSessionInitiated()) return;
+            pendingCameraXSwitchAfterInitialWide = false;
+            switchCameraButton.performClick();
+        });
     }
 
     private boolean nmConsumeCameraXInitialWideTimeoutRender() {
@@ -1945,32 +2030,13 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
      * reports the accepted 0.6x ratio before the capture graph switches its
      * active physical camera.
      */
-    private boolean nmShouldHoldCameraXInitialWideFrame() {
+    private boolean nmShouldHoldCameraXInitialWideFrame(long frameTimestamp) {
         if (!cameraXInitialWideWaitActive) return false;
         app.nimarkogram.messenger.camera.NimarkoCameraXSurfaceSession session =
                 videoMessagesHelper.getRearSession();
-        boolean lensReady = session != null && session.isInitialLensReady();
+        boolean lensReady = session != null && session.isInitialLensReady(frameTimestamp);
         long waitMs = SystemClock.elapsedRealtime()
                 - cameraXInitialWideWaitStartedMs;
-        if (lensReady && !cameraXInitialWideConfirmedFrame) {
-            // CaptureResult and SurfaceTexture callbacks are independent. Keep
-            // one more rear frame after the HAL first reports the expected
-            // physical id, so the OES texture being revealed cannot still be
-            // the final frame from the main sensor.
-            cameraXInitialWideConfirmedFrame = true;
-            if (app.nimarkogram.messenger.NimarkoCameraLog.DEBUG) {
-                app.nimarkogram.messenger.NimarkoCameraLog.log(
-                        "InstantRound CX initial-wide confirmed; holding next frame"
-                                + " waitMs=" + waitMs
-                                + " observed=" + (session == null ? "null"
-                                : session.getObservedZoomRatio())
-                                + " activePhysical=" + (session == null ? "null"
-                                : session.getActivePhysicalCameraId())
-                                + " expectedPhysical=" + (session == null ? "null"
-                                : session.getExpectedInitialPhysicalCameraId()));
-            }
-            return true;
-        }
         if (lensReady || waitMs >= cameraXInitialWideWaitTimeoutMs) {
             nmReleaseCameraXInitialWideWait();
             if (app.nimarkogram.messenger.NimarkoCameraLog.DEBUG) {
@@ -2397,13 +2463,13 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             // produce a replacement frame.  Release the UI lock and let the
             // normal session recovery path redraw whichever camera recovers.
             clearCameraXVideoTransition();
-            cameraXSingleSwitchAwaitingBind = false;
-            pendingCameraXSingleSession = null;
             flipAnimationInProgress = false;
             CameraGLThread thread = cameraThread;
             if (thread != null) thread.requestRender(false, false);
         };
-        AndroidUtilities.runOnUIThread(cameraXVideoBlurTimeout, 1800L);
+        if (cameraXRearLensTransition == null) {
+            AndroidUtilities.runOnUIThread(cameraXVideoBlurTimeout, 1800L);
+        }
     }
 
     private void finishCameraXVideoTransition() {
@@ -2415,6 +2481,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             return;
         }
         cameraXSingleSwitchFinishing = true;
+        final CameraXRoundLensTransition finishingRearLens = cameraXRearLensTransition;
         if (app.nimarkogram.messenger.NimarkoCameraLog.DEBUG) {
             app.nimarkogram.messenger.NimarkoCameraLog.log(
                     "InstantRound CX transition finish start front=" + isFrontface
@@ -2462,6 +2529,9 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                 }
                 CameraGLThread thread = cameraThread;
                 if (thread != null) thread.requestRender(false, false);
+                if (finishingRearLens != null && cameraXRearLensTransition == finishingRearLens) {
+                    completeCameraXRearLensTransition(true);
+                }
             }
         });
         cameraXVideoBlurAnimator.start();
@@ -2483,19 +2553,126 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         cameraXSingleSwitchNewFrame = false;
         cameraXSingleSwitchFinishing = false;
     }
+    private void requestRoundCameraXZoom(float ratio) {
+        if (Float.isNaN(ratio) || Float.isInfinite(ratio) || cancelled) return;
+        if (cameraXRearLensTransition != null) {
+            cameraXPendingZoomRatio = ratio;
+            NimarkoCameraXSurfaceSession session = cameraXRearLensSession;
+            if (session != null && session == videoMessagesHelper.getCurrentSession()
+                    && cameraXRearLensTransition.canUpdateZoom(ratio)) {
+                session.setZoomRatio(ratio);
+            }
+            return;
+        }
+        if (flipAnimationInProgress || cameraXSingleSwitchAwaitingBind) return;
+        final NimarkoCameraXSurfaceSession session = videoMessagesHelper.getCurrentSession();
+        final CameraGLThread thread = cameraThread;
+        if (session == null) return;
+        final float previous = session.getZoomRatio();
+        if (session.isFrontFacing() || !cameraReady || !recording || thread == null
+                || !CameraXRoundLensTransition.crossesWideBoundary(
+                        previous, ratio, session.getMinZoomRatio())) {
+            session.setZoomRatio(ratio);
+            return;
+        }
+        final CameraXRoundLensTransition transition = new CameraXRoundLensTransition();
+        cameraXRearLensSession = session;
+        cameraXRearLensTransition = transition;
+        cameraXPendingZoomRatio = ratio;
+        flipAnimationInProgress = true;
+        cameraXRearLensTimeout = () -> {
+            if (cameraXRearLensTransition == transition) completeCameraXRearLensTransition(false);
+        };
+        AndroidUtilities.runOnUIThread(cameraXRearLensTimeout, 900L);
+        thread.captureCameraXSingleSwitchSnapshot(() -> {
+            if (cameraXRearLensTransition != transition) return;
+            if (cameraThread != thread || cancelled || !recording
+                    || session != videoMessagesHelper.getCurrentSession() || session.isFrontFacing()) {
+                cancelCameraXRearLensTransition();
+                return;
+            }
+            float target = cameraXPendingZoomRatio;
+            if (cameraXSingleSwitchSnapshot == 0
+                    || !CameraXRoundLensTransition.crossesWideBoundary(
+                            previous, target, session.getMinZoomRatio())) {
+                cancelCameraXRearLensTransition();
+                session.setZoomRatio(target);
+                return;
+            }
+            startCameraXVideoTransition();
+            CameraXLensFrame sourceFrame = session.getLensFrame(cameraXSingleSwitchSnapshotTimestamp);
+            transition.submit(cameraXSingleSwitchSnapshotTimestamp, target,
+                    sourceFrame == null ? null : sourceFrame.physicalId, SystemClock.elapsedRealtime());
+            session.setZoomRatio(target);
+        });
+    }
+    private void onCameraXRearLensFrame(long timestamp) {
+        final CameraXRoundLensTransition transition = cameraXRearLensTransition;
+        final NimarkoCameraXSurfaceSession session = cameraXRearLensSession;
+        if (transition == null || session == null || !cameraXVideoTransitionActive
+                || session != videoMessagesHelper.getCurrentSession()) return;
+        CameraXLensFrame frame = session.getLensFrame(timestamp);
+        if (transition.onFrame(timestamp, frame == null ? 0 : frame.timestampNanos,
+                frame == null ? Float.NaN : frame.zoomRatio,
+                frame == null ? null : frame.physicalId, SystemClock.elapsedRealtime())) {
+            AndroidUtilities.runOnUIThread(() -> {
+                if (cameraXRearLensTransition == transition) {
+                    cameraXSingleSwitchNewFrame = true;
+                    finishCameraXVideoTransition();
+                }
+            });
+        }
+    }
+    private void completeCameraXRearLensTransition(boolean animatePending) {
+        final NimarkoCameraXSurfaceSession session = cameraXRearLensSession;
+        float target = cameraXPendingZoomRatio;
+        cancelCameraXRearLensTransition();
+        if (!cancelled && recording && cameraThread != null
+                && session == videoMessagesHelper.getCurrentSession() && !Float.isNaN(target)) {
+            if (animatePending) requestRoundCameraXZoom(target);
+            else session.setZoomRatio(target);
+        }
+    }
+    private void cancelCameraXRearLensTransition() {
+        if (cameraXRearLensTimeout != null) {
+            AndroidUtilities.cancelRunOnUIThread(cameraXRearLensTimeout);
+            cameraXRearLensTimeout = null;
+        }
+        if (cameraXRearLensTransition == null) return;
+        cameraXRearLensTransition = null;
+        cameraXRearLensSession = null;
+        cameraXPendingZoomRatio = Float.NaN;
+        clearCameraXVideoTransition();
+        flipAnimationInProgress = false;
+        CameraGLThread thread = cameraThread;
+        if (thread != null) thread.requestRender(false, false);
+    }
+    private void cancelCameraXVideoTransitions() {
+        if (!useCameraX) return;
+        cancelCameraXRearLensTransition();
+        if (dualCameraSwitchAnimator != null) {
+            dualCameraSwitchAnimator.removeAllListeners();
+            dualCameraSwitchAnimator.cancel();
+            dualCameraSwitchAnimator = null;
+        }
+        dualVideoSwitching = false;
+        pendingCameraXSwitchAfterDualCollapse = false;
+        nmCancelCameraXInitialWideWait();
+        cameraXSingleSwitchAwaitingBind = false;
+        pendingCameraXSingleSession = null;
+        clearCameraXVideoTransition();
+        flipAnimationInProgress = false;
+    }
 
     private void onCameraPreviewReady() {
-        if (textureOverlayView != null) {
-            textureOverlayView.animate().cancel();
-            textureOverlayView.animate()
-                    .alpha(0f)
-                    .setDuration(120L)
-                    .setInterpolator(new DecelerateInterpolator())
-                    .start();
+        ++cameraCoverGeneration;
+        if (animatorSet == null || !animatorSet.isRunning() || !opened) {
+            fadeCameraPreviewCover();
         }
         if (cameraXSingleSwitchNewFrame) {
             finishCameraXVideoTransition();
         }
+        nmMaybeReplayCameraXSwitchAfterInitialWide();
         if (useCameraX && !bothCameras
                 && pendingCameraXSwitchAfterDualCollapse) {
             pendingCameraXSwitchAfterDualCollapse = false;
@@ -2507,6 +2684,16 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             AndroidUtilities.runOnUIThread(
                     () -> switchCameraButton.performClick());
         }
+    }
+    private void fadeCameraPreviewCover() {
+        if (textureOverlayView == null || textureView == null || !opened
+                || !textureView.isAvailable() || cancelled || !cameraReady) return;
+        textureOverlayView.animate().cancel();
+        textureOverlayView.animate()
+                .alpha(0f)
+                .setDuration(120L)
+                .setInterpolator(new DecelerateInterpolator())
+                .start();
     }
 
     // Old Camera1 API
@@ -2846,7 +3033,13 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
     }
 
     public void setIsMessageTransition(boolean isMessageTransition) {
+        if (this.isMessageTransition == isMessageTransition) {
+            return;
+        }
         this.isMessageTransition = isMessageTransition;
+        if (!isMessageTransition) {
+            requestLayout();
+        }
     }
 
     public void resetCameraFile() {
@@ -2865,6 +3058,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         private final SurfaceTexture surfaceTexture;
         private final int generation;
         private volatile boolean shutdownRequested;
+        private VideoRecorder shutdownEncoder;
         private volatile SurfaceTexture outputSurfaceToReleaseOnShutdown;
         private EGL10 egl10;
         private EGLDisplay eglDisplay;
@@ -2874,8 +3068,10 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
 
         private Object currentSession;
         private final Object[] surfaceSessions = new Object[2];
+        private final int[] surfaceSessionGenerations = new int[2];
 
         private final SurfaceTexture[] cameraSurface = new SurfaceTexture[2];
+        private final int[] cameraTexture = new int[] { Integer.MIN_VALUE, Integer.MIN_VALUE };
 
         private final int DO_RENDER_MESSAGE = 0;
         private final int DO_SHUTDOWN_MESSAGE = 1;
@@ -2911,12 +3107,67 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         // encoder message may still reference it after the UI accepted the
         // next switch; deleting only the generation before that avoids a
         // cross-context name race while bounding memory to two snapshots.
-        private int retiredCameraXSingleSwitchSnapshot;
+        private volatile boolean snapshotContextClosed;
+        private final class CameraSnapshot {
+            final int texture;
+            final int width;
+            final int height;
+            final long timestamp;
+            final FloatBuffer textureBuffer;
+            final float[] identityMatrix;
+            private int references = 1;
+            private boolean presented;
+            CameraSnapshot(int texture, int width, int height, long timestamp) {
+                this.texture = texture;
+                this.width = width;
+                this.height = height;
+                this.timestamp = timestamp;
+                textureBuffer = cameraXSnapshotTextureBuffer.duplicate();
+                identityMatrix = cameraXSnapshotIdentityMatrix.clone();
+            }
+            boolean belongsTo(CameraGLThread thread) {
+                return CameraGLThread.this == thread;
+            }
+            boolean hasLiveSource() {
+                return !snapshotContextClosed && isCurrentGeneration();
+            }
+            synchronized boolean retain() {
+                if (references == 0) return false;
+                references++;
+                return true;
+            }
+            void release() {
+                synchronized (this) {
+                    if (references == 0 || --references != 0) return;
+                }
+                Handler ownerHandler = getHandler();
+                if (ownerHandler != null && !snapshotContextClosed) {
+                    ownerHandler.post(() -> {
+                        if (snapshotContextClosed || eglContext == null || eglSurface == null) return;
+                        if (!egl10.eglMakeCurrent(eglDisplay, eglSurface, eglSurface, eglContext)) return;
+                        GLES20.glFinish();
+                        GLES20.glDeleteTextures(1, new int[] { texture }, 0);
+                    });
+                }
+            }
+        }
+        private void clearCameraXSnapshot() {
+            CameraSnapshot snapshot = cameraXSingleSwitchSnapshotHandle;
+            if (snapshot != null && !snapshot.belongsTo(this)) return;
+            cameraXSingleSwitchSnapshotHandle = null;
+            cameraXSingleSwitchSnapshot = 0;
+            cameraXSingleSwitchSnapshotWidth = 0;
+            cameraXSingleSwitchSnapshotHeight = 0;
+            cameraXSingleSwitchSnapshotTimestamp = 0;
+            if (snapshot != null) snapshot.release();
+        }
 
         private boolean recording;
 
         private Integer cameraId = 0;
         private final boolean[] cameraFrameAvailable = new boolean[2];
+        private final boolean[] cameraFrameLatched = new boolean[2];
+        private final long[] cameraFrameTimestamp = new long[2];
         private final float[][] screenSTMatrix = new float[2][16];
         private final float[][] screenMVPMatrix = new float[2][16];
         private boolean dualSurfaceSwitching;
@@ -2945,7 +3196,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             final SurfaceTexture expectedSurface = surfaceTexture;
             AndroidUtilities.runOnUIThread(() -> {
                 TextureView expectedTextureView = textureView;
-                if (cameraThread != expectedThread
+                if (expectedThread.shutdownRequested || cameraThread != expectedThread
                         || cameraThreadGeneration != expectedGeneration
                         || expectedTextureView == null
                         || expectedTextureView.getSurfaceTexture() != expectedSurface) {
@@ -3232,6 +3483,13 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                     return false;
                 }
                 GLES20.glGenTextures(2, cameraTexture, 0);
+                synchronized (InstantCameraView.this) {
+                    if (shutdownRequested || cameraThreadGeneration != generation) {
+                        finish();
+                        return false;
+                    }
+                    InstantCameraView.this.cameraTexture = cameraTexture;
+                }
                 for (int a = 0; a < 2; ++a) {
                     GLES20.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, cameraTexture[a]);
                     GLES20.glTexParameteri(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, GLES20.GL_TEXTURE_MIN_FILTER, GLES20.GL_LINEAR);
@@ -3245,9 +3503,6 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                         if (!isCurrentGeneration()) {
                             return;
                         }
-                        cameraTextureAvailable = true;
-                        cameraFrameAvailable[i] = true;
-                        nmOnCameraXFrameAvailable(i);
                         requestRender(i == 0, i == 1);
                     });
                     createCamera(a, cameraSurface[a], this, generation);
@@ -3270,14 +3525,15 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
 
         public void captureCameraXSingleSwitchSnapshot(Runnable afterCapture) {
             Handler handler = getHandler();
-            if (handler != null) {
-                sendMessage(handler.obtainMessage(DO_CAMERA_X_SINGLE_SNAPSHOT, afterCapture), 0);
-            } else if (afterCapture != null) {
-                postToUiIfCurrent(afterCapture);
-            }
+            if (handler != null && !shutdownRequested
+                    && handler.sendMessage(handler.obtainMessage(DO_CAMERA_X_SINGLE_SNAPSHOT, afterCapture))) return;
+            clearCameraXSnapshot();
+            if (afterCapture != null) postToUiIfCurrent(afterCapture);
         }
 
         public void finish() {
+            snapshotContextClosed = true;
+            clearCameraXSnapshot();
             if (cameraSurface != null) {
                 for (int a = 0; a < 2; ++a) {
                     if (cameraSurface[a] != null) {
@@ -3286,9 +3542,15 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                     }
                 }
             }
-            cameraTextureAvailable = false;
+            synchronized (InstantCameraView.this) {
+                if (InstantCameraView.this.cameraTexture == cameraTexture) {
+                    cameraTextureAvailable = false;
+                }
+            }
             cameraFrameAvailable[0] = false;
             cameraFrameAvailable[1] = false;
+            cameraFrameLatched[0] = false;
+            cameraFrameLatched[1] = false;
             if (eglSurface != null && eglContext != null) {
                 if (!eglContext.equals(egl10.eglGetCurrentContext()) || !eglSurface.equals(egl10.eglGetCurrentSurface(EGL10.EGL_DRAW))) {
                     egl10.eglMakeCurrent(eglDisplay, eglSurface, eglSurface, eglContext);
@@ -3344,7 +3606,8 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                 app.nimarkogram.messenger.camera.NimarkoCameraXSurfaceSession session) {
             Handler handler = getHandler();
             if (handler != null) {
-                sendMessage(handler.obtainMessage(DO_SETSESSION_MESSAGE, session), 0);
+                sendMessage(handler.obtainMessage(DO_SETSESSION_MESSAGE,
+                        session.getSurfaceRequestGeneration(), 0, session), 0);
             }
         }
 
@@ -3448,8 +3711,9 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             } else if (session instanceof Camera2Session) {
                 rotationAngle = ((Camera2Session) session).getWorldAngle();
             } else if (session instanceof app.nimarkogram.messenger.camera.NimarkoCameraXSurfaceSession) {
-                rotationAngle = ((app.nimarkogram.messenger.camera.NimarkoCameraXSurfaceSession) session)
-                        .getWorldAngle();
+                NimarkoCameraXSurfaceSession cameraXSession = (NimarkoCameraXSurfaceSession) session;
+                surfaceSessionGenerations[index] = cameraXSession.getSurfaceRequestGeneration();
+                rotationAngle = cameraXSession.getWorldAngle();
             } else {
                 rotationAngle = 0;
             }
@@ -3519,14 +3783,27 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                         1f / Math.max(1, size.getHeight()));
             }
             GLES20.glUniform1f(switchBlurHandle,
-                    useCameraX && !bothCameras ? cameraXSingleSwitchBlur : 0f);
+                    useCameraX && (!bothCameras || cameraXRearLensTransition != null)
+                            ? cameraXSingleSwitchBlur : 0f);
             GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, 4);
+        }
+        private boolean hasCurrentCameraXFrame(int index) {
+            if (!cameraFrameLatched[index]
+                    || !(surfaceSessions[index] instanceof NimarkoCameraXSurfaceSession)) {
+                return false;
+            }
+            NimarkoCameraXSurfaceSession session =
+                    (NimarkoCameraXSurfaceSession) surfaceSessions[index];
+            return videoMessagesHelper.getSessionIndex(session) == index
+                    && session.isSurfaceRequestCurrent(surfaceSessionGenerations[index]);
         }
 
         private boolean captureCameraXSingleSwitchSnapshot() {
-            if (!useCameraX || bothCameras || snapshotProgram == 0
+            clearCameraXSnapshot();
+            if (!useCameraX || !(!bothCameras || cameraXRearLensTransition != null)
+                    || snapshotProgram == 0
                     || surfaceIndex < 0 || surfaceIndex >= cameraTexture.length
-                    || !cameraFrameAvailable[surfaceIndex]
+                    || !cameraFrameLatched[surfaceIndex]
                     || cameraTexture[surfaceIndex] == Integer.MIN_VALUE
                     || cameraTexture[surfaceIndex] == 0
                     || vertexBuffer == null || textureBuffer == null) {
@@ -3543,7 +3820,8 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             final int height = Math.max(1, surfaceHeight);
             int[] texture = new int[1];
             int[] framebuffer = new int[1];
-            final int previousSnapshot = cameraXSingleSwitchSnapshot;
+            final long capturedTimestamp = cameraFrameTimestamp[surfaceIndex];
+            final FloatBuffer capturedTextureBuffer = getTextureBuffer(surfaceIndex);
             boolean success = false;
             try {
                 GLES20.glGenTextures(1, texture, 0);
@@ -3573,7 +3851,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                         false, 12, vertexBuffer);
                 GLES20.glEnableVertexAttribArray(positionHandle);
                 GLES20.glVertexAttribPointer(textureHandle, 2, GLES20.GL_FLOAT,
-                        false, 8, textureBuffer);
+                        false, 8, capturedTextureBuffer);
                 GLES20.glEnableVertexAttribArray(textureHandle);
                 GLES20.glUniformMatrix4fv(textureMatrixHandle, 1, false,
                         screenSTMatrix[surfaceIndex], 0);
@@ -3596,15 +3874,13 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                 // The encoder EGL context belongs to the same share group.
                 // Publish the texture only after all FBO writes are visible.
                 GLES20.glFinish();
-                if (retiredCameraXSingleSwitchSnapshot != 0
-                        && retiredCameraXSingleSwitchSnapshot != previousSnapshot) {
-                    GLES20.glDeleteTextures(1,
-                            new int[] { retiredCameraXSingleSwitchSnapshot }, 0);
-                }
-                retiredCameraXSingleSwitchSnapshot = previousSnapshot;
+                CameraSnapshot snapshot = new CameraSnapshot(
+                        texture[0], width, height, capturedTimestamp);
                 cameraXSingleSwitchSnapshotWidth = width;
                 cameraXSingleSwitchSnapshotHeight = height;
                 cameraXSingleSwitchSnapshot = texture[0];
+                cameraXSingleSwitchSnapshotTimestamp = capturedTimestamp;
+                cameraXSingleSwitchSnapshotHandle = snapshot;
                 success = true;
             } catch (Throwable t) {
                 FileLog.e(t);
@@ -3620,41 +3896,36 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                 }
                 if (!success) {
                     // Never animate a stale snapshot from an older switch.
-                    if (retiredCameraXSingleSwitchSnapshot != 0
-                            && retiredCameraXSingleSwitchSnapshot != previousSnapshot) {
-                        GLES20.glDeleteTextures(1,
-                                new int[] { retiredCameraXSingleSwitchSnapshot }, 0);
-                    }
-                    retiredCameraXSingleSwitchSnapshot = previousSnapshot;
-                    cameraXSingleSwitchSnapshot = 0;
+                    clearCameraXSnapshot();
                 }
             }
             return success;
         }
 
         private void drawCameraXSnapshot(float alpha, float blur) {
-            int texture = cameraXSingleSwitchSnapshot;
-            if (snapshotProgram == 0 || texture == 0 || cameraXSnapshotTextureBuffer == null) {
+            CameraSnapshot snapshot = cameraXSingleSwitchSnapshotHandle;
+            if (snapshotProgram == 0 || snapshot == null || !snapshot.belongsTo(this)) {
                 return;
             }
+            snapshot.presented = true;
             GLES20.glUseProgram(snapshotProgram);
             GLES20.glActiveTexture(GLES20.GL_TEXTURE0);
             GLES20.glVertexAttribPointer(snapshotPositionHandle, 3, GLES20.GL_FLOAT,
                     false, 12, vertexBuffer);
             GLES20.glEnableVertexAttribArray(snapshotPositionHandle);
             GLES20.glVertexAttribPointer(snapshotTextureHandle, 2, GLES20.GL_FLOAT,
-                    false, 8, cameraXSnapshotTextureBuffer);
+                    false, 8, snapshot.textureBuffer);
             GLES20.glEnableVertexAttribArray(snapshotTextureHandle);
             GLES20.glUniformMatrix4fv(snapshotVertexMatrixHandle, 1, false,
-                    cameraXSnapshotIdentityMatrix, 0);
+                    snapshot.identityMatrix, 0);
             GLES20.glUniformMatrix4fv(snapshotTextureMatrixHandle, 1, false,
-                    cameraXSnapshotIdentityMatrix, 0);
+                    snapshot.identityMatrix, 0);
             GLES20.glUniform1f(snapshotAlphaHandle, Utilities.clamp(alpha, 1f, 0f));
             GLES20.glUniform2f(snapshotTexelSizeHandle,
-                    1f / Math.max(1, cameraXSingleSwitchSnapshotWidth),
-                    1f / Math.max(1, cameraXSingleSwitchSnapshotHeight));
+                    1f / Math.max(1, snapshot.width),
+                    1f / Math.max(1, snapshot.height));
             GLES20.glUniform1f(snapshotSwitchBlurHandle, blur);
-            GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, texture);
+            GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, snapshot.texture);
             GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, 4);
             GLES20.glDisableVertexAttribArray(snapshotPositionHandle);
             GLES20.glDisableVertexAttribArray(snapshotTextureHandle);
@@ -3676,37 +3947,54 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                     return;
                 }
             }
+            boolean updatedTexImage1 = false;
+            boolean updatedTexImage2 = false;
             if (updateTexImage1) {
+                cameraFrameLatched[0] = false;
                 try {
+                    long previousTimestamp = cameraFrameTimestamp[0];
                     cameraSurface[0].updateTexImage();
                     cameraSurface[0].getTransformMatrix(screenSTMatrix[0]);
+                    cameraFrameTimestamp[0] = cameraSurface[0].getTimestamp();
+                    cameraFrameLatched[0] = true;
+                    updatedTexImage1 = cameraFrameTimestamp[0] <= 0
+                            || cameraFrameTimestamp[0] != previousTimestamp;
                 } catch (Throwable t) {
                     FileLog.e(t);
                 }
             }
             if (updateTexImage2) {
+                cameraFrameLatched[1] = false;
                 try {
+                    long previousTimestamp = cameraFrameTimestamp[1];
                     cameraSurface[1].updateTexImage();
                     cameraSurface[1].getTransformMatrix(screenSTMatrix[1]);
+                    cameraFrameTimestamp[1] = cameraSurface[1].getTimestamp();
+                    cameraFrameLatched[1] = true;
+                    updatedTexImage2 = cameraFrameTimestamp[1] <= 0
+                            || cameraFrameTimestamp[1] != previousTimestamp;
                 } catch (Throwable t) {
                     FileLog.e(t);
                 }
             }
-            if (useCameraX && !bothCameras && updateTexImage1
+            final boolean activeCameraFrame = surfaceIndex == 0 && updatedTexImage1
+                    || surfaceIndex == 1 && updatedTexImage2;
+            if (useCameraX && cameraXRearLensTransition != null && activeCameraFrame) {
+                onCameraXRearLensFrame(cameraFrameTimestamp[surfaceIndex]);
+            }
+            if (useCameraX && !bothCameras && updatedTexImage1
                     && cameraXSingleSwitchAwaitingBind) {
                 app.nimarkogram.messenger.camera.NimarkoCameraXSurfaceSession pending =
                         pendingCameraXSingleSession;
-                if (pending != null && pending.isFrontFacing() == isFrontface) {
+                if (pending != null && pending.isFrontFacing() == isFrontface
+                        && pending.isSurfaceRequestCurrent(pendingCameraXSingleSessionGeneration)) {
                     long lensWaitMs = SystemClock.elapsedRealtime()
                             - cameraXSingleSwitchWaitStartedMs;
-                    boolean lensReady = pending.isInitialLensReady();
-                    // SurfaceTexture can receive frames from the main rear
-                    // sensor before ColorOS completes a requested 0.6x logical
-                    // lens change. Keep drawing the immutable old-camera
-                    // snapshot until CaptureResult identifies the real
-                    // ultra-wide physical camera. A bounded fallback prevents
-                    // incomplete vendor metadata from locking the UI.
-                    if (!lensReady && lensWaitMs < 1450L) {
+                    long frameTimestamp = cameraFrameTimestamp[0];
+                    boolean lensReady = pending.isInitialLensReady(frameTimestamp);
+                    boolean newerThanSnapshot = cameraXSingleSwitchSnapshotTimestamp <= 0
+                            || frameTimestamp > cameraXSingleSwitchSnapshotTimestamp;
+                    if ((!lensReady || !newerThanSnapshot) && lensWaitMs < 1450L) {
                         if (!cameraXSingleSwitchZoomWaitLogged) {
                             cameraXSingleSwitchZoomWaitLogged = true;
                             if (app.nimarkogram.messenger.NimarkoCameraLog.DEBUG) app.nimarkogram.messenger.NimarkoCameraLog.log(
@@ -3729,6 +4017,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                         pendingCameraXSingleSession = null;
                         updateSessionMatrix(pending, 0);
                         currentSession = pending;
+                        this.cameraId++;
                         // Apply the replacement lens aspect crop in the same GL
                         // frame as its new rotation and mirror matrices.
                         rebuildTextureBuffer(0);
@@ -3740,24 +4029,69 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                     }
                 }
             }
+            if (useCameraX) {
+                if (updatedTexImage1 && hasCurrentCameraXFrame(0)) {
+                    cameraFrameAvailable[0] = true;
+                    cameraTextureAvailable = true;
+                    nmOnCameraXFrameAvailable(0);
+                }
+                if (updatedTexImage2 && hasCurrentCameraXFrame(1)) {
+                    cameraFrameAvailable[1] = true;
+                    cameraTextureAvailable = true;
+                    nmOnCameraXFrameAvailable(1);
+                }
+                if (bothCameras && isFrontface && cameraXInitialWideWaitActive) {
+                    NimarkoCameraXSurfaceSession rear = videoMessagesHelper.getRearSession();
+                    int rearIndex = videoMessagesHelper.getSessionIndex(rear);
+                    if (rearIndex >= 0 && rearIndex < cameraFrameTimestamp.length
+                            && (rearIndex == 0 ? updatedTexImage1 : updatedTexImage2)
+                            && hasCurrentCameraXFrame(rearIndex)) {
+                        nmShouldHoldCameraXInitialWideFrame(cameraFrameTimestamp[rearIndex]);
+                    }
+                }
+            }
             if (dualSurfaceSwitching) {
                 publishDualVideoSwitch();
             }
+            CameraSnapshot snapshot = cameraXSingleSwitchSnapshotHandle;
+            if (!cameraXVideoTransitionActive && snapshot != null
+                    && snapshot.belongsTo(this)
+                    && (snapshot.presented || !cameraXSingleSwitchAwaitingBind
+                    && cameraXRearLensTransition == null)) {
+                clearCameraXSnapshot();
+                snapshot = null;
+            }
+            final boolean snapshotTransition = useCameraX
+                    && (!bothCameras || cameraXRearLensTransition != null)
+                    && cameraXVideoTransitionActive && snapshot != null
+                    && snapshot.belongsTo(this);
 
             // A callback from the inactive concurrent surface must never make
             // us draw or feed the encoder from an active OES texture which has
             // not produced its first frame yet.
             if (surfaceIndex < 0 || surfaceIndex >= cameraFrameAvailable.length
-                    || !cameraFrameAvailable[surfaceIndex]) {
+                    || (!cameraFrameLatched[surfaceIndex] && !snapshotTransition)) {
+                return;
+            }
+            if (useCameraX && !cameraFrameAvailable[surfaceIndex]
+                    && !snapshotTransition) {
+                return;
+            }
+            final NimarkoCameraXSurfaceSession liveCameraXSession =
+                    surfaceSessions[surfaceIndex] instanceof NimarkoCameraXSurfaceSession
+                            ? (NimarkoCameraXSurfaceSession) surfaceSessions[surfaceIndex] : null;
+            final int liveSurfaceGeneration = surfaceSessionGenerations[surfaceIndex];
+            if (useCameraX && !snapshotTransition && (liveCameraXSession == null
+                    || videoMessagesHelper.getSessionIndex(liveCameraXSession) != surfaceIndex
+                    || !liveCameraXSession.isSurfaceRequestCurrent(liveSurfaceGeneration))) {
                 return;
             }
 
             boolean initialWideTimeoutRender =
                     nmConsumeCameraXInitialWideTimeoutRender();
-            boolean activeCameraFrame = surfaceIndex == 0 && updateTexImage1
-                    || surfaceIndex == 1 && updateTexImage2;
             if (bothCameras && !activeCameraFrame && !dualSurfaceSwitching
-                    && !initialWideTimeoutRender) {
+                    && !initialWideTimeoutRender
+                    && (updateTexImage1 || updateTexImage2 || !snapshotTransition)) {
                 // The inactive CameraX preview still has to be drained via
                 // updateTexImage(), but it must not trigger a second complete
                 // draw, EGL swap and encoder pass for every camera frame.
@@ -3770,7 +4104,8 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             // physical lens.
             if (!initialWideTimeoutRender && useCameraX && !isFrontface
                     && activeCameraFrame
-                    && nmShouldHoldCameraXInitialWideFrame()) {
+                    && nmShouldHoldCameraXInitialWideFrame(
+                            cameraFrameTimestamp[surfaceIndex])) {
                 return;
             }
 
@@ -3780,7 +4115,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                     videoEncoder = new VideoRecorder();
                 }
                 if (videoEncoder.started) {
-                    if (!cameraReady && !cameraXSingleSwitchAwaitingBind) {
+                    if (!useCameraX && !cameraReady && !cameraXSingleSwitchAwaitingBind) {
                         postToUiIfCurrent(() -> {
                             if (!cameraReady && !cameraXSingleSwitchAwaitingBind) {
                                 cameraReady = true;
@@ -3798,17 +4133,20 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             }
 
             if (videoEncoder != null
-                    && (activeCameraFrame || initialWideTimeoutRender)) {
+                    && (activeCameraFrame
+                    || initialWideTimeoutRender && cameraFrameLatched[surfaceIndex])) {
                 copyActiveMatrices(surfaceIndex);
-                videoEncoder.frameAvailable(cameraSurface[surfaceIndex], bothCameras ? surfaceIndex : cameraId, System.nanoTime());
+                videoEncoder.frameAvailable(cameraSurface[surfaceIndex], bothCameras ? surfaceIndex : this.cameraId, System.nanoTime(), this);
             } else if (videoEncoder != null && recording && useCameraX && !bothCameras
+                    && cameraXRearLensTransition == null
                     && cameraXVideoTransitionActive) {
                 // CameraX stops producing frames while its single-camera graph
                 // is rebound. Animator-driven preview renders must also feed
                 // the encoder, otherwise the visible pre-switch transition is
                 // missing from the actual recorded round video.
-                videoEncoder.transitionFrameAvailable(cameraId, System.nanoTime());
+                videoEncoder.transitionFrameAvailable(this.cameraId, this);
             }
+            GLES20.glViewport(0, 0, Math.max(1, surfaceWidth), Math.max(1, surfaceHeight));
 
             GLES20.glUseProgram(drawProgram);
             GLES20.glActiveTexture(GLES20.GL_TEXTURE0);
@@ -3821,14 +4159,14 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
 
             GLES20.glClearColor(0f, 0f, 0f, 1f);
             GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT);
-            if (useCameraX && !bothCameras && cameraXVideoTransitionActive
-                    && cameraXSingleSwitchSnapshot != 0) {
+            if (snapshotTransition) {
                 // The snapshot is already cropped, rotated and mirrored exactly
                 // as the last visible OES frame. It is the opaque base until a
                 // replacement frame arrives, then the new live OES frame is
                 // alpha-blended over it. The circular view itself never moves.
                 drawCameraXSnapshot(1f, cameraXSingleSwitchBlur);
-                if (cameraXSingleSwitchNewFrame) {
+                if (cameraXSingleSwitchNewFrame && liveCameraXSession != null
+                        && liveCameraXSession.isSurfaceRequestCurrent(liveSurfaceGeneration)) {
                     // drawCameraXSnapshot uses another program/attribute set.
                     // Restore the external-OES pipeline for the live frame.
                     GLES20.glUseProgram(drawProgram);
@@ -3885,7 +4223,9 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             GLES20.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, 0);
             GLES20.glUseProgram(0);
 
-            egl10.eglSwapBuffers(eglDisplay, eglSurface);
+            if (!egl10.eglSwapBuffers(eglDisplay, eglSurface)) {
+                return;
+            }
 
             // Publishing preview readiness used to depend on a later encoder
             // callback. Some OEM front cameras deliver one frame and pause
@@ -3893,11 +4233,14 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             // until the user switched lenses. A successful window swap is the
             // strongest possible proof that a real camera frame is visible.
             if (useCameraX && !cameraReady && !cameraXSingleSwitchAwaitingBind) {
-                cameraReady = true;
-                if (app.nimarkogram.messenger.NimarkoCameraLog.DEBUG) app.nimarkogram.messenger.NimarkoCameraLog.log(
-                        "InstantRound CX preview published after swap index="
-                                + surfaceIndex + " frameMask=" + nmCameraXFrameMask);
-                postToUiIfCurrent(InstantCameraView.this::onCameraPreviewReady);
+                postToUiIfCurrent(() -> {
+                    if (!cameraReady && !cameraXSingleSwitchAwaitingBind
+                            && liveCameraXSession != null
+                            && liveCameraXSession.isSurfaceRequestCurrent(liveSurfaceGeneration)) {
+                        cameraReady = true;
+                        onCameraPreviewReady();
+                    }
+                });
             }
 
             if (captureFirstFrameThumb) {
@@ -3934,7 +4277,11 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                     break;
                 case DO_SHUTDOWN_MESSAGE: {
                     dualSurfaceSwitching = false;
-                    dualVideoSwitching = false;
+                    synchronized (InstantCameraView.this) {
+                        if (InstantCameraView.this.cameraTexture == cameraTexture) {
+                            dualVideoSwitching = false;
+                        }
+                    }
                     finish();
                     SurfaceTexture outputSurface = outputSurfaceToReleaseOnShutdown;
                     outputSurfaceToReleaseOnShutdown = null;
@@ -3945,8 +4292,8 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                             FileLog.e(error);
                         }
                     }
-                    if (recording && (!(inputMessage.obj instanceof SendOptions) || ((SendOptions) inputMessage.obj).ttl != -2) && videoEncoder != null) {
-                        videoEncoder.stopRecording(inputMessage.arg1, inputMessage.obj instanceof SendOptions ? (SendOptions) inputMessage.obj : null);
+                    if (recording && (!(inputMessage.obj instanceof SendOptions) || ((SendOptions) inputMessage.obj).ttl != -2) && shutdownEncoder != null) {
+                        shutdownEncoder.stopRecording(inputMessage.arg1, inputMessage.obj instanceof SendOptions ? (SendOptions) inputMessage.obj : null);
                     }
                     Looper looper = Looper.myLooper();
                     if (looper != null) {
@@ -3987,6 +4334,8 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                     cameraId++;
                     cameraReady = false;
                     cameraFrameAvailable[0] = false;
+                    cameraFrameLatched[0] = false;
+                    cameraFrameTimestamp[0] = 0;
 
                     GLES20.glGenTextures(1, cameraTexture, 0);
                     GLES20.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, cameraTexture[0]);
@@ -4015,8 +4364,38 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                         FileLog.d("InstantCamera set gl renderer session");
                     }
                     Object newSession = inputMessage.obj;
+                    if (newSession instanceof NimarkoCameraXSurfaceSession) {
+                        NimarkoCameraXSurfaceSession session = (NimarkoCameraXSurfaceSession) newSession;
+                        if (videoMessagesHelper.getSessionIndex(session) < 0
+                                || !session.isSurfaceRequestCurrent(inputMessage.arg1)) break;
+                    }
                     int sessionSurface = getSessionSurfaceIndex(newSession);
+                    boolean firstCameraXSessionWithLatchedFrame =
+                            newSession instanceof NimarkoCameraXSurfaceSession
+                            && surfaceSessions[sessionSurface] == null
+                            && cameraFrameLatched[sessionSurface];
+                    if (newSession instanceof NimarkoCameraXSurfaceSession
+                            && surfaceSessions[sessionSurface] != null
+                            && (surfaceSessions[sessionSurface] != newSession
+                            || surfaceSessionGenerations[sessionSurface] != inputMessage.arg1)) {
+                        cameraFrameAvailable[sessionSurface] = false;
+                        cameraFrameLatched[sessionSurface] = false;
+                        cameraFrameTimestamp[sessionSurface] = 0;
+                        if (sessionSurface == surfaceIndex) cameraTextureAvailable = false;
+                    }
+                    if (newSession instanceof NimarkoCameraXSurfaceSession && !bothCameras
+                            && currentSession != null && sessionSurface == surfaceIndex
+                            && (surfaceSessions[sessionSurface] != newSession
+                            || surfaceSessionGenerations[sessionSurface] != inputMessage.arg1)) {
+                        cameraId++;
+                    }
                     updateSessionMatrix(newSession, sessionSurface);
+                    if (firstCameraXSessionWithLatchedFrame
+                            && hasCurrentCameraXFrame(sessionSurface)) {
+                        cameraFrameAvailable[sessionSurface] = true;
+                        cameraTextureAvailable = true;
+                        nmOnCameraXFrameAvailable(sessionSurface);
+                    }
                     if (!dualSurfaceSwitching && sessionSurface == surfaceIndex) {
                         currentSession = newSession;
                         copyActiveMatrices(surfaceIndex);
@@ -4075,6 +4454,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                         publishDualVideoSwitch();
                         onDraw(cameraId, false, false);
                         dualSurfaceSwitching = false;
+                        dualVideoSwitching = false;
                         dualSwitchFrom = dualSwitchTo = -1;
                         dualSwitchTargetSession = null;
                         onDraw(cameraId, false, false);
@@ -4117,6 +4497,10 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                 case DO_RESET_CAMERAX_FRAME_STATE: {
                     cameraFrameAvailable[0] = false;
                     cameraFrameAvailable[1] = false;
+                    cameraFrameLatched[0] = false;
+                    cameraFrameLatched[1] = false;
+                    cameraFrameTimestamp[0] = 0;
+                    cameraFrameTimestamp[1] = 0;
                     cameraTextureAvailable = false;
                     break;
                 }
@@ -4139,6 +4523,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                     return;
                 }
                 shutdownRequested = true;
+                shutdownEncoder = videoEncoder;
             }
             nmCancelCameraXDualFrameWatchdog();
             final SendOptions options =
@@ -4213,6 +4598,9 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
     /** Immutable transition values attached to one encoder frame message. */
     private static final class CameraVideoFrameState {
         final Integer cameraId;
+        final CameraGLThread liveSource;
+        final NimarkoCameraXSurfaceSession liveCameraXSession;
+        final int liveSurfaceGeneration;
         final boolean singleCameraXTransition;
         final boolean replacementFrameReady;
         final int snapshotTexture;
@@ -4221,17 +4609,43 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         final float progress;
         final float blur;
 
-        CameraVideoFrameState(Integer cameraId, boolean singleCameraXTransition,
-                boolean replacementFrameReady, int snapshotTexture,
-                int snapshotWidth, int snapshotHeight, float progress, float blur) {
+        final CameraGLThread.CameraSnapshot snapshot;
+        final FloatBuffer snapshotTextureBuffer;
+        final int activeSurfaceIndex;
+        final int liveTexture;
+        final FloatBuffer liveTextureBuffer;
+        final Size livePreviewSize;
+        final float[] liveSTMatrix;
+        final float[] liveMVPMatrix;
+        CameraVideoFrameState(Integer cameraId, CameraGLThread liveSource, boolean singleCameraXTransition,
+                boolean replacementFrameReady, CameraGLThread.CameraSnapshot snapshot,
+                float progress, float blur, int activeSurfaceIndex, int liveTexture,
+                FloatBuffer liveTextureBuffer, Size livePreviewSize,
+                float[] liveSTMatrix, float[] liveMVPMatrix) {
             this.cameraId = cameraId;
+            this.liveSource = liveSource;
+            this.liveCameraXSession = liveSource.surfaceSessions[activeSurfaceIndex] instanceof NimarkoCameraXSurfaceSession
+                    ? (NimarkoCameraXSurfaceSession) liveSource.surfaceSessions[activeSurfaceIndex] : null;
+            this.liveSurfaceGeneration = liveSource.surfaceSessionGenerations[activeSurfaceIndex];
             this.singleCameraXTransition = singleCameraXTransition;
             this.replacementFrameReady = replacementFrameReady;
-            this.snapshotTexture = snapshotTexture;
-            this.snapshotWidth = snapshotWidth;
-            this.snapshotHeight = snapshotHeight;
+            this.snapshot = snapshot;
+            this.snapshotTextureBuffer = snapshot == null ? null : snapshot.textureBuffer.duplicate();
+            this.snapshotTexture = snapshot == null ? 0 : snapshot.texture;
+            this.snapshotWidth = snapshot == null ? 0 : snapshot.width;
+            this.snapshotHeight = snapshot == null ? 0 : snapshot.height;
             this.progress = progress;
             this.blur = blur;
+            this.activeSurfaceIndex = activeSurfaceIndex;
+            this.liveTexture = liveTexture;
+            this.liveTextureBuffer = liveTextureBuffer == null ? null : liveTextureBuffer.duplicate();
+            this.livePreviewSize = livePreviewSize;
+            this.liveSTMatrix = liveSTMatrix.clone();
+            this.liveMVPMatrix = liveMVPMatrix.clone();
+        }
+        boolean hasLiveSource() {
+            return liveSource.isCurrentGeneration() && (liveCameraXSession == null
+                    || liveCameraXSession.isSurfaceRequestCurrent(liveSurfaceGeneration));
         }
     }
 
@@ -4277,7 +4691,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                     if (BuildVars.LOGS_ENABLED) {
                         FileLog.e("InstantCamera pause encoder");
                     }
-                    encoder.handlePauseRecording();
+                    encoder.handlePauseRecording(obj);
                     break;
                 }
                 case MSG_RESUME_RECORDING: {
@@ -4349,6 +4763,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         private static final int IFRAME_INTERVAL = 1;
 
         private File videoFile;
+        private volatile File previewFile;
         private File fileToWrite;
         private boolean writingToDifferentFile;
         private int videoWidth;
@@ -4572,6 +4987,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             mc.roundAudioBitrate = app.nimarkogram.messenger.NimarkoConfig.videoMessagesAudioBitrateKbps;
             int resolution = mc.roundVideoSize;
             int bitrate = mc.roundVideoBitrate * 1024;
+            recordedVideoBitrate = bitrate;
             AndroidUtilities.runOnUIThread(() -> {
                 NotificationCenter.getInstance(currentAccount).postNotificationName(NotificationCenter.stopAllHeavyOperations, 512);
             });
@@ -4632,7 +5048,9 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         }
 
         public void pause() {
-            handler.sendMessage(handler.obtainMessage(MSG_PAUSE_RECORDING));
+            final Object token = new Object();
+            pausePreviewToken = token;
+            handler.sendMessage(handler.obtainMessage(MSG_PAUSE_RECORDING, token));
         }
 
         public void resume() {
@@ -4640,24 +5058,41 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         }
 
         long prevTimestamp;
+        private Integer lastFrameSubmissionCameraId;
         private volatile long lastFrameSubmissionRealtimeNanos;
 
-        private CameraVideoFrameState captureFrameState(Integer cameraId) {
-            boolean transition = useCameraX && !bothCameras
+        private final ArrayList<CameraVideoFrameState> pendingVideoFrames = new ArrayList<>();
+        private CameraVideoFrameState captureFrameState(Integer cameraId, CameraGLThread source) {
+            CameraGLThread.CameraSnapshot snapshot = cameraXSingleSwitchSnapshotHandle;
+            boolean transition = useCameraX && (!bothCameras || cameraXRearLensTransition != null)
                     && cameraXVideoTransitionActive
-                    && cameraXSingleSwitchSnapshot != 0;
-            return new CameraVideoFrameState(cameraId, transition,
+                    && snapshot != null && snapshot.belongsTo(source) && snapshot.retain();
+            int index = surfaceIndex >= 0 && surfaceIndex < source.cameraTexture.length ? surfaceIndex : 0;
+            return new CameraVideoFrameState(cameraId, source, transition,
                     transition && cameraXSingleSwitchNewFrame,
-                    transition ? cameraXSingleSwitchSnapshot : 0,
-                    transition ? cameraXSingleSwitchSnapshotWidth : 0,
-                    transition ? cameraXSingleSwitchSnapshotHeight : 0,
+                    transition ? snapshot : null,
                     transition ? cameraXSingleSwitchProgress : 1f,
-                    transition ? cameraXSingleSwitchBlur : 0f);
+                    transition ? cameraXSingleSwitchBlur : 0f,
+                    index, source.cameraTexture[index], cameraTextureBuffers[index] != null
+                            ? cameraTextureBuffers[index] : InstantCameraView.this.textureBuffer, previewSize[index],
+                    source.screenSTMatrix[index], source.screenMVPMatrix[index]);
+        }
+        private void submitVideoFrame(long timestamp, Integer cameraId, CameraGLThread source) {
+            synchronized (sync) {
+                if (!ready || handler == null || !source.isCurrentGeneration()) return;
+                CameraVideoFrameState frameState = captureFrameState(cameraId, source);
+                pendingVideoFrames.add(frameState);
+                if (!handler.sendMessage(handler.obtainMessage(MSG_VIDEOFRAME_AVAILABLE,
+                        (int) (timestamp >> 32), (int) timestamp, frameState))) {
+                    pendingVideoFrames.remove(frameState);
+                    if (frameState.snapshot != null) frameState.snapshot.release();
+                }
+            }
         }
 
-        public void frameAvailable(SurfaceTexture st, Integer cameraId, long timestampInternal) {
+        public void frameAvailable(SurfaceTexture st, Integer cameraId, long timestampInternal, CameraGLThread source) {
             synchronized (sync) {
-                if (!ready) {
+                if (!ready || !source.isCurrentGeneration()) {
                     return;
                 }
             }
@@ -4676,6 +5111,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             } else {
                 zeroTimeStamps = 0;
             }
+            if (cameraId.equals(lastFrameSubmissionCameraId) && timestamp <= prevTimestamp) return;
             long now = System.nanoTime();
             // Never wall-clock-throttle real SurfaceTexture frames here.
             // CameraX already negotiates the selected maximum and requestRender
@@ -4685,25 +5121,25 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             // handle the resulting variable frame rate.
             lastFrameSubmissionRealtimeNanos = now;
             prevTimestamp = timestamp;
-            handler.sendMessage(handler.obtainMessage(MSG_VIDEOFRAME_AVAILABLE,
-                    (int) (timestamp >> 32), (int) timestamp,
-                    captureFrameState(cameraId)));
+            lastFrameSubmissionCameraId = cameraId;
+            submitVideoFrame(timestamp, cameraId, source);
         }
 
-        public void transitionFrameAvailable(Integer cameraId, long timestampNanos) {
+        public void transitionFrameAvailable(Integer cameraId, CameraGLThread source) {
+            if (cameraXRearLensTransition != null || bothCameras) return;
             synchronized (sync) {
-                if (!ready || handler == null) return;
+                if (!ready || handler == null || !source.isCurrentGeneration()) return;
             }
             // Keep the frozen OES frame moving through the same encoder shader
             // at roughly 30 fps while the blur value animates. Real camera
             // frames always win and suppress a nearby synthetic one.
             long now = System.nanoTime();
             if (now - lastFrameSubmissionRealtimeNanos < 28_000_000L) return;
+            if (prevTimestamp <= 0 || !cameraId.equals(lastFrameSubmissionCameraId)) return;
+            long timestampNanos = prevTimestamp + (now - lastFrameSubmissionRealtimeNanos);
             lastFrameSubmissionRealtimeNanos = now;
             prevTimestamp = timestampNanos;
-            handler.sendMessage(handler.obtainMessage(MSG_VIDEOFRAME_AVAILABLE,
-                    (int) (timestampNanos >> 32), (int) timestampNanos,
-                    captureFrameState(cameraId)));
+            submitVideoFrame(timestampNanos, cameraId, source);
         }
 
         @Override
@@ -4714,10 +5150,16 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                 ready = true;
                 sync.notify();
             }
-            Looper.loop();
-
-            synchronized (sync) {
-                ready = false;
+            try {
+                Looper.loop();
+            } finally {
+                synchronized (sync) {
+                    ready = false;
+                    for (CameraVideoFrameState frameState : pendingVideoFrames) {
+                        if (frameState.snapshot != null) frameState.snapshot.release();
+                    }
+                    pendingVideoFrames.clear();
+                }
             }
         }
 
@@ -4854,7 +5296,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         private void drawCameraXSnapshot(CameraVideoFrameState frameState,
                 FloatBuffer vertexBuffer) {
             if (!frameState.singleCameraXTransition || frameState.snapshotTexture == 0
-                    || snapshotProgram == 0 || cameraXSnapshotTextureBuffer == null) {
+                    || snapshotProgram == 0 || frameState.snapshot == null) {
                 return;
             }
             GLES20.glUseProgram(snapshotProgram);
@@ -4863,12 +5305,12 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                     false, 12, vertexBuffer);
             GLES20.glEnableVertexAttribArray(snapshotPositionHandle);
             GLES20.glVertexAttribPointer(snapshotTextureHandle, 2, GLES20.GL_FLOAT,
-                    false, 8, cameraXSnapshotTextureBuffer);
+                    false, 8, frameState.snapshotTextureBuffer);
             GLES20.glEnableVertexAttribArray(snapshotTextureHandle);
             GLES20.glUniformMatrix4fv(snapshotVertexMatrixHandle, 1, false,
-                    cameraXSnapshotIdentityMatrix, 0);
+                    frameState.snapshot.identityMatrix, 0);
             GLES20.glUniformMatrix4fv(snapshotTextureMatrixHandle, 1, false,
-                    cameraXSnapshotIdentityMatrix, 0);
+                    frameState.snapshot.identityMatrix, 0);
             GLES20.glUniform1f(snapshotAlphaHandle, 1f);
             GLES20.glUniform2f(snapshotTexelSizeHandle,
                     1f / Math.max(1, frameState.snapshotWidth),
@@ -4884,7 +5326,25 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
 
         private void handleVideoFrameAvailable(long timestampNanos,
                 CameraVideoFrameState frameState) {
-            if (pauseRecorder || !cameraTextureAvailable) {
+            try {
+                renderVideoFrame(timestampNanos, frameState);
+            } finally {
+                try {
+                    if (frameState.snapshot != null && eglContext != EGL14.EGL_NO_CONTEXT
+                            && eglContext.equals(EGL14.eglGetCurrentContext())) {
+                        GLES20.glFinish();
+                    }
+                } finally {
+                    synchronized (sync) {
+                        pendingVideoFrames.remove(frameState);
+                    }
+                    if (frameState.snapshot != null) frameState.snapshot.release();
+                }
+            }
+        }
+        private void renderVideoFrame(long timestampNanos, CameraVideoFrameState frameState) {
+            if (pauseRecorder || ((!cameraTextureAvailable || !frameState.hasLiveSource())
+                    && !frameState.singleCameraXTransition)) {
                 return;
             }
             Integer cameraId = frameState.cameraId;
@@ -4948,11 +5408,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             videoLastDt = timestampNanos - videoLast;
             videoLast = timestampNanos;
 
-            int activeSurfaceIndex = surfaceIndex >= 0
-                    && surfaceIndex < cameraTextureBuffers.length ? surfaceIndex : 0;
-            FloatBuffer textureBuffer = cameraTextureBuffers[activeSurfaceIndex] != null
-                    ? cameraTextureBuffers[activeSurfaceIndex]
-                    : InstantCameraView.this.textureBuffer;
+            FloatBuffer textureBuffer = frameState.liveTextureBuffer;
             FloatBuffer vertexBuffer = InstantCameraView.this.vertexBuffer;
             FloatBuffer oldTextureBuffer = oldTextureTextureBuffer;
             if (textureBuffer == null || vertexBuffer == null) {
@@ -4962,6 +5418,9 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
 
             if (overlayHelper != null) {
                 overlayHelper.bind();
+            }
+            if (useCameraX) {
+                GLES20.glBlendFunc(GLES20.GL_ONE, GLES20.GL_ONE_MINUS_SRC_ALPHA);
             }
 
             if (frameState.singleCameraXTransition) {
@@ -4978,21 +5437,22 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             GLES20.glEnableVertexAttribArray(positionHandle);
             GLES20.glVertexAttribPointer(textureHandle, 2, GLES20.GL_FLOAT, false, 8, textureBuffer);
             GLES20.glEnableVertexAttribArray(textureHandle);
-            GLES20.glUniformMatrix4fv(vertexMatrixHandle, 1, false, mMVPMatrix, 0);
+            GLES20.glUniformMatrix4fv(vertexMatrixHandle, 1, false, frameState.liveMVPMatrix, 0);
 
             GLES20.glUniform2f(resolutionHandle, videoWidth, videoHeight);
 
             final float videoSwitchProgress = dualVideoSwitchProgress;
             final int videoSwitchFrom = dualVideoSwitchFrom;
             final int videoSwitchTo = dualVideoSwitchTo;
-            final boolean renderDualVideoSwitch = bothCameras && dualVideoSwitching
+            final boolean renderDualVideoSwitch = !frameState.singleCameraXTransition
+                    && bothCameras && dualVideoSwitching
                     && videoSwitchFrom >= 0 && videoSwitchFrom < 2
                     && videoSwitchTo >= 0 && videoSwitchTo < 2
                     && cameraTexture[videoSwitchFrom] != Integer.MIN_VALUE
                     && cameraTexture[videoSwitchTo] != Integer.MIN_VALUE;
             final float singleSwitchBlur = frameState.singleCameraXTransition
                     ? frameState.blur
-                    : useCameraX && !bothCameras ? cameraXSingleSwitchBlur : 0f;
+                    : 0f;
 
             if (!frameState.singleCameraXTransition
                     && oldCameraTexture[0] != 0 && oldTextureBuffer != null && !bothCameras) {
@@ -5063,22 +5523,23 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                         cameraTexture[videoSwitchTo]);
                 GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, 4);
             } else if (!frameState.singleCameraXTransition
-                    || frameState.replacementFrameReady) {
+                    || frameState.replacementFrameReady && cameraTextureAvailable && frameState.hasLiveSource()
+                    && frameState.snapshot.hasLiveSource()) {
                 GLES20.glVertexAttribPointer(textureHandle, 2, GLES20.GL_FLOAT,
                         false, 8, textureBuffer);
-                if (previewSize[activeSurfaceIndex] != null) {
+                if (frameState.livePreviewSize != null) {
                     GLES20.glUniform2f(previewSizeHandle,
-                            previewSize[activeSurfaceIndex].getWidth(),
-                            previewSize[activeSurfaceIndex].getHeight());
+                            frameState.livePreviewSize.getWidth(),
+                            frameState.livePreviewSize.getHeight());
                     GLES20.glUniform2f(texelSizeHandle,
-                            .5f / previewSize[activeSurfaceIndex].getWidth(),
-                            .5f / previewSize[activeSurfaceIndex].getHeight());
+                            .5f / frameState.livePreviewSize.getWidth(),
+                            .5f / frameState.livePreviewSize.getHeight());
                 }
 
-                final int tex = cameraTexture[activeSurfaceIndex];
-                if (tex != Integer.MIN_VALUE) {
-                    GLES20.glUniformMatrix4fv(vertexMatrixHandle, 1, false, mMVPMatrix, 0);
-                    GLES20.glUniformMatrix4fv(textureMatrixHandle, 1, false, mSTMatrix, 0);
+                final int tex = frameState.liveTexture;
+                if (tex != Integer.MIN_VALUE && tex != 0) {
+                    GLES20.glUniformMatrix4fv(vertexMatrixHandle, 1, false, frameState.liveMVPMatrix, 0);
+                    GLES20.glUniformMatrix4fv(textureMatrixHandle, 1, false, frameState.liveSTMatrix, 0);
                     GLES20.glUniform1f(alphaHandle, frameState.singleCameraXTransition
                             ? Utilities.clamp(frameState.progress, 1f, 0f)
                             : cameraTextureAlpha);
@@ -5092,6 +5553,9 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             GLES20.glDisableVertexAttribArray(textureHandle);
             GLES20.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, 0);
             GLES20.glUseProgram(0);
+            if (useCameraX) {
+                GLES20.glBlendFunc(GLES20.GL_SRC_ALPHA, GLES20.GL_ONE_MINUS_SRC_ALPHA);
+            }
 
             if (overlayHelper != null) {
                 overlayHelper.render();
@@ -5104,7 +5568,6 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             EGL14.eglSwapBuffers(eglDisplay, eglSurface);
 
             if (renderDualVideoSwitch && videoSwitchProgress >= 1f) {
-                dualVideoSwitching = false;
                 GLES20.glDisable(GLES20.GL_BLEND);
                 blendEnabled = false;
             }
@@ -5125,14 +5588,21 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                     GLES20.glDeleteTextures(1, oldCameraTexture, 0);
                     oldCameraTexture[0] = 0;
                     if (!cameraReady && !cameraXSingleSwitchAwaitingBind) {
-                        cameraReady = true;
-                        AndroidUtilities.runOnUIThread(InstantCameraView.this::onCameraPreviewReady);
+                        publishPreviewReady(frameState);
                     }
                 }
             } else if (!cameraReady && !cameraXSingleSwitchAwaitingBind) {
-                cameraReady = true;
-                AndroidUtilities.runOnUIThread(InstantCameraView.this::onCameraPreviewReady);
+                publishPreviewReady(frameState);
             }
+        }
+        private void publishPreviewReady(CameraVideoFrameState frameState) {
+            if (useCameraX) return;
+            frameState.liveSource.postToUiIfCurrent(() -> {
+                if (!cameraReady && !cameraXSingleSwitchAwaitingBind && frameState.hasLiveSource()) {
+                    cameraReady = true;
+                    onCameraPreviewReady();
+                }
+            });
         }
 
         private void createKeyframeThumb() {
@@ -5164,13 +5634,15 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             }
         }
 
-        private void handlePauseRecording() {
+        private void handlePauseRecording(final Object token) {
             pauseRecorder = true;
             if (previewFile != null) {
                 previewFile.delete();
                 previewFile = null;
             }
-            previewFile = StoryEntry.makeCacheFile(currentAccount, true);
+            final File pausedVideoFile = videoFile;
+            final File pausedPreviewFile = StoryEntry.makeCacheFile(currentAccount, true);
+            previewFile = pausedPreviewFile;
             try {
                 FileLog.d("InstantCamera handlePauseRecording drain encoders");
                 drainEncoder(false);
@@ -5202,7 +5674,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                     CountDownLatch countDownLatch = new CountDownLatch(1);
                     fileWriteQueue.postRunnable(() -> {
                         try {
-                            mediaMuxer.finishMovie(previewFile);
+                            mediaMuxer.finishMovie(pausedPreviewFile);
                         } catch (Exception e) {
                             e.printStackTrace();
                         }
@@ -5215,7 +5687,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                     }
                 } else {
                     try {
-                        mediaMuxer.finishMovie(previewFile);
+                        mediaMuxer.finishMovie(pausedPreviewFile);
                     } catch (Exception e) {
                         FileLog.e(e);
                     }
@@ -5223,6 +5695,13 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             }
 //            FileLoader.getInstance(currentAccount).cancelFileUpload(videoFile.getAbsolutePath(), false);
             AndroidUtilities.runOnUIThread(() -> {
+                if (pausePreviewToken != token || cancelled || textureView == null
+                        || InstantCameraView.this.videoEncoder != VideoRecorder.this
+                        || pausedVideoFile == null || cameraFile != pausedVideoFile
+                        || previewFile != pausedPreviewFile || !pausedPreviewFile.exists()) {
+                    return;
+                }
+                pausePreviewToken = null;
                 videoEditedInfo = new VideoEditedInfo();
                 videoEditedInfo.roundVideo = true;
                 videoEditedInfo.startTime = -1;
@@ -5235,10 +5714,10 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                 videoEditedInfo.framerate = frameRate;
                 videoEditedInfo.resultWidth = videoEditedInfo.originalWidth = 360;
                 videoEditedInfo.resultHeight = videoEditedInfo.originalHeight = 360;
-                videoEditedInfo.originalPath = previewFile.getAbsolutePath();
-                setupVideoPlayer(previewFile);
+                videoEditedInfo.originalPath = pausedPreviewFile.getAbsolutePath();
+                setupVideoPlayer(pausedPreviewFile);
                 videoEditedInfo.estimatedDuration = recordedTime;
-                NotificationCenter.getInstance(currentAccount).postNotificationName(NotificationCenter.audioDidSent, recordingGuid, videoEditedInfo, previewFile.getAbsolutePath(), keyframeThumbs);
+                NotificationCenter.getInstance(currentAccount).postNotificationName(NotificationCenter.audioDidSent, recordingGuid, videoEditedInfo, pausedPreviewFile.getAbsolutePath(), keyframeThumbs);
             });
         }
 
@@ -5484,7 +5963,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                             long endTime = videoEditedInfo.endTime >= 0 ? videoEditedInfo.endTime : videoEditedInfo.estimatedDuration;
                             videoEditedInfo.estimatedDuration = endTime - startTime;
                             videoEditedInfo.estimatedSize = Math.max(1, (long) (size * (videoEditedInfo.estimatedDuration / totalDuration)));
-                            videoEditedInfo.bitrate = 1000000;
+                            videoEditedInfo.bitrate = recordedVideoBitrate;
                             if (videoEditedInfo.startTime > 0) {
                                 videoEditedInfo.startTime *= 1000;
                             }
@@ -5565,7 +6044,9 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                 overlayHelper = null;
             }
             AndroidUtilities.runOnUIThread(() -> {
-                InstantCameraView.this.videoEncoder = null;
+                if (InstantCameraView.this.videoEncoder == this) {
+                    InstantCameraView.this.videoEncoder = null;
+                }
             });
         }
 
@@ -6585,7 +7066,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                 float min = videoMessagesHelper.getMinZoomRatio();
                 float max = videoMessagesHelper.getMaxZoomRatio();
                 float ratio = cameraXPinchStartRatio * pinchScale;
-                videoMessagesHelper.setZoomRatio(Math.max(min, Math.min(max, ratio)));
+                requestRoundCameraXZoom(Math.max(min, Math.min(max, ratio)));
             } else if (useCamera2) {
                 if (camera2SessionCurrent != null) {
                     float zoom = Utilities.clamp(pinchScale, camera2SessionCurrent.getMaxZoom(), camera2SessionCurrent.getMinZoom());
@@ -6622,7 +7103,8 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
     /** Current persistent zoom: ratio for camera2, 0..1 for the legacy path. */
     private float currentRoundZoomRatio() {
         if (useCameraX) {
-            return videoMessagesHelper.getZoomRatio();
+            return cameraXRearLensTransition != null && !Float.isNaN(cameraXPendingZoomRatio)
+                    ? cameraXPendingZoomRatio : videoMessagesHelper.getZoomRatio();
         } else if (useCamera2) {
             return camera2SessionCurrent != null ? camera2SessionCurrent.getZoom() : 1f;
         }
@@ -6639,7 +7121,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             float min = videoMessagesHelper.getMinZoomRatio();
             float max = videoMessagesHelper.getMaxZoomRatio();
             float ratio = singleZoomStartRatio + (dyPx / travel) * (max - min);
-            videoMessagesHelper.setZoomRatio(Math.max(min, Math.min(max, ratio)));
+            requestRoundCameraXZoom(Math.max(min, Math.min(max, ratio)));
         } else if (useCamera2) {
             if (camera2SessionCurrent == null) return;
             float min = camera2SessionCurrent.getMinZoom();
@@ -6665,7 +7147,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         }
 
         if (useCameraX) {
-            float current = videoMessagesHelper.getZoomRatio();
+            float current = currentRoundZoomRatio();
             float min = videoMessagesHelper.getMinZoomRatio();
             float max = videoMessagesHelper.getMaxZoomRatio();
             // CameraX exposes the rear logical camera's ultra-wide sensor as a
@@ -6674,7 +7156,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             // switch on OPPO devices. Keep the absolute ratio just like the
             // one-finger zoom gesture and make it the base of the next pinch.
             float target = Math.max(min, Math.min(max, current));
-            videoMessagesHelper.setZoomRatio(target);
+            requestRoundCameraXZoom(target);
             cameraXPinchStartRatio = target;
             return;
         }

@@ -25,6 +25,7 @@ import android.graphics.Paint;
 import android.graphics.Path;
 import android.graphics.PorterDuff;
 import android.graphics.PorterDuffColorFilter;
+import android.graphics.Rect;
 import android.graphics.RectF;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
@@ -1016,24 +1017,16 @@ public class FilterTabsView extends FrameLayout {
                 return;
             }
             long newTime = SystemClock.elapsedRealtime();
-            long dt = newTime - lastAnimationTime;
-            if (dt > 17) {
-                dt = 17;
-            }
-            animationTime += dt / 320.0f;
-            setAnimationIdicatorProgress(interpolator.getInterpolation(animationTime));
-            if (animationTime > 1.0f) {
-                animationTime = 1.0f;
-            }
+            long dt = Math.max(0, newTime - lastAnimationTime);
+            lastAnimationTime = newTime;
+            animationTime = Math.min(1.0f, animationTime + dt / 320.0f);
             if (animationTime < 1.0f) {
-                AndroidUtilities.runOnUIThread(animationRunnable);
+                postOnAnimation(animationRunnable);
             } else {
                 animatingIndicator = false;
                 setEnabled(true);
-                if (delegate != null) {
-                    delegate.onPageScrolled(1.0f);
-                }
             }
+            setAnimationIdicatorProgress(interpolator.getInterpolation(animationTime));
         }
     };
 
@@ -1076,6 +1069,19 @@ public class FilterTabsView extends FrameLayout {
 
         setHorizontalScrollBarEnabled(false);
         listView = new RecyclerListView(context) {
+            @Override
+            protected void onLayout(boolean changed, int l, int t, int r, int b) {
+                super.onLayout(changed, l, t, r, b);
+                trailingInsetLayoutPending = false;
+                trailingInsetAnchor = null;
+                Tab tab = pendingPageScrollTab;
+                float progress = pendingPageScrollProgress;
+                pendingPageScrollTab = null;
+                if (tab != null) {
+                    int position = tabs.indexOf(tab);
+                    if (position >= 0) scrollWithPage(position, progress);
+                }
+            }
             @Override
             public void setAlpha(float alpha) {
                 super.setAlpha(alpha);
@@ -1214,6 +1220,21 @@ public class FilterTabsView extends FrameLayout {
         listView.setSelectorRadius(6);
         listView.setSelectorDrawableColor(Theme.getColor(selectorColorKey, resourcesProvider));
         listView.setLayoutManager(layoutManager = new LinearLayoutManager(context, LinearLayoutManager.HORIZONTAL, false) {
+            @Override
+            public void onLayoutChildren(RecyclerView.Recycler recycler, RecyclerView.State state) {
+                if (listView.getScrollState() != RecyclerView.SCROLL_STATE_IDLE || isSmoothScrolling()) {
+                    trailingInsetAnchor = null;
+                }
+                if (trailingInsetLayoutPending && trailingInsetAnchor != null && !state.isPreLayout()
+                        && state.getItemCount() == tabs.size()) {
+                    int position = tabs.indexOf(trailingInsetAnchor);
+                    if (position >= 0) {
+                        super.scrollToPositionWithOffset(position, trailingInsetAnchorOffset,
+                                trailingInsetAnchorFromEnd);
+                    }
+                }
+                super.onLayoutChildren(recycler, state);
+            }
 
             @Override
             public boolean supportsPredictiveItemAnimations() {
@@ -1222,6 +1243,7 @@ public class FilterTabsView extends FrameLayout {
 
             @Override
             public void smoothScrollToPosition(RecyclerView recyclerView, RecyclerView.State state, int position) {
+                trailingInsetAnchor = null;
                 LinearSmoothScroller linearSmoothScroller = new LinearSmoothScroller(recyclerView.getContext()) {
                     @Override
                     protected void onTargetFound(View targetView, RecyclerView.State state, Action action) {
@@ -1249,6 +1271,7 @@ public class FilterTabsView extends FrameLayout {
                 if (delegate.isTabMenuVisible()) {
                     dx = 0;
                 }
+                if (dx != 0) trailingInsetAnchor = null;
                 return super.scrollHorizontallyBy(dx, recycler, state);
             }
         });
@@ -1309,13 +1332,16 @@ public class FilterTabsView extends FrameLayout {
     }
 
     public void stopAnimatingIndicator() {
-        AndroidUtilities.cancelRunOnUIThread(animationRunnable);
+        removeCallbacks(animationRunnable);
         animatingIndicator = false;
         setEnabled(true);
     }
 
     public void destroy() {
-        AndroidUtilities.cancelRunOnUIThread(animationRunnable);
+        trailingInsetAnchor = null;
+        trailingInsetLayoutPending = false;
+        pendingPageScrollTab = null;
+        removeCallbacks(animationRunnable);
         animatingIndicator = false;
         listView.removeCallbacks(pendingTabsCounterRunnable);
         AndroidUtilities.cancelRunOnUIThread(pendingTabsCounterRunnable);
@@ -1345,16 +1371,17 @@ public class FilterTabsView extends FrameLayout {
         selectedTabId = tab.id;
 
         if (animatingIndicator) {
-            AndroidUtilities.cancelRunOnUIThread(animationRunnable);
+            removeCallbacks(animationRunnable);
             animatingIndicator = false;
         }
 
         animationTime = 0;
+        lastAnimationTime = SystemClock.elapsedRealtime();
         animatingIndicatorProgress = 0;
         animatingIndicator = true;
         setEnabled(false);
 
-        AndroidUtilities.runOnUIThread(animationRunnable, 16);
+        postOnAnimation(animationRunnable);
 
         if (delegate != null) {
             delegate.onPageSelected(tab, scrollingForward);
@@ -1409,6 +1436,9 @@ public class FilterTabsView extends FrameLayout {
     }
 
     public void removeTabs() {
+        trailingInsetAnchor = null;
+        pendingPageScrollTab = null;
+        pageScrollFrom = pageScrollTo = -1;
         tabs.clear();
         positionToId.clear();
         positionToStableId.clear();
@@ -1839,22 +1869,78 @@ public class FilterTabsView extends FrameLayout {
     private int pageScrollFrom = -1, pageScrollTo = -1;
     private int pageScrollStart, pageScrollEnd;
     private float pageScrollProgressStart;
+    private int trailingOverlayInset;
+    private boolean trailingOverlayRtl;
+    private boolean trailingInsetLayoutPending;
+    private Tab trailingInsetAnchor;
+    private int trailingInsetAnchorOffset;
+    private boolean trailingInsetAnchorFromEnd;
+    private final Rect trailingInsetAnchorBounds = new Rect();
+    private Tab pendingPageScrollTab;
+    private float pendingPageScrollProgress;
+    public int getTrailingOverlayEdge() {
+        int inset = Math.min(getWidth(), trailingOverlayInset);
+        return trailingOverlayRtl ? inset : getWidth() - inset;
+    }
     public void setTrailingOverlayInset(int inset, boolean rtl) {
+        inset = Math.max(0, inset);
+        final boolean directionChanged = trailingOverlayRtl != rtl;
+        if (directionChanged) {
+            pageScrollFrom = pageScrollTo = -1;
+            pendingPageScrollTab = null;
+        }
+        if (trailingOverlayInset != inset || trailingOverlayRtl != rtl) {
+            trailingOverlayInset = inset;
+            trailingOverlayRtl = rtl;
+            invalidate();
+        }
         int trailing = listViewPaddingH + Math.max(0, inset - dp(6.666f));
         int left = rtl ? trailing : listViewPaddingH;
         int right = rtl ? listViewPaddingH : trailing;
         if (listView.getPaddingLeft() == left && listView.getPaddingRight() == right) return;
+        if (!trailingInsetLayoutPending) {
+            trailingInsetAnchor = null;
+            if (!directionChanged) captureTrailingInsetAnchor(rtl);
+        } else if (directionChanged) {
+            trailingInsetAnchor = null;
+        }
+        trailingInsetLayoutPending = true;
+        listView.setPadding(left, 0, right, 0);
+    }
+    private void captureTrailingInsetAnchor(boolean rtl) {
+        if (tabs.isEmpty() || listView.getWidth() <= 0 || listView.hasPendingAdapterUpdates()
+                || listView.getScrollState() != RecyclerView.SCROLL_STATE_IDLE
+                || layoutManager.isSmoothScrolling()) return;
         int last = tabs.size() - 1;
         View end = layoutManager.findViewByPosition(last);
-        boolean atEnd = end != null && getTabContentWidth() > listView.getWidth()
-                - listView.getPaddingLeft() - listView.getPaddingRight()
-                && Math.abs(rtl ? end.getLeft() - listView.getPaddingLeft()
-                : end.getRight() - listView.getWidth() + listView.getPaddingRight()) <= 1;
-        listView.setPadding(left, 0, right, 0);
-        if (atEnd) layoutManager.scrollToPositionWithOffset(last, 0, !rtl);
-        pageScrollFrom = pageScrollTo = -1;
+        if (end instanceof TabView && ((TabView) end).currentTab == tabs.get(last)) {
+            layoutManager.getDecoratedBoundsWithMargins(end, trailingInsetAnchorBounds);
+            int edgeDistance = rtl ? trailingInsetAnchorBounds.left - listView.getPaddingLeft()
+                    : trailingInsetAnchorBounds.right - listView.getWidth() + listView.getPaddingRight();
+            int viewport = listView.getWidth() - listView.getPaddingLeft() - listView.getPaddingRight();
+            if (getTabContentWidth() > viewport && Math.abs(edgeDistance) <= 1) {
+                trailingInsetAnchor = tabs.get(last);
+                trailingInsetAnchorOffset = 0;
+                trailingInsetAnchorFromEnd = !rtl;
+                return;
+            }
+        }
+        int first = layoutManager.findFirstVisibleItemPosition();
+        View child = layoutManager.findViewByPosition(first);
+        if (first < 0 || first >= tabs.size() || !(child instanceof TabView)
+                || ((TabView) child).currentTab != tabs.get(first)) return;
+        layoutManager.getDecoratedBoundsWithMargins(child, trailingInsetAnchorBounds);
+        trailingInsetAnchor = tabs.get(first);
+        trailingInsetAnchorOffset = rtl
+                ? listView.getWidth() - listView.getPaddingRight() - trailingInsetAnchorBounds.right
+                : trailingInsetAnchorBounds.left - listView.getPaddingLeft();
+        trailingInsetAnchorFromEnd = rtl;
     }
     public void setResizeReferenceWidth(int width) {
+        if (resizeReferenceWidth > 0 && width <= 0) {
+            pageScrollFrom = pageScrollTo = -1;
+            pendingPageScrollTab = null;
+        }
         resizeReferenceWidth = width;
     }
 
@@ -1871,7 +1957,7 @@ public class FilterTabsView extends FrameLayout {
                 scrollingToChild = -1;
             }
             if (animatingIndicator && hostResized) {
-                AndroidUtilities.cancelRunOnUIThread(animationRunnable);
+                removeCallbacks(animationRunnable);
                 animatingIndicator = false;
                 setEnabled(true);
                 if (delegate != null) {
@@ -1929,35 +2015,55 @@ public class FilterTabsView extends FrameLayout {
     }
     private int getTabContentLeft(int position) {
         int prefix = positionToX.get(position) - additionalTabWidth / 2 - listViewPaddingH;
-        return listView.getPaddingLeft() + (LocaleController.isRTL
+        return listView.getPaddingLeft() + (areTabsPhysicallyReversed()
                 ? getTabContentWidth() - prefix - getTabCellWidth(position) : prefix);
     }
+    private boolean areTabsPhysicallyReversed() {
+        return layoutManager.getReverseLayout() != (listView.getLayoutDirection() == View.LAYOUT_DIRECTION_RTL);
+    }
     private void scrollWithPage(int position, float progress) {
+        if (resizeReferenceWidth <= 0) return;
+        if (position < 0 || position >= tabs.size()) return;
+        if (trailingInsetLayoutPending || listView.isComputingLayout()) {
+            pendingPageScrollTab = tabs.get(position);
+            pendingPageScrollProgress = progress;
+            return;
+        }
         int first = layoutManager.findFirstVisibleItemPosition();
         View child = layoutManager.findViewByPosition(first);
-        if (child == null || first < 0 || first >= tabs.size() || listView.isComputingLayout()) return;
-        int currentScroll = getTabContentLeft(first) - child.getLeft();
+        if (child == null || first < 0 || first >= tabs.size()) {
+            pendingPageScrollTab = tabs.get(position);
+            pendingPageScrollProgress = progress;
+            return;
+        }
+        pendingPageScrollTab = null;
+        final int viewport = Math.max(0, listView.getWidth()
+                - listView.getPaddingLeft() - listView.getPaddingRight());
+        final int maxScroll = Math.max(0, getTabContentWidth() - viewport);
+        final boolean rtl = areTabsPhysicallyReversed();
+        int physicalScroll = getTabContentLeft(first) - child.getLeft();
+        int currentScroll = Math.max(0, Math.min(maxScroll,
+                rtl ? maxScroll - physicalScroll : physicalScroll));
         if (pageScrollFrom != currentPosition || pageScrollTo != position) {
             listView.stopScroll();
             pageScrollFrom = currentPosition;
             pageScrollTo = position;
             pageScrollStart = currentScroll;
             pageScrollProgressStart = progress < 1f ? progress : 0f;
-            int left = getTabContentLeft(position);
-            int right = left + getTabCellWidth(position);
-            int reveal = currentScroll;
-            if (left - reveal < listView.getPaddingLeft()) {
-                reveal = left - listView.getPaddingLeft();
-            } else if (right - reveal > listView.getWidth() - listView.getPaddingRight()) {
-                reveal = right - listView.getWidth() + listView.getPaddingRight();
-            }
-            int maxScroll = Math.max(0, getTabContentWidth() + listView.getPaddingLeft()
-                    + listView.getPaddingRight() - listView.getWidth());
-            pageScrollEnd = Math.max(0, Math.min(maxScroll, reveal));
         }
+        int left = positionToX.get(position) - additionalTabWidth / 2 - listViewPaddingH;
+        int right = left + getTabCellWidth(position);
+        int reveal = pageScrollStart;
+        if (left < reveal) {
+            reveal = left;
+        } else if (right > reveal + viewport) {
+            reveal = right - viewport;
+        }
+        pageScrollEnd = Math.max(0, Math.min(maxScroll, reveal));
         float fraction = Math.max(0f, Math.min(1f, (progress - pageScrollProgressStart) / (1f - pageScrollProgressStart)));
-        int target = Math.round(lerp((float) pageScrollStart, pageScrollEnd, fraction));
-        listView.scrollBy(target - currentScroll, 0);
+        int target = Math.max(0, Math.min(maxScroll,
+                Math.round(lerp((float) pageScrollStart, pageScrollEnd, fraction))));
+        listView.scrollBy(rtl ? currentScroll - target : target - currentScroll, 0);
         scrollingToChild = position;
         if (progress <= 0f || progress >= 1f) pageScrollFrom = pageScrollTo = -1;
     }

@@ -278,11 +278,6 @@ public class CacheCard extends BaseInfoCard {
     }
 
     @Override
-    public boolean onCardLongClicked() {
-        return false;
-    }
-
-    @Override
     public void updateColors() {
         int fg = currentFgColor();
         setTextColor(fg);

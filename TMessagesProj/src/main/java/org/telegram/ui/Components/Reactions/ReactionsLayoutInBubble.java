@@ -866,6 +866,7 @@ public class ReactionsLayoutInBubble {
             }
             if (imageReceiver == null) {
                 imageReceiver = new ImageReceiver();
+                imageReceiver.setCrossfadeOnReady(true);
             }
             if (counterDrawable == null) {
                 counterDrawable = new CounterView.CounterDrawable(parentView, false, null);

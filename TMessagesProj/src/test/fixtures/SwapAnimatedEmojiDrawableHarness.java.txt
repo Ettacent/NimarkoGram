@@ -1,0 +1,621 @@
+import java.util.*;
+
+// Minimal dependencies for the verbatim production classes below. No transition logic here.
+@interface NonNull {}
+@interface Nullable {}
+interface TimeInterpolator { float getInterpolation(float t); }
+class SystemClock {
+    static long now;
+    static long elapsedRealtime() { return now; }
+}
+class MathUtils { static float clamp(float t, float a, float b) { return Math.max(a, Math.min(b, t)); } }
+class AndroidUtilities {
+    static final Rect rectTmp=new Rect();
+    static int touchSlop=8;
+    static int dp(int v) { return v; }
+    static float lerp(float a, float b, float t) { return a + (b - a) * t; }
+}
+class CubicBezierInterpolator { static final TimeInterpolator EASE_OUT = t -> t, DEFAULT = EASE_OUT; }
+class View {
+    int invalidations;
+    View parent;
+    Object getParent() { return parent; }
+    void invalidate() { invalidations++; }
+}
+class Rect {
+    int left, top, right, bottom;
+    void set(Rect r) { set(r.left, r.top, r.right, r.bottom); }
+    void set(int l, int t, int r, int b) { left = l; top = t; right = r; bottom = b; }
+    void offset(int x, int y) { left += x; right += x; top += y; bottom += y; }
+    int centerX() { return (left + right) / 2; }
+    int centerY() { return (top + bottom) / 2; }
+    void inset(int x, int y) { left += x; right -= x; top += y; bottom -= y; }
+    void union(int l, int t, int r, int b) { left = Math.min(left,l); top = Math.min(top,t); right = Math.max(right,r); bottom = Math.max(bottom,b); }
+    boolean contains(int x,int y) { return x>=left && x<right && y>=top && y<bottom; }
+}
+class Canvas {
+    static final Map<String, float[][]> samples = new HashMap<>();
+    static class Layer {
+        final Map<String, Float> alphas = new LinkedHashMap<>();
+        final float[][] pixels = new float[3][4];
+        float opacity = 1;
+        boolean add;
+    }
+    final ArrayList<Layer> layers = new ArrayList<>();
+    int saves;
+    float left, top, right, bottom;
+    Canvas() { layers.add(new Layer()); }
+    Layer current() { return layers.get(layers.size()-1); }
+    static void composite(float[] dst, float[] src, float weight, boolean add) {
+        float a = src[3] * weight;
+        for (int k=0;k<4;k++) dst[k] = Math.min(1, src[k]*weight + dst[k]*(add ? 1 : 1-a));
+    }
+    void record(String name, float alpha) {
+        current().alphas.merge(name, alpha, Float::sum);
+        float[][] pixels = samples.get(name);
+        if (pixels != null) for(int i=0;i<3;i++) composite(current().pixels[i], pixels[i], alpha, false);
+    }
+    int saveLayerAlpha(float l,float t,float r,float b,int a) {
+        int count = layers.size(); Layer layer = new Layer(); layer.opacity = a/255f;
+        layers.add(layer); saves++; left=l;top=t;right=r;bottom=b; return count;
+    }
+    int saveLayer(float l,float t,float r,float b,Paint p) {
+        int count=saveLayerAlpha(l,t,r,b,p.alpha); current().add=p.mode==PorterDuff.Mode.ADD; return count;
+    }
+    void restoreToCount(int count) {
+        while(layers.size()>count) {
+            Layer src=layers.remove(layers.size()-1), dst=current();
+            for(Map.Entry<String,Float> e:src.alphas.entrySet()) dst.alphas.merge(e.getKey(),e.getValue()*src.opacity,Float::sum);
+            for(int i=0;i<3;i++) composite(dst.pixels[i],src.pixels[i],src.opacity,src.add);
+        }
+    }
+    float alpha(String name) { return current().alphas.getOrDefault(name, 0f); }
+}
+class ColorFilter {}
+class PorterDuff { enum Mode { SRC_IN, SRC_OVER, ADD } }
+class PorterDuffXfermode { final PorterDuff.Mode mode; PorterDuffXfermode(PorterDuff.Mode mode) { this.mode=mode; } }
+class Paint {
+    int alpha=255; PorterDuff.Mode mode;
+    void setAlpha(int a) { alpha=a; }
+    void setXfermode(PorterDuffXfermode x) { mode=x.mode; }
+}
+class PorterDuffColorFilter extends ColorFilter { PorterDuffColorFilter(int color, PorterDuff.Mode mode) {} }
+class PixelFormat { static final int TRANSPARENT = 0; }
+class Drawable {
+    interface Callback { void invalidateDrawable(Drawable who); }
+    Callback callback;
+    void setCallback(Callback callback) { this.callback=callback; }
+    int alpha = 255, invalidations;
+    ColorFilter filter;
+    final Rect bounds = new Rect();
+    String name = "static";
+    void draw(Canvas canvas) { canvas.record(name, alpha / 255f); }
+    int getIntrinsicWidth() { return 20; }
+    int getIntrinsicHeight() { return 20; }
+    void setBounds(Rect b) { bounds.set(b); }
+    void setBounds(int l, int t, int r, int b) { bounds.set(l, t, r, b); }
+    Rect getBounds() { return bounds; }
+    void setAlpha(int a) { alpha = a; }
+    int getAlpha() { return alpha; }
+    void setColorFilter(ColorFilter f) { filter = f; }
+    ColorFilter getColorFilter() { return filter; }
+    int getOpacity() { return 0; }
+    void invalidateSelf() { invalidations++; if(callback!=null)callback.invalidateDrawable(this); }
+}
+class ImageReceiver {
+    boolean loaded;
+    float currentAlpha = 1;
+    int starts;
+    RLottieDrawable lottie;
+    AnimatedFileDrawable animation;
+    boolean hasImageLoaded() { return loaded; }
+    boolean hasReadyImage() { return loaded && (lottie == null || lottie.bitmap) && (animation == null || animation.bitmap); }
+    RLottieDrawable getLottieAnimation() { return lottie; }
+    AnimatedFileDrawable getAnimation() { return animation; }
+    float getCurrentAlpha() { return currentAlpha; }
+    void setCurrentAlpha(float alpha) { currentAlpha = alpha; }
+    void setRoundRadius(int radius) {}
+    void startAnimation() { starts++; }
+}
+class RLottieDrawable { boolean bitmap; boolean hasBitmap() { return bitmap; } }
+class AnimatedFileDrawable { boolean bitmap; boolean hasBitmap() { return bitmap; } }
+class Theme {
+    interface ResourcesProvider {}
+    static int multAlpha(int color, float alpha) { return (color & 0x00ffffff) | (Math.round((color >>> 24) * alpha) << 24); }
+}
+class UserConfig { static int selectedAccount; }
+class TLRPC { static class Document { long id; Document(long id) { this.id = id; } } }
+class AnimatedEmojiSpan { interface InvalidateHolder { void invalidate(); } }
+class StarsReactionsSheet {
+    static class Particles {
+        static final int TYPE_RADIAL = 0;
+        static int created;
+        Particles(int type, int count) { created++; }
+        void setBounds(Rect bounds) {}
+        void process() {}
+        void draw(Canvas canvas, int color) { canvas.record("particles", (color >>> 24) / 255f); }
+    }
+}
+class Choreographer60FpsContent {
+    static final Choreographer60FpsContent instance = new Choreographer60FpsContent();
+    final Set<Runnable> callbacks = new HashSet<>();
+    static Choreographer60FpsContent getInstance() { return instance; }
+    void addFrameCallback(Runnable r, int delay) { callbacks.add(r); }
+    void removeFrameCallback(Runnable r) { callbacks.remove(r); }
+}
+class AnimatedEmojiDrawable extends Drawable {
+    static final int CACHE_TYPE_EMOJI_STATUS = 7;
+    static final Map<String, AnimatedEmojiDrawable> cache = new HashMap<>();
+    final Set<AnimatedEmojiSpan.InvalidateHolder> holders = new HashSet<>();
+    int currentAccount, cacheType, adds, removes;
+    long id;
+    ImageReceiver imageReceiver;
+    static int dp(int n) { return n; }
+    static AnimatedEmojiDrawable make(int account, int type, long id) {
+        return cache.computeIfAbsent(account + ":" + type + ":" + id, key -> {
+            AnimatedEmojiDrawable emoji = new AnimatedEmojiDrawable();
+            emoji.currentAccount = account; emoji.cacheType = type; emoji.id = id;
+            emoji.name = "e" + id;
+            return emoji;
+        });
+    }
+    static AnimatedEmojiDrawable make(int account, int type, TLRPC.Document doc) { return make(account, type, doc.id); }
+    long getDocumentId() { return id; }
+    ImageReceiver getImageReceiver() { return imageReceiver; }
+    void updateAutoRepeat(ImageReceiver receiver) {}
+    void addView(AnimatedEmojiSpan.InvalidateHolder holder) { holders.add(holder); adds++; }
+    void removeView(AnimatedEmojiSpan.InvalidateHolder holder) { holders.remove(holder); removes++; }
+    void notifyFrame() { for (AnimatedEmojiSpan.InvalidateHolder holder : holders) holder.invalidate(); }
+    @Override void draw(Canvas canvas) {
+        draw(canvas, false);
+    }
+    private void draw(Canvas canvas, boolean ownsLoadFade) {
+        ImageReceiver r = imageReceiver;
+        if (r != null && r.loaded && (r.lottie == null || r.lottie.bitmap) && (r.animation == null || r.animation.bitmap)) {
+            canvas.record(name, alpha / 255f * (ownsLoadFade ? 1 : r.currentAlpha));
+        }
+    }
+    /* SWAP_SOURCE */
+}
+/* FLOAT_SOURCE */
+
+class Gravity { static final int HORIZONTAL_GRAVITY_MASK=7, VERTICAL_GRAVITY_MASK=112, CENTER_HORIZONTAL=1, RIGHT=5, CENTER_VERTICAL=16; }
+class MotionEvent {
+    static final int ACTION_DOWN=0,ACTION_UP=1,ACTION_MOVE=2,ACTION_CANCEL=3;
+    final int action; final float x,y;
+    MotionEvent(int a,float x,float y) { action=a;this.x=x;this.y=y; }
+    int getAction(){return action;} float getX(){return x;} float getY(){return y;}
+}
+class Bundle {}
+class TextUtils { static boolean isEmpty(CharSequence s) { return s==null || s.length()==0; } }
+class R { static class id { static final int acc_action_right_drawable=1,acc_action_right_drawable2=2; } }
+class HostBase {
+    static class Parent { boolean disallow; void requestDisallowInterceptTouchEvent(boolean value){disallow=value;} }
+    final Parent parent=new Parent();
+    Parent getParent(){return parent;}
+    boolean onTouchEvent(MotionEvent event){return false;}
+    boolean performAccessibilityAction(int action,Bundle arguments){return false;}
+}
+class SimpleHost extends HostBase implements Drawable.Callback {
+    Drawable rightDrawable,rightDrawable2,leftDrawable,replacedDrawable;
+    int layoutRightDrawableWidth=-1,layoutRightDrawable2Width=-1,layoutRequests;
+    void requestLayout(){layoutRequests++;}
+    void invalidate(){}
+    void invalidate(Rect bounds){}
+    void measure() {
+        layoutRightDrawableWidth=getRightDrawableSlotWidth(rightDrawable);
+        layoutRightDrawable2Width=getRightDrawableSlotWidth(rightDrawable2);
+    }
+    float rightDrawableScale=1,scrollingOffset,touchDownX,touchDownY;
+    boolean rightDrawableHidden,rightDrawableOutside,rightDrawableInside,maybeClick,maybeClick2;
+    int textWidth=100,textHeight=24,drawablePadding=4,offsetX,gravity,rightDrawableTopPadding,rightDrawableX,rightDrawableY,totalWidth;
+    CharSequence rightDrawableContentDescription="badge",rightDrawable2ContentDescription="badge2";
+    interface OnClickListener { void onClick(SimpleHost host); }
+    interface PressableDrawable { void setPressed(boolean pressed); }
+    OnClickListener rightDrawableOnClickListener,rightDrawable2OnClickListener;
+    int getMeasuredHeight(){return 48;} int getPaddingTop(){return 0;}
+    static int dp(int value){return value;}
+    /* SIMPLE_METHODS */
+    Canvas render(long now) {
+        SystemClock.now=now; Canvas canvas=new Canvas(); int textOffsetX=0;
+        /* SIMPLE_STANDARD_DRAW */
+        int outsideRightStart=0,outsideRightOffset=0;
+        /* SIMPLE_OUTSIDE_DRAW */
+        return canvas;
+    }
+}
+
+public class Harness {
+    static int passed;
+    static AnimatedEmojiDrawable.SwapAnimatedEmojiDrawable swap;
+    static AnimatedEmojiDrawable a, b, c;
+    static View parent;
+    static AnimatedEmojiDrawable emoji(long id, boolean ready) {
+        AnimatedEmojiDrawable e = AnimatedEmojiDrawable.make(0, 7, id);
+        e.imageReceiver = new ImageReceiver(); e.imageReceiver.loaded = ready;
+        return e;
+    }
+    static void setup() {
+        Canvas.samples.clear();
+        AnimatedEmojiDrawable.cache.clear();
+        Choreographer60FpsContent.instance.callbacks.clear();
+        SystemClock.now = 0; UserConfig.selectedAccount = 0;
+        parent = new View();
+        swap = new AnimatedEmojiDrawable.SwapAnimatedEmojiDrawable(parent, 24);
+        swap.setBounds(10,20,34,44);
+        swap.attach();
+        a = emoji(1, true); b = emoji(2, false); c = emoji(3, false);
+        swap.set(1L, false); draw(0);
+    }
+    static Canvas draw(long time) { SystemClock.now = time; Canvas canvas = new Canvas(); swap.draw(canvas); return canvas; }
+    static void eq(float actual, float expected) {
+        if (Math.abs(actual - expected) > .005f) throw new AssertionError(actual + " != " + expected);
+    }
+    static void check(boolean condition, String message) { if (!condition) throw new AssertionError(message); }
+    static void test(String name, Runnable scenario) {
+        setup();
+        try { scenario.run(); passed++; }
+        catch (Throwable error) { throw new AssertionError(name, error); }
+    }
+    public static void main(String[] args) {
+        if (args.length > 0 && args[0].equals("pixels")) { pixelTests(); return; }
+        if (args.length > 0 && args[0].equals("nested")) { nestedTests(); return; }
+        if (args.length > 0 && args[0].equals("visibility")) { visibilityTests(); return; }
+        test("cold receiver waits indefinitely then simultaneous fade", () -> {
+            b.imageReceiver = null; swap.set(2L, true);
+            eq(draw(900).alpha("e1"), 1); check(!swap.isStable(), "waiting is not stable");
+            b.imageReceiver = new ImageReceiver();
+            eq(draw(1000).alpha("e1"), 1);
+            b.imageReceiver.loaded = true; b.notifyFrame();
+            eq(draw(2000).alpha("e1"), 1);
+            Canvas half = draw(2150); eq(half.alpha("e1"), .5f); eq(half.alpha("e2"), .5f);
+            Canvas done = draw(2300); eq(done.alpha("e1"), 0); eq(done.alpha("e2"), 1);
+            check(a.holders.isEmpty() && b.holders.contains(swap) && swap.isStable(), "retire outgoing");
+        });
+        test("loaded lottie without frame is not ready", () -> {
+            b.imageReceiver.loaded = true; b.imageReceiver.lottie = new RLottieDrawable(); swap.set(2L, true);
+            eq(draw(1000).alpha("e1"), 1);
+            b.imageReceiver.lottie.bitmap = true; b.notifyFrame(); draw(2000);
+            eq(draw(2150).alpha("e2"), .5f);
+        });
+        test("video first frame readiness", () -> {
+            b.imageReceiver.loaded = true; b.imageReceiver.animation = new AnimatedFileDrawable(); swap.set(2L, true);
+            eq(draw(1000).alpha("e1"), 1);
+            b.imageReceiver.animation.bitmap = true; b.notifyFrame(); draw(2000);
+            eq(draw(2150).alpha("e2"), .5f);
+        });
+        test("rapid A B C while B still loading", () -> {
+            swap.set(2L, true); draw(500); swap.set(3L, true);
+            check(b.holders.isEmpty() && a.holders.contains(swap), "drop B, keep visible A");
+            b.imageReceiver.loaded = true; b.notifyFrame();
+            Canvas wait = draw(1000); eq(wait.alpha("e1"), 1); eq(wait.alpha("e2"), 0);
+            c.imageReceiver.loaded = true; draw(2000);
+            Canvas half = draw(2150); eq(half.alpha("e1"), .5f); eq(half.alpha("e3"), .5f);
+        });
+        test("interrupted visible blend survives C load", () -> {
+            b.imageReceiver.loaded = true; swap.set(2L, true); draw(0); draw(150);
+            SystemClock.now = 240; swap.set(3L, true);
+            Canvas held = draw(2000); eq(held.alpha("e1"), .5f); eq(held.alpha("e2"), .5f);
+            c.imageReceiver.loaded = true; draw(2100);
+            Canvas half = draw(2250); eq(half.alpha("e1"), .25f); eq(half.alpha("e2"), .25f); eq(half.alpha("e3"), .5f);
+            draw(2400); check(a.holders.isEmpty() && b.holders.isEmpty(), "release both layers");
+        });
+        test("clear while loading preserves A and never shows late B", () -> {
+            swap.set(2L, true); draw(500); check(swap.set(0L, true), "zero clears");
+            check(swap.getDrawable() == null && swap.isEmpty(), "clear immediately releases logical layout width");
+            eq(swap.isNotEmpty(), 1); // Explicitly drawn outgoing content can still fade.
+            b.imageReceiver.loaded = true; b.notifyFrame(); draw(600);
+            eq(draw(750).alpha("e1"), .5f); eq(swap.isNotEmpty(), .5f);
+            draw(900); check(swap.isEmpty() && a.holders.isEmpty() && b.holders.isEmpty(), "clear retired");
+            check(!swap.set(0L, true), "same empty status is no-op");
+        });
+        test("same ID across overloads does not restart", () -> {
+            b.imageReceiver.loaded = true; swap.set(2L, true); draw(0); draw(150);
+            int starts = b.imageReceiver.starts, adds = b.adds;
+            swap.setColor(123); check(!swap.set(2L, true), "same ID long no-op");
+            swap.set(new TLRPC.Document(2), true); swap.set((Drawable) b, true);
+            check(swap.getColor() == 123 && b.imageReceiver.starts == starts && b.adds == adds, "state preserved");
+            eq(draw(300).alpha("e2"), 1);
+        });
+        test("same ID while waiting preserves outgoing", () -> {
+            swap.set(2L, true); draw(1000); check(!swap.set(2L, true), "same animated target no reset");
+            check(!swap.set(2L, false), "same nonanimated layout refresh no reset");
+            swap.set(new TLRPC.Document(2), false); swap.set((Drawable) b, false);
+            eq(draw(2000).alpha("e1"), 1); check(a.holders.contains(swap), "A retained");
+        });
+        test("cached A B A keeps shared receiver attached", () -> {
+            b.imageReceiver.loaded = true; swap.set(2L, true); draw(0); draw(150);
+            int removes = a.removes; swap.set(1L, true);
+            Canvas start = draw(150); eq(start.alpha("e1"), .5f); eq(start.alpha("e2"), .5f);
+            Canvas half = draw(300); eq(half.alpha("e1"), .75f); eq(half.alpha("e2"), .25f);
+            draw(450); check(a.removes == removes && a.holders.contains(swap) && b.holders.isEmpty(), "shared ownership");
+        });
+        test("nonanimated rebind immediately releases all history", () -> {
+            b.imageReceiver.loaded = true; swap.set(2L, true); draw(0); draw(150);
+            c.imageReceiver.loaded = true; swap.set(3L, false);
+            check(a.holders.isEmpty() && b.holders.isEmpty() && swap.isStable(), "no recycled status retained");
+            eq(draw(150).alpha("e3"), 1);
+            swap.set((TLRPC.Document) null, false); check(swap.isEmpty() && c.holders.isEmpty(), "document clear");
+        });
+        test("detach releases pending and visible receivers", () -> {
+            swap.set(2L, true); swap.setParticles(true, false); draw(0);
+            check(!Choreographer60FpsContent.instance.callbacks.isEmpty(), "particles scheduled");
+            swap.detach(); swap.detach();
+            check(a.holders.isEmpty() && b.holders.isEmpty(), "all holders detached");
+            check(Choreographer60FpsContent.instance.callbacks.isEmpty(), "particle callback removed");
+            b.imageReceiver.loaded = true; b.notifyFrame();
+            swap.attach(); swap.attach();
+            check(a.holders.isEmpty() && b.holders.size() == 1, "only latest reattached");
+            eq(draw(900).alpha("e2"), 1);
+        });
+        test("identical particle state and emoji do not recreate particles", () -> {
+            swap.setParticles(true, false); int created = StarsReactionsSheet.Particles.created;
+            swap.setParticles(true, true); swap.set(1L, true);
+            check(StarsReactionsSheet.Particles.created == created, "particles reused");
+            swap.set(2L, true); swap.setParticles(true, true);
+            check(StarsReactionsSheet.Particles.created == created, "emoji changes preserve particles");
+            swap.setParticles(false, false); draw(0);
+            check(Choreographer60FpsContent.instance.callbacks.isEmpty(), "particle off safe");
+        });
+        test("receiver alpha scoped and no second fade after completion", () -> {
+            b.imageReceiver.loaded = true; b.imageReceiver.currentAlpha = .2f;
+            swap.set(2L, true); draw(0); eq(draw(150).alpha("e2"), .5f);
+            eq(b.imageReceiver.currentAlpha, .2f); eq(b.getAlpha(), 255);
+            eq(draw(300).alpha("e2"), 1); eq(draw(450).alpha("e2"), 1);
+            eq(b.imageReceiver.currentAlpha, .2f);
+        });
+        test("static drawable replacements and wrapper alpha", () -> {
+            Drawable star = new Drawable(); star.name = "star"; star.setAlpha(77);
+            swap.set(star, true); swap.setAlpha(128); draw(0);
+            eq(swap.getAlpha(), 128);
+            Canvas half = draw(150); eq(half.alpha("e1"), 64 / 255f); eq(half.alpha("star"), 64 / 255f);
+            check(star.getAlpha() == 77, "static shared alpha restored");
+            swap.set((Drawable) null, true); draw(150); draw(450); check(swap.isEmpty(), "drawable clear");
+        });
+        test("invalidation reaches callbacks second parent and parent container", () -> {
+            View container = new View(), second = new View(); parent.parent = container;
+            swap = new AnimatedEmojiDrawable.SwapAnimatedEmojiDrawable(parent, true, 24);
+            swap.setSecondParent(second); swap.attach(); swap.set(1L, false);
+            swap.set(2L, true); int before = second.invalidations; b.notifyFrame();
+            check(second.invalidations > before && container.invalidations > 0, "async invalidates both");
+            swap.setParentView(null); b.imageReceiver.loaded = true;
+            before = swap.invalidations; draw(0); draw(150);
+            check(swap.invalidations > before && second.invalidations > 0, "callback-only animation runs");
+        });
+        test("same document different cache or account is a new target", () -> {
+            check(swap.set(1L, 9, true), "cache change");
+            check(((AnimatedEmojiDrawable) swap.getDrawable()).cacheType == 9, "cache respected");
+            swap.setCurrentAccount(1); check(swap.set(1L, 9, true), "account change");
+            check(((AnimatedEmojiDrawable) swap.getDrawable()).currentAccount == 1, "account respected");
+        });
+        test("document overload attaches and reset releases outgoing", () -> {
+            b.imageReceiver.loaded = true; swap.set(new TLRPC.Document(2), true);
+            check(b.holders.contains(swap), "document holder"); draw(0); draw(150);
+            swap.resetAnimation(); check(a.holders.isEmpty() && swap.isStable(), "reset retires A");
+            eq(draw(151).alpha("e2"), 1);
+        });
+        test("initial appearance waits without polling and fades from empty", () -> {
+            swap.set((Drawable) null, false); swap.set(2L, true); draw(1000);
+            int invalidations = swap.invalidations; draw(2000);
+            check(swap.invalidations == invalidations, "waiting does not busy-loop");
+            eq(swap.isNotEmpty(), 0);
+            b.imageReceiver.loaded = true; b.notifyFrame(); draw(3000);
+            eq(draw(3150).alpha("e2"), .5f); eq(swap.isNotEmpty(), .5f);
+        });
+        test("explicit same-ID recycler boundary discards previous peer", () -> {
+            swap.set(2L, true); draw(1000);
+            swap.resetAnimation(); check(!swap.set(2L, false), "same ID return value");
+            check(a.holders.isEmpty() && swap.isStable(), "waiting history cleared");
+            eq(draw(2000).alpha("e1"), 0);
+            b.imageReceiver.loaded = true; swap.set(1L, true); draw(2000); draw(2100);
+            swap.resetAnimation(); swap.set(new TLRPC.Document(1), false);
+            check(b.holders.isEmpty() && swap.isStable(), "document same-ID snaps");
+            swap.set(2L, true); draw(2200); draw(2300); swap.resetAnimation(); swap.set((Drawable) b, false);
+            check(a.holders.isEmpty() && swap.isStable(), "drawable same-ID snaps");
+            swap.set((Drawable) null, true); draw(2400); swap.resetAnimation(); swap.set((TLRPC.Document) null, false);
+            check(swap.isEmpty() && b.holders.isEmpty(), "same null retires clear");
+        });
+        test("particles hold until incoming first frame then fade simultaneously", () -> {
+            swap.setParticles(true, false); draw(0);
+            swap.set(2L, true); swap.setParticles(false, true);
+            eq(draw(1000).alpha("particles"), 1);
+            b.imageReceiver.loaded = true; draw(2000);
+            Canvas half = draw(2150); eq(half.alpha("particles"), .5f); eq(half.alpha("e2"), .5f);
+            eq(draw(2300).alpha("particles"), 0);
+        });
+        test("latest pending particle choice wins and detach settles it", () -> {
+            swap.set(2L, true); swap.setParticles(true, true);
+            eq(draw(1000).alpha("particles"), 0);
+            swap.set(3L, true); swap.setParticles(false, true);
+            b.imageReceiver.loaded = true; b.notifyFrame();
+            eq(draw(2000).alpha("particles"), 0);
+            c.imageReceiver.loaded = true; draw(3000); eq(draw(3300).alpha("particles"), 0);
+            swap.set(1L, true); swap.setParticles(true, true); draw(3400); draw(3450);
+            b.imageReceiver.loaded = false; swap.set(2L, true); swap.setParticles(false, true);
+            swap.detach(); swap.attach(); eq(draw(4000).alpha("particles"), 0);
+        });
+        test("interrupted history drops subpixel layers and is bounded", () -> {
+            long now = 0;
+            for (int i = 4; i < 1004; i++) {
+                AnimatedEmojiDrawable e = emoji(i, true); swap.set((Drawable) e, true);
+                draw(now); now += 150; draw(now);
+                int retained = 0;
+                for (AnimatedEmojiDrawable cached : AnimatedEmojiDrawable.cache.values()) {
+                    if (!cached.holders.isEmpty()) retained++;
+                }
+                check(retained <= 9, "half-fade burst should retain at most 8 visible layers plus target");
+            }
+            check(a.holders.isEmpty(), "tiny oldest layer retired before final completion");
+            draw(now + 300);
+            int retained = 0;
+            for (AnimatedEmojiDrawable cached : AnimatedEmojiDrawable.cache.values()) {
+                if (!cached.holders.isEmpty()) retained++;
+            }
+            check(retained == 1, "all history released at completion");
+        });
+        test("wrapper alpha also applies to particles", () -> {
+            swap.setParticles(true, false); swap.setAlpha(0); eq(draw(0).alpha("particles"), 0);
+            swap.setAlpha(128); eq(draw(1).alpha("particles"), 128 / 255f);
+            swap.setAlpha(255); eq(draw(2).alpha("particles"), 1);
+        });
+        System.out.println("PASS: " + passed + " production swap scenarios");
+    }
+
+    static float[][] pixels(float r,float g,float b,float alpha) {
+        return new float[][] {{r*alpha,g*alpha,b*alpha,alpha},{r*alpha,g*alpha,b*alpha,alpha},{0,0,0,0}};
+    }
+    static void visibilityTests() {
+        test("outgoing icon remains drawn until fade completion", () -> {
+            for(boolean outside:new boolean[]{false,true}) {
+                swap.set((Drawable)a,false); SimpleHost host=new SimpleHost(); host.rightDrawable=swap; host.rightDrawableOutside=outside;
+                eq(host.render(0).alpha("e1"),1); swap.set((Drawable)null,true);
+                check(swap.isEmpty(),"logical target must be empty immediately");
+                check(swap.hasRenderableContent(),"outgoing still renderable");
+                eq(host.render(0).alpha("e1"),1); eq(host.render(150).alpha("e1"),.5f);
+                check(host.getRightDrawablesWidth()==28,"retain slot while rendering outgoing");
+                eq(host.render(300).alpha("e1"),0); check(!swap.hasRenderableContent(),"final frame releases visibility");
+                check(host.getRightDrawablesWidth()==0,"final frame releases slot");
+                eq(host.render(400).alpha("e1"),0);
+            }
+        });
+        test("second badge removal also retains outgoing draw", () -> {
+            SimpleHost host=new SimpleHost(); host.rightDrawable2=swap; host.render(0); swap.set((Drawable)null,true);
+            host.render(0); eq(host.render(150).alpha("e1"),.5f); eq(host.render(300).alpha("e1"),0);
+        });
+        test("cleared icon cancels touch and accessibility while still rendering", () -> {
+            SimpleHost host=new SimpleHost(); host.rightDrawable=swap; final int[] clicks={0}; host.rightDrawableOnClickListener=v->clicks[0]++;
+            host.render(0); check(host.performAccessibilityAction(R.id.acc_action_right_drawable,null),"active accessibility action");
+            check(host.onTouchEvent(new MotionEvent(MotionEvent.ACTION_DOWN,host.rightDrawableX,host.rightDrawableY)),"touch begins");
+            check(host.parent.disallow,"parent intercept initially blocked");
+            swap.set((Drawable)null,true); host.render(0); eq(host.render(150).alpha("e1"),.5f);
+            check(!host.performAccessibilityAction(R.id.acc_action_right_drawable,null),"outgoing is not an accessibility action");
+            check(!host.onTouchEvent(new MotionEvent(MotionEvent.ACTION_UP,host.rightDrawableX,host.rightDrawableY)),"cleared hit target released");
+            check(!host.parent.disallow && !host.maybeClick && clicks[0]==1,"no ghost click after clear");
+        });
+        test("hidden and zero-scale icons are not interactive", () -> {
+            SimpleHost host=new SimpleHost(); host.rightDrawable2=swap; host.rightDrawable2OnClickListener=v->{throw new AssertionError("hidden click");};
+            host.rightDrawableHidden=true;
+            check(!host.performAccessibilityAction(R.id.acc_action_right_drawable2,null),"hidden accessibility");
+            host.rightDrawableHidden=false; host.rightDrawableScale=0;
+            check(!host.performAccessibilityAction(R.id.acc_action_right_drawable2,null),"zero scale accessibility");
+        });
+        test("final retirement requests one layout and no per-frame layouts", () -> {
+            SimpleHost host=new SimpleHost(); host.rightDrawable=swap; swap.setCallback(host); host.measure();
+            swap.set((Drawable)null,true); host.render(0);
+            for(int t=15;t<300;t+=15) host.render(t);
+            check(host.layoutRequests==0,"stable outgoing slot relayouts every frame");
+            host.render(300);
+            check(host.layoutRequests==1,"final slot removal was not scheduled for layout");
+            check(host.layoutRightDrawableWidth==0,"cached slot width retained");
+            for(int t=310;t<=400;t+=10) {host.render(t); swap.invalidate();}
+            check(host.layoutRequests==1,"settled empty slot keeps requesting layout");
+        });
+        System.out.println("PASS: " + passed + " host visibility scenarios");
+    }
+    static boolean ready(Drawable target) {
+        try {
+            java.lang.reflect.Method method=AnimatedEmojiDrawable.SwapAnimatedEmojiDrawable.class.getDeclaredMethod("isDrawableReady",Drawable.class);
+            method.setAccessible(true); return (Boolean)method.invoke(null,target);
+        } catch (ReflectiveOperationException e) { throw new AssertionError(e); }
+    }
+    static void nestedTests() {
+        test("nested wrapper waits for actual decoded badge", () -> {
+            AnimatedEmojiDrawable.SwapAnimatedEmojiDrawable inner=new AnimatedEmojiDrawable.SwapAnimatedEmojiDrawable(parent,24);
+            inner.set((Drawable)b,false); swap.set((Drawable)inner,true);
+            eq(draw(1000).alpha("e1"),1); eq(draw(2000).alpha("e1"),1);
+            check(!swap.isStable(),"outer finished before inner decoded");
+            b.imageReceiver.loaded=true; b.imageReceiver.lottie=new RLottieDrawable();
+            eq(draw(3000).alpha("e1"),1);
+            b.imageReceiver.lottie.bitmap=true; draw(4000);
+            Canvas half=draw(4150); eq(half.alpha("e1"),.5f); eq(half.alpha("e2"),.5f);
+            eq(draw(4300).alpha("e2"),1);
+        });
+        test("nested empty wrapper is ready to clear", () -> {
+            AnimatedEmojiDrawable.SwapAnimatedEmojiDrawable inner=new AnimatedEmojiDrawable.SwapAnimatedEmojiDrawable(parent,24);
+            check(ready(inner),"null target must be ready"); swap.set((Drawable)inner,true); draw(0);
+            eq(draw(150).alpha("e1"),.5f); eq(draw(300).alpha("e1"),0);
+        });
+        test("nested readiness traversal is bounded", () -> {
+            AnimatedEmojiDrawable.SwapAnimatedEmojiDrawable inner=new AnimatedEmojiDrawable.SwapAnimatedEmojiDrawable(parent,24);
+            inner.set((Drawable)b,false); check(!ready(inner),"unloaded nested badge");
+            b.imageReceiver.loaded=true; check(ready(inner),"loaded nested badge");
+            inner.set((Drawable)inner,false); check(!ready(inner),"cycle cannot be ready");
+            Drawable target=a;
+            for(int i=0;i<9;i++) {
+                AnimatedEmojiDrawable.SwapAnimatedEmojiDrawable wrapper=new AnimatedEmojiDrawable.SwapAnimatedEmojiDrawable(parent,24);
+                wrapper.set(target,false); target=wrapper;
+            }
+            check(!ready(target),"excessive nesting must stop");
+        });
+        System.out.println("PASS: " + passed + " nested readiness scenarios");
+    }
+    static void beginBlend(float[][] oldPixels,float[][] newPixels) {
+        Canvas.samples.put("e1",oldPixels); Canvas.samples.put("e2",newPixels);
+        b.imageReceiver.loaded=true; swap.set(2L,true); draw(0);
+    }
+    static void pixelTests() {
+        test("identical opaque pixels do not dim", () -> {
+            beginBlend(pixels(.8f,.4f,.2f,1),pixels(.8f,.4f,.2f,1));
+            for(int t=0;t<=300;t+=15) {
+                float[] p=draw(t).current().pixels[0]; eq(p[3],1); eq(p[0],.8f); eq(p[1],.4f);
+            }
+        });
+        test("identical antialiased pixels retain coverage", () -> {
+            beginBlend(pixels(1,1,1,.5f),pixels(1,1,1,.5f));
+            for(int t=0;t<=300;t+=15) eq(draw(t).current().pixels[0][3],.5f);
+        });
+        test("disjoint silhouettes interpolate without ghosts", () -> {
+            float[][] old=pixels(1,0,0,1), next=pixels(0,0,1,1);
+            old[1]=new float[4]; next[0]=new float[4]; beginBlend(old,next);
+            for(int t=0;t<=300;t+=15) {
+                Canvas c=draw(t); eq(c.current().pixels[0][3],1-t/300f); eq(c.current().pixels[1][3],t/300f);
+            }
+        });
+        test("color interpolation and wrapper opacity applied once", () -> {
+            swap.setAlpha(128); beginBlend(pixels(1,0,0,1),pixels(0,0,1,1));
+            float[] p=draw(150).current().pixels[0]; eq(p[3],128/255f); eq(p[0],.25f); eq(p[2],.25f);
+        });
+        test("interrupted blend preserves pixels while waiting", () -> {
+            beginBlend(pixels(1,0,0,1),pixels(0,0,1,1));
+            float[] before=draw(150).current().pixels[0]; swap.set(3L,true);
+            float[] held=draw(1000).current().pixels[0];
+            for(int k=0;k<4;k++) eq(held[k],before[k]);
+            Canvas.samples.put("e3",pixels(0,1,0,1)); c.imageReceiver.loaded=true; draw(1100);
+            float[] after=draw(1250).current().pixels[0]; eq(after[0],.25f); eq(after[1],.5f); eq(after[2],.25f); eq(after[3],1);
+        });
+        test("no layers at steady state and particles outside icon layers", () -> {
+            check(draw(0).saves==0,"steady state allocated a layer");
+            swap.setParticles(true,false); Canvas.samples.put("particles",pixels(0,1,0,1));
+            beginBlend(pixels(1,0,0,.5f),pixels(1,0,0,.5f));
+            Canvas half=draw(150); eq(half.current().pixels[0][0],.5f); eq(half.current().pixels[0][1],.5f);
+            check(half.layers.size()==1,"unbalanced layers");
+            check(draw(300).saves==0 && draw(400).saves==0,"completed transition allocated layers");
+        });
+        test("bounds include larger centered static icon and restore its state", () -> {
+            Drawable large=new Drawable() { int getIntrinsicWidth(){return 80;} int getIntrinsicHeight(){return 60;} };
+            ColorFilter original=new ColorFilter(); large.setColorFilter(original); large.setAlpha(177);
+            swap.center=true; swap.set(large,false); swap.set((Drawable)a,true); draw(0);
+            Canvas half=draw(150); check(half.left<=-18 && half.right>=62 && half.top<=2 && half.bottom>=62,"layer clips intrinsic bounds");
+            check(large.getAlpha()==177 && large.getColorFilter()==original,"drawable state not restored");
+        });
+        test("composition over existing background uses source over only once", () -> {
+            beginBlend(pixels(1,0,0,.5f),pixels(0,0,1,.5f));
+            Canvas.samples.put("background",pixels(0,1,0,1));
+            SystemClock.now=150; Canvas canvas=new Canvas(); canvas.record("background",1); swap.draw(canvas);
+            float[] pixel=canvas.current().pixels[0];
+            eq(pixel[0],.25f); eq(pixel[1],.5f); eq(pixel[2],.25f); eq(pixel[3],1);
+        });
+        test("draw failure restores canvas and shared drawable state", () -> {
+            Drawable broken=new Drawable() { void draw(Canvas canvas) { throw new IllegalStateException("draw failed"); } };
+            ColorFilter original=new ColorFilter(); broken.setColorFilter(original); broken.setAlpha(91);
+            swap.set(broken,false); swap.set((Drawable)a,true);
+            Canvas canvas=new Canvas();
+            try { swap.draw(canvas); throw new AssertionError("exception swallowed"); }
+            catch (IllegalStateException expected) { check(expected.getMessage().equals("draw failed"),"unexpected error"); }
+            check(canvas.layers.size()==1,"failed draw leaked save layers");
+            check(broken.getAlpha()==91 && broken.getColorFilter()==original,"failed draw leaked drawable state");
+            swap.resetAnimation(); check(draw(400).saves==0,"failed draw leaked blending mode");
+        });
+        System.out.println("PASS: " + passed + " pixel compositing scenarios");
+    }
+}

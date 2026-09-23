@@ -220,7 +220,7 @@ public class StatisticActivity extends BaseFragment implements NotificationCente
             iBlur3SourceGlassFrosted = new BlurredBackgroundSourceRenderNode(null);
             iBlur3SourceGlass = new BlurredBackgroundSourceRenderNode(null);
             iBlur3FactoryLiquidGlass = new BlurredBackgroundDrawableViewFactory(iBlur3SourceGlass);
-            iBlur3FactoryLiquidGlass.setLiquidGlassEffectAllowed(LiteMode.isEnabled(LiteMode.FLAG_LIQUID_GLASS));
+            iBlur3FactoryLiquidGlass.setLiquidGlassEffectAllowed(true);
         } else {
             scrollableViewNoiseSuppressor = null;
             iBlur3SourceGlassFrosted = null;

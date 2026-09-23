@@ -83,6 +83,7 @@ public class ForumUtilities {
             mfChat = MessagesController.getInstance(currentAccount).getChat(chat.linked_monoforum_id);
         }
         avatarDrawable.setInfo(currentAccount, mfChat != null ? mfChat : chat);
+        imageView.getImageReceiver().setCurrentAccount(currentAccount);
         imageView.setForUserOrChat(mfChat, avatarDrawable);
     }
 
@@ -92,6 +93,7 @@ public class ForumUtilities {
             mfChat = MessagesController.getInstance(currentAccount).getChat(chat.linked_monoforum_id);
         }
         avatarDrawable.setInfo(currentAccount, mfChat != null ? mfChat : chat);
+        imageView.setCurrentAccount(currentAccount);
         imageView.setForUserOrChat(mfChat, avatarDrawable);
     }
 
@@ -109,11 +111,18 @@ public class ForumUtilities {
             backupImageView.setAnimatedEmojiDrawable(null);
             backupImageView.setImageDrawable(createGeneralTopicDrawable(backupImageView.getContext(), 0.75f, Theme.getColor(Theme.key_actionBarDefaultIcon, resourcesProvider), false, largeIcon));
         } else if (forumTopic.icon_emoji_id != 0) {
-            backupImageView.setImageDrawable(null);
-            if (backupImageView.animatedEmojiDrawable == null || forumTopic.icon_emoji_id != backupImageView.animatedEmojiDrawable.getDocumentId()) {
-                AnimatedEmojiDrawable drawable = new AnimatedEmojiDrawable(largeIcon ? AnimatedEmojiDrawable.CACHE_TYPE_FORUM_TOPIC_LARGE : AnimatedEmojiDrawable.CACHE_TYPE_FORUM_TOPIC, UserConfig.selectedAccount, forumTopic.icon_emoji_id);
-                drawable.setColorFilter(actionBar ? new PorterDuffColorFilter(Theme.getColor(Theme.key_actionBarDefaultTitle), PorterDuff.Mode.SRC_IN) : Theme.getAnimatedEmojiColorFilter(resourcesProvider));
+            final int currentAccount = backupImageView.getImageReceiver().getCurrentAccount();
+            final int cacheType = largeIcon ? AnimatedEmojiDrawable.CACHE_TYPE_FORUM_TOPIC_LARGE : AnimatedEmojiDrawable.CACHE_TYPE_FORUM_TOPIC;
+            AnimatedEmojiDrawable drawable = backupImageView.getAnimatedEmojiDrawable();
+            if (drawable == null || !drawable.isSameEmoji(currentAccount, cacheType, forumTopic.icon_emoji_id)) {
+                drawable = new AnimatedEmojiDrawable(cacheType, currentAccount, forumTopic.icon_emoji_id);
+            }
+            drawable.setColorFilter(actionBar ? new PorterDuffColorFilter(Theme.getColor(Theme.key_actionBarDefaultTitle, resourcesProvider), PorterDuff.Mode.SRC_IN) : Theme.getAnimatedEmojiColorFilter(resourcesProvider));
+            if (drawable != backupImageView.getAnimatedEmojiDrawable()) {
+                backupImageView.setImageDrawable(null);
                 backupImageView.setAnimatedEmojiDrawable(drawable);
+            } else {
+                backupImageView.invalidate();
             }
         } else {
             backupImageView.setAnimatedEmojiDrawable(null);
@@ -127,10 +136,18 @@ public class ForumUtilities {
         if (forumTopic.id == 1) {
             imageReceiver.setImageBitmap(createGeneralTopicDrawable(context, 0.75f, Theme.getColor(Theme.key_actionBarDefaultIcon, resourcesProvider), false, largeIcon));
         } else if (forumTopic.icon_emoji_id != 0) {
-            if (imageReceiver.getImageDrawable() == null || !(imageReceiver.getImageDrawable() instanceof AnimatedEmojiDrawable) || forumTopic.icon_emoji_id != ((AnimatedEmojiDrawable) imageReceiver.getDrawable()).getDocumentId()) {
-                final AnimatedEmojiDrawable drawable = new AnimatedEmojiDrawable(largeIcon ? AnimatedEmojiDrawable.CACHE_TYPE_FORUM_TOPIC_LARGE : AnimatedEmojiDrawable.CACHE_TYPE_FORUM_TOPIC, UserConfig.selectedAccount, forumTopic.icon_emoji_id);
-                drawable.setColorFilter(actionBar ? new PorterDuffColorFilter(Theme.getColor(Theme.key_actionBarDefaultTitle), PorterDuff.Mode.SRC_IN) : Theme.getAnimatedEmojiColorFilter(resourcesProvider));
+            final Drawable current = imageReceiver.getDrawable();
+            final int currentAccount = imageReceiver.getCurrentAccount();
+            final int cacheType = largeIcon ? AnimatedEmojiDrawable.CACHE_TYPE_FORUM_TOPIC_LARGE : AnimatedEmojiDrawable.CACHE_TYPE_FORUM_TOPIC;
+            final AnimatedEmojiDrawable drawable = current instanceof AnimatedEmojiDrawable
+                    && ((AnimatedEmojiDrawable) current).isSameEmoji(currentAccount, cacheType, forumTopic.icon_emoji_id)
+                    ? (AnimatedEmojiDrawable) current
+                    : new AnimatedEmojiDrawable(cacheType, currentAccount, forumTopic.icon_emoji_id);
+            drawable.setColorFilter(actionBar ? new PorterDuffColorFilter(Theme.getColor(Theme.key_actionBarDefaultTitle, resourcesProvider), PorterDuff.Mode.SRC_IN) : Theme.getAnimatedEmojiColorFilter(resourcesProvider));
+            if (drawable != current) {
                 imageReceiver.setImageBitmap(drawable);
+            } else {
+                imageReceiver.invalidate();
             }
         } else {
             imageReceiver.setImageBitmap(createTopicDrawable(forumTopic, false));

@@ -50,6 +50,7 @@ public class GroupInviteActivity extends BaseFragment implements NotificationCen
 
     private long chatId;
     private boolean loading;
+    private boolean generatingLink;
     private TLRPC.TL_chatInviteExported invite;
 
     private int linkRow;
@@ -70,8 +71,8 @@ public class GroupInviteActivity extends BaseFragment implements NotificationCen
         super.onFragmentCreate();
 
         NotificationCenter.getInstance(currentAccount).addObserver(this, NotificationCenter.chatInfoDidLoad);
-        getMessagesController().loadFullChat(chatId, classGuid, true);
         loading = true;
+        getMessagesController().loadFullChat(chatId, classGuid, true);
 
         rowCount = 0;
         linkRow = rowCount++;
@@ -121,7 +122,7 @@ public class GroupInviteActivity extends BaseFragment implements NotificationCen
         frameLayout.addView(listView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT, Gravity.TOP | Gravity.LEFT));
         listView.setAdapter(listAdapter);
         listView.setOnItemClickListener((view, position) -> {
-            if (getParentActivity() == null) {
+            if (getParentActivity() == null || loading) {
                 return;
             }
             if (position == copyLinkRow || position == linkRow) {
@@ -166,7 +167,7 @@ public class GroupInviteActivity extends BaseFragment implements NotificationCen
         if (id == NotificationCenter.chatInfoDidLoad) {
             TLRPC.ChatFull info = (TLRPC.ChatFull) args[0];
             int guid = (int) args[1];
-            if (info.id == chatId && guid == classGuid) {
+            if (info.id == chatId && guid == classGuid && !generatingLink) {
                 invite = getMessagesController().getExportedInvite(chatId);
                 if (invite == null) {
                     generateLink(false);
@@ -189,16 +190,23 @@ public class GroupInviteActivity extends BaseFragment implements NotificationCen
     }
 
     private void generateLink(final boolean newRequest) {
+        if (generatingLink || isFinished) {
+            return;
+        }
+        generatingLink = true;
         loading = true;
         TLRPC.TL_messages_exportChatInvite req = new TLRPC.TL_messages_exportChatInvite();
+        req.legacy_revoke_permanent = true;
         req.peer = getMessagesController().getInputPeer(-chatId);
         final int reqId = ConnectionsManager.getInstance(currentAccount).sendRequest(req, (response, error) -> AndroidUtilities.runOnUIThread(() -> {
-            if (error == null) {
+            generatingLink = false;
+            loading = false;
+            if (isFinished) {
+                return;
+            }
+            if (error == null && response instanceof TLRPC.TL_chatInviteExported) {
                 invite = (TLRPC.TL_chatInviteExported) response;
-                if (newRequest) {
-                    if (getParentActivity() == null) {
-                        return;
-                    }
+                if (newRequest && getParentActivity() != null) {
                     AlertDialog.Builder builder = new AlertDialog.Builder(getParentActivity());
                     builder.setMessage(LocaleController.getString(R.string.RevokeAlertNewLink));
                     builder.setTitle(LocaleController.getString(R.string.RevokeLink));
@@ -206,8 +214,9 @@ public class GroupInviteActivity extends BaseFragment implements NotificationCen
                     showDialog(builder.create());
                 }
             }
-            loading = false;
-            listAdapter.notifyDataSetChanged();
+            if (listAdapter != null) {
+                listAdapter.notifyDataSetChanged();
+            }
         }));
         ConnectionsManager.getInstance(currentAccount).bindRequestToGuid(reqId, classGuid);
         if (listAdapter != null) {

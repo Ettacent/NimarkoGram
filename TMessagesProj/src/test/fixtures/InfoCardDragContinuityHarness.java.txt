@@ -1,0 +1,330 @@
+import java.util.*;
+import java.util.function.Consumer;
+
+// Android transport/rendering stubs only; gesture decisions and transforms below
+// are extracted verbatim from InfoCardStripView on every test run.
+public class InfoCardDragContinuityHarness {
+ static int checks;
+ static void check(boolean b,String message){checks++;if(!b)throw new AssertionError(message);}
+ static void near(float a,float b,String message){check(Math.abs(a-b)<.001f,message+": "+a+" != "+b);}
+ static class AndroidUtilities {
+  static float density=1;
+  static int dp(int n){return (int)Math.ceil(n*density);}
+ }
+ static class LocaleController {static boolean isRTL;}
+ static class MotionEvent {
+  static final int ACTION_DOWN=0,ACTION_UP=1,ACTION_MOVE=2,ACTION_CANCEL=3;
+  int action;float x,y,velocity;
+  MotionEvent(int a,float y,float v){action=a;this.y=y;velocity=v;}
+  int getActionMasked(){return action;}float getX(){return x;}float getY(){return y;}
+ }
+ static class VelocityTracker {
+  float velocity;boolean recycled;
+  static VelocityTracker obtain(){return new VelocityTracker();}
+  void addMovement(MotionEvent e){velocity=e.velocity;}void computeCurrentVelocity(int n){}
+  float getYVelocity(){return velocity;}void recycle(){recycled=true;}
+ }
+ static class ViewConfiguration {static int getLongPressTimeout(){return 500;}}
+ static class android {
+  static class view {
+   static class View {
+    static class MeasureSpec {static final int AT_MOST=1;static int makeMeasureSpec(int n,int mode){return n;}}
+   }
+   static class animation {
+    static class OvershootInterpolator implements Interpolator {
+     float tension;OvershootInterpolator(float t){tension=t;}
+     public float getInterpolation(float x){x-=1;return x*x*((tension+1)*x+tension)+1;}
+    }
+   }
+  }
+ }
+ static class View extends android.view.View {
+  static final int VISIBLE=0,GONE=8,LAYER_TYPE_NONE=0;
+  float alpha=1,tx,ty,sx=1,sy=1;int visibility,width=100,height=28;boolean pressed,disallow;
+  View parent;List<Runnable> callbacks=new ArrayList<>();
+  View getParent(){return parent;}void requestDisallowInterceptTouchEvent(boolean b){disallow=b;}
+  void setAlpha(float f){alpha=f;}void setTranslationX(float f){tx=f;}void setTranslationY(float f){ty=f;}
+  void setScaleX(float f){sx=f;}void setScaleY(float f){sy=f;}void setVisibility(int n){visibility=n;}
+  void setPressed(boolean b){pressed=b;}void requestLayout(){}
+  int getWidth(){return width;}int getHeight(){return height;}
+  int getMeasuredWidth(){return width;}int getMeasuredHeight(){return height;}
+  void measure(int w,int h){width=Math.min(width,w);height=Math.min(height,h);}
+  int left,top;float pivotX,pivotY;
+  int getTop(){return top;}int getLeft(){return left;}
+  void setPivotX(float f){pivotX=f;}void setPivotY(float f){pivotY=f;}
+  void layout(int l,int t,int r,int b){
+   left=l;top=t;width=r-l;height=b-t;onLayout(true,l,t,r,b);
+  }
+  protected void onLayout(boolean changed,int l,int t,int r,int b){
+   if(this instanceof Strip){
+    for(var p:((Strip)this).pills){
+     int x=LocaleController.isRTL?0:width-p.width,y=(height-p.height)/2;
+     p.layout(x,y,x+p.width,y+p.height);
+    }
+   }
+  }
+  protected void dispatchDraw(Canvas c){c.children++;}
+  void removeCallbacks(Runnable r){callbacks.remove(r);}void postDelayed(Runnable r,int t){callbacks.add(r);}
+  public boolean onInterceptTouchEvent(MotionEvent e){return false;}
+  public boolean onTouchEvent(MotionEvent e){return false;}
+ }
+ static class Canvas {
+  int depth,children,left,top,right,bottom;
+  void save(){depth++;}void restore(){depth--;}
+  void clipRect(int l,int t,int r,int b){left=l;top=t;right=r;bottom=b;}
+ }
+ static class BaseInfoCard extends View {
+  int id,refreshes,selected,unselected,clicks;
+  BaseInfoCard(int id){this.id=id;width=80+id*20;}
+  int getCardId(){return id;}void updateDataInstantly(){refreshes++;}
+  void onCardSelected(){selected++;}void onCardUnselected(){unselected++;}
+  void onCardClicked(){clicks++;}void setMaxChipWidth(int w){}void setCardLayerType(int t){}
+ }
+ static class InfoCardsConfig {
+  static boolean infinite=true;static int writes,id;
+  static boolean isInfiniteScrolling(){return infinite;}
+  static void setLastActiveCardId(int n){id=n;writes++;}
+ }
+ static class NotificationCenter {
+  static final int infoCardsActiveCardChanged=1;static final NotificationCenter instance=new NotificationCenter();
+  static NotificationCenter getGlobalInstance(){return instance;}void postNotificationName(int n){}
+ }
+ static class Animator {}
+ static class AnimatorListenerAdapter {public void onAnimationCancel(Animator a){}public void onAnimationEnd(Animator a){}}
+ static class ValueAnimator extends Animator {
+  float from,to,value;long duration;boolean cancelled;Interpolator easing;
+  Consumer<ValueAnimator> update;AnimatorListenerAdapter listener;
+  static ValueAnimator ofFloat(float a,float b){var v=new ValueAnimator();v.value=v.from=a;v.to=b;return v;}
+  void setDuration(long d){duration=d;}void setInterpolator(Interpolator i){easing=i;}
+  void addUpdateListener(Consumer<ValueAnimator> u){update=u;}void addListener(AnimatorListenerAdapter l){listener=l;}
+  Object getAnimatedValue(){return value;}
+  void start(){frame(0);}void frame(float f){value=from+(to-from)*easing.getInterpolation(f);update.accept(this);}
+  void millis(int t){frame(Math.min(1,t/(float)Math.max(1,duration)));}
+  void end(){frame(1);listener.onAnimationEnd(this);}
+  void cancel(){cancelled=true;listener.onAnimationCancel(this);listener.onAnimationEnd(this);}
+ }
+ static class Strip extends View {
+  PRODUCTION_CONSTANTS
+  ArrayList<BaseInfoCard> pills=new ArrayList<>();int currentIndex,incomingIndex=-1,touchSlop=4;
+  boolean dragging,dragUp,inlineFolderStyle=true,settlingToNext,potentialTap,longPressFired,dragCrossedCard;
+  float downX,downY,dragProgress,releaseVelocity;ValueAnimator animator;VelocityTracker velocityTracker;
+  Runnable longPressRunnable=()->{};
+  Strip(int n){parent=new View();for(int i=0;i<n;i++)pills.add(new BaseInfoCard(i));applyResting(false);}
+  int usableCardWidth(){return 200;}void restartGlobalTicker(){}
+  boolean reconcilePendingActiveCard(){return false;}
+  PRODUCTION_METHODS
+ }
+ static void event(Strip s,int a,float y,float velocity){
+  MotionEvent e=new MotionEvent(a,y,velocity);
+  if(a==MotionEvent.ACTION_DOWN)check(s.onInterceptTouchEvent(e),"strip claims DOWN");
+  check(s.onTouchEvent(e),"strip consumes event");
+ }
+ static void move(Strip s,float y){event(s,MotionEvent.ACTION_MOVE,y,0);}
+ static Strip drag(int n,int index,boolean up,float progress,boolean infinite){
+  InfoCardsConfig.infinite=infinite;InfoCardsConfig.writes=0;
+  Strip s=new Strip(n);s.currentIndex=index;s.applyResting(false);
+  event(s,MotionEvent.ACTION_DOWN,100,0);
+  move(s,up?90:110); // slop crossing rebases the anchor without moving pixels
+  move(s,s.downY+(up?-1:1)*s.dragHeight()*progress);
+  return s;
+ }
+ static float[] pixels(Strip s){
+  // Include actual transformed edges, not just the property values. A pivot or
+  // layout jump can move the capsule even if translation/scale are unchanged.
+  float[] result=new float[s.pills.size()*8];int n=0;
+  for(var p:s.pills){
+   result[n++]=p.ty;result[n++]=p.alpha;result[n++]=p.sx;result[n++]=p.sy;
+   float left=p.left+p.pivotX*(1-p.sx)+p.tx,top=p.top+p.pivotY*(1-p.sy)+p.ty;
+   result[n++]=left;result[n++]=top;result[n++]=left+p.width*p.sx;result[n++]=top+p.height*p.sy;
+  }
+  return result;
+ }
+ static void samePixels(float[] before,Strip s){
+  float[] after=pixels(s);for(int i=0;i<before.length;i++)near(before[i],after[i],"transform continuity "+i);
+ }
+ static void settled(Strip s,int index){
+  check(s.currentIndex==index && s.animator==null && !s.dragging,"idle target");
+  check(s.incomingIndex==-1 && s.velocityTracker==null && s.callbacks.isEmpty(),"gesture cleanup");
+  near(s.dragProgress,0,"idle progress");
+  for(int i=0;i<s.pills.size();i++){
+   var p=s.pills.get(i);check(p.visibility==(i==index?View.VISIBLE:View.GONE),"only current visible");
+   near(p.alpha,i==index?1:0,"rest alpha");near(p.ty,0,"rest translation");
+  }
+ }
+ static void release(){
+  for(float density:new float[]{1,2.625f,3,4})for(boolean up:new boolean[]{true,false})
+   for(boolean infinite:new boolean[]{true,false})for(float raw:new float[]{.04f,.08f,.15f,.24f}){
+    AndroidUtilities.density=density;
+    Strip s=drag(3,up?2:0,up,raw,infinite);
+    float start=s.dragProgress;float[] before=pixels(s);
+    event(s,MotionEvent.ACTION_UP,s.downY+(up?-1:1)*s.dragHeight()*raw,0);
+    samePixels(before,s);check(s.animator!=null&&!s.settlingToNext,"short release returns");
+    check(s.animator.duration>=160,"small return must span multiple display frames, got "+s.animator.duration+"ms");
+    s.animator.millis(16);check(s.dragProgress>start*.5f,"first 60Hz frame must not erase most of the drag");
+    float last=s.dragProgress;
+    for(int ms=24;ms<200;ms+=8){s.animator.millis(ms);check(s.dragProgress<=last+.00001f,"monotonic return");last=s.dragProgress;}
+    int index=s.currentIndex;s.animator.end();settled(s,index);check(InfoCardsConfig.writes==0,"return never persists new card");
+   }
+ }
+ static void reversal(){
+  for(int count:new int[]{2,3,4})for(boolean up:new boolean[]{false,true}){
+   Strip s=drag(count,1,up,.6f,true);int initial=s.incomingIndex;
+   move(s,s.downY+(up?-1:1)*s.dragHeight()*.12f);
+   near(s.dragProgress,.12f,"finger reversal unwinds original target");check(s.incomingIndex==initial,"no premature neighbour switch");
+   move(s,s.downY);near(s.current().ty,0,"passes through rest");near(s.current().alpha,1,"rest alpha at crossing");
+   move(s,s.downY+(up?1:-1)*s.dragHeight()*.1f);
+   check(s.dragUp!=up && s.incomingIndex==s.neighbor(!up),"opposite target after crossing");
+   for(int i=0;i<count;i++)if(i!=s.currentIndex&&i!=s.incomingIndex)check(s.pills.get(i).visibility==View.GONE,"old incoming hidden");
+   float[] before=pixels(s);event(s,MotionEvent.ACTION_UP,0,0);samePixels(before,s);
+   check(!s.settlingToNext,"small reversed drag returns");s.animator.end();settled(s,1);
+  }
+  // A downward return that has not crossed the anchor must not fling upward.
+  Strip s=drag(3,1,true,.12f,true);event(s,MotionEvent.ACTION_UP,0,5000);
+  check(!s.settlingToNext,"opposing fling does not commit a small drag");s.animator.end();settled(s,1);
+  s=drag(3,1,true,.12f,true);event(s,MotionEvent.ACTION_UP,0,-5000);
+  check(s.settlingToNext,"matching fling still commits");s.animator.end();settled(s,2);
+ }
+ static void cancel(){
+  for(boolean inline:new boolean[]{true,false})for(boolean up:new boolean[]{true,false}){
+   Strip s=drag(3,1,up,.8f,true);s.inlineFolderStyle=inline;
+   float[] before=pixels(s);event(s,MotionEvent.ACTION_CANCEL,0,up?-5000:5000);samePixels(before,s);
+   check(!s.settlingToNext,"CANCEL cannot commit distance or velocity");s.animator.end();settled(s,1);
+   check(InfoCardsConfig.writes==0,"CANCEL never persists");
+  }
+ }
+ static void retouch(){
+  for(float density:new float[]{1,2.625f,4})for(boolean up:new boolean[]{true,false})
+   for(boolean infinite:new boolean[]{false,true})for(boolean inline:new boolean[]{false,true}){
+    AndroidUtilities.density=density;
+    Strip s=drag(3,up?2:0,up,.5f,infinite);
+    s.inlineFolderStyle=inline;
+    event(s,MotionEvent.ACTION_CANCEL,0,0);ValueAnimator old=s.animator;old.millis(30);
+    float[] before=pixels(s);float progress=s.dragProgress;int incoming=s.incomingIndex;
+    event(s,MotionEvent.ACTION_DOWN,100,0);samePixels(before,s);
+    check(s.dragging && old.cancelled && s.animator==null,"retouch takes over return");
+    check(!s.current().pressed,"retouch must not run a competing press-scale animator");
+    move(s,100);samePixels(before,s);near(s.dragProgress,progress,"stationary retouch cannot apply resistance twice");
+    check(s.incomingIndex==incoming,"retouch keeps prepared target");
+    move(s,100+(up?1:-1));check(s.dragProgress<progress,"reversing retouch unwinds smoothly");
+    event(s,MotionEvent.ACTION_CANCEL,0,0);ValueAnimator next=s.animator;
+    old.listener.onAnimationEnd(old);check(s.animator==next,"cancelled end callback cannot reset successor");
+    int index=s.currentIndex;next.end();settled(s,index);
+   }
+  Strip s=drag(3,1,true,.6f,true);event(s,MotionEvent.ACTION_UP,0,0);
+  s.animator.millis(30);float[] before=pixels(s);event(s,MotionEvent.ACTION_DOWN,100,0);
+  move(s,100);samePixels(before,s);event(s,MotionEvent.ACTION_CANCEL,0,0);s.animator.end();settled(s,1);
+ }
+ static void momentum(){
+  AndroidUtilities.density=1;
+  for(boolean inline:new boolean[]{false,true})for(float start:new float[]{.001f,.04f,.2f,.5f,.8f,.999f})
+   for(float target:new float[]{0,1})for(float velocity:new float[]{0,.5f,2,10,80}){
+    Strip s=new Strip(3);s.inlineFolderStyle=inline;s.dragProgress=start;
+    s.releaseVelocity=target==1?velocity:-velocity;
+    ValueAnimator a=s.createSettleAnimator(target);float distance=Math.abs(target-start);
+    check(a.duration>=(target==1?100:160)&&a.duration<=(target==1?260:200),"bounded settle duration");
+    near(s.releaseVelocity,0,"velocity consumed once");
+    near(a.easing.getInterpolation(0),0,"no release jump");
+    near(a.easing.getInterpolation(1),1,"exact landing");
+    float dt=.0001f;
+    float measuredSpeed=distance*a.easing.getInterpolation(dt)/(dt*a.duration/1000f);
+    float expectedSpeed=Math.min(velocity,3*distance*1000/a.duration);
+    check(Math.abs(measuredSpeed-expectedSpeed)<.015f,"preserve bounded release speed: "+measuredSpeed+" != "+expectedSpeed);
+    float endSpeed=distance*(1-a.easing.getInterpolation(1-dt))/(dt*a.duration/1000f);
+    check(Math.abs(endSpeed)<.06f,"land at zero speed");
+    for(int hz:new int[]{60,90,120,144}){
+     float last=0;
+     for(int frame=0;frame<=hz;frame++){
+      float fraction=Math.min(1,frame*1000f/hz/a.duration),p=a.easing.getInterpolation(fraction);
+      check(p>=last-.000001f&&p>=0&&p<=1.000001f,"bounded monotone motion at "+hz+"Hz");last=p;
+     }
+    }
+    // An automatic advance must not reuse the finger's prior momentum.
+    s.dragProgress=0;a=s.createSettleAnimator(1);
+    check(a.duration==260,"shorter automatic advance");
+    check(a.easing.getInterpolation(.001f)<.00001f,"auto advance accelerates from rest");
+  }
+  for(boolean up:new boolean[]{false,true}){
+   Strip s=drag(3,1,up,.7f,true);float[] before=pixels(s);
+   event(s,MotionEvent.ACTION_UP,0,up?3000:-3000);samePixels(before,s);
+   check(!s.settlingToNext,"reverse fling returns even past distance threshold");s.animator.end();settled(s,1);
+   s=drag(3,1,up,.4f,true);before=pixels(s);
+   event(s,MotionEvent.ACTION_UP,0,up?-3000:3000);samePixels(before,s);
+   check(s.settlingToNext&&s.animator.duration<=150,"quick flick settles promptly");
+   int next=s.neighbor(up);s.animator.end();settled(s,next);
+  }
+ }
+ static void tap(){
+  for(int count:new int[]{1,3}){
+   Strip s=new Strip(count);event(s,MotionEvent.ACTION_DOWN,100,0);event(s,MotionEvent.ACTION_UP,100,0);
+   check(s.current().clicks==1 && s.animator==null,"tap still clicks");
+   event(s,MotionEvent.ACTION_DOWN,100,0);event(s,MotionEvent.ACTION_CANCEL,100,0);
+   check(s.current().clicks==1 && !s.current().pressed,"cancel does not click");
+   event(s,MotionEvent.ACTION_DOWN,100,0);s.longPressFired=true;move(s,70);
+   event(s,MotionEvent.ACTION_UP,70,0);check(s.current().clicks==1 && s.animator==null,"long press never swipes/clicks");
+  }
+  Strip s=new Strip(1);event(s,MotionEvent.ACTION_DOWN,100,0);move(s,60);event(s,MotionEvent.ACTION_UP,60,0);
+  check(!s.dragging && s.animator==null && s.current().clicks==0,"single card ignores swipes");
+ }
+ static void continuous(){
+  for(float density:new float[]{1,1.25f,2.625f,4})for(boolean inline:new boolean[]{false,true})
+   for(boolean up:new boolean[]{false,true})for(int count:new int[]{2,3,5,8}){
+    AndroidUtilities.density=density;
+    int start=up?count-1:0,dir=up?-1:1;
+    Strip s=drag(count,start,up,0,true);s.inlineFolderStyle=inline;
+    float anchor=s.downY,h=s.dragHeight();
+    // Keep the SAME finger down for twenty complete cycles in either direction.
+    for(int half=1;half<=count*40;half++){
+     float raw=half*.5f;move(s,anchor+dir*h*raw);
+     int expected=(start+(up?half/2:count-(half/2)%count))%count;
+     check(s.currentIndex==expected,"continuous wrap across every page/cycle");
+     near(s.dragProgress,raw-(int)raw,"unconsumed fraction survives page promotion");
+     check(s.dragging&&s.animator==null,"finger keeps ownership, no per-page settle");
+     check(InfoCardsConfig.writes==0,"no preference writes every drag frame");
+    }
+    // Reverse without lifting; complete another cycle and release a small remainder.
+    move(s,anchor+dir*h*(count*19-.125f));
+    int chosen=s.currentIndex;
+    event(s,MotionEvent.ACTION_UP,0,0);check(s.animator!=null,"release settles remaining fraction");
+    if(s.settlingToNext)chosen=s.neighbor(s.dragUp);
+    s.animator.end();settled(s,chosen);
+    check(InfoCardsConfig.writes==1&&InfoCardsConfig.id==chosen,"settled crossed selection published once");
+    // Coalesced events skip invisible pages without O(distance) data refreshes.
+    s=drag(count,start,up,0,true);h=s.dragHeight();anchor=s.downY;
+    int before=s.pills.stream().mapToInt(p->p.refreshes).sum();
+    move(s,anchor+dir*h*(1000*count+1.125f));
+    check(s.currentIndex==(start+(up?1:count-1))%count,"sparse MOVE wraps after many cycles");
+    check(s.pills.stream().mapToInt(p->p.refreshes).sum()-before<=2,"only visible pages are prepared");
+    chosen=s.currentIndex;event(s,MotionEvent.ACTION_CANCEL,0,0);s.animator.end();settled(s,chosen);
+    check(InfoCardsConfig.id==chosen,"CANCEL keeps fully traversed pages, not unfinished neighbour");
+    // Disabling wrap still provides a genuine hard boundary.
+    s=drag(count,start,up,0,false);move(s,s.downY+dir*s.dragHeight()*(count*3));
+    check(s.currentIndex==start&&s.neighbor(up)==-1,"finite edge never wraps");
+    event(s,MotionEvent.ACTION_UP,0,0);s.animator.end();settled(s,start);
+  }
+  // Separate swipes must keep wrapping too (including two-card direction changes).
+  AndroidUtilities.density=1;
+  for(int count:new int[]{2,3,7}){
+   Strip s=new Strip(count);InfoCardsConfig.infinite=true;
+   for(int i=0;i<100;i++){
+    boolean up=(i%9)<6;int next=(s.currentIndex+(up?1:count-1))%count;
+    event(s,MotionEvent.ACTION_DOWN,100,0);move(s,up?90:110);
+    move(s,s.downY+(up?-1:1)*s.dragHeight()*.6f);event(s,MotionEvent.ACTION_UP,0,0);
+    s.animator.end();settled(s,next);
+   }
+  }
+ }
+ public static void main(String[] args){
+  switch(args[0]){case "release":release();break;case "reversal":reversal();break;
+   case "cancel":cancel();break;case "retouch":retouch();break;case "tap":tap();break;
+   case "momentum":momentum();break;case "continuous":continuous();break;default:throw new AssertionError(args[0]);}
+  System.out.println("PASS: "+args[0]+" "+checks+" checks");
+ }
+}
+interface Interpolator {float getInterpolation(float time);}
+class PointF {float x,y;PointF(){}PointF(float x,float y){this.x=x;this.y=y;}}
+class PathParser {static Object createPathFromPathData(String s){return new Object();}}
+class PathInterpolator implements Interpolator {
+ PathInterpolator(Object path){}PathInterpolator(float a,float b,float c,float d){}
+ public float getInterpolation(float t){throw new AssertionError("unused path easing");}
+}
+PRODUCTION_EASING

@@ -61,6 +61,13 @@ public class PagerSlidingTabStrip extends HorizontalScrollView {
     private int underlineColor = 0x1a000000;
 
     private boolean shouldExpand = false;
+    private boolean smoothScroll;
+    public void setSmoothScroll(boolean smoothScroll) {
+        this.smoothScroll = smoothScroll;
+    }
+    protected boolean isTabAnimationEnabled() {
+        return true;
+    }
 
     private int scrollOffset = AndroidUtilities.dp(52);
     private int indicatorHeight = AndroidUtilities.dp(8);
@@ -167,7 +174,7 @@ public class PagerSlidingTabStrip extends HorizontalScrollView {
                     return;
                 }
             }
-            pager.setCurrentItem(position, false);
+            pager.setCurrentItem(position, smoothScroll && isTabAnimationEnabled());
         });
         tabsContainer.addView(tab);
         tab.setSelected(position == currentPosition);
@@ -194,7 +201,7 @@ public class PagerSlidingTabStrip extends HorizontalScrollView {
                     return;
                 }
             }
-            pager.setCurrentItem(position, false);
+            pager.setCurrentItem(position, smoothScroll && isTabAnimationEnabled());
         });
         tab.setPadding(AndroidUtilities.dp(16), 0, AndroidUtilities.dp(16), 0);
         tabsContainer.addView(tab, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, 10, 0, 10, 0));
@@ -288,8 +295,17 @@ public class PagerSlidingTabStrip extends HorizontalScrollView {
                     ((TextTab) nextTab).setSelectedProgress(currentPositionOffset);
                 }
             } else {
-                lineLeft = lineLeftAnimated.set(lineLeft);
-                lineRight = lineRightAnimated.set(lineRight);
+                lineLeft = lineLeftAnimated.set(lineLeft, smoothScroll || !isTabAnimationEnabled());
+                lineRight = lineRightAnimated.set(lineRight, smoothScroll || !isTabAnimationEnabled());
+            }
+            if (smoothScroll) {
+                for (int i = 0; i < tabsContainer.getChildCount(); i++) {
+                    View tab = tabsContainer.getChildAt(i);
+                    if (tab instanceof TextTab) {
+                        ((TextTab) tab).setSelectedProgress(Math.max(0f,
+                                1f - Math.abs(i - currentPosition - currentPositionOffset)));
+                    }
+                }
             }
 
             if (indicatorHeight != 0) {

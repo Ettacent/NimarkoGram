@@ -74,7 +74,11 @@ import org.telegram.ui.community.CommunityUtils;
 
 import java.util.Locale;
 
-public class ProfileSearchCell extends BaseCell implements NotificationCenter.NotificationCenterDelegate, Theme.Colorable {
+public class ProfileSearchCell extends BaseCell implements NotificationCenter.NotificationCenterDelegate, Theme.Colorable, org.telegram.ui.Components.AnimatedEmojiSpan.AccountProvider {
+    @Override
+    public int getEmojiAccount() {
+        return currentAccount;
+    }
 
     public boolean dontDrawAvatar;
     private PhotoBubbleClip bubbleClip;
@@ -138,6 +142,8 @@ public class ProfileSearchCell extends BaseCell implements NotificationCenter.No
     private StaticLayout statusLayout;
     private AnimatedEmojiDrawable.SwapAnimatedEmojiDrawable botVerificationDrawable;
     private AnimatedEmojiDrawable.SwapAnimatedEmojiDrawable statusDrawable;
+    private boolean statusBound;
+    private CombinedDrawable verifiedStatusDrawable;
     private app.nimarkogram.messenger.api.dto.BadgeDTO currentNimarkoBadge;
     public StoriesUtilities.AvatarStoryParams avatarStoryParams = new StoriesUtilities.AvatarStoryParams(false);
 
@@ -219,6 +225,16 @@ public class ProfileSearchCell extends BaseCell implements NotificationCenter.No
         return allowEmojiStatus && !app.nimarkogram.messenger.NimarkoConfig.disablePremiumStatuses;
     }
     public void setData(Object object, TLRPC.EncryptedChat ec, CharSequence n, CharSequence s, boolean needCount, boolean saved) {
+        final boolean samePeer = object instanceof TLRPC.User && user != null && ((TLRPC.User) object).id == user.id
+                || object instanceof TLRPC.Chat && chat != null && ((TLRPC.Chat) object).id == chat.id;
+        final boolean sameEncryptedChat = encryptedChat == null ? ec == null : ec != null && encryptedChat.id == ec.id;
+        if (!samePeer || !sameEncryptedChat || savedMessages != saved) {
+            statusBound = false;
+            statusDrawable.set((Drawable) null, false);
+            statusDrawable.resetAnimation();
+            botVerificationDrawable.set((Drawable) null, false);
+            botVerificationDrawable.resetAnimation();
+        }
         currentName = n;
         if (object instanceof TLRPC.User) {
             user = (TLRPC.User) object;
@@ -245,6 +261,9 @@ public class ProfileSearchCell extends BaseCell implements NotificationCenter.No
             starsPriceBlocked = DialogObject.getMessagesStarsPrice(r);
             setOpenBotButton(false);
         } else {
+            user = null;
+            chat = null;
+            contact = null;
             setOpenBotButton(false);
         }
         encryptedChat = ec;
@@ -348,6 +367,9 @@ public class ProfileSearchCell extends BaseCell implements NotificationCenter.No
         }
         statusDrawable.detach();
         botVerificationDrawable.detach();
+        statusDrawable.resetAnimation();
+        botVerificationDrawable.resetAnimation();
+        statusBound = false;
     }
 
     @Override
@@ -460,7 +482,7 @@ public class ProfileSearchCell extends BaseCell implements NotificationCenter.No
             } else {
                 nameLeft = dp(11);
             }
-            updateStatus(drawCheck, null, chat, false);
+            updateStatus(drawCheck, null, chat, !drawCheck);
         } else if (user != null) {
             dialog_id = user.id;
             if (!LocaleController.isRTL) {
@@ -472,7 +494,7 @@ public class ProfileSearchCell extends BaseCell implements NotificationCenter.No
             drawCheck = user.verified;
             
             drawPremium = !savedMessages && MessagesController.getInstance(currentAccount).isPremiumUser(user) && !app.nimarkogram.messenger.NimarkoConfig.disablePremiumStatuses;
-            updateStatus(drawCheck, user, null, false);
+            updateStatus(drawCheck, user, null, !drawCheck);
         } else if (contact != null) {
             dialog_id = 0;
             if (!LocaleController.isRTL) {
@@ -794,6 +816,10 @@ public class ProfileSearchCell extends BaseCell implements NotificationCenter.No
     }
 
     public void updateStatus(boolean verified, TLRPC.User user, TLRPC.Chat chat, boolean animated) {
+        animated = animated && statusBound && isAttachedToWindow();
+        statusBound = true;
+        statusDrawable.setCurrentAccount(currentAccount);
+        botVerificationDrawable.setCurrentAccount(currentAccount);
         statusDrawable.center = LocaleController.isRTL;
         currentNimarkoBadge = null;
         final boolean showStatus = shouldAllowEmojiStatus();
@@ -807,10 +833,13 @@ public class ProfileSearchCell extends BaseCell implements NotificationCenter.No
             } catch (Throwable ignored) {}
         }
         
-        statusDrawable.setParticles(false, animated);
+        boolean particles = false;
         
         if (verified) {
-            statusDrawable.set(new CombinedDrawable(Theme.dialogs_verifiedDrawable, Theme.dialogs_verifiedCheckDrawable, 0, 0), animated);
+            if (verifiedStatusDrawable == null) {
+                verifiedStatusDrawable = new CombinedDrawable(Theme.dialogs_verifiedDrawable, Theme.dialogs_verifiedCheckDrawable, 0, 0);
+            }
+            statusDrawable.set(verifiedStatusDrawable, animated);
             statusDrawable.setColor(null);
         } else if (showStatus && user != null && !savedMessages && DialogObject.getEmojiStatusDocumentId(user.emoji_status) != 0) {
             statusDrawable.set(DialogObject.getEmojiStatusDocumentId(user.emoji_status), animated);
@@ -821,7 +850,7 @@ public class ProfileSearchCell extends BaseCell implements NotificationCenter.No
         } else if (nimarkoBadge != null) {
             currentNimarkoBadge = nimarkoBadge;
             statusDrawable.set(nimarkoBadge.getDocumentId(), animated);
-            statusDrawable.setParticles(true, animated);
+            particles = true;
             statusDrawable.setColor(Theme.getColor(Theme.key_chats_verifiedBackground, resourcesProvider));
         } else if (showStatus && user != null && !savedMessages && MessagesController.getInstance(currentAccount).isPremiumUser(user)) {
             statusDrawable.set(PremiumGradient.getInstance().premiumStarDrawableMini, animated);
@@ -830,6 +859,7 @@ public class ProfileSearchCell extends BaseCell implements NotificationCenter.No
             statusDrawable.set((Drawable) null, animated);
             statusDrawable.setColor(Theme.getColor(Theme.key_chats_verifiedBackground, resourcesProvider));
         }
+        statusDrawable.setParticles(particles, animated);
         long botVerificationIcon = 0;
         if (user != null) {
             botVerificationIcon = DialogObject.getBotVerificationIcon(user);
@@ -850,6 +880,19 @@ public class ProfileSearchCell extends BaseCell implements NotificationCenter.No
     }
 
     public void update(int mask) {
+        if ((mask & MessagesController.UPDATE_MASK_EMOJI_STATUS) != 0) {
+            if (user != null) {
+                TLRPC.User updatedUser = MessagesController.getInstance(currentAccount).getUser(user.id);
+                if (updatedUser != null) {
+                    user = updatedUser;
+                }
+            } else if (chat != null) {
+                TLRPC.Chat updatedChat = MessagesController.getInstance(currentAccount).getChat(chat.id);
+                if (updatedChat != null) {
+                    chat = updatedChat;
+                }
+            }
+        }
         TLRPC.FileLocation photo = null;
         if (user != null) {
             avatarDrawable.setInfo(currentAccount, user);
@@ -909,7 +952,7 @@ public class ProfileSearchCell extends BaseCell implements NotificationCenter.No
                 }
             }
             if (!continueUpdate && (mask & MessagesController.UPDATE_MASK_EMOJI_STATUS) != 0 && (user != null || chat != null)) {
-                updateStatus(user != null ? user.verified : chat.verified, user, chat, true);
+                continueUpdate = true;
             }
             if (!continueUpdate && ((mask & MessagesController.UPDATE_MASK_NAME) != 0 && user != null) || (mask & MessagesController.UPDATE_MASK_CHAT_NAME) != 0 && chat != null) {
                 String newName;

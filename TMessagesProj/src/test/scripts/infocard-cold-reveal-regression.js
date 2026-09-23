@@ -37,19 +37,22 @@ public class ColdRevealTest {
  static class Content {void requestLayout(){}void invalidateOutline(){}}
  static class Card {
   static final int VISIBLE=0;
-  boolean renderingInstantly,attached=true,shown=true;int visibility;
+  boolean renderingInstantly,hasRenderedValue,attached=true,shown=true;int visibility;
   float translationY,alpha=1,scale=1;
   CharSequence accessibilityValue;
   Text textView=new Text();Content content=new Content();InfoCardStripView parent=new InfoCardStripView();
   Runnable update=()->{};
   Card(){textView.setText("",false,false);}
   void updateAccessibilityDescription(){}
+  boolean isLaidOut(){return true;}
+  void finishResizeAnimation(){}
+  boolean isEmpty(CharSequence text){return text==null||text.length()==0;}
   boolean isAttachedToWindow(){return attached;}int getWindowVisibility(){return 0;}
   int getVisibility(){return visibility;}boolean isShown(){return shown;}
   float getTranslationX(){return 0;}float getTranslationY(){return translationY;}
   float getAlpha(){return alpha;}float getScaleX(){return scale;}float getScaleY(){return scale;}
   Object getParent(){return parent;}void onUpdateData(boolean force){update.run();}
-  ${method('protected void setText(').replaceAll('android.text.TextUtils.equals', 'java.util.Objects.equals')}
+  ${method('protected void setText(').replaceAll('android.text.TextUtils.equals', 'java.util.Objects.equals').replaceAll('android.text.TextUtils.isEmpty', 'isEmpty')}
   ${method('void updateDataInstantly()')}
  }
  public static void main(String[] args){

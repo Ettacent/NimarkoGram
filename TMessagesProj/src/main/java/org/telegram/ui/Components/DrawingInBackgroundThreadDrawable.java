@@ -9,6 +9,7 @@ import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.BuildVars;
 import org.telegram.messenger.DispatchQueue;
 import org.telegram.messenger.FileLog;
+import org.telegram.messenger.ImageReceiver;
 import org.telegram.messenger.NotificationCenter;
 import org.telegram.messenger.SharedConfig;
 import org.telegram.ui.ActionBar.Theme;
@@ -18,6 +19,28 @@ import java.util.ArrayList;
 public class DrawingInBackgroundThreadDrawable implements NotificationCenter.NotificationCenterDelegate {
 
     public final static int THREAD_COUNT = 2;
+    protected static final class ImageReceiverDrawFrame {
+        private final ArrayList<ImageReceiver> receivers = new ArrayList<>();
+        private final ArrayList<ImageReceiver.BackgroundThreadDrawHolder> holders = new ArrayList<>();
+        public ImageReceiver.BackgroundThreadDrawHolder add(ImageReceiver receiver, int threadIndex) {
+            final int index = receivers.size();
+            final ImageReceiver.BackgroundThreadDrawHolder holder = receiver.setDrawInBackgroundThread(
+                    index < holders.size() ? holders.get(index) : null, threadIndex);
+            if (index == holders.size()) holders.add(holder);
+            else holders.set(index, holder);
+            receivers.add(receiver);
+            return holder;
+        }
+        public void draw(Canvas canvas) {
+            for (int i = 0; i < receivers.size(); i++) {
+                receivers.get(i).draw(canvas, holders.get(i));
+            }
+        }
+        public void release() {
+            for (int i = 0; i < receivers.size(); i++) holders.get(i).release();
+            receivers.clear();
+        }
+    }
     boolean attachedToWindow;
 
     Bitmap backgroundBitmap;
@@ -42,10 +65,12 @@ public class DrawingInBackgroundThreadDrawable implements NotificationCenter.Not
     public static DispatchQueuePool queuePool;
     private final DispatchQueue backgroundQueue;
     boolean error;
+    private boolean backgroundFrameError;
 
     private final Runnable bitmapCreateTask = new Runnable() {
         @Override
         public void run() {
+            backgroundFrameError = false;
             try {
                 int heightInternal = height + padding;
                 if (backgroundBitmap == null || backgroundBitmap.getWidth() != width || backgroundBitmap.getHeight() != heightInternal) {
@@ -58,14 +83,17 @@ public class DrawingInBackgroundThreadDrawable implements NotificationCenter.Not
                 }
 
                 backgroundBitmap.eraseColor(Color.TRANSPARENT);
-                backgroundCanvas.save();
-                backgroundCanvas.translate(0, padding);
-                drawInBackground(backgroundCanvas);
-                backgroundCanvas.restore();
+                int saveCount = backgroundCanvas.save();
+                try {
+                    backgroundCanvas.translate(0, padding);
+                    drawInBackground(backgroundCanvas);
+                } finally {
+                    backgroundCanvas.restoreToCount(saveCount);
+                }
                 backgroundBitmap.prepareToDraw();
             } catch (Exception e) {
                 FileLog.e(e);
-                error = true;
+                backgroundFrameError = true;
             }
 
             AndroidUtilities.runOnUIThread(uiFrameRunnable);
@@ -84,6 +112,10 @@ public class DrawingInBackgroundThreadDrawable implements NotificationCenter.Not
                 return;
             }
             if (frameGuid != lastFrameId) {
+                return;
+            }
+            error = backgroundFrameError;
+            if (error) {
                 return;
             }
             needSwapBitmaps = true;
@@ -141,7 +173,7 @@ public class DrawingInBackgroundThreadDrawable implements NotificationCenter.Not
             }
             bitmapCanvas.save();
             bitmapCanvas.translate(0, padding);
-            drawInUiThread(bitmapCanvas, alpha);
+            drawInUiThread(bitmapCanvas, 1f);
             bitmapCanvas.restore();
         }
 
@@ -188,14 +220,7 @@ public class DrawingInBackgroundThreadDrawable implements NotificationCenter.Not
         }
         attachedToWindow = true;
         error = false;
-        currentOpenedLayerFlags = NotificationCenter.getGlobalInstance().getCurrentHeavyOperationFlags();
-        currentOpenedLayerFlags &= ~currentLayerNum;
-        if (currentOpenedLayerFlags == 0) {
-            if (paused) {
-                paused = false;
-                onResume();
-            }
-        }
+        updateHeavyOperationState();
 
         NotificationCenter.getGlobalInstance().addObserver(this, NotificationCenter.stopAllHeavyOperations);
         NotificationCenter.getGlobalInstance().addObserver(this, NotificationCenter.startAllHeavyOperations);
@@ -205,15 +230,19 @@ public class DrawingInBackgroundThreadDrawable implements NotificationCenter.Not
         if (!attachedToWindow) {
             return;
         }
+        attachedToWindow = false;
+        frameGuid++;
+        needSwapBitmaps = false;
+        reset = true;
         if (!bitmapUpdating) {
             recycleBitmaps();
         }
-        attachedToWindow = false;
         NotificationCenter.getGlobalInstance().removeObserver(this, NotificationCenter.stopAllHeavyOperations);
         NotificationCenter.getGlobalInstance().removeObserver(this, NotificationCenter.startAllHeavyOperations);
     }
 
     private void recycleBitmaps() {
+        needSwapBitmaps = false;
         ArrayList<Bitmap> bitmaps = new ArrayList<>();
         if (bitmap != null) {
             bitmaps.add(bitmap);
@@ -236,24 +265,34 @@ public class DrawingInBackgroundThreadDrawable implements NotificationCenter.Not
                 return;
             }
             currentOpenedLayerFlags |= layer;
-            if (currentOpenedLayerFlags != 0) {
-                if (!paused) {
-                    paused = true;
-                    onPaused();
-                }
-            }
+            updatePausedState();
         } else if (id == NotificationCenter.startAllHeavyOperations) {
             Integer layer = (Integer) args[0];
             if (currentLayerNum >= layer || currentOpenedLayerFlags == 0) {
                 return;
             }
             currentOpenedLayerFlags &= ~layer;
-            if (currentOpenedLayerFlags == 0) {
-                if (paused) {
-                    paused = false;
-                    onResume();
-                }
-            }
+            updatePausedState();
+        }
+    }
+    private void updateHeavyOperationState() {
+        currentOpenedLayerFlags = NotificationCenter.getGlobalInstance().getCurrentHeavyOperationFlags();
+        currentOpenedLayerFlags &= ~currentLayerNum;
+        if (SharedConfig.getDevicePerformanceClass() >= SharedConfig.PERFORMANCE_CLASS_HIGH) {
+            currentOpenedLayerFlags &= ~512;
+        }
+        updatePausedState();
+    }
+    private void updatePausedState() {
+        boolean shouldPause = currentOpenedLayerFlags != 0;
+        if (paused == shouldPause) {
+            return;
+        }
+        paused = shouldPause;
+        if (paused) {
+            onPaused();
+        } else {
+            onResume();
         }
     }
 
@@ -268,6 +307,7 @@ public class DrawingInBackgroundThreadDrawable implements NotificationCenter.Not
     public void reset() {
         reset = true;
         frameGuid++;
+        needSwapBitmaps = false;
 
         if (bitmap != null) {
             ArrayList<Bitmap> bitmaps = new ArrayList<>();
@@ -304,8 +344,7 @@ public class DrawingInBackgroundThreadDrawable implements NotificationCenter.Not
     public void setLayerNum(int value) {
         currentLayerNum = value;
         if (attachedToWindow) {
-            currentOpenedLayerFlags = NotificationCenter.getGlobalInstance().getCurrentHeavyOperationFlags();
-            currentOpenedLayerFlags &= ~currentLayerNum;
+            updateHeavyOperationState();
         }
     }
 }

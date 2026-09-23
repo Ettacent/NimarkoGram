@@ -35,6 +35,7 @@ import java.lang.ref.WeakReference;
 import java.util.LinkedHashMap;
 import java.util.concurrent.atomic.AtomicLongArray;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 
 import app.nimarkogram.messenger.NimarkoConfig;
@@ -57,6 +58,7 @@ import org.telegram.tgnet.TLRPC;
 import org.telegram.ui.ActionBar.BaseFragment;
 import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.ChatActivity;
+import org.telegram.ui.DialogsActivity;
 import org.telegram.ui.Components.AvatarDrawable;
 import org.telegram.ui.Components.AnimatedLinearLayout;
 import org.telegram.ui.Components.BackupImageView;
@@ -71,9 +73,10 @@ public final class NimarkoInAppNotifications {
     private static long focusLostAt = -1;
     private static Banner banner;
     private static Banner retiringBanner;
-    private static final LinkedHashMap<String, Long> recent = new LinkedHashMap<>();
+    private static final LinkedHashMap<String, RecentDelivery> recent = new LinkedHashMap<>();
     private static final AtomicLongArray sessions = new AtomicLongArray(UserConfig.MAX_ACCOUNT_COUNT);
     private static boolean contentGesture;
+    private static long previewRequest;
 
     public static void onContentTouch(MotionEvent event) {
         if (event.getActionMasked() == MotionEvent.ACTION_DOWN) contentGesture = true;
@@ -84,6 +87,8 @@ public final class NimarkoInAppNotifications {
         BaseFragment root = LaunchActivity.getLastFragment();
         return fragment == null || fragment.isInPreviewMode() || fragment.hasShownSheet()
                 || fragment.visibleDialog != null && fragment.visibleDialog.isShowing()
+                || root != null && root != fragment && (root.isInPreviewMode() || root.hasShownSheet()
+                || root.visibleDialog != null && root.visibleDialog.isShowing())
                 || root instanceof org.telegram.ui.ViewPagerActivity && ((org.telegram.ui.ViewPagerActivity) root).isPageTransitionRunning()
                 || fragment.getParentLayout() != null && (fragment.getParentLayout().isTransitionAnimationInProgress()
                 || fragment.getParentLayout().isSwipeInProgress());
@@ -165,7 +170,9 @@ public final class NimarkoInAppNotifications {
             panel.setViewVisible(this, true, true);
         }
         void release(Banner value) {
-            boolean animate = isAttachedToWindow() && isShown() && value.getVisibility() == VISIBLE && !value.moving;
+            boolean animate = isAttachedToWindow() && isShown() && value.getVisibility() == VISIBLE
+                    && value.getAlpha() > 0f && !value.moving && !value.opening
+                    && !navigationRunning(LaunchActivity.getLastFragmentIncludeMainTabs());
             if (value.getParent() == this && getChildCount() == 1) {
                 retainedCoverage = getLayoutCoverage();
                 retainedCompactHeight = getCompactHeight();
@@ -284,6 +291,14 @@ public final class NimarkoInAppNotifications {
         public void cancel() { active.set(false); }
         public boolean complete() { return completed.compareAndSet(false, true); }
     }
+    private static final class RecentDelivery {
+        final long shownAt;
+        final Delivery delivery;
+        RecentDelivery(long shownAt, Delivery delivery) {
+            this.shownAt = shownAt;
+            this.delivery = delivery;
+        }
+    }
 
     public static long session(int account) {
         return account >= 0 && account < sessions.length() ? sessions.get(account) : -1;
@@ -374,9 +389,13 @@ public final class NimarkoInAppNotifications {
         if (!isAvailable() || !isCurrent(account, owner, loginSession)
                 || !SharedConfig.showNotificationsForAllAccounts && account != UserConfig.selectedAccount) return false;
         final long session = generation;
-        final String key = account + ":" + owner + ":" + loginSession + ":" + dialogId + ":" + (messageId != 0 ? messageId : randomId);
+        final String key = messageId == 0 && randomId == 0 ? null
+                : account + ":" + owner + ":" + loginSession + ":" + dialogId + ":" + topicId
+                + ":" + (messageId != 0 ? "m" + messageId : "r" + randomId);
         final long deadline = SystemClock.elapsedRealtime() + 4000;
         Runnable present = new Runnable() {
+            long archiveWaitStarted = -1;
+            long archiveWaitDuration;
             @Override
             public void run() {
                 boolean handled = false;
@@ -384,16 +403,26 @@ public final class NimarkoInAppNotifications {
                 try {
                     if (!delivery.isActive() || session != generation || !isCurrent(account, owner, loginSession) || !allowed(account, owner, dialogId, false)) return;
                     long now = SystemClock.elapsedRealtime();
-                    Long shown = recent.get(key);
-                    if (shown != null && now - shown < 120_000) {
+                    if (archiveWaitStarted >= 0) {
+                        archiveWaitDuration += Math.max(0, now - archiveWaitStarted);
+                        archiveWaitStarted = -1;
+                    }
+                    if (now >= deadline + archiveWaitDuration) return;
+                    RecentDelivery shown = recent.get(key);
+                    if (shown != null && shown.delivery.isActive() && now - shown.shownAt < 120_000) {
                         handled = true;
                         return;
                     }
-                    if (navigationRunning(LaunchActivity.getLastFragmentIncludeMainTabs()) || banner != null && banner.touching) {
-                        if (now < deadline) {
-                            deferred = true;
-                            AndroidUtilities.runOnUIThread(this, 32);
-                        }
+                    if (archivePullGestureInProgress()) {
+                        archiveWaitStarted = now;
+                        deferred = true;
+                        AndroidUtilities.runOnUIThread(this, 32);
+                        return;
+                    }
+                    if (presentationBusy() || retiringBanner != null && banner != null
+                            && !banner.sameConversation(account, owner, loginSession, dialogId, topicId)) {
+                        deferred = true;
+                        AndroidUtilities.runOnUIThread(this, 32);
                         return;
                     }
                     boolean contentPreview = preview && canPreview(account, dialogId, topicId);
@@ -402,7 +431,7 @@ public final class NimarkoInAppNotifications {
                             || show(new Banner(host.get(), account, owner, loginSession, dialogId, topicId, messageId,
                             title, text, contentPreview, false, delivery))) {
                         handled = true;
-                        recent.put(key, now);
+                        if (key != null) recent.put(key, new RecentDelivery(now, delivery));
                         while (recent.size() > 64) recent.remove(recent.keySet().iterator().next());
                     }
                 } catch (RuntimeException e) {
@@ -421,8 +450,38 @@ public final class NimarkoInAppNotifications {
         int account = UserConfig.selectedAccount;
         long owner = UserConfig.getInstance(account).getClientUserId();
         if (!allowed(account, owner, 0, true)) return;
-        show(new Banner(activity, account, owner, session(account), 0, 0, 0, getString(R.string.AppName),
-                getString(R.string.NM_InAppNotificationsSample), true, true, null));
+        final long loginSession = session(account), hostGeneration = generation, request = ++previewRequest;
+        final long deadline = SystemClock.elapsedRealtime() + 4000;
+        final BaseFragment source = LaunchActivity.getLastFragmentIncludeMainTabs();
+        Runnable present = new Runnable() {
+            @Override public void run() {
+                if (request != previewRequest || hostGeneration != generation || host.get() != activity
+                        || UserConfig.selectedAccount != account || !isCurrent(account, owner, loginSession)
+                        || !allowed(account, owner, 0, true) || SystemClock.elapsedRealtime() >= deadline
+                        || LaunchActivity.getLastFragmentIncludeMainTabs() != source) return;
+                if (presentationBusy()) {
+                    AndroidUtilities.runOnUIThread(this, 32);
+                    return;
+                }
+                if (banner != null && banner.sample && banner.sameConversation(account, owner, loginSession, 0, 0)
+                        && banner.slot != null && banner.isAttachedToWindow() && banner.slot.panel == resolvePanel()) {
+                    banner.expiresAt = SystemClock.elapsedRealtime() + (banner.expanded ? 8000 : 5000);
+                    return;
+                }
+                show(new Banner(activity, account, owner, loginSession, 0, 0, 0, getString(R.string.AppName),
+                        getString(R.string.NM_InAppNotificationsSample), true, true, null));
+            }
+        };
+        AndroidUtilities.runOnUIThread(present);
+    }
+    private static boolean presentationBusy() {
+        return navigationRunning(LaunchActivity.getLastFragmentIncludeMainTabs())
+                || banner != null && (banner.touching || banner.opening || banner.closing || banner.pullAnimator != null);
+    }
+    private static boolean archivePullGestureInProgress() {
+        BaseFragment fragment = LaunchActivity.getLastFragmentIncludeMainTabs();
+        return fragment instanceof DialogsActivity
+                && ((DialogsActivity) fragment).isArchivePullGestureInProgress();
     }
 
     private static boolean allowed(int account, long owner, long dialogId, boolean sample) {
@@ -452,7 +511,8 @@ public final class NimarkoInAppNotifications {
         LaunchActivity activity = host.get();
         AnimatedLinearLayout panel = resolvePanel(next);
         if (next.delivery != null && !next.delivery.isActive()
-                || activity == null || panel == null) return false;
+                || activity == null || panel == null || !isCurrent(next.account, next.owner, next.loginSession)
+                || !allowed(next.account, next.owner, next.dialogId, next.sample)) return false;
         remove(retiringBanner);
         retiringBanner = banner;
         if (retiringBanner != null) {
@@ -473,24 +533,21 @@ public final class NimarkoInAppNotifications {
                     }).start();
         }
         banner = next;
-        Slot.obtain(panel).attach(next);
         next.setAlpha(0f);
         next.setTranslationY(-dp(8));
         next.setScaleX(.97f);
         next.setScaleY(.97f);
+        Slot.obtain(panel).attach(next);
+        next.animate().alpha(1f).translationY(0).scaleX(1f).scaleY(1f).setDuration(360)
+                .setInterpolator(CubicBezierInterpolator.Emphasized).start();
         next.postOnAnimation(() -> {
-            if (banner != next || next.opening || next.closing) return;
-            if (next.delivery != null && !next.delivery.isActive()
+            if (banner == next && !next.opening && !next.closing
+                    && (next.delivery != null && !next.delivery.isActive()
                     || !isCurrent(next.account, next.owner, next.loginSession)
-                    || !allowed(next.account, next.owner, next.dialogId, next.sample)) {
-                removeCurrent();
-                return;
-            }
-            next.animate().alpha(1f).translationY(0).scaleX(1f).scaleY(1f).setDuration(360)
-                    .setInterpolator(CubicBezierInterpolator.Emphasized).start();
-            next.expiresAt = SystemClock.elapsedRealtime() + 5000;
-            next.postDelayed(next.watch, 250);
+                    || !allowed(next.account, next.owner, next.dialogId, next.sample))) removeCurrent();
         });
+        next.expiresAt = SystemClock.elapsedRealtime() + 5000;
+        next.postDelayed(next.watch, 250);
         return true;
     }
 
@@ -511,8 +568,8 @@ public final class NimarkoInAppNotifications {
     private static void remove(Banner old) {
         if (old == null) return;
         old.closing = true;
-        old.opening = false;
         old.touching = false;
+        old.navigationRequestCurrent = null;
         old.setPressed(false);
         old.cancelExpansion();
         old.cancelContentTransition();
@@ -521,6 +578,7 @@ public final class NimarkoInAppNotifications {
         old.animate().withEndAction(null);
         if (old.slot != null) old.slot.release(old);
         else if (old.getParent() instanceof ViewGroup) ((ViewGroup) old.getParent()).removeView(old);
+        old.opening = false;
     }
 
     private static void bindAvatar(BackupImageView avatar, int account, long dialogId,
@@ -555,7 +613,8 @@ public final class NimarkoInAppNotifications {
         boolean moving;
         long expiresAt;
         boolean touching, closing, dragged, opening;
-        boolean expanded, multiplePointers;
+        boolean expanded, multiplePointers, verticalDrag;
+        BooleanSupplier navigationRequestCurrent;
         float expansion, downExpansion, downTranslation;
         int collapsedHeight, expandedHeight;
         TextView title, body, expandedBody;
@@ -564,6 +623,7 @@ public final class NimarkoInAppNotifications {
         FrameLayout bodies;
         ImageView close;
         String avatarHeading;
+        String boundAvatarHeading;
         long avatarPhotoId = Long.MIN_VALUE, avatarVolumeId;
         int avatarDcId, avatarLocalId;
         boolean avatarPeerAvailable;
@@ -610,8 +670,8 @@ public final class NimarkoInAppNotifications {
                 if (banner != Banner.this || closing) return;
                 if (delivery != null && !delivery.isActive() || !isCurrent(account, owner, loginSession) || !mayRemain(account, owner, dialogId, sample)
                         || !sample && preview && !canPreview(account, dialogId, topicId)) {
-                    dismiss();
-                } else if (focused && !touching && !contentGesture
+                    removeCurrent();
+                } else if (focused && !touching && !contentGesture && !archivePullGestureInProgress()
                         && !navigationRunning(LaunchActivity.getLastFragmentIncludeMainTabs()) && SystemClock.elapsedRealtime() >= expiresAt) {
                     hide();
                 } else {
@@ -700,16 +760,18 @@ public final class NimarkoInAppNotifications {
             view.setGravity(Gravity.START);
             return view;
         }
+        boolean sameConversation(int account, long owner, long loginSession, long dialogId, long topicId) {
+            return this.account == account && this.owner == owner && this.loginSession == loginSession
+                    && this.dialogId == dialogId && this.topicId == topicId;
+        }
 
         boolean replaceMessage(int account, long owner, long loginSession, long dialogId, long topicId, int messageId,
                                String heading, String message, boolean preview, Delivery delivery) {
-            if (sample || closing || opening || touching || banner != this
-                    || this.account != account || this.owner != owner || this.loginSession != loginSession
-                    || this.dialogId != dialogId || this.topicId != topicId || this.preview != preview
-                    || slot == null || !isAttachedToWindow() || slot.panel != resolvePanel()) return false;
-            if (this.messageId > 0 && messageId > 0 && messageId < this.messageId) return true;
-            remove(retiringBanner);
-            retiringBanner = null;
+            if (sample || closing || opening || touching || banner != this || this.preview != preview
+                    || !sameConversation(account, owner, loginSession, dialogId, topicId)) return false;
+            if (this.messageId > 0 && messageId > 0 && messageId < this.messageId
+                    && (this.delivery == null || this.delivery.isActive())) return true;
+            if (slot == null || !isAttachedToWindow() || slot.panel != resolvePanel()) return false;
             this.delivery = delivery;
             this.messageId = messageId;
             avatarHeading = heading;
@@ -724,6 +786,11 @@ public final class NimarkoInAppNotifications {
         }
 
         void replaceText(String name, String message) {
+            if (TextUtils.equals(title.getText(), name) && TextUtils.equals(body.getText(), message)) {
+                pendingName = pendingMessage = null;
+                if (contentAnimator != null && contentFadeOut) fadeText(false);
+                return;
+            }
             boolean wasChangingTitle = !TextUtils.equals(title.getText(), pendingName);
             pendingName = name;
             pendingMessage = message;
@@ -807,12 +874,14 @@ public final class NimarkoInAppNotifications {
             int localId = location == null ? 0 : location.local_id;
             boolean available = peer != null;
             if (photoId == avatarPhotoId && dcId == avatarDcId && volumeId == avatarVolumeId
-                    && localId == avatarLocalId && available == avatarPeerAvailable) return;
+                    && localId == avatarLocalId && available == avatarPeerAvailable
+                    && TextUtils.equals(avatarHeading, boundAvatarHeading)) return;
             avatarPhotoId = photoId;
             avatarDcId = dcId;
             avatarVolumeId = volumeId;
             avatarLocalId = localId;
             avatarPeerAvailable = available;
+            boundAvatarHeading = avatarHeading;
             bindAvatar(avatar, account, dialogId, avatarHeading, preview, sample);
         }
 
@@ -930,6 +999,8 @@ public final class NimarkoInAppNotifications {
             float fromExpansion = expansion;
             float fromOffset = pullOffset;
             float fromAlpha = getAlpha();
+            float fromScaleX = getScaleX();
+            float fromScaleY = getScaleY();
             ValueAnimator animator = ValueAnimator.ofFloat(0f, 1f);
             pullAnimator = animator;
             animator.setDuration(duration);
@@ -945,7 +1016,11 @@ public final class NimarkoInAppNotifications {
                 float progress = (float) a.getAnimatedValue();
                 setExpansion(fromExpansion + (targetExpansion - fromExpansion) * progress);
                 setPullOffset(fromOffset + (targetOffset - fromOffset) * progress);
-                if (closing) setAlpha(fromAlpha * (1f - progress));
+                if (closing || opening) setAlpha(fromAlpha * (1f - progress));
+                if (opening) {
+                    setScaleX(fromScaleX + (.98f - fromScaleX) * progress);
+                    setScaleY(fromScaleY + (.98f - fromScaleY) * progress);
+                }
             });
             animator.addListener(new AnimatorListenerAdapter() {
                 @Override public void onAnimationEnd(Animator animation) {
@@ -971,11 +1046,27 @@ public final class NimarkoInAppNotifications {
         void beginGesture(MotionEvent e) {
             downX = e.getRawX(); downY = e.getRawY();
             downExpansion = expansion;
-            downTranslation = getTranslationY();
-            dragged = multiplePointers = false;
+            downTranslation = pullOffset;
+            dragged = multiplePointers = verticalDrag = false;
             touching = true;
             cancelExpansion();
             releaseVelocity = 0;
+        }
+        void trackGestureDirection(MotionEvent e) {
+            if (dragged) return;
+            float dx = Math.abs(e.getRawX() - downX), dy = Math.abs(e.getRawY() - downY);
+            if (Math.max(dx, dy) <= slop) return;
+            dragged = true;
+            verticalDrag = dy > dx;
+            setPressed(false);
+            animate().cancel();
+            downTranslation = getTranslationY();
+            setPullOffset(downTranslation);
+        }
+        float gestureTravel(float dy) {
+            float offset = downTranslation > 0
+                    ? dp(120) * downTranslation / Math.max(1f, dp(36) - downTranslation) : downTranslation;
+            return downExpansion * (preview ? Math.max(0, expandedHeight - collapsedHeight) : 0) + offset + dy;
         }
 
         void setGestureGeometry(float targetExpansion, float targetOffset) {
@@ -1014,6 +1105,21 @@ public final class NimarkoInAppNotifications {
 
         void animateOpenChat() {
             if (closing || opening || banner != this) return;
+            BaseFragment source = LaunchActivity.getLastFragmentIncludeMainTabs();
+            if (navigationRunning(source) || !allowed(account, owner, dialogId, sample)) return;
+            if (!sample) {
+                final LaunchActivity activity = host.get();
+                final long hostGeneration = generation;
+                final int sourceAccount = UserConfig.selectedAccount;
+                final long sourceOwner = UserConfig.getInstance(sourceAccount).getClientUserId();
+                final long sourceSession = session(sourceAccount);
+                final BooleanSupplier sourceCurrent = source.captureNavigationRequest();
+                navigationRequestCurrent = () -> host.get() == activity && generation == hostGeneration
+                        && UserConfig.selectedAccount == sourceAccount
+                        && isCurrent(sourceAccount, sourceOwner, sourceSession)
+                        && LaunchActivity.getLastFragmentIncludeMainTabs() == source
+                        && !navigationRunning(source) && sourceCurrent.getAsBoolean();
+            }
             opening = true;
             touching = true;
             setPressed(false);
@@ -1023,13 +1129,13 @@ public final class NimarkoInAppNotifications {
                 openChat();
                 return;
             }
-            animate().withLayer().alpha(0f).scaleX(.98f).scaleY(.98f)
-                    .setDuration(220).setInterpolator(CubicBezierInterpolator.EASE_OUT)
-                    .withEndAction(() -> { if (banner == this && opening) openChat(); }).start();
+            settleGeometry(expansion, -getHeight(), 220,
+                    () -> { if (banner == this && opening) openChat(); });
         }
 
         void pauseInteraction() {
             touching = false;
+            navigationRequestCurrent = null;
             setPressed(false);
             if (!closing && (opening || dragged)) {
                 animate().cancel();
@@ -1043,7 +1149,11 @@ public final class NimarkoInAppNotifications {
 
         void openChat() {
             if (banner != this) return;
-            if (closing || delivery != null && !delivery.isActive() || !isCurrent(account, owner, loginSession) || !allowed(account, owner, dialogId, sample)) { dismiss(); return; }
+            if (closing || delivery != null && !delivery.isActive() || !isCurrent(account, owner, loginSession) || !allowed(account, owner, dialogId, sample)) { removeCurrent(); return; }
+            if (!sample && (navigationRequestCurrent == null || !navigationRequestCurrent.getAsBoolean())) {
+                pauseInteraction();
+                return;
+            }
             LaunchActivity activity = host.get();
             if (sample || activity == null) { removeCurrent(); return; }
             if (account == UserConfig.selectedAccount) removeCurrent();
@@ -1054,6 +1164,10 @@ public final class NimarkoInAppNotifications {
             else if (dialogId > 0) intent.putExtra("userId", dialogId);
             else intent.putExtra("chatId", -dialogId).putExtra("topicId", topicId);
             activity.openInAppNotification(intent);
+            if (banner == this) {
+                pauseInteraction();
+                expiresAt = SystemClock.elapsedRealtime() + (expanded ? 8000 : 5000);
+            }
         }
 
         @Override public boolean dispatchTouchEvent(MotionEvent e) {
@@ -1073,10 +1187,14 @@ public final class NimarkoInAppNotifications {
                     screenEvent.recycle();
                 }
             }
-            if (e.getPointerCount() > 1) multiplePointers = dragged = true;
+            if (e.getPointerCount() > 1 && !multiplePointers) {
+                multiplePointers = dragged = true;
+                cancelExpansion();
+                setPressed(false);
+            }
             if (e.getActionMasked() == MotionEvent.ACTION_UP || e.getActionMasked() == MotionEvent.ACTION_CANCEL) {
                 touching = false;
-                expiresAt = SystemClock.elapsedRealtime() + 5000;
+                expiresAt = SystemClock.elapsedRealtime() + (expanded ? 8000 : 5000);
                 if (velocityTracker != null) {
                     velocityTracker.computeCurrentVelocity(1000, dp(4000));
                     releaseVelocity = e.getActionMasked() == MotionEvent.ACTION_UP && !multiplePointers ? velocityTracker.getYVelocity() : 0;
@@ -1100,13 +1218,8 @@ public final class NimarkoInAppNotifications {
                 beginGesture(e);
             }
             if (dragged || multiplePointers) return true;
-            if (e.getActionMasked() == MotionEvent.ACTION_MOVE && Math.abs(e.getRawY() - downY) > slop
-                    && Math.abs(e.getRawY() - downY) > Math.abs(e.getRawX() - downX)) {
-                dragged = true;
-                animate().cancel();
-                return true;
-            }
-            return false;
+            if (e.getActionMasked() == MotionEvent.ACTION_MOVE) trackGestureDirection(e);
+            return dragged;
         }
 
         @Override public boolean onTouchEvent(MotionEvent e) {
@@ -1120,30 +1233,31 @@ public final class NimarkoInAppNotifications {
                     return true;
                 case MotionEvent.ACTION_MOVE:
                     if (multiplePointers) return true;
-                    if (Math.abs(dy) > slop || Math.abs(e.getRawX() - downX) > slop) dragged = true;
-                    if (!dragged) return true;
+                    trackGestureDirection(e);
+                    if (!dragged || !verticalDrag) return true;
                     setPressed(false);
                     animate().cancel();
                     touching = true;
                     float range = preview ? Math.max(0, expandedHeight - collapsedHeight) : 0;
-                    float travel = downExpansion * range + dy;
+                    float travel = gestureTravel(dy);
                     float overscroll = Math.max(0, travel - range);
-                    float offset = downTranslation + (travel < 0 ? travel
-                            : dp(36) * overscroll / (overscroll + dp(120)));
+                    float offset = travel < 0 ? travel : dp(36) * overscroll / (overscroll + dp(120));
                     setGestureGeometry(range > 0 ? travel / range : 0, offset);
                     return true;
                 case MotionEvent.ACTION_UP:
                     touching = false;
                     setPressed(false);
                     if (!multiplePointers) {
-                        float remainingTravel = downExpansion * Math.max(0, expandedHeight - collapsedHeight) + dy;
-                        if (dragged && (releaseVelocity < -dp(650)
-                                || releaseVelocity <= dp(650) && remainingTravel < -dp(24))) { hide(); return true; }
                         if (!dragged) { settleExpansion(expanded); performClick(); return true; }
-                        settleExpansion(preview && (releaseVelocity > dp(650)
-                                || releaseVelocity >= -dp(650) && (dy > dp(40) || dy >= -dp(40) && expansion >= .5f)));
-                        restoreGesture();
-                        return true;
+                        if (verticalDrag) {
+                            float remainingTravel = gestureTravel(dy);
+                            if (remainingTravel < 0 && (releaseVelocity < -dp(650)
+                                    || releaseVelocity <= dp(650) && remainingTravel < -dp(24))) { hide(); return true; }
+                            settleExpansion(preview && (releaseVelocity > dp(650)
+                                    || releaseVelocity >= -dp(650) && remainingTravel >= (expandedHeight - collapsedHeight) * .5f));
+                            restoreGesture();
+                            return true;
+                        }
                     }
 
                 case MotionEvent.ACTION_CANCEL:
@@ -1190,6 +1304,7 @@ public final class NimarkoInAppNotifications {
         @Override protected void onAttachedToWindow() {
             super.onAttachedToWindow();
             viewportWidth = -1;
+            avatar.getImageReceiver().setForceCrossfade(true);
             surface.attach();
         }
 

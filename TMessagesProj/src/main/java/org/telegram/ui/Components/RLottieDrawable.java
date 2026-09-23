@@ -48,6 +48,7 @@ import org.telegram.ui.LaunchActivity;
 
 import java.io.File;
 import java.io.FileReader;
+import java.io.StringReader;
 import java.lang.ref.WeakReference;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -241,7 +242,7 @@ public class RLottieDrawable extends BitmapDrawable implements Animatable, Bitma
         if (!hasParentView()) {
             stop();
         }
-        if (isRunning) {
+        if (isRunning || hasParentView() && decodeSingleFrame && !singleFrameDecoded) {
             scheduleNextGetFrame();
         }
     }
@@ -343,12 +344,15 @@ public class RLottieDrawable extends BitmapDrawable implements Animatable, Bitma
                 FileLog.e(e);
             }
         }
+        if (backgroundBitmap == null) {
+            return LOAD_FRAME_RESULT_ERROR;
+        }
 
         if (backgroundBitmap != null) {
             applyPendingColorsUpdates();
             try {
                 final RLottieNative ptrToUse = nativePtr;
-                int result = 0;
+                int result = -1;
                 int framesPerUpdates = shouldLimitFps ? 2 : 1;
                 if (precache && bitmapsCache != null) {
                     try {
@@ -381,7 +385,6 @@ public class RLottieDrawable extends BitmapDrawable implements Animatable, Bitma
                     return LOAD_FRAME_RESULT_ERROR;
                 }
 
-                nextRenderingBitmap = backgroundBitmap;
 
                 if (customEndFrame >= 0 && playInDirectionOfCustomEndFrame) {
                     if (currentFrame > customEndFrame) {
@@ -433,8 +436,10 @@ public class RLottieDrawable extends BitmapDrawable implements Animatable, Bitma
                         checkDispatchOnAnimationEnd();
                     }
                 }
+                nextRenderingBitmap = backgroundBitmap;
             } catch (Exception e) {
                 FileLog.e(e);
+                return LOAD_FRAME_RESULT_ERROR;
             }
         }
         return LOAD_FRAME_RESULT_OK;
@@ -527,7 +532,7 @@ public class RLottieDrawable extends BitmapDrawable implements Animatable, Bitma
             double fr = 30.0;
             double ip = 0;
             double op = 0;
-            try (JsonReader reader = new JsonReader(new FileReader(file.getAbsoluteFile()))) {
+            try (JsonReader reader = new JsonReader(json != null ? new StringReader(json) : new FileReader(file.getAbsoluteFile()))) {
                 reader.beginObject();
                 while (reader.hasNext()) {
                     String name = reader.nextName();
@@ -672,7 +677,7 @@ public class RLottieDrawable extends BitmapDrawable implements Animatable, Bitma
     }
 
     public final void addParentView(ImageReceiver parent) {
-        if (parent == null) {
+        if (parent == null || parentViews.contains(parent)) {
             return;
         }
         parentViews.add(parent);
@@ -1192,6 +1197,9 @@ public class RLottieDrawable extends BitmapDrawable implements Animatable, Bitma
     public final boolean hasBitmap() {
         return !isRecycled && (renderingBitmap != null || nextRenderingBitmap != null) && !isInvalid;
     }
+    public final boolean hasRenderingBitmap() {
+        return !isRecycled && !destroyWhenDone && canLoadFrames() && renderingBitmap != null && !isInvalid;
+    }
 
     public final void setInvalidateOnProgressSet(boolean value) {
         invalidateOnProgressSet = value;
@@ -1239,6 +1247,9 @@ public class RLottieDrawable extends BitmapDrawable implements Animatable, Bitma
                 e.printStackTrace();
             }
             return getNextFrame(bitmap);
+        }
+        if (result < 0) {
+            return -1;
         }
         generateCacheFramePointer += framesPerUpdates;
         return 1;

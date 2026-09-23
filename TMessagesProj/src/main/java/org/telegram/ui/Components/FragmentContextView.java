@@ -132,6 +132,8 @@ public class FragmentContextView extends FrameLayout implements NotificationCent
     private AudioPlayerAlert.ClippingTextViewSwitcher titleTextView;
     private AudioPlayerAlert.ClippingTextViewSwitcher subtitleTextView;
     private AnimatorSet animatorSet;
+    private boolean attachedToWindow;
+    private VoIPService registeredVoIPService;
     private BaseFragment fragment;
     private ChatActivityInterface chatActivity;
     private View applyingView;
@@ -1154,6 +1156,26 @@ public class FragmentContextView extends FrameLayout implements NotificationCent
             AndroidUtilities.updateViewShow(playbackSpeedButton, false, true, false);
         }
     }
+    private void registerCallStateListener() {
+        if (!attachedToWindow) {
+            return;
+        }
+        VoIPService service = VoIPService.getSharedInstance();
+        if (registeredVoIPService != service) {
+            unregisterCallStateListener();
+            registeredVoIPService = service;
+            if (service != null) {
+                service.registerStateListener(this);
+            }
+        }
+    }
+    private void unregisterCallStateListener() {
+        if (registeredVoIPService != null) {
+            VoIPService service = registeredVoIPService;
+            registeredVoIPService = null;
+            service.unregisterStateListener(this);
+        }
+    }
 
     private void updateStyle(@Style int style) {
         updateStyle(style, false);
@@ -1167,9 +1189,7 @@ public class FragmentContextView extends FrameLayout implements NotificationCent
         if (currentStyle == STYLE_ACTIVE_GROUP_CALL || currentStyle == STYLE_CONNECTING_GROUP_CALL) {
             Theme.getFragmentContextViewWavesDrawable().removeParent(this);
             capsuleBlobDrawable.stop();
-            if (VoIPService.getSharedInstance() != null) {
-                VoIPService.getSharedInstance().unregisterStateListener(this);
-            }
+            unregisterCallStateListener();
             if (callMessagesAnimator != null) {
                 callMessagesAnimator.replace(null, true);
             }
@@ -1335,9 +1355,7 @@ public class FragmentContextView extends FrameLayout implements NotificationCent
             boolean isRtmpStream = VoIPService.hasRtmpStream();
             avatars.setVisibility(!isRtmpStream ? VISIBLE : GONE);
             if (style == STYLE_ACTIVE_GROUP_CALL) {
-                if (VoIPService.getSharedInstance() != null) {
-                    VoIPService.getSharedInstance().registerStateListener(this);
-                }
+                registerCallStateListener();
             }
             if (avatars.getVisibility() != GONE) {
                 updateAvatars(false);
@@ -1354,8 +1372,10 @@ public class FragmentContextView extends FrameLayout implements NotificationCent
             frameLayout.setBackgroundColor(Color.TRANSPARENT);
             importingImageView.setVisibility(GONE);
             importingImageView.stopAnimation();
-            Theme.getFragmentContextViewWavesDrawable().addParent(this);
-            capsuleBlobDrawable.start();
+            if (attachedToWindow) {
+                Theme.getFragmentContextViewWavesDrawable().addParent(this);
+                capsuleBlobDrawable.start();
+            }
             invalidate();
 
             for (int i = 0; i < 2; i++) {
@@ -1386,10 +1406,17 @@ public class FragmentContextView extends FrameLayout implements NotificationCent
 
     @Override
     protected void onDetachedFromWindow() {
+        attachedToWindow = false;
         super.onDetachedFromWindow();
+        checkCallAfterAnimation = false;
+        checkLiveStoryAfterAnimation = false;
+        checkPlayerAfterAnimation = false;
+        checkImportAfterAnimation = false;
         if (animatorSet != null) {
-            animatorSet.cancel();
+            AnimatorSet animation = animatorSet;
             animatorSet = null;
+            animation.removeAllListeners();
+            animation.cancel();
         }
         if (scheduleRunnableScheduled) {
             AndroidUtilities.cancelRunOnUIThread(updateScheduleTimeRunnable);
@@ -1398,7 +1425,6 @@ public class FragmentContextView extends FrameLayout implements NotificationCent
         
         AndroidUtilities.cancelRunOnUIThread(checkLocationRunnable);
         visible = false;
-        notificationsLocker.unlock();
         topPadding = 0;
         if (isLocation) {
             NotificationCenter.getGlobalInstance().removeObserver(this, NotificationCenter.liveLocationsChanged);
@@ -1427,15 +1453,18 @@ public class FragmentContextView extends FrameLayout implements NotificationCent
             Theme.getFragmentContextViewWavesDrawable().removeParent(this);
             capsuleBlobDrawable.stop();
         }
-        if (VoIPService.getSharedInstance() != null) {
-            VoIPService.getSharedInstance().unregisterStateListener(this);
-        }
+        unregisterCallStateListener();
+        groupCallMessageCounter = 0;
+        callMessagesAnimator.clear(false);
+        notificationsLocker.unlock();
+        notificationsLocker2.unlock();
         wasDraw = false;
     }
 
     @Override
     protected void onAttachedToWindow() {
         super.onAttachedToWindow();
+        attachedToWindow = true;
         if (isLocation) {
             NotificationCenter.getGlobalInstance().addObserver(this, NotificationCenter.liveLocationsChanged);
             NotificationCenter.getGlobalInstance().addObserver(this, NotificationCenter.liveLocationsCacheChanged);
@@ -1465,9 +1494,7 @@ public class FragmentContextView extends FrameLayout implements NotificationCent
         if (currentStyle == STYLE_ACTIVE_GROUP_CALL || currentStyle == STYLE_CONNECTING_GROUP_CALL) {
             Theme.getFragmentContextViewWavesDrawable().addParent(this);
             capsuleBlobDrawable.start();
-            if (VoIPService.getSharedInstance() != null) {
-                VoIPService.getSharedInstance().registerStateListener(this);
-            }
+            registerCallStateListener();
             boolean newMuted = VoIPService.getSharedInstance() != null && VoIPService.getSharedInstance().isMicMute();
             if (isMuted != newMuted && muteButton != null) {
                 isMuted = newMuted;
@@ -1515,6 +1542,9 @@ public class FragmentContextView extends FrameLayout implements NotificationCent
 
     @Override
     public void didReceivedNotification(int id, int account, Object... args) {
+        if (!attachedToWindow) {
+            return;
+        }
         if (id == NotificationCenter.liveLocationsChanged) {
             checkLiveLocation(false);
         } else if (id == NotificationCenter.liveStoryUpdated) {
@@ -1537,7 +1567,7 @@ public class FragmentContextView extends FrameLayout implements NotificationCent
                 VoIPService sharedInstance = VoIPService.getSharedInstance();
                 if (sharedInstance != null && sharedInstance.groupCall != null) {
                     if (id == NotificationCenter.didStartedCall) {
-                        sharedInstance.registerStateListener(this);
+                        registerCallStateListener();
                     }
                     int currentCallState = sharedInstance.getCallState();
                     if (currentCallState == VoIPService.STATE_WAIT_INIT || currentCallState == VoIPService.STATE_WAIT_INIT_ACK || currentCallState == VoIPService.STATE_CREATING || currentCallState == VoIPService.STATE_RECONNECTING) {
@@ -2850,9 +2880,11 @@ public class FragmentContextView extends FrameLayout implements NotificationCent
 
     private void onItemChanged (ReplaceAnimator<?> animator) {
         float visibility = callMessagesAnimator.getMetadata().getTotalVisibility();
-        titleTextView.setAlpha(1f - visibility);
-        titleTextView.setScaleX(lerp(0.7f, 1f, 1f - visibility));
-        titleTextView.setScaleY(lerp(0.7f, 1f, 1f - visibility));
+        if (titleTextView != null) {
+            titleTextView.setAlpha(1f - visibility);
+            titleTextView.setScaleX(lerp(0.7f, 1f, 1f - visibility));
+            titleTextView.setScaleY(lerp(0.7f, 1f, 1f - visibility));
+        }
 
         for (ListAnimator.Entry<CallMessageItem> entry : callMessagesAnimator) {
             final float scale = lerp(0.7f, 1f, entry.getVisibility());
@@ -2866,7 +2898,7 @@ public class FragmentContextView extends FrameLayout implements NotificationCent
 
     @Override
     public void onNewGroupCallMessage(long callId, GroupCallMessage message) {
-        if (groupCallMessagesContainer == null) {
+        if (!attachedToWindow || groupCallMessagesContainer == null) {
             return;
         }
         if (currentStyle != STYLE_CONNECTING_GROUP_CALL && currentStyle != STYLE_ACTIVE_GROUP_CALL) {
@@ -2884,7 +2916,7 @@ public class FragmentContextView extends FrameLayout implements NotificationCent
 
     @Override
     public void onPopGroupCallMessage() {
-        if (groupCallMessageCounter > 0) {
+        if (attachedToWindow && groupCallMessageCounter > 0) {
             groupCallMessageCounter--;
             if (groupCallMessageCounter == 0) {
                 callMessagesAnimator.replace(null, true);

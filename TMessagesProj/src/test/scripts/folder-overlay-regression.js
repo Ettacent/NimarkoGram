@@ -36,6 +36,8 @@ public class OverlayTest {
  }
  static class Tabs {
   ListView listView=new ListView();int listViewPaddingH=8,additionalTabWidth;
+  int trailingOverlayInset; boolean trailingOverlayRtl;
+  void invalidate() {}
   int pageScrollFrom=-1,pageScrollTo=-1;
   Manager layoutManager=new Manager();List<Integer> tabs=Arrays.asList(0,1,2,3,4,5,6);
   int contentWidth=900;int getTabContentWidth(){return contentWidth;}

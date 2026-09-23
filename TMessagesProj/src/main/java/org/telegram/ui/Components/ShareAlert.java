@@ -428,9 +428,9 @@ public class ShareAlert extends BottomSheet implements NotificationCenter.Notifi
             });
 
             iBlur3FactoryLiquidGlass = new BlurredBackgroundDrawableViewFactory(iBlur3SourceGlass);
-            iBlur3FactoryLiquidGlass.setLiquidGlassEffectAllowed(LiteMode.isEnabled(LiteMode.FLAG_LIQUID_GLASS));
+            iBlur3FactoryLiquidGlass.setLiquidGlassEffectAllowed(true);
             iBlur3FactoryFrostedLiquidGlass = new BlurredBackgroundDrawableViewFactory(iBlur3SourceGlassFrosted);
-            iBlur3FactoryFrostedLiquidGlass.setLiquidGlassEffectAllowed(LiteMode.isEnabled(LiteMode.FLAG_LIQUID_GLASS));
+            iBlur3FactoryFrostedLiquidGlass.setLiquidGlassEffectAllowed(true);
         } else {
             scrollableViewNoiseSuppressor = null;
             iBlur3SourceGlassFrosted = null;
@@ -2005,20 +2005,23 @@ public class ShareAlert extends BottomSheet implements NotificationCenter.Notifi
                     public void didReceivedNotification(int id, int account, Object... args) {
                         long chatId = (long) args[0];
                         if (chatId == -dialog.id) {
-                            boolean animate = shareTopicsAdapter.topics == null && MessagesController.getInstance(currentAccount).getTopicsController().getTopics(-dialog.id) != null || timeoutRef.get() == null;
+                            if (selectedTopicDialog != dialog || isDismissed()) {
+                                NotificationCenter.getInstance(currentAccount).removeObserver(this, NotificationCenter.topicsDidLoaded);
+                                return;
+                            }
+                            boolean enterTopics = topicsGridView.getVisibility() != View.VISIBLE
+                                    && (MessagesController.getInstance(currentAccount).getTopicsController().getTopics(-dialog.id) != null || timeoutRef.get() == null);
 
                             shareTopicsAdapter.topics = MessagesController.getInstance(currentAccount).getTopicsController().getTopics(-dialog.id);
                             shareTopicsAdapter.isBotForum = UserObject.isBotForum(currentAccount, dialog.id);
                             shareTopicsAdapter.isBotForumWithManageTopics = UserObject.isBotForumWithEditableTopics(currentAccount, dialog.id);
-                            if (animate) {
-                                shareTopicsAdapter.notifyDataSetChanged();
-                            }
+                            shareTopicsAdapter.notifyDataSetChanged();
 
                             if (shareTopicsAdapter.topics != null) {
                                 NotificationCenter.getInstance(currentAccount).removeObserver(this, NotificationCenter.topicsDidLoaded);
                             }
 
-                            if (animate) {
+                            if (enterTopics) {
                                 topicsGridView.setVisibility(View.VISIBLE);
                                 topicsGridView.setAlpha(0);
                                 topicsBackActionBar.setVisibility(View.VISIBLE);
@@ -2050,6 +2053,9 @@ public class ShareAlert extends BottomSheet implements NotificationCenter.Notifi
                                     invalidateTopicsAnimation(cell, loc, value);
                                 });
                                 topicsAnimation.addEndListener((animation, canceled, value, velocity) -> {
+                                    if (canceled || topicsAnimation != animation) {
+                                        return;
+                                    }
                                     gridView.setVisibility(View.GONE);
                                     searchGridView.setVisibility(View.GONE);
                                     searchView.setVisibility(View.GONE);
@@ -2169,6 +2175,9 @@ public class ShareAlert extends BottomSheet implements NotificationCenter.Notifi
             invalidateTopicsAnimation(finalCell, loc, value);
         });
         topicsAnimation.addEndListener((animation, canceled, value, velocity) -> {
+            if (canceled || topicsAnimation != animation) {
+                return;
+            }
             topicsGridView.setVisibility(View.GONE);
             topicsBackActionBar.setVisibility(View.GONE);
 
@@ -2654,15 +2663,38 @@ public class ShareAlert extends BottomSheet implements NotificationCenter.Notifi
                 
                 if (foldersView != null && foldersView.filterTabsView != null) {
                     if (foldersView.filterTabsView.currentTabIsDefault()) {
-                        listAdapter.fetchDialogs();
+                        updateDialogsWithFirstFrameReveal(listAdapter::fetchDialogs);
                     } else {
                         if (!app.nimarkogram.messenger.NimarkoConfig.tabsHideAllChats) foldersView.applyFilter(foldersView.filterTabsView.getFirstTabId());
                     }
                 } else {
-                    listAdapter.fetchDialogs();
+                    updateDialogsWithFirstFrameReveal(listAdapter::fetchDialogs);
                 }
             }
             NotificationCenter.getInstance(currentAccount).removeObserver(this, NotificationCenter.dialogsNeedReload);
+        }
+    }
+    private void updateDialogsWithFirstFrameReveal(Runnable update) {
+        boolean reveal = fullyShown && isShowing() && !isDismissed()
+                && SharedConfig.animationsEnabled() && listAdapter.getItemCount() == 0
+                && !searchIsVisible && selectedTopicDialog == null
+                && gridView.getAlpha() == 1f;
+        if (reveal) {
+            gridView.setAlpha(0f);
+        }
+        update.run();
+        if (!reveal) {
+            return;
+        }
+        if (listAdapter.getItemCount() == 0) {
+            gridView.setAlpha(1f);
+        } else {
+            gridView.postOnAnimation(() -> {
+                if (!isDismissed() && !searchIsVisible && selectedTopicDialog == null) {
+                    gridView.animate().alpha(1f).setDuration(180)
+                            .setInterpolator(CubicBezierInterpolator.EASE_OUT).start();
+                }
+            });
         }
     }
 
@@ -4260,7 +4292,7 @@ public class ShareAlert extends BottomSheet implements NotificationCenter.Notifi
                 AndroidUtilities.runOnUIThread(() -> {
                     if (listAdapter == null) return;
 
-                    listAdapter.setDialogs(filtered);
+                    updateDialogsWithFirstFrameReveal(() -> listAdapter.setDialogs(filtered));
                 });
             });
         }

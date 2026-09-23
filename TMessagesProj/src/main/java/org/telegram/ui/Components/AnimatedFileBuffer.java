@@ -13,6 +13,9 @@ public class AnimatedFileBuffer {
     public final int height;
     public int time;
     public boolean opaque;
+    public boolean hasFrame;
+    public long gifPlaybackGeneration;
+    public boolean startsGifLoop;
 
     private AnimatedFileBuffer(Bitmap bitmap) {
         this.bitmap = bitmap;
@@ -32,7 +35,9 @@ public class AnimatedFileBuffer {
     }
 
     public static AnimatedFileBuffer of(Bitmap bitmap) {
-        return new AnimatedFileBuffer(bitmap);
+        AnimatedFileBuffer buffer = new AnimatedFileBuffer(bitmap);
+        buffer.hasFrame = true;
+        return buffer;
     }
 
     public void recycle() {

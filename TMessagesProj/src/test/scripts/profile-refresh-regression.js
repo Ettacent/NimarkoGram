@@ -131,7 +131,7 @@ public class ProfileRefreshTest {
  static class GiftsContainer {GiftsList selected;GiftsList getCurrentList(){return selected;}}
  static class RefreshMedia {GiftsContainer giftsContainer=new GiftsContainer();}
  static class VisibleProfile {
-  boolean profileLifecycleDestroyed,settings;
+  boolean profileLifecycleDestroyed,settings,initialFullInfoRequested,initialMediaCountsRequested;
   ${profile.match(/private boolean refreshGiftsOnReturn = true;/)[0]}
   long userId=77,chatId;int currentAccount=9,classGuid;
   RefreshMedia sharedMediaLayout=new RefreshMedia();Preloader sharedMediaPreloader=new Preloader();

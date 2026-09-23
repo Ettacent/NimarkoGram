@@ -12,6 +12,7 @@ import android.view.MotionEvent;
 import android.view.VelocityTracker;
 import android.view.View;
 import android.view.ViewConfiguration;
+import android.view.ViewTreeObserver;
 import android.view.accessibility.AccessibilityEvent;
 import android.view.accessibility.AccessibilityNodeInfo;
 import android.widget.FrameLayout;
@@ -20,8 +21,8 @@ import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.NotificationCenter;
 import org.telegram.ui.ActionBar.Theme;
-import org.telegram.ui.Components.CubicBezierInterpolator;
 import org.telegram.ui.Components.LayoutHelper;
+import org.telegram.ui.Components.blur3.BlurredBackgroundDrawableViewFactory;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -37,19 +38,25 @@ public class InfoCardStripView extends FrameLayout implements NotificationCenter
 
     private final Theme.ResourcesProvider resourcesProvider;
     private final ArrayList<BaseInfoCard> pills = new ArrayList<>();
+    private final ArrayList<BaseInfoCard> preparedCards = new ArrayList<>();
     private int currentIndex = 0;
 
     private final int touchSlop;
     private VelocityTracker velocityTracker;
     private boolean dragging;
+    private boolean touchActive;
     private float downX, downY;
     private float dragProgress;   
     private boolean dragUp;       
     private int incomingIndex = -1;
     private ValueAnimator animator;
     private boolean settlingToNext;
+    private float releaseVelocity;
+    private boolean dragCrossedCard;
     
     private int pendingActiveCardId = -1;
+    private ViewTreeObserver pendingActiveCardObserver;
+    private final ViewTreeObserver.OnPreDrawListener pendingActiveCardListener = this::resumePendingActiveCard;
     
     private int measuredCardWidthLimit;
 
@@ -58,21 +65,33 @@ public class InfoCardStripView extends FrameLayout implements NotificationCenter
     private final Runnable longPressRunnable = new Runnable() {
         @Override
         public void run() {
-            if (!potentialTap || dragging) return;
+            if (!touchActive || !potentialTap || dragging || !isHostVisible(1f)) return;
             BaseInfoCard cur = current();
-            if (cur != null) {
-                longPressFired = true;
+            if (cur == null) return;
+            longPressFired = true;
+            potentialTap = false;
+            setCardsPressed(false);
+            if (cur.onCardLongClicked()) {
                 performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS);
-                cur.onCardLongClicked();
-                setCardsPressed(false);
             }
         }
     };
 
     private float visibilityFactor = 1f;
+    private boolean hasPresentedCard;
+    private final Runnable resumeActiveCard = () -> {
+        if (isAttachedToWindow() && getWindowVisibility() == VISIBLE && hasWindowFocus()) {
+            followSharedActiveCard();
+        }
+    };
     
     private boolean opaqueCards;
     private boolean inlineFolderStyle;
+    private BlurredBackgroundDrawableViewFactory glassBackgroundFactory;
+    public void setGlassBackgroundFactory(BlurredBackgroundDrawableViewFactory factory) {
+        glassBackgroundFactory = factory;
+        for (BaseInfoCard pill : pills) pill.setGlassBackgroundFactory(factory);
+    }
     public void setInlineFolderStyle(boolean inline) {
         if (inlineFolderStyle == inline) return;
         inlineFolderStyle = inline;
@@ -97,9 +116,10 @@ public class InfoCardStripView extends FrameLayout implements NotificationCenter
 
     public void rebuildIfChanged() {
         if (!InfoCardsConfig.isEnabled()) {
+            setPendingActiveCard(-1);
             
             if (!pills.isEmpty()) {
-                cancelAnim();
+                resetForWindowLifecycle();
                 removeAllViews();
                 pills.clear();
                 currentIndex = 0;
@@ -128,6 +148,8 @@ public class InfoCardStripView extends FrameLayout implements NotificationCenter
 
     public void rebuild() {
         cancelAnim();
+        setTouchActive(false);
+        preparedCards.clear();
         dragging = false;
         dragProgress = 0f;
         incomingIndex = -1;
@@ -137,7 +159,7 @@ public class InfoCardStripView extends FrameLayout implements NotificationCenter
         setCardsPressed(false);
         releaseTracker();
         if (getParent() != null) getParent().requestDisallowInterceptTouchEvent(false);
-        pendingActiveCardId = -1;
+        setPendingActiveCard(-1);
         
         int prevId = -1;
         BaseInfoCard prev = current();
@@ -156,6 +178,7 @@ public class InfoCardStripView extends FrameLayout implements NotificationCenter
             }
             if (pill != null) {
                 pill.setOpaqueFlat(opaqueCards); 
+                pill.setGlassBackgroundFactory(glassBackgroundFactory);
                 pill.setInlineFolderStyle(inlineFolderStyle);
                 pill.setAccessibilityDelegate(new View.AccessibilityDelegate() {
                     @Override
@@ -291,18 +314,22 @@ public class InfoCardStripView extends FrameLayout implements NotificationCenter
             p.setTranslationX(0);
             p.setTranslationY(0);
             p.setCardLayerType(View.LAYER_TYPE_NONE);
+            p.applyDeferredCarouselData();
         }
         incomingIndex = -1;
+        if (!isLayoutSuppressed()) preparedCards.clear();
         BaseInfoCard cur = current();
         if (notifySelected && cur != null) cur.onCardSelected();
     }
 
     private void resetForWindowLifecycle() {
         cancelAnim();
+        setTouchActive(false);
         dragging = false;
+        dragCrossedCard = false;
         dragProgress = 0f;
         incomingIndex = -1;
-        pendingActiveCardId = -1;
+        setPendingActiveCard(-1);
         potentialTap = false;
         longPressFired = false;
         removeCallbacks(longPressRunnable);
@@ -323,24 +350,25 @@ public class InfoCardStripView extends FrameLayout implements NotificationCenter
     @Override
     protected void dispatchDraw(Canvas canvas) {
         
-        final int padTight = AndroidUtilities.dp(1);
-        final int padLoose = AndroidUtilities.dp(20);
-        final int padLeft = LocaleController.isRTL ? padTight : padLoose;
-        final int padRight = LocaleController.isRTL ? padLoose : padTight;
+        if (current() != null && isHostVisible(.01f)) hasPresentedCard = true;
         canvas.save();
-        canvas.clipRect(-padLeft, 0, getWidth() + padRight, getHeight());
+        canvas.clipRect(0, 0, getWidth(), getHeight());
         super.dispatchDraw(canvas);
         canvas.restore();
     }
 
     public void syncToActiveCard() {
-        syncToActiveCard(true);
+        if (hasPresentedCard) {
+            followSharedActiveCard();
+        } else {
+            syncToActiveCard(true);
+        }
     }
 
     private void syncToActiveCard(boolean notifySelected) {
         if (pills.isEmpty()) return;
         cancelAnim();
-        pendingActiveCardId = -1;
+        setPendingActiveCard(-1);
         dragging = false;
         dragProgress = 0;
         incomingIndex = -1;
@@ -357,7 +385,7 @@ public class InfoCardStripView extends FrameLayout implements NotificationCenter
 
     private int neighbor(boolean up) {
         int n = pills.size();
-        if (n == 0) return -1;
+        if (n < 2) return -1;
         boolean inf = InfoCardsConfig.isInfiniteScrolling();
         int idx = up ? currentIndex + 1 : currentIndex - 1;
         if (idx < 0) return inf ? n - 1 : -1;
@@ -396,15 +424,11 @@ public class InfoCardStripView extends FrameLayout implements NotificationCenter
         switch (ev.getActionMasked()) {
             case MotionEvent.ACTION_DOWN:
                 
-                downX = ev.getX();
-                downY = ev.getY();
-                dragging = false;
-                cancelAnimResume();
                 return true;
             case MotionEvent.ACTION_MOVE:
                 float dy = ev.getY() - downY, dx = ev.getX() - downX;
                 if (!dragging && pills.size() >= 2 && Math.abs(dy) > touchSlop && Math.abs(dy) >= Math.abs(dx)) {
-                    beginDrag(ev);
+                    beginDrag();
                     return true;
                 }
                 break;
@@ -415,25 +439,39 @@ public class InfoCardStripView extends FrameLayout implements NotificationCenter
     @Override
     public boolean onTouchEvent(MotionEvent ev) {
         if (pills.isEmpty()) return false;
+        if (ev.getActionMasked() == MotionEvent.ACTION_DOWN) {
+            releaseTracker();
+        } else if (!touchActive) {
+            return true;
+        }
         if (velocityTracker == null) velocityTracker = VelocityTracker.obtain();
         velocityTracker.addMovement(ev);
         float h = dragHeight();
         switch (ev.getActionMasked()) {
             case MotionEvent.ACTION_DOWN:
+                setTouchActive(true);
                 downY = ev.getY();
                 downX = ev.getX();
+                releaseVelocity = 0f;
+                dragging = incomingIndex >= 0 || dragProgress > 0f;
                 cancelAnimResume();
-                restartGlobalTicker(); 
+                setPendingActiveCard(-1);
+                if (!dragging) dragCrossedCard = false;
                 
                 if (dragging) {
-                    downY += (dragUp ? 1f : -1f) * dragProgress * h;
+                    if (incomingIndex < 0) {
+                        float raw = dragProgress / (0.18f * Math.max(0.0001f, 1f - dragProgress));
+                        downY += (dragUp ? 1f : -1f) * raw * h;
+                    } else {
+                        downY += (dragUp ? 1f : -1f) * dragProgress * h;
+                    }
                     if (getParent() != null) getParent().requestDisallowInterceptTouchEvent(true);
                 }
                 potentialTap = !dragging;
                 longPressFired = false;
-                setCardsPressed(true);
+                setCardsPressed(potentialTap);
                 removeCallbacks(longPressRunnable);
-                postDelayed(longPressRunnable, ViewConfiguration.getLongPressTimeout());
+                if (potentialTap) postDelayed(longPressRunnable, ViewConfiguration.getLongPressTimeout());
                 return true;
             case MotionEvent.ACTION_MOVE: {
                 
@@ -449,15 +487,36 @@ public class InfoCardStripView extends FrameLayout implements NotificationCenter
                         }
                     }
                     if (pills.size() >= 2 && Math.abs(dy) > touchSlop && Math.abs(dy) >= Math.abs(dx)) {
-                        beginDrag(ev);
+                        beginDrag();
                     } else {
                         break;
                     }
                 }
                 
                 float dy = ev.getY() - downY;
-                dragUp = dy < 0;
-                int nb = neighbor(dragUp);
+                boolean up = dy < 0;
+                int nb = up == dragUp && incomingIndex >= 0 ? incomingIndex : neighbor(up);
+                dragUp = up;
+                int count = pills.size();
+                int pages = (int) (Math.abs(dy) / h);
+                if (!InfoCardsConfig.isInfiniteScrolling()) {
+                    int availablePages = nb < 0 ? 0 : 1 + (dragUp ? count - 1 - nb : nb);
+                    pages = Math.min(pages, availablePages);
+                }
+                if (pages > 0 && count > 1) {
+                    BaseInfoCard previous = current();
+                    if (previous != null) previous.onCardUnselected();
+                    int step = (pages - 1) % count;
+                    int next = (nb + (dragUp ? step : count - step)) % count;
+                    ensureIncomingPrepared(next);
+                    currentIndex = next;
+                    downY += (dragUp ? -1f : 1f) * pages * h;
+                    dy = ev.getY() - downY;
+                    dragProgress = 0f;
+                    applyResting(false);
+                    dragCrossedCard = true;
+                    nb = neighbor(dragUp);
+                }
                 ensureIncomingPrepared(nb);
                 float prog;
                 if (nb < 0) {
@@ -473,6 +532,7 @@ public class InfoCardStripView extends FrameLayout implements NotificationCenter
             }
             case MotionEvent.ACTION_UP:
             case MotionEvent.ACTION_CANCEL: {
+                setTouchActive(false);
                 removeCallbacks(longPressRunnable);
                 
                 if (ev.getActionMasked() == MotionEvent.ACTION_UP
@@ -493,15 +553,20 @@ public class InfoCardStripView extends FrameLayout implements NotificationCenter
                 velocityTracker.computeCurrentVelocity(1000);
                 float vy = velocityTracker.getYVelocity();
                 releaseTracker();
-                int nb = neighbor(dragUp);
-                
-                boolean flingMatches = Math.abs(vy) > AndroidUtilities.dp(FLING_DP_PER_S)
-                        && (vy < 0) == dragUp;
+                int nb = incomingIndex;
+                final boolean fling = Math.abs(vy) > AndroidUtilities.dp(FLING_DP_PER_S);
+                final boolean flingMatches = fling && (vy < 0) == dragUp;
+                final boolean flingReturns = fling && !flingMatches;
+                releaseVelocity = ev.getActionMasked() == MotionEvent.ACTION_UP
+                        ? (dragUp ? -vy : vy) / h : 0f;
+                if (nb < 0) {
+                    releaseVelocity *= 0.18f * (1f - dragProgress) * (1f - dragProgress);
+                }
                 boolean commit = ev.getActionMasked() == MotionEvent.ACTION_UP && dragging && nb >= 0
-                        && (dragProgress > COMMIT_FRACTION || flingMatches);
+                        && !flingReturns && (dragProgress > COMMIT_FRACTION || flingMatches);
+                dragging = false;
                 if (commit) animateCommit(nb);
                 else animateSnapBack(nb);
-                dragging = false;
                 break;
             }
         }
@@ -513,29 +578,34 @@ public class InfoCardStripView extends FrameLayout implements NotificationCenter
         if (cur != null) cur.setPressed(pressed);
     }
 
-    private void beginDrag(MotionEvent ev) {
+    private void beginDrag() {
         dragging = true;
+        potentialTap = false;
+        removeCallbacks(longPressRunnable);
+        setCardsPressed(false);
         if (getParent() != null) getParent().requestDisallowInterceptTouchEvent(true);
         
-        float h = dragHeight();
-        float offset = dragUp ? -(dragProgress * h) : (dragProgress * h);
-        downY = ev.getY() - offset;
-        downX = ev.getX();
     }
 
     private void ensureIncomingPrepared(int nb) {
         if (nb == incomingIndex) return;
+        BaseInfoCard cur = current();
+        if (cur != null && !preparedCards.contains(cur)) preparedCards.add(cur);
         
         if (incomingIndex >= 0 && incomingIndex < pills.size() && incomingIndex != currentIndex) {
             BaseInfoCard old = pills.get(incomingIndex);
             old.setVisibility(GONE);
+            old.applyDeferredCarouselData();
         }
         incomingIndex = nb;
         if (nb >= 0 && nb < pills.size()) {
             BaseInfoCard in = pills.get(nb);
+            if (!preparedCards.contains(in)) {
+                try { in.updateDataInstantly(); } catch (Throwable ignore) {}
+                preparedCards.add(in);
+            }
             
             in.setVisibility(VISIBLE);
-            try { in.updateDataInstantly(); } catch (Throwable ignore) {}
             
             int sw = getWidth(), sh = getHeight();
             if (sw > 0 && sh > 0) {
@@ -561,25 +631,75 @@ public class InfoCardStripView extends FrameLayout implements NotificationCenter
     private void applyDrag(int incomingIdx, float prog, boolean up, float h) {
         dragProgress = Math.max(0f, Math.min(1f, prog));
         if (inlineFolderStyle && carouselWidth() != getMeasuredWidth()) requestLayout();
+        applyCarouselTransforms(incomingIdx, dragProgress, up, h);
+    }
+    @Override
+    protected void onLayout(boolean changed, int left, int top, int right, int bottom) {
+        super.onLayout(changed, left, top, right, bottom);
+        if (incomingIndex >= 0 || dragProgress > 0f) {
+            applyCarouselTransforms(incomingIndex, dragProgress, dragUp, dragHeight());
+        }
+    }
+    private void applyCarouselTransforms(int incomingIdx, float progress, boolean up, float h) {
         
         BaseInfoCard cur = current();
-        if (cur != null) {
-            float dir = up ? -1f : 1f;
-            cur.setTranslationY(dir * h * 1.35f * prog);
-            cur.setAlpha(Math.max(0f, 1f - prog));
-            float s = 1f - 0.28f * prog;
-            cur.setScaleX(s);
-            cur.setScaleY(s);
+        if (cur == null || getWidth() <= 0 || getHeight() <= 0 || cur.getHeight() <= 0) return;
+        float p = Math.max(0f, Math.min(1f, progress));
+        float dir = up ? -1f : 1f;
+        float curCenter = cur.getTop() + cur.getHeight() / 2f;
+        if (incomingIdx < 0 || incomingIdx >= pills.size() || incomingIdx == currentIndex) {
+            float scale = Math.min(1f - 0.28f * p, getWidth() / (float) Math.max(1, cur.getWidth()));
+            scale = Math.min(scale, getHeight() / (float) cur.getHeight());
+            float half = cur.getHeight() * scale / 2f;
+            float room = Math.max(0f, up ? curCenter - half : getHeight() - curCenter - half);
+            float travel = h * 1.35f * p;
+            float offset = room > 0f ? room * travel / (room + travel) : 0f;
+            setCarouselTransform(cur, scale, curCenter + dir * offset);
+            cur.setAlpha(1f);
+            return;
         }
-        if (incomingIdx >= 0 && incomingIdx < pills.size()) {
-            BaseInfoCard in = pills.get(incomingIdx);
-            float dir = up ? 1f : -1f;
-            in.setTranslationY(dir * h * 1.35f * (1f - prog));
-            in.setAlpha(Math.min(1f, Math.max(0f, prog)));
-            float s = 0.72f + 0.28f * prog;
-            in.setScaleX(s);
-            in.setScaleY(s);
+        BaseInfoCard in = pills.get(incomingIdx);
+        if (in.getHeight() <= 0) return;
+        float outScale = 1f - 0.16f * p;
+        float inScale = 0.84f + 0.16f * p;
+        outScale = Math.min(outScale, getWidth() / (float) Math.max(1, cur.getWidth()));
+        inScale = Math.min(inScale, getWidth() / (float) Math.max(1, in.getWidth()));
+        float center = curCenter + (in.getTop() + in.getHeight() / 2f - curCenter) * p;
+        float available = Math.max(0f, 2f * Math.min(center, getHeight() - center));
+        outScale = Math.min(outScale, available / cur.getHeight());
+        inScale = Math.min(inScale, available / in.getHeight());
+        float outRoom = Math.max(0f, available - cur.getHeight() * outScale) / 2f;
+        float inRoom = Math.max(0f, available - in.getHeight() * inScale) / 2f;
+        float travel = h * 0.55f;
+        setCarouselTransform(cur, outScale, center + dir * Math.min(outRoom, travel) * p);
+        setCarouselTransform(in, inScale, center - dir * Math.min(inRoom, travel) * (1f - p));
+        cur.setAlpha(1f - p);
+        in.setAlpha(p);
+    }
+    private void setCarouselTransform(BaseInfoCard card, float scale, float centerY) {
+        card.setPivotX(LocaleController.isRTL ? 0f : card.getWidth());
+        card.setPivotY(card.getHeight() / 2f);
+        card.setScaleX(scale);
+        card.setScaleY(scale);
+        card.setTranslationX(0f);
+        card.setTranslationY(centerY - card.getTop() - card.getHeight() / 2f);
+    }
+    private ValueAnimator createSettleAnimator(float target) {
+        final float distance = Math.abs(target - dragProgress);
+        final float velocity = Math.max(0f, (target >= dragProgress ? 1f : -1f) * releaseVelocity);
+        releaseVelocity = 0f;
+        final boolean commit = target == 1f;
+        long duration = distance == 0f ? 0 : commit ? Math.round(120 + 140 * distance) : 200;
+        if (velocity > 0f) {
+            duration = Math.min(duration, Math.max(commit ? 100 : 160,
+                    Math.round(2000f * distance / velocity)));
         }
+        final float slope = distance > 0f
+                ? Math.min(3f, velocity * duration / (1000f * distance)) : 0f;
+        ValueAnimator result = ValueAnimator.ofFloat(dragProgress, target);
+        result.setDuration(duration);
+        result.setInterpolator(t -> t * (slope + t * (3f - 2f * slope + t * (slope - 2f))));
+        return result;
     }
 
     private void animateCommit(final int incomingIdx) {
@@ -590,10 +710,7 @@ public class InfoCardStripView extends FrameLayout implements NotificationCenter
         cancelAnim();
         settlingToNext = true;
         final boolean[] cancelled = {false};
-        animator = ValueAnimator.ofFloat(dragProgress, 1f);
-        animator.setDuration(inlineFolderStyle ? Math.round(330 * (1f - dragProgress)) : 330);
-        animator.setInterpolator(inlineFolderStyle ? CubicBezierInterpolator.EASE_OUT
-                : new android.view.animation.OvershootInterpolator(2.2f));
+        animator = createSettleAnimator(1f);
         animator.addUpdateListener(a -> applyDrag(incomingIdx, (float) a.getAnimatedValue(), up, h));
         animator.addListener(new AnimatorListenerAdapter() {
             @Override
@@ -605,6 +722,7 @@ public class InfoCardStripView extends FrameLayout implements NotificationCenter
                 if (cur != null) cur.onCardUnselected();
                 currentIndex = pills.indexOf(in);
                 dragProgress = 0;
+                dragCrossedCard = false;
                 
                 applyResting(false);
                 if (reconcilePendingActiveCard()) {
@@ -626,9 +744,7 @@ public class InfoCardStripView extends FrameLayout implements NotificationCenter
         cancelAnim();
         settlingToNext = false;
         final boolean[] cancelled = {false};
-        animator = ValueAnimator.ofFloat(dragProgress, 0f);
-        animator.setDuration(inlineFolderStyle ? Math.round(200 * dragProgress) : 200);
-        animator.setInterpolator(CubicBezierInterpolator.EASE_OUT_QUINT);
+        animator = createSettleAnimator(0f);
         animator.addUpdateListener(a -> applyDrag(incomingIdx, (float) a.getAnimatedValue(), up, h));
         animator.addListener(new AnimatorListenerAdapter() {
             @Override
@@ -638,9 +754,16 @@ public class InfoCardStripView extends FrameLayout implements NotificationCenter
                 if (cancelled[0]) return;
                 animator = null;
                 dragProgress = 0;
+                boolean crossed = dragCrossedCard;
+                dragCrossedCard = false;
                 applyResting(false);
                 if (!reconcilePendingActiveCard()) {
                     applyResting();
+                    if (current() != null && (crossed
+                            || InfoCardsConfig.getLastActiveCardId() != current().getCardId())) {
+                        InfoCardsConfig.setLastActiveCardId(current().getCardId());
+                        NotificationCenter.getGlobalInstance().postNotificationName(NotificationCenter.infoCardsActiveCardChanged);
+                    }
                 }
             }
         });
@@ -648,14 +771,11 @@ public class InfoCardStripView extends FrameLayout implements NotificationCenter
     }
 
     private boolean reconcilePendingActiveCard() {
-        int pending = pendingActiveCardId;
-        pendingActiveCardId = -1;
+        if (pendingActiveCardId < 0) return false;
+        int target = InfoCardsConfig.getLastActiveCardId();
         BaseInfoCard cur = current();
-        if (pending < 0 || (cur != null && cur.getCardId() == pending)) {
-            return false;
-        }
-        syncToActiveCard();
-        return true;
+        followSharedActiveCard();
+        return cur == null || cur.getCardId() != target;
     }
 
     private void cancelAnim() {
@@ -668,20 +788,15 @@ public class InfoCardStripView extends FrameLayout implements NotificationCenter
     private void cancelAnimResume() {
         ValueAnimator a = animator;
         if (a != null) {
-            if (inlineFolderStyle) {
-                float target = settlingToNext ? 1f : 0f;
-                if (Math.abs(target - dragProgress) * dragHeight() * 1.35f <= 1f) {
-                    animator = null;
-                    dragging = false;
-                    a.end();
-                    return;
-                }
-                cancelAnim();
-                dragging = true;
+            float target = settlingToNext ? 1f : 0f;
+            if (Math.abs(target - dragProgress) * dragHeight() * 1.35f <= 1f) {
+                animator = null;
+                dragging = false;
+                a.end();
                 return;
             }
-            animator = null;
-            a.end();
+            cancelAnim();
+            dragging = true;
         }
     }
 
@@ -691,13 +806,37 @@ public class InfoCardStripView extends FrameLayout implements NotificationCenter
             velocityTracker = null;
         }
     }
+    private void setTouchActive(boolean active) {
+        if (touchActive == active) return;
+        touchActive = active;
+        if (active) {
+            activeTouchCount++;
+            setPendingActiveCard(-1);
+            disarmGlobalTicker();
+        } else {
+            activeTouchCount--;
+            if (activeTouchCount == 0) restartGlobalTicker();
+        }
+        if (getParent() != null) getParent().requestDisallowInterceptTouchEvent(active);
+    }
 
     public void setVisibilityFactor(float f) {
-        if (visibilityFactor == f) return;
+        float scale = AndroidUtilities.lerp(0.6f, 1.0f, f);
+        setHostVisibility(f, scale, scale, f <= 0.01f ? GONE : VISIBLE);
+    }
+    public void setHostVisibility(float f, float scaleX, float scaleY, int visibility) {
         float previousFactor = visibilityFactor;
         visibilityFactor = f;
         
-        if (f < 0.999f && (dragging || animator != null)) {
+        final boolean hidden = visibility != VISIBLE || f <= 0f;
+        if (hidden) {
+            setTouchActive(false);
+            releaseTracker();
+            potentialTap = false;
+            removeCallbacks(longPressRunnable);
+            setCardsPressed(false);
+        }
+        if (hidden && (dragging || animator != null)) {
             cancelAnimResume();     
             if (dragging) {         
                 dragging = false;
@@ -708,17 +847,15 @@ public class InfoCardStripView extends FrameLayout implements NotificationCenter
                 }
             }
         }
-        if (previousFactor >= 0.999f && f < 0.999f) {
+        if (previousFactor > 0f && hidden) {
             BaseInfoCard cur = current();
             if (cur != null) cur.finishResizeAnimation();
         }
         
         setAlpha(f);
-        float scale = AndroidUtilities.lerp(0.6f, 1.0f, f);
-        setScaleX(scale);
-        setScaleY(scale);
-        
-        setVisibility(f <= 0.01f ? GONE : VISIBLE);
+        setScaleX(scaleX);
+        setScaleY(scaleY);
+        setVisibility(visibility);
     }
 
     public float getVisibilityFactor() {
@@ -738,9 +875,10 @@ public class InfoCardStripView extends FrameLayout implements NotificationCenter
     }
 
     private static boolean globalTickerArmed = false;
+    private static int activeTouchCount;
     private static final Runnable GLOBAL_AUTOSCROLL = () -> {
         globalTickerArmed = false;
-        if (!InfoCardsConfig.isEnabled() || !InfoCardsConfig.isAutoScroll()) return; 
+        if (!InfoCardsConfig.isEnabled() || !InfoCardsConfig.isAutoScroll() || activeTouchCount > 0) return;
         List<Integer> active = InfoCardsConfig.getActiveCards();
         if (active.size() >= 2) {
             int curId = InfoCardsConfig.getLastActiveCardId();
@@ -753,7 +891,7 @@ public class InfoCardStripView extends FrameLayout implements NotificationCenter
     };
 
     static void armGlobalTicker() {
-        if (globalTickerArmed || !InfoCardsConfig.isEnabled() || !InfoCardsConfig.isAutoScroll()) return;
+        if (globalTickerArmed || activeTouchCount > 0 || !InfoCardsConfig.isEnabled() || !InfoCardsConfig.isAutoScroll()) return;
         globalTickerArmed = true;
         AndroidUtilities.runOnUIThread(GLOBAL_AUTOSCROLL, AUTO_SCROLL_MS);
     }
@@ -828,7 +966,12 @@ public class InfoCardStripView extends FrameLayout implements NotificationCenter
         
         rebuildIfChanged();
         
-        syncToActiveCard();
+        if (hasPresentedCard) {
+            removeCallbacks(resumeActiveCard);
+            postOnAnimation(resumeActiveCard);
+        } else {
+            syncToActiveCard();
+        }
         armGlobalTicker(); 
         armRateTicker();   
     }
@@ -837,16 +980,25 @@ public class InfoCardStripView extends FrameLayout implements NotificationCenter
     protected void onWindowVisibilityChanged(int visibility) {
         super.onWindowVisibilityChanged(visibility);
         
-        resetForWindowLifecycle();
+        removeCallbacks(resumeActiveCard);
         if (visibility == View.VISIBLE) {
             
-            syncToActiveCard(false);
+            postOnAnimation(resumeActiveCard);
+        } else {
+            resetForWindowLifecycle();
         }
     }
 
     @Override
+    public void onWindowFocusChanged(boolean hasFocus) {
+        super.onWindowFocusChanged(hasFocus);
+        removeCallbacks(resumeActiveCard);
+        if (hasFocus) postOnAnimation(resumeActiveCard);
+    }
+    @Override
     protected void onDetachedFromWindow() {
         super.onDetachedFromWindow();
+        removeCallbacks(resumeActiveCard);
         NotificationCenter.getGlobalInstance().removeObserver(this, NotificationCenter.infoCardsLayoutChanged);
         NotificationCenter.getGlobalInstance().removeObserver(this, NotificationCenter.infoCardsSettingsChanged);
         NotificationCenter.getGlobalInstance().removeObserver(this, NotificationCenter.infoCardsColorModeChanged);
@@ -887,25 +1039,59 @@ public class InfoCardStripView extends FrameLayout implements NotificationCenter
             if (InfoCardsConfig.isAutoScroll()) armGlobalTicker(); else disarmGlobalTicker();
         } else if (id == NotificationCenter.infoCardsActiveCardChanged) {
             
-            BaseInfoCard cur = current();
-            int targetId = InfoCardsConfig.getLastActiveCardId();
-            if (dragging || animator != null) {
-                
-                pendingActiveCardId = targetId;
-            } else if (cur != null && cur.getCardId() == targetId) {
-                
-            } else if (getVisibility() == VISIBLE && isShown()
-                    && getWindowVisibility() == View.VISIBLE && hasWindowFocus()
-                    && visibilityFactor > 0.99f && pills.size() >= 2
-                    && pills.get((currentIndex + 1) % pills.size()).getCardId() == targetId) {
-                int nb = (currentIndex + 1) % pills.size();
-                dragUp = true;                 
-                ensureIncomingPrepared(nb);
-                dragProgress = 0f;
-                animateCommit(nb);             
-            } else {
-                syncToActiveCard();            
+            followSharedActiveCard();
+        }
+    }
+    private boolean isHostVisible(float minimumAlpha) {
+        if (!isAttachedToWindow() || getWindowVisibility() != VISIBLE || !hasWindowFocus()
+                || !isShown() || visibilityFactor < minimumAlpha) return false;
+        for (View view = this; view != null;
+                view = view.getParent() instanceof View ? (View) view.getParent() : null) {
+            if (view.getAlpha() < minimumAlpha) return false;
+        }
+        return true;
+    }
+    private void setPendingActiveCard(int targetId) {
+        pendingActiveCardId = targetId;
+        if (targetId < 0) {
+            if (pendingActiveCardObserver != null) {
+                if (pendingActiveCardObserver.isAlive()) {
+                    pendingActiveCardObserver.removeOnPreDrawListener(pendingActiveCardListener);
+                }
+                pendingActiveCardObserver = null;
             }
+        } else if (pendingActiveCardObserver == null && isAttachedToWindow()) {
+            pendingActiveCardObserver = getViewTreeObserver();
+            pendingActiveCardObserver.addOnPreDrawListener(pendingActiveCardListener);
+        }
+    }
+    private boolean resumePendingActiveCard() {
+        if (pendingActiveCardId >= 0 && !touchActive && !dragging && animator == null && isHostVisible(1f)) {
+            followSharedActiveCard();
+        }
+        return true;
+    }
+    private void followSharedActiveCard() {
+        BaseInfoCard cur = current();
+        int targetId = InfoCardsConfig.getLastActiveCardId();
+        int next = -1;
+        for (int i = 0; i < pills.size(); i++) {
+            if (pills.get(i).getCardId() == targetId) { next = i; break; }
+        }
+        if (next < 0) {
+            setPendingActiveCard(-1);
+        } else if (touchActive || dragging || animator != null) {
+            setPendingActiveCard(targetId);
+        } else if (cur != null && cur.getCardId() == targetId) {
+            setPendingActiveCard(-1);
+        } else if (!isHostVisible(1f)) {
+            setPendingActiveCard(targetId);
+        } else {
+            setPendingActiveCard(-1);
+            dragUp = true;
+            ensureIncomingPrepared(next);
+            dragProgress = 0f;
+            animateCommit(next);
         }
     }
 }

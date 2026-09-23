@@ -84,6 +84,7 @@ public class FeaturedStickerSetCell extends FrameLayout {
         addView(valueTextView, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT, LocaleController.isRTL ? 100 : 71, 35, LocaleController.isRTL ? 71 : 100, 0));
 
         imageView = new BackupImageView(context);
+        imageView.getImageReceiver().setCrossfadeOnReady(true);
         imageView.setAspectFit(true);
         imageView.setLayerNum(1);
         addView(imageView, LayoutHelper.createFrame(48, 48, (LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT) | Gravity.TOP, LocaleController.isRTL ? 0 : 12, 8, LocaleController.isRTL ? 12 : 0, 0));

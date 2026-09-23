@@ -6057,6 +6057,12 @@ public class PeerStoriesView extends SizeNotifierFrameLayout implements Notifica
         }
 //        imageReceiver.setImage(ImageLocation.getForPath(uploadingStory.path), ImageLoader.AUTOPLAY_FILTER, null, null, /*messageObject.strippedThumb*/null, 0, null, null, 0);
     }
+    void ensureVideoPlayerAfterOpening() {
+        if (isActive && (currentStory.isLive() ? playerSharedScope.livePlayer == null
+                : currentStory.isVideo() && playerSharedScope.player == null)) {
+            requestVideoPlayer(0);
+        }
+    }
 
     public boolean isSelectedPeer() {
         return false;
@@ -7713,7 +7719,7 @@ public class PeerStoriesView extends SizeNotifierFrameLayout implements Notifica
             chatActivityEnterView.setTranslationX(leftOffset * (1f - progressToKeyboard));
             final EditTextCaption editField = chatActivityEnterView.getEditField();
             final float compactFieldTranslation;
-            if (chatActivityEnterView.getMeasuredHeight() > dp(50)) {
+            if (editField.getLineCount() > 1 || chatActivityEnterView.getTopViewEnterProgress() > 0f) {
                 // Preserve Telegram's collapsed handling for multiline/top-view
                 // composers: that offset deliberately keeps their relevant
                 // edge inside the compact clip rather than centring the whole

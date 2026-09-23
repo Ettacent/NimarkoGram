@@ -34,6 +34,7 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class EmojiThemes {
 
@@ -48,6 +49,27 @@ public class EmojiThemes {
     int currentIndex = 0;
     public ArrayList<ThemeItem> items = new ArrayList<>();
     private final int currentAccount;
+    private static final ConcurrentHashMap<String, Pair<SparseIntArray, String>> baseAssetColors = new ConcurrentHashMap<>();
+    private static SparseIntArray readBaseColors(Theme.ThemeInfo themeInfo, String[] wallpaperLink) {
+        if (themeInfo.pathToFile != null) {
+            return Theme.getThemeFileValues(new File(themeInfo.pathToFile), null, wallpaperLink);
+        }
+        final String asset = themeInfo.assetName;
+        if (asset == null) return new SparseIntArray();
+        final boolean immutableAsset = "bluebubbles.attheme".equals(asset) || "darkblue.attheme".equals(asset)
+                || "arctic.attheme".equals(asset) || "day.attheme".equals(asset) || "night.attheme".equals(asset);
+        if (!immutableAsset) return Theme.getThemeFileValues(null, asset, wallpaperLink);
+        Pair<SparseIntArray, String> palette = baseAssetColors.get(asset);
+        if (palette == null) {
+            SparseIntArray colors = Theme.getThemeFileValues(null, asset, wallpaperLink);
+            if (colors.size() == 0) return colors;
+            Pair<SparseIntArray, String> loaded = new Pair<>(colors, wallpaperLink[0]);
+            Pair<SparseIntArray, String> previous = baseAssetColors.putIfAbsent(asset, loaded);
+            palette = previous != null ? previous : loaded;
+        }
+        wallpaperLink[0] = palette.second;
+        return palette.first.clone();
+    }
 
     private static final int[] previewColorKeys = new int[]{
             Theme.key_chat_inBubble,
@@ -378,13 +400,7 @@ public class EmojiThemes {
 
         SparseIntArray currentColorsNoAccent;
         String[] wallpaperLink = new String[1];
-        if (themeInfo.pathToFile != null) {
-            currentColorsNoAccent = Theme.getThemeFileValues(new File(themeInfo.pathToFile), null, wallpaperLink);
-        } else if (themeInfo.assetName != null) {
-            currentColorsNoAccent = Theme.getThemeFileValues(null, themeInfo.assetName, wallpaperLink);
-        } else {
-            currentColorsNoAccent = new SparseIntArray();
-        }
+        currentColorsNoAccent = readBaseColors(themeInfo, wallpaperLink);
 
         items.get(index).wallpaperLink = wallpaperLink[0];
 
@@ -453,13 +469,7 @@ public class EmojiThemes {
 
         SparseIntArray currentColorsNoAccent;
         String[] wallpaperLink = new String[1];
-        if (themeInfo.pathToFile != null) {
-            currentColorsNoAccent = Theme.getThemeFileValues(new File(themeInfo.pathToFile), null, wallpaperLink);
-        } else if (themeInfo.assetName != null) {
-            currentColorsNoAccent = Theme.getThemeFileValues(null, themeInfo.assetName, wallpaperLink);
-        } else {
-            currentColorsNoAccent = new SparseIntArray();
-        }
+        currentColorsNoAccent = readBaseColors(themeInfo, wallpaperLink);
 
         items.get(index).wallpaperLink = wallpaperLink[0];
 

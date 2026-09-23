@@ -264,6 +264,9 @@ public class ChannelAdminLogActivity extends BaseFragment implements Notificatio
     private boolean endReached;
     private boolean loading;
     private boolean reloadingLastMessages;
+    private int messagesLoadGeneration;
+    private int messagesRequestId;
+    private int reloadRequestId;
     private int loadsCount;
 
     private ArrayList<TLRPC.ChannelParticipant> admins;
@@ -354,21 +357,14 @@ public class ChannelAdminLogActivity extends BaseFragment implements Notificatio
             glassBackgroundSourceFrostedRenderNode.setUnderSource(navbarContentSourceWallpaper);
 
             glassBackgroundDrawableFactoryFrosted = new BlurredBackgroundDrawableViewFactory(glassBackgroundSourceFrostedRenderNode);
-            glassBackgroundDrawableFactoryFrosted.setLiquidGlassEffectAllowed(LiteMode.isEnabled(LiteMode.FLAG_LIQUID_GLASS));
-
-            if (LiteMode.isEnabled(LiteMode.FLAG_LIQUID_GLASS)) {
-                glassBackgroundSourceRenderNode = new BlurredBackgroundSourceRenderNode(navbarContentSourceWallpaper);
-                glassBackgroundSourceRenderNode.setOnDrawablesRelativePositionChangeListener(this::invalidateMergedVisibleBlurredPositionsAndSourcesPositions);
-                glassBackgroundSourceRenderNode.setScrollableNoiseSuppressor(scrollableViewNoiseSuppressor, DownscaleScrollableNoiseSuppressor.DRAW_GLASS);
-                glassBackgroundSourceRenderNode.setUnderSource(navbarContentSourceWallpaper);
-                glassBackgroundDrawableFactory = new BlurredBackgroundDrawableViewFactory(glassBackgroundSourceRenderNode);
-                glassBackgroundDrawableFactory.setLiquidGlassEffectAllowed(LiteMode.isEnabled(LiteMode.FLAG_LIQUID_GLASS));
-                recommendedAdditionalSizeY = 0;
-            } else {
-                glassBackgroundSourceRenderNode = null;
-                glassBackgroundDrawableFactory = glassBackgroundDrawableFactoryFrosted;
-                recommendedAdditionalSizeY = dp(48);
-            }
+            glassBackgroundDrawableFactoryFrosted.setLiquidGlassEffectAllowed(true);
+            glassBackgroundSourceRenderNode = new BlurredBackgroundSourceRenderNode(navbarContentSourceWallpaper);
+            glassBackgroundSourceRenderNode.setOnDrawablesRelativePositionChangeListener(this::invalidateMergedVisibleBlurredPositionsAndSourcesPositions);
+            glassBackgroundSourceRenderNode.setScrollableNoiseSuppressor(scrollableViewNoiseSuppressor, DownscaleScrollableNoiseSuppressor.DRAW_GLASS);
+            glassBackgroundSourceRenderNode.setUnderSource(navbarContentSourceWallpaper);
+            glassBackgroundDrawableFactory = new BlurredBackgroundDrawableViewFactory(glassBackgroundSourceRenderNode);
+            glassBackgroundDrawableFactory.setLiquidGlassEffectAllowed(true);
+            recommendedAdditionalSizeY = dp(48);
         } else {
             scrollableViewNoiseSuppressor = null;
             recommendedAdditionalSizeY = 0;
@@ -454,7 +450,7 @@ public class ChannelAdminLogActivity extends BaseFragment implements Notificatio
     }
 
     public void reloadLastMessages() {
-        if (reloadingLastMessages) {
+        if (isFinished || reloadingLastMessages) {
             return;
         }
         reloadingLastMessages = true;
@@ -474,12 +470,19 @@ public class ChannelAdminLogActivity extends BaseFragment implements Notificatio
                 req.admins.add(MessagesController.getInstance(currentAccount).getInputUser(selectedAdmins.valueAt(a)));
             }
         }
-        ConnectionsManager.getInstance(currentAccount).sendRequest(req, (response, error) -> {
-            if (response != null) {
+        final int generation = messagesLoadGeneration;
+        reloadRequestId = ConnectionsManager.getInstance(currentAccount).sendRequest(req, (response, error) -> {
+            if (response instanceof TLRPC.TL_channels_adminLogResults) {
                 final TLRPC.TL_channels_adminLogResults res = (TLRPC.TL_channels_adminLogResults) response;
                 AndroidUtilities.runOnUIThread(() -> {
+                    if (isFinished || generation != messagesLoadGeneration) {
+                        return;
+                    }
+                    reloadRequestId = 0;
                     reloadingLastMessages = false;
-                    chatListItemAnimator.setShouldAnimateEnterFromBottom(false);
+                    if (chatListItemAnimator != null) {
+                        chatListItemAnimator.setShouldAnimateEnterFromBottom(false);
+                    }
                     saveScrollPosition(false);
                     MessagesController.getInstance(currentAccount).putUsers(res.users, false);
                     MessagesController.getInstance(currentAccount).putChats(res.chats, false);
@@ -514,15 +517,34 @@ public class ChannelAdminLogActivity extends BaseFragment implements Notificatio
                         chatAdapter.notifyDataSetChanged();
                     }
                 });
+            } else {
+                AndroidUtilities.runOnUIThread(() -> {
+                    if (!isFinished && generation == messagesLoadGeneration) {
+                        reloadRequestId = 0;
+                        reloadingLastMessages = false;
+                    }
+                });
             }
         });
+        getConnectionsManager().bindRequestToGuid(reloadRequestId, classGuid);
     }
 
     private void loadMessages(boolean reset) {
-        if (loading) {
+        if (isFinished || loading && !reset) {
             return;
         }
         if (reset) {
+            messagesLoadGeneration++;
+            if (messagesRequestId != 0) {
+                getConnectionsManager().cancelRequest(messagesRequestId, true);
+                messagesRequestId = 0;
+            }
+            if (reloadRequestId != 0) {
+                getConnectionsManager().cancelRequest(reloadRequestId, true);
+                reloadRequestId = 0;
+            }
+            reloadingLastMessages = false;
+            endReached = false;
             minEventId = Long.MAX_VALUE;
             if (progressView != null) {
                 AndroidUtilities.updateViewVisibilityAnimated(progressView, true, 0.3f, true);
@@ -530,6 +552,7 @@ public class ChannelAdminLogActivity extends BaseFragment implements Notificatio
                 chatListView.setEmptyView(null);
             }
             messagesDict.clear();
+            realMessagesDict.clear();
             messages.clear();
             messagesByDays.clear();
             filterDeletedMessages();
@@ -558,12 +581,19 @@ public class ChannelAdminLogActivity extends BaseFragment implements Notificatio
         }
         loadsCount++;
         updateEmptyPlaceholder();
-        ConnectionsManager.getInstance(currentAccount).sendRequest(req, (response, error) -> {
-            if (response != null) {
+        final int generation = messagesLoadGeneration;
+        messagesRequestId = ConnectionsManager.getInstance(currentAccount).sendRequest(req, (response, error) -> {
+            if (response instanceof TLRPC.TL_channels_adminLogResults) {
                 final TLRPC.TL_channels_adminLogResults res = (TLRPC.TL_channels_adminLogResults) response;
                 AndroidUtilities.runOnUIThread(() -> {
+                    if (isFinished || generation != messagesLoadGeneration) {
+                        return;
+                    }
+                    messagesRequestId = 0;
                     loadsCount--;
-                    chatListItemAnimator.setShouldAnimateEnterFromBottom(false);
+                    if (chatListItemAnimator != null) {
+                        chatListItemAnimator.setShouldAnimateEnterFromBottom(false);
+                    }
                     saveScrollPosition(false);
                     MessagesController.getInstance(currentAccount).putUsers(res.users, false);
                     MessagesController.getInstance(currentAccount).putChats(res.chats, false);
@@ -618,6 +648,9 @@ public class ChannelAdminLogActivity extends BaseFragment implements Notificatio
                     }
                     if (!missingReplies.isEmpty()) {
                         MediaDataController.getInstance(currentAccount).loadReplyMessagesForMessages(missingReplies, -currentChat.id, ChatActivity.MODE_DEFAULT, 0, () -> {
+                            if (isFinished || generation != messagesLoadGeneration || chatAdapter == null) {
+                                return;
+                            }
                             saveScrollPosition(false);
                             chatAdapter.notifyDataSetChanged();
                         }, getClassGuid(), null);
@@ -628,8 +661,12 @@ public class ChannelAdminLogActivity extends BaseFragment implements Notificatio
                     if (!added) {
                         endReached = true;
                     }
-                    AndroidUtilities.updateViewVisibilityAnimated(progressView, false, 0.3f, true);
-                    chatListView.setEmptyView(emptyViewContainer);
+                    if (progressView != null) {
+                        AndroidUtilities.updateViewVisibilityAnimated(progressView, false, 0.3f, true);
+                    }
+                    if (chatListView != null) {
+                        chatListView.setEmptyView(emptyViewContainer);
+                    }
 
                     if (chatAdapter != null) {
                         chatAdapter.notifyDataSetChanged();
@@ -639,8 +676,30 @@ public class ChannelAdminLogActivity extends BaseFragment implements Notificatio
                         searchItem.setVisibility(filteredMessages.isEmpty() && TextUtils.isEmpty(searchQuery) ? View.GONE : View.VISIBLE);
                     }
                 });
+            } else {
+                AndroidUtilities.runOnUIThread(() -> {
+                    if (isFinished || generation != messagesLoadGeneration) {
+                        return;
+                    }
+                    messagesRequestId = 0;
+                    loadsCount--;
+                    loading = false;
+                    if (progressView != null) {
+                        AndroidUtilities.updateViewVisibilityAnimated(progressView, false, 0.3f, true);
+                    }
+                    if (chatListView != null) {
+                        chatListView.setEmptyView(emptyViewContainer);
+                    }
+                    if (chatAdapter != null) {
+                        chatAdapter.notifyDataSetChanged();
+                    }
+                    if (error != null) {
+                        AlertsCreator.processError(currentAccount, error, this, req);
+                    }
+                });
             }
         });
+        getConnectionsManager().bindRequestToGuid(messagesRequestId, classGuid);
         if (reset && chatAdapter != null) {
             chatAdapter.notifyDataSetChanged();
         }
@@ -4492,7 +4551,8 @@ public class ChannelAdminLogActivity extends BaseFragment implements Notificatio
             }
 
             if (glassBackgroundSourceRenderNode != null) {
-                count += glassBackgroundSourceRenderNode.getVisiblePositions(positions, count, dp(8));
+                count += glassBackgroundSourceRenderNode.getVisiblePositions(positions, count,
+                        dp(LiteMode.isEnabled(LiteMode.FLAG_LIQUID_GLASS) ? 24 : 48));
             }
 
             return count;

@@ -26,6 +26,7 @@ import android.graphics.Shader;
 import android.graphics.Xfermode;
 import android.graphics.drawable.Animatable;
 import android.graphics.drawable.BitmapDrawable;
+import android.os.SystemClock;
 import android.util.Log;
 import android.view.View;
 
@@ -42,6 +43,7 @@ import org.telegram.messenger.FileLoader;
 import org.telegram.messenger.FileLog;
 import org.telegram.messenger.ImageLocation;
 import org.telegram.messenger.ImageReceiver;
+import org.telegram.messenger.MessageObject;
 import org.telegram.messenger.SharedConfig;
 import org.telegram.messenger.utils.BitmapsCache;
 import org.telegram.messenger.utils.Choreographer60FpsContent;
@@ -72,6 +74,21 @@ public final class AnimatedFileDrawable extends BitmapDrawable implements Animat
     private AnimatedFileBuffer nextRenderingBuffer;
     private AnimatedFileBuffer nextRenderingBuffer2;
     private AnimatedFileBuffer backgroundBuffer;
+    private static final long GIF_LOOP_BLEND_MS = 100;
+    private boolean gifLoopBlendEnabled;
+    private final boolean videoPreviewLoopBlendEligible;
+    public void enableVideoPreviewLoopBlend() {
+        if (videoPreviewLoopBlendEligible && !isWebmSticker
+                && !MessageObject.isRoundVideoDocument(document)) {
+            gifLoopBlendEnabled = true;
+        }
+    }
+    private final Object frameLock = new Object();
+    private volatile long gifPlaybackGeneration;
+    private long lastDecodedGifGeneration = -1;
+    private AnimatedFileBuffer gifLoopBuffer;
+    private long gifLoopBlendStart;
+    private final Runnable gifLoopInvalidate = this::invalidateGifLoop;
 
     private boolean destroyWhenDone;
     private boolean decoderCreated;
@@ -99,7 +116,7 @@ public final class AnimatedFileDrawable extends BitmapDrawable implements Animat
     private int[] roundRadiusBackup;
     private final Matrix[] shaderMatrix = new Matrix[1 + DrawingInBackgroundThreadDrawable.THREAD_COUNT];
     private final Path[] roundPath = new Path[1 + DrawingInBackgroundThreadDrawable.THREAD_COUNT];
-    private static final float[] radii = new float[8];
+    private final float[][] radii = new float[1 + DrawingInBackgroundThreadDrawable.THREAD_COUNT][];
 
     private float scaleX = 1.0f;
     private float scaleY = 1.0f;
@@ -164,7 +181,6 @@ public final class AnimatedFileDrawable extends BitmapDrawable implements Animat
     @UiThread
     private void uiRunnableGenerateCacheImpl() {
         if (!isRecycled && !destroyWhenDone && !generatingCache && cacheGenRunnable == null) {
-            startTime = System.currentTimeMillis();
             if (RLottieDrawable.lottieCacheGenerateQueue == null) {
                 RLottieDrawable.createCacheGenQueue();
             }
@@ -196,22 +212,27 @@ public final class AnimatedFileDrawable extends BitmapDrawable implements Animat
             return;
         }
         if (!canLoadFrames()) {
-            if (renderingBuffer != null) {
-                renderingBuffer.recycle();
-                renderingBuffer = null;
+            synchronized (frameLock) {
+                clearGifLoopBlend();
+                if (renderingBuffer != null) {
+                    renderingBuffer.recycle();
+                    renderingBuffer = null;
+                }
+                if (backgroundBuffer != null) {
+                    backgroundBuffer.recycle();
+                    backgroundBuffer = null;
+                }
+                if (decodeQueue != null) {
+                    decodeQueue.recycle();
+                    decodeQueue = null;
+                }
+                synchronized (unusedBuffers) {
+                    for (int i = 0; i < unusedBuffers.size(); i++) {
+                        unusedBuffers.get(i).recycle();
+                    }
+                    unusedBuffers.clear();
+                }
             }
-            if (backgroundBuffer != null) {
-                backgroundBuffer.recycle();
-                backgroundBuffer = null;
-            }
-            if (decodeQueue != null) {
-                decodeQueue.recycle();
-                decodeQueue = null;
-            }
-            for (int i = 0; i < unusedBuffers.size(); i++) {
-                unusedBuffers.get(i).recycle();
-            }
-            unusedBuffers.clear();
             invalidateInternal();
         }
     }
@@ -230,6 +251,10 @@ public final class AnimatedFileDrawable extends BitmapDrawable implements Animat
         loadFrameTask = null;
         if (isRecycled || destroyWhenDone) {
             chekDestroyDecoder();
+            return;
+        }
+        if (backgroundBuffer == null || !backgroundBuffer.hasFrame) {
+            uiRunnableNoFrameImpl();
             return;
         }
         if (stream != null && pendingRemoveLoading) {
@@ -335,17 +360,18 @@ public final class AnimatedFileDrawable extends BitmapDrawable implements Animat
             AndroidUtilities.runOnUIThread(AnimatedFileDrawable.this::checkChoreographerInternal);
         }
         try {
+            final long frameGeneration = gifPlaybackGeneration;
             if (bitmapsCache != null) {
                 if (backgroundBuffer == null) {
-                    if (!unusedBuffers.isEmpty()) {
-                        backgroundBuffer = unusedBuffers.remove(0);
-                    } else {
+                    backgroundBuffer = takeUnusedBuffer();
+                    if (backgroundBuffer == null) {
                         backgroundBuffer = AnimatedFileBuffer.of(renderingWidth, renderingHeight);
                     }
                 }
                 if (cacheMetadata == null) {
                     cacheMetadata = new BitmapsCache.Metadata();
                 }
+                backgroundBuffer.hasFrame = false;
                 lastFrameDecodeTime = System.currentTimeMillis();
                 int lastFrame = cacheMetadata.frame;
                 int result = bitmapsCache.getFrame(backgroundBuffer.bitmap, cacheMetadata);
@@ -354,6 +380,8 @@ public final class AnimatedFileDrawable extends BitmapDrawable implements Animat
                 }
                 metaData[3] = backgroundBuffer.time = cacheMetadata.frame * Math.max(16, metaData[4] / Math.max(1, bitmapsCache.getFrameCount()));
                 backgroundBuffer.opaque = false;
+                backgroundBuffer.startsGifLoop = false;
+                backgroundBuffer.gifPlaybackGeneration = frameGeneration;
 
                 if (bitmapsCache.needGenCache()) {
                     AndroidUtilities.runOnUIThread(uiRunnableGenerateCache);
@@ -361,6 +389,7 @@ public final class AnimatedFileDrawable extends BitmapDrawable implements Animat
                 if (result == -1) {
                     AndroidUtilities.runOnUIThread(uiRunnableNoFrame);
                 } else {
+                    backgroundBuffer.hasFrame = true;
                     AndroidUtilities.runOnUIThread(uiRunnable);
                 }
                 return;
@@ -369,9 +398,8 @@ public final class AnimatedFileDrawable extends BitmapDrawable implements Animat
             if (mDecoder != null || metaData[0] == 0 || metaData[1] == 0) {
                 if (backgroundBuffer == null && metaData[0] > 0 && metaData[1] > 0) {
                     try {
-                        if (!unusedBuffers.isEmpty()) {
-                            backgroundBuffer = unusedBuffers.remove(0);
-                        } else {
+                        backgroundBuffer = takeUnusedBuffer();
+                        if (backgroundBuffer == null) {
                             backgroundBuffer = AnimatedFileBuffer.of((int) (metaData[0] * scaleFactor), (int) (metaData[1] * scaleFactor));
                         }
                     } catch (Throwable e) {
@@ -392,6 +420,9 @@ public final class AnimatedFileDrawable extends BitmapDrawable implements Animat
                     mDecoder.seekToMs(seekTo, true);
                 }
                 if (backgroundBuffer != null) {
+                    backgroundBuffer.hasFrame = false;
+                    backgroundBuffer.startsGifLoop = false;
+                    backgroundBuffer.gifPlaybackGeneration = frameGeneration;
                     lastFrameDecodeTime = System.currentTimeMillis();
 
                     if (mDecoder.getVideoFrame(backgroundBuffer.bitmap, false, startTime, endTime, loop) == 0) {
@@ -401,15 +432,22 @@ public final class AnimatedFileDrawable extends BitmapDrawable implements Animat
                     if (!isStaticVideoDetected) {
                         isStaticVideoDetected = mDecoder.isStaticVideoDetected();
                     }
-                    if (metaData[3] < lastTimeStamp) {
+                    final boolean timestampWrapped = !seekWas && metaData[3] < lastTimeStamp;
+                    if (timestampWrapped && (!gifLoopBlendEnabled || isWebmSticker
+                            || frameGeneration == lastDecodedGifGeneration && frameGeneration == gifPlaybackGeneration
+                            && pendingSeekTo < 0 && pendingSeekToUI < 0)) {
                         isRestarted = true;
+                        backgroundBuffer.startsGifLoop = loop && frameGeneration == gifPlaybackGeneration
+                            && pendingSeekTo < 0 && pendingSeekToUI < 0;
                     }
                     if (seekWas) {
                         lastTimeStamp = metaData[3];
                     }
+                    lastDecodedGifGeneration = frameGeneration;
 
                     backgroundBuffer.time = metaData[3];
                     backgroundBuffer.opaque = mDecoder.isLastFrameOpaque();
+                    backgroundBuffer.hasFrame = true;
                 }
             } else {
                 AndroidUtilities.runOnUIThread(uiRunnableNoFrame);
@@ -417,6 +455,8 @@ public final class AnimatedFileDrawable extends BitmapDrawable implements Animat
             }
         } catch (Throwable e) {
             FileLog.e(e);
+            AndroidUtilities.runOnUIThread(uiRunnableNoFrame);
+            return;
         }
         AndroidUtilities.runOnUIThread(uiRunnable);
     }
@@ -476,6 +516,9 @@ public final class AnimatedFileDrawable extends BitmapDrawable implements Animat
         this.loop = loop;
         this.precache = cacheOptions != null && renderingWidth > 0 && renderingHeight > 0;
         this.document = document;
+        videoPreviewLoopBlendEligible = loop && !preview && !this.precache;
+        gifLoopBlendEnabled = loop && !preview && !this.precache
+            && MessageObject.isGifDocument(document) && !MessageObject.isRoundVideoDocument(document);
         getPaint().setFlags(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
         if (streamSize != 0 && (document != null || location != null)) {
             stream = new AnimatedFileDrawableStream(document, location, parentObject, account, preview, streamLoadingPriority, cacheType);
@@ -509,6 +552,7 @@ public final class AnimatedFileDrawable extends BitmapDrawable implements Animat
     }
 
     public void setIsWebmSticker(boolean b) {
+        resetGifLoopBlend();
         isWebmSticker = b;
         if (isWebmSticker) {
             PRERENDER_FRAME = false;
@@ -533,6 +577,7 @@ public final class AnimatedFileDrawable extends BitmapDrawable implements Animat
     @AnyThread
     @Nullable
     public Bitmap getFrameAtTime(long ms, boolean precise) {
+        resetGifLoopBlend();
         if (!decoderCreated || mDecoder == null) {
             return null;
         }
@@ -579,6 +624,7 @@ public final class AnimatedFileDrawable extends BitmapDrawable implements Animat
         parents.remove(imageReceiver);
         if (parents.isEmpty()) {
             repeatCount = 0;
+            resetGifLoopBlend();
         }
         checkCacheCancel();
     }
@@ -638,6 +684,7 @@ public final class AnimatedFileDrawable extends BitmapDrawable implements Animat
     }
 
     public void seekTo(long ms, boolean removeLoading, boolean force) {
+        resetGifLoopBlend();
         synchronized (sync) {
             pendingSeekTo = ms;
             pendingSeekToUI = ms;
@@ -662,6 +709,7 @@ public final class AnimatedFileDrawable extends BitmapDrawable implements Animat
     }
 
     public void seekToSync(long ms) {
+        resetGifLoopBlend();
         if (mDecoder == null) return;
         mDecoder.seekToMs(ms, true);
     }
@@ -674,6 +722,7 @@ public final class AnimatedFileDrawable extends BitmapDrawable implements Animat
         isRunning = false;
         isRecycled = true;
         destroyWhenDone = true;
+        resetGifLoopBlend();
         checkChoreographer();
         if (cacheGenRunnable != null) {
             BitmapsCache.decrementTaskCounter();
@@ -695,6 +744,12 @@ public final class AnimatedFileDrawable extends BitmapDrawable implements Animat
 
     @UiThread
     private void releaseResources() {
+        synchronized (frameLock) {
+            releaseResourcesLocked();
+        }
+    }
+    private void releaseResourcesLocked() {
+        clearGifLoopBlend();
         if (mDecoder != null) {
             mDecoder.recycle();
             mDecoder = null;
@@ -705,10 +760,12 @@ public final class AnimatedFileDrawable extends BitmapDrawable implements Animat
         addBufferBitmap(bitmapToRecycle, nextRenderingBuffer);
         addBufferBitmap(bitmapToRecycle, nextRenderingBuffer2);
         addBufferBitmap(bitmapToRecycle, backgroundBuffer);
-        for (AnimatedFileBuffer buffer : unusedBuffers) {
-            addBufferBitmap(bitmapToRecycle, buffer);
+        synchronized (unusedBuffers) {
+            for (AnimatedFileBuffer buffer : unusedBuffers) {
+                addBufferBitmap(bitmapToRecycle, buffer);
+            }
+            unusedBuffers.clear();
         }
-        unusedBuffers.clear();
         renderingBuffer = null;
         nextRenderingBuffer = null;
         nextRenderingBuffer2 = null;
@@ -730,6 +787,7 @@ public final class AnimatedFileDrawable extends BitmapDrawable implements Animat
     }
 
     public void resetStream(boolean stop) {
+        resetGifLoopBlend();
         if (stream != null) {
             stream.cancel(true);
         }
@@ -856,6 +914,7 @@ public final class AnimatedFileDrawable extends BitmapDrawable implements Animat
     @Override
     public void stop() {
         isRunning = false;
+        resetGifLoopBlend();
         checkChoreographer();
     }
 
@@ -915,6 +974,11 @@ public final class AnimatedFileDrawable extends BitmapDrawable implements Animat
 
     @AnyThread
     public void drawInternal(Canvas canvas, boolean drawInBackground, long currentTime, int threadIndex) {
+        synchronized (frameLock) {
+            drawInternalLocked(canvas, drawInBackground, currentTime, threadIndex);
+        }
+    }
+    private void drawInternalLocked(Canvas canvas, boolean drawInBackground, long currentTime, int threadIndex) {
         if (!canLoadFrames() || destroyWhenDone) {
             return;
         }
@@ -933,10 +997,22 @@ public final class AnimatedFileDrawable extends BitmapDrawable implements Animat
         if (renderingBuffer == null) {
             return;
         }
+        float loopProgress = 1f;
+        if (gifLoopBuffer != null) {
+            if (!isRunning || isPaused || pendingSeekToUI >= 0 || !renderingBuffer.opaque) {
+                clearGifLoopBlend();
+            } else {
+                loopProgress = Math.min(1f, Math.max(0f,
+                    (SystemClock.uptimeMillis() - gifLoopBlendStart) / (float) GIF_LOOP_BLEND_MS));
+                if (loopProgress >= 1f) {
+                    clearGifLoopBlend();
+                }
+            }
+        }
 
         final boolean hasRoundRadius = hasRoundRadius();
         if (!drawInBackground) {
-            final Xfermode xfermodeToSet = !hasRoundRadius && renderingBuffer.opaque && paint.getAlpha() == 255 ? SRC_XFERMODE : null;
+            final Xfermode xfermodeToSet = gifLoopBuffer == null && !hasRoundRadius && renderingBuffer.opaque && paint.getAlpha() == 255 ? SRC_XFERMODE : null;
             if (paint.getXfermode() != xfermodeToSet) {
                 paint.setXfermode(xfermodeToSet);
             }
@@ -967,11 +1043,28 @@ public final class AnimatedFileDrawable extends BitmapDrawable implements Animat
             this.scaleY = scaleY = rect.height() / bitmapH;
             applyTransformation = false;
         }
+        final int alpha = paint.getAlpha();
+        try {
+            if (gifLoopBuffer != null) {
+                final int incomingAlpha = Math.round(alpha * loopProgress);
+                final int outgoingAlpha = incomingAlpha == 255 ? 0
+                    : Math.round((alpha - incomingAlpha) / (1f - incomingAlpha / 255f));
+                paint.setAlpha(outgoingAlpha);
+                drawBuffer(canvas, gifLoopBuffer, rect, paint, scaleX, scaleY, drawInBackground, threadIndex, hasRoundRadius);
+                paint.setAlpha(incomingAlpha);
+            }
+            drawBuffer(canvas, renderingBuffer, rect, paint, scaleX, scaleY, drawInBackground, threadIndex, hasRoundRadius);
+        } finally {
+            paint.setAlpha(alpha);
+        }
+    }
+    private void drawBuffer(Canvas canvas, AnimatedFileBuffer buffer, RectF rect, Paint paint, float scaleX, float scaleY,
+                            boolean drawInBackground, int threadIndex, boolean hasRoundRadius) {
 
         if (hasRoundRadius) {
             int index = drawInBackground ? threadIndex + 1 : 0;
             if (USE_BITMAP_SHADER) {
-                final Shader shader = renderingBuffer.getShader(index);
+                final Shader shader = buffer.getShader(index);
                 paint.setShader(shader);
                 Matrix matrix = shaderMatrix[index];
                 if (matrix == null) {
@@ -1001,6 +1094,10 @@ public final class AnimatedFileDrawable extends BitmapDrawable implements Animat
                 if (!drawInBackground) {
                     invalidatePath = false;
                 }
+                float[] radii = this.radii[index];
+                if (radii == null) {
+                    radii = this.radii[index] = new float[8];
+                }
                 for (int a = 0; a < roundRadius.length; a++) {
                     radii[a * 2] = roundRadius[a];
                     radii[a * 2 + 1] = roundRadius[a];
@@ -1017,16 +1114,17 @@ public final class AnimatedFileDrawable extends BitmapDrawable implements Animat
             } else {
                 canvas.save();
                 canvas.clipPath(path);
-                drawBitmap(rect, paint, canvas, scaleX, scaleY);
+                drawBitmap(buffer, rect, paint, canvas, scaleX, scaleY);
                 canvas.restore();
             }
         } else {
-            drawBitmap(rect, paint, canvas, scaleX, scaleY);
+            paint.setShader(null);
+            drawBitmap(buffer, rect, paint, canvas, scaleX, scaleY);
         }
     }
 
     @AnyThread
-    private void drawBitmap(RectF rect, Paint paint, Canvas canvas, float sx, float sy) {
+    private void drawBitmap(AnimatedFileBuffer buffer, RectF rect, Paint paint, Canvas canvas, float sx, float sy) {
         canvas.save();
         canvas.translate(rect.left, rect.top);
         if (metaData[2] == 90) {
@@ -1040,7 +1138,7 @@ public final class AnimatedFileDrawable extends BitmapDrawable implements Animat
             canvas.translate(-rect.height(), 0);
         }
         canvas.scale(sx, sy);
-        canvas.drawBitmap(renderingBuffer.bitmap, 0, 0, paint);
+        canvas.drawBitmap(buffer.bitmap, 0, 0, paint);
         canvas.restore();
     }
 
@@ -1067,7 +1165,7 @@ public final class AnimatedFileDrawable extends BitmapDrawable implements Animat
     }
 
     public Bitmap getBackgroundBitmap() {
-        return backgroundBuffer != null ? backgroundBuffer.bitmap : null;
+        return backgroundBuffer != null && backgroundBuffer.hasFrame ? backgroundBuffer.bitmap : null;
     }
 
     public Bitmap getAnimatedBitmap() {
@@ -1082,18 +1180,21 @@ public final class AnimatedFileDrawable extends BitmapDrawable implements Animat
     }
 
     public void replaceAnimatedBitmap(Bitmap b) {
-        if (renderingBuffer != null) {
-            unusedBuffers.add(renderingBuffer);
+        synchronized (frameLock) {
+            resetGifLoopBlend();
+            if (renderingBuffer != null) {
+                returnUnusedBuffer(renderingBuffer);
+            }
+            if (nextRenderingBuffer != null) {
+                returnUnusedBuffer(nextRenderingBuffer);
+            }
+            if (nextRenderingBuffer2 != null) {
+                returnUnusedBuffer(nextRenderingBuffer2);
+            }
+            renderingBuffer = AnimatedFileBuffer.of(b);
+            nextRenderingBuffer = null;
+            nextRenderingBuffer2 = null;
         }
-        if (nextRenderingBuffer != null) {
-            unusedBuffers.add(nextRenderingBuffer);
-        }
-        if (nextRenderingBuffer2 != null) {
-            unusedBuffers.add(nextRenderingBuffer2);
-        }
-        renderingBuffer = AnimatedFileBuffer.of(b);
-        nextRenderingBuffer = null;
-        nextRenderingBuffer2 = null;
     }
 
     public void setActualDrawRect(float x, float y, float width, float height) {
@@ -1153,10 +1254,12 @@ public final class AnimatedFileDrawable extends BitmapDrawable implements Animat
         }
         drawable.metaData[0] = metaData[0];
         drawable.metaData[1] = metaData[1];
+        drawable.gifLoopBlendEnabled = gifLoopBlendEnabled && !isWebmSticker;
         return drawable;
     }
 
     public void setStartEndTime(long startTime, long endTime) {
+        resetGifLoopBlend();
         this.startTime = startTime / 1000f;
         this.endTime = endTime / 1000f;
         if (startTime >= 0 && getCurrentProgressMs() < startTime) {
@@ -1178,21 +1281,27 @@ public final class AnimatedFileDrawable extends BitmapDrawable implements Animat
 
     @AnyThread
     public Bitmap getNextFrame(boolean loop) {
+        resetGifLoopBlend();
         if (mDecoder == null) {
-            return backgroundBuffer != null ? backgroundBuffer.bitmap : null;
+            return backgroundBuffer != null && backgroundBuffer.hasFrame ? backgroundBuffer.bitmap : null;
         }
         if (backgroundBuffer == null) {
-            if (!unusedBuffers.isEmpty()) {
-                backgroundBuffer = unusedBuffers.remove(0);
-            } else {
+            backgroundBuffer = takeUnusedBuffer();
+            if (backgroundBuffer == null) {
                 backgroundBuffer = AnimatedFileBuffer.of((int) (metaData[0] * scaleFactor), (int) (metaData[1] * scaleFactor));
             }
         }
-        mDecoder.getVideoFrame(backgroundBuffer.bitmap, false, startTime, endTime, loop);
-        return backgroundBuffer.bitmap;
+        backgroundBuffer.hasFrame = false;
+        if (mDecoder.getVideoFrame(backgroundBuffer.bitmap, false, startTime, endTime, loop) != 0) {
+            backgroundBuffer.time = metaData[3];
+            backgroundBuffer.opaque = mDecoder.isLastFrameOpaque();
+            backgroundBuffer.hasFrame = true;
+        }
+        return backgroundBuffer.hasFrame ? backgroundBuffer.bitmap : null;
     }
 
     public void skipNextFrame(boolean loop) {
+        resetGifLoopBlend();
         if (mDecoder == null) {
             return;
         }
@@ -1239,7 +1348,9 @@ public final class AnimatedFileDrawable extends BitmapDrawable implements Animat
         if (generatingCacheBitmap == null) {
             generatingCacheBitmap = Bitmap.createBitmap(metaData[0], metaData[1], Bitmap.Config.ARGB_8888);
         }
-        cacheGenerateDecoder.getVideoFrame(generatingCacheBitmap, false, startTime, endTime, this.loop);
+        if (cacheGenerateDecoder.getVideoFrame(generatingCacheBitmap, false, startTime, endTime, this.loop) == 0) {
+            return 0;
+        }
         if (cacheGenerateTimestamp != 0 && (metaData[3] == 0 || cacheGenerateTimestamp > metaData[3])) {
             return 0;
         }
@@ -1296,8 +1407,10 @@ public final class AnimatedFileDrawable extends BitmapDrawable implements Animat
 
     @UiThread
     public void updateCurrentFrame(long now, boolean b) {
-        checkChoreographerAfterDrawCall();
-        updateCurrentFrameInternal(now, b);
+        synchronized (frameLock) {
+            checkChoreographerAfterDrawCall();
+            updateCurrentFrameInternal(now, b);
+        }
     }
 
     @UiThread
@@ -1320,14 +1433,72 @@ public final class AnimatedFileDrawable extends BitmapDrawable implements Animat
 
     @UiThread
     private void swapBuffers(long now) {
-        if (renderingBuffer != null) {
-            unusedBuffers.add(renderingBuffer);
+        if (gifLoopBlendEnabled && !isWebmSticker && isRunning && !isPaused && !skipFrameUpdate
+                && startTime <= 0 && endTime <= 0 && pendingSeekTo < 0 && pendingSeekToUI < 0
+                && renderingBuffer != null && nextRenderingBuffer != null && nextRenderingBuffer.startsGifLoop
+                && renderingBuffer.gifPlaybackGeneration == gifPlaybackGeneration
+                && nextRenderingBuffer.gifPlaybackGeneration == gifPlaybackGeneration
+                && renderingBuffer.time > nextRenderingBuffer.time && renderingBuffer.opaque && nextRenderingBuffer.opaque
+                && renderingBuffer.width == nextRenderingBuffer.width && renderingBuffer.height == nextRenderingBuffer.height) {
+            clearGifLoopBlend();
+            gifLoopBuffer = renderingBuffer;
+            gifLoopBlendStart = SystemClock.uptimeMillis();
+            AndroidUtilities.runOnUIThread(gifLoopInvalidate, 16);
+        } else if (renderingBuffer != null) {
+            returnUnusedBuffer(renderingBuffer);
         }
         renderingBuffer = nextRenderingBuffer;
         nextRenderingBuffer = nextRenderingBuffer2;
         nextRenderingBuffer2 = null;
         lastFrameTime = now;
         swapBuffersAllowedByChoreographer = false;
+    }
+    private AnimatedFileBuffer takeUnusedBuffer() {
+        synchronized (unusedBuffers) {
+            AnimatedFileBuffer buffer = unusedBuffers.isEmpty() ? null : unusedBuffers.remove(0);
+            if (buffer != null) {
+                buffer.hasFrame = false;
+            }
+            return buffer;
+        }
+    }
+    private void returnUnusedBuffer(AnimatedFileBuffer buffer) {
+        synchronized (unusedBuffers) {
+            unusedBuffers.add(buffer);
+        }
+    }
+    private void clearGifLoopBlend() {
+        if (gifLoopBuffer != null) {
+            returnUnusedBuffer(gifLoopBuffer);
+            gifLoopBuffer = null;
+        }
+        AndroidUtilities.cancelRunOnUIThread(gifLoopInvalidate);
+    }
+    private void resetGifLoopBlend() {
+        if (!gifLoopBlendEnabled || isWebmSticker) {
+            return;
+        }
+        synchronized (frameLock) {
+            gifPlaybackGeneration++;
+            clearGifLoopBlend();
+        }
+    }
+    @UiThread
+    private void invalidateGifLoop() {
+        synchronized (frameLock) {
+            if (gifLoopBuffer == null) {
+                return;
+            }
+            if (!isRunning || isPaused || isRecycled || skipFrameUpdate || pendingSeekToUI >= 0
+                    || SystemClock.uptimeMillis() - gifLoopBlendStart >= GIF_LOOP_BLEND_MS) {
+                clearGifLoopBlend();
+            } else {
+                AndroidUtilities.runOnUIThread(gifLoopInvalidate,
+                    Math.min(16, GIF_LOOP_BLEND_MS - (SystemClock.uptimeMillis() - gifLoopBlendStart)));
+            }
+        }
+        invalidateInternal();
+        uiStartTaskImpl();
     }
 
     public int getFps() {
@@ -1337,7 +1508,7 @@ public final class AnimatedFileDrawable extends BitmapDrawable implements Animat
     public int estimateSizeInCache() {
         final int intrinsicSize = getIntrinsicWidth() * getIntrinsicHeight();
         final int renderingSize = renderingWidth * renderingHeight;
-        return Math.max(intrinsicSize, renderingSize) * 4 * 3;
+        return Math.max(intrinsicSize, renderingSize) * 4 * (gifLoopBlendEnabled && !isWebmSticker ? 4 : 3);
     }
 
 
@@ -1350,6 +1521,7 @@ public final class AnimatedFileDrawable extends BitmapDrawable implements Animat
         ticksWithoutDraw++;
         if (ticksWithoutDraw > PAUSE_AFTER_TICKS) {
             isPaused = true;
+            resetGifLoopBlend();
         }
         checkChoreographerInternal();
     }

@@ -180,10 +180,12 @@ public class BannerPreferencesActivity extends BasePreferencesActivity {
                 info = LocaleController.getString(R.string.NM_BAN_NotSet);
             }
             items.add(asSettingsLink(ID_PICK_LOCAL, IconBackgroundColors.BLUE_DEEP,
-                    R.drawable.msg_gallery, LocaleController.getString(R.string.NM_BAN_PickLocal), info));
+                    R.drawable.msg_gallery, LocaleController.getString(R.string.NM_BAN_PickLocal), info)
+                    .setEnabled(!processingFile && !picking));
             if (f != null && f.exists()) {
                 items.add(asSettingsLink(ID_DELETE_LOCAL, IconBackgroundColors.RED,
-                        R.drawable.msg_delete, LocaleController.getString(R.string.NM_BAN_DeleteLocal)).red());
+                        R.drawable.msg_delete, LocaleController.getString(R.string.NM_BAN_DeleteLocal))
+                        .setEnabled(!processingFile && !picking).red());
             }
             items.add(UItem.asShadow(LocaleController.getString(R.string.NM_BAN_LocalOnlyHint)));
         }
@@ -247,6 +249,7 @@ public class BannerPreferencesActivity extends BasePreferencesActivity {
                 selLocal();
                 break;
             case ID_DELETE_LOCAL:
+                if (processingFile || picking) return;
                 ctrl.removeLocalBanner();
                 break;
         }

@@ -163,6 +163,7 @@ public final class NimarkoCameraXSurfaceSession {
         }
         Size resolution = request.getResolution();
         final int requestGeneration = ++surfaceRequestGeneration;
+        resetTransformationInfo();
         String requestCameraId;
         try {
             requestCameraId = Camera2CameraInfo.from(
@@ -296,6 +297,7 @@ public final class NimarkoCameraXSurfaceSession {
                 runImmediately = true;
             } else {
                 surfaceRequestGeneration++;
+                resetTransformationInfo();
                 Runnable previous = rebindCompletion;
                 rebindCompletion = previous == null ? onReleased : () -> {
                     previous.run();
@@ -361,6 +363,18 @@ public final class NimarkoCameraXSurfaceSession {
     public boolean hasTransformationInfo() {
         return hasTransformationInfo;
     }
+    public int getSurfaceRequestGeneration() {
+        return surfaceRequestGeneration;
+    }
+    public boolean isSurfaceRequestCurrent(int generation) {
+        return !closed && generation == surfaceRequestGeneration && hasTransformationInfo;
+    }
+    private void resetTransformationInfo() {
+        hasTransformationInfo = false;
+        hasCameraTransform = false;
+        mirrored = false;
+        rotationDegrees = 0;
+    }
 
     public int getPreviewWidth() {
         return previewWidth;
@@ -372,13 +386,12 @@ public final class NimarkoCameraXSurfaceSession {
 
     public void switchCamera(boolean frontFacing) {
         if (!closed) {
+            if (controller.isFrontface() == frontFacing && controller.isInitiated()) return;
             if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("CXSurface switch renderId=" + renderId
                     + " fromFront=" + controller.isFrontface() + " toFront=" + frontFacing);
             
-            hasCameraTransform = false;
-            hasTransformationInfo = false;
-            mirrored = false;
-            rotationDegrees = 0;
+            surfaceRequestGeneration++;
+            resetTransformationInfo();
             controller.setFrontFace(frontFacing);
         }
     }
@@ -398,9 +411,16 @@ public final class NimarkoCameraXSurfaceSession {
     public float getObservedZoomRatio() {
         return closed ? 1f : controller.getObservedZoomRatio();
     }
+    @Nullable
+    public CameraXLensFrame getLensFrame(long surfaceTimestampNanos) {
+        return closed ? null : controller.getLensFrame(surfaceTimestampNanos);
+    }
 
     public boolean isInitialLensReady() {
         return !closed && controller.isInitialLensReady();
+    }
+    public boolean isInitialLensReady(long surfaceTimestampNanos) {
+        return !closed && controller.isInitialLensReady(surfaceTimestampNanos);
     }
 
     @Nullable

@@ -27,6 +27,7 @@ import androidx.core.content.ContextCompat;
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.R;
+import org.telegram.messenger.SharedConfig;
 import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.Components.AnimatedFloat;
 import org.telegram.ui.Components.AnimatedTextView;
@@ -332,17 +333,28 @@ public class ButtonWithCounterView extends FrameLayout implements Loadable {
             }
 
             if (loadingAnimator != null) {
-                loadingAnimator.cancel();
+                ValueAnimator previous = loadingAnimator;
                 loadingAnimator = null;
+                previous.removeAllListeners();
+                previous.cancel();
             }
-            loadingAnimator = ValueAnimator.ofFloat(loadingT, (this.loading = loading) ? 1 : 0);
+            this.loading = loading;
+            if (!isAttachedToWindow() || !SharedConfig.animationsEnabled()) {
+                loadingT = loading ? 1f : 0f;
+                invalidate();
+                return;
+            }
+            loadingAnimator = ValueAnimator.ofFloat(loadingT, loading ? 1 : 0);
             loadingAnimator.addUpdateListener(anm -> {
+                if (loadingAnimator != anm) return;
                 loadingT = (float) anm.getAnimatedValue();
                 invalidate();
             });
             loadingAnimator.addListener(new AnimatorListenerAdapter() {
                 @Override
                 public void onAnimationEnd(Animator animation) {
+                    if (loadingAnimator != animation) return;
+                    loadingAnimator = null;
                     loadingT = loading ? 1 : 0;
                     invalidate();
                 }

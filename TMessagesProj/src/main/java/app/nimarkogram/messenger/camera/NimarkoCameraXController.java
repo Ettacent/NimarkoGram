@@ -94,6 +94,8 @@ public class NimarkoCameraXController implements CameraXProviderCoordinator.Owne
     private float baseZoomRatio = 1f;
     @Nullable private volatile String activePhysicalCameraId;
     @Nullable private volatile String expectedInitialPhysicalCameraId;
+    private final CameraXLensFrameTracker lensFrameTracker = new CameraXLensFrameTracker();
+    private long latestPhysicalFrameTimestampNanos;
     private final CameraXZoomCoordinator zoomCoordinator =
             new CameraXZoomCoordinator("CameraX surface zoom");
     private boolean initiated;
@@ -186,7 +188,7 @@ public class NimarkoCameraXController implements CameraXProviderCoordinator.Owne
     }
 
     public void setFrontFace(boolean isFrontFace) {
-        if (isFrontface == isFrontFace) return;
+        if (isFrontface == isFrontFace && isInitiated()) return;
         if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("CXController switch requested fromFront=" + isFrontface
                 + " toFront=" + isFrontFace + " provider=" + (provider != null));
         isFrontface = isFrontFace;
@@ -301,6 +303,7 @@ public class NimarkoCameraXController implements CameraXProviderCoordinator.Owne
                 + " initiated=" + initiated + " camera=" + cameraId(boundCamera));
         synchronized (initializationLock) {
             closed = true;
+            retireLensCaptureGraph();
             ++initializationGeneration;
             enableTorch(false);
             detachConcurrentPeer();
@@ -510,13 +513,14 @@ public class NimarkoCameraXController implements CameraXProviderCoordinator.Owne
         boundCamera = provider.bindToLifecycle(
                 lifecycle, boundSelector, boundSessionConfig);
         initiated = boundCamera != null;
-        attachBoundCamera(boundCamera);
+        attachBoundCamera(boundCamera, true);
         if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("CXController bindPrepared result=" + initiated
                 + " camera=" + cameraId(boundCamera));
         return initiated;
     }
 
     private void clearPreparedUseCases() {
+        retireLensCaptureGraph();
         boundCamera = null;
         boundPreview = null;
         boundImageCapture = null;
@@ -557,7 +561,15 @@ public class NimarkoCameraXController implements CameraXProviderCoordinator.Owne
                                     @Nullable CameraSelector selectorOverride,
                                     @Nullable Range<Integer> concurrentFpsRange) {
         if (closed || provider == null || surfaceProvider == null) return false;
-        if (!rebuild && boundPreview != null && boundSelector != null) return true;
+        if (!rebuild && boundPreview != null && boundSelector != null
+                && lensFrameTracker.hasActiveGraph()) return true;
+        final Object captureGraphToken;
+        synchronized (lensFrameTracker) {
+            captureGraphToken = lensFrameTracker.beginGraph();
+            activePhysicalCameraId = null;
+            expectedInitialPhysicalCameraId = null;
+            latestPhysicalFrameTimestampNanos = 0;
+        }
         try {
             CameraSelector selector;
             if (selectorOverride != null) {
@@ -613,8 +625,16 @@ public class NimarkoCameraXController implements CameraXProviderCoordinator.Owne
                     && CameraXUtils.supportsSubOneZoom(provider, boundSelector)
                     && (!concurrentPreview
                     || !CameraXUtils.isOppoCph2791ConcurrentQuirk());
-            activePhysicalCameraId = null;
-            expectedInitialPhysicalCameraId = null;
+            boolean observeLensMetadata = false;
+            if (!isFrontface && Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                try {
+                    androidx.camera.core.CameraInfo selectedInfo =
+                            provider.getCameraInfo(boundSelector);
+                    observeLensMetadata = selectedInfo != null
+                            && selectedInfo.isLogicalMultiCameraSupported();
+                } catch (Throwable ignored) {
+                }
+            }
             if (configuredStartFromUltraWide && concurrentPreview
                     && !startFromUltraWide) {
                 if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log(
@@ -623,7 +643,7 @@ public class NimarkoCameraXController implements CameraXProviderCoordinator.Owne
                                 + describeSelector(boundSelector));
             }
             Camera2Interop.Extender<Preview> previewExtender =
-                    applyEnhancements || startFromUltraWide || concurrentPreview
+                    applyEnhancements || startFromUltraWide || concurrentPreview || observeLensMetadata
                             ? new Camera2Interop.Extender<>(previewBuilder) : null;
             if (concurrentPreview && previewExtender != null) {
                 installConcurrentCamera2Diagnostics(previewExtender,
@@ -662,42 +682,26 @@ public class NimarkoCameraXController implements CameraXProviderCoordinator.Owne
                 expectedInitialPhysicalCameraId =
                         CameraXUtils.findBackUltraWideCameraId(provider);
                 if (expectedInitialPhysicalCameraId != null) {
-                    final String expectedPhysicalId = expectedInitialPhysicalCameraId;
-                    previewExtender.setSessionCaptureCallback(
-                            new CameraCaptureSession.CaptureCallback() {
-                                @Override
-                                public void onCaptureCompleted(
-                                        @NonNull CameraCaptureSession session,
-                                        @NonNull CaptureRequest request,
-                                        @NonNull TotalCaptureResult result) {
-                                    String physicalId;
-                                    try {
-                                        physicalId = result.get(CaptureResult
-                                                .LOGICAL_MULTI_CAMERA_ACTIVE_PHYSICAL_ID);
-                                    } catch (Throwable ignored) {
-                                        physicalId = null;
-                                    }
-                                    if (physicalId == null
-                                            || physicalId.equals(activePhysicalCameraId)) {
-                                        return;
-                                    }
-                                    activePhysicalCameraId = physicalId;
-                                    if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log(
-                                            "CXController active physical lens=" + physicalId
-                                                    + " expectedWide=" + expectedPhysicalId
-                                                    + " frame=" + result.getFrameNumber());
-                                }
-                            });
                     if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("CXController waiting for physical wide="
                             + expectedInitialPhysicalCameraId);
                 }
+            }
+            if (previewExtender != null && (observeLensMetadata || startFromUltraWide)) {
+                previewExtender.setSessionCaptureCallback(
+                        createLensCaptureCallback(captureGraphToken));
             }
             if (applyEnhancements && !concurrentPreview
                     && CameraXUtils.shouldEnablePreviewStabilization(provider, boundSelector)) {
                 previewBuilder.setPreviewStabilizationEnabled(true);
             }
             boundPreview = previewBuilder.build();
-            boundPreview.setSurfaceProvider(surfaceProvider);
+            boundPreview.setSurfaceProvider(request -> {
+                if (closed || !lensFrameTracker.isCurrent(captureGraphToken)) {
+                    request.willNotProvideSurface();
+                    return;
+                }
+                surfaceProvider.onSurfaceRequested(request);
+            });
             if (enableImageCapture && !concurrentPreview) {
                 ImageCapture.Builder captureBuilder = new ImageCapture.Builder()
                         .setCaptureMode(ImageCapture.CAPTURE_MODE_MAXIMIZE_QUALITY)
@@ -737,6 +741,7 @@ public class NimarkoCameraXController implements CameraXProviderCoordinator.Owne
             }
             return true;
         } catch (Throwable t) {
+            retireLensCaptureGraph();
             FileLog.e(t);
             if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("CXController prepare FAILED front=" + isFrontface
                     + " concurrent=" + concurrentPreview, t);
@@ -746,6 +751,68 @@ public class NimarkoCameraXController implements CameraXProviderCoordinator.Owne
             boundSessionConfig = null;
             appliedTargetFpsRange = null;
             return false;
+        }
+    }
+    private CameraCaptureSession.CaptureCallback createLensCaptureCallback(
+            final Object captureGraphToken) {
+        return new CameraCaptureSession.CaptureCallback() {
+            @Override
+            public void onCaptureCompleted(@NonNull CameraCaptureSession session,
+                                           @NonNull CaptureRequest request,
+                                           @NonNull TotalCaptureResult result) {
+                if (closed || !lensFrameTracker.isCurrent(captureGraphToken)) return;
+                Long timestamp = null;
+                String physicalId = null;
+                float zoomRatio = Float.NaN;
+                try {
+                    timestamp = result.get(CaptureResult.SENSOR_TIMESTAMP);
+                } catch (Throwable ignored) {
+                }
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                    try {
+                        physicalId = result.get(CaptureResult.LOGICAL_MULTI_CAMERA_ACTIVE_PHYSICAL_ID);
+                    } catch (Throwable ignored) {
+                    }
+                }
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    try {
+                        Float ratio = result.get(CaptureResult.CONTROL_ZOOM_RATIO);
+                        if (ratio != null) zoomRatio = ratio;
+                    } catch (Throwable ignored) {
+                    }
+                    if (!CameraXLensFrameTracker.isValidRatio(zoomRatio)) {
+                        try {
+                            Float ratio = request.get(CaptureRequest.CONTROL_ZOOM_RATIO);
+                            if (ratio != null) zoomRatio = ratio;
+                        } catch (Throwable ignored) {
+                        }
+                    }
+                }
+                final long timestampNanos = timestamp == null ? 0L : timestamp;
+                synchronized (lensFrameTracker) {
+                    if (closed || !lensFrameTracker.isCurrent(captureGraphToken)) return;
+                    lensFrameTracker.record(captureGraphToken, physicalId, zoomRatio, timestampNanos);
+                    if (physicalId != null && !physicalId.isEmpty()
+                            && (latestPhysicalFrameTimestampNanos == 0
+                            || timestampNanos >= latestPhysicalFrameTimestampNanos)) {
+                        latestPhysicalFrameTimestampNanos = Math.max(0L, timestampNanos);
+                        if (!physicalId.equals(activePhysicalCameraId)) {
+                            activePhysicalCameraId = physicalId;
+                            if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log(
+                                    "CXController active physical lens=" + physicalId
+                                            + " expectedWide=" + expectedInitialPhysicalCameraId
+                                            + " frame=" + result.getFrameNumber());
+                        }
+                    }
+                }
+            }
+        };
+    }
+    private void retireLensCaptureGraph() {
+        synchronized (lensFrameTracker) {
+            lensFrameTracker.retireGraph();
+            activePhysicalCameraId = null;
+            latestPhysicalFrameTimestampNanos = 0;
         }
     }
 
@@ -965,8 +1032,8 @@ public class NimarkoCameraXController implements CameraXProviderCoordinator.Owne
             frontController.initiated = true;
             concurrentPeer = other;
             other.concurrentPeer = this;
-            backController.attachBoundCamera(backController.boundCamera);
-            frontController.attachBoundCamera(frontController.boundCamera);
+            backController.attachBoundCamera(backController.boundCamera, true);
+            frontController.attachBoundCamera(frontController.boundCamera, true);
             if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("CXController concurrent providerMode="
                     + provider.isConcurrentCameraModeOn());
             
@@ -1096,6 +1163,35 @@ public class NimarkoCameraXController implements CameraXProviderCoordinator.Owne
             return state == null ? 1f : state.getZoomRatio();
         } catch (Throwable error) {
             return 1f;
+        }
+    }
+    @Nullable
+    public CameraXLensFrame getLensFrame(long surfaceTimestampNanos) {
+        synchronized (lensFrameTracker) {
+            return closed ? null : lensFrameTracker.getLensFrame(surfaceTimestampNanos);
+        }
+    }
+    public boolean isInitialLensReady(long surfaceTimestampNanos) {
+        if (isFrontface || !wantsInitialUltraWide()) return true;
+        if (concurrentPeer != null && CameraXUtils.isOppoCph2791ConcurrentQuirk()) return true;
+        Camera camera = boundCamera;
+        if (camera == null || !boundCameraReady) return false;
+        try {
+            CameraXLensFrame frame = getLensFrame(surfaceTimestampNanos);
+            String expectedPhysical = expectedInitialPhysicalCameraId;
+            if (expectedPhysical != null) {
+                return frame != null && expectedPhysical.equals(frame.physicalId);
+            }
+            ZoomState state = camera.getCameraInfo().getZoomState().getValue();
+            if (state == null || state.getMinZoomRatio() >= 0.999f) return true;
+            if (frame == null || !CameraXLensFrameTracker.isValidRatio(frame.zoomRatio)) {
+                return false;
+            }
+            float target = state.getMinZoomRatio();
+            float tolerance = Math.max(0.025f, target * 0.06f);
+            return Math.abs(frame.zoomRatio - target) <= tolerance;
+        } catch (Throwable error) {
+            return false;
         }
     }
 
@@ -1262,7 +1358,7 @@ public class NimarkoCameraXController implements CameraXProviderCoordinator.Owne
     }
 
     @SuppressLint({"UnsafeExperimentalUsageError", "RestrictedApi"})
-    public void focusToPoint(int x, int y ) {
+    public void focusToPoint(int x, int y                               ) {
         focusAndLock(x, y, false, false);
     }
 
@@ -1405,7 +1501,14 @@ public class NimarkoCameraXController implements CameraXProviderCoordinator.Owne
     }
 
     public void attachBoundCamera(@Nullable Camera camera) {
-        invalidateBoundCameraControls();
+        attachBoundCamera(camera, false);
+    }
+    private void attachBoundCamera(@Nullable Camera camera, boolean preparedGraph) {
+        if (preparedGraph && camera != null) {
+            resetBoundCameraControls();
+        } else {
+            invalidateBoundCameraControls();
+        }
         this.boundCamera = camera;
         baseZoomRatio = 1f;
         if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("CXController attach camera=" + cameraId(camera)
@@ -1595,6 +1698,10 @@ public class NimarkoCameraXController implements CameraXProviderCoordinator.Owne
     }
 
     private void invalidateBoundCameraControls() {
+        retireLensCaptureGraph();
+        resetBoundCameraControls();
+    }
+    private void resetBoundCameraControls() {
         cancelConcurrentCameraInUseFailure();
         boundCameraReady = false;
         zoomCoordinator.detach();

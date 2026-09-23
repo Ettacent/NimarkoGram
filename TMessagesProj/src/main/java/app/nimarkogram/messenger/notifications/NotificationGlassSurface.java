@@ -33,6 +33,7 @@ import org.telegram.ui.Components.blur3.drawable.color.BlurredBackgroundProvider
 import org.telegram.ui.Components.blur3.drawable.color.BlurredBackgroundProvider;
 import org.telegram.ui.Components.blur3.drawable.color.impl.BlurredBackgroundProviderImpl;
 import org.telegram.ui.Components.blur3.source.BlurredBackgroundSource;
+import org.telegram.ui.Components.blur3.source.BlurredBackgroundSourceColor;
 import org.telegram.ui.Components.blur3.source.BlurredBackgroundSourceRenderNode;
 
 final class NotificationGlassSurface implements ViewTreeObserver.OnPreDrawListener {
@@ -42,6 +43,7 @@ final class NotificationGlassSurface implements ViewTreeObserver.OnPreDrawListen
     private SurfaceDrawable surface;
     private int background, fillColor;
     private final AnimatedColor animatedBackground, animatedFill, animatedStroke, animatedShadow;
+    private final AnimatedColor animatedStrokeBottom, animatedStrokeFull;
     private Theme.ResourcesProvider resourcesProvider;
     private BlurredBackgroundProvider panelColors = BlurredBackgroundProviderImpl.topPanelChatActivity(null);
     private final Paint shadowPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -54,6 +56,8 @@ final class NotificationGlassSurface implements ViewTreeObserver.OnPreDrawListen
         animatedBackground = new AnimatedColor(view, 180, CubicBezierInterpolator.EASE_BOTH);
         animatedFill = new AnimatedColor(view, 180, CubicBezierInterpolator.EASE_BOTH);
         animatedStroke = new AnimatedColor(view, 180, CubicBezierInterpolator.EASE_BOTH);
+        animatedStrokeBottom = new AnimatedColor(view, 180, CubicBezierInterpolator.EASE_BOTH);
+        animatedStrokeFull = new AnimatedColor(view, 180, CubicBezierInterpolator.EASE_BOTH);
         animatedShadow = new AnimatedColor(view, 180, CubicBezierInterpolator.EASE_BOTH);
         view.setOutlineProvider(new ViewOutlineProvider() {
             @Override public void getOutline(View v, Outline outline) {
@@ -120,13 +124,16 @@ final class NotificationGlassSurface implements ViewTreeObserver.OnPreDrawListen
 
     private void update(float elapsed) {
         BaseFragment active = LaunchActivity.getLastFragmentIncludeMainTabs();
-        if (!isNavigationRunning() && active != null && resourcesProvider != active.getResourceProvider()) {
+        boolean navigating = isNavigationRunning();
+        if (!navigating && active != null && resourcesProvider != active.getResourceProvider()) {
             resourcesProvider = active.getResourceProvider();
             panelColors = BlurredBackgroundProviderImpl.topPanelChatActivity(resourcesProvider);
         }
         background = animatedBackground.set(ColorUtils.setAlphaComponent(panelColors.getBackgroundColor(), 255));
         int nextFill = animatedFill.set(panelColors.getBackgroundColor());
-        int stroke = animatedStroke.set(panelColors.getStrokeColorTop());
+        animatedStroke.set(panelColors.getStrokeColorTop());
+        animatedStrokeBottom.set(panelColors.getStrokeColorBottom());
+        animatedStrokeFull.set(panelColors.getStrokeColorFull());
         int previousShadow = animatedShadow.get();
         if (previousShadow != animatedShadow.set(panelColors.getShadowColor()) && view.getParent() instanceof View) {
             ((View) view.getParent()).invalidate();
@@ -143,9 +150,29 @@ final class NotificationGlassSurface implements ViewTreeObserver.OnPreDrawListen
             view.setBackground(surface);
             view.setPadding(l, t, r, b);
         }
-        surface.updateColors(background, stroke);
+        surface.updateColors(background);
         if (!view.isAttachedToWindow() || !view.isHardwareAccelerated()
                 || Build.VERSION.SDK_INT < 31 || !SharedConfig.chatBlurEnabled()) {
+            if (current != null || incoming != null) releaseLayers();
+            return;
+        }
+        boolean activeAttached = active != null && active.getFragmentView() != null
+                && active.getFragmentView().isAttachedToWindow();
+        BlurredBackgroundDrawableViewFactory targetFactory = !navigating && activeAttached
+                ? active.getNotificationGlassFactory() : null;
+        if (current != null && !current.sourceRoot.isAttachedToWindow()) {
+            current.release();
+            current = null;
+            view.invalidate();
+        }
+        if (incoming != null && (!incoming.sourceRoot.isAttachedToWindow()
+                || (!navigating && activeAttached && incoming.factory != targetFactory))) {
+            incoming.release();
+            incoming = null;
+            progress = 0;
+            view.invalidate();
+        }
+        if (!navigating && activeAttached && targetFactory == null) {
             if (current != null || incoming != null) releaseLayers();
             return;
         }
@@ -162,19 +189,18 @@ final class NotificationGlassSurface implements ViewTreeObserver.OnPreDrawListen
             view.postInvalidateOnAnimation();
         }
 
-        if (isNavigationRunning() || incoming != null) return;
-        BaseFragment fragment = LaunchActivity.getLastFragmentIncludeMainTabs();
+        if (navigating || incoming != null) return;
+        BaseFragment fragment = active;
         if (fragment == null) {
             if (current != null) releaseLayers();
             return;
         }
         if (fragment.getFragmentView() == null || !fragment.getFragmentView().isAttachedToWindow()) return;
-        BlurredBackgroundDrawableViewFactory factory = fragment.getNotificationGlassFactory();
+        BlurredBackgroundDrawableViewFactory factory = targetFactory;
         if (factory == null) return;
         View sourceRoot = factory.getSourceRootView();
         if (sourceRoot == null || !sourceRoot.isAttachedToWindow()) return;
         if (current != null && current.factory == factory) {
-            sourceRoot.getLocationOnScreen(current.origin);
             return;
         }
         incoming = new Layer(factory, sourceRoot);
@@ -184,6 +210,7 @@ final class NotificationGlassSurface implements ViewTreeObserver.OnPreDrawListen
 
     private final class Layer {
         final BlurredBackgroundDrawableViewFactory factory;
+        final View sourceRoot;
         final BlurredBackgroundDrawable glass;
         final int[] origin = new int[2];
         boolean rendered;
@@ -196,6 +223,7 @@ final class NotificationGlassSurface implements ViewTreeObserver.OnPreDrawListen
 
         Layer(BlurredBackgroundDrawableViewFactory factory, View sourceRoot) {
             this.factory = factory;
+            this.sourceRoot = sourceRoot;
             sourceRoot.getLocationOnScreen(origin);
             glass = factory.createForOverlay(view, new BlurredBackgroundProviderBuilder(null)
                     .setBackgroundColor((r, isDark) -> fillColor)
@@ -213,6 +241,7 @@ final class NotificationGlassSurface implements ViewTreeObserver.OnPreDrawListen
         }
 
         void updateOffset() {
+            if (sourceRoot.isAttachedToWindow()) sourceRoot.getLocationOnScreen(origin);
             int x = overlayPosition[0] - origin[0], y = overlayPosition[1] - origin[1];
             if (glass.getSourceOffsetX() != x || glass.getSourceOffsetY() != y) {
                 glass.setSourceOffset(x, y);
@@ -226,33 +255,40 @@ final class NotificationGlassSurface implements ViewTreeObserver.OnPreDrawListen
     }
 
     private final class SurfaceDrawable extends Drawable implements Drawable.Callback {
-        private final GradientDrawable material, sheen;
+        private final GradientDrawable material;
+        private final BlurredBackgroundDrawable sheen;
         private final Paint blendPaint = new Paint();
         private int alpha = 255;
-        private int materialColor, strokeColor, strokeWidth;
+        private int materialColor;
 
         SurfaceDrawable() {
             blendPaint.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.ADD));
             material = new GradientDrawable(GradientDrawable.Orientation.TL_BR,
                     new int[]{background, background});
-            sheen = new GradientDrawable(GradientDrawable.Orientation.TL_BR,
-                    new int[]{Color.TRANSPARENT, Color.TRANSPARENT});
-            sheen.setCornerRadius(AndroidUtilities.dp(18));
-            updateColors(background, animatedStroke.get());
+            material.setCornerRadius(AndroidUtilities.dp(18));
+            BlurredBackgroundSourceColor transparentSource = new BlurredBackgroundSourceColor();
+            transparentSource.setColor(Color.TRANSPARENT);
+            sheen = transparentSource.createDrawable();
+            sheen.setColorProvider(new BlurredBackgroundProviderBuilder(null) {
+                @Override public int getStrokeColorFull() { return animatedStrokeFull.get(); }
+            }.setBackgroundColor((r, isDark) -> Color.TRANSPARENT)
+                    .setStrokeColorTop((r, isDark) -> animatedStroke.get())
+                    .setStrokeColorBottom((r, isDark) -> animatedStrokeBottom.get())
+                    .setShadowColor(0, 0).setShadowLayer(0, 0, 0)
+                    .setStrokeWidth(panelColors.getStrokeWidthTop(), panelColors.getStrokeWidthBottom())
+                    .build());
+            sheen.setRadius(AndroidUtilities.dp(18)).setPadding(0);
+            sheen.setCallback(this);
+            updateColors(background);
         }
-        void updateColors(int color, int stroke) {
-            int width = Math.max(1, Math.round(panelColors.getStrokeWidthTop()));
+        void updateColors(int color) {
             if (materialColor != color) {
                 materialColor = color;
                 material.setColor(color);
                 invalidateSelf();
             }
-            if (strokeColor != stroke || strokeWidth != width) {
-                strokeColor = stroke;
-                strokeWidth = width;
-                sheen.setStroke(width, stroke);
-                invalidateSelf();
-            }
+            sheen.setStrokeWidth(panelColors.getStrokeWidthTop(), panelColors.getStrokeWidthBottom());
+            sheen.updateColors();
         }
 
         @Override protected void onBoundsChange(Rect bounds) {
@@ -266,7 +302,7 @@ final class NotificationGlassSurface implements ViewTreeObserver.OnPreDrawListen
             if (alpha == 0) return;
             Rect bounds = getBounds();
             int outer = alpha == 255 ? -1 : canvas.saveLayerAlpha(bounds.left, bounds.top, bounds.right, bounds.bottom, alpha);
-            if (incoming != null) {
+            if (incoming != null && incoming.isReady()) {
                 float eased = progress * progress * (3f - 2f * progress);
                 int weight = Math.round(255 * eased);
                 int blend = canvas.saveLayer(bounds.left, bounds.top, bounds.right, bounds.bottom, null);

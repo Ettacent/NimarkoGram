@@ -32,10 +32,12 @@ import java.util.ArrayList;
 public class DialogRadioCell extends FrameLayout {
 
     public int itemId;
+    private boolean hasBoundItem;
 
     private TextView textView;
     private TextView valueTextView;
     private RadioButton radioButton;
+    private ObjectAnimator checkAnimator;
     private boolean needDivider;
 
     public DialogRadioCell(Context context) {
@@ -117,19 +119,25 @@ public class DialogRadioCell extends FrameLayout {
     }
 
     public void setText(CharSequence text, boolean checked, boolean divider) {
+        setText(text, checked, divider, false);
+    }
+    public void setText(CharSequence text, boolean checked, boolean divider, boolean animated) {
         valueTextView.setVisibility(View.GONE);
         textView.setText(text);
-        radioButton.setChecked(checked, false);
+        setChecked(checked, animated);
         needDivider = divider;
         updateLayout();
         setWillNotDraw(!divider);
     }
 
     public void setTextAndValue(CharSequence text, CharSequence value, boolean checked, boolean divider) {
+        setTextAndValue(text, value, checked, divider, false);
+    }
+    public void setTextAndValue(CharSequence text, CharSequence value, boolean checked, boolean divider, boolean animated) {
         valueTextView.setVisibility(View.VISIBLE);
         valueTextView.setText(value);
         textView.setText(text);
-        radioButton.setChecked(checked, false);
+        setChecked(checked, animated);
         needDivider = divider;
         updateLayout();
         setWillNotDraw(!divider);
@@ -140,7 +148,37 @@ public class DialogRadioCell extends FrameLayout {
     }
 
     public void setChecked(boolean checked, boolean animated) {
-        radioButton.setChecked(checked, animated);
+        if (animated && radioButton.isChecked() == checked) return;
+        if (checkAnimator != null) {
+            checkAnimator.cancel();
+            checkAnimator = null;
+        }
+        final float from = radioButton.getProgress();
+        final float to = checked ? 1f : 0f;
+        radioButton.setChecked(checked, false);
+        if (animated && isAttachedToWindow() && from != to) {
+            radioButton.setProgress(from);
+            checkAnimator = ObjectAnimator.ofFloat(radioButton, "progress", to);
+            checkAnimator.setDuration(200);
+            checkAnimator.start();
+        } else {
+            radioButton.setProgress(to);
+        }
+    }
+    public boolean bindItemId(int id) {
+        final boolean sameItem = hasBoundItem && itemId == id;
+        itemId = id;
+        hasBoundItem = true;
+        return sameItem;
+    }
+    public void resetItemBinding() {
+        hasBoundItem = false;
+        setChecked(isChecked(), false);
+    }
+    @Override
+    protected void onDetachedFromWindow() {
+        setChecked(isChecked(), false);
+        super.onDetachedFromWindow();
     }
 
     public void setEnabled(boolean value, boolean animated) {
@@ -150,6 +188,9 @@ public class DialogRadioCell extends FrameLayout {
             valueTextView.animate().alpha(value ? 1.0f : 0.5f).start();
             radioButton.animate().alpha(value ? 1.0f : 0.5f).start();
         } else {
+            textView.animate().cancel();
+            valueTextView.animate().cancel();
+            radioButton.animate().cancel();
             textView.setAlpha(value ? 1.0f : 0.5f);
             valueTextView.setAlpha(value ? 1.0f : 0.5f);
             radioButton.setAlpha(value ? 1.0f : 0.5f);

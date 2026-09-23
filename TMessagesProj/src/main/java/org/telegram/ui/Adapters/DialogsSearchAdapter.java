@@ -138,6 +138,7 @@ public class DialogsSearchAdapter extends RecyclerListView.SelectionAdapter {
     private int reqForumId = 0;
     private String sponsoredQuery;
     private int sponsoredReqId;
+    private int sponsoredRequestGeneration;
     private int lastForumReqId;
     public DialogsSearchAdapterDelegate delegate;
     private int needMessagesSearch;
@@ -149,6 +150,7 @@ public class DialogsSearchAdapter extends RecyclerListView.SelectionAdapter {
     private String currentMessagesQuery;
     private int nextSearchRate;
     private int lastSearchId;
+    private int searchGeneration;
     private int lastGlobalSearchId;
     private int lastLocalSearchId;
     private int lastMessagesSearchId;
@@ -318,6 +320,9 @@ public class DialogsSearchAdapter extends RecyclerListView.SelectionAdapter {
         searchAdapterHelper.setDelegate(new SearchAdapterHelper.SearchAdapterHelperDelegate() {
             @Override
             public void onDataSetChanged(int searchId) {
+                if (searchId == 0 || searchId != lastSearchId) {
+                    return;
+                }
                 waitingResponseCount--;
                 lastGlobalSearchId = searchId;
                 if (lastLocalSearchId != searchId) {
@@ -977,10 +982,10 @@ public class DialogsSearchAdapter extends RecyclerListView.SelectionAdapter {
 
     private void updateSearchResults(final ArrayList<Object> result, final ArrayList<CharSequence> names, final ArrayList<TLRPC.User> encUsers,  final ArrayList<ContactsController.Contact> contacts, final int searchId) {
         AndroidUtilities.runOnUIThread(() -> {
-            waitingResponseCount--;
             if (searchId != lastSearchId) {
                 return;
             }
+            waitingResponseCount--;
             lastLocalSearchId = searchId;
             if (lastGlobalSearchId != searchId) {
                 searchAdapterHelper.clear();
@@ -1107,6 +1112,7 @@ public class DialogsSearchAdapter extends RecyclerListView.SelectionAdapter {
         }
         filterRecent(query);
         if (!TextUtils.equals(sponsoredQuery, query)) {
+            final int sponsoredGeneration = ++sponsoredRequestGeneration;
             sponsoredQuery = query;
             sponsoredPeers.clear();
             if (sponsoredReqId != 0) {
@@ -1119,6 +1125,9 @@ public class DialogsSearchAdapter extends RecyclerListView.SelectionAdapter {
                 final TLRPC.TL_contacts_getSponsoredPeers req = new TLRPC.TL_contacts_getSponsoredPeers();
                 req.q = sponsoredQuery = query;
                 sponsoredReqId = ConnectionsManager.getInstance(currentAccount).sendRequest(req, (res, err) -> AndroidUtilities.runOnUIThread(() -> {
+                    if (sponsoredGeneration != sponsoredRequestGeneration) {
+                        return;
+                    }
                     sponsoredReqId = 0;
                     if (res instanceof TLRPC.TL_contacts_sponsoredPeersEmpty) {
                         if (!sponsoredPeers.isEmpty()) {
@@ -1207,7 +1216,7 @@ public class DialogsSearchAdapter extends RecyclerListView.SelectionAdapter {
                 searchResultHashtags.clear();
             }
 
-            lastSearchId++;
+            lastSearchId = ++searchGeneration;
             final int searchId = lastSearchId;
             waitingResponseCount = 3;
             globalSearchCollapsed = true;
@@ -1338,9 +1347,6 @@ public class DialogsSearchAdapter extends RecyclerListView.SelectionAdapter {
 
     @Override
     public int getItemCount() {
-        if (waitingResponseCount == 3) {
-            return 0;
-        }
         int count = 0;
         if (!publicPosts.isEmpty()) {
             count += publicPosts.size() + 1;
@@ -1695,6 +1701,9 @@ public class DialogsSearchAdapter extends RecyclerListView.SelectionAdapter {
             default:
                 view = new TextCell(mContext, 16, false);
                 break;
+        }
+        if (view instanceof ProfileSearchCell) {
+            ((ProfileSearchCell) view).avatarImage.setCrossfadeOnReady(true);
         }
         if (viewType == 5) {
             view.setLayoutParams(new RecyclerView.LayoutParams(RecyclerView.LayoutParams.MATCH_PARENT, dp(86)));
@@ -2451,9 +2460,6 @@ public class DialogsSearchAdapter extends RecyclerListView.SelectionAdapter {
     }
 
     private int globalSearchPosition() {
-        if (waitingResponseCount == 3) {
-            return 0;
-        }
         int count = 0;
         if (!publicPosts.isEmpty()) {
             count += publicPosts.size() + 1;

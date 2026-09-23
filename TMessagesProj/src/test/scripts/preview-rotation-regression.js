@@ -15,6 +15,7 @@ fs.writeFileSync(path.join(dir,'RotationTest.java'),`import java.util.*;
 public class RotationTest {
  static class BaseFragment { boolean closeLastFragment(){return false;} }
  static class AndroidUtilities {static void cancelRunOnUIThread(Runnable r){} }
+ static class SystemClock {static long uptimeMillis(){return System.nanoTime()/1000000;}}
  interface Delegate {boolean needCloseLastFragment(RotationTest layout);}
  ArrayList<BaseFragment> fragmentsStack=new ArrayList<>(); ArrayList<Runnable> posted=new ArrayList<>();
  BaseFragment previewRotationCloseFragment; Delegate delegate;
@@ -37,7 +38,7 @@ public class RotationTest {
  ${method('public void finishPreviewFragment()')}
  void closeLastFragment(boolean animated){closeLastFragment(animated,false);}
  ${prefix}
-  closes++; transitionAnimationInProgress=true; transitionAnimationStartTime=System.currentTimeMillis();
+  closes++; transitionAnimationInProgress=true; transitionAnimationStartTime=SystemClock.uptimeMillis();
   final BaseFragment closing=getLastFragment();
   onCloseAnimationEndRunnable=()->{fragmentsStack.remove(closing);inPreviewMode=false;transitionAnimationPreviewMode=false;};
  }

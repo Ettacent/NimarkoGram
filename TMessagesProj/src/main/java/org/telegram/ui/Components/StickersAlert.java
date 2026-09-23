@@ -179,6 +179,8 @@ public class StickersAlert extends BottomSheet implements NotificationCenter.Not
 
     private int scrollOffsetY;
     private int reqId;
+    private int stickerSetReqId;
+    private int stickerSetRequestGeneration;
     private boolean ignoreLayout;
     private boolean showEmoji;
 
@@ -434,6 +436,7 @@ public class StickersAlert extends BottomSheet implements NotificationCenter.Not
             req.media = inputStickeredMediaDocument;
         }
         RequestDelegate requestDelegate = (response, error) -> AndroidUtilities.runOnUIThread(() -> {
+            if (isDismissed()) return;
             reqId = 0;
             if (error == null && response instanceof Vector) {
                 Vector<TLRPC.StickerSetCovered> vector = (Vector<TLRPC.StickerSetCovered>) response;
@@ -581,6 +584,7 @@ public class StickersAlert extends BottomSheet implements NotificationCenter.Not
         inputStickerSet = set;
         stickerSet = loadedSet;
         parentFragment = baseFragment;
+        if (baseFragment != null) currentAccount = baseFragment.getCurrentAccount();
         loadStickerSet(forceRequest);
         init(context);
     }
@@ -594,6 +598,7 @@ public class StickersAlert extends BottomSheet implements NotificationCenter.Not
     }
 
     public void loadStickerSet(boolean force) {
+        if (isDismissed()) return;
         if (inputStickerSet != null) {
             final MediaDataController mediaDataController = MediaDataController.getInstance(currentAccount);
             if (!force) {
@@ -604,12 +609,23 @@ public class StickersAlert extends BottomSheet implements NotificationCenter.Not
                     stickerSet = mediaDataController.getStickerSetById(inputStickerSet.id);
                 }
             }
+            if (stickerSet != null && (stickerSet.set == null || stickerSet.documents == null)) {
+                stickerSet = null;
+            }
+            if (stickerSet == null && stickerSetReqId != 0 && !force) return;
+            final int generation = ++stickerSetRequestGeneration;
+            if (stickerSetReqId != 0) {
+                mediaDataController.cancelStickerRequest(stickerSetReqId);
+                stickerSetReqId = 0;
+            }
             if (stickerSet == null) {
                 TLRPC.TL_messages_getStickerSet req = new TLRPC.TL_messages_getStickerSet();
                 req.stickerset = inputStickerSet;
-                ConnectionsManager.getInstance(currentAccount).sendRequest(req, (response, error) -> AndroidUtilities.runOnUIThread(() -> {
-                    reqId = 0;
-                    if (error == null) {
+                stickerSetReqId = mediaDataController.sendStickerRequest(req, (response, error) -> {
+                    if (isDismissed() || generation != stickerSetRequestGeneration) return;
+                    stickerSetReqId = 0;
+                    if (error == null && response instanceof TLRPC.TL_messages_stickerSet && ((TLRPC.TL_messages_stickerSet) response).set != null
+                            && ((TLRPC.TL_messages_stickerSet) response).documents != null) {
                         Transition addTarget = new Transition() {
 
                             @Override
@@ -662,10 +678,11 @@ public class StickersAlert extends BottomSheet implements NotificationCenter.Not
                     } else {
                         dismiss();
                         if (parentFragment != null) {
-                            BulletinFactory.of(parentFragment).createErrorBulletin(LocaleController.getString(R.string.AddStickersNotFound)).show();
+                            BulletinFactory.of(parentFragment).createErrorBulletin(LocaleController.getString(
+                                    error != null && "STICKERSET_INVALID".equals(error.text) ? R.string.AddStickersNotFound : R.string.UnknownError)).show();
                         }
                     }
-                }));
+                });
             } else {
                 if (adapter != null) {
                     updateSendButton();
@@ -684,6 +701,11 @@ public class StickersAlert extends BottomSheet implements NotificationCenter.Not
     }
 
     public void updateStickerSet(TLRPC.TL_messages_stickerSet set) {
+        stickerSetRequestGeneration++;
+        if (stickerSetReqId != 0) {
+            MediaDataController.getInstance(currentAccount).cancelStickerRequest(stickerSetReqId);
+            stickerSetReqId = 0;
+        }
         stickerSet = set;
         if (adapter != null) {
             updateSendButton();
@@ -1970,6 +1992,11 @@ public class StickersAlert extends BottomSheet implements NotificationCenter.Not
 
     @Override
     public void dismiss() {
+        stickerSetRequestGeneration++;
+        if (stickerSetReqId != 0) {
+            MediaDataController.getInstance(currentAccount).cancelStickerRequest(stickerSetReqId);
+            stickerSetReqId = 0;
+        }
         super.dismiss();
         stickersShaker.stopShake(false);
         if (!ignoreMasterDismiss && masterDismissListener != null) {

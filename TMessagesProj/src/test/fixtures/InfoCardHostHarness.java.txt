@@ -1,0 +1,221 @@
+ static int dp(float n){return (int)Math.ceil(n);}
+ static float lerp(float a,float b,float f){return a+(b-a)*f;}
+ static void near(float a,float b,String message){check(Math.abs(a-b)<.0001f,message+": "+a+" != "+b);}
+ static class MathUtils {static float clamp(float f,float a,float b){return Math.max(a,Math.min(b,f));}}
+ static class FactorAnimator {}
+ static class LayoutParams {int height=50;}
+ static class MeasureSpec {
+  static final int AT_MOST=0x80000000,EXACTLY=0x40000000;
+  static int makeMeasureSpec(int size,int mode){return size|mode;}
+  static int getSize(int spec){return spec&0x3fffffff;}
+ }
+ static class BoolAnimator {
+  float value;float getFloatValue(){return value;}void setValue(boolean b,boolean animated){value=b?1:0;}
+ }
+ static class ActionBar extends View {
+  static int getCurrentActionBarHeight(){return 56;}boolean getOccupyStatusBar(){return true;}
+ }
+ static class SearchField extends View {boolean suppressed;void setInfoCardsSuppressed(boolean b){suppressed=b;}}
+ static class Panel extends View {
+  Object getMetadata(){return this;}float getLayoutVisibility(){return alpha;}
+  float getAnimatedHeightWithPadding(int padding){return height+padding;}
+ }
+ static class Page extends View {View listView=new View();}
+ static class SizeNotifierFrameLayout {static boolean drawingBlur;}
+ static class CanvasParent extends View {
+  float[] drawn;int getMeasuredWidth(){return width;}
+  protected boolean drawChild(Canvas c,View child,long time){drawn=new float[]{c.x,c.y,c.sx,c.sy,c.clips};return true;}
+ }
+ static class Host {
+  HOST_CONSTANTS
+  static final int SEARCH_FIELD_HEIGHT=48;
+  Strip homeInfoCards=new Strip();View filterTabsView=new View(),dialogStoriesCell,fragmentView=new View(),blurredView;
+  SearchField fragmentSearchField=new SearchField();ActionBar actionBar=new ActionBar();Panel topPanelLayout;
+  Page[] viewPages={new Page(),new Page()};
+  BoolAnimator animatorFilterTabsVisible=new BoolAnimator(),animatorSearchVisible=new BoolAnimator(),
+   animatorActionModeVisible=new BoolAnimator(),animatorDoneButtonVisible=new BoolAnimator(),animatorSearchButtonVisible=new BoolAnimator();
+  boolean canShowFilterTabsView=true,filterTabsBootstrapPending,hide=true,bottom,slideFragmentLite;
+  int homeInfoCardSlotWidth=80,blurInvalidations,slideAmplitudeDp=60;
+  float progressToActionMode,right,scrollYOffset,slideFragmentProgress=1;
+  Host(){
+   InfoCardsConfig.enabled=true;InfoCardsConfig.target=0;
+   homeInfoCards.width=80;homeInfoCards.height=50;homeInfoCards.left=310;homeInfoCards.top=3;
+   homeInfoCards.setHostVisibility(0,1,1,GONE);
+   filterTabsView.width=392;filterTabsView.height=50;filterTabsView.left=4;filterTabsView.top=100;
+   filterTabsView.px=196;filterTabsView.py=25;filterTabsView.setVisibility(GONE);
+   actionBar.height=56;
+  }
+  boolean shouldHideHomeSearchField(){return hide;}boolean foldersAtBottom(){return bottom;}
+  boolean isSupportSearch(){return true;}int getMaxScrollYOffsetWithoutSearch(){return 0;}
+  float getRightSlidingProgress(){return right;}
+  void blur3_InvalidateBlur(){blurInvalidations++;}void updateFloatingButtonOffset(){}
+  void updateContextViewPosition(){positionHomeInfoCards();}
+  void checkUi_menuItems(){}void checkUi_topPanelVisible(){}void checkUi_searchFiltersVisibility(){}
+  void checkUi_searchFieldStyle(){}void checkUi_communityAvatarImageVisibility(){}
+  void checkUi_itemSpeedVisibility(){}void checkUi_itemSearchVisibility(){}void checkUi_forwardCommentFieldVisible(){}
+  HOST_METHODS
+  void folders(float f){animatorFilterTabsVisible.value=f;onFactorChanged(ANIMATOR_ID_FILTER_TABS_VISIBLE,f,0,null);}
+  void search(float f){animatorSearchVisible.value=f;onFactorChanged(ANIMATOR_ID_SEARCH_VISIBLE,f,0,null);}
+  void select(float f){animatorActionModeVisible.value=f;onFactorChanged(ANIMATOR_ID_ACTION_MODE_VISIBLE,f,0,null);}
+  class ContentView extends CanvasParent {
+   float getActionBarTop(){return 24;}float getActionBarFullHeight(){return 80;}
+   DRAW_CHILD
+   void measureInline(int widthSize){INLINE_MEASURE}
+   void layoutInline(){
+    for(View child:new View[]{filterTabsView,homeInfoCards}){
+     LAYOUT_GUARD
+     child.layout(child.left,child.top,child.left+child.getMeasuredWidth(),child.top+child.getMeasuredHeight());
+    }
+    updateContextViewPosition();
+   }
+  }
+ }
+ static float mapX(View v,float x){return v.left+v.tx+v.px+(x-v.px)*v.sx;}
+ static float mapY(View v,float y){return v.top+v.ty+v.py+(y-v.py)*v.sy;}
+ static void parity(Host h){
+  Strip card=h.homeInfoCards;View row=h.filterTabsView;
+  near(card.alpha,row.alpha,"same alpha without multiplying a private fade");
+  near(card.visibilityFactor,row.alpha,"carousel sees effective host alpha");
+  check(card.visibility==(row.visibility==VISIBLE?VISIBLE:INVISIBLE),"same reveal; hidden inline slot stays in layout");
+  near(card.sx,row.sx,"same scaleX");near(card.sy,row.sy,"same scaleY");
+  for(float x:new float[]{0,40,80})near(mapX(card,x),mapX(row,card.left-row.left+x),"shared horizontal pivot/translation");
+  near(mapY(card,card.height/2f),mapY(row,row.height/2f),"shared vertical pivot/translation");
+ }
+ static void inlineHost(){
+  for(boolean bottom:new boolean[]{false,true})for(boolean rtl:new boolean[]{false,true}){
+   Host h=new Host();h.bottom=bottom;h.homeInfoCards.left=rtl?10:310;h.filterTabsView.top=bottom?700:100;
+   // Bootstrap, entry and reversal use the folder clock, with no lag at small nonzero factors.
+   for(float f:new float[]{0,.001f,.01f,.2f,.5f,1,.6f,0,1}){h.folders(f);parity(h);}
+   h.homeInfoCards.present();
+   for(int i=0;i<=80;i++){
+    float f=i<=40?i/40f:(80-i)/40f;h.search(f);parity(h);
+    h.filterTabsView.tx=-19*f;h.filterTabsView.ty=bottom?0:-60*f;
+    h.filterTabsView.py=13;h.positionHomeInfoCards();parity(h);
+   }
+   for(float f:new float[]{0,.01f,.5f,1,.4f,0}){
+    h.right=f;h.checkUi_filterTabsVisible();h.checkUi_searchFieldVisibility();parity(h);
+   }
+   for(float f:new float[]{.3f,1,.7f,0}){h.select(f);parity(h);}
+   h.animatorDoneButtonVisible.value=1;h.onFactorChanged(Host.ANIMATOR_ID_DONE_BUTTON_VISIBLE,1,0,null);parity(h);
+   // Bottom navigation/composer/IME insets relayout the folder row, not a second card anchor.
+   h.filterTabsView.top+=96;h.positionHomeInfoCards();parity(h);
+  }
+ }
+ static void standaloneHost(){
+  Host h=new Host();h.canShowFilterTabsView=false;h.homeInfoCardSlotWidth=0;
+  h.topPanelLayout=new Panel();h.topPanelLayout.top=200;h.topPanelLayout.height=40;
+  for(float search:new float[]{0,.2f,.99f,1})for(float right:new float[]{0,.5f,1})
+   for(float select:new float[]{0,.5f,1})for(float done:new float[]{0,.7f,1}){
+    h.right=right;h.animatorActionModeVisible.value=select;h.animatorDoneButtonVisible.value=done;h.search(search);
+    float f=(1-search)*(1-right)*(1-select)*(1-done);
+    near(h.homeInfoCards.alpha,f,"standalone composes current host factors");
+    near(h.homeInfoCards.visibilityFactor,f,"standalone carousel gate matches presentation");
+    check(h.homeInfoCards.visibility==(f>0?VISIBLE:GONE),"standalone endpoint visibility");
+    near(h.homeInfoCards.sx,lerp(.98f,1,f),"standalone keeps subtle host scale");
+    near(h.homeInfoCards.getY(),263,"standalone stays below now-playing/location panels");
+   }
+  h.right=0;h.animatorActionModeVisible.value=0;h.animatorDoneButtonVisible.value=0;h.search(0);
+  h.progressToActionMode=.8f;h.select(.3f);near(h.homeInfoCards.alpha,.2f,"legacy action mode progress is included");
+  // Leaving inline mode clears the row's out-of-bounds pivot and X offset.
+  h=new Host();h.folders(.5f);h.filterTabsView.tx=17;h.positionHomeInfoCards();
+  h.canShowFilterTabsView=false;h.homeInfoCardSlotWidth=0;h.filterTabsView.visibility=GONE;h.positionHomeInfoCards();
+  near(h.homeInfoCards.tx,0,"standalone clears row X translation");
+  near(h.homeInfoCards.px,40,"standalone restores own pivot");
+ }
+ static void hostLifecycle(){
+  Host h=new Host();h.folders(1);h.homeInfoCards.present();int refreshes=h.homeInfoCards.refreshes();
+  for(float progress:new float[]{0,.3f,1,.7f,0}){
+   h.search(progress);float expected=h.filterTabsView.alpha;
+   h.homeInfoCards.onWindowVisibilityChanged(INVISIBLE);
+   h.homeInfoCards.onWindowVisibilityChanged(VISIBLE);h.homeInfoCards.runPosted();
+   h.homeInfoCards.onDetachedFromWindow();h.homeInfoCards.onAttachedToWindow();h.homeInfoCards.runPosted();
+   h.checkUi_searchFieldVisibility();parity(h);near(h.homeInfoCards.alpha,expected,"resume has no second reveal clock");
+   // Same factor but stale view properties: repair in this frame, not over another 220ms.
+   h.homeInfoCards.alpha=.123f;h.homeInfoCards.visibility=INVISIBLE;h.homeInfoCards.sx=.6f;
+   h.checkUi_searchFieldVisibility();parity(h);
+  }
+  check(h.homeInfoCards.refreshes()==refreshes,"lifecycle does not refetch an unchanged presented card");
+  h.homeInfoCards.setVisibilityFactor(.005f);
+  check(h.homeInfoCards.visibility==GONE,"search-field strips retain their original threshold");
+  h.homeInfoCards.setVisibilityFactor(.5f);near(h.homeInfoCards.sx,.8f,"search-field strips retain their original scale");
+ }
+ static void hostSelection(){
+  Host h=new Host();h.folders(1);h.homeInfoCards.present();h.search(1);
+  tick(1,h.homeInfoCards);tick(3,h.homeInfoCards);
+  for(float f:new float[]{1,.8f,.1f,.001f}){
+   h.search(f);h.homeInfoCards.observer.frame();
+   check(h.homeInfoCards.currentIndex==0&&h.homeInfoCards.animator==null,"no carousel motion under folder/search fade");
+  }
+  h.search(0);h.homeInfoCards.observer.frame();check(h.homeInfoCards.animator!=null,"latest shared card animates after reveal");
+  h.homeInfoCards.finish();check(h.homeInfoCards.currentIndex==3,"return lands on latest selection");
+  // Factor propagation also abandons a drag when its inline host begins collapsing.
+  h.homeInfoCards.dragging=true;h.homeInfoCards.dragProgress=.4f;h.search(.2f);
+  check(!h.homeInfoCards.dragging&&h.homeInfoCards.dragProgress==0,"host fade retires active drag");
+ }
+ static void hostCanvas(){
+  Host h=new Host();Host.ContentView content=h.new ContentView();
+  for(int slot:new int[]{0,80})for(boolean lite:new boolean[]{false,true})for(float progress:new float[]{0,.1f,.5f,1}){
+   h.homeInfoCardSlotWidth=slot;h.slideFragmentLite=lite;h.slideFragmentProgress=progress;
+   Canvas c=new Canvas();content.drawChild(c,h.filterTabsView,0);float[] row=content.drawn;
+   content.drawChild(c,h.homeInfoCards,0);float[] card=content.drawn;
+   for(int i=0;i<5;i++)near(card[i],row[i],"standalone AND inline share fragment entry/back canvas transform");
+   check(c.stack.empty(),"canvas restored after each child");
+  }
+ }
+ static void hostGates(){
+  Host h=new Host();h.filterTabsBootstrapPending=true;h.folders(1);
+  check(h.homeInfoCards.alpha==0&&h.homeInfoCards.visibility==INVISIBLE,"bootstrap stages card without excluding layout");
+  h.filterTabsBootstrapPending=false;h.homeInfoCardSlotWidth=0;h.filterTabsView.height=0;h.positionHomeInfoCards();
+  check(h.homeInfoCards.alpha==0&&h.homeInfoCards.visibility==INVISIBLE,"unmeasured inline host participates in first layout");
+  h.homeInfoCardSlotWidth=80;h.filterTabsView.height=50;h.positionHomeInfoCards();parity(h);
+  for(int v:new int[]{INVISIBLE,GONE,VISIBLE}){
+   h.filterTabsView.visibility=v;h.positionHomeInfoCards();
+   check(h.homeInfoCards.visibility==(v==VISIBLE?VISIBLE:INVISIBLE),"hidden row stages inline card even with stale nonzero alpha");
+   near(h.homeInfoCards.alpha,v==VISIBLE?1:0,"hidden folder cannot leak card pixels");
+  }
+  h.hide=false;h.checkUi_searchFieldVisibility();check(h.homeInfoCards.visibility==GONE&&!h.fragmentSearchField.suppressed,"search bar reclaims ownership");
+  h.hide=true;h.checkUi_searchFieldVisibility();parity(h);check(h.fragmentSearchField.suppressed,"no duplicate search strip");
+  int captures=h.blurInvalidations;
+  InfoCardsConfig.enabled=false;h.positionHomeInfoCards();check(h.homeInfoCards.visibility==GONE,"master toggle hides home");
+  check(h.blurInvalidations>captures,"visibility-only change invalidates capture without an animator");
+  captures=h.blurInvalidations;for(int frame=0;frame<50;frame++)h.positionHomeInfoCards();
+  check(h.blurInvalidations==captures,"stable host never drives continuous capture work");
+  InfoCardsConfig.enabled=true;h.positionHomeInfoCards();parity(h);
+  h.homeInfoCards.pills.clear();h.positionHomeInfoCards();check(h.homeInfoCards.visibility==GONE,"empty strips never appear standalone");
+  h.homeInfoCards=null;h.checkUi_searchFieldVisibility();check(!h.fragmentSearchField.suppressed,"select/forward screen has no home strip");
+ }
+ static void firstLayout(){
+  for(boolean bottom:new boolean[]{false,true})for(boolean rtl:new boolean[]{false,true}){
+   // Attachment/rebuild can create children after the last host visibility callback.
+   Host h=new Host();h.bottom=bottom;LocaleController.isRTL=rtl;h.folders(1);
+   h.homeInfoCards.width=h.homeInfoCards.height=0;h.homeInfoCardSlotWidth=0;
+   h.homeInfoCards.setHostVisibility(0,1,1,GONE);
+   Host.ContentView content=h.new ContentView();content.measureInline(400);
+   check(h.homeInfoCardSlotWidth>0&&h.homeInfoCards.getMeasuredHeight()==50,"inline slot measured");
+   check(h.homeInfoCards.height==0,"measure must not manufacture laid-out bounds");
+   check(h.homeInfoCards.visibility==INVISIBLE,"GONE rebuild staged before layout without host callback");
+   content.layoutInline();parity(h);
+   check(h.homeInfoCards.height==50&&h.homeInfoCards.width>0,"first traversal lays out card, not just slot");
+   h.homeInfoCards.present();
+   // A positioning callback between measure and layout cannot reveal zero bounds.
+   h.homeInfoCards.height=0;h.positionHomeInfoCards();
+   check(h.homeInfoCards.visibility==INVISIBLE&&h.homeInfoCards.alpha==0,"measured slot alone is not ready");
+   content.layoutInline();parity(h);
+   h.homeInfoCards.width=0;h.positionHomeInfoCards();
+   check(h.homeInfoCards.visibility==INVISIBLE&&h.homeInfoCards.alpha==0,"card width also needs layout");
+   content.layoutInline();parity(h);
+   // Bootstrap may resolve after layout: the first folder frame already has a card.
+   h.filterTabsBootstrapPending=true;h.homeInfoCards.width=h.homeInfoCards.height=0;
+   h.folders(1);content.measureInline(400);h.positionHomeInfoCards();content.layoutInline();
+   check(h.homeInfoCards.height==50&&h.homeInfoCards.visibility==INVISIBLE,"ineligible bootstrap still lays out");
+   h.filterTabsBootstrapPending=false;h.folders(1);parity(h);h.homeInfoCards.present();
+   // Hidden-folder/search frames keep rebuilt cards laid out, without a draw-time relayout loop.
+   h.folders(0);h.homeInfoCards.width=h.homeInfoCards.height=0;
+   content.measureInline(400);h.positionHomeInfoCards();content.layoutInline();
+   check(h.homeInfoCards.height==50,"hidden folder cannot exclude rebuilt inline card");
+   h.folders(1);parity(h);
+   int layouts=h.homeInfoCards.layouts,captures=h.blurInvalidations;
+   for(int i=0;i<50;i++)h.positionHomeInfoCards();
+   check(h.homeInfoCards.layouts==layouts&&h.blurInvalidations==captures,"stable frames require no layout/capture loop");
+  }
+ }

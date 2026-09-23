@@ -1,0 +1,190 @@
+// Production writer + both JNI entry points. Only Android/JNI/codec primitives
+// are fakes; every return/metadata/cleanup branch under test comes from gifvideo.cpp.
+#include <array>
+#include <cstdint>
+#include <cstdlib>
+#include <cstring>
+#include <iostream>
+#include <limits>
+#include <stdexcept>
+#include <string>
+#define JNIEXPORT
+#define JNICALL
+#define JNI_ABORT 2
+#define LOGE(...) ((void)0)
+#define FFALIGN(x, a) (((x) + (a) - 1) & ~((a) - 1))
+using jint = int; using jsize = int; using jlong = int64_t; using jfloat = float; using jboolean = bool;
+using jintArray = std::array<int, 8>*; using jclass = void*;
+constexpr int ANDROID_BITMAP_RESULT_SUCCESS = 0, ANDROID_BITMAP_FORMAT_RGBA_8888 = 1;
+enum AVPixelFormat { AV_PIX_FMT_NONE = -1, AV_PIX_FMT_YUV420P, AV_PIX_FMT_YUVJ420P,
+    AV_PIX_FMT_YUV444P, AV_PIX_FMT_YUVA420P, AV_PIX_FMT_BGRA, AV_PIX_FMT_RGB24, AV_PIX_FMT_RGBA, AV_PIX_FMT_NB };
+enum AVColorSpace { AVCOL_SPC_UNSPECIFIED, AVCOL_SPC_BT709 };
+struct AndroidBitmapInfo { uint32_t width = 4, height = 4, stride = 16; int format = 1; };
+struct Bitmap {
+    AndroidBitmapInfo info;
+    alignas(16) uint8_t pixels[512]{};
+    int infoResult = 0, lockResult = 0, unlockResult = 0, locks = 0, unlocks = 0;
+    bool unaligned = false, nullPixels = false;
+};
+using jobject = Bitmap*;
+struct JNIEnv {
+    int gets = 0, failGet = 0;
+    bool IsSameObject(jobject a, jobject b) { return a == b; }
+    jint* GetIntArrayElements(jintArray a, void*) { return ++gets == failGet ? nullptr : a->data(); }
+    void ReleaseIntArrayElements(jintArray, jint*, int) {}
+    int GetArrayLength(jintArray a) { return int(a->size()); }
+};
+int AndroidBitmap_getInfo(JNIEnv*, jobject b, AndroidBitmapInfo* i) { *i = b->info; return b->infoResult; }
+int AndroidBitmap_lockPixels(JNIEnv*, jobject b, void** p) {
+    b->locks++; *p = b->nullPixels ? nullptr : b->pixels + (b->unaligned ? 4 : 0); return b->lockResult;
+}
+int AndroidBitmap_unlockPixels(JNIEnv*, jobject b) { b->unlocks++; return b->unlockResult; }
+struct AVRational { int num, den; };
+double av_q2d(AVRational r) { return double(r.num) / r.den; }
+uint8_t plane[64]{};
+struct AVFrame {
+    int width = 4, height = 4, format = AV_PIX_FMT_YUV420P;
+    int64_t best_effort_timestamp = 80;
+    AVColorSpace colorspace = AVCOL_SPC_UNSPECIFIED;
+    uint8_t* data[4]{plane, plane, plane, plane}; int linesize[4]{4, 2, 2, 4};
+};
+int framesAllocated = 0;
+AVFrame* av_frame_alloc() { framesAllocated++; return new AVFrame; }
+void av_frame_free(AVFrame** f) { framesAllocated--; delete *f; *f = nullptr; }
+void av_frame_unref(AVFrame*) {}
+int av_frame_ref(AVFrame* a, const AVFrame* b) { *a = *b; return 0; }
+bool haveSws = true, mallocFails = false;
+int swsRows = -999, yuvResult = 0, allocations = 0, yuvCalls = 0, swsCalls = 0, attenuateValue = -1;
+struct SwsContext { int width = 4, height = 4; };
+struct SwsContextHolder {
+    SwsContext ctx;
+    SwsContext* get(int, int, AVPixelFormat, int w, int h, AVPixelFormat) {
+        ctx.width = w; ctx.height = h; return haveSws ? &ctx : nullptr;
+    }
+};
+int sws_scale(SwsContext* s, uint8_t* const*, const int*, int, int, uint8_t* const* dst, const int* stride) {
+    swsCalls++;
+    int rows = swsRows == -999 ? s->height : swsRows;
+    if (rows > 0) for (int y = 0; y < rows; y++) std::memset(dst[0] + y * stride[0], 0x55, s->width * 4);
+    return rows;
+}
+void* av_malloc(size_t size) { if (mallocFails) return nullptr; allocations++; return std::malloc(size); }
+void av_free(void* p) { if (p) allocations--; std::free(p); }
+namespace libyuv {
+const int kYvuI601Constants = 0;
+int convert(uint8_t* dst, int stride, int w, int h) {
+    yuvCalls++;
+    if (!yuvResult) for (int y = 0; y < h; y++) std::memset(dst + y * stride, 0x66, w * 4);
+    return yuvResult;
+}
+int I420AlphaToARGBMatrix(const uint8_t*, int, const uint8_t*, int, const uint8_t*, int, const uint8_t*, int,
+        uint8_t* dst, int stride, const int*, int w, int h, int attenuate) {
+    attenuateValue = attenuate; return convert(dst, stride, w, h);
+}
+#define YUV_CONVERTER(name) int name(const uint8_t*, int, const uint8_t*, int, const uint8_t*, int, \
+        uint8_t* dst, int stride, int w, int h) { return convert(dst, stride, w, h); }
+YUV_CONVERTER(H444ToARGB)
+YUV_CONVERTER(H420ToARGB)
+YUV_CONVERTER(I420ToARGB)
+int ABGRToARGB(const uint8_t*, int, uint8_t* dst, int stride, int w, int h) { return convert(dst, stride, w, h); }
+}
+struct AVCodecContext { int width = 4, height = 4; AVPixelFormat pix_fmt = AV_PIX_FMT_YUV420P; };
+struct AVStream { AVRational time_base{1, 1000}; };
+struct VideoFrameReader {
+    enum class Status { Ok, Eof, Again, Aborted, Error };
+    AVFrame value; bool emitted = false; int seeks = 0;
+    Status getNextFrame() { if (emitted) return Status::Eof; emitted = true; return Status::Ok; }
+    bool seek(int64_t) { seeks++; emitted = false; return true; }
+    AVFrame* frame() { return &value; }
+    double frameTimeSeconds() { return value.best_effort_timestamp / 1000.; }
+};
+struct VideoInfo {
+    VideoFrameReader readerValue; VideoFrameReader* reader = &readerValue;
+    AVStream stream; AVStream* video_stream = &stream;
+    AVCodecContext codec; AVCodecContext* video_dec_ctx = &codec;
+    SwsContextHolder sws_ctx_holder;
+    bool stopped = false, seeking = false, afterEof = false, isSingleFrame = false;
+    const char* src = "fixture";
+};
+
+/* METADATA */
+/* WRITE_FRAME */
+/* GET_VIDEO_FRAME */
+/* GET_FRAME_AT_TIME */
+
+void check(bool ok, const char* message) { if (!ok) throw std::runtime_error(message); }
+struct Test {
+    JNIEnv env; VideoInfo info; Bitmap bitmap; std::array<int, 8> data{4, 4, 0, 777, 0, 0, 9, 0};
+    Test() { haveSws = true; mallocFails = false; swsRows = -999; yuvResult = 0; yuvCalls = swsCalls = 0; }
+    int run(int api = 0) {
+        if (api == 0) return Java_org_telegram_ui_Components_AnimatedFileNative_nGetVideoFrame(
+            &env, nullptr, reinterpret_cast<intptr_t>(&info), &bitmap, &data, false, 0, 0, true);
+        return Java_org_telegram_ui_Components_AnimatedFileNative_nGetFrameAtTime(
+            &env, nullptr, reinterpret_cast<intptr_t>(&info), api == 1 ? 0 : 9999, &bitmap, &data);
+    }
+    void failure(const char* message, int api = 0) {
+        check(run(api) == 0, message);
+        check(data[3] == 777 && data[6] == 9, "failed write must not publish timestamp/opacity");
+        check(allocations == 0 && framesAllocated == 0, "failure must release scratch and held frame");
+    }
+};
+void failedWrites() {
+    for (int api = 0; api < 3; api++) {
+        Test t; t.bitmap.lockResult = -1;
+        t.failure("lock failure must reach JNI as no frame", api);
+        check(t.bitmap.unlocks == 0, "failed lock must not be unlocked");
+    }
+    { Test t; t.info.readerValue.emitted = true; t.bitmap.lockResult = -1;
+      t.failure("failed first bitmap after EOF must not be success");
+      check(t.info.readerValue.seeks == 1, "actual EOF loop exercised"); }
+    { Test t; t.data[0] = 9; t.failure("dimension mismatch must return failure"); check(t.bitmap.locks == 0, "bad size not locked"); }
+    { Test t; t.bitmap.infoResult = -1; t.failure("bitmap info failure must return failure"); }
+    { Test t; t.bitmap.info.format = 8; t.failure("non-RGBA bitmap must return failure"); }
+    { Test t; t.env.failGet = 1; t.failure("JNI metadata acquisition failure must return failure"); }
+    { Test t; t.env.failGet = 2; t.failure("JNI metadata commit failure must return failure"); }
+    { Test t; t.bitmap.unlockResult = -1; t.failure("unlock failure must return failure"); check(t.bitmap.unlocks == 1, "one unlock after conversion"); }
+    { Test t; t.bitmap.nullPixels = true; t.failure("null locked pixels must return failure"); check(t.bitmap.unlocks == 1, "null pixels releases bitmap lock"); }
+    for (int rows : {-1, 0, 2}) {
+        Test t; swsRows = rows; t.failure("short/failed sws conversion must return failure");
+        check(t.bitmap.unlocks == 1, "failed conversion releases bitmap lock");
+    }
+    { Test t; haveSws = false; yuvResult = -1; t.failure("libyuv error must return failure"); }
+    { Test t; haveSws = false; t.info.readerValue.value.format = AV_PIX_FMT_RGB24;
+      t.failure("unsupported fallback must return failure"); }
+    { Test t; t.bitmap.info.width = 2; t.bitmap.info.stride = 8; t.bitmap.unaligned = true; mallocFails = true;
+      t.failure("scratch allocation failure must return failure"); check(t.bitmap.unlocks == 1, "OOM releases bitmap lock"); }
+    for (int stride : {8, 16}) {
+      Test t; t.bitmap.info.width = 2; t.bitmap.info.stride = stride; t.bitmap.unaligned = true; swsRows = 2;
+      t.failure("short scratch conversion must return failure");
+      check(t.bitmap.pixels[4] == 0, "failed scratch conversion must not copy partial pixels"); }
+}
+void successfulWrites() {
+    for (int api = 0; api < 3; api++) {
+        Test t; check(t.run(api) == 1, "successful conversion remains success for both JNI APIs");
+        check(t.data[3] == 80 && t.data[6] == 1 && t.bitmap.pixels[0] == 0x55, "commit pixels and metadata on success");
+        check(t.bitmap.unlocks == 1 && framesAllocated == 0, "success releases resources");
+    }
+    for (int format : {AV_PIX_FMT_YUV420P, AV_PIX_FMT_YUVJ420P, AV_PIX_FMT_YUV444P, AV_PIX_FMT_YUVA420P, AV_PIX_FMT_BGRA}) {
+        Test t; haveSws = false; t.info.readerValue.value.format = format;
+        check(t.run() == 1 && yuvCalls == 1 && t.bitmap.pixels[0] == 0x66, "libyuv fallback success remains supported");
+        check(t.data[6] == (format <= AV_PIX_FMT_YUV444P ? 1 : 0), "only known opaque formats set opacity");
+        if (format == AV_PIX_FMT_YUVA420P) check(attenuateValue == 1, "alpha conversion remains premultiplied");
+    }
+    { Test t; haveSws = false; t.info.readerValue.value.colorspace = AVCOL_SPC_BT709;
+      check(t.run() == 1 && yuvCalls == 1, "BT709 fallback supported"); }
+    for (int stride : {8, 16, 24}) {
+        Test t; t.bitmap.info.width = 2; t.bitmap.info.stride = stride; t.bitmap.unaligned = true;
+        check(t.run() == 1 && allocations == 0 && t.bitmap.pixels[4] == 0x55, "unaligned conversion copies complete scratch image");
+        check(t.bitmap.pixels[4 + stride * 3] == 0x55, "all destination rows copied with actual stride");
+    }
+    { Test t; check(Java_org_telegram_ui_Components_AnimatedFileNative_nGetVideoFrame(
+          &t.env, nullptr, reinterpret_cast<intptr_t>(&t.info), nullptr, &t.data, false, 0, 0, true) == 1,
+          "skip-frame null bitmap remains supported");
+      check(t.data[3] == 80 && t.bitmap.locks == 0, "skip advances PTS without bitmap write"); }
+}
+int main(int argc, char** argv) {
+    try {
+        if (argc == 1 || std::string(argv[1]) != "success") failedWrites();
+        successfulWrites(); std::cout << "PASS: production bitmap write failure propagation\n";
+    } catch (const std::exception& e) { std::cerr << e.what() << '\n'; return 1; }
+}

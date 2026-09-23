@@ -1,17 +1,25 @@
 package app.nimarkogram.messenger.preferences;
+import android.graphics.Rect;
+import android.view.MotionEvent;
 
 import android.view.View;
 import android.view.ViewTreeObserver;
+import androidx.recyclerview.widget.RecyclerView;
+import org.telegram.messenger.AndroidUtilities;
 
 import org.telegram.ui.Components.UniversalRecyclerView;
 
 
-final class SettingsSearchHighlight implements ViewTreeObserver.OnPreDrawListener,
+final class SettingsSearchHighlight extends RecyclerView.SimpleOnItemTouchListener
+        implements ViewTreeObserver.OnPreDrawListener,
         View.OnAttachStateChangeListener, Runnable {
     private final UniversalRecyclerView list;
     private final int itemId;
     private ViewTreeObserver observer;
     private View highlightedView;
+    private int highlightedPosition = RecyclerView.NO_POSITION;
+    private final Rect highlightedBounds = new Rect();
+    private boolean keepTouchSelector;
     private boolean finished;
 
     SettingsSearchHighlight(UniversalRecyclerView list, int itemId) {
@@ -21,6 +29,7 @@ final class SettingsSearchHighlight implements ViewTreeObserver.OnPreDrawListene
         observer = list.getViewTreeObserver();
         observer.addOnPreDrawListener(this);
         list.addOnAttachStateChangeListener(this);
+        list.addOnItemTouchListener(this);
     }
 
     @Override
@@ -33,26 +42,38 @@ final class SettingsSearchHighlight implements ViewTreeObserver.OnPreDrawListene
             run();
             return true;
         }
-        androidx.recyclerview.widget.RecyclerView.ViewHolder holder =
-                list.findViewHolderForAdapterPosition(position);
+        RecyclerView.ViewHolder holder = list.findViewHolderForAdapterPosition(position);
         if (holder == null) {
-            if (highlightedView != null) run();
+            run();
             return true;
         }
-        if (highlightedView == null) {
+        final boolean firstHighlight = highlightedView == null;
+        if (firstHighlight || holder.itemView != highlightedView || position != highlightedPosition) {
             highlightedView = holder.itemView;
-            list.highlightRow(() -> list.findPositionByItemId(itemId));
-            list.postDelayed(this, 700);
-        } else if (holder.itemView != highlightedView) {
-
-            run();
-        } else {
+            highlightedPosition = position;
+            list.highlightRow(() -> list.findPositionByItemId(itemId), 0);
+            if (firstHighlight) list.postDelayed(this, 700);
+        } else if (highlightedBounds.left != highlightedView.getLeft()
+                || highlightedBounds.top != highlightedView.getTop()
+                || highlightedBounds.right != highlightedView.getRight()
+                || highlightedBounds.bottom != highlightedView.getBottom()
+                || list.getSelectorRect().isEmpty()) {
 
             list.updateSelector();
         }
+        highlightedBounds.set(highlightedView.getLeft(), highlightedView.getTop(),
+                highlightedView.getRight(), highlightedView.getBottom());
         return true;
     }
 
+    @Override
+    public boolean onInterceptTouchEvent(RecyclerView recyclerView, MotionEvent event) {
+        if (!finished && event.getActionMasked() == MotionEvent.ACTION_DOWN) {
+            keepTouchSelector = list.getPressedChildView() != null && !list.getSelectorRect().isEmpty();
+            run();
+        }
+        return false;
+    }
     @Override
     public void run() {
         if (finished) return;
@@ -61,11 +82,13 @@ final class SettingsSearchHighlight implements ViewTreeObserver.OnPreDrawListene
         if (observer.isAlive()) observer.removeOnPreDrawListener(this);
         list.getViewTreeObserver().removeOnPreDrawListener(this);
         list.removeOnAttachStateChangeListener(this);
-        list.removeHighlightRow();
+        AndroidUtilities.runOnUIThread(() -> list.removeOnItemTouchListener(this));
+        if (!keepTouchSelector) list.removeHighlightRow();
     }
 
     @Override
     public void onViewAttachedToWindow(View view) {
+        if (finished) return;
 
         if (observer.isAlive()) observer.removeOnPreDrawListener(this);
         observer = list.getViewTreeObserver();

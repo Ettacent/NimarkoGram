@@ -164,6 +164,8 @@ public class ChatReplyContainer extends FrameLayout {
                 }
             };
             image.setRoundRadius(dp(6));
+            image.getImageReceiver().setCrossfadeDuration(180);
+            image.getImageReceiver().setCrossfadeOnReady(true);
             addView(image, LayoutHelper.createFrame(34, 34, Gravity.TOP | Gravity.LEFT, 52, 6, 0, 0));
 
             updateColors();

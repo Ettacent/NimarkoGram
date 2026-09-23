@@ -67,6 +67,8 @@ public class BlurredBackgroundWithFadeDrawable extends Drawable {
         this.opacity = opacity;
         maskFadeGradientPaint.setShader(shader = createGradient(Color.BLACK, opacity));
         colorStaticPaint.setShader(null);
+        gradientShader = null;
+        composeShader = null;
 
         matrix.reset();
         matrix.setScale(1, fadeHeight);
@@ -74,6 +76,7 @@ public class BlurredBackgroundWithFadeDrawable extends Drawable {
             matrix.postTranslate(0, -fadeHeight);
         }
         shader.setLocalMatrix(matrix);
+        invalidateSelf();
     }
 
     @Override

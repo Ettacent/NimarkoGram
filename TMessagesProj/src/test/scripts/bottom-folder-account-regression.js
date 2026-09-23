@@ -34,6 +34,7 @@ public class BottomFolderTest {
   void setValue(boolean value,boolean animate){target=value;animated=animate;calls++;if(!animate)factor=value?1:0;}
  }
  static class AndroidUtilities {static void cancelRunOnUIThread(Runnable r){}}
+ static class LaunchActivity {boolean preparing;boolean isAccountSwitchPreparing(){return preparing;}}
  static class NimarkoFoldersHelper {
   static float getFloatingButtonsOffset(Tabs t){return 0;}
   static void updateFoldersOffset(Object o,boolean b){}
@@ -47,6 +48,7 @@ public class BottomFolderTest {
   Tabs filterTabsView=new Tabs();Animator animatorFilterTabsVisible=new Animator();
   View floatingButton3=new View(),floatingButtonStories=new View(),storyHint=new View();
   Runnable filterTabsBootstrapTimeout=()->{};
+  LaunchActivity parent=new LaunchActivity();Object getParentActivity(){return parent;}
   boolean foldersAtBottom(){return bottom;}
   void checkUi_searchFieldVisibility(){}
   float getFilterTabsVisibilityFactor(boolean includeSearch){return (1-searchFactor)*(1-rightFactor)*animatorFilterTabsVisible.factor;}
@@ -54,6 +56,7 @@ public class BottomFolderTest {
   ${method('private void updateFloatingButtonOffset()')}
   ${method('private void updateFilterTabsVisibility(boolean animated)')}
   ${method('private void finishFilterTabsBootstrap()')}
+  ${method('private boolean isCoveredByAccountSwitch()')}
  }
  public static void main(String[] args){
   for(float d:new float[]{1,1.5f,2.625f,3,4})for(boolean mainTabs:new boolean[]{false,true}){
@@ -86,6 +89,12 @@ public class BottomFolderTest {
    h.filterTabsView=null;check(h.getBottomFolderOffset()==0);
    h.floatingButton3=h.floatingButtonStories=h.storyHint=null;h.updateFloatingButtonOffset();
   }
+  Host covered=new Host();covered.canShowFilterTabsView=true;covered.parent.preparing=true;
+  covered.finishFilterTabsBootstrap();
+  check(covered.animatorFilterTabsVisible.target&&!covered.animatorFilterTabsVisible.animated);
+  check(covered.animatorFilterTabsVisible.factor==1&&covered.getBottomFolderOffset()==dp(50));
+  covered.parent.preparing=false;covered.animatorFilterTabsVisible.factor=0;
+  covered.updateFilterTabsVisibility(true);check(covered.animatorFilterTabsVisible.animated);
   Host h=new Host();h.canShowFilterTabsView=true;h.searchIsShowed=true;
   h.updateFilterTabsVisibility(true);check(h.animatorFilterTabsVisible.calls==0);
   h.searchIsShowed=false;h.databaseMigrationHint=new Object();h.updateFilterTabsVisibility(true);

@@ -65,6 +65,11 @@
 -keep class org.telegram.messenger.voip.* { *; }
 -keep class org.telegram.SQLite.** { *; }
 -keep class org.telegram.tgnet.ConnectionsManager { *; }
+# Both proxy APIs are reflection entry points for Python plugins.
+-keep class org.telegram.messenger.SharedConfig$ProxyInfo { *; }
+-keep class org.telegram.proxy.ProxySettings { *; }
+-keep class org.telegram.proxy.ProxySettings$Builder { *; }
+-keep class org.telegram.proxy.ProxySettings$Type { *; }
 -keep class org.telegram.tgnet.NativeByteBuffer { *; }
 -keep class org.telegram.tgnet.RequestTimeDelegate { *; }
 -keep class org.telegram.tgnet.RequestDelegate { *; }

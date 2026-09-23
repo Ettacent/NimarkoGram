@@ -135,7 +135,6 @@ public class DialogsAdapter extends RecyclerListView.SelectionAdapter implements
     RecyclerListView recyclerListView;
     private PullForegroundDrawable pullForegroundDrawable;
     ArrayList<ItemInternal> itemInternals = new ArrayList<>();
-    ArrayList<ItemInternal> oldItems = new ArrayList<>();
 
     private Drawable arrowDrawable;
 
@@ -267,11 +266,13 @@ public class DialogsAdapter extends RecyclerListView.SelectionAdapter implements
         private boolean pinned;
         private boolean isFolder;
         TL_chatlists.TL_chatlists_chatlistUpdates chatlistUpdates;
+        private int missingChatlistPeerCount;
         private int emptyType;
 
         public ItemInternal(TL_chatlists.TL_chatlists_chatlistUpdates updates) {
             super(VIEW_TYPE_FOLDER_UPDATE_HINT, true);
             this.chatlistUpdates = updates;
+            missingChatlistPeerCount = updates.missing_peers.size();
             stableId = stableIdPointer++;
         }
 
@@ -526,24 +527,32 @@ public class DialogsAdapter extends RecyclerListView.SelectionAdapter implements
 
     boolean isCalculatingDiff;
     boolean updateListPending;
+    private volatile int listUpdateGeneration;
+    private Runnable pendingDiffRunnable;
+    private Runnable pendingSaveScrollPosition;
     private final static boolean ALLOW_UPDATE_IN_BACKGROUND = true;
+    public boolean hasPendingListUpdates() {
+        return isCalculatingDiff || updateListPending;
+    }
 
     public void updateList(Runnable saveScrollPosition) {
         if (isCalculatingDiff) {
             updateListPending = true;
+            pendingSaveScrollPosition = saveScrollPosition;
             return;
         }
         isCalculatingDiff = true;
-        oldItems = new ArrayList<>();
-        oldItems.addAll(itemInternals);
+        final int generation = ++listUpdateGeneration;
+        final ArrayList<ItemInternal> previousItems = itemInternals;
+        itemInternals = new ArrayList<>();
         updateItemList();
-        ArrayList<ItemInternal> newItems = new ArrayList<>(itemInternals);
-        itemInternals = oldItems;
+        final ArrayList<ItemInternal> newItems = itemInternals;
+        itemInternals = previousItems;
 
         DiffUtil.Callback callback = new DiffUtil.Callback() {
             @Override
             public int getOldListSize() {
-                return oldItems.size();
+                return previousItems.size();
             }
 
             @Override
@@ -553,50 +562,71 @@ public class DialogsAdapter extends RecyclerListView.SelectionAdapter implements
 
             @Override
             public boolean areItemsTheSame(int oldItemPosition, int newItemPosition) {
-                return oldItems.get(oldItemPosition).compare(newItems.get(newItemPosition));
+                return previousItems.get(oldItemPosition).compare(newItems.get(newItemPosition));
             }
 
             @Override
             public boolean areContentsTheSame(int oldItemPosition, int newItemPosition) {
-                return oldItems.get(oldItemPosition).viewType == newItems.get(newItemPosition).viewType;
+                ItemInternal oldItem = previousItems.get(oldItemPosition);
+                ItemInternal newItem = newItems.get(newItemPosition);
+                return oldItem.viewType == newItem.viewType
+                        && (oldItem.viewType != VIEW_TYPE_FOLDER_UPDATE_HINT
+                        || oldItem.missingChatlistPeerCount == newItem.missingChatlistPeerCount);
             }
         };
         if (itemInternals.size() < 50 || !ALLOW_UPDATE_IN_BACKGROUND) {
             DiffUtil.DiffResult result = DiffUtil.calculateDiff(callback);
-            isCalculatingDiff = false;
-            if (saveScrollPosition != null) {
-                saveScrollPosition.run();
-            }
-            itemInternals = newItems;
-            result.dispatchUpdatesTo(this);
+            applyListUpdate(generation, newItems, result, saveScrollPosition);
         } else {
-            Utilities.searchQueue.postRunnable(() -> {
+            pendingDiffRunnable = () -> {
+                if (generation != listUpdateGeneration) {
+                    return;
+                }
                 DiffUtil.DiffResult result = DiffUtil.calculateDiff(callback);
-                AndroidUtilities.runOnUIThread(() -> {
-                    if (!isCalculatingDiff) {
-                        return;
-                    }
-                    isCalculatingDiff = false;
-                    if (saveScrollPosition != null) {
-                        saveScrollPosition.run();
-                    }
-                    itemInternals = newItems;
-                    result.dispatchUpdatesTo(this);
-                    if (updateListPending) {
-                        updateListPending = false;
-                        updateList(saveScrollPosition);
-                    }
-                });
-            });
+                if (generation != listUpdateGeneration) {
+                    return;
+                }
+                AndroidUtilities.runOnUIThread(() -> applyListUpdate(generation, newItems, result, saveScrollPosition));
+            };
+            Utilities.searchQueue.postRunnable(pendingDiffRunnable);
+        }
+    }
+    private void applyListUpdate(int generation, ArrayList<ItemInternal> newItems, DiffUtil.DiffResult result, Runnable saveScrollPosition) {
+        if (generation != listUpdateGeneration || !isCalculatingDiff) {
+            return;
+        }
+        pendingDiffRunnable = null;
+        if (saveScrollPosition != null) {
+            saveScrollPosition.run();
+        }
+        if (generation != listUpdateGeneration) {
+            return;
+        }
+        itemInternals = newItems;
+        result.dispatchUpdatesTo(this);
+        if (generation != listUpdateGeneration) {
+            return;
+        }
+        isCalculatingDiff = false;
+        if (updateListPending) {
+            Runnable pendingCallback = pendingSaveScrollPosition;
+            updateListPending = false;
+            pendingSaveScrollPosition = null;
+            updateList(pendingCallback);
         }
 
     }
 
     @Override
     public void notifyDataSetChanged() {
-        if (isCalculatingDiff) {
-            itemInternals = new ArrayList<>();
+        ++listUpdateGeneration;
+        updateListPending = false;
+        pendingSaveScrollPosition = null;
+        if (pendingDiffRunnable != null) {
+            Utilities.searchQueue.cancelRunnable(pendingDiffRunnable);
+            pendingDiffRunnable = null;
         }
+        itemInternals = new ArrayList<>();
         isCalculatingDiff = false;
         updateItemList();
         super.notifyDataSetChanged();
@@ -1150,7 +1180,7 @@ public class DialogsAdapter extends RecyclerListView.SelectionAdapter implements
                 DialogsHintCell hintCell = (DialogsHintCell) holder.itemView;
                 ItemInternal item = itemInternals.get(i);
                 if (item.chatlistUpdates != null) {
-                    int count = item.chatlistUpdates.missing_peers.size();
+                    int count = item.missingChatlistPeerCount;
                     hintCell.setText(
                             AndroidUtilities.replaceSingleTag(
                                     LocaleController.formatPluralString("FolderUpdatesTitle", count),
@@ -1511,7 +1541,7 @@ public class DialogsAdapter extends RecyclerListView.SelectionAdapter implements
                     height = height - dialogsHeight + archiveHeight - paddingBottom;
                     if (paddingTop != 0) {
                         height -= AndroidUtilities.statusBarHeight;
-                        if ( !collapsedView && !isTransitionSupport) {
+                        if (                                 !collapsedView && !isTransitionSupport) {
                             height -= ActionBar.getCurrentActionBarHeight();
                             if (getParent() instanceof DialogsActivity.DialogsRecyclerView) {
                                 DialogsActivity.DialogsRecyclerView dialogsRecyclerView = (DialogsActivity.DialogsRecyclerView) getParent();
@@ -1525,7 +1555,7 @@ public class DialogsAdapter extends RecyclerListView.SelectionAdapter implements
                     height = archiveHeight - (dialogsHeight - height) - paddingBottom;
                     if (paddingTop != 0) {
                         height -= AndroidUtilities.statusBarHeight;
-                        if ( !collapsedView && !isTransitionSupport) {
+                        if (                                 !collapsedView && !isTransitionSupport) {
                             height -= ActionBar.getCurrentActionBarHeight();
                             if (getParent() instanceof DialogsActivity.DialogsRecyclerView) {
                                 DialogsActivity.DialogsRecyclerView dialogsRecyclerView = (DialogsActivity.DialogsRecyclerView) getParent();
@@ -1640,6 +1670,10 @@ public class DialogsAdapter extends RecyclerListView.SelectionAdapter implements
 
         dialogsCount = array.size();
         isEmpty = false;
+        if (dialogsCount == 0 && folderId == 0 && !isOnlySelect && !messagesController.dialogsLoaded
+                && (dialogsType == DialogsActivity.DIALOGS_TYPE_DEFAULT || dialogsType == 7 || dialogsType == 8)) {
+            return;
+        }
         if (dialogsCount == 0 && parentFragment.isArchive()) {
             itemInternals.add(new ItemInternal(VIEW_TYPE_ARCHIVE_FULLSCREEN));
             return;

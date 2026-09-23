@@ -110,27 +110,34 @@ public abstract class ViewPagerActivity extends BaseFragment {
                 }
 
                 FrameLayout container = (FrameLayout) view;
-                container.removeAllViews();
 
                 final View fragmentView = fragment.getFragmentView();
-                AndroidUtilities.removeFromParent(fragmentView);
+                final ActionBar fragmentActionBar = fragment.getActionBar();
+                final boolean separateActionBar = fragmentActionBar != null && fragmentActionBar.shouldAddToContainer();
+                final boolean alreadyBound = fragmentView.getParent() == container
+                        && container.getChildCount() == (separateActionBar ? 2 : 1)
+                        && (!separateActionBar || fragmentActionBar.getParent() == container);
                 if (!fragment.hasOwnBackground() && fragmentView.getBackground() == null) {
                     fragmentView.setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundWhite));
                 }
 
-                container.addView(fragmentView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT));
-                if (fragment.getActionBar() != null && fragment.getActionBar().shouldAddToContainer()) {
-                    AndroidUtilities.removeFromParent(fragment.getActionBar());
-                    container.addView(fragment.getActionBar());
+                if (!alreadyBound) {
+                    container.removeAllViews();
+                    AndroidUtilities.removeFromParent(fragmentView);
+                    container.addView(fragmentView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT));
+                    if (separateActionBar) {
+                        AndroidUtilities.removeFromParent(fragmentActionBar);
+                        container.addView(fragmentActionBar);
+                    }
+                    ViewCompat.requestApplyInsets(container);
                 }
 
-                ViewCompat.requestApplyInsets(container);
                 checkSystemBarColors();
-                checkFragmentsVisibility();
             }
         });
 
         contentView.addView(viewPager, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT));
+        checkFragmentsVisibility();
 
         fragmentView = contentView;
         ViewCompat.setOnApplyWindowInsetsListener(fragmentView, this::onApplyWindowInsets);
@@ -326,11 +333,23 @@ public abstract class ViewPagerActivity extends BaseFragment {
     }
 
     private void checkFragmentsVisibility() {
+        if (viewPager == null) {
+            return;
+        }
+        final int currentPosition = viewPager.getCurrentPosition();
+        final int nextPosition = viewPager.getNextPosition();
+        final boolean measured = viewPager.getMeasuredWidth() > 0;
+        final float currentVisibility = measured ? viewPager.getCurrentPositionAlpha() : 1f;
+        final float nextVisibility = measured ? viewPager.getNextPositionAlpha() : 0f;
         for (int a = 0, N = fragmentsArr.size(); a < N; a++) {
             final FragmentState state = fragmentsArr.valueAt(a);
             final int position = fragmentsArr.keyAt(a);
             if (state != null && state.fragment.fragmentView != null) {
-                state.setVisibility(viewPager.getPositionVisibility(position), isResumed ? visibilityByParent : 0, isFullyVisible, isResumed);
+                float visibility = position == currentPosition ? currentVisibility : 0f;
+                if (position == nextPosition) {
+                    visibility = Math.max(visibility, nextVisibility);
+                }
+                state.setVisibility(visibility, isResumed ? visibilityByParent : 0, isFullyVisible, isResumed);
             }
         }
     }

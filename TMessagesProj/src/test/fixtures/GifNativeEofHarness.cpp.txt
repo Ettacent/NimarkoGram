@@ -1,0 +1,140 @@
+// Compile the production reader + JNI EOF function against a deterministic
+// FFmpeg boundary. This checks control flow, not FFmpeg's codec or GPU pixels.
+#include <array>
+#include <cerrno>
+#include <cstdint>
+#include <deque>
+#include <functional>
+#include <iostream>
+#include <stdexcept>
+#include <string>
+
+#define AVERROR(x) (-(x))
+constexpr int AVERROR_EOF = -100, AVERROR_EXIT = -101, AVSEEK_FLAG_BACKWARD = 1;
+struct AVRational { int num, den; };
+double av_q2d(AVRational r) { return double(r.num) / r.den; }
+struct AVStream { AVRational time_base{1, 1000}; };
+struct AVFrame { int64_t best_effort_timestamp = -1; };
+struct AVPacket { int stream_index = 0; int pts = -1; };
+struct AVCodecContext {
+    std::deque<int> ready, delayed;
+    bool draining = false;
+    int flushes = 0;
+};
+struct AVFormatContext {
+    AVStream stream; AVStream* streams[1]{&stream};
+    int cursor = 0, frames = 4, seeks = 0, readError = 0;
+    bool failSeek = false;
+};
+AVFrame* av_frame_alloc() { return new AVFrame; }
+AVPacket* av_packet_alloc() { return new AVPacket; }
+void av_frame_free(AVFrame** p) { delete *p; *p = nullptr; }
+void av_packet_free(AVPacket** p) { delete *p; *p = nullptr; }
+void av_frame_unref(AVFrame* f) { f->best_effort_timestamp = -1; }
+void av_packet_unref(AVPacket* p) { p->pts = -1; }
+int avcodec_receive_frame(AVCodecContext* c, AVFrame* f) {
+    if (!c->ready.empty()) {
+        f->best_effort_timestamp = c->ready.front(); c->ready.pop_front(); return 0;
+    }
+    return c->draining ? AVERROR_EOF : AVERROR(EAGAIN);
+}
+int avcodec_send_packet(AVCodecContext* c, AVPacket* p) {
+    if (!p) {
+        c->draining = true;
+        while (!c->delayed.empty()) { c->ready.push_back(c->delayed.front()); c->delayed.pop_front(); }
+    } else if (p->pts >= 80) {
+        c->delayed.push_back(p->pts); // codec tail emitted only on drain
+    } else {
+        c->ready.push_back(p->pts);
+    }
+    return 0;
+}
+int av_read_frame(AVFormatContext* c, AVPacket* p) {
+    if (c->readError) return c->readError;
+    if (c->cursor == c->frames) return AVERROR_EOF;
+    p->pts = 40 * c->cursor++; p->stream_index = 0; return 0;
+}
+int av_seek_frame(AVFormatContext* c, int, int64_t pts, int) {
+    c->seeks++;
+    if (c->failSeek) return -1;
+    c->cursor = int(pts / 40); return 0;
+}
+void avcodec_flush_buffers(AVCodecContext* c) {
+    c->flushes++; c->ready.clear(); c->delayed.clear(); c->draining = false;
+}
+int64_t clockUs = 0;
+int64_t av_gettime_relative() { return clockUs; }
+void av_usleep(int64_t us) { clockUs += us; }
+
+/* READER */
+
+using jint = int; using jlong = int64_t; using jfloat = float; using jboolean = bool;
+struct Bitmap { int pixel = -1, writes = 0; };
+using jobject = Bitmap*; using jintArray = std::array<int, 8>*; using jclass = void*;
+struct JNIEnv {};
+#define JNIEXPORT
+#define JNICALL
+struct VideoInfo {
+    AVFormatContext format;
+    AVCodecContext codec;
+    VideoFrameReader readerValue{&format, &codec, 0};
+    VideoFrameReader* reader = &readerValue;
+    AVStream* video_stream = &format.stream;
+    bool stopped = false, seeking = false, afterEof = false, isSingleFrame = false;
+};
+void push_time(JNIEnv*, VideoInfo*, AVFrame* f, jintArray data) { (*data)[3] = int(f->best_effort_timestamp); }
+void push_single_frame(JNIEnv*, jintArray data) { (*data)[7] = 1; }
+bool writeFrameToBitmap(JNIEnv*, VideoInfo*, AVFrame* f, jintArray data, jobject b) {
+    if (f->best_effort_timestamp < 0) throw std::runtime_error("unreferenced frame written");
+    b->pixel = int(f->best_effort_timestamp) + 1; b->writes++;
+    (*data)[6] = 1;
+    (*data)[3] = int(f->best_effort_timestamp);
+    return true;
+}
+
+/* GET_VIDEO_FRAME */
+
+void check(bool ok, const char* message) { if (!ok) throw std::runtime_error(message); }
+int next(VideoInfo& info, Bitmap& bitmap, std::array<int, 8>& data, bool loop) {
+    return Java_org_telegram_ui_Components_AnimatedFileNative_nGetVideoFrame(
+        nullptr, nullptr, reinterpret_cast<intptr_t>(&info), &bitmap, &data, false, 0, 0, loop);
+}
+void drainAndLoop() {
+    VideoInfo info; Bitmap b; std::array<int, 8> data{};
+    for (int cycle = 0; cycle < 3; ++cycle) {
+        for (int frame = 0; frame < 4; ++frame) {
+            int writes = b.writes;
+            check(next(info, b, data, true) == 1, "every delayed tail frame and restarted first frame must decode");
+            check(data[3] == frame * 40 && b.pixel == frame * 40 + 1 && b.writes == writes + 1,
+                "success must write actual frame, not an EOF placeholder");
+        }
+    }
+    check(info.format.seeks == 2 && info.codec.flushes == 2, "one seek/flush per completed loop");
+    for (int i = 0; i < 3; ++i) {
+        check(next(info, b, data, false) == 0, "nonloop EOF is not success");
+        check(b.pixel == 121 && b.writes == 12 && data[3] == 120, "EOF preserves last bitmap and PTS");
+    }
+}
+void noFrame() {
+    for (int error : {AVERROR(EAGAIN), AVERROR_EXIT, -123}) {
+        VideoInfo info; Bitmap b; std::array<int, 8> data{};
+        info.format.readError = error;
+        check(next(info, b, data, true) == 0, "Again/abort/error must return no frame");
+        check(b.writes == 0 && info.format.seeks == 0, "temporary no-frame never writes or restarts");
+        info.format.readError = 0;
+        check(next(info, b, data, true) == 1 && data[3] == 0 && b.pixel == 1, "retry recovers first frame");
+    }
+    VideoInfo info; Bitmap b; std::array<int, 8> data{};
+    info.format.frames = 0;
+    check(next(info, b, data, true) == 0 && b.writes == 0, "EOF after seek cannot publish a blank");
+    info.format.failSeek = true;
+    check(next(info, b, data, true) == 0 && b.writes == 0, "failed seek cannot publish a blank");
+    info.stopped = true;
+    check(next(info, b, data, true) == 0, "stop returns no frame");
+    info.stopped = false; info.seeking = true;
+    check(next(info, b, data, true) == 0, "seek interruption returns no frame");
+}
+int main() {
+    try { drainAndLoop(); noFrame(); std::cout << "PASS: production native EOF control flow\n"; }
+    catch (const std::exception& e) { std::cerr << e.what() << '\n'; return 1; }
+}
