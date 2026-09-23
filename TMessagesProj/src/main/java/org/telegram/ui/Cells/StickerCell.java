@@ -58,6 +58,7 @@ public class StickerCell extends FrameLayout {
         this.resourcesProvider = resourcesProvider;
 
         imageView = new BackupImageView(context);
+        imageView.getImageReceiver().setCrossfadeOnReady(true);
         imageView.setAspectFit(true);
         imageView.setLayerNum(1);
         addView(imageView, LayoutHelper.createFrame(66, 66, Gravity.CENTER_HORIZONTAL, 0, 5, 0, 0));

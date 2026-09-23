@@ -1265,7 +1265,13 @@ public class TopicsController extends BaseController {
                 } else {
                     ArrayList<TLRPC.TL_forumTopic> topicToReload = new ArrayList<>();
                     TLRPC.TL_forumTopic topic = new TLRPC.TL_forumTopic();
-                    topic.id = (int) topicId;
+                    if (getMessagesController().isMonoForum(-chatId)) {
+                        topic.id = ForumUtilities.monoForumTopicIdToTopicId(topicId);
+                        topic.from_id = getMessagesController().getPeer(topicId);
+                    } else {
+                        topic.id = (int) topicId;
+                    }
+                    topicToReload.add(topic);
                     reloadTopics(chatId, topicToReload, runnable);
                 }
             });

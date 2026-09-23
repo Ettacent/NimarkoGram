@@ -206,7 +206,7 @@ public class ProxySettingsActivity extends BaseFragment {
                     if (getParentActivity() == null) {
                         return;
                     }
-                    currentProxyInfo.settings = ProxySettings.builder()
+                    currentProxyInfo.setSettings(ProxySettings.builder()
                         .setType(currentType)
                         .setAddress(currentType == ProxySettings.Type.WEB
                                 ? WebProxyTransport.normalizeHost(inputFields[FIELD_IP].getText().toString())
@@ -217,7 +217,7 @@ public class ProxySettingsActivity extends BaseFragment {
                         .setUser(currentType == ProxySettings.Type.SOCKS5 ? inputFields[FIELD_USER].getText().toString() : "")
                         .setPassword(currentType == ProxySettings.Type.SOCKS5 ? inputFields[FIELD_PASSWORD].getText().toString() : "")
                         .setSecret(currentType != ProxySettings.Type.SOCKS5 ? inputFields[FIELD_SECRET].getText().toString() : "")
-                        .build();
+                        .build());
 
                     SharedPreferences preferences = MessagesController.getGlobalMainSettings();
                     SharedPreferences.Editor editor = preferences.edit();
@@ -232,8 +232,8 @@ public class ProxySettingsActivity extends BaseFragment {
                         SharedConfig.saveProxyList();
                     }
                     if (addingNewProxy || SharedConfig.currentProxy == currentProxyInfo) {
-                        currentProxyInfo.settings.toSharedPreferences(editor);
-                        ConnectionsManager.setProxySettings(enabled, currentProxyInfo.settings);
+                        currentProxyInfo.getSettings().toSharedPreferences(editor);
+                        ConnectionsManager.setProxySettings(enabled, currentProxyInfo.getSettings());
                     }
                     editor.commit();
 
@@ -414,23 +414,23 @@ public class ProxySettingsActivity extends BaseFragment {
             switch (a) {
                 case FIELD_IP:
                     inputFields[a].setHintText(LocaleController.getString(R.string.UseProxyAddress));
-                    inputFields[a].setText(currentProxyInfo.settings.getAddress());
+                    inputFields[a].setText(currentProxyInfo.getSettings().getAddress());
                     break;
                 case FIELD_PASSWORD:
                     inputFields[a].setHintText(LocaleController.getString(R.string.UseProxyPassword));
-                    inputFields[a].setText(currentProxyInfo.settings.getPassword());
+                    inputFields[a].setText(currentProxyInfo.getSettings().getPassword());
                     break;
                 case FIELD_PORT:
                     inputFields[a].setHintText(LocaleController.getString(R.string.UseProxyPort));
-                    inputFields[a].setText(Integer.toString(currentProxyInfo.settings.getPort()));
+                    inputFields[a].setText(Integer.toString(currentProxyInfo.getSettings().getPort()));
                     break;
                 case FIELD_USER:
                     inputFields[a].setHintText(LocaleController.getString(R.string.UseProxyUsername));
-                    inputFields[a].setText(currentProxyInfo.settings.getUser());
+                    inputFields[a].setText(currentProxyInfo.getSettings().getUser());
                     break;
                 case FIELD_SECRET:
                     inputFields[a].setHintText(LocaleController.getString(R.string.UseProxySecret));
-                    inputFields[a].setText(currentProxyInfo.settings.getSecret());
+                    inputFields[a].setText(currentProxyInfo.getSettings().getSecret());
                     break;
             }
             inputFields[a].setSelection(inputFields[a].length());
@@ -629,7 +629,7 @@ public class ProxySettingsActivity extends BaseFragment {
         checkShareDone(false);
 
         currentType = null;
-        setProxyType(currentProxyInfo.settings.getType(), false);
+        setProxyType(currentProxyInfo.getSettings().getType(), false);
         pasteProxySettings = null;
         pasteString = null;
         updatePasteCell();

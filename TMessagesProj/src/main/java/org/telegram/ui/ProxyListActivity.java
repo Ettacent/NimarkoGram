@@ -214,9 +214,9 @@ public class ProxyListActivity extends BaseFragment implements NotificationCente
             if (isOwnWsBypass(proxyInfo)) {
                 label = LocaleController.getString(R.string.NM_WSB_Title);
             } else {
-                label = proxyInfo.settings.getType() == ProxySettings.Type.WEB
-                        ? proxyInfo.settings.getAddress() + " (WEB)"
-                        : proxyInfo.settings.getAddress() + ":" + proxyInfo.settings.getPort();
+                label = proxyInfo.getSettings().getType() == ProxySettings.Type.WEB
+                        ? proxyInfo.getSettings().getAddress() + " (WEB)"
+                        : proxyInfo.getSettings().getAddress() + ":" + proxyInfo.getSettings().getPort();
             }
             textView.setText(label);
             currentInfo = proxyInfo;
@@ -480,7 +480,7 @@ public class ProxyListActivity extends BaseFragment implements NotificationCente
 
                         if (!useProxySettings) {
                             SharedPreferences.Editor editor = MessagesController.getGlobalMainSettings().edit();
-                            SharedConfig.currentProxy.settings.toSharedPreferences(editor);
+                            SharedConfig.currentProxy.getSettings().toSharedPreferences(editor);
                             editor.commit();
                         }
                     } else {
@@ -508,7 +508,7 @@ public class ProxyListActivity extends BaseFragment implements NotificationCente
                 editor.putBoolean("proxy_enabled", useProxySettings);
                 editor.commit();
 
-                ConnectionsManager.setProxySettings(useProxySettings, SharedConfig.currentProxy.settings);
+                ConnectionsManager.setProxySettings(useProxySettings, SharedConfig.currentProxy.getSettings());
                 NotificationCenter.getGlobalInstance().removeObserver(ProxyListActivity.this, NotificationCenter.proxySettingsChanged);
                 NotificationCenter.getGlobalInstance().postNotificationName(NotificationCenter.proxySettingsChanged);
                 NotificationCenter.getGlobalInstance().addObserver(ProxyListActivity.this, NotificationCenter.proxySettingsChanged);
@@ -545,9 +545,9 @@ public class ProxyListActivity extends BaseFragment implements NotificationCente
                 }
                 useProxySettings = true;
                 SharedPreferences.Editor editor = MessagesController.getGlobalMainSettings().edit();
-                info.settings.toSharedPreferences(editor);
+                info.getSettings().toSharedPreferences(editor);
                 editor.putBoolean("proxy_enabled", useProxySettings);
-                if (!info.settings.getSecret().isEmpty()) {
+                if (!info.getSettings().getSecret().isEmpty()) {
                     useProxyForCalls = false;
                     editor.putBoolean("proxy_enabled_calls", false);
                 }
@@ -567,7 +567,7 @@ public class ProxyListActivity extends BaseFragment implements NotificationCente
                     TextCheckCell textCheckCell = (TextCheckCell) holder.itemView;
                     textCheckCell.setChecked(true);
                 }
-                ConnectionsManager.setProxySettings(useProxySettings, SharedConfig.currentProxy.settings);
+                ConnectionsManager.setProxySettings(useProxySettings, SharedConfig.currentProxy.getSettings());
             } else if (position == proxyAddRow) {
                 presentFragment(new ProxySettingsActivity());
             } else if (position == deleteAllRow) {
@@ -677,7 +677,7 @@ public class ProxyListActivity extends BaseFragment implements NotificationCente
                             if (links.length() > 0) {
                                 links.append("\n\n");
                             }
-                            links.append(info.settings.getLink());
+                            links.append(info.getSettings().getLink());
                         }
 
                         Intent shareIntent = new Intent(Intent.ACTION_SEND);
@@ -753,7 +753,7 @@ public class ProxyListActivity extends BaseFragment implements NotificationCente
         nimarkoVlessRow = rowCount++;
         nimarkoVpnInfoRow = rowCount++;
         useProxyRow = rowCount++;
-        if (useProxySettings && SharedConfig.currentProxy != null && SharedConfig.currentProxy.settings.getType() != ProxySettings.Type.WEB && SharedConfig.proxyList.size() > 1 && IS_PROXY_ROTATION_AVAILABLE) {
+        if (useProxySettings && SharedConfig.currentProxy != null && SharedConfig.currentProxy.getSettings().getType() != ProxySettings.Type.WEB && SharedConfig.proxyList.size() > 1 && IS_PROXY_ROTATION_AVAILABLE) {
             rotationRow = rowCount++;
             if (SharedConfig.proxyRotationEnabled) {
                 rotationTimeoutRow = rowCount++;
@@ -816,7 +816,7 @@ public class ProxyListActivity extends BaseFragment implements NotificationCente
         }
         proxyAddRow = rowCount++;
         proxyShadowRow = rowCount++;
-        if (SharedConfig.currentProxy == null || SharedConfig.currentProxy.settings.getSecret().isEmpty()) {
+        if (SharedConfig.currentProxy == null || SharedConfig.currentProxy.getSettings().getSecret().isEmpty()) {
             boolean change = callsRow == -1;
             callsRow = rowCount++;
             callsDetailRow = rowCount++;
@@ -863,7 +863,7 @@ public class ProxyListActivity extends BaseFragment implements NotificationCente
                 continue;
             }
             proxyInfo.checking = true;
-            ConnectionsManager.getInstance(currentAccount).checkProxy(proxyInfo.settings, time -> AndroidUtilities.runOnUIThread(() -> {
+            ConnectionsManager.getInstance(currentAccount).checkProxy(proxyInfo.getSettings(), time -> AndroidUtilities.runOnUIThread(() -> {
                 proxyInfo.availableCheckTime = SystemClock.elapsedRealtime();
                 proxyInfo.checking = false;
                 if (time == -1) {
@@ -880,8 +880,8 @@ public class ProxyListActivity extends BaseFragment implements NotificationCente
 
     private static boolean isOwnWsBypass(SharedConfig.ProxyInfo p) {
         return p != null
-                && app.nimarkogram.messenger.wsbypass.WsBypassCore.LOCAL_PROXY_HOST.equals(p.settings.getAddress())
-                && p.settings.getPort() == app.nimarkogram.messenger.wsbypass.NimarkoWsBypassConfig.localPort;
+                && app.nimarkogram.messenger.wsbypass.WsBypassCore.LOCAL_PROXY_HOST.equals(p.getSettings().getAddress())
+                && p.getSettings().getPort() == app.nimarkogram.messenger.wsbypass.NimarkoWsBypassConfig.localPort;
     }
 
     @Override
@@ -945,7 +945,7 @@ public class ProxyListActivity extends BaseFragment implements NotificationCente
                 && SharedConfig.currentProxy != null && !SharedConfig.proxyList.isEmpty();
         useProxyForCalls = preferences.getBoolean("proxy_enabled_calls", false);
         if (!useProxySettings || SharedConfig.currentProxy == null
-                || !TextUtils.isEmpty(SharedConfig.currentProxy.settings.getSecret())) {
+                || !TextUtils.isEmpty(SharedConfig.currentProxy.getSettings().getSecret())) {
             useProxyForCalls = false;
         }
     }

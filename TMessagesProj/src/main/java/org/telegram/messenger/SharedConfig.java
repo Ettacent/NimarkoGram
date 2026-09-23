@@ -376,13 +376,52 @@ public class SharedConfig {
     public static class ProxyInfo {
 
         public @NonNull ProxySettings settings;
+        @Deprecated public String address;
+        @Deprecated public int port;
+        @Deprecated public String username;
+        @Deprecated public String password;
+        @Deprecated public String secret;
+        private ProxySettings syncedSettings;
         public long ping;
         public boolean checking;
         public boolean available;
         public long availableCheckTime;
 
         public ProxyInfo(@NonNull ProxySettings proxySettings) {
-            settings = proxySettings;
+            setSettings(proxySettings);
+        }
+        public ProxyInfo(String address, int port, String username, String password, String secret) {
+            this(ProxySettings.builder()
+                    .setType(TextUtils.isEmpty(secret) ? ProxySettings.Type.SOCKS5 : ProxySettings.Type.MTPROTO)
+                    .setAddress(address).setPort(port).setUser(username)
+                    .setPassword(password).setSecret(secret).build());
+        }
+        public synchronized void setSettings(@NonNull ProxySettings value) {
+            settings = Objects.requireNonNull(value);
+            syncedSettings = value;
+            address = value.getAddress();
+            port = value.getPort();
+            username = value.getUser();
+            password = value.getPassword();
+            secret = value.getSecret();
+        }
+        public synchronized @NonNull ProxySettings getSettings() {
+            if (settings != syncedSettings) {
+                setSettings(settings != null ? settings : syncedSettings);
+            } else if (!Objects.equals(address, settings.getAddress()) || port != settings.getPort()
+                    || !Objects.equals(username, settings.getUser())
+                    || !Objects.equals(password, settings.getPassword())
+                    || !Objects.equals(secret, settings.getSecret())) {
+                ProxySettings.Type type = settings.getType() == ProxySettings.Type.WEB
+                        ? ProxySettings.Type.WEB
+                        : TextUtils.isEmpty(secret) ? ProxySettings.Type.SOCKS5 : ProxySettings.Type.MTPROTO;
+                setSettings(ProxySettings.builder().setType(type).setAddress(address).setPort(port)
+                        .setUser(username).setPassword(password).setSecret(secret).build());
+            }
+            return settings;
+        }
+        public String getLink() {
+            return getSettings().getLink();
         }
         private static ProxyInfo fromSerializedData(int version, InputSerializedData data) {
             ProxySettings.Builder builder = ProxySettings.builder()
@@ -412,6 +451,7 @@ public class SharedConfig {
         }
 
         private void toSerializedData(OutputSerializedData data) {
+            final ProxySettings settings = getSettings();
             data.writeString(settings.getAddress());
             data.writeInt32(settings.getPort());
             data.writeString(settings.getUser());
@@ -1458,7 +1498,7 @@ public class SharedConfig {
 
                             proxyList.add(0, info);
                             if (currentProxy == null && proxySettings.isValid()) {
-                                if (Objects.equals(proxySettings, info.settings)) {
+                                if (Objects.equals(proxySettings, info.getSettings())) {
                                     currentProxy = info;
                                 }
                             }
@@ -1471,7 +1511,7 @@ public class SharedConfig {
                         final ProxyInfo info = ProxyInfo.fromSerializedData(0, data);
                         proxyList.add(0, info);
                         if (currentProxy == null && proxySettings.isValid()) {
-                            if (Objects.equals(proxySettings, info.settings)) {
+                            if (Objects.equals(proxySettings, info.getSettings())) {
                                 currentProxy = info;
                             }
                         }
@@ -1539,7 +1579,7 @@ public class SharedConfig {
             int count = proxyList.size();
             for (int a = 0; a < count; a++) {
                 ProxyInfo info = proxyList.get(a);
-                if (Objects.equals(proxyInfo.settings, info.settings)) {
+                if (Objects.equals(proxyInfo.getSettings(), info.getSettings())) {
                     return info;
                 }
             }

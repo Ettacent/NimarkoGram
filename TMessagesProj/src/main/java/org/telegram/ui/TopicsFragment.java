@@ -37,6 +37,7 @@ import android.view.HapticFeedbackConstants;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.ViewParent;
 import android.view.ViewTreeObserver;
 import android.view.accessibility.AccessibilityEvent;
 import android.view.accessibility.AccessibilityNodeInfo;
@@ -52,6 +53,7 @@ import androidx.core.graphics.ColorUtils;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
 import androidx.recyclerview.widget.DefaultItemAnimator;
+import androidx.recyclerview.widget.DiffUtil;
 import androidx.recyclerview.widget.ItemTouchHelper;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import org.telegram.ui.recyclerview.LinearSmoothScrollerCustom;
@@ -331,7 +333,7 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
             iBlur3SourceGlassFrosted = new BlurredBackgroundSourceRenderNode(null);
             iBlur3SourceGlass = new BlurredBackgroundSourceRenderNode(null);
             iBlur3FactoryLiquidGlass = new BlurredBackgroundDrawableViewFactory(iBlur3SourceGlass);
-            iBlur3FactoryLiquidGlass.setLiquidGlassEffectAllowed(LiteMode.isEnabled(LiteMode.FLAG_LIQUID_GLASS));
+            iBlur3FactoryLiquidGlass.setLiquidGlassEffectAllowed(true);
         } else {
             scrollableViewNoiseSuppressor = null;
             iBlur3SourceGlassFrosted = null;
@@ -3958,7 +3960,9 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
                     } else {
                         animatedEmojiDrawable.setBounds(padding, paddingTop, padding + size, paddingTop + size);
                     }
-                    animatedEmojiDrawable.draw(canvas);
+                    if (isTopicIconPresented()) {
+                        animatedEmojiDrawable.draw(canvas);
+                    }
                 } else {
                     if (LocaleController.isRTL) {
                         forumIcon.setBounds(getWidth() - padding - size, paddingTop, getWidth() - padding, paddingTop + size);
@@ -3969,6 +3973,17 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
                 }
             }
             canvas.restore();
+        }
+        private boolean isTopicIconPresented() {
+            View view = this;
+            while (view != null) {
+                if (view.getVisibility() != View.VISIBLE || view.getAlpha() <= 0f) {
+                    return false;
+                }
+                ViewParent parent = view.getParent();
+                view = parent instanceof View ? (View) parent : null;
+            }
+            return true;
         }
 
         @Override
@@ -4213,13 +4228,15 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
         int messagesEndRow;
 
         int rowCount;
+        private static final int MAX_ANIMATED_SEARCH_ROWS = 64;
+        private ArrayList<String> presentedSearchRows = new ArrayList<>();
+        private int searchGeneration;
 
         boolean isLoading;
         boolean canLoadMore;
 
         FlickerLoadingView flickerLoadingView;
         StickerEmptyView emptyView;
-        RecyclerItemsEnterAnimator itemsEnterAnimator;
         boolean messagesIsLoading;
         private int keyboardSize;
         private ViewPagerAdapter viewPagerAdapter;
@@ -4253,6 +4270,13 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
             recyclerView = new RecyclerListView(context);
             recyclerView.setAdapter(searchAdapter = new SearchAdapter());
             recyclerView.setLayoutManager(layoutManager = new LinearLayoutManager(context));
+            DefaultItemAnimator searchItemAnimator = new DefaultItemAnimator();
+            searchItemAnimator.setAddDuration(150);
+            searchItemAnimator.setRemoveDuration(130);
+            searchItemAnimator.setMoveDuration(200);
+            searchItemAnimator.setChangeDuration(0);
+            searchItemAnimator.setSupportsChangeAnimations(false);
+            recyclerView.setItemAnimator(searchItemAnimator);
             recyclerView.setOnItemClickListener((view, position) -> {
                 if (view instanceof TopicSearchCell) {
                     TopicSearchCell cell = (TopicSearchCell) view;
@@ -4297,8 +4321,6 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
             searchContainer.addView(recyclerView);
             updateRows();
 
-            itemsEnterAnimator = new RecyclerItemsEnterAnimator(recyclerView, true);
-            recyclerView.setItemsEnterAnimator(itemsEnterAnimator);
 
             setAdapter(viewPagerAdapter = new ViewPagerAdapter());
         }
@@ -4484,6 +4506,7 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
         }
 
         private void searchMessages(String searchString) {
+            final int generation = ++searchGeneration;
             if (searchRunnable != null) {
                 AndroidUtilities.cancelRunOnUIThread(searchRunnable);
                 searchRunnable = null;
@@ -4493,11 +4516,10 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
 
             messagesIsLoading = false;
             canLoadMore = false;
-            searchResultTopics.clear();
-            searchResultMessages.clear();
             if (TextUtils.isEmpty(searchString)) {
                 isLoading = false;
                 searchResultTopics.clear();
+                searchResultMessages.clear();
                 for (int i = 0; i < forumTopics.size(); i++) {
                     if (forumTopics.get(i).topic != null) {
                         searchResultTopics.add(forumTopics.get(i).topic);
@@ -4507,14 +4529,13 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
                 updateRows();
                 // emptyView.showProgress(true, true);
                 return;
-            } else {
-                updateRows();
             }
 
-            isLoading = true;
-            emptyView.showProgress(isLoading, true);
+            isLoading = rowCount == 0;
+            if (isLoading) emptyView.showProgress(true, true);
 
             searchRunnable = () -> {
+                if (generation != searchGeneration) return;
                 String searchTrimmed = searchString.trim().toLowerCase();
                 ArrayList<TLRPC.TL_forumTopic> topics = new ArrayList<>();
                 for (int i = 0; i < forumTopics.size(); i++) {
@@ -4526,13 +4547,11 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
 
                 searchResultTopics.clear();
                 searchResultTopics.addAll(topics);
+                searchResultMessages.clear();
+                isLoading = searchResultTopics.isEmpty();
                 updateRows();
 
-                if (!searchResultTopics.isEmpty()) {
-                    isLoading = false;
-                    //   emptyView.showProgress(isLoading, true);
-                    itemsEnterAnimator.showItemsAnimated(0);
-                }
+                emptyView.showProgress(isLoading, true);
 
                 loadMessages(searchString);
             };
@@ -4550,6 +4569,7 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
             if (messagesIsLoading) {
                 return;
             }
+            final int generation = searchGeneration;
             TLRPC.TL_messages_search req = new TLRPC.TL_messages_search();
             req.peer = getMessagesController().getInputPeer(-chatId);
             req.filter = new TLRPC.TL_inputMessagesFilterEmpty();
@@ -4571,8 +4591,7 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
 //                req.offset_peer = new TLRPC.TL_inputPeerEmpty();
 //            }
             ConnectionsManager.getInstance(currentAccount).sendRequest(req, (response, error) -> AndroidUtilities.runOnUIThread(() -> {
-                if (searchString.equals(this.searchString)) {
-                    int oldRowCount = rowCount;
+                if (generation == searchGeneration && searchString.equals(this.searchString)) {
                     messagesIsLoading = false;
                     isLoading = false;
                     if (response instanceof TLRPC.messages_Messages) {
@@ -4584,16 +4603,15 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
                             messageObject.setQuery(searchString);
                             searchResultMessages.add(messageObject);
                         }
-                        updateRows();
                         canLoadMore = searchResultMessages.size() < messages.count && !messages.messages.isEmpty();
                     } else {
                         canLoadMore = false;
                     }
+                    updateRows();
 
                     if (rowCount == 0) {
-                        emptyView.showProgress(isLoading, true);
+                        emptyView.showProgress(false, true);
                     }
-                    itemsEnterAnimator.showItemsAnimated(oldRowCount);
                 }
             }));
         }
@@ -4622,7 +4640,41 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
                 messagesEndRow = rowCount;
             }
 
-            searchAdapter.notifyDataSetChanged();
+            ArrayList<String> nextRows = new ArrayList<>(rowCount);
+            if (topicsHeaderRow >= 0) {
+                nextRows.add("topics-header");
+                for (TLRPC.TL_forumTopic topic : searchResultTopics) nextRows.add("topic:" + topic.id);
+            }
+            if (messagesHeaderRow >= 0) {
+                nextRows.add("messages-header");
+                for (MessageObject message : searchResultMessages) {
+                    nextRows.add("message:" + message.getDialogId() + ":" + message.getId());
+                }
+            }
+            ArrayList<String> previousRows = presentedSearchRows;
+            if (recyclerView.isAttachedToWindow() && !recyclerView.isComputingLayout()
+                    && SharedConfig.animationsEnabled() && previousRows.size() <= MAX_ANIMATED_SEARCH_ROWS
+                    && nextRows.size() <= MAX_ANIMATED_SEARCH_ROWS) {
+                if (previousRows.isEmpty()) {
+                    if (!nextRows.isEmpty()) searchAdapter.notifyItemRangeInserted(0, nextRows.size());
+                } else if (nextRows.isEmpty()) {
+                    searchAdapter.notifyItemRangeRemoved(0, previousRows.size());
+                } else {
+                    DiffUtil.calculateDiff(new DiffUtil.Callback() {
+                        @Override public int getOldListSize() { return previousRows.size(); }
+                        @Override public int getNewListSize() { return nextRows.size(); }
+                        @Override public boolean areItemsTheSame(int oldPosition, int newPosition) {
+                            return previousRows.get(oldPosition).equals(nextRows.get(newPosition));
+                        }
+                        @Override public boolean areContentsTheSame(int oldPosition, int newPosition) {
+                            return false;
+                        }
+                    }).dispatchUpdatesTo(searchAdapter);
+                }
+            } else {
+                searchAdapter.notifyDataSetChanged();
+            }
+            presentedSearchRows = nextRows;
         }
 
         private class SearchAdapter extends RecyclerListView.SelectionAdapter {
@@ -4706,9 +4758,6 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
 
             @Override
             public int getItemCount() {
-                if (isLoading) {
-                    return 0;
-                }
                 return rowCount;
             }
 
@@ -5261,7 +5310,7 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
 
         iBlur3PositionActionBar.set(0, -additionalList, fragmentView.getMeasuredWidth(), actionBar.getMeasuredHeight() + additionalList + additionalSearch );
         iBlur3PositionMainTabs.set(0, mainTabTop, fragmentView.getMeasuredWidth(), mainTabBottom);
-        iBlur3PositionMainTabs.inset(0, LiteMode.isEnabled(LiteMode.FLAG_LIQUID_GLASS) ? 0 : -dp(48));
+        iBlur3PositionMainTabs.inset(0, -dp(LiteMode.isEnabled(LiteMode.FLAG_LIQUID_GLASS) ? 24 : 48));
 
         scrollableViewNoiseSuppressor.setupRenderNodes(iBlur3Positions, parentDialogsActivity != null ? 2 : 1);
         scrollableViewNoiseSuppressor.invalidateResultRenderNodes(iBlur3Capture, fragmentView.getMeasuredWidth(), fragmentView.getMeasuredHeight());

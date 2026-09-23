@@ -63,7 +63,11 @@ import org.telegram.ui.NotificationsSettingsActivity;
 import org.telegram.ui.Stories.StoriesListPlaceProvider;
 import org.telegram.ui.Stories.StoriesUtilities;
 
-public class UserCell extends FrameLayout implements NotificationCenter.NotificationCenterDelegate, Theme.Colorable {
+public class UserCell extends FrameLayout implements NotificationCenter.NotificationCenterDelegate, Theme.Colorable, org.telegram.ui.Components.AnimatedEmojiSpan.AccountProvider {
+    @Override
+    public int getEmojiAccount() {
+        return currentAccount;
+    }
 
     public BackupImageView avatarImageView;
     protected SimpleTextView nameTextView;
@@ -77,6 +81,11 @@ public class UserCell extends FrameLayout implements NotificationCenter.Notifica
     private Drawable premiumDrawable;
     private final AnimatedEmojiDrawable.SwapAnimatedEmojiDrawable botVerification;
     private final AnimatedEmojiDrawable.SwapAnimatedEmojiDrawable emojiStatus;
+    private long emojiStatusUserId;
+    private int emojiStatusAccount = -1;
+    private int badgeOwnerAccount = -1;
+    private long badgeOwnerId;
+    private boolean badgeOwnerBound;
     
     private AnimatedEmojiDrawable.SwapAnimatedEmojiDrawable nimarkoBadgeEmoji;
     private app.nimarkogram.messenger.api.dto.BadgeDTO currentNimarkoBadge;
@@ -342,6 +351,21 @@ public class UserCell extends FrameLayout implements NotificationCenter.Notifica
 
     public void setData(Object object, TLRPC.EncryptedChat ec, CharSequence name, CharSequence status, int resId, boolean divider) {
         if (object == null && name == null && status == null) {
+            badgeOwnerBound = false;
+            botVerification.set((Drawable) null, false);
+            botVerification.resetAnimation();
+            nameTextView.setLeftDrawable(null);
+            nameTextView.setRightDrawable2(null);
+            currentNimarkoBadge = null;
+            if (nimarkoBadgeEmoji != null) {
+                nimarkoBadgeEmoji.set((Drawable) null, false);
+                nimarkoBadgeEmoji.setParticles(false, false);
+                nimarkoBadgeEmoji.resetAnimation();
+            }
+            emojiStatusUserId = 0;
+            emojiStatus.set((Drawable) null, false);
+            emojiStatus.resetAnimation();
+            nameTextView.setRightDrawable(null);
             currentStatus = null;
             currentName = null;
             storiable = false;
@@ -522,6 +546,12 @@ public class UserCell extends FrameLayout implements NotificationCenter.Notifica
         isCommunity = false;
         if (currentObject instanceof TLRPC.User) {
             currentUser = (TLRPC.User) currentObject;
+            if ((mask & MessagesController.UPDATE_MASK_EMOJI_STATUS) != 0) {
+                TLRPC.User updatedUser = MessagesController.getInstance(currentAccount).getUser(currentUser.id);
+                if (updatedUser != null) {
+                    currentObject = currentUser = updatedUser;
+                }
+            }
             if (currentUser.photo != null) {
                 photo = currentUser.photo.photo_small;
             }
@@ -536,7 +566,7 @@ public class UserCell extends FrameLayout implements NotificationCenter.Notifica
         }
 
         if (mask != 0) {
-            boolean continueUpdate = false;
+            boolean continueUpdate = currentUser != null && (mask & MessagesController.UPDATE_MASK_EMOJI_STATUS) != 0;
             if ((mask & MessagesController.UPDATE_MASK_AVATAR) != 0) {
                 if (lastAvatar != null && photo == null || lastAvatar == null && photo != null || lastAvatar != null && (lastAvatar.volume_id != photo.volume_id || lastAvatar.local_id != photo.local_id)) {
                     continueUpdate = true;
@@ -607,6 +637,10 @@ public class UserCell extends FrameLayout implements NotificationCenter.Notifica
             ((LayoutParams) nameTextView.getLayoutParams()).topMargin = dp(10);
             if (currentUser != null) {
                 if (selfAsSavedMessages && UserObject.isUserSelf(currentUser)) {
+                    emojiStatusUserId = 0;
+                    emojiStatus.set((Drawable) null, false);
+                    emojiStatus.resetAnimation();
+                    nameTextView.setRightDrawable(null);
                     nameTextView.setText(getString(R.string.SavedMessages), true);
                     statusTextView.setText(null);
                     avatarDrawable.setAvatarType(AvatarDrawable.AVATAR_TYPE_SAVED);
@@ -660,6 +694,8 @@ public class UserCell extends FrameLayout implements NotificationCenter.Notifica
             }
             nameTextView.setText(name);
         }
+        final boolean animateBadges = bindBadgeOwner(currentUser != null ? currentUser.id
+                : currentChat != null ? -currentChat.id : 0);
         long botVerificationIcon = 0;
         if (currentUser != null) {
             botVerificationIcon = DialogObject.getBotVerificationIcon(currentUser);
@@ -667,19 +703,30 @@ public class UserCell extends FrameLayout implements NotificationCenter.Notifica
             botVerificationIcon = DialogObject.getBotVerificationIcon(currentChat);
         }
         if (botVerificationIcon == 0) {
-            botVerification.set((Drawable) null, false);
-            nameTextView.setLeftDrawable(null);
+            botVerification.set((Drawable) null, animateBadges);
+            nameTextView.setLeftDrawable(botVerification.hasRenderableContent() ? botVerification : null);
         } else {
-            botVerification.set(botVerificationIcon, false);
+            botVerification.set(botVerificationIcon, animateBadges);
             botVerification.setColor(Theme.getColor(Theme.key_chats_verifiedBackground, resourcesProvider));
             nameTextView.setLeftDrawable(botVerification);
         }
         if (currentUser != null && MessagesController.getInstance(currentAccount).isPremiumUser(currentUser) && !MessagesController.getInstance(currentAccount).premiumFeaturesBlocked() && !app.nimarkogram.messenger.NimarkoConfig.disablePremiumStatuses) {
             if (DialogObject.getEmojiStatusDocumentId(currentUser.emoji_status) != 0) {
-                emojiStatus.set(DialogObject.getEmojiStatusDocumentId(currentUser.emoji_status), false);
+                final boolean animated = isAttachedToWindow() && emojiStatusUserId == currentUser.id
+                        && emojiStatusAccount == currentAccount && nameTextView.getRightDrawable() == emojiStatus;
+                if (!animated) {
+                    emojiStatus.resetAnimation();
+                }
+                emojiStatus.setCurrentAccount(currentAccount);
+                emojiStatus.set(DialogObject.getEmojiStatusDocumentId(currentUser.emoji_status), animated);
+                emojiStatusUserId = currentUser.id;
+                emojiStatusAccount = currentAccount;
                 emojiStatus.setColor(Theme.getColor(Theme.key_chats_verifiedBackground, resourcesProvider));
                 nameTextView.setRightDrawable(emojiStatus);
             } else {
+                emojiStatusUserId = 0;
+                emojiStatus.set((Drawable) null, false);
+                emojiStatus.resetAnimation();
                 if (premiumDrawable == null) {
                     premiumDrawable = getContext().getResources().getDrawable(R.drawable.msg_premium_liststar).mutate();
                     premiumDrawable = new AnimatedEmojiDrawable.WrapSizeDrawable(premiumDrawable, dp(14), dp(14)) {
@@ -697,10 +744,13 @@ public class UserCell extends FrameLayout implements NotificationCenter.Notifica
             }
             nameTextView.setRightDrawableTopPadding(-dp(0.5f));
         } else {
+            emojiStatusUserId = 0;
+            emojiStatus.set((Drawable) null, false);
+            emojiStatus.resetAnimation();
             nameTextView.setRightDrawable(null);
             nameTextView.setRightDrawableTopPadding(0);
         }
-        applyNimarkoBadge(currentUser);
+        applyNimarkoBadge(currentUser, animateBadges);
         if (currentStatus != null) {
             statusTextView.setTextColor(statusColor);
             CharSequence status = currentStatus;
@@ -857,8 +907,11 @@ public class UserCell extends FrameLayout implements NotificationCenter.Notifica
     @Override
     protected void onDetachedFromWindow() {
         super.onDetachedFromWindow();
+        badgeOwnerBound = false;
         NotificationCenter.getGlobalInstance().removeObserver(this, NotificationCenter.emojiLoaded);
         emojiStatus.detach();
+        emojiStatus.resetAnimation();
+        emojiStatusUserId = 0;
         botVerification.detach();
         if (nimarkoBadgeEmoji != null) {
             nimarkoBadgeEmoji.detach();
@@ -866,16 +919,43 @@ public class UserCell extends FrameLayout implements NotificationCenter.Notifica
         storyParams.onDetachFromWindow();
     }
 
-    private void applyNimarkoBadge(TLRPC.User user) {
+    private boolean bindBadgeOwner(long peerId) {
+        final boolean animated = badgeOwnerBound && peerId != 0
+                && badgeOwnerId == peerId && badgeOwnerAccount == currentAccount
+                && isAttachedToWindow();
+        if (!animated) {
+            botVerification.resetAnimation();
+            if (nimarkoBadgeEmoji != null) {
+                nimarkoBadgeEmoji.resetAnimation();
+            }
+        }
+        botVerification.setCurrentAccount(currentAccount);
+        if (nimarkoBadgeEmoji != null) {
+            nimarkoBadgeEmoji.setCurrentAccount(currentAccount);
+        }
+        badgeOwnerBound = true;
+        badgeOwnerId = peerId;
+        badgeOwnerAccount = currentAccount;
+        return animated;
+    }
+    private void applyNimarkoBadge(TLRPC.User user, boolean animated) {
         currentNimarkoBadge = null;
         try {
             app.nimarkogram.messenger.api.dto.BadgeDTO badge =
                     app.nimarkogram.messenger.badges.BadgesController.getInstance().i(user);
             if (badge == null || badge.getDocumentId() == 0L) {
                 if (nimarkoBadgeEmoji != null) {
-                    nimarkoBadgeEmoji.set((Drawable) null, false);
-                    
-                    nimarkoBadgeEmoji.setParticles(false, false);
+                    nimarkoBadgeEmoji.set((Drawable) null, animated);
+                    nimarkoBadgeEmoji.setParticles(false, animated);
+                    if (nimarkoBadgeEmoji.hasRenderableContent()) {
+                        if (nameTextView.getRightDrawable() == null) {
+                            nameTextView.setRightDrawable(nimarkoBadgeEmoji);
+                            nameTextView.setRightDrawable2(null);
+                        } else {
+                            nameTextView.setRightDrawable2(nimarkoBadgeEmoji);
+                        }
+                        return;
+                    }
                 }
                 nameTextView.setRightDrawable2(null);
                 return;
@@ -887,11 +967,13 @@ public class UserCell extends FrameLayout implements NotificationCenter.Notifica
                     nimarkoBadgeEmoji.attach();
                 }
             }
-            nimarkoBadgeEmoji.set(badge.getDocumentId(), false);
-            nimarkoBadgeEmoji.setParticles(true, false);
+            nimarkoBadgeEmoji.setCurrentAccount(currentAccount);
+            nimarkoBadgeEmoji.set(badge.getDocumentId(), animated);
+            nimarkoBadgeEmoji.setParticles(true, animated);
             nimarkoBadgeEmoji.setColor(Theme.getColor(Theme.key_chats_verifiedBackground, resourcesProvider));
             if (nameTextView.getRightDrawable() == null) {
                 nameTextView.setRightDrawable(nimarkoBadgeEmoji);
+                nameTextView.setRightDrawable2(null);
             } else {
                 nameTextView.setRightDrawable2(nimarkoBadgeEmoji);
             }
@@ -904,6 +986,7 @@ public class UserCell extends FrameLayout implements NotificationCenter.Notifica
     }
 
     public void setFromUItem(int currentAccount, UItem item, boolean divider) {
+        this.currentAccount = currentAccount;
         if (item.chatType != null) {
             setData(item.chatType, item.text, null, 0, divider);
             return;

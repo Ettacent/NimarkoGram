@@ -126,6 +126,8 @@ public class ChatEditActivity extends BaseFragment implements ImageUpdater.Image
     private View doneButton;
 
     private AlertDialog progressDialog;
+    private AlertDialog botSaveDialog;
+    private int botSaveGeneration;
 
     private UndoView undoView;
     private LinearLayout avatarContainer;
@@ -413,22 +415,32 @@ public class ChatEditActivity extends BaseFragment implements ImageUpdater.Image
     }
 
     private void loadLinksCount() {
+        final long requestedChatId = chatId;
         TLRPC.TL_messages_getExportedChatInvites req = new TLRPC.TL_messages_getExportedChatInvites();
         req.peer = getMessagesController().getInputPeer(-chatId);
         req.admin_id = getMessagesController().getInputUser(getUserConfig().getCurrentUser());
         req.limit = 0;
-        getConnectionsManager().sendRequest(req, (response, error) -> AndroidUtilities.runOnUIThread(() -> {
-            if (error == null) {
-                TLRPC.TL_messages_exportedChatInvites invites = (TLRPC.TL_messages_exportedChatInvites) response;
-                info.invitesCount = invites.count;
-                getMessagesStorage().saveChatLinksCount(chatId, info.invitesCount);
-                updateFields(false, false);
+        int requestId = getConnectionsManager().sendRequest(req, (response, error) -> AndroidUtilities.runOnUIThread(() -> {
+            if (isFinished || requestedChatId != chatId || info == null || error != null
+                    || !(response instanceof TLRPC.TL_messages_exportedChatInvites)) {
+                return;
             }
+            int count = ((TLRPC.TL_messages_exportedChatInvites) response).count;
+            info.invitesCount = count;
+            getMessagesStorage().saveChatLinksCount(requestedChatId, count);
+            updateFields(false, false);
         }));
+        getConnectionsManager().bindRequestToGuid(requestId, classGuid);
     }
 
     @Override
     public void onFragmentDestroy() {
+        botSaveGeneration++;
+        if (botSaveDialog != null) {
+            AlertDialog dialog = botSaveDialog;
+            botSaveDialog = null;
+            dialog.dismiss();
+        }
         super.onFragmentDestroy();
         if (imageUpdater != null) {
             imageUpdater.clear();
@@ -948,14 +960,14 @@ public class ChatEditActivity extends BaseFragment implements ImageUpdater.Image
                 autoTranslationCell.setBackground(Theme.getSelectorDrawable(true));
                 autoTranslationCell.setTextAndCheckAndIcon(getString(R.string.ChannelAutotranslation), currentChat.autotranslation, R.drawable.msg_translate, false);
                 getMessagesController().getBoostsController().getBoostsStats(dialogId, boostsStatus -> {
-                    if (boostsStatus != null) {
+                    if (!isFinished && boostsStatus != null) {
                         autoTranslationCell.getCheckBox().setIcon(boostsStatus.level < getMessagesController().channelAutotranslationLevelMin ? R.drawable.permission_locked : 0);
                     }
                 });
                 typeEditContainer.addView(autoTranslationCell, LayoutHelper.createLinear(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
                 final boolean[] loading = new boolean[] { false };
                 autoTranslationCell.setOnClickListener(v -> {
-                    if (loading[0]) return;
+                    if (isFinished || loading[0] || getParentActivity() == null) return;
                     AlertDialog progressDialog = new AlertDialog(getParentActivity(), AlertDialog.ALERT_TYPE_SPINNER);
                     progressDialog.showDelayed(400);
                     loading[0] = true;
@@ -964,6 +976,14 @@ public class ChatEditActivity extends BaseFragment implements ImageUpdater.Image
                         autoTranslationCell.setChecked(newValue);
                     }
                     getMessagesController().getBoostsController().getBoostsStats(dialogId, boostsStatus -> {
+                        if (isFinished || boostsStatus == null) {
+                            loading[0] = false;
+                            progressDialog.dismiss();
+                            if (!isFinished) {
+                                autoTranslationCell.setChecked(currentChat.autotranslation);
+                            }
+                            return;
+                        }
                         if (currentChat.level != boostsStatus.level) {
                             currentChat.level = boostsStatus.level;
                             getMessagesController().putChat(currentChat, false);
@@ -972,10 +992,10 @@ public class ChatEditActivity extends BaseFragment implements ImageUpdater.Image
 
                         if (newValue && boostsStatus.level < getMessagesController().channelAutotranslationLevelMin) {
                             autoTranslationCell.setChecked(false);
-                            loading[0] = false;
                             getMessagesController().getBoostsController().userCanBoostChannel(dialogId, boostsStatus, canApplyBoost -> {
+                                loading[0] = false;
                                 progressDialog.dismiss();
-                                if (getContext() == null) return;
+                                if (isFinished || getContext() == null) return;
                                 LimitReachedBottomSheet limitReachedBottomSheet = new LimitReachedBottomSheet(this, getContext(), LimitReachedBottomSheet.TYPE_BOOSTS_FOR_AUTOTRANSLATION, currentAccount, getResourceProvider());
                                 limitReachedBottomSheet.setCanApplyBoost(canApplyBoost);
                                 limitReachedBottomSheet.setBoostsStats(boostsStatus, true);
@@ -995,18 +1015,25 @@ public class ChatEditActivity extends BaseFragment implements ImageUpdater.Image
                         req.channel = getMessagesController().getInputChannel(currentChat);
                         req.enabled = newValue;
                         autoTranslationCell.setChecked(newValue);
-                        loading[0] = false;
-                        progressDialog.dismiss();
                         getConnectionsManager().sendRequest(req, (res, err) -> {
                             if (res instanceof TLRPC.Updates) {
                                 getMessagesController().processUpdates((TLRPC.Updates) res, false);
                                 AndroidUtilities.runOnUIThread(() -> {
+                                    loading[0] = false;
+                                    progressDialog.dismiss();
                                     currentChat.autotranslation = newValue;
                                     getMessagesController().putChat(currentChat, false);
+                                    if (!isFinished) {
+                                        autoTranslationCell.setChecked(newValue);
+                                    }
                                 });
                             } else {
                                 AndroidUtilities.runOnUIThread(() -> {
-                                    autoTranslationCell.setChecked(currentChat.autotranslation);
+                                    loading[0] = false;
+                                    progressDialog.dismiss();
+                                    if (!isFinished) {
+                                        autoTranslationCell.setChecked(currentChat.autotranslation);
+                                    }
                                 });
                             }
                         }, ConnectionsManager.RequestFlagInvokeAfter);
@@ -2060,7 +2087,7 @@ public class ChatEditActivity extends BaseFragment implements ImageUpdater.Image
     }
 
     private int getAdminCount() {
-        if (info == null) {
+        if (info == null || info.participants == null || info.participants.participants == null) {
             return 1;
         }
         int count = 0;
@@ -2075,7 +2102,7 @@ public class ChatEditActivity extends BaseFragment implements ImageUpdater.Image
     }
 
     private void processDone() {
-        if (donePressed || nameTextView == null) {
+        if (isFinished || donePressed || nameTextView == null || getParentActivity() == null) {
             return;
         }
         if (nameTextView.length() == 0) {
@@ -2088,7 +2115,7 @@ public class ChatEditActivity extends BaseFragment implements ImageUpdater.Image
         }
         donePressed = true;
         if (currentUser != null) {
-            TL_bots.setBotInfo req = new TL_bots.setBotInfo();
+            final TL_bots.setBotInfo req = new TL_bots.setBotInfo();
             req.bot = getMessagesController().getInputUser(currentUser);
             req.flags |= 4;
             req.lang_code = "";
@@ -2104,24 +2131,59 @@ public class ChatEditActivity extends BaseFragment implements ImageUpdater.Image
                 req.flags |= 1;
             }
 
-            progressDialog = new AlertDialog(getParentActivity(), AlertDialog.ALERT_TYPE_SPINNER);
-            int reqId = getConnectionsManager().sendRequest(req, (response, error) -> {
-                if (userInfo != null) {
-                    userInfo.about = req.about;
-                    getMessagesStorage().updateUserInfo(userInfo, false);
+            final int generation = ++botSaveGeneration;
+            final AlertDialog dialog = new AlertDialog(getParentActivity(), AlertDialog.ALERT_TYPE_SPINNER);
+            botSaveDialog = dialog;
+            final int reqId = getConnectionsManager().sendRequest(req, (response, error) -> AndroidUtilities.runOnUIThread(() -> {
+                if (isFinished || generation != botSaveGeneration || botSaveDialog != dialog) {
+                    return;
                 }
 
-                AndroidUtilities.runOnUIThread(() -> {
-                    progressDialog.dismiss();
-                    finishFragment();
-                });
-            });
-            progressDialog.setOnCancelListener(dialog -> {
+                botSaveDialog = null;
+                dialog.dismiss();
+                if (error != null || !(response instanceof TLRPC.TL_boolTrue)) {
+                    donePressed = false;
+                    BulletinFactory.of(this).showForError(error);
+                    return;
+                }
+                if ((req.flags & 8) != 0) {
+                    TLRPC.User cachedUser = getMessagesController().getUser(userId);
+                    if (cachedUser != null) {
+                        currentUser = cachedUser;
+                    }
+                    currentUser.first_name = req.name;
+                    currentUser.flags |= 2;
+                    getMessagesController().putUser(currentUser, false);
+                    ArrayList<TLRPC.User> users = new ArrayList<>();
+                    users.add(currentUser);
+                    getMessagesStorage().putUsersAndChats(users, null, false, true);
+                    getNotificationCenter().postNotificationName(NotificationCenter.updateInterfaces, MessagesController.UPDATE_MASK_NAME);
+                }
+                if ((req.flags & 1) != 0) {
+                    TLRPC.UserFull cachedInfo = getMessagesController().getUserFull(userId);
+                    if (cachedInfo != null) {
+                        userInfo = cachedInfo;
+                    }
+                    if (userInfo != null) {
+                        userInfo.about = req.about;
+                        userInfo.flags = TextUtils.isEmpty(req.about) ? userInfo.flags & ~2 : userInfo.flags | 2;
+                        getMessagesStorage().updateUserInfo(userInfo, false);
+                        getNotificationCenter().postNotificationName(NotificationCenter.userInfoDidLoad, userId, userInfo);
+                    }
+                }
+                finishFragment();
+            }));
+            getConnectionsManager().bindRequestToGuid(reqId, classGuid);
+            dialog.setOnCancelListener(ignored -> {
+                if (generation != botSaveGeneration || botSaveDialog != dialog) {
+                    return;
+                }
+                botSaveGeneration++;
+                botSaveDialog = null;
                 donePressed = false;
-                progressDialog = null;
                 getConnectionsManager().cancelRequest(reqId, true);
             });
-            progressDialog.show();
+            dialog.show();
             return;
         }
         if (!ChatObject.isChannel(currentChat) && (!historyHidden || forum)) {

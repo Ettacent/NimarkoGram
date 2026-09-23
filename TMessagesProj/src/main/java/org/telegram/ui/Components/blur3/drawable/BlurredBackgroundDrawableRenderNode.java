@@ -15,8 +15,10 @@ import androidx.annotation.NonNull;
 import androidx.annotation.RequiresApi;
 
 import org.telegram.ui.ActionBar.Theme;
+import org.telegram.ui.Components.blur3.BlurredBackgroundDrawableViewFactory;
 import org.telegram.ui.Components.blur3.LiquidGlassEffect;
 import org.telegram.ui.Components.blur3.source.BlurredBackgroundSource;
+import app.nimarkogram.messenger.NimarkoConfig;
 
 @RequiresApi(api = Build.VERSION_CODES.Q)
 public class BlurredBackgroundDrawableRenderNode extends BlurredBackgroundDrawable {
@@ -30,6 +32,7 @@ public class BlurredBackgroundDrawableRenderNode extends BlurredBackgroundDrawab
     private final Paint paintShadow = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint paintStrokeTop = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint paintStrokeBottom = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint paintStrokeFull = new Paint(Paint.ANTI_ALIAS_FLAG);
 
     private boolean renderNodeInvalidated;
 
@@ -53,10 +56,36 @@ public class BlurredBackgroundDrawableRenderNode extends BlurredBackgroundDrawab
     }
 
     private LiquidGlassEffect liquidGlassEffect;
+    private boolean liquidGlassEffectAllowed;
+    private boolean liquidGlassEffectEnabled;
+    private boolean lastLiquidGlassEnabled = BlurredBackgroundDrawableViewFactory.isLiquidGlassEnabled();
+    private boolean lastGlareOnElements = NimarkoConfig.glareOnElements;
 
     @RequiresApi(api = Build.VERSION_CODES.TIRAMISU)
     public void setLiquidGlassEffectAllowed() {
-        liquidGlassEffect = new LiquidGlassEffect(renderNodeFill);
+        liquidGlassEffectAllowed = true;
+        renderNodeInvalidated = true;
+    }
+    private void updateGlassSettings(boolean hardwareAccelerated) {
+        final boolean enabled = BlurredBackgroundDrawableViewFactory.isLiquidGlassEnabled();
+        if (lastLiquidGlassEnabled != enabled || lastGlareOnElements != NimarkoConfig.glareOnElements) {
+            lastLiquidGlassEnabled = enabled;
+            lastGlareOnElements = NimarkoConfig.glareOnElements;
+            updateColors();
+        }
+        if (!hardwareAccelerated) {
+            return;
+        }
+        final boolean useLiquid = liquidGlassEffectAllowed && enabled
+                && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU;
+        if (useLiquid && liquidGlassEffect == null) {
+            liquidGlassEffect = new LiquidGlassEffect(renderNodeFill);
+        }
+        if (liquidGlassEffectEnabled != useLiquid) {
+            liquidGlassEffectEnabled = useLiquid;
+            liquidGlassEffect.setEnabled(useLiquid);
+            renderNodeInvalidated = true;
+        }
     }
 
     @Override
@@ -111,9 +140,9 @@ public class BlurredBackgroundDrawableRenderNode extends BlurredBackgroundDrawab
         c = renderNodeFill.beginRecording();
         c.save();
         c.translate(-sL, -sT);
-        if (liquidGlassEffect != null && Build.VERSION.SDK_INT >= 33) {
+        if (liquidGlassEffectEnabled && Build.VERSION.SDK_INT >= 33) {
             final int thickness = Math.max(Math.min(
-                boundProps.liquidThickness <= 0 ? dp(11) : boundProps.liquidThickness,
+                boundProps.liquidThickness <= 0 ? dp(14) : boundProps.liquidThickness,
                 Math.min(boundProps.boundsWithPadding.width(), boundProps.boundsWithPadding.height()) / 5), 1);
 
             liquidGlassEffect.update(
@@ -126,17 +155,17 @@ public class BlurredBackgroundDrawableRenderNode extends BlurredBackgroundDrawab
             );
         }
         source.draw(c, sL, sT, sR, sB);
-        c.save();
+        c.restore();
         renderNodeFill.endRecording();
 
         c = renderNode.beginRecording();
-        final int effectiveBackgroundColor = liquidGlassEffect != null && Build.VERSION.SDK_INT >= 33
+        final int effectiveBackgroundColor = liquidGlassEffectEnabled && Build.VERSION.SDK_INT >= 33
                 ? liquidGlassEffect.getForegroundColor() : backgroundColor;
         if (Color.alpha(effectiveBackgroundColor) == 255) {
             c.drawColor(effectiveBackgroundColor);
         } else {
             c.drawRenderNode(renderNodeFill);
-            if (liquidGlassEffect == null && Color.alpha(backgroundColor) != 0) {
+            if (!liquidGlassEffectEnabled && Color.alpha(backgroundColor) != 0) {
                 c.drawColor(backgroundColor);
             }
         }
@@ -152,13 +181,10 @@ public class BlurredBackgroundDrawableRenderNode extends BlurredBackgroundDrawab
         }
         
         if (strokeColorFull != 0) {
-            paintStrokeTop.setColor(strokeColorFull);
-            drawStroke(c, 0, 0, boundProps.boundsWithPadding.width(),
-                    boundProps.boundsWithPadding.height(), boundProps.radii,
-                    boundProps.strokeWidthTop, true, paintStrokeTop);
-            drawStroke(c, 0, 0, boundProps.boundsWithPadding.width(),
-                    boundProps.boundsWithPadding.height(), boundProps.radii,
-                    boundProps.strokeWidthTop, false, paintStrokeTop);
+            c.save();
+            c.translate(-boundProps.boundsWithPadding.left, -boundProps.boundsWithPadding.top);
+            c.drawPath(boundProps.strokePathFull, paintStrokeFull);
+            c.restore();
         }
         renderNode.endRecording();
     }
@@ -170,6 +196,7 @@ public class BlurredBackgroundDrawableRenderNode extends BlurredBackgroundDrawab
         paintShadow.setShadowLayer(shadowLayerRadius, shadowLayerDx, shadowLayerDy, shadowColor);
         paintStrokeTop.setColor(strokeColorTop);
         paintStrokeBottom.setColor(strokeColorBottom);
+        paintStrokeFull.setColor(strokeColorFull);
 
         renderNodeInvalidated = true;
     }
@@ -179,16 +206,14 @@ public class BlurredBackgroundDrawableRenderNode extends BlurredBackgroundDrawab
         if (boundProps.boundsWithPadding.isEmpty()) {
             return;
         }
+        updateGlassSettings(canvas.isHardwareAccelerated());
 
         if (!canvas.isHardwareAccelerated()) {
             drawSource(canvas, source);
             return;
         }
 
-        if (!renderNode.hasDisplayList()) {
-            source.dispatchOnDrawablesRelativePositionChange();
-            updateDisplayList();
-        } else if (renderNodeInvalidated) {
+        if (!renderNode.hasDisplayList() || renderNodeInvalidated) {
             updateDisplayList();
         }
         renderNodeInvalidated = false;
@@ -219,9 +244,7 @@ public class BlurredBackgroundDrawableRenderNode extends BlurredBackgroundDrawab
 
         super.setAlpha(alpha);
         renderNode.setAlpha(alpha / 255f);
-        renderNodeInvalidated = true;
-
-        if (oldAlpha == 0 && alpha > 0) {
+        if ((oldAlpha == 0) != (alpha == 0)) {
             source.dispatchOnDrawablesRelativePositionChange();
         }
     }

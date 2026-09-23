@@ -32,6 +32,7 @@ import org.telegram.messenger.utils.RadiiUtils;
 import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.Components.blur3.Blur3HashImpl;
 import org.telegram.ui.Components.blur3.drawable.color.BlurredBackgroundColorProvider;
+import org.telegram.ui.Components.blur3.drawable.color.BlurredBackgroundColorProviderThemed;
 import org.telegram.ui.Components.blur3.drawable.color.BlurredBackgroundProvider;
 import org.telegram.ui.Components.blur3.source.BlurredBackgroundSource;
 import org.telegram.ui.Components.blur3.source.BlurredBackgroundSourceBitmap;
@@ -43,7 +44,7 @@ import org.telegram.ui.Components.blur3.utils.NinePatchBuilder;
 import java.util.Arrays;
 
 public abstract class BlurredBackgroundDrawable extends Drawable {
-    public static final float DEFAULT_LIQUID_INTENSITY = 0.75f;
+    public static final float DEFAULT_LIQUID_INTENSITY = 0.9f;
 
     public BlurredBackgroundDrawable() {
         boundProps.strokeWidthTop = dpf2(1);
@@ -112,6 +113,7 @@ public abstract class BlurredBackgroundDrawable extends Drawable {
         boundProps.radii[2] = boundProps.radii[3] = topRight;
         boundProps.radii[4] = boundProps.radii[5] = bottomRight;
         boundProps.radii[6] = boundProps.radii[7] = bottomLeft;
+        System.arraycopy(boundProps.radii, 0, boundProps.shaderRadii, 0, boundProps.radii.length);
         boundProps.build();
 
         onBoundPropsChanged();
@@ -197,19 +199,27 @@ public abstract class BlurredBackgroundDrawable extends Drawable {
 
     public BlurredBackgroundDrawable setColorProvider(BlurredBackgroundColorProvider colorProvider) {
         this.colorProvider = colorProvider;
-        updateColors();
 
         if (colorProvider instanceof BlurredBackgroundProvider) {
             BlurredBackgroundProvider provider = (BlurredBackgroundProvider) colorProvider;
             setStrokeWidth(provider.getStrokeWidthTop(), provider.getStrokeWidthBottom());
             setShadowParams(provider.getShadowRadius(), provider.getShadowDx(), provider.getShadowDy());
         }
+        updateColors();
         return this;
     }
 
     @CallSuper
     public void updateColors() {
         if (colorProvider == null) return;
+        final int oldBackgroundColor = backgroundColor;
+        final int oldShadowColor = shadowColor;
+        final int oldStrokeColorTop = strokeColorTop;
+        final int oldStrokeColorBottom = strokeColorBottom;
+        final int oldStrokeColorFull = strokeColorFull;
+        if (colorProvider instanceof BlurredBackgroundColorProviderThemed) {
+            ((BlurredBackgroundColorProviderThemed) colorProvider).updateColors();
+        }
 
         backgroundColor = colorProvider.getBackgroundColor();
         shadowColor = colorProvider.getShadowColor();
@@ -226,6 +236,11 @@ public abstract class BlurredBackgroundDrawable extends Drawable {
             strokeColorTop = 0;
             strokeColorBottom = 0;
             strokeColorFull = colorProvider.getStrokeColorFull();
+        }
+        if (oldBackgroundColor != backgroundColor || oldShadowColor != shadowColor
+                || oldStrokeColorTop != strokeColorTop || oldStrokeColorBottom != strokeColorBottom
+                || oldStrokeColorFull != strokeColorFull) {
+            invalidateSelf();
         }
     }
 
@@ -255,6 +270,7 @@ public abstract class BlurredBackgroundDrawable extends Drawable {
 
         public final Path strokePathTop = new Path();
         public final Path strokePathBottom = new Path();
+        public final Path strokePathFull = new Path();
 
         public void build() {
             radiiAreSame = RadiiUtils.radiiAreSame(radii);
@@ -270,6 +286,23 @@ public abstract class BlurredBackgroundDrawable extends Drawable {
                 boundsWithPadding.bottom,
                 radii, Path.Direction.CW);
             path.close();
+            strokePathFull.rewind();
+            if (strokeWidthTop > 0 && !boundsWithPadding.isEmpty()) {
+                strokePathFull.set(path);
+                if (boundsWithPadding.width() > strokeWidthTop * 2
+                        && boundsWithPadding.height() > strokeWidthTop * 2) {
+                    for (int i = 0; i < tmpRadii.length; i++) {
+                        tmpRadii[i] = Math.max(0, radii[i] - strokeWidthTop);
+                    }
+                    strokePathFull.addRoundRect(
+                        boundsWithPadding.left + strokeWidthTop,
+                        boundsWithPadding.top + strokeWidthTop,
+                        boundsWithPadding.right - strokeWidthTop,
+                        boundsWithPadding.bottom - strokeWidthTop,
+                        tmpRadii, Path.Direction.CCW);
+                    strokePathFull.close();
+                }
+            }
 
             final float radiusMax = Math.min(boundsWithPadding.width(), boundsWithPadding.height()) / 2f;
 
@@ -380,7 +413,10 @@ public abstract class BlurredBackgroundDrawable extends Drawable {
 
     @Override
     public void setAlpha(int alpha) {
-        this.alpha = alpha;
+        if (this.alpha != alpha) {
+            this.alpha = alpha;
+            invalidateSelf();
+        }
     }
 
     @Override
@@ -553,12 +589,20 @@ public abstract class BlurredBackgroundDrawable extends Drawable {
     }
 
     public void setShadowAlpha(float alpha) {
-        shadowAlpha = alpha;
+        if (shadowAlpha != alpha) {
+            shadowAlpha = alpha;
+            invalidateSelf();
+        }
     }
 
     public void setStrokeWidth(float strokeWidthTop, float strokeWidthBottom) {
-        boundProps.strokeWidthTop = strokeWidthTop;
-        boundProps.strokeWidthBottom = strokeWidthBottom;
+        if (boundProps.strokeWidthTop != strokeWidthTop || boundProps.strokeWidthBottom != strokeWidthBottom) {
+            boundProps.strokeWidthTop = strokeWidthTop;
+            boundProps.strokeWidthBottom = strokeWidthBottom;
+            boundProps.build();
+            onBoundPropsChanged();
+            invalidateSelf();
+        }
     }
 
 
@@ -566,7 +610,7 @@ public abstract class BlurredBackgroundDrawable extends Drawable {
     /* Universal */
 
     protected void drawSource(Canvas canvas, BlurredBackgroundSource source) {
-        if (boundProps.boundsWithPadding.isEmpty()) {
+        if (alpha == 0 || boundProps.boundsWithPadding.isEmpty()) {
             return;
         }
 
@@ -585,6 +629,8 @@ public abstract class BlurredBackgroundDrawable extends Drawable {
             drawSource(canvas, ((BlurredBackgroundSourceWrapped) source).getSource());
         } else if (source != null) {
             drawSourceAny(canvas, source);
+        } else {
+            drawSourceColorImpl(canvas, 0);
         }
     }
 
@@ -611,14 +657,31 @@ public abstract class BlurredBackgroundDrawable extends Drawable {
     }
 
 
-    private void drawSourceAny(Canvas canvas, BlurredBackgroundSource source) {
-        if (alpha == 0) {
+    private void drawShadow(Canvas canvas) {
+        final int shadowDrawAlpha = MathUtils.clamp(Math.round(alpha * shadowAlpha), 0, 255);
+        if (Color.alpha(shadowColor) == 0 || shadowLayerRadius <= 0 || shadowDrawAlpha == 0) {
             return;
         }
 
-        final int backgroundColor = Theme.multAlpha(this.backgroundColor, alpha / 255f);
-        if (Color.alpha(shadowColor) > 0 && alpha == 255 && shadowAlpha > 0) {
-            shadowPaint.setShadowLayer(shadowLayerRadius, shadowLayerDx, shadowLayerDy, Theme.multAlpha(shadowColor, shadowAlpha));
+        final NinePatchDrawable shadow = checkShadowDrawable();
+        shadow.setBounds(
+            boundProps.boundsWithPadding.left - ninePatchDrawablePadding.left,
+            boundProps.boundsWithPadding.top - ninePatchDrawablePadding.top,
+            boundProps.boundsWithPadding.right + ninePatchDrawablePadding.right,
+            boundProps.boundsWithPadding.bottom + ninePatchDrawablePadding.bottom
+        );
+        shadow.setAlpha(shadowDrawAlpha);
+        shadow.draw(canvas);
+    }
+    private int saveContentLayer(Canvas canvas) {
+        return alpha == 255 ? -1 : canvas.saveLayerAlpha(
+            boundProps.boundsWithPadding.left, boundProps.boundsWithPadding.top,
+            boundProps.boundsWithPadding.right, boundProps.boundsWithPadding.bottom, alpha);
+    }
+    private void drawSourceAny(Canvas canvas, BlurredBackgroundSource source) {
+        final int effectiveShadowColor = Theme.multAlpha(shadowColor, alpha / 255f * shadowAlpha);
+        if (Color.alpha(effectiveShadowColor) > 0) {
+            shadowPaint.setShadowLayer(shadowLayerRadius, shadowLayerDx, shadowLayerDy, effectiveShadowColor);
             boundProps.drawShadows(canvas, shadowPaint, inAppKeyboardOptimization);
         }
 
@@ -629,11 +692,7 @@ public abstract class BlurredBackgroundDrawable extends Drawable {
         final float sR = boundProps.boundsWithPadding.right + offsetX;
         final float sB = boundProps.boundsWithPadding.bottom + offsetY;
 
-        final boolean needSaveLayer = alpha != 255;
-        if (needSaveLayer) {
-            canvas.saveLayerAlpha(boundProps.boundsWithPadding.left, boundProps.boundsWithPadding.top,
-                    boundProps.boundsWithPadding.right, boundProps.boundsWithPadding.bottom, alpha);
-        }
+        final int layer = saveContentLayer(canvas);
 
         canvas.save();
         canvas.clipPath(boundProps.path);
@@ -652,8 +711,8 @@ public abstract class BlurredBackgroundDrawable extends Drawable {
 
         drawStrokeInternalIfNeeded(canvas);
 
-        if (needSaveLayer) {
-            canvas.restore();
+        if (layer != -1) {
+            canvas.restoreToCount(layer);
         }
     }
 
@@ -663,19 +722,17 @@ public abstract class BlurredBackgroundDrawable extends Drawable {
 
     private void drawSourceColorImpl(Canvas canvas, int sourceColor) {
         final int fillColor = ColorUtils.compositeColors(this.backgroundColor, sourceColor);
-        if (Color.alpha(fillColor) == 0 && Color.alpha(shadowColor) == 0) {
-            return;
+        drawShadow(canvas);
+        final int layer = saveContentLayer(canvas);
+        if (Color.alpha(fillColor) > 0) {
+            backgroundColorPaint.setColor(fillColor);
+            boundProps.draw(canvas, backgroundColorPaint);
+        }
+        drawStrokeInternalIfNeeded(canvas);
+        if (layer != -1) {
+            canvas.restoreToCount(layer);
         }
 
-        final NinePatchDrawable ninePatchDrawable = checkNinePatchDrawable(fillColor, true);
-        ninePatchDrawable.setBounds(
-            boundProps.boundsWithPadding.left - ninePatchDrawablePadding.left,
-            boundProps.boundsWithPadding.top - ninePatchDrawablePadding.top,
-            boundProps.boundsWithPadding.right + ninePatchDrawablePadding.right,
-            boundProps.boundsWithPadding.bottom + ninePatchDrawablePadding.bottom
-        );
-        ninePatchDrawable.setAlpha(alpha);
-        ninePatchDrawable.draw(canvas);
     }
 
     private void drawSourceBitmap(Canvas canvas, BlurredBackgroundSourceBitmap source) {
@@ -693,33 +750,26 @@ public abstract class BlurredBackgroundDrawable extends Drawable {
             backgroundBitmapPaint.setShader(bitmapShader);
         }
 
-        if (Color.alpha(shadowColor) > 0) {
-            final NinePatchDrawable ninePatchDrawable = checkNinePatchDrawable(0, false);
-            ninePatchDrawable.setBounds(
-                boundProps.boundsWithPadding.left - ninePatchDrawablePadding.left,
-                boundProps.boundsWithPadding.top - ninePatchDrawablePadding.top,
-                boundProps.boundsWithPadding.right + ninePatchDrawablePadding.right,
-                boundProps.boundsWithPadding.bottom + ninePatchDrawablePadding.bottom
-            );
-            ninePatchDrawable.setAlpha(alpha);
-            ninePatchDrawable.draw(canvas);
-        }
+        drawShadow(canvas);
+        final int layer = saveContentLayer(canvas);
 
         if (bitmapShader != null && newBitmap != null && !newBitmap.isRecycled() && alpha > 0) {
             bitmapShaderMatrix.set(source.getMatrix());
             bitmapShaderMatrix.postTranslate(-sourceOffsetX, -sourceOffsetY);
             bitmapShader.setLocalMatrix(bitmapShaderMatrix);
-            backgroundBitmapPaint.setAlpha(alpha);
+            backgroundBitmapPaint.setAlpha(255);
             boundProps.draw(canvas, backgroundBitmapPaint);
         }
 
-        final int backgroundColor = Theme.multAlpha(this.backgroundColor, alpha / 255f);
         if (Color.alpha(backgroundColor) > 0) {
             backgroundBitmapFill.setColor(backgroundColor);
             boundProps.draw(canvas, backgroundBitmapFill);
         }
 
         drawStrokeInternalIfNeeded(canvas);
+        if (layer != -1) {
+            canvas.restoreToCount(layer);
+        }
     }
 
     private void drawStrokeInternalIfNeeded(Canvas canvas) {
@@ -727,14 +777,11 @@ public abstract class BlurredBackgroundDrawable extends Drawable {
         // provider supplies a single full-stroke colour to draw a clean
         // uniform outline using the top path (full perimeter of the rounded
         // rect). This matches extera's `useFullStroke` branch.
-        final int strokeColorFull = Theme.multAlpha(this.strokeColorFull, alpha / 255f);
         if (Color.alpha(strokeColorFull) > 0) {
             paintStrokeFill.setColor(strokeColorFull);
-            canvas.drawPath(boundProps.strokePathTop, paintStrokeFill);
+            canvas.drawPath(boundProps.strokePathFull, paintStrokeFill);
             return;
         }
-        final int strokeColorTop = Theme.multAlpha(this.strokeColorTop, alpha / 255f);
-        final int strokeColorBottom = Theme.multAlpha(this.strokeColorBottom, alpha / 255f);
 
         if (Color.alpha(strokeColorTop) > 0) {
             paintStrokeFill.setColor(strokeColorTop);
@@ -752,6 +799,7 @@ public abstract class BlurredBackgroundDrawable extends Drawable {
             drawSource(canvas, source.getFallbackSource());
             return;
         }
+        drawSourceAny(canvas, source);
 
         // todo: move from drawableRenderNode
     }
@@ -789,95 +837,33 @@ public abstract class BlurredBackgroundDrawable extends Drawable {
     private final Rect ninePatchDrawablePadding = new Rect();
     private NinePatchDrawable ninePatchDrawable;
     private long ninePatchDrawableHash;
-    private Bitmap[] ninePatchRef;
 
     @NonNull
-    private NinePatchDrawable checkNinePatchDrawable(int fillColor, boolean withStroke) {
+    private NinePatchDrawable checkShadowDrawable() {
         ninePatchHashBuilder.start();
-        ninePatchHashBuilder.add(fillColor);
         ninePatchHashBuilder.add(shadowColor);
         ninePatchHashBuilder.add(boundProps.radii);
         ninePatchHashBuilder.addF(shadowLayerRadius);
         ninePatchHashBuilder.addF(shadowLayerDx);
         ninePatchHashBuilder.addF(shadowLayerDy);
-        ninePatchHashBuilder.add(withStroke);
-        if (withStroke) {
-            ninePatchHashBuilder.add(strokeColorTop);
-            ninePatchHashBuilder.add(strokeColorBottom);
-            ninePatchHashBuilder.addF(boundProps.strokeWidthTop);
-            ninePatchHashBuilder.addF(boundProps.strokeWidthBottom);
-        }
 
         final long hash = ninePatchHashBuilder.get();
 
         if (ninePatchDrawable == null || ninePatchDrawableHash != hash) {
             ninePatchDrawableHash = hash;
 
-            final int colorHint = Color.alpha(fillColor) == 255 ? fillColor : NinePatchBuilder.NO_COLOR;
 
             ninePatchDrawable = NinePatchBuilder.createNinePatch(
-                ninePatchRef,
+                null,
                 boundProps.radii, shadowLayerRadius,
                 shadowLayerDx, shadowLayerDy,
-                colorHint, (canvas, rect, radii1) -> {
+                NinePatchBuilder.NO_COLOR, (canvas, rect, radii) -> {
                     final Path path = new Path();
-                    path.addRoundRect(rect, radii1, Path.Direction.CW);
+                    path.addRoundRect(rect, radii, Path.Direction.CW);
                     final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
-                    paint.setStyle(Paint.Style.FILL);
-                    paint.setColor(fillColor);
-                    if (shadowLayerRadius > 0f) {
-                        paint.setShadowLayer(shadowLayerRadius, shadowLayerDx, shadowLayerDy, shadowColor);
-                    }
+                    paint.setColor(Color.TRANSPARENT);
+                    paint.setShadowLayer(shadowLayerRadius, shadowLayerDx, shadowLayerDy, shadowColor);
                     canvas.drawPath(path, paint);
-                    if (shadowLayerRadius > 0f) {
-                        paint.clearShadowLayer();
-                        canvas.drawPath(path, paint);
-                    }
-
-
-                    if (withStroke) {
-                        final float[] radii = Arrays.copyOf(boundProps.radii, 8);
-                        final boolean radiiAreSame = RadiiUtils.radiiAreSame(radii);
-                        final float radiusMax = Math.min(rect.width(), rect.height()) / 2f;
-                        final Paint strokePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-
-                        if (Color.alpha(strokeColorTop) > 0 && radii[0] > 0) {
-                            Arrays.fill(tmpRadii, 0);
-                            tmpRadii[0] = radii[0]; tmpRadii[1] = radii[1]; tmpRadii[2] = radii[2]; tmpRadii[3] = radii[3];
-                            if (radiiAreSame && radii[0] > radiusMax) {
-                                tmpRadii[0] = tmpRadii[1] = tmpRadii[2] = tmpRadii[3] = radiusMax;
-                            }
-
-                            final Path strokePathTop = new Path();
-
-                            strokePathTop.addRoundRect(
-                                    rect.left, rect.top, rect.right,
-                                    Math.min(rect.top + Math.max(radii[0], radii[2]), rect.bottom), tmpRadii, Path.Direction.CW);
-                            strokePathTop.addRoundRect(
-                                    rect.left, rect.top + boundProps.strokeWidthTop, rect.right,
-                                    Math.min(rect.top + Math.max(radii[0], radii[2]), rect.bottom), tmpRadii, Path.Direction.CCW);
-                            strokePaint.setColor(strokeColorTop);
-                            canvas.drawPath(strokePathTop, strokePaint);
-                        }
-
-                        if (Color.alpha(strokeColorBottom) > 0 && radii[4] > 0) {
-                            Arrays.fill(tmpRadii, 0);
-                            tmpRadii[4] = radii[4]; tmpRadii[5] = radii[5]; tmpRadii[6] = radii[6]; tmpRadii[7] = radii[7];
-                            if (radiiAreSame && radii[0] > radiusMax) {
-                                tmpRadii[4] = tmpRadii[5] = tmpRadii[6] = tmpRadii[7] = radiusMax;
-                            }
-
-                            final Path strokePathBottom = new Path();
-                            strokePathBottom.addRoundRect(
-                                    rect.left, Math.max(rect.bottom - Math.max(radii[4], radii[6]), rect.top),
-                                    rect.right, rect.bottom, tmpRadii, Path.Direction.CW);
-                            strokePathBottom.addRoundRect(
-                                    rect.left, Math.max(rect.bottom - Math.max(radii[4], radii[6]), rect.top),
-                                    rect.right, rect.bottom - boundProps.strokeWidthBottom, tmpRadii, Path.Direction.CCW);
-                            strokePaint.setColor(strokeColorBottom);
-                            canvas.drawPath(strokePathBottom, strokePaint);
-                        }
-                    }
                 }
             );
 

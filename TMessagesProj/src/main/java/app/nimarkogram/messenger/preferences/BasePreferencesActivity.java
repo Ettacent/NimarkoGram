@@ -49,14 +49,14 @@ public abstract class BasePreferencesActivity extends BaseFragment {
     protected UniversalRecyclerView listView;
     private int initialSearchItemId;
     private SettingsSearchHighlight searchHighlight;
-    private final Runnable toggleRowsRefresh = () -> {
-        if (listView != null && listView.adapter != null) {
-            listView.adapter.update(true);
-        }
-    };
+    private int listWorkGeneration;
+    private boolean toggleRowsRefreshPending;
+    private Runnable initialSearchScroll;
+    private Runnable toggleRowsRefresh;
 
     @Override
     public View createView(Context context) {
+        cancelPendingListWork();
         initializeOptionStrings();
         // CherryGram parity: animated morphing back arrow (matches
         // UniversalFragment.createView L34 and every CG *PreferencesEntry).
@@ -83,6 +83,8 @@ public abstract class BasePreferencesActivity extends BaseFragment {
                 (UItem item, View v, Integer pos, Float fx, Float fy) -> self.onClick(item, v, pos, fx, fy),
                 (UItem item, View v, Integer pos, Float fx, Float fy) -> self.onLongClick(item, v, pos, fx, fy));
         this.listView = universalRecyclerView;
+        prepareListCallbacks();
+        universalRecyclerView.setTranslateSelector(true);
         // MD3 island rendering — match Cherrygram's UniversalFragment 1:1
         // (CG UniversalFragment.java lines 71-74, isMD3Enabled branch):
         //   listView.setSections(true);
@@ -100,7 +102,7 @@ public abstract class BasePreferencesActivity extends BaseFragment {
         this.layoutManager = universalRecyclerView.layoutManager;
         frameLayout.addView(this.listView, LayoutHelper.createFrame(-1, -1.0f));
         if (initialSearchItemId != 0) {
-            this.listView.post(() -> scrollToItem(initialSearchItemId));
+            this.listView.post(initialSearchScroll);
         }
         this.fragmentView = frameLayout;
         // drawEdgeNavigationBar() is disabled so the system gesture indicator
@@ -167,6 +169,8 @@ public abstract class BasePreferencesActivity extends BaseFragment {
     public void onResume() {
         super.onResume();
         if (this.listView != null) {
+            toggleRowsRefreshPending = false;
+            this.listView.removeCallbacks(toggleRowsRefresh);
             this.listView.adapter.update(false);
         }
         Bulletin.addDelegate(this, new Bulletin.Delegate() {
@@ -198,13 +202,40 @@ public abstract class BasePreferencesActivity extends BaseFragment {
         layoutManager.scrollToPositionWithOffset(iFindPositionByItemId, AndroidUtilities.dp(80.0f));
     }
     protected void updateItemsAfterToggle() {
-        AndroidUtilities.cancelRunOnUIThread(toggleRowsRefresh);
-        AndroidUtilities.runOnUIThread(toggleRowsRefresh, 32);
+        if (listView != null && toggleRowsRefresh != null && !toggleRowsRefreshPending) {
+            toggleRowsRefreshPending = true;
+            listView.postOnAnimation(toggleRowsRefresh);
+        }
+    }
+    private void prepareListCallbacks() {
+        final int generation = listWorkGeneration;
+        initialSearchScroll = () -> {
+            if (generation == listWorkGeneration) scrollToItem(initialSearchItemId);
+        };
+        toggleRowsRefresh = () -> {
+            if (generation == listWorkGeneration && toggleRowsRefreshPending) {
+                toggleRowsRefreshPending = false;
+                listView.adapter.update(true);
+            }
+        };
+    }
+    private void cancelPendingListWork() {
+        ++listWorkGeneration;
+        toggleRowsRefreshPending = false;
+        if (searchHighlight != null) {
+            searchHighlight.run();
+            searchHighlight = null;
+        }
+        if (listView != null) {
+            listView.removeCallbacks(initialSearchScroll);
+            listView.removeCallbacks(toggleRowsRefresh);
+        }
+        initialSearchScroll = null;
+        toggleRowsRefresh = null;
     }
     @Override
     public void onFragmentDestroy() {
-        if (searchHighlight != null) searchHighlight.run();
-        AndroidUtilities.cancelRunOnUIThread(toggleRowsRefresh);
+        cancelPendingListWork();
         super.onFragmentDestroy();
     }
 

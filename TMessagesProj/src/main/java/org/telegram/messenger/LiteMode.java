@@ -167,10 +167,12 @@ public class LiteMode {
     }
 
     public static void setAllFlags(int flags) {
+        final int previousEffectiveFlags = getValue();
         // in settings it is already handled. would you handle it? 🫵
         // onFlagsUpdate(value, flags);
         value = flags;
         savePreference();
+        onGlassFlagsUpdate(previousEffectiveFlags, getValue());
     }
 
     public static void updatePresets(TLRPC.TL_jsonObject json) {
@@ -208,6 +210,7 @@ public class LiteMode {
             defaultValue = PRESET_MEDIUM;
             batteryDefaultValue = BATTERY_MEDIUM;
         }
+        defaultValue &= ~FLAG_LIQUID_GLASS;
 
         final SharedPreferences preferences = MessagesController.getGlobalMainSettings();
         if (!preferences.contains("lite_mode6")) {
@@ -329,6 +332,7 @@ public class LiteMode {
     }
 
     private static void onFlagsUpdate(int oldValue, int newValue) {
+        onGlassFlagsUpdate(oldValue, newValue);
         int changedFlags = ~oldValue & newValue;
         if ((changedFlags & FLAGS_ANIMATED_EMOJI) > 0) {
             AnimatedEmojiDrawable.updateAll();
@@ -339,6 +343,23 @@ public class LiteMode {
         if ((changedFlags & FLAG_CHAT_BACKGROUND) > 0) {
             Theme.reloadWallpaper(true);
         }
+    }
+    private static void onGlassFlagsUpdate(int oldValue, int newValue) {
+        if (((oldValue ^ newValue) & (FLAG_LIQUID_GLASS | FLAG_CHAT_BLUR)) != 0) {
+            AndroidUtilities.runOnUIThread(() -> {
+                org.telegram.ui.Components.blur3.BlurredBackgroundDrawableViewFactory.invalidateGlassSettings();
+                for (Runnable listener : new ArrayList<>(glassSettingsListeners)) {
+                    if (glassSettingsListeners.contains(listener)) listener.run();
+                }
+            });
+        }
+    }
+    private static final HashSet<Runnable> glassSettingsListeners = new HashSet<>();
+    public static void addOnGlassSettingsChangedListener(Runnable listener) {
+        if (listener != null) glassSettingsListeners.add(listener);
+    }
+    public static void removeOnGlassSettingsChangedListener(Runnable listener) {
+        glassSettingsListeners.remove(listener);
     }
 
     private static HashSet<Utilities.Callback<Boolean>> onPowerSaverAppliedListeners;

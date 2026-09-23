@@ -1,0 +1,313 @@
+import java.util.*;
+import java.util.concurrent.*;
+
+public class Harness {
+    static double now = 100;
+    static double t() { return now; }
+    /* CONSTANTS */
+    /* METHODS */
+
+    static class Bitmap {
+        boolean recycled;
+        static Bitmap lastScaled;
+        int getWidth() { return 800; }
+        int getHeight() { return 400; }
+        boolean isRecycled() { return recycled; }
+        void recycle() { recycled = true; }
+        static class Config { static final Config ARGB_8888 = new Config(); }
+        Bitmap copy(Config config, boolean mutable) { return new Bitmap(); }
+        static Bitmap createScaledBitmap(Bitmap b, int w, int h, boolean filter) {
+            return lastScaled = new Bitmap();
+        }
+    }
+    static class ImageView {
+        float alpha;
+        int installs;
+        Bitmap bitmap;
+        Drawable drawable;
+        RenderEffect effect;
+        int visibility = View.VISIBLE;
+        int getVisibility() { return visibility; }
+        Drawable getDrawable() { return drawable; }
+        Object getResources() { return this; }
+        void setImageDrawable(Drawable d) { drawable = d; }
+        void setRenderEffect(RenderEffect e) { effect = e; }
+        float getAlpha() { return alpha; }
+        void setAlpha(float a) { alpha = a; }
+        void setImageBitmap(Bitmap b) { bitmap = b; installs++; }
+        ImageView animate() { return this; }
+        void cancel() {}
+        void setBackgroundColor(int color) {}
+    }
+    static class Build { static class VERSION { static int SDK_INT = 30; } }
+    static class Shader { enum TileMode { CLAMP } }
+    static class RenderEffect {
+        float radius;
+        static RenderEffect createBlurEffect(float x, float y, Shader.TileMode mode) {
+            RenderEffect e = new RenderEffect(); e.radius = x; return e;
+        }
+    }
+    static class Drawable {}
+    static class BitmapDrawable extends Drawable { BitmapDrawable(Object resources, Bitmap b) {} }
+    static class TransitionDrawable extends Drawable {
+        boolean crossFade;
+        int duration;
+        TransitionDrawable(Drawable[] layers) {}
+        void setCrossFadeEnabled(boolean enabled) { crossFade = enabled; }
+        void startTransition(int time) { duration = time; }
+    }
+    static class Color { static int argb(int a, int r, int g, int b) { return a; } }
+    static class NimarkoBannerConfig { static boolean liteMode; }
+    static class Utilities { static void stackBlurBitmap(Bitmap b, int radius) {} }
+    static class AndroidUtilities {
+        static int statusBarHeight = 24;
+        static int posts;
+        static boolean deferPublication;
+        static final ArrayList<Runnable> pending = new ArrayList<>();
+        static float lerp(float a, float b, float p) { return a + (b-a)*p; }
+        static void runOnUIThread(Runnable r) {
+            if (deferPublication && ++posts == 2) pending.add(r); else r.run();
+        }
+        static void runOnUIThread(Runnable r, long delay) { pending.add(r); }
+        static void drain() {
+            ArrayList<Runnable> copy = new ArrayList<>(pending); pending.clear();
+            for (Runnable r : copy) r.run();
+        }
+    }
+    Object videoPlayer = new Object(), currentTopView = new Object();
+    ImageView videoTexture = new ImageView(), vidBlur = new ImageView(), vidFreeze, vidContrast, vidDark;
+    Bitmap vidBlurBmp, previousVideoBlur;
+    float liveVideoBlurRadius = -1;
+    int blurGen = 1, rendererAccount, accountGeneration, captures, invalidations;
+    long videoSessionId = 1;
+    String curVidPath = "banner.mp4";
+    boolean isProfileOpen = true, vidReady = true, activeAccount = true, attached = true;
+    boolean appPaused, overlayOpen, videoPausedByTab, profileExitActive;
+    double blurFadeStart, frameTime, lastFxTime, lastFxExtra = -1, lastFxExpand = -1, firstCommitTime;
+    double vidFirstFrameTime = 99;
+    float maxEh = 400, lastBa = -1;
+    int lastDa = -1;
+    boolean isActiveAccount(int account) { return activeAccount; }
+    boolean isCurrentAccountGeneration(int generation) { return activeAccount && generation == accountGeneration; }
+    boolean isVideoAttachedTo(Object view) { return attached; }
+    static boolean pathEq(String a, String b) { return Objects.equals(a, b); }
+    interface VideoFrameCallback { void onFrame(Bitmap b); }
+    void captureVideoFrameAsync(long session, String path, VideoFrameCallback cb) {
+        captures++; cb.onFrame(new Bitmap());
+    }
+    void publishLatestVideoFrame(Bitmap b, String path, long session) {}
+    void invalidateTopView() { invalidations++; }
+    void postInv() { invalidations++; }
+    void syncVideoViewport(int h) {}
+    void applyAudioVolume(float extra) {}
+    float collapseEnvelope(float p) { return p; }
+
+    // Run the real photo async request/publication block and alpha expression.
+    PhotoBlurLru blurBmps = new PhotoBlurLru(16);
+    Set<String> blurReq = new HashSet<>();
+    static class Worker {
+        final ArrayList<Runnable> tasks = new ArrayList<>();
+        void submit(Runnable r) { tasks.add(r); }
+        void drain() {
+            ArrayList<Runnable> copy = new ArrayList<>(tasks); tasks.clear();
+            for (Runnable r : copy) r.run();
+        }
+    }
+    Worker executor = new Worker();
+    boolean photoNeedsFrame;
+    int photoAlpha(Bitmap bmp, float coll, float visFactor) {
+        int bw = bmp.getWidth(), bh = bmp.getHeight();
+        boolean needInv = false;
+        /* PHOTO_ASYNC */
+        photoNeedsFrame = needInv;
+        return bb == null ? 0 : /* PHOTO_ALPHA */;
+    }
+
+    static void check(boolean ok, String why) { if (!ok) throw new AssertionError(why); }
+    static void close(float a, float b, String why) { check(Math.abs(a-b) < .005, why + ": " + a + " != " + b); }
+    static Harness fresh() {
+        Build.VERSION.SDK_INT = 30;
+        NimarkoBannerConfig.liteMode = false;
+        AndroidUtilities.deferPublication = false; AndroidUtilities.posts = 0;
+        AndroidUtilities.pending.clear(); now = 100;
+        Harness h = new Harness(); h.videoTexture.alpha = 1f; return h;
+    }
+    static Harness settled() {
+        Harness h = fresh(); h.vidBlurBmp = new Bitmap(); h.vidBlur.bitmap = h.vidBlurBmp;
+        return h;
+    }
+    static void video() {
+        Harness h = fresh();
+        check(h.grabBlur(1), "cold blur is captured");
+        check(h.vidBlurBmp != null && h.vidBlur.alpha == 0 && h.blurFadeStart == now, "cold blur begins transparent");
+        check(h.invalidations > 0, "cold blur schedules first frame");
+        h.lastFxTime = now;
+        int before = h.invalidations;
+        h.applyVideoFx(0, 200, 0);
+        check(h.invalidations > before, "fade requests next frame even when rate limited");
+        float alpha = 0;
+        for (int i = 1; i <= 40; i++) {
+            now = 100 + i * .016;
+            h.applyVideoFx(0, 200, 0);
+            check(h.vidBlur.alpha >= alpha, "stationary collapse fade is monotonic");
+            alpha = h.vidBlur.alpha;
+        }
+        close(h.vidBlur.alpha, 1, "stationary fade reaches full opacity");
+        check(h.blurFadeStart == 0, "fade clock settles");
+        Bitmap visible = h.vidBlurBmp;
+        before = h.captures;
+        check(h.grabBlur(1), "visible blurred video keeps refreshing");
+        check(h.vidBlurBmp != visible && !visible.recycled && h.previousVideoBlur == visible,
+                "visible old snapshot survives until transition completes");
+        TransitionDrawable transition = (TransitionDrawable) h.vidBlur.drawable;
+        check(!transition.crossFade && transition.duration == 300,
+                "old blurred frame stays opaque underneath replacement");
+        check(!h.grabBlur(1), "no overlapping snapshot transitions");
+        AndroidUtilities.drain();
+        check(visible.recycled && h.previousVideoBlur == null, "transition retires old bitmap");
+        visible = h.vidBlurBmp;
+        now += .1;
+        h.applyVideoFx(400, 600, 1);
+        close(h.vidBlur.alpha, 0, "expansion hides blur");
+        check(h.grabBlur(1) && h.vidBlurBmp != visible, "hidden refresh replaces blur");
+        AndroidUtilities.drain();
+        check(visible.recycled, "hidden refresh retires old blur");
+        check(h.blurFadeStart == 0, "hidden refresh does not replay initial fade");
+
+        h = settled(); h.vidBlur.alpha = h.lastBa = .001f;
+        h.applyVideoFx(400, 600, 1);
+        check(h.vidBlur.alpha == 0 && h.canRefreshVideoBlur(1, h.curVidPath),
+                "slow expansion reaches exact hidden endpoint");
+
+        h = settled();
+        AndroidUtilities.deferPublication = true;
+        Bitmap old = h.vidBlurBmp;
+        check(h.grabBlur(1), "capture began expanded");
+        h.vidBlur.alpha = .5f;
+        AndroidUtilities.drain();
+        check(h.vidBlurBmp != old && !old.recycled && h.previousVideoBlur == old,
+                "in-flight collapse blends old snapshot into fresh frame");
+        AndroidUtilities.drain();
+
+        // Pauses, owner/session/path changes and teardown while work is in flight.
+        for (int gate = 0; gate < 12; gate++) {
+            h = settled(); old = h.vidBlurBmp;
+            AndroidUtilities.deferPublication = true;
+            check(h.grabBlur(1), "race capture scheduled");
+            if (gate == 0) h.activeAccount = false;
+            if (gate == 1) h.videoSessionId++;
+            if (gate == 2) h.curVidPath = "replacement.mp4";
+            if (gate == 3) h.blurGen++;
+            if (gate == 4) h.appPaused = true;
+            if (gate == 5) h.overlayOpen = true;
+            if (gate == 6) h.videoPausedByTab = true;
+            if (gate == 7) h.profileExitActive = true;
+            if (gate == 8) NimarkoBannerConfig.liteMode = true;
+            if (gate == 9) h.attached = false;
+            if (gate == 10) h.isProfileOpen = false;
+            if (gate == 11) h.vidBlur = null;
+            AndroidUtilities.drain();
+            check(h.vidBlurBmp == old && !old.recycled && Bitmap.lastScaled.recycled, "stale publication rejected gate " + gate);
+        }
+        h = fresh(); h.grabBlur(1);
+        NimarkoBannerConfig.liteMode = true; now += .02;
+        h.applyVideoFx(0, 200, 0);
+        check(h.blurFadeStart == 0 && h.vidBlur.alpha == 0, "lite toggle retires active fade");
+
+        h = fresh(); Build.VERSION.SDK_INT = 36;
+        h.vidDark = new ImageView(); h.vidDark.alpha = 1;
+        h.videoTexture.alpha = .25f;
+        h.applyVideoFx(0, 200, 0);
+        close(h.vidDark.alpha, .25f, "dark overlay follows actual video alpha");
+        close(h.videoTexture.effect.radius, 80, "collapsed live blur uses decoded frames");
+        check(h.vidBlur.alpha == 0, "snapshot never masks live video");
+        check(h.grabBlur(1) && h.vidBlurBmp == null, "modern capture retained for resume only");
+        h.applyVideoFx(400, 600, 1);
+        check(h.videoTexture.effect == null, "expansion clears live blur without rate limit");
+        h.applyVideoFx(0, 200, 0);
+        NimarkoBannerConfig.liteMode = true;
+        h.applyVideoFx(0, 200, 0);
+        check(h.videoTexture.effect == null, "lite toggle clears live effect at rest");
+    }
+    static void photo() {
+        Harness h = fresh(); Bitmap source = new Bitmap();
+        check(h.photoAlpha(source, 1, 1) == 0 && h.executor.tasks.size() == 1, "cold photo queues one blur");
+        h.photoAlpha(source, 1, 1);
+        check(h.executor.tasks.size() == 1, "duplicate draw does not enqueue blur");
+        now += 20; h.executor.drain();
+        check(h.photoAlpha(source, 1, 1) == 0, "late photo blur starts transparent");
+        check(h.photoNeedsFrame, "late photo blur drives stationary frames");
+        now += .25;
+        check(h.photoAlpha(source, 1, 1) == 127, "halfway photo blur");
+        check(h.photoAlpha(source, .5f, .5f) == 31, "photo fade composes with collapse and reveal");
+        now += 1;
+        check(h.photoAlpha(source, 1, 1) == 255 && !h.photoNeedsFrame, "settled photo has no animation churn");
+        h.photoAlpha(new Bitmap(), 1, 1); h.executor.drain();
+        check(h.photoAlpha(source, 1, 1) == 255, "returning cached photo does not restart");
+        h = fresh(); h.photoAlpha(source, 1, 1);
+        h.accountGeneration++; h.executor.drain();
+        check(h.blurBmps.isEmpty(), "old account photo result rejected");
+
+        PhotoBlurLru cache = new PhotoBlurLru(2);
+        PhotoBlur a = new PhotoBlur(new Bitmap(), now), b = new PhotoBlur(new Bitmap(), now);
+        cache.put("a", a); cache.put("b", b); cache.get("a");
+        cache.put("c", new PhotoBlur(new Bitmap(), now));
+        check(b.bitmap.recycled && !a.bitmap.recycled && cache.size() == 2, "bounded LRU owns bitmap and clock together");
+        close(a.progress(now - 1), 0, "progress clamped at start");
+        close(cache.get("a").progress(now + 5), 1, "cached progress stays settled");
+        cache.clearAll();
+        check(a.bitmap.recycled && cache.isEmpty(), "account clear releases entries");
+    }
+
+    static class Canvas { void save() {} void restore() {} void clipRect(int l,int t,int r,int b) {} }
+    static class ActionBar { boolean getOccupyStatusBar() { return true; } int getHeight() { return 80; } }
+    static class StarGiftPatterns {
+        static float alpha, diff, maxExpand;
+        static int calls;
+        static void drawProfileAnimatedPattern(Canvas c, Object emoji, int w, float max, float d, Object avatar, float a) {
+            alpha = a; diff = d; maxExpand = max; calls++;
+        }
+    }
+    static class Pattern extends View {
+        boolean hasEmoji = true, nimarkoSuppressBackground, openAnimationInProgress, loaded;
+        float ngBg = 1f;
+        int playProfileAnimation, y1 = 300;
+        Object avatarContainer = new Object(), emoji = new Object();
+        ActionBar actionBar = new ActionBar();
+        AnimatedFloat emojiLoadedT = new AnimatedFloat(this, 0, 440, CubicBezierInterpolator.EASE_OUT_QUINT);
+        boolean isEmojiLoaded() { return loaded; }
+        int getMeasuredWidth() { return 1080; }
+        int getHeaderOnlyExtraHeight() { return 400; }
+        float calculateHeaderExtraDiff() { return .7f; }
+        void draw(Canvas canvas) { /* PATTERN */ }
+    }
+    static void pattern() {
+        Canvas canvas = new Canvas(); Pattern p = new Pattern();
+        SystemClock.now = 0; StarGiftPatterns.calls = 0;
+        p.draw(canvas); check(StarGiftPatterns.calls == 0, "unloaded pattern does not draw");
+        p.loaded = true; p.draw(canvas);
+        SystemClock.now = 40; p.draw(canvas);
+        check(StarGiftPatterns.alpha > 0 && StarGiftPatterns.alpha < .8f, "cold pattern ramps opacity");
+        close(StarGiftPatterns.diff, .7f, "loading does not shift pattern geometry");
+        close(StarGiftPatterns.maxExpand, 452, "loading preserves avatar anchor");
+        SystemClock.now = 500; p.draw(canvas);
+        close(StarGiftPatterns.alpha, 1, "pattern settles");
+        p.draw(canvas); close(StarGiftPatterns.alpha, 1, "repeat draw preserves loaded state");
+        Pattern cached = new Pattern(); cached.loaded = true; cached.draw(canvas);
+        close(StarGiftPatterns.alpha, 1, "already cached first draw is not forced cold");
+    }
+    public static void main(String[] args) {
+        pattern(); photo(); video();
+        System.out.println("PASS: banner background stability");
+    }
+}
+interface TimeInterpolator { float getInterpolation(float p); }
+class View { static final int VISIBLE = 0; void invalidate() {} }
+class SystemClock { static long now; static long elapsedRealtime() { return now; } }
+class MathUtils { static float clamp(float v, float lo, float hi) { return Math.max(lo, Math.min(hi, v)); } }
+class AndroidUtilities { static float lerp(float a, float b, float p) { return a+(b-a)*p; } }
+class CubicBezierInterpolator {
+    static final TimeInterpolator EASE_OUT_QUINT = p -> 1-(float)Math.pow(1-p, 5);
+    static final TimeInterpolator DEFAULT = EASE_OUT_QUINT;
+}
+/* ANIMATED_FLOAT */

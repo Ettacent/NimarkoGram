@@ -274,6 +274,19 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
 
     private boolean finished;
     private final AtomicLong navigationRequestGeneration = new AtomicLong();
+    private long fragmentPresentationGeneration;
+    private Bundle pendingProfileRestore;
+    private java.util.function.BooleanSupplier pendingProfileRestoreCurrent;
+    public void invalidateFragmentPresentationRequests() {
+        fragmentPresentationGeneration++;
+        pendingProfileRestore = null;
+        pendingProfileRestoreCurrent = null;
+    }
+    public java.util.function.BooleanSupplier captureFragmentPresentationRequest() {
+        invalidateFragmentPresentationRequests();
+        final long request = fragmentPresentationGeneration;
+        return () -> request == fragmentPresentationGeneration && !isFinishing() && !isDestroyed();
+    }
     private String videoPath;
     private String voicePath;
     private CharSequence sendingText;
@@ -658,8 +671,27 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
                             case "chat_profile":
                                 if (args != null) {
                                     ProfileActivity profile = new ProfileActivity(args);
-                                    if (actionBarLayout.addFragmentToStack(profile)) {
-                                        profile.restoreSelfArgs(savedInstanceState);
+                                    final Bundle restoreState = new Bundle(savedInstanceState);
+                                    final java.util.function.BooleanSupplier restoreCurrent = actionBarLayout.captureNavigationRequest();
+                                    pendingProfileRestore = restoreState;
+                                    pendingProfileRestoreCurrent = restoreCurrent;
+                                    Runnable restoreProfile = () -> {
+                                        if (pendingProfileRestore == restoreState) {
+                                            pendingProfileRestore = null;
+                                            pendingProfileRestoreCurrent = null;
+                                        }
+                                        boolean added = actionBarLayout.addFragmentToStack(profile);
+                                        INavigationLayout ownerLayout = profile.getParentLayout();
+                                        if (added || ownerLayout != null && ownerLayout.getFragmentStack().contains(profile)) {
+                                            profile.restoreSelfArgs(restoreState);
+                                        }
+                                    };
+                                    if (!profile.prepareChatForNavigation(restoreCurrent, () -> {
+                                        restoreProfile.run();
+                                        INavigationLayout ownerLayout = profile.getParentLayout();
+                                        if (ownerLayout != null && ownerLayout.getLastFragment() == profile) ownerLayout.showLastFragment();
+                                    })) {
+                                        restoreProfile.run();
                                     }
                                 }
                                 break;
@@ -1223,10 +1255,17 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
     private boolean switchingAccount;
     private final org.telegram.ui.Components.AccountSwitchTransition accountSwitchTransition = new org.telegram.ui.Components.AccountSwitchTransition();
     public void switchToAccountAnimated(int account) {
+        switchToAccountAnimated(account, null);
+    }
+    public void switchToAccountAnimated(int account, org.telegram.ui.Components.AccountSwitchTransition.Overlay popup) {
         if (!UserConfig.isValidAccount(account) || !UserConfig.getInstance(account).isClientActivated()
-                || account == UserConfig.selectedAccount || isFinishing() || isDestroyed()) return;
+                || account == UserConfig.selectedAccount || isFinishing() || isDestroyed()) {
+            if (popup != null) popup.finish();
+            return;
+        }
         if (frameLayout == null || !frameLayout.isAttachedToWindow() || !SharedConfig.animationsEnabled()
                 || ApplicationLoader.mainInterfacePaused || SharedConfig.appLocked || SharedConfig.isWaitingForPasscodeEnter) {
+            if (popup != null) popup.finish();
             switchToAccount(account, true);
             return;
         }
@@ -1236,12 +1275,33 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
         app.nimarkogram.messenger.notifications.NimarkoInAppNotifications.dismiss();
         navigationRequestGeneration.incrementAndGet();
         AndroidUtilities.hideKeyboard(getCurrentFocus());
+        final MessagesController targetController = MessagesController.getInstance(account);
+        if (!targetController.dialogsLoaded && !targetController.isLoadingDialogs(0)) {
+            targetController.loadDialogs(0, 0, 100, true);
+        }
         accountSwitchTransition.start(frameLayout, getWindow(),
                 () -> !isFinishing() && !isDestroyed() && !ApplicationLoader.mainInterfacePaused
                         && !SharedConfig.appLocked && !SharedConfig.isWaitingForPasscodeEnter
                         && UserConfig.selectedAccount == source
                         && app.nimarkogram.messenger.notifications.NimarkoInAppNotifications.isCurrent(account, owner, session),
-                () -> switchToAccount(account, true));
+                () -> switchToAccount(account, true), popup, () -> isAccountSwitchContentReady(account));
+    }
+    public boolean isAccountSwitchPreparing() {
+        return accountSwitchTransition.isPreparing();
+    }
+    public boolean isAccountSwitchAnimating() {
+        return accountSwitchTransition.isRunning();
+    }
+    private boolean isAccountSwitchContentReady(int account) {
+        BaseFragment fragment = actionBarLayout.getLastFragment();
+        if (fragment instanceof ViewPagerActivity) {
+            fragment = ((ViewPagerActivity) fragment).getCurrentVisibleFragment();
+        }
+        if (fragment == null || fragment.getCurrentAccount() != account
+                || fragment.getFragmentView() == null || fragment.getFragmentView().isLayoutRequested()) {
+            return false;
+        }
+        return !(fragment instanceof DialogsActivity) || ((DialogsActivity) fragment).isReadyForAccountSwitch();
     }
     public void switchToAccount(int account, boolean removeAll) {
         switchToAccount(account, removeAll, obj -> new MainTabsActivity());
@@ -1655,6 +1715,9 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
         int flags = intent.getFlags();
         String action = intent.getAction();
         final int[] intentAccount = new int[]{intent.getIntExtra("currentAccount", UserConfig.selectedAccount)};
+        if (isNew && !restore) {
+            invalidateFragmentPresentationRequests();
+        }
         switchToAccount(intentAccount[0], true);
         final long intentNavigationGeneration = navigationRequestGeneration.incrementAndGet();
         bannerNavigationOwner = intent.getLongExtra("nm_banner_owner", 0);
@@ -3212,8 +3275,11 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
                             long finalPush_chat_id = push_chat_id;
                             long finalPush_topic_id = push_topic_id;
                             final long requestGeneration = intentNavigationGeneration;
+                            final java.util.function.BooleanSupplier topicNavigationCurrent = actionBarLayout != null
+                                    ? actionBarLayout.captureNavigationRequest() : () -> false;
                             MessagesController.getInstance(targetAccount).getTopicsController().loadTopic(push_chat_id, push_topic_id, () -> {
-                                if (!isNavigationRequestCurrent(targetAccount, requestGeneration)) {
+                                if (!isNavigationRequestCurrent(targetAccount, requestGeneration)
+                                        || !topicNavigationCurrent.getAsBoolean()) {
                                     return;
                                 }
                                 TLRPC.TL_forumTopic loadedTopic = MessagesController.getInstance(targetAccount).getTopicsController().findTopic(finalPush_chat_id, finalPush_topic_id);
@@ -6438,11 +6504,15 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
         final long sourceOwner = UserConfig.getInstance(source).getClientUserId();
         final long sourceSession = app.nimarkogram.messenger.notifications.NimarkoInAppNotifications.session(source);
         final long request = navigationRequestGeneration.incrementAndGet();
+        final BaseFragment sourceFragment = getLastFragmentIncludeMainTabs();
+        final java.util.function.BooleanSupplier sourceCurrent = sourceFragment == null
+                ? captureFragmentPresentationRequest() : sourceFragment.captureNavigationRequest();
         final Intent destination = new Intent(intent);
         AndroidUtilities.hideKeyboard(getCurrentFocus());
         accountSwitchTransition.start(frameLayout, getWindow(),
                 () -> !isFinishing() && !isDestroyed() && hasWindowFocus()
-                        && request == navigationRequestGeneration.get() && UserConfig.selectedAccount == source
+                        && request == navigationRequestGeneration.get() && sourceCurrent.getAsBoolean()
+                        && UserConfig.selectedAccount == source
                         && app.nimarkogram.messenger.notifications.NimarkoInAppNotifications.isAvailable()
                         && app.nimarkogram.messenger.notifications.NimarkoInAppNotifications.isCurrent(source, sourceOwner, sourceSession)
                         && app.nimarkogram.messenger.notifications.NimarkoInAppNotifications.isCurrent(account, owner, session),
@@ -8734,6 +8804,16 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
                     outState.putString("fragment", "settings2");
                 }
                 lastFragment.saveSelfArgs(outState);
+            }
+            if (pendingProfileRestore != null && pendingProfileRestoreCurrent != null
+                    && pendingProfileRestoreCurrent.getAsBoolean()) {
+                outState.putString("fragment", "chat_profile");
+                outState.putBundle("args", pendingProfileRestore.getBundle("args"));
+                if (pendingProfileRestore.containsKey("path")) {
+                    outState.putString("path", pendingProfileRestore.getString("path"));
+                } else {
+                    outState.remove("path");
+                }
             }
         } catch (Exception e) {
             FileLog.e(e);

@@ -7,12 +7,13 @@ uniform float4 radius;
 uniform float thickness;
 uniform float refract_index;
 uniform float refract_intensity;
+uniform float reflection_enabled;
 uniform float4 foreground_color_premultiplied;
 
-half sdfRect(half2 p, half4 r) {
+float sdfRect(float2 p, float4 r) {
   r.xy = (p.x > 0.0) ? r.xy : r.zw;
   r.x  = (p.y > 0.0) ? r.x  : r.y;
-  half2 q = abs(p) - size + r.x;
+  float2 q = abs(p) - size + r.x;
   return length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - r.x;
 }
 
@@ -23,24 +24,38 @@ half4 srcOver(half4 src, half4 dst) {
 }
 
 half4 main(in float2 fragCoord) {
-  half2 p = fragCoord - center;
-  half sd = sdfRect(p, radius);
-  half2 uv = fragCoord;
-  if (sd < 0.0) {
-    half sdX = sdfRect(p + half2(1.0, 0.0), radius);
-    half sdY = sdfRect(p + half2(0.0, 1.0), radius);
+  float2 p = fragCoord - center;
+  float sd = sdfRect(p, radius);
+  float2 uv = fragCoord;
+  float rim = 0.0;
+  if (sd < 0.0 && thickness > 0.0) {
+    float2 gradient = float2(
+        sdfRect(p + float2(0.5, 0.0), radius) - sdfRect(p - float2(0.5, 0.0), radius),
+        sdfRect(p + float2(0.0, 0.5), radius) - sdfRect(p - float2(0.0, 0.5), radius));
+    float2 normal = gradient / max(length(gradient), 0.001);
+    float depth = min(thickness, min(size.x, size.y));
+    float t = clamp(-sd / max(depth, 0.001), 0.0, 1.0);
+    // Bounded lens with zero slope at both ends. The previous grazing-angle
+    // refraction jumped tens of pixels at the silhouette. Full precision is
+    // important here: half coordinates quantize while a panel is moving.
+    float lens = 16.0 * t * t * (1.0 - t) * (1.0 - t);
+    float strength = clamp((refract_index - 1.0) * 2.0, 0.0, 1.5)
+        * clamp(refract_intensity, 0.0, 1.0);
+    uv -= normal * depth * 0.85 * lens * strength;
+    uv = clamp(uv, float2(0.5), max(resolution - float2(0.5), float2(0.5)));
 
-    half n_cos = max(thickness + sd, 0.0) / thickness;
-    half n_cos2 = n_cos * n_cos;
-    half n_sin = sqrt(1.0 - n_cos2);
-    half3 normal = normalize(half3((sdX - sd) * n_cos, (sdY - sd) * n_cos, n_sin));
-
-    half3 refract_vec = refract(half3(0.0, 0.0, -1.0), normal, 1.0 / refract_index);
-    half h = sd < -thickness ? thickness : sqrt(sd * (-2.0 * thickness - sd));
-    half refract_length = (h + 8.0 * thickness) / -refract_vec.z;
-
-    uv += refract_vec.xy * refract_length * refract_intensity;
+    // Directional inner reflection, reusing the SDF gradient without another
+    // backdrop sample. Its width scales with the existing glass thickness.
+    float edge = 1.0 - smoothstep(0.0, max(1.0, thickness * 0.16), -sd);
+    float light = clamp(0.5 - 0.35 * normal.x - 0.35 * normal.y, 0.0, 1.0);
+    float shoulder = 1.0 - smoothstep(0.0, max(1.0, thickness * 0.65), -sd);
+    rim = (edge * (0.04 + 0.12 * light) + shoulder * 0.065 * light)
+        * clamp(refract_intensity, 0.0, 1.0) * reflection_enabled
+        * smoothstep(0.0, 1.0, -sd);
   }
 
-  return srcOver(half4(foreground_color_premultiplied), img.eval(uv));
+  half4 color = srcOver(half4(foreground_color_premultiplied), img.eval(uv));
+  // Preserve coverage, including transparent corners and transition fades.
+  color.rgb = mix(color.rgb, half3(color.a), rim);
+  return color;
 }

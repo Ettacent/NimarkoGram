@@ -20,7 +20,7 @@ import android.text.TextUtils;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
-import android.view.animation.OvershootInterpolator;
+import android.view.ViewTreeObserver;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.TextView;
@@ -28,12 +28,14 @@ import android.widget.TextView;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.recyclerview.widget.DefaultItemAnimator;
+import androidx.recyclerview.widget.DiffUtil;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
 import org.telegram.messenger.AccountInstance;
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.ChatObject;
+import org.telegram.messenger.ContactsController;
 import org.telegram.messenger.DialogObject;
 import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.MessageObject;
@@ -41,6 +43,7 @@ import org.telegram.messenger.MessagesController;
 import org.telegram.messenger.NotificationCenter;
 import org.telegram.messenger.R;
 import org.telegram.messenger.SendMessagesHelper;
+import org.telegram.messenger.SharedConfig;
 import org.telegram.messenger.UserConfig;
 import org.telegram.tgnet.TLRPC;
 import org.telegram.ui.ActionBar.ActionBarMenu;
@@ -88,7 +91,16 @@ public class SearchViewPager extends ViewPagerFixed implements FilteredSearchVie
     private DefaultItemAnimator itemAnimator;
     public DialogsSearchAdapter dialogsSearchAdapter;
     private LinearLayoutManager searchLayoutManager;
-    private RecyclerItemsEnterAnimator itemsEnterAnimator;
+    private static final int MAX_ANIMATED_SEARCH_ROWS = 64;
+    private static final int MAX_SEARCH_SNAPSHOT_ROWS = 2048;
+    private static final long SEARCH_EMPTY_REVEAL_DELAY_MS = 110;
+    private ArrayList<SearchRow> searchRows;
+    private boolean dispatchingSearchDiff;
+    private ViewTreeObserver.OnPreDrawListener searchResultsEnterListener;
+    private boolean searchResultsEntering;
+    private boolean searchEmptyRevealReady = true;
+    private Runnable searchEmptyRevealRunnable;
+    private int searchEmptyRevealGeneration;
     private boolean attached;
 
     private DefaultItemAnimator channelsItemAnimator;
@@ -158,7 +170,6 @@ public class SearchViewPager extends ViewPagerFixed implements FilteredSearchVie
     SizeNotifierFrameLayout fragmentView;
 
     private final int folderId;
-    int animateFromCount = 0;
 
     private final long communityId;
 
@@ -169,19 +180,115 @@ public class SearchViewPager extends ViewPagerFixed implements FilteredSearchVie
         parent = fragment;
         this.chatPreviewDelegate = chatPreviewDelegate;
 
-        itemAnimator = new DefaultItemAnimator();
+        itemAnimator = new DefaultItemAnimator() {
+            private boolean replacingSearchSections;
+            @Override
+            public void runPendingAnimations() {
+                replacingSearchSections = hasSectionRows(mPendingRemovals)
+                        || (!mPendingRemovals.isEmpty() && hasSectionRows(mPendingAdditions));
+                long removeDuration = getRemoveDuration();
+                setDelayAnimations(replacingSearchSections);
+                if (replacingSearchSections) setRemoveDuration(110);
+                try {
+                    super.runPendingAnimations();
+                } finally {
+                    setRemoveDuration(removeDuration);
+                    setDelayAnimations(false);
+                    replacingSearchSections = false;
+                }
+            }
+            private boolean hasSectionRows(ArrayList<RecyclerView.ViewHolder> holders) {
+                for (RecyclerView.ViewHolder holder : holders) {
+                    int type = holder.getItemViewType();
+                    if (type == DialogsSearchAdapter.VIEW_TYPE_CATEGORY_LIST
+                            || type == DialogsSearchAdapter.VIEW_TYPE_GRAY_SECTION) {
+                        return true;
+                    }
+                }
+                return false;
+            }
+            @Override
+            protected long getAddAnimationDelay(long removeDuration, long moveDuration, long changeDuration) {
+                return replacingSearchSections ? removeDuration
+                        : super.getAddAnimationDelay(removeDuration, moveDuration, changeDuration);
+            }
+            @Override
+            public boolean animateChange(RecyclerView.ViewHolder oldHolder, RecyclerView.ViewHolder newHolder,
+                    ItemHolderInfo info, int fromX, int fromY, int toX, int toY) {
+                if (oldHolder == newHolder && fromX == toX && fromY == toY) {
+                    dispatchChangeFinished(oldHolder, true);
+                    return false;
+                }
+                return super.animateChange(oldHolder, newHolder, info, fromX, fromY, toX, toY);
+            }
+        };
         itemAnimator.setAddDuration(150);
-        itemAnimator.setMoveDuration(350);
+        itemAnimator.setDelayAnimations(false);
+        itemAnimator.setMoveDuration(200);
         itemAnimator.setChangeDuration(0);
-        itemAnimator.setRemoveDuration(0);
-        itemAnimator.setMoveInterpolator(new OvershootInterpolator(1.1f));
+        itemAnimator.setRemoveDuration(180);
+        itemAnimator.setSupportsChangeAnimations(false);
+        itemAnimator.setMoveInterpolator(CubicBezierInterpolator.EASE_OUT_QUINT);
         itemAnimator.setTranslationInterpolator(CubicBezierInterpolator.EASE_OUT_QUINT);
 
         dialogsSearchAdapter = new DialogsSearchAdapter(context, fragment, type, initialDialogsType, itemAnimator, fragment.getAllowGlobalSearch(), null) {
             @Override
             public void notifyDataSetChanged() {
+                cancelPendingSearchResultsEntrance();
                 int itemCount = getCurrentItemCount();
-                super.notifyDataSetChanged();
+                ArrayList<SearchRow> nextRows = snapshotSearchRows(this);
+                ArrayList<SearchRow> previousRows = searchRows;
+                if (searchListView != null && searchListView.isAttachedToWindow()
+                        && SharedConfig.animationsEnabled() && previousRows != null
+                        && !previousRows.isEmpty() && nextRows != null && nextRows.isEmpty()) {
+                    deferSearchEmptyReveal();
+                } else if (nextRows != null && !nextRows.isEmpty()) {
+                    cancelSearchEmptyReveal();
+                }
+                if (searchListView != null && searchListView.isAttachedToWindow()
+                        && !searchListView.isComputingLayout() && SharedConfig.animationsEnabled()
+                        && previousRows != null && nextRows != null) {
+                    dispatchingSearchDiff = true;
+                    try {
+                        if (previousRows.isEmpty()) {
+                            if (!nextRows.isEmpty()) {
+                                notifyItemRangeInserted(0, nextRows.size());
+                            }
+                        } else if (nextRows.isEmpty()) {
+                            notifyItemRangeRemoved(0, previousRows.size());
+                        } else if (sameSearchRows(previousRows, nextRows)) {
+                            notifyItemRangeChanged(0, nextRows.size());
+                        } else {
+                            DiffUtil.calculateDiff(new DiffUtil.Callback() {
+                                @Override
+                                public int getOldListSize() {
+                                    return previousRows.size();
+                                }
+                                @Override
+                                public int getNewListSize() {
+                                    return nextRows.size();
+                                }
+                                @Override
+                                public boolean areItemsTheSame(int oldPosition, int newPosition) {
+                                    return previousRows.get(oldPosition).key.equals(nextRows.get(newPosition).key);
+                                }
+                                @Override
+                                public boolean areContentsTheSame(int oldPosition, int newPosition) {
+                                    return false;
+                                }
+                            }, previousRows.size() + nextRows.size() <= 512).dispatchUpdatesTo(this);
+                        }
+                    } finally {
+                        dispatchingSearchDiff = false;
+                    }
+                } else {
+                    super.notifyDataSetChanged();
+                    if (previousRows != null && previousRows.isEmpty()
+                            && nextRows != null && !nextRows.isEmpty()) {
+                        scheduleSearchResultsEntrance();
+                    }
+                }
+                searchRows = nextRows;
                 if (!lastSearchScrolledToTop && searchListView != null) {
                     searchListView.scrollToPosition(0);
                     lastSearchScrolledToTop = true;
@@ -269,6 +376,30 @@ public class SearchViewPager extends ViewPagerFixed implements FilteredSearchVie
                     .show();
             }
         };
+        dialogsSearchAdapter.registerAdapterDataObserver(new RecyclerView.AdapterDataObserver() {
+            private void invalidateSnapshot() {
+                if (!dispatchingSearchDiff) {
+                    cancelSearchResultsEntrance();
+                    searchRows = null;
+                }
+            }
+            @Override
+            public void onItemRangeChanged(int positionStart, int itemCount, @Nullable Object payload) {
+                invalidateSnapshot();
+            }
+            @Override
+            public void onItemRangeInserted(int positionStart, int itemCount) {
+                invalidateSnapshot();
+            }
+            @Override
+            public void onItemRangeRemoved(int positionStart, int itemCount) {
+                invalidateSnapshot();
+            }
+            @Override
+            public void onItemRangeMoved(int fromPosition, int toPosition, int itemCount) {
+                invalidateSnapshot();
+            }
+        });
         if (initialDialogsType == DialogsActivity.DIALOGS_TYPE_BOT_REQUEST_PEER) {
             ArrayList<TLRPC.Dialog> dialogs = fragment.getDialogsArray(currentAccount, initialDialogsType, folderId, true);
             ArrayList<Long> dialogIds = new ArrayList<>();
@@ -280,6 +411,10 @@ public class SearchViewPager extends ViewPagerFixed implements FilteredSearchVie
         fragmentView = (SizeNotifierFrameLayout) fragment.getFragmentView();
 
         searchListView = new RecyclerListView(context) {
+            @Override
+            public boolean emptyViewIsVisible() {
+                return searchEmptyRevealReady && super.emptyViewIsVisible();
+            }
             @Override
             protected void dispatchDraw(Canvas canvas) {
                 if (dialogsSearchAdapter != null && itemAnimator != null && searchLayoutManager != null && dialogsSearchAdapter.showMoreAnimation) {
@@ -604,7 +739,6 @@ public class SearchViewPager extends ViewPagerFixed implements FilteredSearchVie
         });
         hashtagSearchListView.addEdgeEffectListener(this::invalidateBlur);
 
-        itemsEnterAnimator = new RecyclerItemsEnterAnimator(searchListView, true);
 
         postsAreNew = false; 
         postsSearchContainer = new PostsSearchContainer(context, fragment);
@@ -1454,10 +1588,128 @@ public class SearchViewPager extends ViewPagerFixed implements FilteredSearchVie
             }
         }
     }
+    private static class SearchRow {
+        final String key;
+        SearchRow(String key) {
+            this.key = key;
+        }
+    }
+    private static boolean sameSearchRows(ArrayList<SearchRow> previousRows, ArrayList<SearchRow> nextRows) {
+        if (previousRows.size() != nextRows.size()) {
+            return false;
+        }
+        for (int i = 0; i < previousRows.size(); i++) {
+            if (!previousRows.get(i).key.equals(nextRows.get(i).key)) {
+                return false;
+            }
+        }
+        return true;
+    }
+    private static ArrayList<SearchRow> snapshotSearchRows(DialogsSearchAdapter adapter) {
+        int count = adapter.getItemCount();
+        if (count > MAX_SEARCH_SNAPSHOT_ROWS) {
+            return null;
+        }
+        ArrayList<SearchRow> rows = new ArrayList<>(count);
+        HashMap<String, Integer> occurrences = new HashMap<>();
+        final String presentation = adapter.isSearchWas() ? "results:" : "recent:";
+        for (int i = 0; i < count; i++) {
+            int type = adapter.getItemViewType(i);
+            Object item = adapter.getItem(i);
+            String identity;
+            if (type == DialogsSearchAdapter.VIEW_TYPE_GRAY_SECTION) {
+                identity = "section:" + i;
+            } else if (item instanceof TLRPC.User) {
+                identity = "user:" + ((TLRPC.User) item).id;
+            } else if (item instanceof TLRPC.Chat) {
+                identity = "chat:" + ((TLRPC.Chat) item).id;
+            } else if (item instanceof TLRPC.EncryptedChat) {
+                identity = "secret:" + ((TLRPC.EncryptedChat) item).id;
+            } else if (item instanceof TLRPC.TL_forumTopic) {
+                identity = "topic:" + ((TLRPC.TL_forumTopic) item).id;
+            } else if (item instanceof MessageObject) {
+                MessageObject message = (MessageObject) item;
+                identity = "message:" + message.getDialogId() + ":" + message.getId();
+            } else if (item instanceof TLRPC.TL_sponsoredPeer) {
+                TLRPC.TL_sponsoredPeer peer = (TLRPC.TL_sponsoredPeer) item;
+                identity = "sponsored:" + MessageObject.getPeerId(peer.peer);
+            } else if (item instanceof ContactsController.Contact) {
+                identity = "contact:" + ((ContactsController.Contact) item).contact_id;
+            } else if (item instanceof String) {
+                identity = "text:" + item;
+            } else if (item != null) {
+                identity = "object:" + System.identityHashCode(item);
+            } else {
+                identity = "placeholder:" + i;
+            }
+            String baseKey = presentation + type + ":" + identity;
+            int occurrence = occurrences.containsKey(baseKey) ? occurrences.get(baseKey) : 0;
+            occurrences.put(baseKey, occurrence + 1);
+            rows.add(new SearchRow(baseKey + ":" + occurrence));
+        }
+        for (int i = 0; i < count; i++) {
+            if (adapter.getItemViewType(i) != DialogsSearchAdapter.VIEW_TYPE_GRAY_SECTION) continue;
+            int firstResult = i + 1;
+            while (firstResult < count && adapter.getItemViewType(firstResult) == DialogsSearchAdapter.VIEW_TYPE_GRAY_SECTION) {
+                firstResult++;
+            }
+            if (firstResult < count) {
+                rows.set(i, new SearchRow("section-for:" + rows.get(firstResult).key + ":gap:" + (firstResult - i)));
+            }
+        }
+        return rows;
+    }
 
     public void runResultsEnterAnimation() {
-        itemsEnterAnimator.showItemsAnimated(animateFromCount > 0 ? animateFromCount + 1 : 0);
-        animateFromCount = dialogsSearchAdapter.getItemCount();
+    }
+    private void scheduleSearchResultsEntrance() {
+        if (searchListView == null || !searchListView.isAttachedToWindow()
+                || !searchListView.isShown() || !SharedConfig.animationsEnabled()) {
+            return;
+        }
+        searchResultsEnterListener = new ViewTreeObserver.OnPreDrawListener() {
+            @Override
+            public boolean onPreDraw() {
+                if (searchResultsEnterListener != this) return true;
+                searchListView.getViewTreeObserver().removeOnPreDrawListener(this);
+                searchResultsEnterListener = null;
+                if (!searchListView.isAttachedToWindow() || !searchListView.isShown()
+                        || !SharedConfig.animationsEnabled() || searchListView.isComputingLayout()
+                        || searchListView.hasPendingAdapterUpdates()
+                        || searchListView.getItemAnimator() != itemAnimator || itemAnimator.isRunning()) {
+                    return true;
+                }
+                int count = Math.min(searchListView.getChildCount(), MAX_ANIMATED_SEARCH_ROWS);
+                for (int i = 0; i < count; i++) {
+                    View child = searchListView.getChildAt(i);
+                    if (child.getBottom() <= 0 || child.getTop() >= searchListView.getHeight()
+                            || child.getVisibility() != View.VISIBLE
+                            || searchListView.getChildAdapterPosition(child) == RecyclerView.NO_POSITION) {
+                        continue;
+                    }
+                    RecyclerView.ViewHolder holder = searchListView.getChildViewHolder(child);
+                    holder.setIsRecyclable(false);
+                    itemAnimator.animateAdd(holder);
+                    searchResultsEntering = true;
+                }
+                itemAnimator.runPendingAnimations();
+                return true;
+            }
+        };
+        searchListView.getViewTreeObserver().addOnPreDrawListener(searchResultsEnterListener);
+    }
+    private void cancelSearchResultsEntrance() {
+        cancelPendingSearchResultsEntrance();
+        if (searchResultsEntering) {
+            searchResultsEntering = false;
+            itemAnimator.endAnimations();
+        }
+    }
+    private void cancelPendingSearchResultsEntrance() {
+        if (searchResultsEnterListener != null) {
+            searchListView.getViewTreeObserver().removeOnPreDrawListener(searchResultsEnterListener);
+            searchResultsEnterListener = null;
+        }
     }
 
     public TabsView getTabsView() {
@@ -1486,11 +1738,39 @@ public class SearchViewPager extends ViewPagerFixed implements FilteredSearchVie
     protected void onDetachedFromWindow() {
         super.onDetachedFromWindow();
         attached = false;
+        cancelSearchResultsEntrance();
+        cancelSearchEmptyReveal();
         NotificationCenter.getInstance(currentAccount).removeObserver(this, NotificationCenter.channelRecommendationsLoaded);
         NotificationCenter.getInstance(currentAccount).removeObserver(this, NotificationCenter.dialogDeleted);
         NotificationCenter.getInstance(currentAccount).removeObserver(this, NotificationCenter.dialogsNeedReload);
         NotificationCenter.getInstance(currentAccount).removeObserver(this, NotificationCenter.reloadWebappsHints);
         NotificationCenter.getInstance(currentAccount).removeObserver(this, NotificationCenter.storiesListUpdated);
+    }
+    private void deferSearchEmptyReveal() {
+        final int generation = ++searchEmptyRevealGeneration;
+        if (searchEmptyRevealRunnable != null) {
+            searchListView.removeCallbacks(searchEmptyRevealRunnable);
+        }
+        searchEmptyRevealReady = false;
+        searchEmptyRevealRunnable = () -> {
+            if (generation != searchEmptyRevealGeneration) {
+                return;
+            }
+            searchEmptyRevealRunnable = null;
+            searchEmptyRevealReady = true;
+            if (searchListView.isAttachedToWindow()) {
+                searchListView.checkIfEmpty();
+            }
+        };
+        searchListView.postDelayed(searchEmptyRevealRunnable, SEARCH_EMPTY_REVEAL_DELAY_MS);
+    }
+    private void cancelSearchEmptyReveal() {
+        searchEmptyRevealGeneration++;
+        if (searchEmptyRevealRunnable != null && searchListView != null) {
+            searchListView.removeCallbacks(searchEmptyRevealRunnable);
+            searchEmptyRevealRunnable = null;
+        }
+        searchEmptyRevealReady = true;
     }
 
     @Override
@@ -1523,9 +1803,6 @@ public class SearchViewPager extends ViewPagerFixed implements FilteredSearchVie
     }
 
     public void cancelEnterAnimation() {
-        itemsEnterAnimator.cancel();
-        searchListView.invalidate();
-        animateFromCount = 0;
     }
 
     public void showDownloads() {

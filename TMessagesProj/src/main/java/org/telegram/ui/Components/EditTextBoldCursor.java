@@ -507,6 +507,9 @@ public class EditTextBoldCursor extends EditTextEffects {
         allowDrawCursor = value;
         invalidate();
     }
+    public boolean isDrawCursorAllowed() {
+        return allowDrawCursor;
+    }
 
     public void setForceCursorEnd(boolean cursorEnd) {
         this.forceCursorEnd = cursorEnd;

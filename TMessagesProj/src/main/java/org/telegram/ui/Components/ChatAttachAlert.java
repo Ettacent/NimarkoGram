@@ -266,6 +266,9 @@ public class ChatAttachAlert extends BottomSheet implements NotificationCenter.N
     private BlurredBackgroundWithFadeDrawable bottomFadeDrawable;
 
     public boolean captionAbove;
+    private boolean ignoreSheetCaptionChanges;
+    private boolean sheetCaptionEdited;
+    private Object sheetCaptionPhotoKey;
 
     public TLRPC.Chat getChat() {
         if (baseFragment instanceof ChatActivity) {
@@ -1404,9 +1407,9 @@ public class ChatAttachAlert extends BottomSheet implements NotificationCenter.N
             });
 
             iBlur3FactoryLiquidGlass = new BlurredBackgroundDrawableViewFactory(iBlur3SourceGlass);
-            iBlur3FactoryLiquidGlass.setLiquidGlassEffectAllowed(LiteMode.isEnabled(LiteMode.FLAG_LIQUID_GLASS));
+            iBlur3FactoryLiquidGlass.setLiquidGlassEffectAllowed(true);
             iBlur3FactoryFrostedLiquidGlass = new BlurredBackgroundDrawableViewFactory(iBlur3SourceGlassFrosted);
-            iBlur3FactoryFrostedLiquidGlass.setLiquidGlassEffectAllowed(LiteMode.isEnabled(LiteMode.FLAG_LIQUID_GLASS));
+            iBlur3FactoryFrostedLiquidGlass.setLiquidGlassEffectAllowed(true);
         } else {
             scrollableViewNoiseSuppressor = null;
             iBlur3SourceGlassFrosted = null;
@@ -2319,6 +2322,7 @@ public class ChatAttachAlert extends BottomSheet implements NotificationCenter.N
             @Override
             public void onItemClick(int id) {
                 if (id == -1) {
+                    photoLayout.cancelPendingPhotoViewerOpen();
                     if (currentAttachLayout.onBackPressed()) {
                         return;
                     }
@@ -3371,6 +3375,7 @@ public class ChatAttachAlert extends BottomSheet implements NotificationCenter.N
         commentTextView.setHint(getString("AddCaption", R.string.AddCaption));
         commentTextView.onResume();
         commentTextView.getEditText().setLayoutParams(LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT, Gravity.LEFT | Gravity.CENTER_VERTICAL, 48, 0, 36, 0));
+        commentTextView.getEditText().setDelegate(() -> markSheetCaptionEdited(commentTextView));
         commentTextView.getEditText().addTextChangedListener(new TextWatcher() {
 
             private boolean processChange;
@@ -3383,6 +3388,7 @@ public class ChatAttachAlert extends BottomSheet implements NotificationCenter.N
 
             @Override
             public void onTextChanged(CharSequence charSequence, int start, int before, int count) {
+                onSheetCaptionChanged(commentTextView, charSequence, before, count);
                 if ((count - before) >= 1) {
                     processChange = true;
                 }
@@ -3515,6 +3521,7 @@ public class ChatAttachAlert extends BottomSheet implements NotificationCenter.N
             }
         };
         topCommentTextView.includeNavigationBar = true;
+        topCommentTextView.getEditText().setDelegate(() -> markSheetCaptionEdited(topCommentTextView));
         topCommentTextView.getEditText().addTextChangedListener(new TextWatcher() {
 
             private boolean processChange;
@@ -3527,6 +3534,7 @@ public class ChatAttachAlert extends BottomSheet implements NotificationCenter.N
 
             @Override
             public void onTextChanged(CharSequence charSequence, int start, int before, int count) {
+                onSheetCaptionChanged(topCommentTextView, charSequence, before, count);
                 if ((count - before) >= 1) {
                     processChange = true;
                 }
@@ -4537,6 +4545,7 @@ public class ChatAttachAlert extends BottomSheet implements NotificationCenter.N
 
     @Override
     public void show() {
+        photoLayout.cancelPendingPhotoViewerOpen();
         super.show();
         buttonPressed = false;
         if (baseFragment instanceof ChatActivity) {
@@ -4597,12 +4606,65 @@ public class ChatAttachAlert extends BottomSheet implements NotificationCenter.N
     public MessageObject getEditingMessageObject() {
         return editingMessageObject;
     }
+    private boolean markSheetCaptionEdited(EditTextEmoji view) {
+        if (ignoreSheetCaptionChanges || view != getCommentView()
+                || photoLayout == null || (currentAttachLayout != photoLayout && currentAttachLayout != photoPreviewLayout)) {
+            return false;
+        }
+        ArrayList<Object> order = photoLayout.getSelectedPhotosOrder();
+        if (sheetCaptionPhotoKey == null && !order.isEmpty()) {
+            sheetCaptionPhotoKey = order.get(0);
+        }
+        sheetCaptionEdited = true;
+        return true;
+    }
+    private void onSheetCaptionChanged(EditTextEmoji view, CharSequence text, int before, int count) {
+        if ((before == 0 && count == 0) || !markSheetCaptionEdited(view)) {
+            return;
+        }
+        if (before > 0 && TextUtils.isEmpty(text) && sheetCaptionPhotoKey != null) {
+            photoLayout.clearCaption(sheetCaptionPhotoKey);
+        }
+    }
+    void setCommentTextFromPhotoViewer(CharSequence text) {
+        ArrayList<Object> order = photoLayout.getSelectedPhotosOrder();
+        sheetCaptionPhotoKey = order.isEmpty() ? null : order.get(0);
+        sheetCaptionEdited = false;
+        setCommentTextSilently(getCommentView(), text);
+    }
+    private void setCommentTextSilently(EditTextEmoji view, CharSequence text) {
+        boolean wasIgnoring = ignoreSheetCaptionChanges;
+        ignoreSheetCaptionChanges = true;
+        try {
+            view.setText(text);
+        } finally {
+            ignoreSheetCaptionChanges = wasIgnoring;
+        }
+    }
 
     protected void applyCaption() {
+        applyCaption(false);
+    }
+    void applyCaptionForPhotoViewer() {
+        applyCaption(true);
+    }
+    private void applyCaption(boolean forViewer) {
         if (getCommentView().length() <= 0) {
             return;
         }
-        currentAttachLayout.applyCaption(getCommentView().getText());
+        boolean photoCaption = currentAttachLayout == photoLayout || currentAttachLayout == photoPreviewLayout;
+        if (photoCaption && !sheetCaptionEdited) {
+            return;
+        }
+        if (photoCaption && forViewer) {
+            photoLayout.applyCaption(getCommentView().getText(), false);
+        } else {
+            currentAttachLayout.applyCaption(getCommentView().getText());
+        }
+        if (photoCaption && !photoLayout.getSelectedPhotosOrder().isEmpty()) {
+            sheetCaptionPhotoKey = photoLayout.getSelectedPhotosOrder().get(0);
+            sheetCaptionEdited = false;
+        }
     }
 
     private boolean sendPressed(boolean notify, int scheduleDate, int scheduleRepeatPeriod, long effectId, boolean invertMedia) {
@@ -4770,7 +4832,11 @@ public class ChatAttachAlert extends BottomSheet implements NotificationCenter.N
         nextAttachLayout = layout;
         if (nimarkoFloatingButton != null) {
             boolean toPhoto = nextAttachLayout == photoLayout && (photosEnabled || videosEnabled);
-            if (toPhoto) {
+            if (toPhoto && nimarkoFloatingButton.getVisibility() != View.VISIBLE) {
+                nimarkoFloatingButton.setAlpha(0f);
+                nimarkoFloatingButton.setScaleX(0.2f);
+                nimarkoFloatingButton.setScaleY(0.2f);
+                nimarkoFloatingButton.setTranslationY(computeNimarkoFloatingCameraTranslationY());
                 nimarkoFloatingButton.setVisibility(View.VISIBLE);
             }
             // NG: animate translationY together with scale/alpha. Previously updateNimarkoFloatingCameraOffset()
@@ -5032,6 +5098,10 @@ public class ChatAttachAlert extends BottomSheet implements NotificationCenter.N
 
     public AttachAlertLayout getCurrentAttachLayout() {
         return currentAttachLayout;
+    }
+    boolean canOpenPhotoViewer(ChatAttachAlertPhotoLayout layout) {
+        return !destroyed && !paused && !isDismissed() && isShowing() && !confirmationAlertShown
+                && currentAttachLayout == layout && nextAttachLayout == null;
     }
 
     public ChatAttachAlertPhotoLayoutPreview getPhotoPreviewLayout() {
@@ -6249,6 +6319,9 @@ public class ChatAttachAlert extends BottomSheet implements NotificationCenter.N
     }
 
     public void init() {
+        photoLayout.cancelPendingPhotoViewerOpen();
+        sheetCaptionEdited = false;
+        sheetCaptionPhotoKey = null;
         writeButton.setEffect(effectId = 0);
         botButtonWasVisible = false;
         botButtonProgressWasVisible = false;
@@ -6391,7 +6464,7 @@ public class ChatAttachAlert extends BottomSheet implements NotificationCenter.N
         updateCountButton(0);
 
         buttonsAdapter.notifyDataSetChanged();
-        getCommentView().setText("");
+        setCommentTextSilently(getCommentView(), "");
         buttonsLayoutManager.scrollToPositionWithOffset(0, 1000000);
 
         if (nimarkoFloatingButton != null) {
@@ -7060,6 +7133,7 @@ public class ChatAttachAlert extends BottomSheet implements NotificationCenter.N
 
     @Override
     public void dismissInternal() {
+        photoLayout.cancelPendingPhotoViewerOpen();
         if (delegate != null) {
             delegate.doOnIdle(this::removeFromRoot);
         } else {
@@ -7095,6 +7169,7 @@ public class ChatAttachAlert extends BottomSheet implements NotificationCenter.N
 
     @Override
     public void onBackPressed() {
+        photoLayout.cancelPendingPhotoViewerOpen();
         if (passcodeView.getVisibility() == View.VISIBLE) {
             if (getOwnerActivity() != null) {
                 getOwnerActivity().finish();
@@ -7121,6 +7196,7 @@ public class ChatAttachAlert extends BottomSheet implements NotificationCenter.N
 
     @Override
     public void dismissWithButtonClick(int item) {
+        photoLayout.cancelPendingPhotoViewerOpen();
         super.dismissWithButtonClick(item);
         currentAttachLayout.onDismissWithButtonClick(item);
     }
@@ -7163,6 +7239,7 @@ public class ChatAttachAlert extends BottomSheet implements NotificationCenter.N
 
     @Override
     public void dismiss() {
+        photoLayout.cancelPendingPhotoViewerOpen();
         if ((!dismissingForNavigation && currentAttachLayout.onDismiss()) || isDismissed()) {
             return;
         }
@@ -7391,7 +7468,7 @@ public class ChatAttachAlert extends BottomSheet implements NotificationCenter.N
 
         if (fromView != toView) {
             fromView.hidePopup(true);
-            toView.setText(AnimatedEmojiSpan.cloneSpans(fromView.getText()));
+            setCommentTextSilently(toView, AnimatedEmojiSpan.cloneSpans(fromView.getText()));
             toView.getEditText().setAllowTextEntitiesIntersection(fromView.getEditText().getAllowTextEntitiesIntersection());
             if (fromView.getEditText().isFocused()) {
                 toView.getEditText().requestFocus();

@@ -235,6 +235,10 @@ public class FragmentSearchField extends FrameLayout implements FactorAnimator.T
         drawable.setPadding(dp(4));
         blurredBackgroundDrawable = drawable;
     }
+    public void setInfoCardsGlassBackgroundFactory(
+            org.telegram.ui.Components.blur3.BlurredBackgroundDrawableViewFactory factory) {
+        if (infoCards != null) infoCards.setGlassBackgroundFactory(factory);
+    }
 
     public void setBlurredBackgroundVisibility(float visibility) {
         final int alpha = (int) (255 * visibility);

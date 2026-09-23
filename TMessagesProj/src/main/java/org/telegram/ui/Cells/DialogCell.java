@@ -50,6 +50,7 @@ import android.view.Gravity;
 import android.view.HapticFeedbackConstants;
 import android.view.MotionEvent;
 import android.view.View;
+import android.view.ViewParent;
 import android.view.accessibility.AccessibilityEvent;
 import android.view.accessibility.AccessibilityNodeInfo;
 import android.view.animation.Interpolator;
@@ -153,7 +154,11 @@ import me.vkryl.android.animator.BoolAnimator;
 
 import app.nimarkogram.messenger.chats.filters.MessagesFilterHelper;
 
-public class DialogCell extends BaseCell implements StoriesListPlaceProvider.AvatarOverlaysView, Theme.Colorable {
+public class DialogCell extends BaseCell implements StoriesListPlaceProvider.AvatarOverlaysView, Theme.Colorable, AnimatedEmojiSpan.AccountProvider {
+    @Override
+    public int getEmojiAccount() {
+        return currentAccount;
+    }
 
     public boolean collapsed;
     public boolean drawArchive = true;
@@ -351,6 +356,10 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
         this.visibleOnScreen = visibleOnScreen;
         if (visibleOnScreen) {
             invalidate();
+        } else {
+            badgeOwnerDrawn = false;
+            forumTopicPreviewTransition.finish();
+            outgoingForumLoadingLayout = null;
         }
     }
 
@@ -645,7 +654,9 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
     private final AnimatedEmojiDrawable.SwapAnimatedEmojiDrawable emojiStatus;
     // Per-cell guard for plugin badge: dedupe the SwapAnimatedEmojiDrawable
     // rebind when the same badge fires again on UPDATE_MASK_EMOJI_STATUS.
-    private long lastNimarkoMaskDocId = 0L;
+    private int badgeBoundAccount = -1;
+    private long badgeBoundDialogId, badgeBoundPeerId;
+    private boolean badgeOwnerDrawn, badgeParticles, badgeLayoutDirty;
     private final AnimatedEmojiDrawable.SwapAnimatedEmojiDrawable botVerification;
 
     private int drawScam;
@@ -708,9 +719,11 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
         Theme.createDialogsResources(context);
         drawMonoforumAvatar = false;
         drawCommunityAvatar = false;
+        avatarImage.setCurrentAccount(account);
         avatarImage.setRoundRadius(app.nimarkogram.messenger.NimarkoConfig.getAvatarCorners(56));
         for (int i = 0; i < thumbImage.length; ++i) {
             thumbImage[i] = new ImageReceiver(this);
+            thumbImage[i].setCurrentAccount(account);
             thumbImage[i].ignoreNotifications = true;
             thumbImage[i].setRoundRadius(dp(2));
             thumbImage[i].setAllowLoadingOnAttachedOnly(true);
@@ -721,13 +734,17 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
         emojiStatusView = new View(context) {
             @Override
             protected void onDraw(@NonNull Canvas canvas) {
+                if (getAlpha() <= 0f || !isBadgePresented()) return;
                 emojiStatus.setBounds(0, 0, getWidth(), getHeight());
                 emojiStatus.draw(canvas);
+                if (emojiStatus.isEmpty()) DialogCell.this.invalidate();
             }
         };
         addView(emojiStatusView);
         emojiStatus = new AnimatedEmojiDrawable.SwapAnimatedEmojiDrawable(emojiStatusView, dp(22));
+        emojiStatus.setCurrentAccount(account);
         botVerification = new AnimatedEmojiDrawable.SwapAnimatedEmojiDrawable(this, dp(17));
+        botVerification.setCurrentAccount(account);
         avatarImage.setAllowLoadingOnAttachedOnly(true);
     }
 
@@ -753,6 +770,8 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
 
     public void setDialog(TLRPC.Dialog dialog, int type, int folder) {
         if (currentDialogId != dialog.id) {
+            emojiStatus.resetAnimation();
+            botVerification.resetAnimation();
             resetModernPressFeedback();
             if (statusDrawableAnimator != null) {
                 statusDrawableAnimator.removeAllListeners();
@@ -799,6 +818,10 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
     }
 
     public void setDialog(CustomDialog dialog) {
+        badgeOwnerDrawn = false;
+        badgeBoundAccount = -1;
+        emojiStatus.resetAnimation();
+        botVerification.resetAnimation();
         resetModernPressFeedback();
         customDialog = dialog;
         messageId = 0;
@@ -860,6 +883,8 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
 
     public void setDialog(long dialog_id, MessageObject messageObject, int date, boolean useMe, boolean animated) {
         if (currentDialogId != dialog_id) {
+            emojiStatus.resetAnimation();
+            botVerification.resetAnimation();
             resetModernPressFeedback();
             lastStatusDrawableParams = -1;
         }
@@ -885,6 +910,8 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
 
     public void setDialog(long dialog_id, MessageObject messageObject, ArrayList<MessageObject> groupMessageObject, int date, boolean useMe, boolean animated) {
         if (currentDialogId != dialog_id) {
+            emojiStatus.resetAnimation();
+            botVerification.resetAnimation();
             resetModernPressFeedback();
             lastStatusDrawableParams = -1;
         }
@@ -924,6 +951,9 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
     @Override
     protected void onDetachedFromWindow() {
         super.onDetachedFromWindow();
+        badgeOwnerDrawn = false;
+        forumTopicPreviewTransition.finish();
+        outgoingForumLoadingLayout = null;
         resetModernPressFeedback();
         isSliding = false;
         drawRevealBackground = false;
@@ -1261,10 +1291,13 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
         }
         if (isDialogCell) {
             boolean needUpdate = updateHelper.update();
-            if (!needUpdate && currentDialogFolderId == 0 && currentDialogCommunityId == 0 && encryptedChat == null) {
+            if (!needUpdate && !badgeLayoutDirty && currentDialogFolderId == 0 && currentDialogCommunityId == 0 && encryptedChat == null) {
                 return;
             }
         }
+        badgeLayoutDirty = false;
+        final StaticLayout previousTopicsLayout = messageLayout;
+        final int previousTopicsLeft = messageLeft;
         if (useForceThreeLines || SharedConfig.useThreeLinesLayout || true) {
             Theme.dialogs_namePaint[0].setTextSize(dp(17));
             Theme.dialogs_nameEncryptedPaint[0].setTextSize(dp(17));
@@ -1500,102 +1533,7 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
                 }
             } else {
                 if (currentDialogFolderId == 0 && !isTopic) {
-                    long dialogBotVerificationIcon = 0;
-                    if (chat != null) {
-                        dialogBotVerificationIcon = DialogObject.getBotVerificationIcon(chat);
-                        if (chat.scam) {
-                            drawScam = 1;
-                            Theme.dialogs_scamDrawable.checkText();
-                        } else if (chat.fake) {
-                            drawScam = 2;
-                            Theme.dialogs_fakeDrawable.checkText();
-                        } else if (DialogObject.getEmojiStatusDocumentId(chat.emoji_status) != 0 && !app.nimarkogram.messenger.NimarkoConfig.disablePremiumStatuses) {
-                            drawPremium = true;
-                            nameLayoutEllipsizeByGradient = true;
-                            emojiStatus.center = LocaleController.isRTL;
-                            emojiStatus.set(DialogObject.getEmojiStatusDocumentId(chat.emoji_status), false);
-                            emojiStatus.setParticles(DialogObject.isEmojiStatusCollectible(chat.emoji_status), false);
-                        } else {
-                            drawVerified = !forbidVerified && chat.verified;
-                            drawBotVerified = !forbidVerified && chat.bot_verification_icon != 0;
-                            // NG: when a recycled row binds to a chat without an emoji
-                            // status, the previous binding's particles state persists on
-                            // emojiStatus.SwapAnimatedEmojiDrawable. Explicitly clear it
-                            // so search / recycler-view rows don't keep showing badge
-                            // sparkles on plain chats.
-                            emojiStatus.setParticles(false, false);
-                        }
-                    } else if (user != null) {
-                        dialogBotVerificationIcon = DialogObject.getBotVerificationIcon(user);
-                        if (user.scam) {
-                            drawScam = 1;
-                            Theme.dialogs_scamDrawable.checkText();
-                        } else if (user.fake) {
-                            drawScam = 2;
-                            Theme.dialogs_fakeDrawable.checkText();
-                        } else {
-                            drawVerified = !forbidVerified && user.verified;
-                            drawBotVerified = !forbidVerified && !UserObject.isUserSelf(user) && user.bot_verification_icon != 0;
-                        }
-                        drawPremium = MessagesController.getInstance(currentAccount).isPremiumUser(user) && UserConfig.getInstance(currentAccount).clientUserId != user.id && user.id != 0 && !app.nimarkogram.messenger.NimarkoConfig.disablePremiumStatuses;
-                        if (drawPremium) {
-                            Long emojiStatusId = UserObject.getEmojiStatusDocumentId(user);
-                            emojiStatus.center = LocaleController.isRTL;
-                            if (emojiStatusId != null) {
-                                nameLayoutEllipsizeByGradient = true;
-                                emojiStatus.set(emojiStatusId, false);
-                                emojiStatus.setParticles(DialogObject.isEmojiStatusCollectible(user.emoji_status), false);
-                            } else {
-                                nameLayoutEllipsizeByGradient = true;
-                                emojiStatus.set(PremiumGradient.getInstance().premiumStarDrawableMini, false);
-                                emojiStatus.setParticles(false, false);
-                            }
-                        } else {
-                            // NG: non-premium user binding on a recycled row — clear
-                            // particles state so search / list cells don't show stray
-                            // badge sparkles inherited from the previous binding.
-                            emojiStatus.setParticles(false, false);
-                        }
-                    }
-                    if (dialogBotVerificationIcon != 0 && drawBotVerified) {
-                        botVerification.set(dialogBotVerificationIcon, false);
-                    }
-                    // NimarkoGram: probe the badge for the dialog owner. NO
-                    // Saved-Messages exclusion — achievement-style plugins
-                    // push badges at the user's own id and need them visible
-                    // on the Saved Messages row too.
-                    try {
-                        org.telegram.tgnet.TLObject badgeTarget = user != null ? user : chat;
-                        app.nimarkogram.messenger.api.dto.BadgeDTO nimarkoBadge =
-                                app.nimarkogram.messenger.badges.BadgesController.getInstance().i(badgeTarget);
-                        if (nimarkoBadge != null && nimarkoBadge.getDocumentId() != 0L) {
-                            drawPremium = true;
-                            nameLayoutEllipsizeByGradient = true;
-                            emojiStatus.center = LocaleController.isRTL;
-                            emojiStatus.set(nimarkoBadge.getDocumentId(), false);
-                            emojiStatus.setParticles(true, false);
-                            // NimarkoGram: kill the chat's bot-verification
-                            // emoji when our badge wins — otherwise both
-                            // render side-by-side on channels like "Фумошка"
-                            // that have both bot_verification_icon and a
-                            // nimarko badge.
-                            drawBotVerified = false;
-                            drawVerified = false;
-                            botVerification.set((Drawable) null, false);
-                        } else {
-                            // NG: defensive clear — particles must be OFF for any
-                            // user/chat without an NG badge AND without a collectible
-                            // emoji status. User reported still seeing sparkles in
-                            // search results for badgeless users (recycler view leak
-                            // through the SwapAnimatedEmojiDrawable particle flag).
-                            boolean hasCollectibleEmojiStatus =
-                                    (user != null && DialogObject.isEmojiStatusCollectible(user.emoji_status))
-                                    || (chat != null && DialogObject.isEmojiStatusCollectible(chat.emoji_status));
-                            if (!hasCollectibleEmojiStatus) {
-                                emojiStatus.setParticles(false, false);
-                            }
-                        }
-                    } catch (Throwable ignored) {}
+                    updateBadgeDrawables(false);
                 }
             }
 
@@ -3038,6 +2976,18 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
             }
         }
         updateThumbsPosition();
+        if (isForumCell() && messageLayout != null && forumFormattedNames != null) {
+            if (forumTopicPreviewTransition.bind(currentAccount, currentDialogId,
+                    forumFormattedNames.isLoadingState, SharedConfig.animationsEnabled() && visibleOnScreen)) {
+                outgoingForumLoadingLayout = previousTopicsLayout;
+                outgoingForumLoadingLeft = previousTopicsLeft;
+            } else if (forumTopicPreviewTransition.outgoingAlpha() == 0f) {
+                outgoingForumLoadingLayout = null;
+            }
+        } else {
+            forumTopicPreviewTransition.reset();
+            outgoingForumLoadingLayout = null;
+        }
     }
 
     public void setTitleOverride(String s) {
@@ -3120,6 +3070,10 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
     int topMessageTopicEndIndex;
 
     private ForumFormattedNames forumFormattedNames;
+    private final org.telegram.ui.Components.Forum.ForumTopicPreviewTransition forumTopicPreviewTransition =
+            new org.telegram.ui.Components.Forum.ForumTopicPreviewTransition();
+    private StaticLayout outgoingForumLoadingLayout;
+    private int outgoingForumLoadingLeft;
 
     private CharSequence formatTopicsNames() {
         if (forumFormattedNames == null) {
@@ -3298,6 +3252,129 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
     public boolean isFolderCell() {
         return currentDialogFolderId != 0;
     }
+    private long badgePeerId() {
+        return user != null ? user.id : chat != null ? -chat.id : 0;
+    }
+    private boolean isBadgePresented() {
+        if (!visibleOnScreen) return false;
+        View view = this;
+        while (view != null) {
+            if (view.getVisibility() != View.VISIBLE || view.getAlpha() <= 0f) return false;
+            ViewParent parent = view.getParent();
+            view = parent instanceof View ? (View) parent : null;
+        }
+        return true;
+    }
+    private void recordBadgePresentation() {
+        if (attachedToWindow && isBadgePresented() && customDialog == null && !isTopic
+                && currentDialogFolderId == 0 && badgeBoundAccount == currentAccount
+                && badgeBoundDialogId == currentDialogId && badgeBoundPeerId == badgePeerId()) {
+            badgeOwnerDrawn = true;
+        }
+    }
+    private boolean updateBadgeDrawables(boolean animated) {
+        if (customDialog != null || currentDialogFolderId != 0 || isTopic) return false;
+        final long peerId = badgePeerId();
+        final boolean sameOwner = badgeBoundAccount == currentAccount
+                && badgeBoundDialogId == currentDialogId && badgeBoundPeerId == peerId;
+        if (!sameOwner) {
+            badgeOwnerDrawn = false;
+            badgeBoundAccount = currentAccount;
+            badgeBoundDialogId = currentDialogId;
+            badgeBoundPeerId = peerId;
+            emojiStatus.set((Drawable) null, false);
+            emojiStatus.resetAnimation();
+            botVerification.set((Drawable) null, false);
+            botVerification.resetAnimation();
+            badgeParticles = false;
+        }
+        emojiStatus.setCurrentAccount(currentAccount);
+        botVerification.setCurrentAccount(currentAccount);
+        animated = animated && sameOwner && badgeOwnerDrawn && attachedToWindow && isBadgePresented()
+                && SharedConfig.animationsEnabled();
+        final boolean oldPremium = drawPremium, oldVerified = drawVerified, oldBot = drawBotVerified;
+        final int oldScam = drawScam;
+        drawPremium = drawVerified = drawBotVerified = false;
+        drawScam = 0;
+        long documentId = 0, botIcon = 0;
+        Drawable fallback = null;
+        boolean particles = false;
+        app.nimarkogram.messenger.api.dto.BadgeDTO badge = null;
+        try {
+            badge = app.nimarkogram.messenger.badges.BadgesController.getInstance().i(user != null ? user : chat);
+            if (badge != null && badge.getDocumentId() == 0L) badge = null;
+        } catch (Throwable ignored) {}
+        if (chat != null) {
+            if (chat.scam || chat.fake) {
+                drawScam = chat.scam ? 1 : 2;
+            } else if (DialogObject.getEmojiStatusDocumentId(chat.emoji_status) != 0
+                    && !app.nimarkogram.messenger.NimarkoConfig.disablePremiumStatuses) {
+                drawPremium = true;
+                documentId = DialogObject.getEmojiStatusDocumentId(chat.emoji_status);
+                particles = DialogObject.isEmojiStatusCollectible(chat.emoji_status);
+            } else {
+                drawVerified = !forbidVerified && chat.verified;
+                botIcon = !forbidVerified ? DialogObject.getBotVerificationIcon(chat) : 0;
+            }
+        } else if (user != null) {
+            if (user.scam || user.fake) {
+                drawScam = user.scam ? 1 : 2;
+            } else {
+                drawVerified = !forbidVerified && user.verified;
+                botIcon = !forbidVerified && !UserObject.isUserSelf(user) ? DialogObject.getBotVerificationIcon(user) : 0;
+            }
+            drawPremium = MessagesController.getInstance(currentAccount).isPremiumUser(user)
+                    && UserConfig.getInstance(currentAccount).clientUserId != user.id && user.id != 0
+                    && !app.nimarkogram.messenger.NimarkoConfig.disablePremiumStatuses;
+            if (drawPremium) {
+                Long statusId = UserObject.getEmojiStatusDocumentId(user);
+                if (statusId != null) {
+                    documentId = statusId;
+                    particles = DialogObject.isEmojiStatusCollectible(user.emoji_status);
+                } else {
+                    fallback = PremiumGradient.getInstance().premiumStarDrawableMini;
+                }
+            }
+        }
+        if (drawScam != 0) (drawScam == 1 ? Theme.dialogs_scamDrawable : Theme.dialogs_fakeDrawable).checkText();
+        if (badge != null) {
+            drawPremium = true;
+            drawVerified = false;
+            botIcon = 0;
+            documentId = badge.getDocumentId();
+            fallback = null;
+            particles = true;
+        }
+        drawBotVerified = botIcon != 0;
+        if (!drawPremium || drawVerified) {
+            documentId = 0;
+            fallback = null;
+            particles = false;
+        }
+        final Drawable current = emojiStatus.getDrawable();
+        final boolean sameStatus = documentId != 0
+                ? current instanceof AnimatedEmojiDrawable && ((AnimatedEmojiDrawable) current).isSameEmoji(
+                        currentAccount, AnimatedEmojiDrawable.CACHE_TYPE_EMOJI_STATUS, documentId)
+                : current == fallback;
+        if (!sameStatus) {
+            if (documentId != 0) emojiStatus.set(documentId, animated);
+            else emojiStatus.set(fallback, animated);
+        }
+        final boolean particlesChanged = badgeParticles != particles;
+        if (!sameStatus || particlesChanged || !sameOwner) {
+            emojiStatus.setParticles(particles, animated);
+            badgeParticles = particles;
+        }
+        final boolean botChanged = botVerification.set(botIcon, badge == null && animated);
+        if (!drawVerified && drawScam == 0 && emojiStatus.isNotEmpty() > 0) drawPremium = true;
+        if (drawPremium) {
+            nameLayoutEllipsizeByGradient = true;
+            emojiStatus.center = LocaleController.isRTL;
+        }
+        return !sameOwner || !sameStatus || particlesChanged || botChanged
+                || oldPremium != drawPremium || oldVerified != drawVerified
+                || oldBot != drawBotVerified || oldScam != drawScam;
+    }
 
     public boolean update(int mask) {
         return update(mask, true);
@@ -3441,78 +3518,13 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
                     }
                 }
                 if ((mask & MessagesController.UPDATE_MASK_EMOJI_STATUS) != 0) {
-                    long dialogBotVerificationIcon = 0;
-                    // NimarkoGram: probe badge FIRST and let it short-circuit
-                    // the original premium/emoji-status assignment for this
-                    // bind. Otherwise the cell flashes premium-star → badge
-                    // on every emoji-status mask update (user reported as
-                    // "duplicating / disappearing" badges on channels).
-                    app.nimarkogram.messenger.api.dto.BadgeDTO nimarkoBadgeMask = null;
-                    try {
-                        org.telegram.tgnet.TLObject t = user != null ? user : chat;
-                        nimarkoBadgeMask = app.nimarkogram.messenger.badges.BadgesController.getInstance().i(t);
-                        if (nimarkoBadgeMask != null && nimarkoBadgeMask.getDocumentId() == 0L) nimarkoBadgeMask = null;
-                    } catch (Throwable ignored) {}
-                    // Per-cell guard: skip the expensive emojiStatus.set+setParticles
-                    // chain when this exact badge already rendered for this cell.
-                    // Saves N visible cells × SwapAnimatedEmojiDrawable rebind on
-                    // every UPDATE_MASK_EMOJI_STATUS broadcast.
-                    long _nimarkoMaskDoc = nimarkoBadgeMask != null ? nimarkoBadgeMask.getDocumentId() : 0L;
-                    boolean _nimarkoMaskSame = (_nimarkoMaskDoc != 0L) && (_nimarkoMaskDoc == lastNimarkoMaskDocId);
-                    lastNimarkoMaskDocId = _nimarkoMaskDoc;
-                    if (user != null) {
-                        user = MessagesController.getInstance(currentAccount).getUser(user.id);
-                        if (nimarkoBadgeMask != null) {
-                            nameLayoutEllipsizeByGradient = true;
-                            if (!_nimarkoMaskSame) {
-                                emojiStatus.set(_nimarkoMaskDoc, false);
-                                emojiStatus.setParticles(true, false);
-                                botVerification.set((Drawable) null, false);
-                            }
-                        } else if (user != null && DialogObject.getEmojiStatusDocumentId(user.emoji_status) != 0) {
-                            nameLayoutEllipsizeByGradient = true;
-                            emojiStatus.set(DialogObject.getEmojiStatusDocumentId(user.emoji_status), animated);
-                            emojiStatus.setParticles(DialogObject.isEmojiStatusCollectible(user.emoji_status), animated);
-                        } else {
-                            nameLayoutEllipsizeByGradient = true;
-                            emojiStatus.set(PremiumGradient.getInstance().premiumStarDrawableMini, animated);
-                            emojiStatus.setParticles(false, animated);
-                        }
-                        dialogBotVerificationIcon = DialogObject.getBotVerificationIcon(user);
-                        invalidate = true;
+                    if (user != null) user = MessagesController.getInstance(currentAccount).getUser(user.id);
+                    if (chat != null) chat = MessagesController.getInstance(currentAccount).getChat(chat.id);
+                    if (updateBadgeDrawables(animated)) {
+                        badgeLayoutDirty = true;
+                        continueUpdate = true;
                     }
-                    if (chat != null) {
-                        chat = MessagesController.getInstance(currentAccount).getChat(chat.id);
-                        if (nimarkoBadgeMask != null) {
-                            nameLayoutEllipsizeByGradient = true;
-                            if (!_nimarkoMaskSame) {
-                                emojiStatus.set(_nimarkoMaskDoc, false);
-                                emojiStatus.setParticles(true, false);
-                                botVerification.set((Drawable) null, false);
-                            }
-                        } else if (chat != null && DialogObject.getEmojiStatusDocumentId(chat.emoji_status) != 0)  {
-                            nameLayoutEllipsizeByGradient = true;
-                            emojiStatus.set(DialogObject.getEmojiStatusDocumentId(chat.emoji_status), animated);
-                            emojiStatus.setParticles(DialogObject.isEmojiStatusCollectible(chat.emoji_status), animated);
-                        } else {
-                            nameLayoutEllipsizeByGradient = true;
-                            emojiStatus.set(PremiumGradient.getInstance().premiumStarDrawableMini, animated);
-                            emojiStatus.setParticles(false, animated);
-                        }
-                        dialogBotVerificationIcon = DialogObject.getBotVerificationIcon(chat);
-                        invalidate = true;
-                    }
-                    if (dialogBotVerificationIcon != 0) {
-                        if (!drawBotVerified) {
-                            continueUpdate = true;
-                        }
-                        botVerification.set(dialogBotVerificationIcon, animated);
-                    } else {
-                        if (drawBotVerified) {
-                            continueUpdate = true;
-                        }
-                        botVerification.set((Drawable) null, animated);
-                    }
+                    invalidate = true;
                     // (Badge handling now inline above as the first branch in
                     // both the user and chat blocks — no double-set.)
                 }
@@ -3687,7 +3699,11 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
 
             drawCommunityAvatar = !insideCommunityList && ChatObject.isCommunity(chat) && isDialogCell;
 
-            if (currentDialogFolderId != 0) {
+            if (isTopic && !drawAvatar) {
+                if (avatarImage.hasImageSet() || avatarImage.hasPendingImageRequest()) {
+                    avatarImage.setImageBitmap((Drawable) null);
+                }
+            } else if (currentDialogFolderId != 0) {
                 Theme.dialogs_archiveAvatarDrawable.setCallback(this);
                 avatarDrawable.setAvatarType(AvatarDrawable.AVATAR_TYPE_ARCHIVED);
                 avatarImage.setImage(null, null, avatarDrawable, null, user, 0);
@@ -3921,8 +3937,17 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
             lastUpdateTime = 0;
             return;
         }
+        recordBadgePresentation();
+        if (drawPremium && emojiStatus.isEmpty() && emojiStatus.isNotEmpty() == 0) {
+            badgeLayoutDirty = true;
+            buildLayout();
+        }
 
         long now = SystemClock.uptimeMillis();
+        if (!SharedConfig.animationsEnabled()) forumTopicPreviewTransition.finish();
+        forumTopicPreviewTransition.draw(now);
+        if (forumTopicPreviewTransition.isAnimating()) invalidate();
+        if (forumTopicPreviewTransition.outgoingAlpha() == 0f) outgoingForumLoadingLayout = null;
         final float frameTime = Math.max(1f, AndroidUtilities.screenRefreshTime);
         final long elapsed = lastUpdateTime == 0 ? 0 : now - lastUpdateTime;
         animationTimeDelta = elapsed <= 0 || elapsed > frameTime * 4f
@@ -4385,6 +4410,16 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
                     top -= dp(isForumCell() ? 10 : 11);
                 }
                 if (updateHelper.typingProgres != 1f) {
+                    if (outgoingForumLoadingLayout != null && forumTopicPreviewTransition.outgoingAlpha() > 0f) {
+                        final int loadingLayer = canvas.saveLayerAlpha(0, 0, getWidth(), getHeight(),
+                                Math.round(255 * forumTopicPreviewTransition.outgoingAlpha() * (1f - updateHelper.typingProgres)));
+                        canvas.translate(outgoingForumLoadingLeft, top);
+                        outgoingForumLoadingLayout.draw(canvas);
+                        canvas.restoreToCount(loadingLayer);
+                    }
+                    final int topicLayer = forumTopicPreviewTransition.alpha() < 1f
+                            ? canvas.saveLayerAlpha(0, 0, getWidth(), getHeight(), Math.round(255 * forumTopicPreviewTransition.alpha()))
+                            : canvas.save();
                     canvas.save();
                     canvas.translate(messageLeft, top);
                     int oldAlpha = messageLayout.getPaint().getAlpha();
@@ -4411,7 +4446,12 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
                     }
                     messageLayout.getPaint().setAlpha(oldAlpha);
                     canvas.restore();
+                    canvas.restoreToCount(topicLayer);
                 }
+                final int typingLayer = typingLayout != null && updateHelper.typingProgres > 0f
+                        && updateHelper.typingProgres < 1f
+                        ? canvas.saveLayerAlpha(0, 0, getWidth(), getHeight(), Math.round(255 * updateHelper.typingProgres))
+                        : canvas.save();
 
                 canvas.save();
                 if (updateHelper.typingOutToTop) {
@@ -4424,20 +4464,17 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
                 }
                 canvas.translate(typingLeft, top);
                 if (typingLayout != null && updateHelper.typingProgres > 0) {
-                    int oldAlpha = typingLayout.getPaint().getAlpha();
-                    typingLayout.getPaint().setAlpha((int) (oldAlpha * updateHelper.typingProgres));
                     typingLayout.draw(canvas);
-                    typingLayout.getPaint().setAlpha(oldAlpha);
                 }
                 canvas.restore();
 
-                if (typingLayout != null && (printingStringType >= 0 || (updateHelper.typingProgres > 0 && updateHelper.lastKnownTypingType >= 0))) {
+                if (typingLayout != null && updateHelper.typingProgres > 0 && (printingStringType >= 0 || updateHelper.lastKnownTypingType >= 0)) {
                     int type = printingStringType >= 0 ? printingStringType : updateHelper.lastKnownTypingType;
                     StatusDrawable statusDrawable = Theme.getChatStatusDrawable(type);
                     if (statusDrawable != null) {
                         canvas.save();
                         int color = Theme.getColor(Theme.key_chats_actionMessage);
-                        statusDrawable.setColor(ColorUtils.setAlphaComponent(color, (int) (Color.alpha(color) * updateHelper.typingProgres)));
+                        statusDrawable.setColor(color);
                         if (updateHelper.typingOutToTop) {
                             top = messageTop + typingAnimationOffset * (1f - updateHelper.typingProgres);
                         } else {
@@ -4456,6 +4493,7 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
                         canvas.restore();
                     }
                 }
+                canvas.restoreToCount(typingLayer);
             }
 
             if (buttonLayout != null) {
@@ -4498,11 +4536,15 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
                         AndroidUtilities.rectTmp.inset(-dp(8), -dp(3));
                         canvasButton.addRect(AndroidUtilities.rectTmp);
                     }
+                    final int topicButtonLayer = forumTopicPreviewTransition.alpha() < 1f
+                            ? canvas.saveLayerAlpha(0, 0, getWidth(), getHeight(), Math.round(255 * forumTopicPreviewTransition.alpha()))
+                            : canvas.save();
                     canvasButton.draw(canvas);
 
                     Theme.dialogs_forum_arrowDrawable.setAlpha(125);
                     setDrawableBounds(Theme.dialogs_forum_arrowDrawable, AndroidUtilities.rectTmp.right - dp(18), AndroidUtilities.rectTmp.top + (AndroidUtilities.rectTmp.height() - Theme.dialogs_forum_arrowDrawable.getIntrinsicHeight()) / 2f);
                     Theme.dialogs_forum_arrowDrawable.draw(canvas);
+                    canvas.restoreToCount(topicButtonLayer);
                 }
 
 
@@ -4564,7 +4606,7 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
                 if ((!(useForceThreeLines || SharedConfig.useThreeLinesLayout) || isForumCell()) && hasTags()) {
                     y -= dp(9);
                 }
-                if (botVerification != null) {
+                if (botVerification != null && isBadgePresented()) {
                     botVerification.setBounds(
                         nameLeft - dp(17 + 2),
                         y + dp(-1),
@@ -4660,7 +4702,7 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
                             nameMuteLeft + dp(20),
                             y - dp(4) + dp(22)
                         );
-                        emojiStatus.draw(canvas);
+                        if (isBadgePresented()) emojiStatus.draw(canvas);
                     } else {
                         emojiStatusVisible = true;
                     }
@@ -6560,7 +6602,6 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
 
     private static class ForumFormattedNames {
         private final DialogCell parent;
-        int lastMessageId;
 
         int topMessageTopicStartIndex;
         int topMessageTopicEndIndex;
@@ -6584,16 +6625,12 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
         }
 
         private void formatTopicsNames(int currentAccount, MessageObject message, TLRPC.Chat chat) {
-            int messageId = message == null || chat == null ? 0 : message.getId();
-            if (lastMessageId == messageId && !isLoadingState) {
-                return;
-            }
             avatarSpans = null;
+            formattedNames = null;
             topMessageTopicStartIndex = 0;
             topMessageTopicEndIndex = 0;
             lastTopicMessageUnread = false;
             isLoadingState = false;
-            lastMessageId = messageId;
             Paint currentMessagePaint = Theme.dialogs_messagePaint[0];
             if (chat != null) {
                 List<TLRPC.TL_forumTopic> topics = MessagesController.getInstance(currentAccount).getTopicsController().getTopics(chat.id);

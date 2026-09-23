@@ -161,6 +161,7 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
     private int titleColorToSet = 0;
     private boolean overlayTitleAnimation;
     private boolean titleAnimationRunning;
+    private int titleAnimationGeneration;
     private boolean fromBottom;
     private boolean centerScale;
     private CharSequence subtitle;
@@ -861,6 +862,11 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
     }
 
     public void setTitle(CharSequence value, Drawable rightDrawable, boolean gilroy) {
+        if (titleOverlayShown) {
+            lastTitle = value;
+            lastRightDrawable = rightDrawable;
+            return;
+        }
         if (value != null && titleTextView[0] == null) {
             createTitleTextView(0, gilroy);
         }
@@ -1015,7 +1021,7 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
     }
 
     public float getActionModeFactor() {
-        return actionMode != null ? actionMode.getAlpha() : 0;
+        return actionMode != null && actionMode.getVisibility() == VISIBLE ? actionMode.getAlpha() : 0;
     }
 
     public ActionBarMenu createActionMode(boolean needTop, String tag) {
@@ -2106,22 +2112,34 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
             SimpleTextView tmp = titleTextView[1];
             titleTextView[1] = titleTextView[0];
             titleTextView[0] = tmp;
+            final boolean homeStatusCrossfade = parentFragment instanceof org.telegram.ui.DialogsActivity;
+            final int overlayDuration = homeStatusCrossfade ? 300 : 220;
             titleTextView[0].setAlpha(0);
-            titleTextView[0].setTranslationY(-dp(20));
+            titleTextView[0].setTranslationY(homeStatusCrossfade ? 0 : -dp(20));
+            if (homeStatusCrossfade) {
+                titleTextView[0].setScaleX(1f);
+                titleTextView[0].setScaleY(1f);
+                titleTextView[1].setTranslationY(0);
+                titleTextView[1].setScaleX(1f);
+                titleTextView[1].setScaleY(1f);
+            }
             titleTextView[0].animate()
                     .alpha(adaptiveBackgroundHideTitle ? 1.0f - onTopAnimated : 1f)
                     .translationY(0)
-                    .setDuration(220).start();
+                    .setInterpolator(homeStatusCrossfade ? CubicBezierInterpolator.EASE_OUT : new android.view.animation.AccelerateDecelerateInterpolator())
+                    .setDuration(overlayDuration).start();
             ViewPropertyAnimator animator = titleTextView[1].animate()
                     .alpha(0);
-            if (subtitleTextView == null) {
+            if (homeStatusCrossfade) {
+                animator.setInterpolator(CubicBezierInterpolator.EASE_OUT);
+            } else if (subtitleTextView == null) {
                 animator.translationY(dp(20));
             } else {
                 animator.scaleY(0.7f).scaleX(0.7f);
             }
             requestLayout();
             centerScale = true;
-            animator.setDuration(220).setListener(new AnimatorListenerAdapter() {
+            animator.setDuration(overlayDuration).setListener(new AnimatorListenerAdapter() {
                 @Override
                 public void onAnimationEnd(Animator animation) {
                     if (titleTextView[1] != null && titleTextView[1].getParent() != null) {
@@ -2300,6 +2318,7 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
     }
 
     public void setTitleAnimated(CharSequence title, boolean fromBottom, long duration, Interpolator interpolator) {
+        if (updateTitleBehindOverlay(title, null)) return;
         if (titleTextView[0] == null || title == null) {
             setTitle(title);
             return;
@@ -2312,7 +2331,10 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
             }
             subtitleTextView.animate().alpha(fromBottom ? 0 : 1f).setDuration(220).start();
         }
+        final int generation = ++titleAnimationGeneration;
+        titleTextView[0].animate().setListener(null).cancel();
         if (titleTextView[1] != null) {
+            titleTextView[1].animate().setListener(null).cancel();
             if (titleTextView[1].getParent() != null) {
                 ViewGroup viewGroup = (ViewGroup) titleTextView[1].getParent();
                 viewGroup.removeView(titleTextView[1]);
@@ -2320,6 +2342,7 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
             titleTextView[1] = null;
         }
         titleTextView[1] = titleTextView[0];
+        final SimpleTextView outgoingTitle = titleTextView[1];
         titleTextView[0] = null;
         setTitle(title);
         this.fromBottom = fromBottom;
@@ -2344,9 +2367,9 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
         a.setDuration(duration).setListener(new AnimatorListenerAdapter() {
             @Override
             public void onAnimationEnd(Animator animation) {
-                if (titleTextView[1] != null && titleTextView[1].getParent() != null) {
-                    ViewGroup viewGroup = (ViewGroup) titleTextView[1].getParent();
-                    viewGroup.removeView(titleTextView[1]);
+                if (generation != titleAnimationGeneration || titleTextView[1] != outgoingTitle) return;
+                if (outgoingTitle.getParent() instanceof ViewGroup) {
+                    ((ViewGroup) outgoingTitle.getParent()).removeView(outgoingTitle);
                 }
                 titleTextView[1] = null;
                 titleAnimationRunning = false;
@@ -2362,11 +2385,15 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
     }
 
     public void setTitleAnimatedX(CharSequence title, Drawable rightDrawable, boolean forward, long duration, boolean gilroy) {
+        if (updateTitleBehindOverlay(title, rightDrawable)) return;
         if (titleTextView[0] == null || title == null) {
             setTitle(title, rightDrawable, gilroy);
             return;
         }
+        final int generation = ++titleAnimationGeneration;
+        titleTextView[0].animate().setListener(null).cancel();
         if (titleTextView[1] != null) {
+            titleTextView[1].animate().setListener(null).cancel();
             if (titleTextView[1].getParent() != null) {
                 ViewGroup viewGroup = (ViewGroup) titleTextView[1].getParent();
                 viewGroup.removeView(titleTextView[1]);
@@ -2374,6 +2401,7 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
             titleTextView[1] = null;
         }
         titleTextView[1] = titleTextView[0];
+        final SimpleTextView outgoingTitle = titleTextView[1];
         titleTextView[0] = null;
         setTitle(title, rightDrawable, gilroy);
         titleTextView[0].setAlpha(0);
@@ -2386,9 +2414,9 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
         a.setDuration(duration).setListener(new AnimatorListenerAdapter() {
             @Override
             public void onAnimationEnd(Animator animation) {
-                if (titleTextView[1] != null && titleTextView[1].getParent() != null) {
-                    ViewGroup viewGroup = (ViewGroup) titleTextView[1].getParent();
-                    viewGroup.removeView(titleTextView[1]);
+                if (generation != titleAnimationGeneration || titleTextView[1] != outgoingTitle) return;
+                if (outgoingTitle.getParent() instanceof ViewGroup) {
+                    ((ViewGroup) outgoingTitle.getParent()).removeView(outgoingTitle);
                 }
                 titleTextView[1] = null;
                 titleAnimationRunning = false;
@@ -2397,6 +2425,15 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
             }
         }).start();
         requestLayout();
+    }
+    private boolean updateTitleBehindOverlay(CharSequence title, Drawable rightDrawable) {
+        if (!titleOverlayShown && !overlayTitleAnimationInProgress) return false;
+        lastTitle = title;
+        lastRightDrawable = rightDrawable;
+        if (!titleOverlayShown) {
+            setTitle(title, rightDrawable);
+        }
+        return true;
     }
 
     @Override
@@ -2841,8 +2878,10 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
 
     public boolean doNotDrawGlassMenu;
 
-    @Override
-    protected void dispatchDraw(Canvas canvas) {
+    public void prepareGlassForCapture() {
+        drawGlass(null);
+    }
+    private void drawGlass(Canvas canvas) {
         final int p = dp(6);
         final int s = dp(46);
         final float search = Utilities.clamp01(searchFactor);
@@ -2876,12 +2915,12 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
             glassDrawable.setBounds(
                     chatAvatarOvalBounds.left, t, chatAvatarOvalBounds.right, b);
             glassDrawable.setAlpha(glassA);
-            glassDrawable.draw(canvas);
+            if (canvas != null) glassDrawable.draw(canvas);
         }
         if (glassDrawableBack != null && hasBackButton) {
             glassDrawableBack.setBounds(0, t, s + p * 2, b);
             glassDrawableBack.setAlpha(glassA);
-            glassDrawableBack.draw(canvas);
+            if (canvas != null) glassDrawableBack.draw(canvas);
         }
         if (glassDrawableMenu != null && menuWidth > 0 && !glassOnlyBack && !doNotDrawGlassMenu) {
             glassDrawableMenu.setBounds(getWidth() - Math.max(s, menuWidth) - p * 2, t, getWidth(), b);
@@ -2889,8 +2928,12 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
             final int menuGlassA = hasForcedMenuWidth ? 255 : (int) (255 * animatorHasMenuItems.getFloatValue());
 
             glassDrawableMenu.setAlpha((int) (glassA * menuGlassA / 255f * (1f - search)));
-            glassDrawableMenu.draw(canvas);
+            if (canvas != null) glassDrawableMenu.draw(canvas);
         }
+    }
+    @Override
+    protected void dispatchDraw(Canvas canvas) {
+        drawGlass(canvas);
 
         if (blurredBackground && actionBarColor != Color.TRANSPARENT) {
             rectTmp.set(0, 0, getMeasuredWidth(), getMeasuredHeight());

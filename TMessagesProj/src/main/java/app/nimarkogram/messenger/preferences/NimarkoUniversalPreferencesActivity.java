@@ -18,11 +18,10 @@ public abstract class NimarkoUniversalPreferencesActivity extends UniversalFragm
 
     private int initialSearchItemId;
     private SettingsSearchHighlight searchHighlight;
-    private final Runnable toggleRowsRefresh = () -> {
-        if (listView != null && listView.adapter != null) {
-            listView.adapter.update(true);
-        }
-    };
+    private int listWorkGeneration;
+    private boolean toggleRowsRefreshPending;
+    private Runnable initialSearchScroll;
+    private Runnable toggleRowsRefresh;
 
     @Override
     public boolean isSupportEdgeToEdge() {
@@ -36,11 +35,14 @@ public abstract class NimarkoUniversalPreferencesActivity extends UniversalFragm
 
     @Override
     public View createView(Context context) {
+        cancelPendingListWork();
         View view = super.createView(context);
+        prepareListCallbacks();
+        listView.setTranslateSelector(true);
         ViewCompat.setOnApplyWindowInsetsListener(view, this::onInsetsInternal);
         ViewCompat.requestApplyInsets(view);
         if (initialSearchItemId != 0 && listView != null) {
-            listView.post(() -> scrollToItem(initialSearchItemId));
+            listView.post(initialSearchScroll);
         }
         return view;
     }
@@ -99,13 +101,40 @@ public abstract class NimarkoUniversalPreferencesActivity extends UniversalFragm
         searchHighlight = new SettingsSearchHighlight(listView, itemId);
     }
     protected void updateItemsAfterToggle() {
-        AndroidUtilities.cancelRunOnUIThread(toggleRowsRefresh);
-        AndroidUtilities.runOnUIThread(toggleRowsRefresh, 32);
+        if (listView != null && toggleRowsRefresh != null && !toggleRowsRefreshPending) {
+            toggleRowsRefreshPending = true;
+            listView.postOnAnimation(toggleRowsRefresh);
+        }
+    }
+    private void prepareListCallbacks() {
+        final int generation = listWorkGeneration;
+        initialSearchScroll = () -> {
+            if (generation == listWorkGeneration) scrollToItem(initialSearchItemId);
+        };
+        toggleRowsRefresh = () -> {
+            if (generation == listWorkGeneration && toggleRowsRefreshPending) {
+                toggleRowsRefreshPending = false;
+                listView.adapter.update(true);
+            }
+        };
+    }
+    private void cancelPendingListWork() {
+        ++listWorkGeneration;
+        toggleRowsRefreshPending = false;
+        if (searchHighlight != null) {
+            searchHighlight.run();
+            searchHighlight = null;
+        }
+        if (listView != null) {
+            listView.removeCallbacks(initialSearchScroll);
+            listView.removeCallbacks(toggleRowsRefresh);
+        }
+        initialSearchScroll = null;
+        toggleRowsRefresh = null;
     }
     @Override
     public void onFragmentDestroy() {
-        if (searchHighlight != null) searchHighlight.run();
-        AndroidUtilities.cancelRunOnUIThread(toggleRowsRefresh);
+        cancelPendingListWork();
         super.onFragmentDestroy();
     }
 

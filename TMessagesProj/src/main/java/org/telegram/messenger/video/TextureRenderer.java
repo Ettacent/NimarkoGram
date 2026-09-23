@@ -72,6 +72,7 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.FloatBuffer;
 import java.util.ArrayList;
+import java.util.IdentityHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import javax.microedition.khronos.opengles.GL10;
@@ -267,6 +268,19 @@ public class TextureRenderer {
 
     private Bitmap roundBitmap;
     private Canvas roundCanvas;
+    private final IdentityHashMap<VideoEditedInfo.MediaEntity, RetainedRoundFrame> roundFrames = new IdentityHashMap<>();
+    private static final class RetainedRoundFrame {
+        final Bitmap bitmap;
+        final Canvas canvas;
+        RetainedRoundFrame(int width, int height) {
+            bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
+            canvas = new Canvas(bitmap);
+        }
+        void release() {
+            canvas.setBitmap(null);
+            bitmap.recycle();
+        }
+    }
     private final android.graphics.Rect roundSrc = new android.graphics.Rect();
     private final RectF roundDst = new RectF();
     private Path roundClipPath;
@@ -793,7 +807,11 @@ public class TextureRenderer {
                     }
                     while (!entity.looped && entity.animatedFileDrawable.getProgressMs() < Math.min(roundMs, entity.animatedFileDrawable.getDurationMs())) {
                         int wasProgressMs = entity.animatedFileDrawable.getProgressMs();
-                        entity.animatedFileDrawable.getNextFrame(false);
+                        Bitmap nextRoundFrame = entity.animatedFileDrawable.getNextFrame(false);
+                        if (nextRoundFrame == null) {
+                            break;
+                        }
+                        retainRoundFrame(entity, nextRoundFrame);
                         if (entity.animatedFileDrawable.getProgressMs() <= wasProgressMs && !(entity.animatedFileDrawable.getProgressMs() == 0 && wasProgressMs == 0)) {
                             entity.looped = true;
                             break;
@@ -809,6 +827,10 @@ public class TextureRenderer {
                 }
             }
             Bitmap frameBitmap = entity.animatedFileDrawable.getBackgroundBitmap();
+            if (entity.type == VideoEditedInfo.MediaEntity.TYPE_ROUND) {
+                RetainedRoundFrame retained = roundFrames.get(entity);
+                frameBitmap = retained == null ? null : retained.bitmap;
+            }
             if (frameBitmap != null) {
                 Bitmap endBitmap;
                 if (entity.type == VideoEditedInfo.MediaEntity.TYPE_ROUND) {
@@ -1496,6 +1518,18 @@ public class TextureRenderer {
         entity.additionalWidth = (2 * pad) * scale / transformedWidth;
         entity.additionalHeight = (2 * pad) * scale / transformedHeight;
     }
+    private void retainRoundFrame(VideoEditedInfo.MediaEntity entity, Bitmap frame) {
+        if (frame == null || frame.isRecycled()) return;
+        RetainedRoundFrame retained = roundFrames.get(entity);
+        if (retained == null || retained.bitmap.getWidth() != frame.getWidth()
+                || retained.bitmap.getHeight() != frame.getHeight()) {
+            if (retained != null) retained.release();
+            retained = new RetainedRoundFrame(frame.getWidth(), frame.getHeight());
+            roundFrames.put(entity, retained);
+        }
+        retained.bitmap.eraseColor(Color.TRANSPARENT);
+        retained.canvas.drawBitmap(frame, 0, 0, null);
+    }
 
     private void initStickerEntity(VideoEditedInfo.MediaEntity entity) {
         entity.W = (int) (entity.width * transformedWidth);
@@ -1523,6 +1557,7 @@ public class TextureRenderer {
             entity.animatedFileDrawable.getNextFrame(true);
             if (entity.type == VideoEditedInfo.MediaEntity.TYPE_ROUND) {
                 entity.firstSeek = true;
+                retainRoundFrame(entity, entity.animatedFileDrawable.getBackgroundBitmap());
             }
         } else {
             String path = entity.text;
@@ -1868,6 +1903,10 @@ public class TextureRenderer {
     }
 
     public void release() {
+        for (RetainedRoundFrame retained : roundFrames.values()) {
+            retained.release();
+        }
+        roundFrames.clear();
         if (mediaEntities != null) {
             for (int a = 0, N = mediaEntities.size(); a < N; a++) {
                 VideoEditedInfo.MediaEntity entity = mediaEntities.get(a);
@@ -1881,10 +1920,16 @@ public class TextureRenderer {
                     ((EditTextEffects) entity.view).recycleEmojis();
                 }
                 if (entity.bitmap != null) {
+                    entity.canvas = null;
                     entity.bitmap.recycle();
                     entity.bitmap = null;
                 }
             }
+        }
+        if (roundBitmap != null) {
+            roundCanvas = null;
+            roundBitmap.recycle();
+            roundBitmap = null;
         }
         if (collageParts != null) {
             for (VideoEditedInfo.Part part : collageParts) {

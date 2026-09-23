@@ -36,7 +36,14 @@ const methods = [
 const harness = `import java.util.*;
 public class RoundReturnHarness {
  static final List<String> events = new ArrayList<>();
- static class TextureView {}
+ static class SurfaceTexture {}
+ static class MessageObject { boolean round; MessageObject(boolean value){round=value;} boolean isRoundVideo(){return round;} }
+ static class ViewPropertyAnimator { void cancel(){} }
+ static class TextureView {
+  float alpha=1f; ViewPropertyAnimator animator=new ViewPropertyAnimator();
+  ViewPropertyAnimator animate(){return animator;}
+  void setAlpha(float value){alpha=value;}
+ }
  static class AspectRatioFrameLayout {
   FrameLayout parent; boolean ready=true;
   FrameLayout getParent(){return parent;}
@@ -69,6 +76,10 @@ public class RoundReturnHarness {
  AspectRatioFrameLayout currentAspectRatioFrameLayout=new AspectRatioFrameLayout();
  PipRoundVideoView pipRoundVideoView=new PipRoundVideoView();
  boolean pipClosingToInline,showPipAfterInlineClose,isDrawingWasReady=true,currentAspectRatioFrameLayoutReady;
+ MessageObject playingMessageObject;
+ long roundVideoFrameReadyAt;
+ boolean roundVideoFirstFrameRendered;
+ SurfaceTexture roundVideoPendingSurface;
  int pipSwitchingState,currentAspectRatioFrameLayoutRotation;float currentAspectRatioFrameLayoutRatio;
  Object baseActivity=new Object();
  void cleanupPlayer(boolean notify,boolean stop){}
@@ -86,6 +97,13 @@ public class RoundReturnHarness {
   int binds=h.videoPlayer.binds; h.setCurrentVideoVisible(true);
   check(h.videoPlayer.binds==binds&&old.closes==1,"repeated visibility does not restart close");
   old.complete();check(h.pipRoundVideoView==null&&!h.pipClosingToInline,"close completes");
+
+  h=fresh();h.playingMessageObject=new MessageObject(true);
+  h.roundVideoFrameReadyAt=123;h.roundVideoPendingSurface=new SurfaceTexture();
+  h.setCurrentVideoVisible(true);
+  check(h.roundVideoFirstFrameRendered&&h.roundVideoFrameReadyAt==0&&h.roundVideoPendingSurface==null,
+    "round return retires previous surface readiness");
+  check(h.currentTextureView.alpha==0f,"round return waits behind preview for inline frame");
 
   h=fresh();old=h.pipRoundVideoView;h.setCurrentVideoVisible(true);
   h.setCurrentVideoVisible(false);check(h.showPipAfterInlineClose,"defer hide while closing");
@@ -116,7 +134,7 @@ public class RoundReturnHarness {
   h=fresh();old=h.pipRoundVideoView;h.setCurrentVideoVisible(true);h.videoPlayer=null;
   h.currentTextureView=null;h.setCurrentVideoVisible(false);old.complete();
   check(!h.pipClosingToInline&&h.pipRoundVideoView==null,"cleanup during close completes safely");
-  System.out.println("PASS: native output, frame readiness, repeat/hide/cancel, ownership, fast exit, stale completion, cleanup");
+  System.out.println("PASS: native output, round preview handoff, frame readiness, repeat/hide/cancel, ownership, fast exit, stale completion, cleanup");
  }
 }`;
 const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'nimarko-round-return-test-'));

@@ -1,0 +1,242 @@
+// Ordered software compositing oracle supplied by the Python sidecar.
+public class EmojiFirstFrameHarness {
+    static final long NOW = 1000;
+    static void check(boolean b, String why) { if (!b) throw new AssertionError(why); }
+    static void close(Canvas a, Canvas b, double tolerance, String why) {
+        check(a.distance(b) <= tolerance, why + " delta=" + a.distance(b) + "\nbefore=" + a + "\nafter=" + b);
+    }
+    static <T extends Drawable> T paint(T d, String label, double r, double g, double b, double... coverage) {
+        d.label = label; d.rgb = new double[]{r,g,b}; d.coverage = coverage; return d;
+    }
+    static BitmapDrawable preview() { return paint(new BitmapDrawable(), "preview", 1,1,1, 1,.5,0); }
+    static RLottieDrawable media() { return paint(new RLottieDrawable(), "media", 1,1,1, 1,.5,0); }
+    static ImageReceiver receiver() {
+        SystemClock.now = NOW;
+        ImageReceiver r = new ImageReceiver(); r.setCrossfadeOnReady(true);
+        r.videoThumbIsSame = false; // Production default; old harness incorrectly defaults true.
+        r.crossfadeByScale = 0; // Isolate blending; no coordinate transforms in this oracle.
+        r.imageX = 10; r.imageY = 20; r.imageW = 32; r.imageH = 32;
+        return r;
+    }
+    static Canvas at(ImageReceiver r, float progress, boolean bg) {
+        // Sample precise animation progress without quantizing via frame scheduling.
+        r.currentAlpha = progress; r.lastUpdateAlphaTime = NOW;
+        return r.frame(NOW, bg);
+    }
+    static void ready(Drawable d) {
+        if (d instanceof RLottieDrawable) ((RLottieDrawable)d).ready = true;
+        else ((AnimatedFileDrawable)d).ready = true;
+    }
+    static ImageReceiver transition(BitmapDrawable preview, Drawable media, boolean bg) {
+        ImageReceiver r = receiver();
+        r.currentMediaLocation = new Object();
+        check(r.deliver(preview, ImageReceiver.TYPE_IMAGE, true), "preview accepted");
+        r.frame(NOW, bg); // A genuinely visible predecessor, not merely a cached object.
+        check(r.deliver(media, ImageReceiver.TYPE_MEDIA, true), "pending media accepted");
+        r.frame(NOW, bg); ready(media); r.frame(NOW, bg);
+        return r;
+    }
+    static void oracle() {
+        Drawable red = paint(new Drawable(), "red", 1,0,0, 1,1,1);
+        Drawable blue = paint(new Drawable(), "blue", 0,0,1, 1,1,1);
+        Canvas a = new Canvas(); a.composite(red, 128); a.composite(blue, 128);
+        Canvas b = new Canvas(); b.composite(blue, 128); b.composite(red, 128);
+        check(a.distance(b) > .24, "oracle must retain order");
+        Canvas once = new Canvas(); once.composite(red, 128);
+        Canvas twice = new Canvas(); twice.composite(red, 128); twice.composite(red, 128);
+        check(twice.distance(once) > .24, "oracle must retain duplicate draws");
+        check(Math.abs(twice.pixels[0][3] - (1 - Math.pow(127.0/255, 2))) < 1e-9,
+              "SRC_OVER reference formula");
+    }
+    // Mathematical reference only, not substituted into production draw().
+    // ADD occurs on an initially transparent isolated surface, then that result
+    // is compared over the backdrop. It is not ADD directly onto the backdrop.
+    static Canvas isolatedAdd(Drawable outgoing, Drawable incoming, double t) {
+        Canvas a = new Canvas(), b = new Canvas(), result = new Canvas();
+        a.composite(outgoing, 255); b.composite(incoming, 255);
+        for (int p = 0; p < 3; p++) for (int c = 0; c < 4; c++)
+            result.pixels[p][c] = (1-t) * a.pixels[p][c] + t * b.pixels[p][c];
+        return result;
+    }
+    static void addReference() {
+        Drawable a = preview(), b = media();
+        close(isolatedAdd(a,b,0), isolatedAdd(a,b,.5), 0,
+              "weighted premultiplied ADD keeps identical translucent edges invariant");
+        a = paint(preview(), "outgoing", 1,0,0, 1,1,0);
+        b = paint(media(), "incoming", 0,0,1, 0,.5,1);
+        close(isolatedAdd(a,b,.999), isolatedAdd(a,b,1), .002,
+              "reference permits disjoint silhouettes to reach the endpoint continuously");
+        check(isolatedAdd(a,b,.5).pixels[0][3] == .5,
+              "outgoing-only pixel fades instead of ghosting");
+    }
+    static void photo(boolean bg, boolean sameVideoThumb) {
+        ImageReceiver r = receiver(); r.setCrossfadeOnReady(false);
+        r.videoThumbIsSame = sameVideoThumb;
+        r.deliver(preview(), ImageReceiver.TYPE_THUMB, false);
+        Canvas before = at(r, .4f, bg);
+        r.deliver(paint(new BitmapDrawable(), "photo", 1,1,1, 1,.5,0), ImageReceiver.TYPE_IMAGE, false);
+        close(before, r.frame(NOW, bg), 1.0/255, "midfade thumb -> photo at same timestamp, no static thumb");
+    }
+    static void svg(boolean bg) {
+        ImageReceiver r = receiver();
+        r.staticThumbDrawable = paint(new SvgHelper.SvgDrawable(), "svg", 1,1,1, 1,1,1);
+        Canvas before = r.frame(NOW, bg);
+        RLottieDrawable m = paint(media(), "media", 1,1,1, 1,1,1);
+        r.deliver(m, ImageReceiver.TYPE_MEDIA, true); r.frame(NOW, bg);
+        m.ready = true; r.frame(NOW, bg);
+        close(before, at(r, .5f, bg), 2.0/255,
+              "identical opaque SVG/media endpoints must not expose background at midpoint");
+    }
+    static void transparent(boolean bg, boolean webm) {
+        BitmapDrawable p = paint(preview(), "preview", 1,0,0, 1,1,1);
+        Drawable m = paint(webm ? new AnimatedFileDrawable() : media(), "media", 0,0,1, 1,.5,0);
+        ImageReceiver r = transition(p, m, bg);
+        close(at(r, .999f, bg), at(r, 1f, bg), .02,
+              "transparent hole/edge must not lose an opaque preview in the final 0.1% of fade");
+    }
+    static void nonoverlapping(boolean bg) {
+        BitmapDrawable p = paint(preview(), "outgoing", 1,0,0, 1,1,0);
+        RLottieDrawable m = paint(media(), "incoming", 0,0,1, 0,.5,1);
+        ImageReceiver r = transition(p,m,bg);
+        close(at(r,.999f,bg), at(r,1f,bg), .02,
+              "outgoing-only silhouette pixel must fade before completion");
+    }
+    static void doubleBlend(boolean bg, boolean override) {
+        BitmapDrawable p = preview(); RLottieDrawable m = media();
+        if (override) { p.coverage = new double[]{1,1,1}; m.coverage = new double[]{1,1,1}; }
+        ImageReceiver r = transition(p, m, bg);
+        if (override) r.overrideAlpha = .5f;
+        Canvas start = at(r, 0f, bg), end = at(r, 1f, bg);
+        close(start, end, 1.0/255, "identical endpoints control");
+        close(start, at(r, .5f, bg), 2.0/255,
+              override ? "override opacity applied to each layer amplifies the composite"
+                       : "identical antialiased edges must not brighten through duplicate SRC_OVER");
+    }
+    static void holder(boolean bg) {
+        if (!bg) return; // UI has no retained holder contract.
+        ImageReceiver r = transition(preview(), media(), true);
+        r.currentAlpha = .4f;
+        ImageReceiver.BackgroundThreadDrawHolder h = r.setDrawInBackgroundThread(null, 0);
+        Canvas before = new Canvas(); r.draw(before, h);
+        // Model the UI beginning a subsequent no-placeholder request while worker
+        // retains the previous holder. All holder data remains unchanged.
+        r.crossfadeWithThumb = false;
+        Canvas after = new Canvas(); r.draw(after, h);
+        close(before, after, 0, "background holder must not read live crossfadeWithThumb");
+    }
+    static void cache(boolean bg, boolean seen) {
+        ImageReceiver r = receiver();
+        r.staticThumbDrawable = paint(new SvgHelper.SvgDrawable(), "svg", 1,0,0, 1,1,1);
+        Canvas before = seen ? r.frame(NOW, bg) : null;
+        RLottieDrawable m = paint(media(), "cached", 0,0,1, 1,1,1); m.ready = true;
+        r.deliver(m, ImageReceiver.TYPE_MEDIA, true);
+        // A delayed first draw must not turn a cache-only first appearance into
+        // a universal mandatory fade. The visible-predecessor case draws now.
+        Canvas after = r.frame(seen ? NOW : NOW + 5000, bg);
+        if (seen) close(before, after, 1.0/255, "ready cache replaced a visibly drawn SVG at same timestamp");
+        else {
+            Canvas expected = new Canvas(); expected.composite(m, 255);
+            close(expected, after, 0, "ready cache with no previously visible image may draw immediately");
+        }
+    }
+    static void late(boolean bg) {
+        ImageReceiver r = receiver();
+        r.staticThumbDrawable = paint(new SvgHelper.SvgDrawable(), "svg", 1,0,0, 1,1,1);
+        RLottieDrawable m = media(); r.deliver(m, ImageReceiver.TYPE_MEDIA, true);
+        r.frame(NOW, bg); m.ready = true; r.frame(NOW, bg);
+        Canvas before = at(r, .4f, bg);
+        r.deliver(paint(preview(), "late", 0,1,0, 1,1,1), ImageReceiver.TYPE_IMAGE, false);
+        close(before, r.frame(NOW, bg), 0, "unrelated late preview must not enter active composite");
+    }
+    static void frozen(boolean bg) {
+        for (boolean svg : new boolean[]{false,true}) {
+            ImageReceiver r = receiver(); r.setCrossfadeOnReady(false);
+            r.staticThumbDrawable = paint(svg ? new SvgHelper.SvgDrawable() : new BitmapDrawable(), "static", 1,0,0, 1,1,1);
+            r.deliver(preview(), ImageReceiver.TYPE_THUMB, false);
+            Canvas before = at(r,.4f,bg);
+            BitmapDrawable photo = paint(new BitmapDrawable(), "photo", 0,0,1, 1,.5,0);
+            r.deliver(photo, ImageReceiver.TYPE_IMAGE, false);
+            close(before,r.frame(NOW,bg),1.0/255,"photo handoff must freeze both static and partial thumb pixels");
+            Canvas finalPhoto = new Canvas(); finalPhoto.composite(photo,255);
+            close(finalPhoto,at(r,1,bg),0,"completed photo fade must not retain static backdrop");
+        }
+    }
+    static void layers(boolean bg) {
+        ImageReceiver r = transition(preview(), media(), bg);
+        for (String label : new String[]{"preview", "media"}) {
+            Canvas c = new Canvas(); c.failOn = label; r.currentAlpha = .5f;
+            boolean caught = false;
+            try { r.draw(c, bg ? r.setDrawInBackgroundThread(null,0) : null); }
+            catch (AssertionError expected) { caught = true; }
+            check(caught && c.stack.isEmpty(), "all layers unwind after " + label + " exception");
+        }
+        Canvas c = at(r,1,bg);
+        check(c.stack.isEmpty() && c.layerCount == 0,"no isolated surfaces allocated in steady state");
+        r.manualAlphaAnimator = true;
+        check(at(r,.5f,bg).layerCount == 0,"manual alpha retains caller-owned path");
+        r.manualAlphaAnimator = false; r.crossfadingWithThumb = true; r.crossfadeByScale = .05f;
+        c = at(r,.5f,bg);
+        check(c.layerCount == 0 && c.stack.isEmpty() && c.scaleCount == 1 && c.clipCount == 1,
+              "scaled old-image path retains balanced transforms and actually scales/clips");
+    }
+    static void geometry(boolean bg) {
+        ImageReceiver r = transition(preview(),media(),bg);
+        Canvas c = at(r,.5f,bg);
+        check(c.layerCount == 3,"ordinary composite has three bounded layers");
+        for (float[] bounds : c.bounds) {
+            check(Arrays.equals(bounds,new float[]{9,19,43,53}),"snapshot image bounds plus AA margin");
+        }
+        for (int mode=0;mode<5;mode++) {
+            r = transition(preview(),media(),bg);
+            if (mode == 0) r.imageOrientation = 90;
+            if (mode == 1) r.thumbInvert = 1;
+            if (mode == 2) r.clip = false;
+            if (mode == 3) r.isRoundVideo = true;
+            if (mode == 4) r.currentImageDrawable = new ReactionLastFrame();
+            check(at(r,.5f,bg).layerCount == 0,"overdraw geometry retains legacy path, mode="+mode);
+        }
+    }
+    static void history(boolean bg) {
+        for (int mode=0;mode<6;mode++) {
+            ImageReceiver r = receiver();
+            if (mode == 0) r.markLoadingPlaceholderPresented();
+            if (mode == 1) { r.currentAlpha = 0; r.frame(NOW,bg); } // New receiver blank draw (BackupImageView).
+            if (mode == 2) { r.overrideAlpha = 0; r.frame(NOW,bg); r.overrideAlpha = 1; }
+            if (mode == 3) { r.isVisible = false; r.frame(NOW,bg); r.isVisible = true; }
+            if (mode == 4) { r.markLoadingPlaceholderPresented(); r.clearImage(); r.currentMediaKey = "media"; }
+            if (mode == 5) { r.markLoadingPlaceholderPresented(); r.setCurrentAccount(1); r.currentMediaKey = "media"; }
+            RLottieDrawable m = media(); m.ready = true;
+            r.deliver(m,ImageReceiver.TYPE_MEDIA,true);
+            Canvas c = r.frame(NOW,bg), expected = new Canvas();
+            if (mode >= 2) expected.composite(m,255);
+            close(expected,c,0,"only actual blank presentation starts cached load fade, mode="+mode);
+            r.frame(NOW+1000,bg); r.frame(NOW+2000,bg); r.frame(NOW+3000,bg); r.frame(NOW+4000,bg);
+            r.markLoadingPlaceholderPresented(); r.deliver(m,ImageReceiver.TYPE_MEDIA,true);
+            close(at(r,1,bg),r.frame(NOW,bg),0,"shared ready identity cannot be rearmed by a marker");
+        }
+    }
+    public static void main(String[] args) {
+        boolean bg = Boolean.parseBoolean(args[1]);
+        switch (args[0]) {
+            case "oracle": oracle(); break;
+            case "addReference": addReference(); break;
+            case "photoSameVideoThumb": photo(bg, true); break;
+            case "photoQuality": photo(bg, false); break;
+            case "svg": svg(bg); break;
+            case "transparent": transparent(bg, false); break;
+            case "transparentWebm": transparent(bg, true); break;
+            case "nonoverlapping": nonoverlapping(bg); break;
+            case "doubleBlend": doubleBlend(bg, false); break;
+            case "override": doubleBlend(bg, true); break;
+            case "holder": holder(bg); break;
+            case "cacheUnseen": cache(bg, false); break;
+            case "cacheSeen": cache(bg, true); break;
+            case "late": late(bg); break;
+            case "frozen": frozen(bg); break;
+            case "layers": layers(bg); break;
+            case "history": history(bg); break;
+            case "geometry": geometry(bg); break;
+            default: throw new AssertionError(args[0]);
+        }
+    }
+}

@@ -74,7 +74,7 @@ public class ComposerControls {
                 }
             }
             c.separatedComposerLayout=false;
-            check(c.getRecordTextRestoreDelay(trash,timing[2]) == timing[2]);
+            check(c.getRecordTextRestoreDelay(trash,timing[2]) == Math.max(timing[2],timing[0]+timing[1]));
         }
         int cases = 0;
         for (float d : new float[]{1, 1.5f, 2, 2.75f, 3, 4}) {

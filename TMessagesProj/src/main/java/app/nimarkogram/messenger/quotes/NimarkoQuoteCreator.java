@@ -144,7 +144,10 @@ public final class NimarkoQuoteCreator {
                 && grantResults[0] == PackageManager.PERMISSION_GRANTED;
         QuoteSheet quoteSheet = pending.quoteSheet.get();
         if (!granted) {
-            if (quoteSheet != null) quoteSheet.saving = false;
+            if (quoteSheet != null) {
+                quoteSheet.saving = false;
+                quoteSheet.setBusy(false, null);
+            }
             showError(chatActivity, R.string.NM_QC_Failed);
             return true;
         }
@@ -1016,13 +1019,14 @@ public final class NimarkoQuoteCreator {
         }
 
         private void export(ExportAction action) {
-            if (exporting || dismissed || !previewReady || quoteCard == null) {
+            if (exporting || saving || dismissed || !previewReady || quoteCard == null) {
                 return;
             }
             boolean roundExportCorners = shouldRoundExportCorners(action);
             if (exportedFile != null
                     && exportedFile.isFile()
                     && exportedHasRoundedCorners == roundExportCorners) {
+                setBusy(true, action);
                 completeAction(action, exportedFile);
                 return;
             }
@@ -1192,7 +1196,6 @@ public final class NimarkoQuoteCreator {
                     exportedAsDocument = sendAsDocument;
                     exportedHasRoundedCorners = roundExportCorners;
                     exporting = false;
-                    setBusy(false, null);
                     completeAction(action, result);
                 });
             });
@@ -1240,13 +1243,17 @@ public final class NimarkoQuoteCreator {
             } else if (action == ExportAction.SAVE) {
                 if (saving) return;
                 saving = true;
+                setBusy(true, ExportAction.SAVE);
                 if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.P
                         && activity.checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE)
                         != PackageManager.PERMISSION_GRANTED) {
                     synchronized (LEGACY_SAVE_LOCK) {
                         if (pendingLegacySave != null) {
                             QuoteSheet previousSheet = pendingLegacySave.quoteSheet.get();
-                            if (previousSheet != null) previousSheet.saving = false;
+                            if (previousSheet != null) {
+                                previousSheet.saving = false;
+                                previousSheet.setBusy(false, null);
+                            }
                         }
                         pendingLegacySave = new PendingLegacySave(this, file);
                     }
@@ -1261,6 +1268,7 @@ public final class NimarkoQuoteCreator {
                             pendingLegacySave = null;
                         }
                         saving = false;
+                        setBusy(false, null);
                         showError(chatActivity, R.string.NM_QC_Failed);
                     }
                     return;
@@ -1287,6 +1295,8 @@ public final class NimarkoQuoteCreator {
                 } catch (Throwable error) {
                     FileLog.e(error);
                     showError(chatActivity, R.string.NM_QC_Failed);
+                } finally {
+                    setBusy(false, null);
                 }
             }
         }
@@ -1311,6 +1321,7 @@ public final class NimarkoQuoteCreator {
         private void saveToGallery(File file) {
             saveQuoteToGallery(file, uri -> {
                 saving = false;
+                setBusy(false, null);
                 if (uri == null) {
                     if (!dismissed) showError(chatActivity, R.string.NM_QC_Failed);
                 } else if (!dismissed) {
@@ -1328,21 +1339,23 @@ public final class NimarkoQuoteCreator {
             setBusy(false, null);
             showError(chatActivity, R.string.NM_QC_Failed);
         }
+        private boolean actionsBusy;
+        private ExportAction busyAction;
 
         private void setBusy(boolean busy, ExportAction action) {
             if (dismissed) return;
-            sendButton.animate().cancel();
-            saveButton.animate().cancel();
-            shareButton.animate().cancel();
+            if (actionsBusy == busy && busyAction == action) return;
+            actionsBusy = busy;
+            busyAction = action;
             sendButton.setLoading(busy && action == ExportAction.SEND);
             saveButton.setLoading(busy && action == ExportAction.SAVE);
             shareButton.setLoading(busy && action == ExportAction.SHARE);
             sendButton.setEnabled(!busy);
             saveButton.setEnabled(!busy);
             shareButton.setEnabled(!busy);
-            sendButton.setAlpha(busy && action != ExportAction.SEND ? 0.55f : 1f);
-            saveButton.setAlpha(busy && action != ExportAction.SAVE ? 0.55f : 1f);
-            shareButton.setAlpha(busy && action != ExportAction.SHARE ? 0.55f : 1f);
+            setActionButtonAlpha(sendButton, busy && action != ExportAction.SEND ? 0.55f : 1f, true);
+            setActionButtonAlpha(saveButton, busy && action != ExportAction.SAVE ? 0.55f : 1f, true);
+            setActionButtonAlpha(shareButton, busy && action != ExportAction.SHARE ? 0.55f : 1f, true);
         }
     }
 

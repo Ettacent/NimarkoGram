@@ -14,6 +14,7 @@ public final class ProfileNotificationPlacement extends RecyclerView.ItemDecorat
     private final IntSupplier anchorRow;
     private int reservedHeight;
     private int requestedHeight;
+    private int reservedRow = RecyclerView.NO_POSITION;
     private boolean released;
     private boolean reservationLayoutPending;
 
@@ -29,39 +30,54 @@ public final class ProfileNotificationPlacement extends RecyclerView.ItemDecorat
         if (released) return;
         requestedHeight = Math.max(0, height);
         list.removeCallbacks(this);
-        if (requestedHeight == reservedHeight) return;
-        if (list.isComputingLayout() || list.isShown() && list.hasPendingAdapterUpdates()) {
-            list.postOnAnimation(this);
-        } else {
-            run();
-        }
+        run();
     }
 
     @Override public void run() {
-        if (released || requestedHeight == reservedHeight) return;
-        if (list.isComputingLayout() || list.isShown() && list.hasPendingAdapterUpdates()) {
+        if (list.isComputingLayout() || !released && list.isShown() && list.hasPendingAdapterUpdates()) {
             list.removeCallbacks(this);
             list.postOnAnimation(this);
             return;
         }
 
-        View first = layout.findViewByPosition(0);
-        if (list.isShown() && first != null && !layout.hasPendingScrollPosition() && !layout.isSmoothScrolling()) {
-            layout.scrollToPositionWithOffset(0, layout.getDecoratedTop(first) - list.getPaddingTop());
+        if (released) {
+            list.removeItemDecoration(this);
+            return;
         }
-        reservedHeight = requestedHeight;
+        int row = requestedHeight == 0 ? RecyclerView.NO_POSITION : getAnchorRow();
+        int next = row < 0 ? 0 : requestedHeight;
+        if (next == reservedHeight && row == reservedRow) return;
+        if (list.isShown() && list.getLayoutManager() == layout
+                && layout.getOrientation() == RecyclerView.VERTICAL
+                && !layout.hasPendingScrollPosition() && !layout.isSmoothScrolling()) {
+            int position = layout.getReverseLayout()
+                    ? layout.findLastVisibleItemPosition() : layout.findFirstVisibleItemPosition();
+            View first = layout.findViewByPosition(position);
+            if (position != RecyclerView.NO_POSITION && first != null) {
+                int top = layout.getDecoratedTop(first)
+                        - ((RecyclerView.LayoutParams) first.getLayoutParams()).topMargin;
+                layout.scrollToPositionWithOffset(position, top - list.getPaddingTop(), false);
+            }
+        }
+        reservedHeight = next;
+        reservedRow = row;
         reservationLayoutPending = true;
         list.invalidateItemDecorations();
     }
 
     public void prepareForDraw() {
         if (released || !reservationLayoutPending || !list.isShown()
-                || list.isComputingLayout() || list.hasPendingAdapterUpdates()
+                || list.isComputingLayout() || list.hasPendingAdapterUpdates() || list.isLayoutSuppressed()
                 || list.getMeasuredWidth() == 0 || list.getMeasuredHeight() == 0) return;
+        if (!list.isLayoutRequested()) {
+            reservationLayoutPending = false;
+            return;
+        }
 
         list.measure(View.MeasureSpec.makeMeasureSpec(list.getMeasuredWidth(), View.MeasureSpec.EXACTLY),
                 View.MeasureSpec.makeMeasureSpec(list.getMeasuredHeight(), View.MeasureSpec.EXACTLY));
         list.layout(list.getLeft(), list.getTop(), list.getRight(), list.getBottom());
+        reservationLayoutPending = false;
     }
 
     @Override public void onLayoutChange(View v, int left, int top, int right, int bottom,
@@ -70,15 +86,22 @@ public final class ProfileNotificationPlacement extends RecyclerView.ItemDecorat
     }
 
     public int getAnchorBottom(int fallback) {
-        int row = anchorRow.getAsInt();
+        int row = getAnchorRow();
         View anchor = row < 0 ? null : layout.findViewByPosition(row);
-        return anchor == null ? fallback : Math.round(list.getY()) + anchor.getBottom();
+        return anchor == null ? fallback : Math.round(list.getY() + anchor.getY() + anchor.getHeight());
+    }
+    private int getAnchorRow() {
+        if (released || anchorRow == null || !list.isShown() || list.getLayoutManager() != layout) {
+            return RecyclerView.NO_POSITION;
+        }
+        int row = anchorRow.getAsInt();
+        return row >= 0 && row < layout.getItemCount() ? row : RecyclerView.NO_POSITION;
     }
 
     @Override public void getItemOffsets(Rect outRect, View view, RecyclerView parent, RecyclerView.State state) {
         outRect.set(0, 0, 0, 0);
-        int row = anchorRow.getAsInt();
-        if (!released && row >= 0 && parent.getChildAdapterPosition(view) == row) {
+        if (!released && parent == list && parent.getLayoutManager() == layout
+                && reservedRow >= 0 && parent.getChildAdapterPosition(view) == reservedRow) {
             outRect.bottom = reservedHeight;
         }
     }
@@ -86,12 +109,11 @@ public final class ProfileNotificationPlacement extends RecyclerView.ItemDecorat
     public void release() {
         if (released) return;
         released = true;
+        requestedHeight = reservedHeight = 0;
+        reservedRow = RecyclerView.NO_POSITION;
+        reservationLayoutPending = false;
         list.removeCallbacks(this);
         list.removeOnLayoutChangeListener(this);
-        if (list.isComputingLayout()) {
-            list.post(() -> list.removeItemDecoration(this));
-        } else {
-            list.removeItemDecoration(this);
-        }
+        run();
     }
 }

@@ -120,6 +120,7 @@ public class StoryViewer implements NotificationCenter.NotificationCenterDelegat
     Theme.ResourcesProvider resourcesProvider = new DarkThemeResourceProvider();
     private boolean opening;
     ValueAnimator openCloseAnimator;
+    private int transitionLayoutGeneration;
     private boolean openCloseNotificationsLocked;
     private boolean bannerOverlayPaused;
     ValueAnimator swipeToDissmissBackAnimator;
@@ -370,6 +371,7 @@ public class StoryViewer implements NotificationCenter.NotificationCenterDelegat
             return;
         }
         cancelOpenCloseAnimator();
+        ++transitionLayoutGeneration;
         acquireBannerOverlay();
         setSpeed(1f);
         BaseFragment fragment = LaunchActivity.getLastFragment();
@@ -724,6 +726,7 @@ public class StoryViewer implements NotificationCenter.NotificationCenterDelegat
                                 float y = transitionViewHolder.storyImage.getImageY();
                                 float w = transitionViewHolder.storyImage.getImageWidth();
                                 float h = transitionViewHolder.storyImage.getImageHeight();
+                                float oldAlpha = transitionViewHolder.storyImage.getAlpha();
                                 transitionViewHolder.storyImage.setImageCoords(rect3);
                                 transitionViewHolder.storyImage.setAlpha(1f - progress2);
                                 transitionViewHolder.storyImage.setVisible(true, false);
@@ -735,6 +738,7 @@ public class StoryViewer implements NotificationCenter.NotificationCenterDelegat
                                 if (transitionViewHolder.drawAbove != null) {
                                     transitionViewHolder.drawAbove.draw(canvas, rect3, 1f - progress2, opening);
                                 }
+                                transitionViewHolder.storyImage.setAlpha(oldAlpha);
                                 transitionViewHolder.storyImage.setVisible(wasVisible, false);
                                 transitionViewHolder.storyImage.setImageCoords(x, y, w, h);
                                 canvas.restoreToCount(r);
@@ -2062,6 +2066,7 @@ public class StoryViewer implements NotificationCenter.NotificationCenterDelegat
     }
 
     private void layoutAndFindView() {
+        final int layoutGeneration = ++transitionLayoutGeneration;
         foundViewToClose = true;
         if (transitionViewHolder.avatarImage != null) {
             transitionViewHolder.avatarImage.setVisible(true, true);
@@ -2091,7 +2096,13 @@ public class StoryViewer implements NotificationCenter.NotificationCenterDelegat
                     preLayoutMessageId = si.id;
                 }
             }
+            final ValueAnimator targetAnimation = openCloseAnimator;
+            final View targetWindow = windowView;
             placeProvider.preLayout(preLayoutDid, preLayoutMessageId, () -> {
+                if (!isShowing || transitionLayoutGeneration != layoutGeneration
+                        || windowView != targetWindow || openCloseAnimator != targetAnimation) {
+                    return;
+                }
                 updateTransitionParams();
                 if (transitionViewHolder.avatarImage != null) {
                     transitionViewHolder.avatarImage.setVisible(false, true);
@@ -2496,6 +2507,7 @@ public class StoryViewer implements NotificationCenter.NotificationCenterDelegat
                 final PeerStoriesView peerStoriesView = getCurrentPeerView();
                 if (peerStoriesView != null) {
                     peerStoriesView.updatePosition();
+                    peerStoriesView.ensureVideoPlayerAfterOpening();
                 }
                 if (livePlayer != null) {
                     livePlayer.setVolume((1.0f - progressToDismiss) * progressToOpen);
@@ -2579,6 +2591,7 @@ public class StoryViewer implements NotificationCenter.NotificationCenterDelegat
             transitionViewHolder.avatarImage.setVisible(true, true);
         }
         if (transitionViewHolder.storyImage != null) {
+            transitionViewHolder.storyImage.setAlpha(1f);
             transitionViewHolder.storyImage.setVisible(true, true);
         }
         transitionViewHolder.storyImage = null;

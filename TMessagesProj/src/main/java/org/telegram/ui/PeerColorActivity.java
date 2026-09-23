@@ -1513,7 +1513,7 @@ public class PeerColorActivity extends BaseFragment implements NotificationCente
             glassBackgroundSourceRenderNode.setScrollableNoiseSuppressor(scrollableViewNoiseSuppressor, DownscaleScrollableNoiseSuppressor.DRAW_GLASS);
             glassBackgroundSourceRenderNode.setUnderSource(iBlur3SourceButtonColor);
             glassBackgroundDrawableFactory = new BlurredBackgroundDrawableViewFactory(glassBackgroundSourceRenderNode);
-            glassBackgroundDrawableFactory.setLiquidGlassEffectAllowed(LiteMode.isEnabled(LiteMode.FLAG_LIQUID_GLASS));
+            glassBackgroundDrawableFactory.setLiquidGlassEffectAllowed(true);
         } else {
             scrollableViewNoiseSuppressor = null;
             glassBackgroundSourceRenderNode = null;

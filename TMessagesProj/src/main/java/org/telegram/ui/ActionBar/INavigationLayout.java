@@ -36,6 +36,12 @@ public interface INavigationLayout {
     boolean addFragmentToStack(BaseFragment fragment, int position);
     void removeFragmentFromStack(BaseFragment fragment, boolean immediate);
     List<BaseFragment> getFragmentStack();
+    default java.util.function.BooleanSupplier captureNavigationRequest() {
+        final List<BaseFragment> stack = getFragmentStack();
+        final BaseFragment top = getLastFragment();
+        return () -> getFragmentStack() == stack && getLastFragment() == top
+                && !isSwipeInProgress() && !isTransitionAnimationInProgress();
+    }
     void setDelegate(INavigationLayoutDelegate INavigationLayoutDelegate);
     void closeLastFragment(boolean animated, boolean forceNoAnimation);
     DrawerLayoutContainer getDrawerLayoutContainer();

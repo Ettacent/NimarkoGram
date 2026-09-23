@@ -732,47 +732,45 @@ extern "C" JNIEXPORT void JNICALL Java_org_telegram_ui_Components_AnimatedFileNa
     }
 }
 
-static inline void writeFrameToBitmap(JNIEnv *env, VideoInfo *info, AVFrame *frame, jintArray data, jobject bitmap) {
+static inline bool writeFrameToBitmap(JNIEnv *env, VideoInfo *info, AVFrame *frame, jintArray data, jobject bitmap) {
     if (env->IsSameObject(bitmap, NULL)) {
         push_time(env, info, frame, data);
-        return;
+        return true;
+    }
+    if (data == nullptr || env->GetArrayLength(data) < 4) {
+        return false;
     }
     jint *dataArr = env->GetIntArrayElements(data, 0);
-    int32_t wantedWidth;
-    int32_t wantedHeight;
+    if (dataArr == nullptr) {
+        return false;
+    }
+    const int32_t wantedWidth = dataArr[0];
+    const int32_t wantedHeight = dataArr[1];
+    env->ReleaseIntArrayElements(data, dataArr, JNI_ABORT);
 
-    AndroidBitmapInfo bitmapInfo;
-    AndroidBitmap_getInfo(env, bitmap, &bitmapInfo);
+    AndroidBitmapInfo bitmapInfo{};
+    if (AndroidBitmap_getInfo(env, bitmap, &bitmapInfo) != ANDROID_BITMAP_RESULT_SUCCESS ||
+            bitmapInfo.format != ANDROID_BITMAP_FORMAT_RGBA_8888 ||
+            bitmapInfo.width == 0 || bitmapInfo.height == 0) {
+        return false;
+    }
     int32_t bitmapWidth = bitmapInfo.width;
     int32_t bitmapHeight = bitmapInfo.height;
     int32_t bitmapStride = bitmapInfo.stride;
 
-    if (dataArr != nullptr) {
-        wantedWidth = dataArr[0];
-        wantedHeight = dataArr[1];
-        dataArr[3] = (jint) (1000 * frame->best_effort_timestamp * av_q2d(info->video_stream->time_base));
-        if (env->GetArrayLength(data) > 6) {
-            bool isOpaque = (
-                frame->format == AV_PIX_FMT_YUV420P  ||
-                frame->format == AV_PIX_FMT_YUVJ420P ||
-                frame->format == AV_PIX_FMT_YUV444P
-            );
-            dataArr[6] = isOpaque ? 1 : 0;
-        }
-        env->ReleaseIntArrayElements(data, dataArr, 0);
-    } else {
-        wantedWidth = bitmapWidth;
-        wantedHeight = bitmapHeight;
-    }
-
     if (!(wantedWidth == frame->width && wantedHeight == frame->height || wantedWidth == frame->height && wantedHeight == frame->width)) {
-        return;
+        return false;
     }
 
     void *pixels;
     if (__builtin_expect(AndroidBitmap_lockPixels(env, bitmap, &pixels) != ANDROID_BITMAP_RESULT_SUCCESS, 0)) {
-        return;
+        return false;
     }
+    if (pixels == nullptr) {
+        AndroidBitmap_unlockPixels(env, bitmap);
+        return false;
+    }
+    bool written = false;
 
     SwsContext* sws_ctx = nullptr;
     if (frame->format > AV_PIX_FMT_NONE && frame->format < AV_PIX_FMT_NB && frame->format != AV_PIX_FMT_YUVA420P) {
@@ -799,17 +797,17 @@ static inline void writeFrameToBitmap(JNIEnv *env, VideoInfo *info, AVFrame *fra
 
         int32_t dst_stride[1];
         dst_stride[0] = bitmapStride;
-        sws_scale(sws_ctx,
+        written = sws_scale(sws_ctx,
             frame->data,
             frame->linesize,
             0,
             frame->height,
             dst_data,
             dst_stride
-        );
+        ) == bitmapHeight;
     } else if (frame->width == bitmapWidth && frame->height == bitmapHeight) {
         if (frame->format == AV_PIX_FMT_YUVA420P) {
-            libyuv::I420AlphaToARGBMatrix(
+            written = libyuv::I420AlphaToARGBMatrix(
                 frame->data[0], frame->linesize[0],
                 frame->data[2], frame->linesize[2],
                 frame->data[1], frame->linesize[1],
@@ -820,9 +818,9 @@ static inline void writeFrameToBitmap(JNIEnv *env, VideoInfo *info, AVFrame *fra
                 bitmapWidth,
                 bitmapHeight,
                 1
-            );
+            ) == 0;
         } else if (frame->format == AV_PIX_FMT_YUV444P) {
-            libyuv::H444ToARGB(
+            written = libyuv::H444ToARGB(
                 frame->data[0], frame->linesize[0],
                 frame->data[2], frame->linesize[2],
                 frame->data[1], frame->linesize[1],
@@ -830,10 +828,10 @@ static inline void writeFrameToBitmap(JNIEnv *env, VideoInfo *info, AVFrame *fra
                 bitmapStride,
                 bitmapWidth,
                 bitmapHeight
-            );
+            ) == 0;
         } else if (frame->format == AV_PIX_FMT_YUV420P || frame->format == AV_PIX_FMT_YUVJ420P) {
             if (frame->colorspace == AVColorSpace::AVCOL_SPC_BT709) {
-                libyuv::H420ToARGB(
+                written = libyuv::H420ToARGB(
                     frame->data[0], frame->linesize[0],
                     frame->data[2], frame->linesize[2],
                     frame->data[1], frame->linesize[1],
@@ -841,9 +839,9 @@ static inline void writeFrameToBitmap(JNIEnv *env, VideoInfo *info, AVFrame *fra
                     bitmapStride,
                     bitmapWidth,
                     bitmapHeight
-                );
+                ) == 0;
             } else {
-                libyuv::I420ToARGB(
+                written = libyuv::I420ToARGB(
                     frame->data[0], frame->linesize[0],
                     frame->data[2], frame->linesize[2],
                     frame->data[1], frame->linesize[1],
@@ -851,16 +849,16 @@ static inline void writeFrameToBitmap(JNIEnv *env, VideoInfo *info, AVFrame *fra
                     bitmapStride,
                     bitmapWidth,
                     bitmapHeight
-                );
+                ) == 0;
             }
         } else if (frame->format == AV_PIX_FMT_BGRA) {
-            libyuv::ABGRToARGB(
+            written = libyuv::ABGRToARGB(
                 frame->data[0], frame->linesize[0],
                 (uint8_t *) pixels,
                 bitmapStride,
                 bitmapWidth,
                 bitmapHeight
-            );
+            ) == 0;
         }
     } else if (sws_ctx != nullptr && ((intptr_t) pixels) % 16 != 0) {
         // fallback if pixels not aligned
@@ -870,17 +868,17 @@ static inline void writeFrameToBitmap(JNIEnv *env, VideoInfo *info, AVFrame *fra
         if (alignedBuf != nullptr) {
             uint8_t *dst_data[1] = { alignedBuf };
             int32_t dst_stride[1] = { alignedStride };
-            sws_scale(sws_ctx,
+            written = sws_scale(sws_ctx,
                       frame->data,
                       frame->linesize,
                       0,
                       frame->height,
                       dst_data,
                       dst_stride
-            );
-            if (alignedStride == bitmapStride) {
+            ) == bitmapHeight;
+            if (written && alignedStride == bitmapStride) {
                 memcpy(pixels, alignedBuf, bufSize);
-            } else {
+            } else if (written) {
                 uint8_t *src = alignedBuf;
                 uint8_t *dst = (uint8_t *) pixels;
                 int copyStride = bitmapWidth * 4;
@@ -894,7 +892,23 @@ static inline void writeFrameToBitmap(JNIEnv *env, VideoInfo *info, AVFrame *fra
         }
     }
 
-    AndroidBitmap_unlockPixels(env, bitmap);
+    const int unlockResult = AndroidBitmap_unlockPixels(env, bitmap);
+    if (!written || unlockResult != ANDROID_BITMAP_RESULT_SUCCESS) {
+        return false;
+    }
+    // Timestamp/opacity describe a completed bitmap, never an attempted write.
+    dataArr = env->GetIntArrayElements(data, 0);
+    if (dataArr == nullptr) {
+        return false;
+    }
+    dataArr[3] = (jint) (1000 * frame->best_effort_timestamp * av_q2d(info->video_stream->time_base));
+    if (env->GetArrayLength(data) > 6) {
+        dataArr[6] = (frame->format == AV_PIX_FMT_YUV420P ||
+                      frame->format == AV_PIX_FMT_YUVJ420P ||
+                      frame->format == AV_PIX_FMT_YUV444P) ? 1 : 0;
+    }
+    env->ReleaseIntArrayElements(data, dataArr, 0);
+    return true;
 }
 
 extern "C" JNIEXPORT int JNICALL Java_org_telegram_ui_Components_AnimatedFileNative_nGetFrameAtTime(JNIEnv *env, jclass clazz, jlong ptr, jlong ms, jobject bitmap, jintArray data) {
@@ -924,16 +938,14 @@ extern "C" JNIEXPORT int JNICALL Java_org_telegram_ui_Components_AnimatedFileNat
             // Eof: target lies at/after the last frame -> emit the last frame we
             // held. Aborted/Error: give up with no frame.
             if (st == VideoFrameReader::Status::Eof && haveHeld) {
-                writeFrameToBitmap(env, info, held, data, bitmap);
-                result = 1;
+                result = writeFrameToBitmap(env, info, held, data, bitmap) ? 1 : 0;
             }
             break;
         }
 
         AVFrame *frame = info->reader->frame();
         if (info->reader->frameTimeSeconds() >= targetSec) {
-            writeFrameToBitmap(env, info, frame, data, bitmap);
-            result = 1;
+            result = writeFrameToBitmap(env, info, frame, data, bitmap) ? 1 : 0;
             break;
         }
 
@@ -985,6 +997,12 @@ extern "C" JNIEXPORT jint JNICALL Java_org_telegram_ui_Components_AnimatedFileNa
             return 0;
         }
         st = info->reader->getNextFrame();
+        // Backward seek resolves to a keyframe before the trim boundary. Do
+        // not publish excluded pre-trim frames at the beginning of each loop.
+        while (st == VideoFrameReader::Status::Ok && start_time > 0 &&
+               info->reader->frameTimeSeconds() < start_time) {
+            st = info->reader->getNextFrame();
+        }
     }
 
     if (st != VideoFrameReader::Status::Ok) {
@@ -992,9 +1010,13 @@ extern "C" JNIEXPORT jint JNICALL Java_org_telegram_ui_Components_AnimatedFileNa
         return 0;
     }
 
+    if (end_time > 0 && info->reader->frameTimeSeconds() > end_time) {
+        return 0;
+    }
+
     AVFrame *frame = info->reader->frame();
     if (bitmap != nullptr) {
-        writeFrameToBitmap(env, info, frame, data, bitmap);
+        return writeFrameToBitmap(env, info, frame, data, bitmap) ? 1 : 0;
     }
     push_time(env, info, frame, data);
     return 1;

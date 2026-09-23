@@ -573,6 +573,22 @@ public class StickerMasksAlert extends BottomSheet implements NotificationCenter
                 }
                 lineDrawablesTmp.clear();
             }
+            @Override
+            protected void onDetachedFromWindow() {
+                super.onDetachedFromWindow();
+                for (DrawingInBackgroundLine line : lineDrawables) {
+                    line.onDetachFromWindow();
+                    line.imageViewEmojis = null;
+                }
+                for (DrawingInBackgroundLine line : unusedLineDrawables) {
+                    line.onDetachFromWindow();
+                }
+                lineDrawables.clear();
+                unusedLineDrawables.clear();
+                lineDrawablesTmp.clear();
+                viewsGroupedByLines.clear();
+                unusedArrays.clear();
+            }
         };
         gridView.setLayoutManager(stickersLayoutManager = new GridLayoutManager(context, 5) {
             @Override
@@ -977,7 +993,7 @@ public class StickerMasksAlert extends BottomSheet implements NotificationCenter
         public int position;
         public int startOffset;
         ArrayList<ImageViewEmoji> imageViewEmojis;
-        ArrayList<ImageViewEmoji> drawInBackgroundViews = new ArrayList<>();
+        private final ImageReceiverDrawFrame drawFrame = new ImageReceiverDrawFrame();
 
         @Override
         public void draw(Canvas canvas, long time, int w, int h, float alpha) {
@@ -996,7 +1012,6 @@ public class StickerMasksAlert extends BottomSheet implements NotificationCenter
                 }
             }
             if (drawInUi) {
-                prepareDraw(System.currentTimeMillis());
                 drawInUiThread(canvas, alpha);
                 reset();
             } else {
@@ -1006,7 +1021,7 @@ public class StickerMasksAlert extends BottomSheet implements NotificationCenter
 
         @Override
         public void prepareDraw(long time) {
-            drawInBackgroundViews.clear();
+            drawFrame.release();
             for (int i = 0; i < imageViewEmojis.size(); i++) {
                 ImageViewEmoji imageView = imageViewEmojis.get(i);
                 AnimatedEmojiDrawable drawable = imageView.drawable;
@@ -1015,28 +1030,18 @@ public class StickerMasksAlert extends BottomSheet implements NotificationCenter
                 }
 
                 drawable.update(time);
-                imageView.backgroundThreadDrawHolder[threadIndex] = drawable.getImageReceiver().setDrawInBackgroundThread(imageView.backgroundThreadDrawHolder[threadIndex], threadIndex);
-                imageView.backgroundThreadDrawHolder[threadIndex].time = time;
-                imageView.backgroundThreadDrawHolder[threadIndex].overrideAlpha = 1f;
-                drawable.setAlpha(255);
+                ImageReceiver.BackgroundThreadDrawHolder holder = drawFrame.add(drawable.getImageReceiver(), threadIndex);
+                holder.time = time;
+                holder.overrideAlpha = 1f;
                 int topOffset = (int) (imageView.getHeight() * .03f);
                 AndroidUtilities.rectTmp2.set(imageView.getLeft() + imageView.getPaddingLeft() - startOffset, topOffset, imageView.getRight() - imageView.getPaddingRight() - startOffset, topOffset + imageView.getMeasuredHeight() - imageView.getPaddingTop() - imageView.getPaddingBottom());
-                imageView.backgroundThreadDrawHolder[threadIndex].setBounds(AndroidUtilities.rectTmp2);
-                imageView.drawable = drawable;
-    //                imageView.drawable.setColorFilter(animatedEmojiTextColorFilter);
-                imageView.imageReceiver = drawable.getImageReceiver();
-                drawInBackgroundViews.add(imageView);
+                holder.setBounds(AndroidUtilities.rectTmp2);
             }
         }
 
         @Override
         public void drawInBackground(Canvas canvas) {
-            for (int i = 0; i < drawInBackgroundViews.size(); i++) {
-                ImageViewEmoji imageView = drawInBackgroundViews.get(i);
-                if (imageView.drawable != null) {
-                    imageView.drawable.draw(canvas, imageView.backgroundThreadDrawHolder[threadIndex], false);
-                }
-            }
+            drawFrame.draw(canvas);
         }
 
         private OvershootInterpolator appearScaleInterpolator = new OvershootInterpolator(3f);
@@ -1094,12 +1099,7 @@ public class StickerMasksAlert extends BottomSheet implements NotificationCenter
         @Override
         public void onFrameReady() {
             super.onFrameReady();
-            for (int i = 0; i < drawInBackgroundViews.size(); i++) {
-                ImageViewEmoji imageView = drawInBackgroundViews.get(i);
-                if (imageView.backgroundThreadDrawHolder != null) {
-                    imageView.backgroundThreadDrawHolder[threadIndex].release();
-                }
-            }
+            drawFrame.release();
             gridView.invalidate();
         }
     }

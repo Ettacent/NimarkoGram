@@ -27,6 +27,7 @@ import android.graphics.PixelFormat;
 import android.graphics.PorterDuff;
 import android.graphics.PorterDuffXfermode;
 import android.graphics.RectF;
+import android.graphics.SurfaceTexture;
 import android.os.Build;
 import androidx.annotation.Keep;
 import android.view.Gravity;
@@ -62,6 +63,11 @@ public class PipRoundVideoView implements NotificationCenter.NotificationCenterD
     private ImageView imageView;
     private AspectRatioFrameLayout aspectRatioFrameLayout;
     private Bitmap bitmap;
+    private boolean playbackFrameRendered;
+    private SurfaceTexture playbackUpdatedSurface;
+    private boolean playbackTransitionPending;
+    private int playbackPlayerTag = -1;
+    private int playbackTransitionGeneration;
     private int videoWidth;
     private int videoHeight;
     private AnimatorSet hideShowAnimation;
@@ -370,6 +376,90 @@ public class PipRoundVideoView implements NotificationCenter.NotificationCenterD
     public TextureView getTextureView() {
         return textureView;
     }
+    public void retainPlaybackFrame() {
+        playbackPlayerTag = -1;
+        playbackTransitionGeneration++;
+        if (closing || closed || textureView == null) {
+            return;
+        }
+        if (!playbackTransitionPending && textureView.isAvailable()) {
+            try {
+                Bitmap frame = textureView.getBitmap(AndroidUtilities.dp(120), AndroidUtilities.dp(120));
+                if (frame != null) {
+                    if (bitmap != null && imageView.getVisibility() == View.VISIBLE && imageView.getAlpha() > 0f) {
+                        Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
+                        paint.setAlpha(Math.round(255 * imageView.getAlpha()));
+                        new Canvas(frame).drawBitmap(bitmap, null,
+                                new RectF(0, 0, frame.getWidth(), frame.getHeight()), paint);
+                    }
+                    bitmap = frame;
+                    imageView.setImageBitmap(frame);
+                    imageView.setScaleX(textureView.getScaleX());
+                    imageView.setScaleY(textureView.getScaleY());
+                }
+            } catch (Throwable e) {
+                FileLog.e(e);
+            }
+        }
+        imageView.animate().cancel();
+        imageView.setAlpha(1f);
+        imageView.setVisibility(bitmap != null ? View.VISIBLE : View.INVISIBLE);
+        playbackTransitionPending = true;
+        playbackFrameRendered = false;
+        playbackUpdatedSurface = null;
+    }
+    public void beginPlaybackTransition(int playerTag, boolean firstFrameRendered) {
+        if (closing || closed) return;
+        if (playbackPlayerTag == playerTag) {
+            if (firstFrameRendered) onPlaybackFirstFrame(playerTag);
+            return;
+        }
+        imageView.animate().cancel();
+        playbackTransitionGeneration++;
+        playbackPlayerTag = playerTag;
+        playbackTransitionPending = true;
+        playbackFrameRendered = firstFrameRendered;
+        playbackUpdatedSurface = null;
+        textureView.animate().cancel();
+        textureView.setAlpha(1f);
+    }
+    public void onPlaybackFirstFrame(int playerTag) {
+        if (playerTag != playbackPlayerTag || closing || closed) return;
+        playbackFrameRendered = true;
+        finishPlaybackTransitionIfReady();
+    }
+    public boolean needsPlaybackSurfaceUpdate(int playerTag, SurfaceTexture surface) {
+        return !closing && !closed && playbackTransitionPending && playerTag == playbackPlayerTag
+                && surface != null && textureView != null && textureView.getSurfaceTexture() == surface
+                && playbackUpdatedSurface != surface;
+    }
+    public void onPlaybackSurfaceUpdated(int playerTag, SurfaceTexture surface) {
+        if (playerTag != playbackPlayerTag || closing || closed) return;
+        if (textureView != null && textureView.getSurfaceTexture() == surface) {
+            playbackUpdatedSurface = surface;
+            finishPlaybackTransitionIfReady();
+        }
+    }
+    private void finishPlaybackTransitionIfReady() {
+        if (closing || closed || !playbackTransitionPending || !playbackFrameRendered
+                || playbackUpdatedSurface == null || playbackUpdatedSurface != textureView.getSurfaceTexture()) {
+            return;
+        }
+        playbackTransitionPending = false;
+        if (bitmap != null) {
+            final int expectedPlayerTag = playbackPlayerTag;
+            final int expectedGeneration = playbackTransitionGeneration;
+            final Bitmap expectedBitmap = bitmap;
+            imageView.animate().alpha(0f).setDuration(180).withEndAction(() -> {
+                if (!closing && !closed && !playbackTransitionPending
+                        && playbackPlayerTag == expectedPlayerTag && bitmap == expectedBitmap
+                        && playbackTransitionGeneration == expectedGeneration) {
+                    releaseSnapshot();
+                    imageView.setVisibility(View.INVISIBLE);
+                }
+            }).start();
+        }
+    }
 
     private void drawProgressArc(Canvas canvas, int width, int height) {
         MessageObject currentMessageObject = MediaController.getInstance().getPlayingMessageObject();
@@ -393,21 +483,28 @@ public class PipRoundVideoView implements NotificationCenter.NotificationCenterD
         if (closed) {
             return;
         }
+        playbackPlayerTag = -1;
+        if (imageView != null) imageView.animate().cancel();
+        if (textureView != null) textureView.animate().cancel();
         if (animated) {
             if (closing) {
                 return;
             }
             closing = true;
             cancelBoundsAnimation();
+            if (imageView != null) imageView.setAlpha(1f);
 
             if (textureView != null && textureView.getParent() != null && imageView != null && aspectRatioFrameLayout != null
                     && textureView.isAvailable()) {
                 Bitmap frame = null;
                 try {
-                    if (textureView.getWidth() > 0 && textureView.getHeight() > 0) {
+                    if (!playbackTransitionPending
+                            && textureView.getWidth() > 0 && textureView.getHeight() > 0) {
                         frame = Bitmaps.createBitmap(textureView.getWidth(), textureView.getHeight(), Bitmap.Config.ARGB_8888);
-                        bitmap = textureView.getBitmap(frame);
-                        if (bitmap == null && !frame.isRecycled()) {
+                        Bitmap captured = textureView.getBitmap(frame);
+                        if (captured != null) {
+                            bitmap = captured;
+                        } else if (!frame.isRecycled()) {
                             frame.recycle();
                         }
                     }
@@ -415,7 +512,6 @@ public class PipRoundVideoView implements NotificationCenter.NotificationCenterD
                     if (frame != null && frame != bitmap && !frame.isRecycled()) {
                         frame.recycle();
                     }
-                    bitmap = null;
                 }
                 if (bitmap != null) {
                     imageView.setImageBitmap(bitmap);
@@ -779,6 +875,7 @@ public class PipRoundVideoView implements NotificationCenter.NotificationCenterD
 
     private void releaseSnapshot() {
         if (imageView != null) {
+            imageView.animate().cancel();
             imageView.setImageDrawable(null);
         }
         

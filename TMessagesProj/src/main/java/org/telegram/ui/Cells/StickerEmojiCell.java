@@ -98,6 +98,7 @@ public class StickerEmojiCell extends FrameLayout implements NotificationCenter.
                 return super.setImageBitmapByKey(drawable, key, type, memCache, guid);
             }
         };
+        imageView.setCrossfadeOnReady(true);
         imageView.setAspectFit(true);
         imageView.setAllowLoadingOnAttachedOnly(true);
         imageView.setLayerNum(1);

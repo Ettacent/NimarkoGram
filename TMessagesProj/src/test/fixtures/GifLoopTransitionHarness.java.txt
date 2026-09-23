@@ -1,0 +1,596 @@
+import java.io.File;
+import java.util.*;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.*;
+
+public class Harness {
+    @interface AnyThread {} @interface UiThread {} @interface WorkerThread {} @interface Nullable {}
+    static int dp(int n) { return n; }
+    static void check(boolean value, String message) { if (!value) throw new AssertionError(message); }
+    static void near(double value, double expected, String message) {
+        check(Math.abs(value - expected) < .012, message + ": " + value + " != " + expected);
+    }
+    static class SystemClock { static long now = 1000; static long uptimeMillis() { return now; } }
+    static class DrawingInBackgroundThreadDrawable { static final int THREAD_COUNT = 2; }
+    static class Bitmap {
+        enum Config { ARGB_8888 }
+        static int allocations;
+        final int w, h; double pixel, pixelAlpha; int recycles;
+        Bitmap(int w, int h) { this.w = w; this.h = h; allocations++; }
+        static Bitmap createBitmap(int w, int h, Config config) { return new Bitmap(w, h); }
+        int getWidth() { return w; } int getHeight() { return h; }
+        void recycle() { check(++recycles == 1, "bitmap recycled once"); }
+        void eraseColor(int c) { pixel = pixelAlpha = 0; }
+    }
+    static class Shader { enum TileMode { CLAMP } void setLocalMatrix(Matrix m) {} }
+    static class BitmapShader extends Shader {
+        final Bitmap bitmap;
+        BitmapShader(Bitmap b, TileMode x, TileMode y) { bitmap = b; }
+    }
+    static class Matrix {
+        void reset() {} void setTranslate(float x, float y) {} void preRotate(float r) {}
+        void preTranslate(float x, float y) {} void preScale(float x, float y) {}
+    }
+    static class Rect { int left, top, right = 4, bottom = 4; }
+    static class RectF {
+        float left, top, right = 4, bottom = 4;
+        void set(float x, float y, float r, float b) { left = x; top = y; right = r; bottom = b; }
+        void set(Rect r) { set(r.left, r.top, r.right, r.bottom); }
+        float width() { return right - left; } float height() { return bottom - top; }
+    }
+    static class Path { enum Direction { CW } void rewind() {} void addRoundRect(RectF r, float[] v, Direction d) {} }
+    static class Color { static final int TRANSPARENT = 0; }
+    static class ColorFilter {}
+    static class Xfermode {}
+    static class PorterDuff { enum Mode { SRC } }
+    static class PorterDuffXfermode extends Xfermode { PorterDuffXfermode(PorterDuff.Mode m) {} }
+    static class Paint {
+        static final int ANTI_ALIAS_FLAG = 1, FILTER_BITMAP_FLAG = 2;
+        int alpha = 255; Shader shader; Xfermode xfer; ColorFilter filter;
+        void setFlags(int f) {} void setFilterBitmap(boolean b) {}
+        int getAlpha() { return alpha; } void setAlpha(int a) { alpha = a; }
+        void setShader(Shader s) { shader = s; }
+        void setColorFilter(ColorFilter c) { filter = c; }
+        void setXfermode(Xfermode x) { xfer = x; } Xfermode getXfermode() { return xfer; }
+    }
+    static class Canvas {
+        double alpha, pixel;
+        int draws, roundDraws, pathDraws, rotations;
+        ColorFilter lastFilter;
+        Runnable duringDraw;
+        Canvas() {} Canvas(Bitmap bitmap) {}
+        void save() {} void restore() {} void translate(float x, float y) {} void scale(float x, float y) {}
+        void rotate(float r) { rotations++; } void clipPath(Path p) {}
+        void drawBitmap(Bitmap b, float x, float y, Paint p) {
+            check(b.recycles == 0, "no recycled bitmap drawn");
+            if (duringDraw != null) { Runnable r = duringDraw; duringDraw = null; r.run(); }
+            double a = b.pixelAlpha * (p == null ? 1 : p.alpha / 255.);
+            double remaining = p != null && p.xfer != null ? 0 : 1 - a;
+            pixel = b.pixel * a + pixel * remaining;
+            alpha = a + alpha * remaining;
+            lastFilter = p == null ? null : p.filter;
+            draws++;
+        }
+        void drawRoundRect(RectF r, float x, float y, Paint p) {
+            roundDraws++; drawBitmap(((BitmapShader)p.shader).bitmap, 0, 0, p);
+        }
+        void drawPath(Path path, Paint p) { pathDraws++; drawBitmap(((BitmapShader)p.shader).bitmap, 0, 0, p); }
+    }
+    interface Animatable { void start(); void stop(); boolean isRunning(); }
+    static class BitmapDrawable {
+        final Paint paint = new Paint(); final Rect bounds = new Rect();
+        Paint getPaint() { return paint; } Rect getBounds() { return bounds; }
+        void draw(Canvas c) {} int getOpacity() { return 0; }
+        int getMinimumHeight() { return 0; } int getMinimumWidth() { return 0; }
+        int getIntrinsicHeight() { return 0; } int getIntrinsicWidth() { return 0; }
+        protected void onBoundsChange(Rect r) {}
+    }
+    static class PixelFormat { static final int TRANSPARENT = 0; }
+    static class View { void invalidate() {} }
+    static class ImageReceiver {
+        int animatedFileDrawableRepeatMaxCount, invalidations;
+        boolean attached = true;
+        void invalidate() { invalidations++; }
+        boolean isAttachedToWindow() { return attached; }
+    }
+    static class TLRPC {
+        static class Document { String mime_type; ArrayList<DocumentAttribute> attributes = new ArrayList<>(); }
+        static class DocumentAttribute { int w = 4, h = 4; boolean round_message; }
+        static class TL_documentAttributeAnimated extends DocumentAttribute {}
+        static class TL_documentAttributeVideo extends DocumentAttribute {}
+    }
+    static class MessageObject { /* GIF_DETECTION */ }
+    static class ImageLocation {}
+    static class AnimatedFileDrawableStream {
+        AnimatedFileDrawableStream(TLRPC.Document d, ImageLocation l, Object p, int a, boolean b, int pr, int c) {}
+        void cancel(boolean b) {} void reset() {} boolean isWaitingForLoad() { return false; }
+        TLRPC.Document getDocument() { return null; } ImageLocation getLocation() { return null; }
+        Object getParentObject() { return null; } boolean isPreview() { return false; }
+    }
+    static class FileLoader {
+        static FileLoader getInstance(int a) { return new FileLoader(); }
+        void removeLoadingVideo(TLRPC.Document d, boolean a, boolean b) {}
+    }
+    static class FileLog { static int errors; static void e(Throwable t) { errors++; } }
+    static class SharedConfig { static boolean deviceIsAboveAverage() { return true; } }
+    static class AndroidUtilities {
+        static final Thread MAIN = Thread.currentThread();
+        static final Queue<Runnable> ui = new ConcurrentLinkedQueue<>();
+        static final Map<Runnable, Long> delayed = Collections.synchronizedMap(new IdentityHashMap<>());
+        static final ArrayList<Bitmap> retired = new ArrayList<>();
+        static void runOnUIThread(Runnable r) { ui.add(r); }
+        static void runOnUIThread(Runnable r, long delay) { delayed.put(r, SystemClock.now + delay); }
+        static void executeOnUIThread(Runnable r) { if (Thread.currentThread() == MAIN) r.run(); else ui.add(r); }
+        static void cancelRunOnUIThread(Runnable r) { delayed.remove(r); }
+        static void drain() { for (Runnable r; (r = ui.poll()) != null;) r.run(); }
+        static void advance(long time) {
+            SystemClock.now += time;
+            ArrayList<Runnable> due = new ArrayList<>();
+            synchronized (delayed) {
+                for (Map.Entry<Runnable, Long> e : delayed.entrySet()) if (e.getValue() <= SystemClock.now) due.add(e.getKey());
+                for (Runnable r : due) delayed.remove(r);
+            }
+            for (Runnable r : due) r.run();
+            drain();
+        }
+        static void recycleBitmaps(List<Bitmap> bitmaps) { for (Bitmap b : bitmaps) { retired.add(b); b.recycle(); } }
+        static void reset() { ui.clear(); delayed.clear(); retired.clear(); FileLog.errors = 0; SystemClock.now = 1000; }
+    }
+    static class DispatchQueue {
+        final Queue<Runnable> tasks = new ConcurrentLinkedQueue<>();
+        DispatchQueue(String name) {}
+        void postRunnable(Runnable r) { tasks.add(r); }
+        void postRunnable(Runnable r, long delay) { check(delay == 0, "no decode delay introduced"); tasks.add(r); }
+        void cancelRunnable(Runnable r) { tasks.remove(r); } void recycle() { tasks.clear(); }
+    }
+    static class DispatchQueuePoolBackground { static void execute(Runnable r) { throw new AssertionError("unexpected real queue"); } }
+    static class RLottieDrawable {
+        static DispatchQueue lottieCacheGenerateQueue;
+        static void createCacheGenQueue() { lottieCacheGenerateQueue = new DispatchQueue("cache"); }
+    }
+    static class BitmapsCache {
+        interface Cacheable { void prepareForGenerateCache(); void releaseForGenerateCache(); int getNextFrame(Bitmap bitmap); }
+        static class CacheOptions {} static class Metadata { int frame; }
+        int frame, failures;
+        BitmapsCache(File f, Cacheable c, CacheOptions o, int w, int h, boolean b) {}
+        int getFrame(Bitmap b, Metadata m) {
+            if (failures-- > 0) throw new IllegalStateException("cache read failed");
+            m.frame = frame; b.pixel = frame / 2.; b.pixelAlpha = 1; frame = (frame + 1) % 3; return 0;
+        }
+        int getFrameCount() { return 3; } boolean needGenCache() { return false; }
+        void createCache() {} void cancelCreate() {} static void incrementTaskCounter() {} static void decrementTaskCounter() {}
+    }
+    static class Choreographer60FpsContent {
+        interface FrameCallback { void doFrame(long time); }
+        static final Choreographer60FpsContent INSTANCE = new Choreographer60FpsContent();
+        static Choreographer60FpsContent getInstance() { return INSTANCE; }
+        void addFrameCallback(FrameCallback c, int fps) {} void removeFrameCallback(FrameCallback c) {}
+    }
+    // Deterministic native boundary: successful frames 0/40/80ms, EOF loops only
+    // when requested; a seek repositions the next frame and may interrupt decode.
+    static class AnimatedFileNative {
+        final int[] data; int index, failures, exceptions; boolean opaque = true, stopped, seeking;
+        boolean partialWrite, blackFrame;
+        int conversionFailures;
+        Runnable duringDecode, checkDecodeLock;
+        AnimatedFileNative(int[] data) { this.data = data; data[0] = data[1] = 4; data[4] = 120; data[5] = 25; }
+        static AnimatedFileNative createDecoderFrom(String s, int[] data, int a, long z, AnimatedFileDrawableStream stream, boolean b) {
+            return new AnimatedFileNative(data);
+        }
+        int getVideoFrame(Bitmap bitmap, boolean preview, float start, float end, boolean loop) {
+            if (checkDecodeLock != null) checkDecodeLock.run();
+            if (duringDecode != null) { Runnable r = duringDecode; duringDecode = null; r.run(); }
+            if (stopped || seeking) return 0;
+            if (exceptions-- > 0) {
+                if (partialWrite && bitmap != null) { bitmap.pixel = 0; bitmap.pixelAlpha = 0; }
+                throw new IllegalStateException("decode interrupted at EOF");
+            }
+            if (failures > 0) { failures--; return 0; }
+            if (conversionFailures-- > 0) {
+                if (bitmap != null) { bitmap.pixel = 0; bitmap.pixelAlpha = 0; }
+                return 0;
+            }
+            if (index == 3) { if (!loop) return 0; index = 0; }
+            data[3] = index * 40;
+            if (bitmap != null) {
+                check(bitmap.recycles == 0, "decoder never reuses recycled bitmap");
+                bitmap.pixel = blackFrame ? 0 : index / 2.; bitmap.pixelAlpha = opaque ? 1 : .5;
+            }
+            index++;
+            return 1;
+        }
+        boolean isStaticVideoDetected() { return false; } boolean isLastFrameOpaque() { return opaque; }
+        void seekToMs(long ms, boolean precise) { index = (int)Math.min(2, ms / 40); seeking = false; }
+        int getFrameAtTime(long ms, Bitmap b) { seekToMs(ms, true); return getVideoFrame(b, false, 0, 0, true); }
+        void prepareToSeek() { seeking = true; } void stopDecoder() { stopped = true; } void recycle() { stopped = true; }
+    }
+
+    /* AnimatedFileBuffer */
+    /* AnimatedFileDrawable */
+
+    static TLRPC.Document document(String type) {
+        if (type.equals("unknown")) return null;
+        TLRPC.Document d = new TLRPC.Document();
+        d.mime_type = type.equals("raw") ? "image/gif" : type.equals("webm") ? "video/webm" : "video/mp4";
+        TLRPC.TL_documentAttributeVideo v = new TLRPC.TL_documentAttributeVideo();
+        v.round_message = type.equals("round"); d.attributes.add(v);
+        if (type.equals("gif") || type.equals("round")) d.attributes.add(new TLRPC.TL_documentAttributeAnimated());
+        return d;
+    }
+    static AnimatedFileDrawable create(String type, boolean prerender, boolean loop, boolean preview, boolean cache) {
+        AndroidUtilities.reset();
+        AnimatedFileDrawable d = new AnimatedFileDrawable(new File("not-a-real-file.mp4"), true, 0, 0,
+            document(type), null, null, 0, 0, preview, 4, 4, cache ? new BitmapsCache.CacheOptions() : null, 1, loop);
+        d.PRERENDER_FRAME = prerender;
+        d.addParent(new ImageReceiver());
+        d.mDecoder.checkDecodeLock = () -> check(!Thread.holdsLock(d.frameLock), "decoder never runs under frame lock");
+        d.start(); AndroidUtilities.drain();
+        return d;
+    }
+    static AnimatedFileDrawable create(boolean prerender) { return create("gif", prerender, true, false, false); }
+    static void decode(AnimatedFileDrawable d) {
+        Runnable r = d.decodeQueue.tasks.poll();
+        check(r != null, "decode scheduled"); r.run(); AndroidUtilities.drain();
+    }
+    static void fill(AnimatedFileDrawable d) { for (int i = 0; d.loadFrameTask != null && i < 5; i++) decode(d); }
+    static Canvas draw(AnimatedFileDrawable d) {
+        Canvas c = new Canvas(); d.drawInternal(c, false, SystemClock.now, 0); return c;
+    }
+    static Canvas present(AnimatedFileDrawable d) {
+        d.onChoreographerFrame(SystemClock.now * 1000000); return draw(d);
+    }
+    static void lastFrame(AnimatedFileDrawable d) {
+        decode(d); present(d);
+        decode(d); AndroidUtilities.advance(40); present(d);
+        decode(d); AndroidUtilities.advance(40); present(d);
+        check(d.renderingBuffer.time == 80, "last frame displayed");
+    }
+    static Canvas seam(AnimatedFileDrawable d) {
+        lastFrame(d); decode(d);
+        check(d.gifLoopBuffer == null, "no blend at decode completion");
+        AndroidUtilities.advance(40); return present(d);
+    }
+
+    static void pixels() {
+        AnimatedFileDrawable d = create(false);
+        Bitmap old;
+        Canvas c = seam(d); old = d.gifLoopBuffer.bitmap;
+        near(c.pixel, 1, "last pixel at seam"); near(c.alpha, 1, "opaque at seam");
+        check(d.renderingBuffer.time == 0 && old != d.renderingBuffer.bitmap, "actual new frame displayed beneath hold");
+        check(!d.unusedBuffers.contains(d.gifLoopBuffer), "held frame not in decoder pool");
+        AndroidUtilities.advance(50); c = draw(d);
+        near(c.pixel, .5, "full-opacity fade midpoint"); near(c.alpha, 1, "midpoint stays opaque");
+        check(d.getPaint().getAlpha() == 255 && d.getPaint().getXfermode() == null, "alpha restored and SRC disabled while blending");
+        for (int alpha : new int[] {0, 64, 128, 200, 254, 255}) {
+            d.getPaint().setAlpha(alpha); c = draw(d);
+            near(c.alpha, alpha / 255., "parent alpha preserved");
+            near(c.pixel, alpha / 510., "parent opacity scales mixed pixel");
+            check(d.getPaint().getAlpha() == alpha, "parent paint alpha restored");
+        }
+        d.getPaint().setAlpha(255);
+        AndroidUtilities.advance(50); c = draw(d);
+        near(c.pixel, 0, "blend complete by 100ms");
+        check(d.gifLoopBuffer == null && old.recycles == 0, "expiry returns buffer without recycling");
+        check(!AndroidUtilities.delayed.containsKey(d.gifLoopInvalidate), "expiry stops redraw timer");
+        check(d.getPaint().getXfermode() == AnimatedFileDrawable.SRC_XFERMODE, "opaque fast path resumes");
+    }
+
+    static void prerenderAndDelay() {
+        AnimatedFileDrawable d = create(true);
+        decode(d); present(d); decode(d); decode(d);
+        AndroidUtilities.advance(40); present(d); // 40 displayed, 80 queued
+        AnimatedFileBuffer last = d.nextRenderingBuffer;
+        decode(d); // 0 is now the second prerendered buffer
+        check(d.nextRenderingBuffer2.startsGifLoop && d.gifLoopBuffer == null, "loop marker stays with second prerender slot");
+        AndroidUtilities.advance(40); present(d);
+        check(d.renderingBuffer == last && d.gifLoopBuffer == null, "last frame receives normal display interval");
+        decode(d); AndroidUtilities.advance(40); present(d);
+        check(d.gifLoopBuffer == last && d.renderingBuffer.time == 0, "prerender blend starts on actual handoff");
+        long start = d.gifLoopBlendStart;
+        AndroidUtilities.advance(40); present(d);
+        check(d.renderingBuffer.time == 40 && d.gifLoopBlendStart == start, "blend does not slow playback or restart each frame");
+        d = create(false); lastFrame(d); Bitmap before = d.renderingBuffer.bitmap;
+        d.mDecoder.failures = 2;
+        for (int i = 0; i < 2; i++) {
+            decode(d); AndroidUtilities.advance(150); present(d);
+            check(d.renderingBuffer.bitmap == before && d.gifLoopBuffer == null, "decode delay holds last frame without premature fade");
+        }
+        decode(d); present(d);
+        check(d.gifLoopBuffer.bitmap == before && d.gifLoopBlendStart == SystemClock.now, "late first frame starts fresh bounded visual blend");
+    }
+
+    static void seek() {
+        AnimatedFileDrawable d = create(false); lastFrame(d);
+        d.seekTo(0, false); decode(d); present(d);
+        check(d.repeatCount == 0 && d.gifLoopBuffer == null && d.renderingBuffer.time == 0, "seek is not a repeat");
+        d = create(false); lastFrame(d); decode(d); // real first frame already queued
+        d.seekToSync(0); // resets generation even though there is no pendingSeekToUI
+        // A newer decode with the current generation is legitimately queued after
+        // the reset; the old displayed frame must also match, not just incoming.
+        d.nextRenderingBuffer.gifPlaybackGeneration = d.gifPlaybackGeneration;
+        present(d);
+        check(d.gifLoopBuffer == null, "queued pre-seek loop cannot blend");
+        d = create(false); seam(d); d.seekTo(40, false);
+        check(d.gifLoopBuffer == null, "async seek clears active blend immediately");
+        decode(d); present(d); check(d.gifLoopBuffer == null, "seek target does not revive old blend");
+        d = create(false); lastFrame(d); d.parents.get(0).animatedFileDrawableRepeatMaxCount = 1;
+        d.seekToSync(0); decode(d); present(d);
+        check(d.repeatCount == 0 && d.isRunning() && d.gifLoopBuffer == null, "sync seek does not consume repeat limit");
+        d = create(false); lastFrame(d);
+        AnimatedFileDrawable inFlight = d;
+        d.mDecoder.duringDecode = () -> inFlight.seekTo(0, false);
+        decode(d); decode(d); present(d);
+        check(d.gifLoopBuffer == null && d.repeatCount == 0, "seek interrupting decode is not loop");
+    }
+
+    static void eligibility() {
+        AnimatedFileDrawable previewVideo = create("video", false, true, false, false);
+        previewVideo.enableVideoPreviewLoopBlend(); seam(previewVideo);
+        check(previewVideo.gifLoopBuffer != null, "inline video retains outgoing frame");
+        near(draw(previewVideo).pixel, 1, "video holds last pixel over incoming black seam frame");
+        check(previewVideo.makeCopy().gifLoopBlendEnabled, "inline video copies retain blend policy");
+        AnimatedFileDrawable oneShot = create("video", false, false, false, false);
+        oneShot.enableVideoPreviewLoopBlend(); check(!oneShot.gifLoopBlendEnabled, "nonloop excluded");
+        AnimatedFileDrawable thumbnail = create("video", false, true, true, false);
+        thumbnail.enableVideoPreviewLoopBlend(); check(!thumbnail.gifLoopBlendEnabled, "thumbnail excluded");
+        AnimatedFileDrawable round = create("round", false, true, false, false);
+        round.enableVideoPreviewLoopBlend(); check(!round.gifLoopBlendEnabled, "round video excluded");
+        for (String type : new String[] {"gif", "raw", "video", "round", "webm", "unknown"}) {
+            AnimatedFileDrawable d = create(type, false, true, false, false);
+            seam(d);
+            boolean eligible = type.equals("gif") || type.equals("raw");
+            check((d.gifLoopBuffer != null) == eligible, "document classification: " + type);
+            check(d.estimateSizeInCache() == 4 * 4 * 4 * (eligible ? 4 : 3), "memory estimate only adds one eligible buffer");
+        }
+        AnimatedFileDrawable d = create(false); d.setIsWebmSticker(true); d.useSharedQueue = false;
+        check(!d.makeCopy().gifLoopBlendEnabled, "copy preserves webm/avatar blend opt-out");
+        seam(d); check(d.gifLoopBuffer == null, "webm flag excludes blend");
+        d = create("gif", false, false, false, false); lastFrame(d); decode(d); present(d);
+        check(d.gifLoopBuffer == null && d.renderingBuffer.time == 80, "nonloop holds final frame without fade");
+        check(!d.makeCopy().gifLoopBlendEnabled, "copy preserves nonloop blend opt-out");
+        d = create("gif", false, true, true, false); seam(d); check(d.gifLoopBuffer == null, "preview excluded");
+        d = create("gif", false, true, false, true); seam(d); check(d.gifLoopBuffer == null, "cache opacity unknown excludes blend");
+        d = create(false); d.mDecoder.opaque = false; seam(d); check(d.gifLoopBuffer == null, "transparent frames excluded");
+        d = create(false); lastFrame(d); d.mDecoder.opaque = false; decode(d); present(d);
+        check(d.gifLoopBuffer == null, "transparent incoming frame excluded");
+        d = create(false); d.setStartEndTime(0, 120); seam(d); check(d.gifLoopBuffer == null, "trimmed playback excluded");
+    }
+
+    static void lifecycle() {
+        AnimatedFileDrawable d = create(false); seam(d); AnimatedFileBuffer held = d.gifLoopBuffer;
+        d.stop(); check(d.gifLoopBuffer == null && d.unusedBuffers.contains(held), "stop releases hold to pool");
+        d.start(); AndroidUtilities.drain(); check(d.gifLoopBuffer == null, "start never resurrects blend");
+        for (boolean stop : new boolean[] {false, true}) {
+            d = create(false); seam(d); d.resetStream(stop);
+            check(d.gifLoopBuffer == null && !AndroidUtilities.delayed.containsKey(d.gifLoopInvalidate), "resetStream clears hold and timer");
+            decode(d); present(d); check(d.gifLoopBuffer == null, "aborted resetStream decode does not revive blend");
+        }
+        d = create(false); seam(d); d.replaceAnimatedBitmap(new Bitmap(4, 4));
+        check(d.gifLoopBuffer == null, "replacement clears hold");
+        d = create(false); seam(d); d.removeParent(d.parents.get(0)); check(d.gifLoopBuffer == null, "detach clears hold");
+        d = create(false); seam(d); held = d.gifLoopBuffer;
+        d.skipFrameUpdate = true; draw(d); check(d.gifLoopBuffer == held, "backdrop sampling preserves loop blend");
+        d.skipFrameUpdate = false; draw(d); check(d.gifLoopBuffer == held, "visible draw retains outgoing frame after capture");
+        d = create(false); seam(d);
+        for (int i = 0; i < 12; i++) d.onChoreographerFrame(SystemClock.now * 1000000);
+        check(d.isPaused && d.gifLoopBuffer == null, "offscreen pause retires hold");
+        draw(d); check(!d.isPaused && d.gifLoopBuffer == null, "resume does not resurrect old seam");
+        // Repeat enforcement already occurs at decode publication in production.
+        // It must stop there without fading or consuming the queued first frame.
+        for (boolean prerender : new boolean[] {false, true}) {
+            d = create(prerender); d.parents.get(0).animatedFileDrawableRepeatMaxCount = 1;
+            lastFrame(d); Bitmap last = d.renderingBuffer.bitmap; decode(d); present(d);
+            check(d.repeatCount == 1 && !d.isRunning() && d.gifLoopBuffer == null, "repeat limit stops without blend");
+            check(d.renderingBuffer.bitmap == last, "repeat limit does not consume first frame");
+            d.start(); AndroidUtilities.drain(); present(d);
+            check(d.gifLoopBuffer == null, "restart after repeat limit cannot fade stale queue");
+        }
+        d = create(false); d.parents.get(0).animatedFileDrawableRepeatMaxCount = 2;
+        seam(d); check(d.repeatCount == 1 && d.gifLoopBuffer != null, "first permitted repeat blends");
+        for (int i = 0; i < 3; i++) { decode(d); AndroidUtilities.advance(40); present(d); }
+        check(d.repeatCount == 2 && !d.isRunning() && d.gifLoopBuffer == null, "second repeat stops and clears prior hold");
+        d = create(false); d.parents.get(0).animatedFileDrawableRepeatMaxCount = 1;
+        d.addParent(new ImageReceiver()); seam(d);
+        check(d.isRunning() && d.gifLoopBuffer != null, "unlimited second parent still permits loop");
+    }
+
+    static void backgroundAndOwnership() throws Exception {
+        AnimatedFileDrawable d = create(true); seam(d);
+        AndroidUtilities.advance(50); d.getPaint().setAlpha(201);
+        d.setActualDrawRect(0, 0, 4, 4); d.setRoundRadius(new int[] {1, 1, 1, 1}); d.metaData[2] = 90;
+        Canvas c = new Canvas(); ColorFilter filter = new ColorFilter();
+        d.drawInBackground(c, 0, 0, 4, 4, 128, filter, 0);
+        near(c.pixel, 128 / 510., "background draw uses same blend"); near(c.alpha, 128 / 255., "background parent alpha");
+        check(c.roundDraws == 2 && c.lastFilter == filter && d.getPaint().getAlpha() == 201, "rounded background filter and independent paint");
+        d.setRoundRadius(new int[] {1, 2, 1, 2}); c = new Canvas(); d.drawInBackground(c, 0, 0, 4, 4, 255, null, 1);
+        check(c.pathDraws == 2, "asymmetric corners blend both frames");
+        decode(d); // first next frame published, second prerender decode is pending
+        final AnimatedFileDrawable active = d;
+        final Runnable pendingDecode = d.decodeQueue.tasks.poll();
+        check(pendingDecode != null, "real prerender decode pending during background draw");
+        final AnimatedFileBuffer displayed = d.renderingBuffer, held = d.gifLoopBuffer;
+        CountDownLatch inside = new CountDownLatch(1), release = new CountDownLatch(1), mutationStarted = new CountDownLatch(1);
+        AtomicReference<Throwable> failure = new AtomicReference<>(); AtomicBoolean finished = new AtomicBoolean();
+        Canvas blocking = new Canvas(); blocking.duringDraw = () -> { inside.countDown(); await(release); };
+        Thread worker = new Thread(() -> {
+            try { active.drawInBackground(blocking, 0, 0, 4, 4, 255, null, 0); } catch (Throwable t) { failure.set(t); }
+        });
+        worker.start(); check(inside.await(2, TimeUnit.SECONDS), "background drawing started");
+        Thread ui = new Thread(() -> {
+            mutationStarted.countDown();
+            try { active.swapBuffersAllowedByChoreographer = true; active.updateCurrentFrame(SystemClock.now, true); finished.set(true); }
+            catch (Throwable t) { failure.set(t); }
+        });
+        ui.start(); check(mutationStarted.await(2, TimeUnit.SECONDS), "UI mutation attempted");
+        waitBlocked(ui);
+        check(!finished.get() && active.renderingBuffer == displayed && active.gifLoopBuffer == held,
+            "UI cannot swap refs during worker draw");
+        // The decoder pool does not use the draw lock: decoding remains possible
+        // while a worker draws, without touching either displayed/retained frame.
+        Thread decoder = new Thread(() -> {
+            try { pendingDecode.run(); } catch (Throwable t) { failure.set(t); }
+        });
+        decoder.start(); decoder.join(2000); check(!decoder.isAlive(), "decoder is independent of draw lock");
+        check(active.backgroundBuffer != held && active.backgroundBuffer != displayed, "decoder owns separate buffer");
+        release.countDown(); worker.join(2000); ui.join(2000);
+        check(failure.get() == null && finished.get(), "concurrent draw/handoff completed: " + failure.get());
+        AndroidUtilities.drain();
+        // Retire through the real recycle -> pending decode callback -> release path.
+        d.recycle(); if (d.loadFrameTask != null) { decode(d); }
+        check(d.gifLoopBuffer == null && d.renderingBuffer == null && d.unusedBuffers.isEmpty(), "recycle clears all owners");
+        check(held.bitmap.recycles == 1 && displayed.bitmap.recycles == 1, "retained and displayed recycled exactly once");
+        check(!AndroidUtilities.delayed.containsKey(d.gifLoopInvalidate), "recycle cancels callback");
+    }
+    static void await(CountDownLatch latch) {
+        try { check(latch.await(3, TimeUnit.SECONDS), "latch released"); } catch (InterruptedException e) { throw new AssertionError(e); }
+    }
+    static void waitBlocked(Thread thread) throws InterruptedException {
+        long until = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
+        while (thread.getState() != Thread.State.BLOCKED && thread.isAlive() && System.nanoTime() < until) Thread.yield();
+        check(thread.getState() == Thread.State.BLOCKED, "handoff waits for background draw");
+    }
+    static void boundedPool() {
+        AnimatedFileDrawable d = create(true); seam(d); int maximum = Bitmap.allocations;
+        for (int i = 0; i < 150; i++) {
+            if (d.loadFrameTask != null) decode(d);
+            AndroidUtilities.advance(40); present(d);
+            IdentityHashMap<AnimatedFileBuffer, Boolean> owners = new IdentityHashMap<>();
+            for (AnimatedFileBuffer b : new AnimatedFileBuffer[] {d.renderingBuffer, d.nextRenderingBuffer,
+                    d.nextRenderingBuffer2, d.backgroundBuffer, d.gifLoopBuffer}) {
+                if (b != null) check(owners.put(b, true) == null, "buffer has one live owner");
+            }
+            for (AnimatedFileBuffer b : d.unusedBuffers) check(owners.put(b, true) == null, "no duplicate pool return");
+            if (i == 8) maximum = Bitmap.allocations;
+            if (i > 8) check(Bitmap.allocations == maximum, "no allocation thrash across repeated loops");
+            check(owners.size() <= 5, "at most one extra retained buffer with prerender");
+        }
+    }
+    static void failedPublication() {
+        // FileLog deliberately logs instead of throwing, just like production.
+        // Fail with a fresh AND a partially overwritten pooled bitmap at EOF.
+        for (boolean prerender : new boolean[] {false, true}) {
+            for (boolean pooled : new boolean[] {false, true}) {
+                AnimatedFileDrawable d = create(prerender); lastFrame(d);
+                if (!pooled) d.unusedBuffers.clear();
+                AnimatedFileBuffer last = d.renderingBuffer;
+                d.mDecoder.exceptions = 1; d.mDecoder.partialWrite = pooled;
+                decode(d); AndroidUtilities.advance(150); Canvas c = present(d);
+                check(FileLog.errors == 1, "decode failure was actually exercised");
+                check(d.renderingBuffer == last && d.nextRenderingBuffer == null && d.nextRenderingBuffer2 == null,
+                    "failed decode must not publish fresh or poisoned pooled buffer");
+                near(c.pixel, 1, "decode exception preserves last good pixel");
+                near(c.alpha, 1, "decode exception preserves last good alpha");
+                check(d.repeatCount == 0 && d.gifLoopBuffer == null, "failure does not restart playback");
+                decode(d); present(d);
+                check(d.renderingBuffer.time == 0 && d.repeatCount == 1, "retry publishes real first frame once");
+            }
+        }
+        AnimatedFileDrawable d = create("gif", false, true, false, true);
+        lastFrame(d); AnimatedFileBuffer last = d.renderingBuffer;
+        d.bitmapsCache.failures = 1; decode(d); present(d);
+        check(d.renderingBuffer == last, "cache exception must not publish a buffer");
+
+        d = create(true); decode(d); present(d); decode(d); decode(d);
+        AndroidUtilities.advance(40); present(d);
+        AnimatedFileBuffer queuedLast = d.nextRenderingBuffer;
+        d.mDecoder.exceptions = 1; decode(d);
+        check(d.nextRenderingBuffer == queuedLast && d.nextRenderingBuffer2 == null,
+            "failed EOF decode preserves the prerendered tail");
+        AndroidUtilities.advance(40); Canvas c = present(d);
+        check(d.renderingBuffer == queuedLast, "tail still reaches display before loop");
+        near(c.pixel, 1, "prerendered final pixel survives failed loop decode");
+        decode(d); AndroidUtilities.advance(40); present(d);
+        check(d.renderingBuffer.time == 0 && d.repeatCount == 1, "prerender retry restarts exactly once");
+
+        d = create(false); d.mDecoder.exceptions = 1; decode(d); present(d);
+        check(!d.hasBitmap() && d.getBackgroundBitmap() == null, "first failure exposes no bitmap");
+        decode(d); present(d); check(d.hasBitmap(), "first-frame failure retries successfully");
+    }
+
+    static void publicationGuard() {
+        AnimatedFileDrawable d = create(true); lastFrame(d);
+        AnimatedFileBuffer last = d.renderingBuffer;
+        d.backgroundBuffer = AnimatedFileBuffer.of(4, 4);
+        d.backgroundBuffer.opaque = true; // alpha metadata cannot prove readiness
+        d.uiRunnableImpl(); present(d);
+        check(d.renderingBuffer == last && d.nextRenderingBuffer == null, "UI rejects an unfilled opaque buffer");
+        d.backgroundBuffer = null; d.uiRunnableImpl(); present(d);
+        check(d.renderingBuffer == last, "UI rejects a missing decode buffer");
+        check(AnimatedFileBuffer.of(new Bitmap(4, 4)).hasFrame, "explicit bitmap replacement is already a frame");
+    }
+
+    static void directEof() {
+        AnimatedFileDrawable d = create(false); d.stop();
+        d.mDecoder.failures = 1;
+        check(d.getNextFrame(true) == null, "no bitmap before first successful decode");
+        check(d.getBackgroundBitmap() == null, "background getter cannot expose an unfilled bitmap");
+        Bitmap first = d.getNextFrame(true);
+        check(first != null && first.pixelAlpha == 1, "successful direct decode has pixels");
+        d.getNextFrame(false); Bitmap last = d.getNextFrame(false);
+        near(last.pixel, 1, "direct last pixel");
+        check(d.getNextFrame(false) == null, "direct EOF tells caller to retain previous texture");
+        near(last.pixel, 1, "direct EOF never clears pixels");
+        check(d.getBackgroundBitmap() == null, "EOF does not claim a newly decoded bitmap");
+        d = create(false); d.stop(); d.mDecoder.failures = 1;
+        d.getNextFrame(true); d.mDecoder = null;
+        check(d.getNextFrame(true) == null, "missing decoder must not expose an unfilled bitmap");
+        d = create(false); d.stop();
+        AnimatedFileBuffer stale = AnimatedFileBuffer.of(new Bitmap(4, 4));
+        stale.bitmap.pixel = .8; stale.bitmap.pixelAlpha = 1; d.unusedBuffers.add(stale);
+        d.mDecoder.failures = 1;
+        check(d.getNextFrame(true) == null, "pool reuse cannot publish a stale frame on failure");
+        check(d.getNextFrame(true) == stale.bitmap, "pool buffer is reusable after successful decode");
+        d.mDecoder.conversionFailures = 1;
+        check(d.getNextFrame(true) == null && d.getBackgroundBitmap() == null,
+            "partial native conversion must invalidate a previously successful direct bitmap");
+        check(d.getNextFrame(true) != null, "conversion failure can recover on later decode");
+    }
+
+    static void preciseNoFrame() {
+        for (boolean precise : new boolean[] {false, true}) {
+            AnimatedFileDrawable d = create(false); d.stop(); d.mDecoder.failures = 1;
+            check(d.getFrameAtTime(40, precise) == null, "frame-at-time failure returns no image");
+            Bitmap success = d.getFrameAtTime(40, precise);
+            check(success != null && success.pixelAlpha == 1, "frame-at-time retries successfully");
+        }
+    }
+
+    static void cacheEof() {
+        AnimatedFileDrawable d = create(false); d.stop(); d.prepareForGenerateCache();
+        Bitmap target = new Bitmap(4, 4); target.pixel = .75; target.pixelAlpha = 1;
+        d.cacheGenerateDecoder.failures = 1;
+        check(d.getNextFrame(target) != 1, "cache cannot encode a failed decode as a frame");
+        near(target.pixel, .75, "cache failure does not erase caller bitmap");
+        d.releaseForGenerateCache();
+        d = create("gif", false, false, false, false); d.stop(); d.prepareForGenerateCache();
+        for (int i = 0; i < 3; i++) check(d.getNextFrame(target) == 1, "cache emits each valid frame");
+        check(d.getNextFrame(target) == 0, "cache EOF does not append duplicate tail frames");
+        d.releaseForGenerateCache();
+    }
+
+    static void legitimatePixels() {
+        AnimatedFileDrawable d = create(false); d.mDecoder.blackFrame = true;
+        decode(d); Canvas c = present(d);
+        near(c.pixel, 0, "legitimate black frame is not filtered"); near(c.alpha, 1, "legitimate black is opaque");
+        d = create(false); d.mDecoder.opaque = false; lastFrame(d); c = draw(d);
+        near(c.alpha, .5, "real transparency remains transparent");
+        check(d.getPaint().getXfermode() == null, "transparent pixels must not use SRC");
+        decode(d); AndroidUtilities.advance(40); c = present(d);
+        near(c.alpha, .5, "transparent loop is not forced opaque");
+        check(d.gifLoopBuffer == null, "transparent loop does not blend");
+    }
+    public static void main(String[] args) throws Exception {
+        switch (args[0]) {
+            case "pixels": pixels(); break;
+            case "seek": seek(); break;
+            case "eligibility": eligibility(); break;
+            case "publication": failedPublication(); break;
+            case "guard": publicationGuard(); break;
+            case "direct": directEof(); break;
+            case "cache": cacheEof(); break;
+            default: pixels(); prerenderAndDelay(); seek(); eligibility(); lifecycle(); backgroundAndOwnership(); boundedPool();
+                failedPublication(); publicationGuard(); directEof(); preciseNoFrame(); cacheEof(); legitimatePixels();
+        }
+        System.out.println("PASS: GIF loop lifecycle");
+    }
+}

@@ -4,7 +4,6 @@ import android.content.Context;
 import android.graphics.PorterDuff;
 import android.graphics.PorterDuffColorFilter;
 import android.os.SystemClock;
-import android.view.Gravity;
 
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.LocaleController;
@@ -14,14 +13,11 @@ import org.telegram.messenger.SharedConfig;
 import org.telegram.messenger.UserConfig;
 import org.telegram.proxy.ProxySettings;
 import org.telegram.tgnet.ConnectionsManager;
-import org.telegram.ui.ActionBar.BaseFragment;
 import org.telegram.ui.ActionBar.INavigationLayout;
 import org.telegram.ui.ActionBar.Theme;
-import org.telegram.ui.Components.ItemOptions;
 import org.telegram.ui.LaunchActivity;
 import org.telegram.ui.ProxyListActivity;
 
-import app.nimarkogram.messenger.infocards.preferences.InfoCardsPreferencesActivity;
 import app.nimarkogram.messenger.wsbypass.NimarkoWsBypassConfig;
 import app.nimarkogram.messenger.wsbypass.WsBypassCore;
 
@@ -179,16 +175,16 @@ public class ProxyCard extends BaseInfoCard implements NotificationCenter.Notifi
     }
 
     private static boolean isOwnBypass(SharedConfig.ProxyInfo proxy) {
-        return proxy != null && proxy.settings != null
-                && WsBypassCore.LOCAL_PROXY_HOST.equals(proxy.settings.getAddress())
-                && proxy.settings.getPort() == NimarkoWsBypassConfig.localPort;
+        return proxy != null && proxy.getSettings() != null
+                && WsBypassCore.LOCAL_PROXY_HOST.equals(proxy.getSettings().getAddress())
+                && proxy.getSettings().getPort() == NimarkoWsBypassConfig.localPort;
     }
     private static long displayPing(SharedConfig.ProxyInfo proxy, int account) {
         return isOwnBypass(proxy) ? ConnectionsManager.native_getCurrentMainPingTime(account) : proxy.ping;
     }
     private void kickProxyCheck(SharedConfig.ProxyInfo proxy, boolean justConnected) {
         if (proxy == null) return;
-        final ProxySettings checkedSettings = proxy.settings;
+        final ProxySettings checkedSettings = proxy.getSettings();
         if (checkedSettings == null || !checkedSettings.isValid()) return;
         final int acc = observedAccount;
         if (isOwnBypass(proxy)) {
@@ -204,7 +200,7 @@ public class ProxyCard extends BaseInfoCard implements NotificationCenter.Notifi
                 checkedSettings,
                 time -> AndroidUtilities.runOnUIThread(() -> {
                     proxy.checking = false;
-                    if (!checkedSettings.equals(proxy.settings)) return;
+                    if (!checkedSettings.equals(proxy.getSettings())) return;
                     proxy.availableCheckTime = SystemClock.elapsedRealtime();
                     if (time == -1) {
                         proxy.available = false;
@@ -237,36 +233,6 @@ public class ProxyCard extends BaseInfoCard implements NotificationCenter.Notifi
         }
         
         onUpdateData(true);
-    }
-
-    @Override
-    public boolean onCardLongClicked() {
-        BaseFragment fragment = getCurrentFragment();
-        if (fragment == null) {
-            return false;
-        }
-        
-        final ItemOptions options = ItemOptions.makeOptions(fragment, this).setDrawScrim(false);
-        options.add(R.drawable.msg_settings, LocaleController.getString(R.string.Settings),
-                () -> fragment.presentFragment(new InfoCardsPreferencesActivity()));
-        
-        options.setGravity(LocaleController.isRTL ? Gravity.LEFT : Gravity.RIGHT)
-                .show();
-        return true;
-    }
-
-    private static BaseFragment getCurrentFragment() {
-        try {
-            LaunchActivity la = LaunchActivity.instance;
-            if (la != null) {
-                INavigationLayout layout = la.getActionBarLayout();
-                if (layout != null) {
-                    return layout.getLastFragment();
-                }
-            }
-        } catch (Throwable ignore) {
-        }
-        return null;
     }
 
     @Override

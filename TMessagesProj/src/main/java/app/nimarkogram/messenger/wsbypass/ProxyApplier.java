@@ -75,8 +75,8 @@ public final class ProxyApplier {
                         SharedConfig.currentProxy = curr;
                     }
                 }
-                String host = curr == null ? "" : curr.settings.getAddress();
-                if (curr != null && localHost != null && localHost.equals(host) && curr.settings.getPort() == NimarkoWsBypassConfig.localPort) {
+                String host = curr == null ? "" : curr.getSettings().getAddress();
+                if (curr != null && localHost != null && localHost.equals(host) && curr.getSettings().getPort() == NimarkoWsBypassConfig.localPort) {
                     snapshot = new ProxySnapshot(false, ProxySettings.EMPTY, false);
                     persistSnapshot(snapshot);
                     return;
@@ -86,7 +86,7 @@ public final class ProxyApplier {
                 if (curr != null) {
                     snapshot = new ProxySnapshot(
                             enabled,
-                            curr.settings,
+                            curr.getSettings(),
                             callsEnabled);
                 } else {
                     
@@ -231,8 +231,8 @@ public final class ProxyApplier {
             synchronized (PROXY_LIST_LOCK) {
                 SharedConfig.ProxyInfo curr = SharedConfig.currentProxy;
                 boolean currentIsOurs = curr != null
-                        && host.equals(curr.settings.getAddress())
-                        && curr.settings.getPort() == NimarkoWsBypassConfig.localPort;
+                        && host.equals(curr.getSettings().getAddress())
+                        && curr.getSettings().getPort() == NimarkoWsBypassConfig.localPort;
                 SharedPreferences settings = MessagesController.getGlobalMainSettings();
                 boolean persistedIsOurs = settings.getBoolean("proxy_enabled", false)
                         && host.equals(settings.getString("proxy_ip", ""))
@@ -348,7 +348,7 @@ public final class ProxyApplier {
                 for (int i = 0; i < snapshot.size(); i++) {
                     SharedConfig.ProxyInfo p = snapshot.get(i);
                     if (p == null) continue;
-                    if (host.equals(p.settings.getAddress()) && p.settings.getPort() == ownPort) {
+                    if (host.equals(p.getSettings().getAddress()) && p.getSettings().getPort() == ownPort) {
                         if (localProxy == null) {
                             localProxy = p;
                         } else {
@@ -374,7 +374,7 @@ public final class ProxyApplier {
 
                 try {
                     SharedConfig.ProxyInfo curr = SharedConfig.currentProxy;
-                    if (curr != null && host.equals(curr.settings.getAddress()) && curr.settings.getPort() == ownPort) {
+                    if (curr != null && host.equals(curr.getSettings().getAddress()) && curr.getSettings().getPort() == ownPort) {
                         SharedConfig.currentProxy = null;
                     }
                 } catch (Throwable ignored) {}
@@ -383,7 +383,7 @@ public final class ProxyApplier {
                 if (enable) {
                     if (localProxy != null) {
                         try {
-                            localProxy.settings = localSettings;
+                            localProxy.setSettings(localSettings);
                         } catch (Throwable ignored) {}
                         proxyObj = localProxy;
                     } else {
@@ -499,12 +499,12 @@ public final class ProxyApplier {
         if (settings.getBoolean("proxy_enabled", false) != enable) return false;
         if (!expected.equals(ProxySettings.fromSharedPreferences(settings))) return false;
         if (!enable && !expected.isValid()) return true;
-        if (current == null || !expected.equals(current.settings)) {
+        if (current == null || !expected.equals(current.getSettings())) {
             return false;
         }
         if (proxies != null) {
             for (SharedConfig.ProxyInfo info : proxies) {
-                if (info != null && expected.equals(info.settings)) return true;
+                if (info != null && expected.equals(info.getSettings())) return true;
             }
         }
         return false;
@@ -521,7 +521,7 @@ public final class ProxyApplier {
                 for (int i = 0; i < snap.size(); i++) {
                     SharedConfig.ProxyInfo p = snap.get(i);
                     if (p == null) continue;
-                    if (host.equals(p.settings.getAddress()) && p.settings.getPort() == port) return true;
+                    if (host.equals(p.getSettings().getAddress()) && p.getSettings().getPort() == port) return true;
                 }
             }
         } catch (Throwable t) {
@@ -542,8 +542,8 @@ public final class ProxyApplier {
             synchronized (PROXY_LIST_LOCK) {
                 SharedConfig.ProxyInfo curr = SharedConfig.currentProxy;
                 if (curr == null) return;
-                String addr = curr.settings.getAddress();
-                if (host.equals(addr) && curr.settings.getPort() == NimarkoWsBypassConfig.localPort) {
+                String addr = curr.getSettings().getAddress();
+                if (host.equals(addr) && curr.getSettings().getPort() == NimarkoWsBypassConfig.localPort) {
                     SharedConfig.currentProxy = null;
                     SharedConfig.markProxyListChanged();
                 }
@@ -570,7 +570,7 @@ public final class ProxyApplier {
                 for (int i = 0; i < snap.size(); i++) {
                     SharedConfig.ProxyInfo p = snap.get(i);
                     if (p == null) continue;
-                    if (host.equals(p.settings.getAddress()) && p.settings.getPort() == NimarkoWsBypassConfig.localPort) {
+                    if (host.equals(p.getSettings().getAddress()) && p.getSettings().getPort() == NimarkoWsBypassConfig.localPort) {
                         toRemove.add(p);
                     }
                 }

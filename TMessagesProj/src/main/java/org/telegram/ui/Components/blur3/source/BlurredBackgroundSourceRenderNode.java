@@ -11,6 +11,7 @@ import android.os.Build;
 import androidx.annotation.RequiresApi;
 
 import org.telegram.ui.Components.blur3.DownscaleScrollableNoiseSuppressor;
+import org.telegram.ui.Components.blur3.BlurredBackgroundDrawableViewFactory;
 import org.telegram.ui.Components.blur3.RenderNodeWithHash;
 import org.telegram.ui.Components.blur3.drawable.BlurredBackgroundDrawable;
 import org.telegram.ui.Components.blur3.drawable.BlurredBackgroundDrawableRenderNode;
@@ -32,7 +33,7 @@ public class BlurredBackgroundSourceRenderNode implements BlurredBackgroundSourc
     public boolean isDisplayListReady() {
         if (inRecording) return false;
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && scrollableNoiseSuppressor != null) {
-            return scrollableNoiseSuppressor.isDisplayListReady(scrollableNoiseSuppressorIndex);
+            return scrollableNoiseSuppressor.isDisplayListReady(getEffectiveSuppressorIndex());
         }
         return renderNode.hasDisplayList() && renderNode.getWidth() > 0 && renderNode.getHeight() > 0;
     }
@@ -60,6 +61,12 @@ public class BlurredBackgroundSourceRenderNode implements BlurredBackgroundSourc
     public void setScrollableNoiseSuppressor(DownscaleScrollableNoiseSuppressor scrollableNoiseSuppressor, int index) {
         this.scrollableNoiseSuppressor = scrollableNoiseSuppressor;
         this.scrollableNoiseSuppressorIndex = index;
+    }
+    private int getEffectiveSuppressorIndex() {
+        return scrollableNoiseSuppressorIndex == DownscaleScrollableNoiseSuppressor.DRAW_GLASS
+                && !BlurredBackgroundDrawableViewFactory.isLiquidGlassEnabled()
+                ? DownscaleScrollableNoiseSuppressor.DRAW_FROSTED_GLASS
+                : scrollableNoiseSuppressorIndex;
     }
 
     public void setUnderSource(BlurredBackgroundSource underSource) {
@@ -140,7 +147,7 @@ public class BlurredBackgroundSourceRenderNode implements BlurredBackgroundSourc
             canvas.clipRect(left, top, right, bottom);
         }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && scrollableNoiseSuppressor != null) {
-            scrollableNoiseSuppressor.drawInline(canvas, scrollableNoiseSuppressorIndex);
+            scrollableNoiseSuppressor.draw(canvas, getEffectiveSuppressorIndex());
         } else {
             canvas.drawRenderNode(renderNode);
         }
@@ -156,7 +163,7 @@ public class BlurredBackgroundSourceRenderNode implements BlurredBackgroundSourc
         int count = 0;
 
         for (BlurredBackgroundDrawableRenderNode d : drawables) {
-            if (d.hasDisplayList() && d.getAlpha() > 0 && !d.getPaddedBounds().isEmpty()) {
+            if (d.getAlpha() > 0 && !d.getPaddedBounds().isEmpty()) {
                 final RectF rectf;
                 if (index < positions.size()) {
                     rectf = positions.get(index);

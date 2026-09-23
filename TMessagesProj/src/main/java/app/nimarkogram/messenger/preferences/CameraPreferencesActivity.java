@@ -228,8 +228,11 @@ public class CameraPreferencesActivity extends NimarkoUniversalPreferencesActivi
             labels.add(getString(R.string.NM_CAM_RoundVideoSize_SD));   values.add(NimarkoConfig.ROUND_SD);
             labels.add(getString(R.string.NM_CAM_RoundVideoSize_STD));  values.add(NimarkoConfig.ROUND_STD);
             labels.add(getString(R.string.NM_CAM_RoundVideoSize_HD));   values.add(NimarkoConfig.ROUND_HD);
+            if (NimarkoConfig.videoMessagesResolution == NimarkoConfig.ROUND_FHD) {
+                labels.add("720 × 720"); values.add(NimarkoConfig.ROUND_FHD);
+            }
             int cur = values.indexOf(NimarkoConfig.videoMessagesResolution);
-            if (cur < 0) cur = values.indexOf(NimarkoConfig.ROUND_STD);
+            if (cur < 0) cur = values.indexOf(NimarkoConfig.ROUND_HD);
             PopupHelper.showLegacy(labels, getString(R.string.NM_CAM_RoundVideoSize), cur, getContext(), i -> {
                 NimarkoConfig.setVideoMessagesResolution(values.get(i));
                 SettingsHelper.updateButtonValue(view, getRoundVideoSizeText());
@@ -243,7 +246,7 @@ public class CameraPreferencesActivity extends NimarkoUniversalPreferencesActivi
             labels.add("3000 kbps");  values.add(3000);
             labels.add("4000 kbps");  values.add(4000);
             int cur = values.indexOf(NimarkoConfig.videoMessagesBitrateKbps);
-            if (cur < 0) cur = values.indexOf(2200);
+            if (cur < 0) cur = values.indexOf(1500);
             PopupHelper.showLegacy(labels, getString(R.string.NM_CAM_RoundVideoBitrate), cur, getContext(), i -> {
                 NimarkoConfig.setVideoMessagesBitrateKbps(values.get(i));
                 SettingsHelper.updateButtonValue(view, getRoundVideoBitrateText());
@@ -351,7 +354,8 @@ public class CameraPreferencesActivity extends NimarkoUniversalPreferencesActivi
         return switch (NimarkoConfig.videoMessagesResolution) {
             case NimarkoConfig.ROUND_SD -> getString(R.string.NM_CAM_RoundVideoSize_SD);
             case NimarkoConfig.ROUND_STD -> getString(R.string.NM_CAM_RoundVideoSize_STD);
-            case NimarkoConfig.ROUND_HD, NimarkoConfig.ROUND_FHD -> getString(R.string.NM_CAM_RoundVideoSize_HD);
+            case NimarkoConfig.ROUND_HD -> getString(R.string.NM_CAM_RoundVideoSize_HD);
+            case NimarkoConfig.ROUND_FHD -> "720 × 720";
             default -> getString(R.string.NM_CAM_RoundVideoSize_Auto);
         };
     }

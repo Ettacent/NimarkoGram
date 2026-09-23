@@ -88,6 +88,8 @@ public class CryptoCard extends BaseInfoCard {
     }
 
     private boolean firstPaint = true;
+    private String renderedCurrency;
+    private boolean renderedCompactTon;
 
     private static final long WARMUP_MS = 1500;
     private boolean warmupDone;
@@ -101,6 +103,12 @@ public class CryptoCard extends BaseInfoCard {
         lifecycleAttached = true;
         lifecycleGeneration++;
         super.onAttachedToWindow();
+        String currency = resolveCardCurrency(getCardId(), InfoCardsConfig.getTargetCurrency(getCardId()));
+        if (InfoCardRates.hasCached() && (!currency.equals(renderedCurrency)
+                || renderedCompactTon != compactTonValue())) {
+            render(false);
+            firstPaint = false;
+        }
     }
 
     @Override
@@ -156,7 +164,9 @@ public class CryptoCard extends BaseInfoCard {
         } else {
             value = InfoCardRates.coinInFiat(coinKey, ccy);
         }
-        setText(format(value, ccy, compactTonValue()), animated);
+        renderedCurrency = ccy;
+        renderedCompactTon = compactTonValue();
+        setText(format(value, ccy, renderedCompactTon), animated);
         stopLoading();
         markDataUpdated();
     }

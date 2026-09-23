@@ -251,7 +251,7 @@ public class ActionBarPopupWindow extends PopupWindow {
 
                 @Override
                 protected boolean drawChild(Canvas canvas, View child, long drawingTime) {
-                    if (child instanceof GapView && backgroundDrawable != null) {
+                    if (child instanceof GapView && backgroundDrawable != null && popupOverlayDrawable == null) {
                         return false;
                     }
                     return super.drawChild(canvas, child, drawingTime);
@@ -577,7 +577,7 @@ public class ActionBarPopupWindow extends PopupWindow {
                         AndroidUtilities.rectTmp2.bottom -= bgPaddings.bottom;
                         canvas.clipRect(AndroidUtilities.rectTmp2);
                     }
-                    if (hasGap) {
+                    if (hasGap && popupOverlayDrawable == null) {
                         canvas.save();
                         AndroidUtilities.rectTmp.set(backgroundDrawable.getBounds());
                         AndroidUtilities.rectTmp.inset(dp(8), dp(8));

@@ -24,6 +24,7 @@ public final class NotificationInlinePanel extends AnimatedLinearLayout implemen
     private final FrameLayout root;
     private final View[] contents;
     private final int[] offsets;
+    private final int[] writtenMargins;
     private final FrameLayout.LayoutParams[] contentParams;
     private final NotificationListInset[] listInsets;
     private final NotificationScrollInset[] scrollInsets;
@@ -36,20 +37,28 @@ public final class NotificationInlinePanel extends AnimatedLinearLayout implemen
     private IntConsumer reservationListener;
     private Runnable reservationLayout;
     private IntConsumer overlayPositionListener;
+    private boolean attached;
+    private boolean released;
     public NotificationInlinePanel withOverlayPositionListener(IntConsumer listener) {
+        if (released) return this;
+        IntConsumer previous = overlayPositionListener;
         overlayPositionListener = listener;
+        if (previous != null && previous != listener) previous.accept(-1);
         return this;
     }
     public NotificationInlinePanel withCompactReservation(IntConsumer listener, Runnable layout) {
+        if (released) return this;
+        IntConsumer previous = reservationListener;
         reservationListener = listener;
-        reservationLayout = layout;
+        reservationLayout = listener == null ? null : layout;
+        if (previous != null && previous != listener) previous.accept(0);
         return this;
     }
     void onContentRemoved() {
-        updateCompactReservation();
+        updateReservedHeight();
     }
     private void updateCompactReservation() {
-        if (reservationListener == null) return;
+        if (released || !attached || reservationListener == null) return;
         float height = 0f;
         for (int i = 0; i < getEntriesCount(); i++) {
             var entry = getEntry(i);
@@ -63,8 +72,11 @@ public final class NotificationInlinePanel extends AnimatedLinearLayout implemen
         reservationListener.accept(Math.round(height));
     }
     public NotificationInlinePanel withOverlayAnchor(IntSupplier anchor) {
-        overlayAnchor = anchor;
+        if (!released) overlayAnchor = anchor;
         return this;
+    }
+    @Override public float getAnimatedHeightWithPadding() {
+        return released || !attached || getLayoutVisibility() <= 0f ? 0f : super.getAnimatedHeightWithPadding();
     }
     public boolean isOverlay() {
         return contents.length == 0;
@@ -93,6 +105,7 @@ public final class NotificationInlinePanel extends AnimatedLinearLayout implemen
         this.root = root;
         this.contents = contents;
         offsets = new int[contents.length];
+        writtenMargins = new int[contents.length];
         contentParams = new FrameLayout.LayoutParams[contents.length];
         listInsets = new NotificationListInset[contents.length];
         scrollInsets = new NotificationScrollInset[contents.length];
@@ -109,34 +122,49 @@ public final class NotificationInlinePanel extends AnimatedLinearLayout implemen
         root.addView(this, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, Gravity.TOP));
     }
     public void release() {
+        if (released) return;
+        released = true;
         setOnAnimatedHeightChangedListener(null);
-        if (overlayPositionListener != null) overlayPositionListener.accept(-1);
+        removeObserver();
+        IntConsumer positionListener = overlayPositionListener;
+        IntConsumer heightListener = reservationListener;
         overlayPositionListener = null;
-        if (reservationListener != null) reservationListener.accept(0);
         reservationListener = null;
         reservationLayout = null;
+        overlayAnchor = null;
+        restoreContentInsets();
+        if (positionListener != null) positionListener.accept(-1);
+        if (heightListener != null) heightListener.accept(0);
+        root.removeView(this);
+    }
+    private void restoreContentInsets() {
+        reserved = 0;
+        clipHeight = 0;
         for (int i = 0; i < contents.length; i++) {
-            View child = contents[i];
-            if (listInsets[i] != null) {
-                listInsets[i].release();
-                continue;
-            }
-            if (scrollInsets[i] != null) {
-                scrollInsets[i].release();
-                continue;
-            }
-            if (child.getParent() == root && child.getLayoutParams() == contentParams[i]) {
-                FrameLayout.LayoutParams params = (FrameLayout.LayoutParams) child.getLayoutParams();
+            restoreContentInset(i);
+        }
+    }
+    private void restoreContentInset(int i) {
+        View child = contents[i];
+        if (listInsets[i] != null) {
+            listInsets[i].release();
+        } else if (scrollInsets[i] != null) {
+            scrollInsets[i].release();
+        } else if (offsets[i] != 0 && child.getLayoutParams() == contentParams[i]) {
+            FrameLayout.LayoutParams params = contentParams[i];
+            if (params.topMargin == writtenMargins[i]) {
                 params.topMargin -= offsets[i];
                 child.setLayoutParams(params);
             }
-            offsets[i] = 0;
         }
-        root.removeView(this);
+        offsets[i] = 0;
+        contentParams[i] = null;
     }
 
     private void updateReservedHeight() {
+        if (released || !attached) return;
         updateCompactReservation();
+        if (released || !attached) return;
         float height = getAnimatedHeightWithPadding();
         if (clipHeight != height) {
             clipHeight = height;
@@ -147,7 +175,11 @@ public final class NotificationInlinePanel extends AnimatedLinearLayout implemen
         reserved = next;
         for (int i = 0; i < contents.length; i++) {
             View child = contents[i];
-            if (child.getParent() != root || !(child.getLayoutParams() instanceof FrameLayout.LayoutParams)) continue;
+            if (child.getParent() != root || !child.isShown()
+                    || !(child.getLayoutParams() instanceof FrameLayout.LayoutParams)) {
+                restoreContentInset(i);
+                continue;
+            }
             if (listInsets[i] != null) {
                 changed |= listInsets[i].apply(next, anchorTop, getLayoutVisibility());
                 continue;
@@ -157,7 +189,7 @@ public final class NotificationInlinePanel extends AnimatedLinearLayout implemen
                 continue;
             }
             FrameLayout.LayoutParams params = (FrameLayout.LayoutParams) child.getLayoutParams();
-            if (contentParams[i] != params) {
+            if (contentParams[i] != params || offsets[i] != 0 && params.topMargin != writtenMargins[i]) {
                 contentParams[i] = params;
                 offsets[i] = 0;
             }
@@ -166,6 +198,7 @@ public final class NotificationInlinePanel extends AnimatedLinearLayout implemen
             if (offset != offsets[i]) {
                 params.topMargin += offset - offsets[i];
                 offsets[i] = offset;
+                writtenMargins[i] = params.topMargin;
                 child.setLayoutParams(params);
                 changed = true;
             }
@@ -180,9 +213,12 @@ public final class NotificationInlinePanel extends AnimatedLinearLayout implemen
     }
 
     @Override public boolean onPreDraw() {
+        if (released || !attached) return true;
         if (isOverlay()) {
             updateReservedHeight();
+            if (released || !attached) return true;
             if (reservationLayout != null) reservationLayout.run();
+            if (released || !attached) return true;
             anchorTop = overlayTop();
             if (getTranslationY() != anchorTop) setTranslationY(anchorTop);
             if (overlayPositionListener != null) overlayPositionListener.accept(anchorTop);
@@ -208,20 +244,28 @@ public final class NotificationInlinePanel extends AnimatedLinearLayout implemen
 
     @Override protected void dispatchDraw(Canvas canvas) {
         int save = canvas.save();
-        canvas.clipRect(0, 0, getWidth(), Math.max(getHeight(), getAnimatedHeightWithPadding()));
+        canvas.clipRect(0, 0, getWidth(), getAnimatedHeightWithPadding());
         super.dispatchDraw(canvas);
         canvas.restoreToCount(save);
     }
 
     @Override protected void onAttachedToWindow() {
         super.onAttachedToWindow();
+        if (released) return;
+        attached = true;
+        removeObserver();
         observer = getViewTreeObserver();
         observer.addOnPreDrawListener(this);
     }
 
-    @Override protected void onDetachedFromWindow() {
+    private void removeObserver() {
         if (observer != null && observer.isAlive()) observer.removeOnPreDrawListener(this);
         observer = null;
+    }
+    @Override protected void onDetachedFromWindow() {
+        attached = false;
+        removeObserver();
+        restoreContentInsets();
         if (reservationListener != null) reservationListener.accept(0);
         if (overlayPositionListener != null) overlayPositionListener.accept(-1);
         super.onDetachedFromWindow();

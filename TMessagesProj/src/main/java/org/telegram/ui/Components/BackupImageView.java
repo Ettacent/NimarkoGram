@@ -328,6 +328,9 @@ public class BackupImageView extends View {
     protected void onDraw(Canvas canvas) {
         ImageReceiver imageReceiver = animatedEmojiDrawable != null ? animatedEmojiDrawable.getImageReceiver() : this.imageReceiver;
         if (imageReceiver == null) {
+            if (animatedEmojiDrawable != null && getAlpha() > 0 && isShown()) {
+                animatedEmojiDrawable.markMissingDocumentPresented();
+            }
             return;
         }
         if (animatedEmojiDrawable != null && animatedEmojiDrawableColorFilter != null) {

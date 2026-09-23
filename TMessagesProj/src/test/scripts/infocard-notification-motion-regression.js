@@ -97,12 +97,23 @@ public class MotionTest {
   ${method(notifications, 'void pauseInteraction()')}
  }
  static class LayoutParent { protected void onLayout(boolean c,int l,int t,int r,int b){} }
- static class AndroidUtilities {static void cancelRunOnUIThread(Runnable r){} static int dp(int n){return n;} }
+ static class AndroidUtilities {static void cancelRunOnUIThread(Runnable r){} static int dp(float n){return (int)Math.ceil(n);} }
+ static class FrameLayout {static class LayoutParams {int height;}}
  static class StyleCard {
+  static final int CHIP_HEIGHT_DP=28,CORNER_RADIUS_DP=14;
   boolean inlineFolderStyle;int layouts;
+  static class Content {FrameLayout.LayoutParams params=new FrameLayout.LayoutParams();
+   Object getLayoutParams(){return params;}void setLayoutParams(FrameLayout.LayoutParams p){params=p;}
+   void invalidateOutline(){} }
+  static class Surface {boolean inlineFolderStyle;void setCornerRadius(float r){}void setRadii(float r){} }
+  static class Icon {void setScaleX(float s){}void setScaleY(float s){} }
+  Content content=new Content();Surface background=new Surface(),loadingDrawable;Icon iconView=new Icon();
+  void applyColorMode(){}
   static class Text {int size=13;void setTextSize(int s){size=s;}}
   Text textView=new Text();
   void requestLayout(){layouts++;}
+  ${method(baseCard, 'private static int getChipHeight(boolean inline)')}
+  ${method(baseCard, 'private float getChipCornerRadius()')}
   ${method(baseCard, 'public void setInlineFolderStyle(boolean inline)')}
  }
  static class Delegate {int completions;void onPageScrolled(float p){completions++;}}
@@ -124,13 +135,13 @@ public class MotionTest {
    sizes.incomingIndex=-1;check(sizes.carouselWidth()==a);
   }
   StyleCard style=new StyleCard();style.setInlineFolderStyle(true);
-  check(style.inlineFolderStyle&&style.textView.size==14&&style.layouts==1);
+  check(style.inlineFolderStyle&&style.textView.size==13&&style.layouts==1&&style.content.params.height==36);
   style.setInlineFolderStyle(true);check(style.layouts==1);
   style.setInlineFolderStyle(false);check(!style.inlineFolderStyle&&style.textView.size==13&&style.layouts==2);
   Carousel c=new Carousel();ValueAnimator animation=new ValueAnimator();c.animator=animation;c.inlineFolderStyle=true;
   c.cancelAnimResume();check(c.dragging&&animation.cancelled&&!animation.ended&&c.animator==null);
   c=new Carousel();animation=new ValueAnimator();c.animator=animation;c.cancelAnimResume();
-  check(animation.ended&&!animation.cancelled&&!c.dragging);
+  check(!animation.ended&&animation.cancelled&&c.dragging);
   Banner n;
   n=new Banner();Banner.banner=n;n.account=1;n.animateOpenChat();
   check(n.opens==1&&n.opening&&n.touching&&n.animator.starts==0&&n.alpha==1&&n.slot.layouts==0);
@@ -196,7 +207,11 @@ public class MotionTest {
 assert.doesNotMatch(method(cards, 'private void applyDrag('), /\.measure\(/);
 assert.match(method(cards, 'private void applyDrag('), /inlineFolderStyle && carouselWidth\(\) != getMeasuredWidth\(\)/);
 assert.match(method(cards, 'protected void onMeasure('), /setMeasuredDimension\(Math.min\(MeasureSpec.getSize\(widthMeasureSpec\), carouselWidth\(\)\)/);
-assert.doesNotMatch(method(baseCard, 'public void setInlineFolderStyle(boolean inline)'), /setLayoutParams|MATCH_PARENT|weight/);
+const inlineStyle = method(baseCard, 'public void setInlineFolderStyle(boolean inline)');
+// Switching hosts may update HEIGHT once; it must not fix/stretch the carousel width.
+assert.doesNotMatch(inlineStyle, /params\.width\s*=|MATCH_PARENT|\.weight\s*=/);
+assert.match(inlineStyle, /if \(inlineFolderStyle == inline\) return;/);
+assert.match(inlineStyle, /params\.height = getChipHeight\(inline\)/);
 assert.match(method(baseCard, 'private void onAnimatedTextWidthUpdated()'), /textView.requestLayout\(\)/);
 assert.match(cards, /boolean commit = ev.getActionMasked\(\) == MotionEvent.ACTION_UP/);
 assert.match(cards, /potentialTap = !dragging/);

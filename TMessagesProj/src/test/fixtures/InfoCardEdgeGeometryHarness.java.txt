@@ -1,0 +1,122 @@
+ // Injected into the existing gesture harness; only Android transport is stubbed.
+ static float left(BaseInfoCard p){return p.left+p.pivotX*(1-p.sx)+p.tx;}
+ static float top(BaseInfoCard p){return p.top+p.pivotY*(1-p.sy)+p.ty;}
+ static float right(BaseInfoCard p){return left(p)+p.width*p.sx;}
+ static float bottom(BaseInfoCard p){return top(p)+p.height*p.sy;}
+ static void contained(Strip s,BaseInfoCard p){
+  if(p.alpha<=0)return;
+  check(Float.isFinite(p.sx)&&Float.isFinite(p.sy)&&Float.isFinite(p.ty),"finite geometry");
+  check(p.sx>=0&&p.sx<=1.00001f,"no size overshoot");near(p.sx,p.sy,"capsule aspect ratio");
+  check(left(p)>=-.001f&&right(p)<=s.width+.001f,"horizontal viewport: "+left(p)+".."+right(p)+" / "+s.width);
+  check(top(p)>=-.001f&&bottom(p)<=s.height+.001f,"vertical viewport: "+top(p)+".."+bottom(p)+" / "+s.height);
+  if(LocaleController.isRTL)near(left(p),0,"RTL pinned edge");else near(right(p),s.width,"LTR pinned edge");
+ }
+ static void silhouettes(Strip s){
+  for(var p:s.pills)if(p.visibility==View.VISIBLE)contained(s,p);
+  // The roll intentionally overlaps/crossfades; rounded bounds still must fit.
+  if(s.incomingIndex>=0)near(s.current().alpha+s.pills.get(s.incomingIndex).alpha,1,"continuous crossfade");
+ }
+ static Strip configured(boolean inline,int a,int b,int hostHeight,int cardHeight){
+  Strip s=new Strip(2);s.inlineFolderStyle=inline;s.height=hostHeight;
+  s.width=inline?a:Math.max(a,b);s.pills.get(0).width=a;s.pills.get(1).width=b;
+  for(var p:s.pills)p.height=cardHeight;
+  s.layout(0,0,s.width,s.height);s.ensureIncomingPrepared(1);s.dragUp=true;
+  return s;
+ }
+ static void frame(Strip s,float progress,boolean up){
+  s.dragUp=up;s.applyDrag(1,progress,up,s.dragHeight());
+  if(s.inlineFolderStyle)s.layout(0,0,s.carouselWidth(),s.height);
+  silhouettes(s);
+ }
+ static void bounds(){
+  for(float density:new float[]{1,1.25f,2.625f,3,4}){
+   AndroidUtilities.density=density;
+   for(boolean rtl:new boolean[]{false,true})for(boolean inline:new boolean[]{false,true})
+    for(boolean up:new boolean[]{false,true})for(int a:new int[]{48,96,220})for(int b:new int[]{48,96,220})
+     for(int host:new int[]{28,40,50}){
+      LocaleController.isRTL=rtl;
+      int h=AndroidUtilities.dp(host);
+      int card=inline&&host==50?AndroidUtilities.dp(50)-2*(int)Math.ceil(6.666f*density):AndroidUtilities.dp(28);
+      Strip s=configured(inline,AndroidUtilities.dp(a),AndroidUtilities.dp(b),h,card);
+      for(int i=0;i<=1000;i++){
+       float p=i/1000f;frame(s,p,up);
+       near(s.current().alpha,1-p,"out alpha");near(s.pills.get(1).alpha,p,"in alpha");
+       check(s.current().width==AndroidUtilities.dp(a)&&s.pills.get(1).width==AndroidUtilities.dp(b),"intrinsic widths unchanged");
+       if(inline)check(s.width==Math.round(AndroidUtilities.dp(a)+(AndroidUtilities.dp(b)-AndroidUtilities.dp(a))*p),"folder allocation unchanged");
+       if(i==0){near(s.current().sy,1,"resting out scale");near(s.current().ty,0,"resting out position");}
+       if(i==1000){near(s.pills.get(1).sy,1,"resting in scale");near(s.pills.get(1).ty,0,"resting in position");}
+       if(a==b&&i==500){
+        check(s.current().sx>=.90f&&s.pills.get(1).sx>=.90f,"mid-roll cards remain readable, not halved");
+       }
+      }
+      for(int i=1000;i>=0;i-=7)frame(s,i/1000f,up);
+      frame(s,-.1f,up);frame(s,1.2f,up);
+     }
+  }
+ }
+ static void resize(){
+  AndroidUtilities.density=1;
+  for(boolean rtl:new boolean[]{false,true})for(boolean up:new boolean[]{false,true}){
+   LocaleController.isRTL=rtl;
+   Strip s=configured(false,180,240,80,28);frame(s,.5f,up);
+   // Only layout runs: no animator update repairs the geometry afterwards.
+   s.layout(0,0,70,32);silhouettes(s);
+   s.layout(0,0,260,41);silhouettes(s);
+   // Wider neighbour before the strip's next measure, then after that measure.
+   s=configured(false,60,60,40,28);s.pills.get(1).width=240;
+   s.pills.get(1).layout(rtl?0:-180,6,rtl?240:60,34);
+   frame(s,.5f,up);s.layout(0,0,240,40);silhouettes(s);
+   // Independently rounded/mismatched heights preserve endpoint positions.
+   s.pills.get(1).height=27;s.layout(0,0,240,41);
+   for(int i=0;i<=100;i++)frame(s,i/100f,up);
+   s.currentIndex=1;s.incomingIndex=-1;s.dragProgress=0;s.applyResting(false);
+   s.layout(0,0,240,41);near(s.current().ty,0,"rest after uneven-height transition");
+  }
+ }
+ static void settleBounds(){
+  AndroidUtilities.density=2.625f;
+  for(boolean rtl:new boolean[]{false,true})for(boolean inline:new boolean[]{false,true})
+   for(boolean up:new boolean[]{false,true})for(boolean commit:new boolean[]{false,true})
+    for(float progress:new float[]{.02f,.12f,.26f,.6f,.99f}){
+     LocaleController.isRTL=rtl;
+     Strip s=configured(inline,AndroidUtilities.dp(48),AndroidUtilities.dp(96),AndroidUtilities.dp(inline?50:40),AndroidUtilities.dp(28));
+     frame(s,progress,up);float[] before=pixels(s);
+     if(commit)s.animateCommit(1);else s.animateSnapBack(1);
+     samePixels(before,s);
+     ValueAnimator animation=s.animator;
+     for(int ms=0;ms<=330;ms++){
+      animation.millis(ms);
+      if(inline)s.layout(0,0,s.carouselWidth(),s.height);
+      silhouettes(s);
+     }
+     animation.end();check(s.currentIndex==(commit?1:0),"settle selection");
+     near(s.current().sx,1,"settle scale");near(s.current().ty,0,"settle position");
+    }
+ }
+ static void finiteBounds(){
+  for(float density:new float[]{1,2.625f,4})for(boolean rtl:new boolean[]{false,true})
+   for(boolean up:new boolean[]{false,true}){
+    AndroidUtilities.density=density;LocaleController.isRTL=rtl;
+    Strip s=configured(false,AndroidUtilities.dp(96),AndroidUtilities.dp(96),AndroidUtilities.dp(40),AndroidUtilities.dp(28));
+    s.ensureIncomingPrepared(-1);s.dragUp=up;
+    for(int i=0;i<=1000;i++){
+     s.applyDrag(-1,i/1000f,up,s.dragHeight());silhouettes(s);
+     near(s.current().alpha,1,"finite edge retains whole card");
+    }
+    s.dragProgress=.8f;s.animateSnapBack(-1);ValueAnimator animation=s.animator;
+    for(int ms=0;ms<=200;ms++){animation.millis(ms);silhouettes(s);}
+    animation.end();near(s.current().sy,1,"finite edge rest");near(s.current().ty,0,"finite edge rest position");
+   }
+ }
+ static void draw(){
+  AndroidUtilities.density=1;
+  for(boolean inline:new boolean[]{false,true})for(boolean rtl:new boolean[]{false,true}){
+   LocaleController.isRTL=rtl;Strip s=configured(inline,96,48,40,28);
+   for(float p:new float[]{0,.01f,.5f,.99f,1}){
+    frame(s,p,true);Canvas canvas=new Canvas();s.dispatchDraw(canvas);
+    check(canvas.depth==0&&canvas.children==1,"balanced safety clip, one child draw");
+    check(canvas.left==0&&canvas.top==0&&canvas.right==s.width&&canvas.bottom==s.height,"clip is the actual slot");
+    check(s.hasPresentedCard,"preserve shared-card presentation tracking");
+   }
+  }
+ }

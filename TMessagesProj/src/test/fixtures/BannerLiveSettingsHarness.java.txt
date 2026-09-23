@@ -1,0 +1,170 @@
+import java.util.*;
+
+public class Harness {
+    static void check(boolean ok, String reason) { if (!ok) throw new AssertionError(reason); }
+    static class Queue {
+        ArrayDeque<Runnable> pending = new ArrayDeque<>();
+        void submit(Runnable r) { pending.add(r); }
+        void drain() { while (!pending.isEmpty()) pending.remove().run(); }
+    }
+    static class AndroidUtilities {
+        static Queue ui = new Queue();
+        static void runOnUIThread(Runnable r) { ui.submit(r); }
+    }
+    static class R { static class string {
+        static int NM_BAN_IdError=1, NM_BAN_HaUpdated=2, NM_BAN_RateLimited=3, NM_BAN_HaError=4;
+    }}
+    static class NimarkoBannerHttp {
+        static class Status {
+            boolean ok=true, hideAvatar, hasSound;
+            int httpCode=200;
+            String status="approved", rawJson="{}";
+        }
+        static Status next = new Status();
+        static int postCode=200;
+        static Runnable duringGet, duringPost;
+        static Status fetchStatus(long uid) {
+            Status result = next;
+            if (duringGet != null) { Runnable r=duringGet; duringGet=null; r.run(); }
+            return result;
+        }
+        static int setHideAvatar(long uid, boolean value) {
+            if (duringPost != null) { Runnable r=duringPost; duringPost=null; r.run(); }
+            return postCode;
+        }
+    }
+    static class Controller {
+        static final int STATUS_SKIPPED=-2;
+        /* CONTROLLER */
+        Scope owner = new Scope(0, 101);
+        Scope scope() { return owner; }
+        boolean isCurrentScope(Scope s) { return s.equals(owner); }
+        long myId() { return owner.uid; }
+        CacheKey key(long eid) { return new CacheKey(owner, eid); }
+        CacheKey key(Scope s, long eid) { return new CacheKey(s, eid); }
+        Map<CacheKey, String> cachedBanners = new HashMap<>();
+        Map<CacheKey, Meta> bannersMeta = new HashMap<>();
+        Set<Scope> statusFetching = new HashSet<>();
+        final Object statusStateLock = new Object();
+        Queue executor = new Queue();
+        String myStatus="approved", myStatusRaw;
+        boolean myHideAvatar, myHasSound, statusEverFetched=true;
+        long statusRevision, statusActivityRevision;
+        int writes, errors, successes, loads, reloads;
+        void writeStatusCacheLocked(Scope s, String json, long rev) { writes++; }
+        void persistCurrentStatusLocked(Scope s, long rev) { writes++; }
+        void clearMyCache(CacheKey key) { cachedBanners.remove(key); }
+        void loadBannerAsync(CacheKey key) { loads++; }
+        void uiErr(int id) { errors++; }
+        void uiOk(int id) { successes++; }
+        void reloadSettings() { reloads++; }
+        void cache(long id, boolean hide) {
+            cachedBanners.put(key(id), "cached-media");
+            Meta m = new Meta(); m.hideAvatar=hide; bannersMeta.put(key(id), m);
+        }
+    }
+    static class NimarkoBannerConfig {
+        static boolean enabled=true, useAvatar, liteMode;
+        static Map<String, Boolean> saved = new HashMap<>();
+        static Editor editor() { return new Editor(); }
+        static class Editor {
+            String key; boolean value;
+            Editor putBoolean(String k, boolean v) { key=k; value=v; return this; }
+            void apply() { saved.put(key,value); }
+        }
+        /* CONFIG */
+    }
+    static class NimarkoBannerRenderer {
+        static NimarkoBannerRenderer instance;
+        static NimarkoBannerRenderer peek() { return instance; }
+        float frameLastExtra=125, frameLastExpand=0, lastFadeA=.3f, avatarAlpha=.3f;
+        double lastFxTime=100, lastFxExtra=125, lastFxExpand=0;
+        Object videoPlayer=new Object();
+        boolean vidReady=true, isProfileOpen=true, appPaused, videoPausedByTab, overlayOpen;
+        Map<Object, Object> pausedAvatarStates = new HashMap<>();
+        int invalidations, resets, stops, starts;
+        void postInv() { invalidations++; }
+        void setAvAlpha(float a, float gifts) { avatarAlpha=a; }
+        void resetState() { resets++; videoPlayer=null; lastFadeA=-1f; }
+        void stopBlur() { stops++; }
+        void startBlur() { starts++; }
+        /* RENDERER */
+    }
+    static void statusTests() {
+        Controller c = new Controller();
+        NimarkoBannerRenderer r = NimarkoBannerRenderer.instance = new NimarkoBannerRenderer();
+        c.cache(101,false); c.cache(202,true);
+        c.setHideAvatarRemote(true);
+        check(!c.shouldHideAvatar(101), "do not hide before server acknowledgement");
+        c.executor.drain();
+        check(c.shouldHideAvatar(101), "own POST overrides stale public metadata");
+        AndroidUtilities.ui.drain();
+        check(r.invalidations==1, "POST invalidates settled frame");
+        check(r.frameLastExtra==-999f, "metadata bypasses video geometry quick path");
+        check(r.lastFxExtra==-1, "settings bypass FX geometry quick path");
+        check(r.resets==0, "hide toggle preserves player and live alpha");
+        check(c.shouldHideAvatar(202), "other user uses their public metadata");
+        c.bannersMeta.get(c.key(101)).hideAvatar=true;
+        c.setHideAvatarRemote(false); c.executor.drain(); AndroidUtilities.ui.drain();
+        check(!c.shouldHideAvatar(101), "show overrides stale hide metadata too");
+        NimarkoBannerHttp.postCode=500;
+        c.setHideAvatarRemote(true); c.executor.drain(); AndroidUtilities.ui.drain();
+        check(!c.shouldHideAvatar(101) && c.errors==1 && r.invalidations==2, "failed POST keeps acknowledged state");
+        NimarkoBannerHttp.postCode=200;
+        c.myHideAvatar=true; c.myStatus="pending";
+        check(!c.shouldHideAvatar(101), "pending never hides");
+        c.myStatus="approved"; c.cachedBanners.remove(c.key(101));
+        check(!c.shouldHideAvatar(101), "missing media never hides"); c.cache(101,true);
+
+        NimarkoBannerHttp.next = new NimarkoBannerHttp.Status();
+        c.fetchStatus(c.owner); AndroidUtilities.ui.drain();
+        check(r.invalidations==3 && !c.myHideAvatar, "same-status hide/sound change invalidates");
+        c.fetchStatus(c.owner); AndroidUtilities.ui.drain();
+        check(r.invalidations==3, "identical poll doesn't animate again");
+        NimarkoBannerHttp.next.hasSound=true;
+        c.fetchStatus(c.owner); AndroidUtilities.ui.drain();
+        check(r.invalidations==4, "sound-only status reaches player");
+        c.statusEverFetched=false;
+        c.fetchStatus(c.owner); AndroidUtilities.ui.drain();
+        check(r.invalidations==5, "first known status notifies even with same value");
+
+        // The GET entered before the POST: its late result must not undo the setting.
+        NimarkoBannerHttp.duringGet=() -> { c.setHideAvatarRemote(true); c.executor.drain(); };
+        c.fetchStatus(c.owner); AndroidUtilities.ui.drain();
+        check(c.myHideAvatar && c.statusFetching.isEmpty(), "older GET cannot undo POST");
+        NimarkoBannerHttp.duringPost=() -> { c.owner=new Controller.Scope(1,202); c.myHideAvatar=false; };
+        c.setHideAvatarRemote(true); c.executor.drain(); AndroidUtilities.ui.drain();
+        check(!c.myHideAvatar, "old-account POST cannot hide new account avatar");
+    }
+    static void configTests() {
+        NimarkoBannerRenderer r = NimarkoBannerRenderer.instance = new NimarkoBannerRenderer();
+        NimarkoBannerConfig.setUseAvatar(true);
+        check(r.invalidations==0 && NimarkoBannerConfig.saved.get("use_avatar"), "publish before UI callback");
+        AndroidUtilities.ui.drain();
+        check(r.invalidations==1 && r.resets==0, "config reaches retained renderer");
+        NimarkoBannerConfig.setUseAvatar(true); AndroidUtilities.ui.drain();
+        check(r.invalidations==1, "identical setting no-op");
+        NimarkoBannerConfig.setLiteMode(true); AndroidUtilities.ui.drain();
+        check(r.stops==1 && r.lastFxExtra==-1, "lite mode clears cached FX input");
+        r.isProfileOpen=false;
+        int starts=r.starts;
+        NimarkoBannerConfig.setLiteMode(false); AndroidUtilities.ui.drain();
+        check(r.starts==starts, "changing setting doesn't wake hidden profile");
+        r.isProfileOpen=true;
+        NimarkoBannerConfig.setLiteMode(true); AndroidUtilities.ui.drain();
+        NimarkoBannerConfig.setLiteMode(false); AndroidUtilities.ui.drain();
+        check(r.starts==starts+1, "full mode restarts live blur");
+        r.pausedAvatarStates.put(new Object(),new Object());
+        NimarkoBannerConfig.setEnabled(false); AndroidUtilities.ui.drain();
+        check(r.avatarAlpha==1f && r.videoPlayer==null && r.pausedAvatarStates.isEmpty(),
+              "disable restores avatar and releases video and resume state");
+        NimarkoBannerConfig.setEnabled(true); AndroidUtilities.ui.drain();
+        check(r.resets==1, "enable awaits legitimate profile owner");
+        NimarkoBannerRenderer.instance=null;
+        NimarkoBannerConfig.setUseAvatar(false); AndroidUtilities.ui.drain();
+        check(NimarkoBannerRenderer.instance==null, "settings do not instantiate renderer or network");
+    }
+    public static void main(String[] args) {
+        statusTests(); configTests(); System.out.println("PASS: banner live settings");
+    }
+}

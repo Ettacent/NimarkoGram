@@ -1,0 +1,383 @@
+import java.util.*;
+
+// Android, decoder and loader fakes only. Production methods are inserted below.
+class SystemClock { static long now = 1000; static long uptimeMillis() { return now; } }
+class Bitmap {}
+class BitmapShader {}
+class ColorFilter {}
+class Paint {
+    int alpha = 255;
+    PorterDuffXfermode xfermode;
+    void setShader(Object shader) {}
+    void setAlpha(int a) { alpha = a; }
+    void setXfermode(PorterDuffXfermode mode) { xfermode = mode; }
+}
+class Rect { int left, top, right, bottom; int width() { return right - left; } int height() { return bottom - top; } }
+class RectF { float left, top, right, bottom; void set(float a,float b,float c,float d) {} }
+class Path { enum Direction { CW } void rewind() {} void addRoundRect(RectF r,float[] f,Direction d) {} }
+class Canvas {
+    final Map<Drawable, Integer> alphas = new IdentityHashMap<>();
+    final List<Double> layerOpacity = new ArrayList<>(List.of(1.0));
+    int alpha(Drawable d) { return alphas.getOrDefault(d, -1); }
+    void record(Drawable d, int a) { alphas.put(d, (int)Math.round(a * layerOpacity.get(layerOpacity.size()-1))); }
+    int save() { int n = layerOpacity.size(); layerOpacity.add(layerOpacity.get(n-1)); return n; }
+    int saveLayerAlpha(float l,float t,float r,float b,int a) {
+        int n = save(); layerOpacity.set(n, layerOpacity.get(n) * a / 255.0); return n;
+    }
+    int saveLayer(float l,float t,float r,float b,Paint p) { return saveLayerAlpha(l,t,r,b,p == null ? 255 : p.alpha); }
+    void restore() { layerOpacity.remove(layerOpacity.size()-1); }
+    void restoreToCount(int n) { while (layerOpacity.size() > n) restore(); }
+    void clipRect(float a,float b,float c,float d) {}
+    void drawColor(int c) {} void clipPath(Path p) {} void scale(float a,float b,float c,float d) {}
+}
+class Drawable { void setAlpha(int a) {} void setColorFilter(ColorFilter f) {} }
+class BitmapDrawable extends Drawable { Bitmap getBitmap() { return new Bitmap(); } }
+class ReactionLastFrame extends BitmapDrawable {}
+class ExtendedBitmapDrawable extends BitmapDrawable { int getOrientation() { return 0; } int getInvert() { return 0; } }
+class RLottieDrawable extends BitmapDrawable {
+    boolean ready, publishOnNextRead;
+    long publishedAt = Long.MIN_VALUE;
+    boolean hasBitmap() {
+        boolean result = ready;
+        if (publishOnNextRead) { publishOnNextRead = false; ready = true; publishedAt = SystemClock.now; }
+        return result;
+    }
+    boolean hasRenderingBitmap() { return hasBitmap() && SystemClock.now > publishedAt; }
+    void updateCurrentFrame(long time, boolean background) {}
+    void addParentView(ImageReceiver r) {} void removeParentView(ImageReceiver r) {}
+    boolean isHeavyDrawable() { return false; } void start() {} void recycle(boolean b) {}
+    void setAllowDecodeSingleFrame(boolean b) {} void setAutoRepeat(int n) {} void setAutoRepeatCount(int n) {}
+    void setAutoRepeatTimeout(long n) {} void setAllowDrawFramesWhileCacheGenerating(boolean b) {}
+}
+class AnimatedFileDrawable extends BitmapDrawable {
+    boolean ready, publishOnNextRead, isWebmSticker = true;
+    boolean hasBitmap() {
+        boolean result = ready;
+        if (publishOnNextRead) { publishOnNextRead = false; ready = true; }
+        return result;
+    }
+    void setStartEndTime(long a,long b) {} long getLastFrameTimestamp() { return 0; }
+    void seekTo(long n,boolean a,boolean b) {} void addParent(ImageReceiver r) {} void removeParent(ImageReceiver r) {}
+    void setUseSharedQueue(boolean b) {} void checkRepeat() {} void setAllowDecodeSingleFrame(boolean b) {}
+    void setRoundRadius(int[] a) {} void recycle() {} void stop() {} List<Object> getParents() { return List.of(); }
+}
+class LoadingStickerDrawable extends Drawable {}
+class SvgHelper { static class SvgDrawable extends Drawable {} }
+class Emoji { static class EmojiDrawable extends Drawable {} }
+class VectorAvatarThumbDrawable extends Drawable { void setParent(ImageReceiver r) {} }
+interface AttachableDrawable { void onDetachedFromWindow(ImageReceiver r); }
+class View { void invalidate() {} }
+class AndroidUtilities {
+    static final RectF rectTmp = new RectF();
+    static void runOnUIThread(Runnable r) { r.run(); }
+    static void recycleBitmaps(List<Bitmap> b) {}
+}
+class CubicBezierInterpolator {
+    static final CubicBezierInterpolator EASE_IN = new CubicBezierInterpolator();
+    float getInterpolation(float f) { return f; }
+}
+class MessageObject { boolean isRoundVideo() { return false; } boolean isSending() { return false; } }
+class FileLog { static void e(Exception e) { throw new AssertionError(e); } }
+class NotificationCenter {
+    static final int didReplacedPhotoInMemCache = 1, stopAllHeavyOperations = 2, startAllHeavyOperations = 3;
+    static NotificationCenter getGlobalInstance() { return new NotificationCenter(); }
+    void removeObserver(Object o,int n) {}
+}
+class ImageLoader {
+    static ImageLoader getInstance() { return new ImageLoader(); }
+    void incrementUseCount(String k) {} boolean decrementUseCount(String k) { return false; }
+    boolean isInMemCache(String k, boolean b) { return true; } String getReplacedKey(String k) { return null; }
+    void cancelLoadingForImageReceiver(ImageReceiver r, boolean b) {}
+}
+class ImageReceiver {
+    /* PREVIEW_APPEARANCE */
+    static final int LOAD_TYPE_COUNT = 4;
+    static final PorterDuffXfermode CROSSFADE_ADD = new PorterDuffXfermode(PorterDuff.Mode.ADD);
+    final Paint crossfadePaint = new Paint();
+    volatile int loadingPresentationGeneration, loadingPlaceholderGeneration = -1, loadingBlankGeneration = -1;
+    volatile Drawable presentedImagePreview;
+    volatile int presentedImagePreviewGeneration = -1;
+    PreviewAppearance previewAppearance;
+    static final int TYPE_IMAGE = 0, TYPE_THUMB = 1, TYPE_CROSSFDADE = 2, TYPE_MEDIA = 3;
+    boolean manualAlphaAnimator, crossfadeOnReady, crossfadeFromImage, drawWithoutLoadFade, currentKeyQuality;
+    boolean clip = true, isRoundVideo;
+    Drawable crossfadeOnReadyDrawable;
+    Drawable currentMediaDrawable, currentImageDrawable, currentThumbDrawable, staticThumbDrawable, crossfadeImage;
+    String currentImageKey = "image", currentMediaKey = "media", currentThumbKey = "thumb", crossfadeKey;
+    BitmapShader mediaShader, imageShader, thumbShader, staticThumbShader, crossfadeShader;
+    float currentAlpha = 1, previousAlpha = 1, overrideAlpha = 1, pressedProgress, crossfadeByScale = .05f;
+    long lastUpdateAlphaTime, lastPressedAnimationTime, startTime, endTime, autoRepeatTimeout, currentSize, currentTime;
+    int crossfadeDuration = 150, currentGuid = 1, currentAccount, invalidations;
+    byte crossfadeAlpha = 1;
+    boolean isVisible = true, useRoundRadius = true, useRoundForThumb, videoThumbIsSame = true, attachedToWindow = true;
+    boolean crossfadeWithThumb, crossfadeWithOldImage, crossfadingWithThumb, forcePreview, forceNotMedia, forceCrossfade;
+    boolean allowStartAnimation = true, allowStartLottieAnimation = true, allowDecodeSingleFrame;
+    boolean useSharedAnimationQueue, allowDrawWhileCacheGenerating, animationReadySent, ignoreNotifications;
+    int isPressed, animateFromIsPressed, currentOpenedLayerFlags, autoRepeat, autoRepeatCount;
+    int imageOrientation, imageInvert, thumbOrientation, thumbInvert, currentCacheType;
+    float imageX, imageY, imageW, imageH;
+    final int[] roundRadius = new int[4], emptyRoundRadius = new int[4];
+    final float[] radii = new float[8];
+    final Path roundPath = new Path();
+    final Paint roundPaint = new Paint();
+    Bitmap gradientBitmap;
+    ColorFilter colorFilter;
+    Object currentParentObject, currentImageLocation, currentMediaLocation, currentThumbLocation;
+    String currentMediaFilter, currentImageFilter, currentThumbFilter, currentExt;
+    SetImageBackup setImageBackup;
+    View parentView;
+    Runnable invalidateRunnable = this::invalidate;
+    ArrayList<Decorator> decorators;
+    Delegate delegate;
+    static class Delegate {
+        void onAnimationReady(ImageReceiver r) {} void didSetImageBitmap(int t,String k,Drawable d) {}
+        void didSetImage(ImageReceiver r,boolean a,boolean b,boolean c) {}
+    }
+    static class Decorator { void onDraw(Canvas c, ImageReceiver r) {} void onDetachedFromWidnow() {} }
+    static class SetImageBackup {
+        Object mediaLocation, imageLocation, thumbLocation, parentObject;
+        String mediaFilter, imageFilter, thumbFilter, ext;
+        Drawable thumb; long size; int cacheType;
+        void clear() { mediaLocation = null; imageLocation = null; thumbLocation = null; parentObject = null; thumb = null; }
+    }
+    void invalidate() { invalidations++; }
+    void setAllowLoadingOnAttachedOnly(boolean b) {}
+    boolean hasImageLoaded() { return currentImageDrawable != null || currentMediaDrawable != null; }
+    boolean hasReadyImage() { return hasImageLoaded(); }
+    boolean hasPresentedView() { return false; }
+    boolean draw(Canvas canvas) { return draw(canvas, null); }
+    void updateDrawableRadius(Drawable d) {} void completeFailedLoadRetry(String k, int t) {}
+    void trackStickerFirstFrame(String k,int t,int g,Drawable d) {} void resetFailedLoadRetry() {}
+    void setStaticDrawable(Drawable d) { staticThumbDrawable = d; }
+    int getCurrentAccount() { return currentAccount; }
+    float getCenterX() { return 0; } float getCenterY() { return 0; }
+    void drawDrawable(Canvas canvas, Drawable d, int alpha, BitmapShader s, int o, int i, BackgroundThreadDrawHolder h) {
+        if (isAnimatedDrawableReady(d)) canvas.record(d, alpha);
+    }
+    // Loader acceptance and frame selection/fading are not mocked.
+    boolean deliver(Drawable d, int t, boolean cached) {
+        return setImageBitmapByKey(d, t == TYPE_MEDIA ? currentMediaKey : t == TYPE_IMAGE ? currentImageKey : currentThumbKey,
+                                   t, cached, currentGuid);
+    }
+    Canvas frame(long time, boolean background) {
+        SystemClock.now = time;
+        Canvas canvas = new Canvas();
+        draw(canvas, background ? setDrawInBackgroundThread(null, 0) : null);
+        return canvas;
+    }
+    // Only used by the forum identity test; production setImageBitmap's slot contract.
+    void setImageBitmap(Drawable d) { staticThumbDrawable = d; }
+    /* RECEIVER */
+}
+class AnimatedEmojiDrawable extends Drawable {
+    /* CACHE_TYPES */
+    final int currentAccount, cacheType;
+    final long documentId;
+    boolean preloading, missingDocumentPresented;
+    ImageReceiver imageReceiver;
+    AnimatedEmojiDrawable(int type, int account, long id) { cacheType = type; currentAccount = account; documentId = id; }
+    long getDocumentId() { return documentId; }
+    void addView(ImageReceiver r) {} void removeView(ImageReceiver r) {}
+    void invalidate() {} void updateAttachState() {}
+    ImageReceiver receiver() { createImageReceiver(); return imageReceiver; }
+    /* IDENTITY */
+    /* FACTORY */
+}
+class Context {}
+class UserConfig { static int selectedAccount; }
+class PorterDuff { enum Mode { SRC_IN, ADD } }
+class PorterDuffXfermode { final PorterDuff.Mode mode; PorterDuffXfermode(PorterDuff.Mode m) { mode = m; } }
+class PorterDuffColorFilter extends ColorFilter { PorterDuffColorFilter(int c, PorterDuff.Mode m) {} }
+class Theme {
+    interface ResourcesProvider {}
+    static final int key_actionBarDefaultIcon = 0, key_actionBarDefaultTitle = 1;
+    static int getColor(int k) { return 0; } static int getColor(int k, ResourcesProvider r) { return 0; }
+    static ColorFilter getAnimatedEmojiColorFilter(ResourcesProvider r) { return null; }
+}
+class TLRPC { static class TL_forumTopic { int id = 2; long icon_emoji_id = 1; } }
+class BackupImageView {
+    AnimatedEmojiDrawable animatedEmojiDrawable;
+    final ImageReceiver imageReceiver = new ImageReceiver();
+    Context getContext() { return new Context(); }
+    ImageReceiver getImageReceiver() { return imageReceiver; }
+    AnimatedEmojiDrawable getAnimatedEmojiDrawable() { return animatedEmojiDrawable; }
+    void invalidate() {}
+    void setImageDrawable(Drawable d) {} void setAnimatedEmojiDrawable(AnimatedEmojiDrawable d) { animatedEmojiDrawable = d; }
+}
+class ForumUtilities {
+    static Drawable createGeneralTopicDrawable(Context c,float f,int color,boolean a,boolean b) { return new Drawable(); }
+    static Drawable createTopicDrawable(TLRPC.TL_forumTopic t, boolean b) { return new Drawable(); }
+    /* FORUM */
+}
+
+public class EmojiFirstFrameHarness {
+    static void check(boolean value, String message) { if (!value) throw new AssertionError(message); }
+    static int cacheType = AnimatedEmojiDrawable.CACHE_TYPE_MESSAGES;
+    static ImageReceiver receiver() { return new AnimatedEmojiDrawable(cacheType, 0, 1).receiver(); }
+    static void completeFade(ImageReceiver r, Drawable d, long start, boolean background) {
+        int previous = 0;
+        for (long now = start; now <= start + 300; now += 15) {
+            int a = r.frame(now, background).alpha(d);
+            check(a >= previous && a <= 255, "bounded monotonic fade: " + a);
+            check(a - previous <= 28, "no visible first-frame alpha jump: " + a + " after " + previous);
+            previous = a;
+        }
+        check(previous == 255, "fade completes");
+    }
+    static void cold(boolean cached, boolean media, boolean webm, boolean background, boolean preview) {
+        ImageReceiver r = receiver();
+        Drawable d = webm ? new AnimatedFileDrawable() : new RLottieDrawable();
+        Drawable thumb = new BitmapDrawable();
+        if (preview) r.deliver(thumb, ImageReceiver.TYPE_IMAGE, true);
+        check(r.deliver(d, media ? ImageReceiver.TYPE_MEDIA : ImageReceiver.TYPE_IMAGE, cached), "accepted");
+        for (int n = 0; n < 12; n++) {
+            Canvas c = r.frame(1000 + 1000 * n, background);
+            check(c.alpha(d) == -1, "no undecoded pixels");
+            if (preview) check(c.alpha(thumb) == 255, "preview stays visible");
+            check(r.currentAlpha == 0, "pending fade never progresses");
+        }
+        if (webm) ((AnimatedFileDrawable)d).ready = true; else ((RLottieDrawable)d).ready = true;
+        check(r.frame(30000, background).alpha(d) == 0, "first decoded frame transparent");
+        completeFade(r, d, 30000, background);
+        r.deliver(d, media ? ImageReceiver.TYPE_MEDIA : ImageReceiver.TYPE_IMAGE, true);
+        check(r.frame(40000, background).alpha(d) == 255, "same cached identity never refades");
+    }
+    static void staticAndCached() {
+        ImageReceiver r = receiver();
+        BitmapDrawable d = new BitmapDrawable();
+        r.deliver(d, ImageReceiver.TYPE_IMAGE, false);
+        check(r.frame(50000, false).alpha(d) == 0, "async static emoji fades without thumb");
+        completeFade(r, d, 50000, false);
+        r = receiver(); r.deliver(d, ImageReceiver.TYPE_IMAGE, true);
+        check(r.frame(60000, false).alpha(d) == 255, "ready cached static immediate");
+        RLottieDrawable l = new RLottieDrawable(); l.ready = true;
+        r = receiver(); r.deliver(l, ImageReceiver.TYPE_IMAGE, true);
+        check(r.frame(60000, false).alpha(l) == 255, "ready cached lottie immediate");
+    }
+    static void readinessRace(boolean background, boolean media, boolean preview, boolean webm) {
+        ImageReceiver r = receiver();
+        Drawable d = webm ? new AnimatedFileDrawable() : new RLottieDrawable();
+        BitmapDrawable thumb = new BitmapDrawable();
+        if (preview) r.deliver(thumb, ImageReceiver.TYPE_IMAGE, true);
+        r.deliver(d, media ? ImageReceiver.TYPE_MEDIA : ImageReceiver.TYPE_IMAGE, true);
+        // Simulate a worker publishing immediately after prepare's false readiness
+        // read. A second hasBitmap() in this snapshot would now return true.
+        if (webm) ((AnimatedFileDrawable)d).publishOnNextRead = true;
+        else ((RLottieDrawable)d).publishOnNextRead = true;
+        Canvas raced = r.frame(90000, background);
+        check(raced.alpha(d) == -1, "race snapshot must keep pending frame hidden");
+        if (preview) check(raced.alpha(thumb) == 255, "race snapshot retains preview");
+        check(r.currentAlpha == 0 && r.crossfadeOnReadyDrawable == d, "race snapshot keeps fade pending");
+        check(r.frame(90016, background).alpha(d) == 0, "next snapshot starts published frame at zero");
+        completeFade(r, d, 90016, background);
+    }
+    static void lifecycle() {
+        ImageReceiver r = receiver(); RLottieDrawable old = new RLottieDrawable();
+        r.deliver(old, ImageReceiver.TYPE_MEDIA, true);
+        r.onDetachedFromWindow();
+        check(r.crossfadeOnReadyDrawable == null, "detach releases pending drawable");
+        check(r.currentMediaDrawable == null, "detach releases media");
+        old.ready = true;
+        r.currentMediaKey = "media"; r.attachedToWindow = true;
+        r.deliver(old, ImageReceiver.TYPE_MEDIA, true);
+        check(r.frame(70000, false).alpha(old) == 255, "reattach to decoded cache does not refade");
+        RLottieDrawable next = new RLottieDrawable();
+        r.deliver(next, ImageReceiver.TYPE_MEDIA, false);
+        check(!r.setImageBitmapByKey(old, "obsolete", ImageReceiver.TYPE_MEDIA, false, r.currentGuid), "stale key rejected");
+        check(!r.setImageBitmapByKey(old, "media", ImageReceiver.TYPE_MEDIA, false, r.currentGuid - 1), "stale guid rejected");
+        check(r.crossfadeOnReadyDrawable == next, "stale delivery leaves replacement intact");
+        next.ready = true;
+        check(r.frame(71000, false).alpha(next) == 0, "replacement gets its own fade");
+        completeFade(r, next, 71000, false);
+        r.deliver(new RLottieDrawable(), ImageReceiver.TYPE_MEDIA, false);
+        r.setCurrentAccount(1);
+        check(r.crossfadeOnReadyDrawable == null, "account change clears pending identity");
+        r.clearImage();
+        check(r.crossfadeOnReadyDrawable == null, "clear releases pending drawable");
+    }
+    static void latePreviewAndOwnedTransition() {
+        ImageReceiver r = receiver(); RLottieDrawable d = new RLottieDrawable();
+        r.deliver(d, ImageReceiver.TYPE_MEDIA, true);
+        BitmapDrawable preview = new BitmapDrawable();
+        r.deliver(preview, ImageReceiver.TYPE_IMAGE, true);
+        check(r.crossfadeOnReadyDrawable == d && r.currentAlpha == 0, "late cached preview preserves pending media");
+        check(r.frame(80000, false).alpha(preview) == 255, "late preview visible");
+        d.ready = true;
+        SystemClock.now = 81000;
+        Canvas owned = new Canvas();
+        r.drawWithoutLoadFade(owned);
+        check(owned.alpha(d) == 255, "explicit status fade remains sole owner");
+        check(r.frame(81000, false).alpha(d) == 0, "shared ordinary consumer retains load fade");
+        completeFade(r, d, 81000, false);
+    }
+    static void optOuts() {
+        for (int mode = 0; mode < 7; mode++) {
+            ImageReceiver r = receiver();
+            if (mode == 0) r.setCrossfadeOnReady(false);
+            if (mode == 1) r.manualAlphaAnimator = true;
+            if (mode == 2) r.crossfadeDuration = 0;
+            if (mode == 3) r.crossfadeAlpha = 0;
+            if (mode == 4) r.forcePreview = true;
+            if (mode == 5) r.crossfadeWithOldImage = true;
+            if (mode == 6) r.isVisible = false;
+            RLottieDrawable d = new RLottieDrawable(); r.deliver(d, ImageReceiver.TYPE_IMAGE, true);
+            check(r.crossfadeOnReadyDrawable == null, "intentional transition/opt-out preserved " + mode);
+        }
+        ImageReceiver export = new AnimatedEmojiDrawable(AnimatedEmojiDrawable.CACHE_TYPE_RENDERING_VIDEO, 0, 1).receiver();
+        check(!export.crossfadeOnReady, "video export is not visually changed");
+        ImageReceiver ordinaryImage = new ImageReceiver();
+        check(!ordinaryImage.crossfadeOnReady, "generic images remain opt-out by default");
+    }
+    static void forum() {
+        TLRPC.TL_forumTopic t = new TLRPC.TL_forumTopic();
+        ImageReceiver r = receiver(); Context context = new Context();
+        ForumUtilities.setTopicIcon(context, r, t, false, false, null);
+        Drawable first = r.getDrawable();
+        ForumUtilities.setTopicIcon(context, r, t, false, false, null);
+        check(first == r.getDrawable(), "forum receiver same identity retains icon");
+        t.icon_emoji_id++;
+        ForumUtilities.setTopicIcon(context, r, t, false, false, null);
+        check(first != r.getDrawable(), "forum replacement changes icon");
+        first = r.getDrawable(); UserConfig.selectedAccount++;
+        r.setCurrentAccount(UserConfig.selectedAccount);
+        ForumUtilities.setTopicIcon(context, r, t, false, false, null);
+        check(first != r.getDrawable(), "forum account changes identity");
+        first = r.getDrawable();
+        ForumUtilities.setTopicIcon(context, r, t, false, true, null);
+        check(first != r.getDrawable(), "forum size/cache changes identity");
+        BackupImageView view = new BackupImageView();
+        ForumUtilities.setTopicIcon(view, t);
+        first = view.animatedEmojiDrawable;
+        ForumUtilities.setTopicIcon(view, t);
+        check(first == view.animatedEmojiDrawable, "backup same identity retains icon");
+        UserConfig.selectedAccount++;
+        view.getImageReceiver().setCurrentAccount(UserConfig.selectedAccount);
+        ForumUtilities.setTopicIcon(view, t);
+        check(first != view.animatedEmojiDrawable, "backup account changes identity");
+        t.id = 1; ForumUtilities.setTopicIcon(view, t);
+        check(view.animatedEmojiDrawable == null, "general topic clears emoji");
+    }
+    public static void main(String[] args) {
+        for (int type : new int[]{AnimatedEmojiDrawable.CACHE_TYPE_MESSAGES,
+                                  AnimatedEmojiDrawable.CACHE_TYPE_MESSAGES_LARGE,
+                                  AnimatedEmojiDrawable.CACHE_TYPE_FORUM_TOPIC,
+                                  AnimatedEmojiDrawable.CACHE_TYPE_FORUM_TOPIC_LARGE,
+                                  AnimatedEmojiDrawable.CACHE_TYPE_FORUM_TOPIC_PULL_DOWN,
+                                  AnimatedEmojiDrawable.CACHE_TYPE_ALERT_PREVIEW_STATIC}) {
+            cacheType = type;
+        for (boolean cached : new boolean[]{false, true})
+            for (boolean media : new boolean[]{false, true})
+                for (boolean webm : new boolean[]{false, true})
+                    for (boolean background : new boolean[]{false, true}) {
+                        cold(cached, media, webm, background, false);
+                        if (media) cold(cached, media, webm, background, true);
+                        if (cached) {
+                            readinessRace(background, media, false, webm);
+                            if (media) readinessRace(background, media, true, webm);
+                        }
+                    }
+        }
+        staticAndCached(); lifecycle(); latePreviewAndOwnedTransition(); optOuts(); forum();
+        System.out.println("PASS: emoji first-frame pipeline (144 cold-load/cache-type combinations + 72 readiness races + cache/replacement/lifecycle/ownership/forum)");
+    }
+}

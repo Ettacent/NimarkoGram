@@ -1132,6 +1132,10 @@ public class ImageLoader {
                         cacheType = cacheImage.cacheType;
                     }
                     fileDrawable = new AnimatedFileDrawable(cacheImage.finalFilePath, fistFrame, notCreateStream ? 0 : size, cacheImage.priority, notCreateStream ? null : document, document == null && !notCreateStream ? cacheImage.imageLocation : null, cacheImage.parentObject, seekTo, cacheImage.currentAccount, false, 0, 0, cacheOptions, cacheType, !AUTOPLAY_FILTER_NONLOOP.equals(cacheImage.filter));
+                    if (!fistFrame && AUTOPLAY_FILTER.equals(cacheImage.filter)
+                            && !MessageObject.isRoundVideoDocument(document)) {
+                        fileDrawable.enableVideoPreviewLoopBlend();
+                    }
                     fileDrawable.setIsWebmSticker(MessageObject.isWebM(document) || MessageObject.isVideoSticker(document) || isAnimatedAvatar(cacheImage.filter));
                 } else {
 
@@ -1666,39 +1670,45 @@ public class ImageLoader {
         }
 
         private void loadLastFrame(RLottieDrawable lottieDrawable, int w, int h, boolean lastFrame, boolean reaction) {
-            Bitmap bitmap;
-            Canvas canvas;
-            if (lastFrame && reaction) {
-                bitmap = Bitmap.createBitmap((int) (w * ImageReceiver.ReactionLastFrame.LAST_FRAME_SCALE), (int) (h * ImageReceiver.ReactionLastFrame.LAST_FRAME_SCALE), Bitmap.Config.ARGB_8888);
-                canvas = new Canvas(bitmap);
-                canvas.scale(2f, 2f, w * ImageReceiver.ReactionLastFrame.LAST_FRAME_SCALE / 2f, h * ImageReceiver.ReactionLastFrame.LAST_FRAME_SCALE / 2f);
-            } else {
-                bitmap = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
-                canvas = new Canvas(bitmap);
-            }
-
-            lottieDrawable.prepareForGenerateCache();
-            Bitmap currentBitmap = Bitmap.createBitmap(lottieDrawable.getIntrinsicWidth(), lottieDrawable.getIntrinsicHeight(), Bitmap.Config.ARGB_8888);
-            lottieDrawable.setGeneratingFrame(lastFrame ? lottieDrawable.getFramesCount() - 1 : 0);
-            lottieDrawable.getNextFrame(currentBitmap);
-            lottieDrawable.releaseForGenerateCache();
-            canvas.save();
-            if (!(lastFrame && reaction)) {
-                canvas.scale(currentBitmap.getWidth() / w, currentBitmap.getHeight() / h, w / 2f, h / 2f);
-            }
-            Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
-            paint.setFilterBitmap(true);
+            Bitmap bitmap = null;
+            Bitmap currentBitmap = null;
             BitmapDrawable bitmapDrawable = null;
-            if (lastFrame && reaction) {
-                canvas.drawBitmap(currentBitmap, (bitmap.getWidth() - currentBitmap.getWidth()) / 2f, (bitmap.getHeight() - currentBitmap.getHeight()) / 2f, paint);
-                bitmapDrawable = new ImageReceiver.ReactionLastFrame(bitmap);
-            } else {
-                canvas.drawBitmap(currentBitmap, 0, 0, paint);
-                bitmapDrawable = new BitmapDrawable(bitmap);
+            try {
+                lottieDrawable.prepareForGenerateCache();
+                currentBitmap = Bitmap.createBitmap(lottieDrawable.getIntrinsicWidth(), lottieDrawable.getIntrinsicHeight(), Bitmap.Config.ARGB_8888);
+                lottieDrawable.setGeneratingFrame(lastFrame ? lottieDrawable.getFramesCount() - 1 : 0);
+                if (lottieDrawable.getNextFrame(currentBitmap) == 1) {
+                    Canvas canvas;
+                    if (lastFrame && reaction) {
+                        bitmap = Bitmap.createBitmap((int) (w * ImageReceiver.ReactionLastFrame.LAST_FRAME_SCALE), (int) (h * ImageReceiver.ReactionLastFrame.LAST_FRAME_SCALE), Bitmap.Config.ARGB_8888);
+                        canvas = new Canvas(bitmap);
+                        canvas.scale(2f, 2f, w * ImageReceiver.ReactionLastFrame.LAST_FRAME_SCALE / 2f, h * ImageReceiver.ReactionLastFrame.LAST_FRAME_SCALE / 2f);
+                    } else {
+                        bitmap = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
+                        canvas = new Canvas(bitmap);
+                        canvas.scale(currentBitmap.getWidth() / w, currentBitmap.getHeight() / h, w / 2f, h / 2f);
+                    }
+                    Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+                    paint.setFilterBitmap(true);
+                    if (lastFrame && reaction) {
+                        canvas.drawBitmap(currentBitmap, (bitmap.getWidth() - currentBitmap.getWidth()) / 2f, (bitmap.getHeight() - currentBitmap.getHeight()) / 2f, paint);
+                        bitmapDrawable = new ImageReceiver.ReactionLastFrame(bitmap);
+                    } else {
+                        canvas.drawBitmap(currentBitmap, 0, 0, paint);
+                        bitmapDrawable = new BitmapDrawable(bitmap);
+                    }
+                }
+            } finally {
+                lottieDrawable.releaseForGenerateCache();
+                lottieDrawable.recycle(false);
+                if (currentBitmap != null) {
+                    currentBitmap.recycle();
+                }
+                if (bitmapDrawable == null && bitmap != null) {
+                    bitmap.recycle();
+                }
             }
 
-            lottieDrawable.recycle(false);
-            currentBitmap.recycle();
             onPostExecute(bitmapDrawable);
         }
 
@@ -2047,6 +2057,7 @@ public class ImageLoader {
             if (image != null) {
                 final ArrayList<ImageReceiver> finalImageReceiverArray = new ArrayList<>(imageReceiverArray);
                 final ArrayList<Integer> finalImageReceiverGuidsArray = new ArrayList<>(imageReceiverGuidsArray);
+                final ArrayList<Integer> finalImageReceiverTypesArray = new ArrayList<>(types);
                 if (finalImageReceiverArray.isEmpty()) {
                     AndroidUtilities.runOnUIThread(() -> {
                         if (image instanceof AnimatedFileDrawable && !((AnimatedFileDrawable) image).isWebmSticker) {
@@ -2064,7 +2075,7 @@ public class ImageLoader {
                             for (int a = 0; a < finalImageReceiverArray.size(); a++) {
                                 ImageReceiver imgView = finalImageReceiverArray.get(a);
                                 AnimatedFileDrawable toSet = (a == 0 ? fileDrawable : fileDrawable.makeCopy());
-                                if (imgView.setImageBitmapByKey(toSet, key, type, false, finalImageReceiverGuidsArray.get(a))) {
+                                if (imgView.setImageBitmapByKey(toSet, key, finalImageReceiverTypesArray.get(a), false, finalImageReceiverGuidsArray.get(a))) {
                                     if (toSet == fileDrawable) {
                                         imageSet = true;
                                     }
@@ -2078,7 +2089,7 @@ public class ImageLoader {
                         } else {
                             for (int a = 0; a < finalImageReceiverArray.size(); a++) {
                                 ImageReceiver imgView = finalImageReceiverArray.get(a);
-                                imgView.setImageBitmapByKey(image, key, types.get(a), false, finalImageReceiverGuidsArray.get(a));
+                                imgView.setImageBitmapByKey(image, key, finalImageReceiverTypesArray.get(a), false, finalImageReceiverGuidsArray.get(a));
                             }
                         }
                         if (decrementKey != null) {

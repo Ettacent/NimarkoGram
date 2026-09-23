@@ -77,11 +77,17 @@ public abstract class BaseFragment {
     public java.util.function.BooleanSupplier captureNavigationRequest() {
         final long generation = ++navigationRequestGeneration;
         final INavigationLayout layout = parentLayout;
+        final int account = currentAccount;
+        final int selectedAccount = UserConfig.selectedAccount;
         final BaseFragment top = layout == null ? null : layout.getLastFragment();
         final long topGeneration = top == null ? 0 : top.navigationRequestGeneration;
+        final java.util.function.BooleanSupplier layoutCurrent = layout == null
+                ? () -> false : layout.captureNavigationRequest();
         return () -> !isFinished && generation == navigationRequestGeneration
+                && currentAccount == account && UserConfig.selectedAccount == selectedAccount
                 && layout != null && parentLayout == layout && layout.getLastFragment() == top
                 && top != null && top.navigationRequestGeneration == topGeneration
+                && layoutCurrent.getAsBoolean()
                 && !layout.isSwipeInProgress() && !layout.isTransitionAnimationInProgress();
     }
     protected boolean finishing;
@@ -266,10 +272,17 @@ public abstract class BaseFragment {
         return fragmentView;
     }
     protected app.nimarkogram.messenger.notifications.NotificationInlinePanel notificationInlinePanel;
+    protected void releaseInAppNotificationPanel() {
+        if (notificationInlinePanel != null) {
+            notificationInlinePanel.release();
+            notificationInlinePanel = null;
+        }
+    }
     public org.telegram.ui.Components.AnimatedLinearLayout getInAppNotificationPanel() {
         if (!(fragmentView instanceof android.widget.FrameLayout) || actionBar == null
                 || actionBar.getParent() == fragmentView || !actionBar.shouldAddToContainer()) return null;
         if (notificationInlinePanel == null || notificationInlinePanel.getParent() != fragmentView) {
+            releaseInAppNotificationPanel();
             android.widget.FrameLayout root = (android.widget.FrameLayout) fragmentView;
             java.util.ArrayList<View> contents = new java.util.ArrayList<>();
             for (int i = 0; i < root.getChildCount(); i++) {
@@ -367,6 +380,7 @@ public abstract class BaseFragment {
     }
 
     public void clearViews() {
+        releaseInAppNotificationPanel();
         if (fragmentView != null) {
             ViewGroup parent = (ViewGroup) fragmentView.getParent();
             if (parent != null) {
@@ -554,6 +568,7 @@ public abstract class BaseFragment {
     @CallSuper
     public void onFragmentDestroy() {
         navigationRequestGeneration++;
+        releaseInAppNotificationPanel();
         getConnectionsManager().cancelRequestsForGuid(classGuid);
         getMessagesStorage().cancelTasksForGuid(classGuid);
         isFinished = true;
@@ -1056,6 +1071,13 @@ public abstract class BaseFragment {
     public INavigationLayout[] showAsSheet(BaseFragment fragment, BottomSheetParams params) {
         if (getParentActivity() == null) {
             return null;
+        }
+        final java.util.function.BooleanSupplier requestCurrent = captureNavigationRequest();
+        if (fragment instanceof org.telegram.ui.ProfileActivity) {
+            if (((org.telegram.ui.ProfileActivity) fragment).prepareChatForNavigation(requestCurrent,
+                    () -> showAsSheet(fragment, params))) {
+                return null;
+            }
         }
         BottomSheet[] bottomSheet = new BottomSheet[1];
         INavigationLayout[] actionBarLayout = new INavigationLayout[]{INavigationLayout.newLayout(getParentActivity(), false, () -> bottomSheet[0])};

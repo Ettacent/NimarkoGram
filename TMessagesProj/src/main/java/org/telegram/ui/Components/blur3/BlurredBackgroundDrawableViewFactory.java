@@ -5,21 +5,47 @@ import android.view.View;
 import android.view.ViewGroup;
 
 import androidx.annotation.Nullable;
+import org.telegram.messenger.LiteMode;
+import org.telegram.messenger.SharedConfig;
 
 import org.telegram.ui.Components.blur3.drawable.BlurredBackgroundDrawable;
 import org.telegram.ui.Components.blur3.drawable.BlurredBackgroundDrawableRenderNode;
 import org.telegram.ui.Components.blur3.drawable.color.BlurredBackgroundColorProvider;
 import org.telegram.ui.Components.blur3.source.BlurredBackgroundSource;
 import org.telegram.ui.Components.chat.ViewPositionWatcher;
+import java.lang.ref.WeakReference;
+import java.util.WeakHashMap;
 
 import me.vkryl.core.reference.ReferenceList;
 
 public class BlurredBackgroundDrawableViewFactory {
+    private static final ReferenceList<BlurredBackgroundDrawableViewFactory> factories = new ReferenceList<>();
+    private final ReferenceList<BlurredBackgroundDrawable> createdDrawables = new ReferenceList<>();
+    private final WeakHashMap<BlurredBackgroundDrawable, WeakReference<View>> drawableViews = new WeakHashMap<>();
 
     private final BlurredBackgroundSource source;
 
     public BlurredBackgroundDrawableViewFactory(BlurredBackgroundSource source) {
         this.source = source;
+        factories.add(this);
+    }
+    public static void invalidateGlassSettings() {
+        for (BlurredBackgroundDrawableViewFactory factory : factories) {
+            for (BlurredBackgroundDrawable drawable : factory.createdDrawables) {
+                drawable.updateColors();
+                drawable.invalidateSelf();
+                final WeakReference<View> viewRef = factory.drawableViews.get(drawable);
+                final View view = viewRef != null ? viewRef.get() : null;
+                if (view != null) view.invalidate();
+            }
+            factory.invalidateAllLinkedViews();
+            factory.source.dispatchOnDrawablesRelativePositionChange();
+        }
+    }
+    public static boolean isLiquidGlassEnabled() {
+        return Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
+                && LiteMode.isEnabled(LiteMode.FLAG_LIQUID_GLASS)
+                && SharedConfig.chatBlurEnabled();
     }
 
     public BlurredBackgroundDrawableViewFactory(ViewPositionWatcher watcher, ViewGroup parent, BlurredBackgroundSource source) {
@@ -56,6 +82,8 @@ public class BlurredBackgroundDrawableViewFactory {
         }
     }
     public void release(View view, BlurredBackgroundDrawable drawable) {
+        createdDrawables.remove(drawable);
+        drawableViews.remove(drawable);
         if (viewPositionWatcher != null) viewPositionWatcher.unsubscribe(view);
         if (linkedViews != null) linkedViews.remove(view);
         if (linkedDrawables != null) linkedDrawables.remove(drawable);
@@ -68,6 +96,10 @@ public class BlurredBackgroundDrawableViewFactory {
 
     public void setLiquidGlassEffectAllowed(boolean liquidGlassEffectAllowed) {
         isLiquidGlassEffectAllowed = liquidGlassEffectAllowed;
+    }
+    public boolean supportsLiquidGlass() {
+        return isLiquidGlassEffectAllowed && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
+                && source instanceof org.telegram.ui.Components.blur3.source.BlurredBackgroundSourceRenderNode;
     }
 
     public BlurredBackgroundDrawable create() {
@@ -94,6 +126,10 @@ public class BlurredBackgroundDrawableViewFactory {
     }
     private BlurredBackgroundDrawable create(View view, BlurredBackgroundColorProvider provider, boolean multiwindow, boolean trackPosition) {
         final BlurredBackgroundDrawable drawable = source.createDrawable();
+        createdDrawables.add(drawable);
+        if (view != null) {
+            drawableViews.put(drawable, new WeakReference<>(view));
+        }
         if (isLiquidGlassEffectAllowed && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (drawable instanceof BlurredBackgroundDrawableRenderNode) {
                 ((BlurredBackgroundDrawableRenderNode) drawable).setLiquidGlassEffectAllowed();

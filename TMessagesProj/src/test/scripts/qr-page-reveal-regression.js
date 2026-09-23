@@ -16,7 +16,11 @@ function method(signature) {
     return qr.slice(start, end);
 }
 assert(qr.indexOf('setInitialPageAlpha(0f);') < qr.indexOf('final View openingView = fragmentView;'));
-assert(qr.indexOf('description.setColor(getThemedColor(description.getCurrentKey()), false, false);') < qr.indexOf('revealInitialPage();'));
+const paletteApplied = qr.indexOf('description.setColor(getThemedColor(description.getCurrentKey()), false, false);');
+const normalReveal = qr.indexOf('if (initialBackgroundReady) {\n                        revealInitialPage();', paletteApplied);
+assert(paletteApplied >= 0 && normalReveal > paletteApplied);
+assert(qr.includes('AndroidUtilities.runOnUIThread(initialThemeFallback, 1000);'));
+assert(qr.includes('cancelInitialThemeFallback();'));
 assert(qr.includes('initialPageAnimator.end();'), 'Share must capture fully opaque content');
 const destroy = qr.slice(qr.indexOf('public void onFragmentDestroy()'), qr.indexOf('public void onTransitionAnimationEnd('));
 assert(destroy.includes('cancelInitialPageAnimation();'));
@@ -54,7 +58,7 @@ public class QrPageReveal {
  int pendingThemesGeneration, themesApplied;
  void applyLoadedThemes(List<EmojiThemes> themes, int generation) { themesApplied++; }
  ${method('applyPendingThemesWhenReady(')}
- static class View { void invalidate() {} }
+ static class View { boolean ready=true; boolean isReady() { return ready; } void invalidate() {} }
  static class Animator {}
  static class AnimatorListenerAdapter { public void onAnimationEnd(Animator a) {} }
  interface Update { void update(ValueAnimator a); }
@@ -87,7 +91,10 @@ public class QrPageReveal {
  public static void main(String[] args) {
   QrPageReveal q=new QrPageReveal(); q.setInitialPageAlpha(0);
   q.revealInitialPage(); check(q.initialPageAnimator==null); q.checkAlpha(0);
-  q.initialBackgroundReady=true; q.revealInitialPage();
+  q.initialBackgroundReady=true; q.qrView.ready=false; q.revealInitialPage();
+  check(q.initialPageAnimator==null); q.checkAlpha(0);
+  // Both successful rendering and terminal safe failure publish readiness.
+  q.qrView.ready=true; q.revealInitialPage();
   ValueAnimator a=q.initialPageAnimator; check(a!=null && a.duration==350); q.checkAlpha(0);
   q.revealInitialPage(); check(q.initialPageAnimator==a);
   for(int hz:new int[]{60,90,120,144}) for(int i=0;i<=hz;i++) {

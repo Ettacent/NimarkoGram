@@ -13,7 +13,10 @@ import android.location.LocationListener;
 import android.location.LocationManager;
 import android.net.Uri;
 import android.os.Build;
+import android.os.Bundle;
+import android.os.Looper;
 import android.text.TextUtils;
+import androidx.core.content.ContextCompat;
 
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.ApplicationLoader;
@@ -329,6 +332,160 @@ public class Weather {
             }
         });
     }
+    public static Runnable fetchCancellable(boolean requestLocation, Utilities.Callback<State> whenFetched) {
+        if (whenFetched == null) return null;
+        final int account = UserConfig.selectedAccount;
+        final boolean[] cancelled = new boolean[1];
+        final Runnable[] cancelWeather = new Runnable[1];
+        final LocationRequest locationRequest = new LocationRequest(location -> {
+            if (cancelled[0] || account != UserConfig.selectedAccount) return;
+            if (location == null) {
+                whenFetched.run(null);
+                return;
+            }
+            cancelWeather[0] = fetch(location.getLatitude(), location.getLongitude(), weather -> {
+                if (!cancelled[0] && account == UserConfig.selectedAccount) {
+                    whenFetched.run(weather);
+                }
+            });
+        });
+        locationRequest.start(requestLocation);
+        return () -> {
+            cancelled[0] = true;
+            locationRequest.run();
+            if (cancelWeather[0] != null) {
+                cancelWeather[0].run();
+                cancelWeather[0] = null;
+            }
+        };
+    }
+    private static class LocationRequest implements Runnable {
+        private static final long TIMEOUT_MS = 15_000;
+        private final int account = UserConfig.selectedAccount;
+        private final Runnable timeout = () -> finish(null);
+        private Utilities.Callback<Location> callback;
+        private LocationManager locationManager;
+        private LocationListener listener;
+        private boolean finished;
+        LocationRequest(Utilities.Callback<Location> callback) {
+            this.callback = callback;
+        }
+        void start(boolean requestLocation) {
+            if (!isActive()) return;
+            Context context = ApplicationLoader.applicationContext;
+            if (context == null) {
+                finish(null);
+                return;
+            }
+            if (ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+                    || ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
+                acquire(requestLocation);
+            } else if (!requestLocation) {
+                finish(null);
+            } else {
+                Activity activity = LaunchActivity.instance;
+                if (activity == null) activity = AndroidUtilities.findActivity(context);
+                if (activity == null || activity.isFinishing()) {
+                    finish(null);
+                    return;
+                }
+                try {
+                    PermissionRequest.ensureEitherPermission(R.raw.permission_request_location, R.string.PermissionNoLocationStory,
+                            new String[] { Manifest.permission.ACCESS_COARSE_LOCATION, Manifest.permission.ACCESS_FINE_LOCATION },
+                            new String[] { Manifest.permission.ACCESS_COARSE_LOCATION }, granted -> {
+                                if (!isActive()) return;
+                                if (granted) acquire(true); else finish(null);
+                            });
+                } catch (Exception e) {
+                    FileLog.e(e);
+                    finish(null);
+                }
+            }
+        }
+        @SuppressLint("MissingPermission")
+        private void acquire(boolean requestLocation) {
+            if (!isActive()) return;
+            try {
+                locationManager = (LocationManager) ApplicationLoader.applicationContext.getSystemService(Context.LOCATION_SERVICE);
+                if (locationManager == null) {
+                    finish(null);
+                    return;
+                }
+                List<String> providers = locationManager.getProviders(true);
+                for (int i = providers.size() - 1; i >= 0; i--) {
+                    try {
+                        Location location = locationManager.getLastKnownLocation(providers.get(i));
+                        if (location != null) {
+                            finish(location);
+                            return;
+                        }
+                    } catch (Exception e) {
+                        FileLog.e(e);
+                    }
+                }
+                if (!requestLocation) {
+                    finish(null);
+                    return;
+                }
+                listener = new LocationListener() {
+                    @Override
+                    public void onLocationChanged(Location location) {
+                        if (location != null) finish(location);
+                    }
+                    @Override
+                    public void onStatusChanged(String provider, int status, Bundle extras) {}
+                    @Override
+                    public void onProviderEnabled(String provider) {}
+                    @Override
+                    public void onProviderDisabled(String provider) {}
+                };
+                boolean registered = false;
+                for (String provider : new String[] { LocationManager.NETWORK_PROVIDER, LocationManager.GPS_PROVIDER }) {
+                    if (!providers.contains(provider)) continue;
+                    try {
+                        locationManager.requestLocationUpdates(provider, 1000, 0, listener, Looper.getMainLooper());
+                        registered = true;
+                    } catch (Exception e) {
+                        FileLog.e(e);
+                    }
+                }
+                if (registered) {
+                    AndroidUtilities.runOnUIThread(timeout, TIMEOUT_MS);
+                } else {
+                    finish(null);
+                }
+            } catch (Exception e) {
+                FileLog.e(e);
+                finish(null);
+            }
+        }
+        private boolean isActive() {
+            if (!finished && account != UserConfig.selectedAccount) run();
+            return !finished;
+        }
+        private void finish(Location location) {
+            if (!isActive()) return;
+            Utilities.Callback<Location> whenGot = callback;
+            run();
+            whenGot.run(location);
+        }
+        @Override
+        public void run() {
+            if (finished) return;
+            finished = true;
+            callback = null;
+            AndroidUtilities.cancelRunOnUIThread(timeout);
+            if (locationManager != null && listener != null) {
+                try {
+                    locationManager.removeUpdates(listener);
+                } catch (Exception e) {
+                    FileLog.e(e);
+                }
+            }
+            listener = null;
+            locationManager = null;
+        }
+    }
 
     private static String cacheKey;
     private static State cacheValue;
@@ -397,12 +554,15 @@ public class Weather {
 
         final int[] currentReqId = new int[1];
 
-        final MessagesController messagesController = MessagesController.getInstance(UserConfig.selectedAccount);
-        final ConnectionsManager connectionsManager = ConnectionsManager.getInstance(UserConfig.selectedAccount);
+        final boolean[] cancelled = new boolean[1];
+        final int account = UserConfig.selectedAccount;
+        final MessagesController messagesController = MessagesController.getInstance(account);
+        final ConnectionsManager connectionsManager = ConnectionsManager.getInstance(account);
         final String username = messagesController.weatherSearchUsername;
 
         final TLRPC.User[] bot = new TLRPC.User[] { messagesController.getUser(username) };
         Runnable request = () -> {
+            if (cancelled[0]) return;
             TLRPC.TL_messages_getInlineBotResults req2 = new TLRPC.TL_messages_getInlineBotResults();
             req2.bot = messagesController.getInputUser(bot[0]);
             req2.query = "";
@@ -414,6 +574,7 @@ public class Weather {
             req2.peer = new TLRPC.TL_inputPeerEmpty();
 
             currentReqId[0] = connectionsManager.sendRequest(req2, (res2, err2) -> AndroidUtilities.runOnUIThread(() -> {
+                if (cancelled[0]) return;
                 currentReqId[0] = 0;
                 if (res2 instanceof TLRPC.messages_BotResults) {
                     TLRPC.messages_BotResults r = (TLRPC.messages_BotResults) res2;
@@ -448,6 +609,7 @@ public class Weather {
             TLRPC.TL_contacts_resolveUsername req = new TLRPC.TL_contacts_resolveUsername();
             req.username = username;
             currentReqId[0] = connectionsManager.sendRequest(req, (res, err) -> AndroidUtilities.runOnUIThread(() -> {
+                if (cancelled[0]) return;
                 currentReqId[0] = 0;
                 if (res instanceof TLRPC.TL_contacts_resolvedPeer) {
                     TLRPC.TL_contacts_resolvedPeer r = (TLRPC.TL_contacts_resolvedPeer) res;
@@ -467,6 +629,7 @@ public class Weather {
         }
 
         return () -> {
+            cancelled[0] = true;
             if (currentReqId[0] != 0) {
                 connectionsManager.cancelRequest(currentReqId[0], true);
                 currentReqId[0] = 0;

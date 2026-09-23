@@ -26,8 +26,8 @@ import android.util.AtomicFile;
 
 public final class NimarkoBannerHttp {
 
-    public static final String API = org.telegram.messenger.BuildConfig.NIMARKO_BANNER_API_URL;
-    public static final String PLACEHOLDER_URL = org.telegram.messenger.BuildConfig.NIMARKO_BANNER_PLACEHOLDER_URL;
+    public static final String API = "https://banners.ettacent.dev/api/v1/banners";
+    public static final String PLACEHOLDER_URL = "https://ettacent.dev/banners/zaglus.mp4";
     public static final long MAX_SIZE = 8L << 20; 
     private static final long MAX_JSON_SIZE = 256L << 10;
 
@@ -51,17 +51,17 @@ public final class NimarkoBannerHttp {
 
     public static Status fetchStatus(long userId) {
         Status out = new Status();
-        if (!isConfigured()) return out;
         try {
             Request req = new Request.Builder().url(API + "/status/" + userId).get().build();
             try (Response resp = HTTP.newCall(req).execute()) {
-                out.httpCode = resp.code();
+                out.httpCode = resp.code() == 200 ? -1 : resp.code();
                 if (resp.code() != 200 || resp.body() == null) return out;
                 String text = readBodyLimited(resp.body(), MAX_JSON_SIZE);
                 if (text == null) return out;
                 JsonObject d = parse(text);
                 if (d == null) return out;
                 out.ok = true;
+                out.httpCode = 200;
                 out.rawJson = text;
                 out.status = optString(d, "status", "none");
                 out.hideAvatar = optBool(d, "hide_avatar", false);
@@ -85,36 +85,46 @@ public final class NimarkoBannerHttp {
 
     public static BannerInfo getBanner(long eid) {
         BannerInfo out = new BannerInfo();
-        if (!isConfigured()) return out;
         try {
             String url = API + "/get/" + eid;
+            NimarkoBannerRenderer.dbg("HTTP getBanner GET " + url);
             Request req = new Request.Builder().url(url).get().build();
             try (Response resp = HTTP.newCall(req).execute()) {
-                out.httpCode = resp.code();
+                out.httpCode = resp.code() == 200 ? -1 : resp.code();
                 if (resp.code() != 200 || resp.body() == null) {
+                    NimarkoBannerRenderer.dbg("HTTP getBanner code=" + resp.code() + " body=" + (resp.body() != null));
                     return out;
                 }
                 String bodyStr = readBodyLimited(resp.body(), MAX_JSON_SIZE);
                 if (bodyStr == null) return out;
+                NimarkoBannerRenderer.dbg("HTTP getBanner 200 body=" + bodyStr);
                 JsonObject d = parse(bodyStr);
                 if (d == null) return out;
+                JsonElement hasBanner = d.get("has_banner");
+                if (hasBanner == null || !hasBanner.isJsonPrimitive()
+                        || !hasBanner.getAsJsonPrimitive().isBoolean()) return out;
                 out.hasBanner = optBool(d, "has_banner", false);
-                if (!out.hasBanner) return out;
+                if (!out.hasBanner) {
+                    out.httpCode = 200;
+                    return out;
+                }
                 out.url = optString(d, "url", null);
+                if (out.url == null || out.url.trim().isEmpty()) return out;
                 out.type = optString(d, "type", "jpg");
                 out.version = optString(d, "version", "");
                 out.hasSound = optBool(d, "has_sound", false);
                 out.hideAvatar = optBool(d, "hide_avatar", false);
+                out.httpCode = 200;
                 return out;
             }
         } catch (Throwable t) {
+            NimarkoBannerRenderer.dbg("HTTP getBanner EXCEPTION : " + t);
             out.httpCode = -1;
             return out;
         }
     }
 
     public static int setHideAvatar(long userId, boolean hide) {
-        if (!isConfigured()) return -1;
         try {
             JsonObject payload = new JsonObject();
             payload.addProperty("user_id", userId);
@@ -139,7 +149,6 @@ public final class NimarkoBannerHttp {
 
     public static AuthRegister authRegister(long userId) {
         AuthRegister out = new AuthRegister();
-        if (!isConfigured()) return out;
         try {
             Request req = new Request.Builder()
                     .url(API + "/auth/register?user_id=" + userId)
@@ -163,7 +172,7 @@ public final class NimarkoBannerHttp {
     }
 
     public static String authPoll(long userId, String code) {
-        if (!isConfigured() || code == null || code.isEmpty()) return null;
+        if (code == null || code.isEmpty()) return null;
         try {
             Request req = new Request.Builder()
                     .url(API + "/auth/poll?user_id=" + userId + "&code=" + code)
@@ -194,7 +203,6 @@ public final class NimarkoBannerHttp {
 
     public static SubmitResult submit(File file, String ext, long userId, long size, String token) {
         SubmitResult out = new SubmitResult();
-        if (!isConfigured()) return out;
         try {
             String mime = ".mp4".equals(ext) ? "video/mp4"
                     : ".png".equals(ext) ? "image/png" : "image/jpeg";
@@ -263,9 +271,6 @@ public final class NimarkoBannerHttp {
         }
     }
 
-    private static boolean isConfigured() {
-        return API != null && !API.trim().isEmpty();
-    }
 
     private static String readBodyLimited(ResponseBody body, long maxBytes) throws IOException {
         if (body == null) return null;

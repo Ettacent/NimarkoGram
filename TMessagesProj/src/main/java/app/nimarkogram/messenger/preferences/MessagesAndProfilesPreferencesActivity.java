@@ -946,9 +946,19 @@ public class MessagesAndProfilesPreferencesActivity extends BaseFragment {
     private ImageView backButton;
     private FrameLayout actionBarContainer;
     private FilledTabsView tabsView;
+    private View initialSettingScrollHost;
+    private Runnable initialSettingScroll;
+    private void cancelInitialSettingScroll() {
+        if (initialSettingScrollHost != null && initialSettingScroll != null) {
+            initialSettingScrollHost.removeCallbacks(initialSettingScroll);
+        }
+        initialSettingScrollHost = null;
+        initialSettingScroll = null;
+    }
 
     @Override
     public View createView(Context context) {
+        cancelInitialSettingScroll();
         messagePage = new Page(context, PAGE_MESSAGE);
         profilePage = new Page(context, PAGE_PROFILE);
 
@@ -1068,8 +1078,17 @@ public class MessagesAndProfilesPreferencesActivity extends BaseFragment {
 
         fragmentView = contentView = frameLayout;
         if (initialSettingId != 0) {
-            contentView.post(() -> (startAtProfile ? profilePage : messagePage)
-                    .scrollToSetting(initialSettingId));
+            final View openingView = contentView;
+            final Page targetPage = startAtProfile ? profilePage : messagePage;
+            final int targetSetting = initialSettingId;
+            initialSettingScrollHost = openingView;
+            initialSettingScroll = () -> {
+                if (contentView != openingView || isFinished) return;
+                initialSettingScrollHost = null;
+                initialSettingScroll = null;
+                targetPage.scrollToSetting(targetSetting);
+            };
+            openingView.post(initialSettingScroll);
         }
 
         // NG note: CG calls FirebaseAnalyticsHelper.INSTANCE.trackEventWithEmptyBundle here.
@@ -1086,6 +1105,7 @@ public class MessagesAndProfilesPreferencesActivity extends BaseFragment {
 
     @Override
     public void onFragmentDestroy() {
+        cancelInitialSettingScroll();
         super.onFragmentDestroy();
     }
 

@@ -274,8 +274,8 @@ public class MediaDataController extends BaseController {
     private boolean isLoadingPremiumPromo;
     private int premiumPromoUpdateDate;
 
-    private ArrayList<TLRPC.TL_messages_stickerSet>[] stickerSets = new ArrayList[]{new ArrayList<>(), new ArrayList<>(), new ArrayList<>(0), new ArrayList<>(), new ArrayList<>(), new ArrayList<>()};
-    private LongSparseArray<TLRPC.Document>[] stickersByIds = new LongSparseArray[]{new LongSparseArray<>(), new LongSparseArray<>(), new LongSparseArray<>(), new LongSparseArray<>(), new LongSparseArray<>(), new LongSparseArray<>()};
+    private ArrayList<TLRPC.TL_messages_stickerSet>[] stickerSets = new ArrayList[]{new ArrayList<>(), new ArrayList<>(), new ArrayList<>(0), new ArrayList<>(), new ArrayList<>(), new ArrayList<>(), new ArrayList<>()};
+    private LongSparseArray<TLRPC.Document>[] stickersByIds = new LongSparseArray[]{new LongSparseArray<>(), new LongSparseArray<>(), new LongSparseArray<>(), new LongSparseArray<>(), new LongSparseArray<>(), new LongSparseArray<>(), new LongSparseArray<>()};
     private LongSparseArray<TLRPC.TL_messages_stickerSet> stickerSetsById = new LongSparseArray<>();
     private LongSparseArray<TLRPC.TL_messages_stickerSet> installedStickerSetsById = new LongSparseArray<>();
     private ArrayList<Long> installedForceStickerSetsById = new ArrayList<>();
@@ -291,6 +291,9 @@ public class MediaDataController extends BaseController {
     private Runnable[] scheduledLoadStickers = new Runnable[7];
     private boolean[] loadingStickers = new boolean[7];
     private boolean[] stickersLoaded = new boolean[7];
+    private final int[] stickerLoadGeneration = new int[7];
+    private final boolean[] stickerLoadFailed = new boolean[7];
+    private volatile int stickerSetGeneration;
     private long[] loadHash = new long[7];
     private int[] loadDate = new int[7];
     public HashMap<String, RingtoneUploader> ringtoneUploaderHashMap = new HashMap<>();
@@ -349,6 +352,12 @@ public class MediaDataController extends BaseController {
     private boolean[] emojiStatusesFetching = new boolean[4];
 
     public void cleanup() {
+        stickerSetGeneration++;
+        for (Integer requestId : new ArrayList<>(stickerRequestTimeouts.keySet())) {
+            cancelStickerRequest(requestId, false);
+        }
+        loadingStickerSets.clear();
+        loadingStickerSetsKeys.clear();
         for (int a = 0; a < recentStickers.length; a++) {
             if (recentStickers[a] != null) {
                 recentStickers[a].clear();
@@ -356,10 +365,14 @@ public class MediaDataController extends BaseController {
             loadingRecentStickers[a] = false;
             recentStickersLoaded[a] = false;
         }
-        for (int a = 0; a < 4; a++) {
+        for (int a = 0; a < loadingStickers.length; a++) {
+            stickerLoadGeneration[a]++;
+            stickerLoadFailed[a] = false;
+            scheduledLoadStickers[a] = null;
             loadHash[a] = 0;
             loadDate[a] = 0;
             stickerSets[a].clear();
+            stickersByIds[a].clear();
             loadingStickers[a] = false;
             stickersLoaded[a] = false;
         }
@@ -381,6 +394,8 @@ public class MediaDataController extends BaseController {
         stickerSetsById.clear();
         installedStickerSetsById.clear();
         stickerSetsByName.clear();
+        stickerSetDefaultStatuses = null;
+        stickerSetDefaultChannelStatuses = null;
         diceStickerSetsByEmoji.clear();
         diceEmojiStickerSetsById.clear();
         loadingDiceStickerSets.clear();
@@ -431,7 +446,7 @@ public class MediaDataController extends BaseController {
 
     public void checkStickers(int type) {
         if (!loadingStickers[type] && (!stickersLoaded[type] || Math.abs(System.currentTimeMillis() / 1000 - loadDate[type]) >= 60 * 60)) {
-            loadStickers(type, true, false);
+            loadStickers(type, !stickerLoadFailed[type], false);
         }
     }
 
@@ -1360,7 +1375,7 @@ public class MediaDataController extends BaseController {
         return "null";
     }
 
-    private final HashSet<String> loadingStickerSetsKeys = new HashSet<>();
+    private final HashMap<String, Object> loadingStickerSetsKeys = new HashMap<>();
 
     public TLRPC.TL_messages_stickerSet getStickerSet(TLRPC.StickerSet set, boolean cacheOnly) {
         TLRPC.TL_inputStickerSetID stickerSetID = new TLRPC.TL_inputStickerSetID();
@@ -1384,6 +1399,9 @@ public class MediaDataController extends BaseController {
 
     public TLRPC.TL_messages_stickerSet getStickerSet(TLRPC.InputStickerSet inputStickerSet, Integer hash, boolean cacheOnly, boolean runWhenRemote, Utilities.Callback<TLRPC.TL_messages_stickerSet> onResponse) {
         if (inputStickerSet == null) {
+            if (onResponse != null) {
+                onResponse.run(null);
+            }
             return null;
         }
         TLRPC.TL_messages_stickerSet cacheSet = null;
@@ -1396,102 +1414,95 @@ public class MediaDataController extends BaseController {
         } else if (inputStickerSet instanceof TLRPC.TL_inputStickerSetEmojiChannelDefaultStatuses && stickerSetDefaultChannelStatuses != null) {
             cacheSet = stickerSetDefaultChannelStatuses;
         }
-        if (cacheSet != null) {
+        if (cacheSet != null && cacheSet.set != null && cacheSet.documents != null) {
             if (!runWhenRemote && onResponse != null) {
                 onResponse.run(cacheSet);
             }
             return cacheSet;
         }
         final String key = inputSetKey(inputStickerSet);
-        if (onResponse == null && loadingStickerSetsKeys.contains(key)) return null;
-        loadingStickerSetsKeys.add(key);
+        final int generation = stickerSetGeneration;
+        final Object loadingKey = new Object();
+        if (!cacheOnly && onResponse == null && loadingStickerSetsKeys.containsKey(key)) return null;
+        if (!cacheOnly) loadingStickerSetsKeys.put(key, loadingKey);
         if (inputStickerSet instanceof TLRPC.TL_inputStickerSetID) {
             getMessagesStorage().getStorageQueue().postRunnable(() -> {
                 TLRPC.TL_messages_stickerSet cachedSet = getCachedStickerSetInternal(inputStickerSet.id, hash);
                 AndroidUtilities.runOnUIThread(() -> {
-                    if (cachedSet != null) {
-                        loadingStickerSetsKeys.remove(key);
-                        if (onResponse != null) {
-                            onResponse.run(cachedSet);
-                        }
-                        if (cachedSet.set != null) {
-                            stickerSetsById.put(cachedSet.set.id, cachedSet);
-                            stickerSetsByName.put(cachedSet.set.short_name.toLowerCase(), cachedSet);
-                        }
+                    if (generation != stickerSetGeneration) return;
+                    if (cachedSet != null && cachedSet.set != null && cachedSet.documents != null) {
+                        if (!cacheOnly) loadingStickerSetsKeys.remove(key, loadingKey);
+                        stickerSetsById.put(cachedSet.set.id, cachedSet);
+                        if (cachedSet.set.short_name != null) stickerSetsByName.put(cachedSet.set.short_name.toLowerCase(), cachedSet);
                         getNotificationCenter().postNotificationName(NotificationCenter.groupStickersDidLoad, cachedSet.set.id, cachedSet);
+                        if (onResponse != null) onResponse.run(cachedSet);
                     } else if (!cacheOnly) {
                         fetchStickerSetInternal(inputStickerSet, (ok, set) -> {
-                            loadingStickerSetsKeys.remove(key);
-                            if (onResponse != null) {
-                                onResponse.run(set);
-                            }
-                            if (set != null && set.set != null) {
+                            if (generation != stickerSetGeneration) return;
+                            loadingStickerSetsKeys.remove(key, loadingKey);
+                            if (set != null && set.set != null && set.documents != null) {
                                 stickerSetsById.put(set.set.id, set);
-                                stickerSetsByName.put(set.set.short_name.toLowerCase(), set);
+                                if (set.set.short_name != null) stickerSetsByName.put(set.set.short_name.toLowerCase(), set);
                                 saveStickerSetIntoCache(set);
                                 getNotificationCenter().postNotificationName(NotificationCenter.groupStickersDidLoad, set.set.id, set);
                             }
+                            if (onResponse != null) onResponse.run(set);
                         });
                     } else {
-                        loadingStickerSetsKeys.remove(key);
+                        if (onResponse != null) onResponse.run(null);
                     }
                 });
             });
-        } else if (inputStickerSet instanceof TLRPC.TL_inputStickerSetShortName) {
+        } else if (inputStickerSet instanceof TLRPC.TL_inputStickerSetShortName && inputStickerSet.short_name != null) {
             getMessagesStorage().getStorageQueue().postRunnable(() -> {
                 TLRPC.TL_messages_stickerSet cachedSet = getCachedStickerSetInternal(inputStickerSet.short_name.toLowerCase(), hash);
                 AndroidUtilities.runOnUIThread(() -> {
-                    if (cachedSet != null) {
-                        loadingStickerSetsKeys.remove(key);
-                        if (onResponse != null) {
-                            onResponse.run(cachedSet);
-                        }
-                        if (cachedSet.set != null) {
-                            stickerSetsById.put(cachedSet.set.id, cachedSet);
-                            stickerSetsByName.put(cachedSet.set.short_name.toLowerCase(), cachedSet);
-                        }
+                    if (generation != stickerSetGeneration) return;
+                    if (cachedSet != null && cachedSet.set != null && cachedSet.documents != null) {
+                        if (!cacheOnly) loadingStickerSetsKeys.remove(key, loadingKey);
+                        stickerSetsById.put(cachedSet.set.id, cachedSet);
+                        if (cachedSet.set.short_name != null) stickerSetsByName.put(cachedSet.set.short_name.toLowerCase(), cachedSet);
                         getNotificationCenter().postNotificationName(NotificationCenter.groupStickersDidLoad, cachedSet.set.id, cachedSet);
+                        if (onResponse != null) onResponse.run(cachedSet);
                     } else if (!cacheOnly) {
                         fetchStickerSetInternal(inputStickerSet, (ok, set) -> {
-                            loadingStickerSetsKeys.remove(key);
-                            if (onResponse != null) {
-                                onResponse.run(set);
-                            }
-                            if (set != null && set.set != null) {
+                            if (generation != stickerSetGeneration) return;
+                            loadingStickerSetsKeys.remove(key, loadingKey);
+                            if (set != null && set.set != null && set.documents != null) {
                                 stickerSetsById.put(set.set.id, set);
-                                stickerSetsByName.put(set.set.short_name.toLowerCase(), set);
+                                if (set.set.short_name != null) stickerSetsByName.put(set.set.short_name.toLowerCase(), set);
                                 saveStickerSetIntoCache(set);
                                 getNotificationCenter().postNotificationName(NotificationCenter.groupStickersDidLoad, set.set.id, set);
                             }
+                            if (onResponse != null) onResponse.run(set);
                         });
                     } else {
-                        loadingStickerSetsKeys.remove(key);
+                        if (onResponse != null) onResponse.run(null);
                     }
                 });
             });
         } else if (!cacheOnly) {
             fetchStickerSetInternal(inputStickerSet, (ok, set) -> {
-                loadingStickerSetsKeys.remove(key);
-                if (onResponse != null) {
-                    onResponse.run(set);
-                }
+                if (generation != stickerSetGeneration) return;
+                loadingStickerSetsKeys.remove(key, loadingKey);
                 if (set != null) {
                     if (set.set != null) {
                         stickerSetsById.put(set.set.id, set);
-                        stickerSetsByName.put(set.set.short_name.toLowerCase(), set);
+                        if (set.set.short_name != null) stickerSetsByName.put(set.set.short_name.toLowerCase(), set);
                         if (inputStickerSet instanceof TLRPC.TL_inputStickerSetEmojiDefaultStatuses) {
                             stickerSetDefaultStatuses = set;
                         }
-                        if (inputStickerSet instanceof TLRPC.TL_inputStickerSetEmojiDefaultStatuses) {
+                        if (inputStickerSet instanceof TLRPC.TL_inputStickerSetEmojiChannelDefaultStatuses) {
                             stickerSetDefaultChannelStatuses = set;
                         }
                     }
                     saveStickerSetIntoCache(set);
                     getNotificationCenter().postNotificationName(NotificationCenter.groupStickersDidLoad, set.set.id, set);
                 }
+                if (onResponse != null) onResponse.run(set);
             });
         } else {
-            loadingStickerSetsKeys.remove(key);
+            if (onResponse != null) onResponse.run(null);
         }
         return null;
     }
@@ -1552,7 +1563,9 @@ public class MediaDataController extends BaseController {
         if (set == null || set.set == null) {
             return;
         }
+        final int generation = stickerSetGeneration;
         getMessagesStorage().getStorageQueue().postRunnable(() -> {
+            if (generation != stickerSetGeneration) return;
             try {
                 SQLitePreparedStatement state = getMessagesStorage().getDatabase().executeFast("REPLACE INTO stickersets2 VALUES(?, ?, ?, ?, ?)");
                 state.requery();
@@ -1633,6 +1646,70 @@ public class MediaDataController extends BaseController {
     }
 
     private final HashMap<String, ArrayList<Utilities.Callback2<Boolean, TLRPC.TL_messages_stickerSet>>> loadingStickerSets = new HashMap<>();
+    private static final int STICKER_REQUEST_TIMEOUT_MS = 30_000;
+    private static class StickerRequest {
+        int id;
+        Runnable timeout;
+        RequestDelegate onDone;
+    }
+    private final HashMap<Integer, StickerRequest> stickerRequestTimeouts = new HashMap<>();
+    private final NotificationCenter.NotificationCenterDelegate stickerConnectionObserver = (id, account, args) -> {
+        if (account != currentAccount) return;
+        for (StickerRequest request : stickerRequestTimeouts.values()) {
+            AndroidUtilities.cancelRunOnUIThread(request.timeout);
+            if (isStickerConnectionReady()) {
+                AndroidUtilities.runOnUIThread(request.timeout, STICKER_REQUEST_TIMEOUT_MS);
+            }
+        }
+    };
+    private boolean isStickerConnectionReady() {
+        int state = getConnectionsManager().getConnectionState();
+        return state == ConnectionsManager.ConnectionStateConnected || state == ConnectionsManager.ConnectionStateUpdating;
+    }
+    public int sendStickerRequest(TLObject request, RequestDelegate onDone) {
+        final StickerRequest pending = new StickerRequest();
+        pending.onDone = onDone;
+        pending.timeout = () -> {
+            if (!isStickerConnectionReady()) return;
+            if (stickerRequestTimeouts.get(pending.id) != pending) return;
+            getConnectionsManager().cancelRequest(pending.id, true);
+            TLRPC.TL_error error = new TLRPC.TL_error();
+            error.code = -1;
+            error.text = "STICKER_LOAD_TIMEOUT";
+            finishStickerRequest(pending, null, error);
+        };
+        pending.id = getConnectionsManager().sendRequest(request, (response, error) -> AndroidUtilities.runOnUIThread(() ->
+                finishStickerRequest(pending, response, error)), ConnectionsManager.RequestFlagFailOnServerErrors);
+        if (stickerRequestTimeouts.isEmpty()) {
+            getNotificationCenter().addObserver(stickerConnectionObserver, NotificationCenter.didUpdateConnectionState);
+        }
+        stickerRequestTimeouts.put(pending.id, pending);
+        if (isStickerConnectionReady()) AndroidUtilities.runOnUIThread(pending.timeout, STICKER_REQUEST_TIMEOUT_MS);
+        return pending.id;
+    }
+    private void finishStickerRequest(StickerRequest request, TLObject response, TLRPC.TL_error error) {
+        if (stickerRequestTimeouts.get(request.id) != request) return;
+        stickerRequestTimeouts.remove(request.id);
+        AndroidUtilities.cancelRunOnUIThread(request.timeout);
+        if (stickerRequestTimeouts.isEmpty()) {
+            getNotificationCenter().removeObserver(stickerConnectionObserver, NotificationCenter.didUpdateConnectionState);
+        }
+        request.onDone.run(response, error);
+    }
+    public void cancelStickerRequest(int requestId) {
+        cancelStickerRequest(requestId, true);
+    }
+    private void cancelStickerRequest(int requestId, boolean notify) {
+        StickerRequest request = stickerRequestTimeouts.get(requestId);
+        if (request != null) {
+            getConnectionsManager().cancelRequest(requestId, true);
+            if (!notify) request.onDone = (response, error) -> {};
+            TLRPC.TL_error error = new TLRPC.TL_error();
+            error.code = -1;
+            error.text = "STICKER_LOAD_CANCELLED";
+            finishStickerRequest(request, null, error);
+        }
+    }
 
     private void fetchStickerSetInternal(TLRPC.InputStickerSet inputStickerSet, Utilities.Callback2<Boolean, TLRPC.TL_messages_stickerSet> onDone) {
         if (onDone == null) {
@@ -1650,20 +1727,21 @@ public class MediaDataController extends BaseController {
         loading.add(onDone);
         TLRPC.TL_messages_getStickerSet req = new TLRPC.TL_messages_getStickerSet();
         req.stickerset = inputStickerSet;
-        getConnectionsManager().sendRequest(req, (response, error) -> {
-            AndroidUtilities.runOnUIThread(() -> {
-                ArrayList<Utilities.Callback2<Boolean, TLRPC.TL_messages_stickerSet>> loadingCallbacks = loadingStickerSets.get(key);
-                if (loadingCallbacks != null) {
-                    for (int i = 0; i < loadingCallbacks.size(); ++i) {
-                        if (response != null) {
-                            loadingCallbacks.get(i).run(true, (TLRPC.TL_messages_stickerSet) response);
-                        } else {
-                            loadingCallbacks.get(i).run(false, null);
-                        }
-                    }
+        final ArrayList<Utilities.Callback2<Boolean, TLRPC.TL_messages_stickerSet>> callbacks = loading;
+        sendStickerRequest(req, (response, error) -> {
+            if (loadingStickerSets.get(key) != callbacks) return;
+            loadingStickerSets.remove(key);
+            loadingStickerSetsKeys.remove(key);
+            TLRPC.TL_messages_stickerSet set = error == null && response instanceof TLRPC.TL_messages_stickerSet
+                    ? (TLRPC.TL_messages_stickerSet) response : null;
+            if (set != null && (set.set == null || set.documents == null)) set = null;
+            for (int i = 0; i < callbacks.size(); ++i) {
+                try {
+                    callbacks.get(i).run(set != null, set);
+                } catch (Exception e) {
+                    FileLog.e(e);
                 }
-                loadingStickerSets.remove(key);
-            });
+            }
         });
     }
 
@@ -1933,6 +2011,10 @@ public class MediaDataController extends BaseController {
     }
 
     public void loadRecents(int type, boolean gif, boolean cache, boolean force) {
+        if (cache && !gif && type == TYPE_IMAGE) {
+            if (stickerLoadFailed[TYPE_IMAGE]) checkStickers(TYPE_IMAGE);
+            if (stickerLoadFailed[TYPE_EMOJIPACKS]) checkStickers(TYPE_EMOJIPACKS);
+        }
         if (gif) {
             if (loadingRecentGifs) {
                 return;
@@ -2668,16 +2750,22 @@ public class MediaDataController extends BaseController {
         }
     }
 
-    private void processLoadStickersResponse(int type, TLRPC.TL_messages_allStickers res) {
-        processLoadStickersResponse(type, res, null);
-    }
-
-    private void processLoadStickersResponse(int type, TLRPC.TL_messages_allStickers res, Runnable onDone) {
+    private void processLoadStickersResponse(int type, int generation, TLRPC.TL_messages_allStickers res, Runnable onDone) {
+        if (!isCurrentStickerLoad(type, generation)) return;
         ArrayList<TLRPC.TL_messages_stickerSet> newStickerArray = new ArrayList<>();
         if (res.sets.isEmpty()) {
-            processLoadedStickers(type, newStickerArray, false, (int) (System.currentTimeMillis() / 1000), res.hash2, onDone);
+            processLoadedStickers(type, generation, newStickerArray, false, (int) (System.currentTimeMillis() / 1000), res.hash2, onDone);
         } else {
-            LongSparseArray<TLRPC.TL_messages_stickerSet> newStickerSets = new LongSparseArray<>();
+            final int[] remaining = {res.sets.size()};
+            final boolean[] failed = {false};
+            Runnable complete = () -> {
+                if (--remaining[0] != 0 || !isCurrentStickerLoad(type, generation)) return;
+                if (failed[0]) {
+                    failLoadingStickers(type, generation, onDone);
+                } else {
+                    processLoadedStickers(type, generation, newStickerArray, false, (int) (System.currentTimeMillis() / 1000), res.hash2, onDone);
+                }
+            };
             for (int a = 0; a < res.sets.size(); a++) {
                 TLRPC.StickerSet stickerSet = res.sets.get(a);
 
@@ -2686,12 +2774,9 @@ public class MediaDataController extends BaseController {
                     oldSet.set.archived = stickerSet.archived;
                     oldSet.set.installed = stickerSet.installed;
                     oldSet.set.official = stickerSet.official;
-                    newStickerSets.put(oldSet.set.id, oldSet);
                     newStickerArray.add(oldSet);
 
-                    if (newStickerSets.size() == res.sets.size()) {
-                        processLoadedStickers(type, newStickerArray, false, (int) (System.currentTimeMillis() / 1000), res.hash2);
-                    }
+                    complete.run();
                     continue;
                 }
 
@@ -2703,23 +2788,16 @@ public class MediaDataController extends BaseController {
                 req.stickerset.id = stickerSet.id;
                 req.stickerset.access_hash = stickerSet.access_hash;
 
-                getConnectionsManager().sendRequest(req, (response, error) -> AndroidUtilities.runOnUIThread(() -> {
-                    TLRPC.TL_messages_stickerSet res1 = (TLRPC.TL_messages_stickerSet) response;
-                    newStickerArray.set(index, res1);
-                    newStickerSets.put(stickerSet.id, res1);
-                    if (newStickerSets.size() == res.sets.size()) {
-                        for (int a1 = 0; a1 < newStickerArray.size(); a1++) {
-                            if (newStickerArray.get(a1) == null) {
-                                newStickerArray.remove(a1);
-                                a1--;
-                            }
-                        }
-                        processLoadedStickers(type, newStickerArray, false, (int) (System.currentTimeMillis() / 1000), res.hash2);
+                sendStickerRequest(req, (response, error) -> {
+                    if (!isCurrentStickerLoad(type, generation)) return;
+                    if (error == null && response instanceof TLRPC.TL_messages_stickerSet && ((TLRPC.TL_messages_stickerSet) response).set != null
+                            && ((TLRPC.TL_messages_stickerSet) response).documents != null) {
+                        newStickerArray.set(index, (TLRPC.TL_messages_stickerSet) response);
+                    } else {
+                        failed[0] = true;
                     }
-                }));
-            }
-            if (onDone != null) {
-                onDone.run();
+                    complete.run();
+                });
             }
         }
     }
@@ -2993,7 +3071,7 @@ public class MediaDataController extends BaseController {
     public void loadStickers(int type, boolean cache, boolean force, boolean scheduleIfLoading, Utilities.Callback<ArrayList<TLRPC.TL_messages_stickerSet>> onFinish) {
         if (loadingStickers[type]) {
             if (scheduleIfLoading) {
-                scheduledLoadStickers[type] = () -> loadStickers(type, false, force, false, onFinish);
+                scheduledLoadStickers[type] = () -> loadStickers(type, false, force, true, onFinish);
             } else {
                 if (onFinish != null) {
                     onFinish.run(null);
@@ -3019,6 +3097,10 @@ public class MediaDataController extends BaseController {
             loadArchivedStickersCount(type, cache);
         }
         loadingStickers[type] = true;
+        final int generation = ++stickerLoadGeneration[type];
+        final Runnable finish = () -> {
+            if (onFinish != null) onFinish.run(null);
+        };
         if (cache) {
             getMessagesStorage().getStorageQueue().postRunnable(() -> {
                 ArrayList<TLRPC.TL_messages_stickerSet> newStickerArray = new ArrayList<>();
@@ -3047,7 +3129,7 @@ public class MediaDataController extends BaseController {
                         cursor.dispose();
                     }
                 }
-                processLoadedStickers(type, newStickerArray, true, date, hash, () -> {
+                processLoadedStickers(type, generation, newStickerArray, true, date, hash, () -> {
                     if (onFinish != null) {
                         onFinish.run(newStickerArray);
                     }
@@ -3061,30 +3143,20 @@ public class MediaDataController extends BaseController {
                 for (int a = 0, size = featuredStickerSets[emoji ? 1 : 0].size(); a < size; a++) {
                     response.sets.add(featuredStickerSets[emoji ? 1 : 0].get(a).set);
                 }
-                processLoadStickersResponse(type, response, () -> {
-                    if (onFinish != null) {
-                        onFinish.run(null);
-                    }
-                });
+                processLoadStickersResponse(type, generation, response, finish);
             } else if (type == TYPE_EMOJI) {
                 TLRPC.TL_messages_getStickerSet req = new TLRPC.TL_messages_getStickerSet();
                 req.stickerset = new TLRPC.TL_inputStickerSetAnimatedEmoji();
 
-                getConnectionsManager().sendRequest(req, (response, error) -> {
-                    if (response instanceof TLRPC.TL_messages_stickerSet) {
+                sendStickerRequest(req, (response, error) -> {
+                    if (!isCurrentStickerLoad(type, generation)) return;
+                    if (error == null && response instanceof TLRPC.TL_messages_stickerSet && ((TLRPC.TL_messages_stickerSet) response).set != null
+                            && ((TLRPC.TL_messages_stickerSet) response).documents != null) {
                         ArrayList<TLRPC.TL_messages_stickerSet> newStickerArray = new ArrayList<>();
                         newStickerArray.add((TLRPC.TL_messages_stickerSet) response);
-                        processLoadedStickers(type, newStickerArray, false, (int) (System.currentTimeMillis() / 1000), calcStickersHash(newStickerArray), () -> {
-                            if (onFinish != null) {
-                                onFinish.run(null);
-                            }
-                        });
+                        processLoadedStickers(type, generation, newStickerArray, false, (int) (System.currentTimeMillis() / 1000), calcStickersHash(newStickerArray), finish);
                     } else {
-                        processLoadedStickers(type, null, false, (int) (System.currentTimeMillis() / 1000), 0, () -> {
-                            if (onFinish != null) {
-                                onFinish.run(null);
-                            }
-                        });
+                        failLoadingStickers(type, generation, finish);
                     }
                 });
             } else {
@@ -3100,28 +3172,25 @@ public class MediaDataController extends BaseController {
                     req = new TLRPC.TL_messages_getMaskStickers();
                     hash = ((TLRPC.TL_messages_getMaskStickers) req).hash = force ? 0 : loadHash[type];
                 }
-                getConnectionsManager().sendRequest(req, (response, error) -> AndroidUtilities.runOnUIThread(() -> {
-                    if (response instanceof TLRPC.TL_messages_allStickers) {
-                        processLoadStickersResponse(type, (TLRPC.TL_messages_allStickers) response, () -> {
-                            if (onFinish != null) {
-                                onFinish.run(null);
-                            }
-                        });
+                sendStickerRequest(req, (response, error) -> {
+                    if (!isCurrentStickerLoad(type, generation)) return;
+                    if (error == null && response instanceof TLRPC.TL_messages_allStickers) {
+                        processLoadStickersResponse(type, generation, (TLRPC.TL_messages_allStickers) response, finish);
+                    } else if (error == null && response instanceof TLRPC.TL_messages_allStickersNotModified && hash != 0) {
+                        processLoadedStickers(type, generation, null, false, (int) (System.currentTimeMillis() / 1000), hash, finish);
                     } else {
-                        processLoadedStickers(type, null, false, (int) (System.currentTimeMillis() / 1000), hash, () -> {
-                            if (onFinish != null) {
-                                onFinish.run(null);
-                            }
-                        });
+                        failLoadingStickers(type, generation, finish);
                     }
-                }));
+                });
             }
         }
     }
 
     private void putStickersToCache(int type, ArrayList<TLRPC.TL_messages_stickerSet> stickers, int date, long hash) {
+        final int generation = stickerSetGeneration;
         ArrayList<TLRPC.TL_messages_stickerSet> stickersFinal = stickers != null ? new ArrayList<>(stickers) : null;
         getMessagesStorage().getStorageQueue().postRunnable(() -> {
+            if (generation != stickerSetGeneration) return;
             try {
                 if (stickersFinal != null) {
                     SQLitePreparedStatement state = getMessagesStorage().getDatabase().executeFast("REPLACE INTO stickers_v2 VALUES(?, ?, ?, ?)");
@@ -3143,9 +3212,10 @@ public class MediaDataController extends BaseController {
                     data.reuse();
                     state.dispose();
                 } else {
-                    SQLitePreparedStatement state = getMessagesStorage().getDatabase().executeFast("UPDATE stickers_v2 SET date = ?");
+                    SQLitePreparedStatement state = getMessagesStorage().getDatabase().executeFast("UPDATE stickers_v2 SET date = ? WHERE id = ?");
                     state.requery();
                     state.bindLong(1, date);
+                    state.bindInteger(2, type + 1);
                     state.step();
                     state.dispose();
                 }
@@ -3216,34 +3286,38 @@ public class MediaDataController extends BaseController {
         return acc;
     }
 
-    private void processLoadedStickers(int type, ArrayList<TLRPC.TL_messages_stickerSet> res, boolean cache, int date, long hash) {
-        processLoadedStickers(type, res, cache, date, hash, null);
+    private boolean isCurrentStickerLoad(int type, int generation) {
+        return loadingStickers[type] && stickerLoadGeneration[type] == generation;
     }
 
-    private void processLoadedStickers(int type, ArrayList<TLRPC.TL_messages_stickerSet> res, boolean cache, int date, long hash, Runnable onFinish) {
-        AndroidUtilities.runOnUIThread(() -> {
-            loadingStickers[type] = false;
+    private void finishLoadingStickers(int type, int generation, Runnable onFinish) {
+        if (!isCurrentStickerLoad(type, generation)) return;
+        loadingStickers[type] = false;
+        Runnable scheduled = scheduledLoadStickers[type];
+        scheduledLoadStickers[type] = null;
+        try {
+            if (onFinish != null) onFinish.run();
+        } finally {
+            if (scheduled != null) scheduled.run();
+        }
+    }
+    private void failLoadingStickers(int type, int generation, Runnable onFinish) {
+        if (!isCurrentStickerLoad(type, generation)) return;
+        stickerLoadFailed[type] = true;
+        loadDate[type] = 0;
+        finishLoadingStickers(type, generation, onFinish);
+    }
+    private void processLoadedStickers(int type, int generation, ArrayList<TLRPC.TL_messages_stickerSet> res, boolean cache, int date, long hash, Runnable onFinish) {
+        final Runnable finish = () -> {
+            if (!isCurrentStickerLoad(type, generation)) return;
             stickersLoaded[type] = true;
-            if (scheduledLoadStickers[type] != null) {
-                scheduledLoadStickers[type].run();
-                scheduledLoadStickers[type] = null;
+            if (!cache) stickerLoadFailed[type] = false;
+            finishLoadingStickers(type, generation, onFinish);
+            if (cache && stickerLoadGeneration[type] == generation && (res == null || BuildVars.DEBUG_PRIVATE_VERSION || Math.abs(System.currentTimeMillis() / 1000 - date) >= 60 * 60)) {
+                loadStickers(type, false, false);
             }
-        });
+        };
         Utilities.stageQueue.postRunnable(() -> {
-            if (cache && (res == null || BuildVars.DEBUG_PRIVATE_VERSION || Math.abs(System.currentTimeMillis() / 1000 - date) >= 60 * 60) || !cache && res == null && hash == 0) {
-                AndroidUtilities.runOnUIThread(() -> {
-                    if (res != null && hash != 0) {
-                        loadHash[type] = hash;
-                    }
-                    loadStickers(type, false, false);
-                }, res == null && !cache ? 1000 : 0);
-                if (res == null) {
-                    if (onFinish != null) {
-                        onFinish.run();
-                    }
-                    return;
-                }
-            }
             if (res != null) {
                 try {
                     ArrayList<TLRPC.TL_messages_stickerSet> stickerSetsNew = new ArrayList<>();
@@ -3255,12 +3329,15 @@ public class MediaDataController extends BaseController {
 
                     for (int a = 0; a < res.size(); a++) {
                         TLRPC.TL_messages_stickerSet stickerSet = res.get(a);
-                        if (stickerSet == null || removingStickerSetsUndos.indexOfKey(stickerSet.set.id) >= 0) {
+                        if (stickerSet == null || stickerSet.set == null) {
+                            throw new IllegalArgumentException("Invalid sticker set in loaded list");
+                        }
+                        if (removingStickerSetsUndos.indexOfKey(stickerSet.set.id) >= 0) {
                             continue;
                         }
                         stickerSetsNew.add(stickerSet);
                         stickerSetsByIdNew.put(stickerSet.set.id, stickerSet);
-                        stickerSetsByNameNew.put(stickerSet.set.short_name, stickerSet);
+                        if (stickerSet.set.short_name != null) stickerSetsByNameNew.put(stickerSet.set.short_name, stickerSet);
 
                         for (int b = 0; b < stickerSet.documents.size(); b++) {
                             TLRPC.Document document = stickerSet.documents.get(b);
@@ -3295,14 +3372,15 @@ public class MediaDataController extends BaseController {
                         }
                     }
 
-                    if (!cache) {
-                        putStickersToCache(type, stickerSetsNew, date, hash);
-                    }
                     AndroidUtilities.runOnUIThread(() -> {
+                        if (!isCurrentStickerLoad(type, generation)) return;
+                        if (!cache) {
+                            putStickersToCache(type, stickerSetsNew, date, hash);
+                        }
                         for (int a = 0; a < stickerSets[type].size(); a++) {
                             TLRPC.StickerSet set = stickerSets[type].get(a).set;
                             stickerSetsById.remove(set.id);
-                            stickerSetsByName.remove(set.short_name);
+                            if (set.short_name != null) stickerSetsByName.remove(set.short_name);
                             if (type != TYPE_FEATURED && type != TYPE_FEATURED_EMOJIPACKS && type != TYPE_EMOJI) {
                                 installedStickerSetsById.remove(set.id);
                             }
@@ -3325,27 +3403,21 @@ public class MediaDataController extends BaseController {
                             allStickersFeatured = allStickersNew;
                         }
                         getNotificationCenter().postNotificationName(NotificationCenter.stickersDidLoad, type, true);
-                        if (onFinish != null) {
-                            onFinish.run();
-                        }
+                        finish.run();
                     });
                 } catch (Throwable e) {
                     FileLog.e(e);
-                    if (onFinish != null) {
-                        onFinish.run();
-                    }
+                    AndroidUtilities.runOnUIThread(() -> failLoadingStickers(type, generation, onFinish));
                 }
             } else if (!cache) {
-                AndroidUtilities.runOnUIThread(() -> loadDate[type] = date);
-                putStickersToCache(type, null, date, 0);
-
-                if (onFinish != null) {
-                    onFinish.run();
-                }
+                AndroidUtilities.runOnUIThread(() -> {
+                    if (!isCurrentStickerLoad(type, generation)) return;
+                    loadDate[type] = date;
+                    putStickersToCache(type, null, date, 0);
+                    finish.run();
+                });
             } else {
-                if (onFinish != null) {
-                    onFinish.run();
-                }
+                AndroidUtilities.runOnUIThread(finish);
             }
         });
     }
@@ -10139,10 +10211,10 @@ public class MediaDataController extends BaseController {
                 final int reqId = getConnectionsManager().sendRequestTyped(req, AndroidUtilities::runOnUIThread, (res, err) -> {
                     loadingSearchStickersKeys.remove(key);
                     SearchStickersResult finalResult = cached != null ? cached : new SearchStickersResult();
-                    if (res instanceof TLRPC.TL_messages_foundStickers) {
+                    if (err == null && res instanceof TLRPC.TL_messages_foundStickers) {
                         finalResult.apply((TLRPC.TL_messages_foundStickers) res);
+                        searchStickerResults.put(key, finalResult);
                     }
-                    searchStickerResults.put(key, finalResult);
                     whenDone.run(finalResult.documents);
                 });
                 loadingSearchStickersKeys.put(key, reqId);

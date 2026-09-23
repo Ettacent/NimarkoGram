@@ -1025,11 +1025,36 @@ public class ConnectionsManager extends BaseController {
     public static void onInternalPushReceived(final int currentAccount) {
         KeepAliveJob.startJob();
     }
+    private static final ThreadLocal<ProxySettings> proxySettingsDispatch = new ThreadLocal<>();
 
     public static void setProxySettings(boolean enabled, String address, int port, String username, String password, String secret) {
-        setProxySettings(enabled, legacyProxySettings(address, port, username, password, secret));
+        ProxySettings original = proxySettingsDispatch.get();
+        proxySettingsDispatch.remove();
+        ProxySettings settings = original != null
+                && java.util.Objects.equals(address, original.getAddress()) && port == original.getPort()
+                && java.util.Objects.equals(username, original.getUser())
+                && java.util.Objects.equals(password, original.getPassword())
+                && java.util.Objects.equals(secret, original.getSecret())
+                ? original : legacyProxySettings(address, port, username, password, secret);
+        try {
+            applyProxySettings(enabled, settings);
+        } finally {
+            if (original != null) proxySettingsDispatch.set(original);
+        }
     }
     public static void setProxySettings(boolean enabled, ProxySettings settings) {
+        ProxySettings previous = proxySettingsDispatch.get();
+        ProxySettings value = settings != null ? settings : ProxySettings.EMPTY;
+        proxySettingsDispatch.set(value);
+        try {
+            setProxySettings(enabled, value.getAddress(), value.getPort(), value.getUser(),
+                    value.getPassword(), value.getSecret());
+        } finally {
+            if (previous == null) proxySettingsDispatch.remove();
+            else proxySettingsDispatch.set(previous);
+        }
+    }
+    private static void applyProxySettings(boolean enabled, ProxySettings settings) {
         String address = "";
         int port = 0;
         String username = "";

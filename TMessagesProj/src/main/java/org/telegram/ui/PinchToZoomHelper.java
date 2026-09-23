@@ -107,6 +107,29 @@ public class PinchToZoomHelper {
     private long lastOverlayFrameTime;
     private float overlayFrameDelta = 16f;
     private float[] clipTopBottom = new float[2];
+    private final int[] backdropRootLocation = new int[2];
+    private final int[] backdropDecorLocation = new int[2];
+    public void drawBackdrop(Canvas canvas, View sourceRoot) {
+        if (!inOverlayMode || isSimple || overlayView == null || childImage == null
+                || parentView == null || sourceRoot == null || hasMediaSpoiler
+                || isHardwareVideo || childTextureViewContainer != null) {
+            return;
+        }
+        sourceRoot.getLocationInWindow(backdropRootLocation);
+        parentView.getLocationInWindow(backdropDecorLocation);
+        int save = canvas.save();
+        childImage.setSkipUpdateFrame(true);
+        if (fullImage != null) fullImage.setSkipUpdateFrame(true);
+        try {
+            canvas.translate(backdropDecorLocation[0] - backdropRootLocation[0],
+                    backdropDecorLocation[1] - backdropRootLocation[1]);
+            overlayView.drawImage(canvas, false);
+        } finally {
+            childImage.setSkipUpdateFrame(false);
+            if (fullImage != null) fullImage.setSkipUpdateFrame(false);
+            canvas.restoreToCount(save);
+        }
+    }
 
     private boolean isHardwareVideo;
 
@@ -393,6 +416,7 @@ public class PinchToZoomHelper {
             child.getParent().requestDisallowInterceptTouchEvent(false);
         }
         resetPinchGestureState();
+        if (overlayView != null) overlayView.setVisibility(View.INVISIBLE);
         if (inOverlayMode) {
             if (callback != null) {
                 callback.onZoomFinished(messageObject);
@@ -595,11 +619,11 @@ public class PinchToZoomHelper {
                 clipTop = clipTopBottom[0] * (1f - progress);
                 clipBottom = clipTopBottom[1] * (1f - progress) + getMeasuredHeight() * progress;
                 canvas.clipRect(0, clipTop, getMeasuredWidth(), clipBottom);
-                drawImage(canvas);
+                drawImage(canvas, true);
                 super.dispatchDraw(canvas);
                 canvas.restore();
             } else {
-                drawImage(canvas);
+                drawImage(canvas, true);
                 super.dispatchDraw(canvas);
             }
 
@@ -609,7 +633,7 @@ public class PinchToZoomHelper {
             drawOverlays(canvas, (1f - progress), parentOffsetX, parentOffsetY, clipTop, clipBottom);
         }
 
-        private void drawImage(Canvas canvas) {
+        private void drawImage(Canvas canvas, boolean advanceFrame) {
             if (!inOverlayMode || child == null || parentView == null) {
                 return;
             }
@@ -624,7 +648,7 @@ public class PinchToZoomHelper {
             canvas.scale(s, s, parentOffsetX + pinchCenterX, parentOffsetY + pinchCenterY);
             canvas.translate(parentOffsetX + pinchTranslationX * finishProgress, parentOffsetY + pinchTranslationY * finishProgress);
             if (fullImage != null && fullImage.hasNotThumb()) {
-                if (progressToFullView != 1) {
+                if (advanceFrame && progressToFullView != 1) {
                     progressToFullView += overlayFrameDelta / 150f;
                     if (progressToFullView > 1) {
                         progressToFullView = 1f;
@@ -632,8 +656,9 @@ public class PinchToZoomHelper {
                         invalidateViews();
                     }
                 }
-                fullImage.setAlpha(progressToFullView);
             }
+            float fullImageAlpha = progressToFullView * (finishTransition != null ? finishProgress : 1f);
+            if (fullImage != null) fullImage.setAlpha(fullImageAlpha);
 
             float x = imageX;
             float y = imageY;
@@ -657,7 +682,7 @@ public class PinchToZoomHelper {
 
             if (!isHardwareVideo) {
                 if (childImage != null) {
-                    if (progressToFullView != 1f) {
+                    if (fullImageAlpha != 1f) {
                         if (childImage.getLottieAnimation() != null || childImage.getAnimation() != null || fullImage.getLottieAnimation() != null || fullImage.getAnimation() != null) {
                             invalidate();
                         }
