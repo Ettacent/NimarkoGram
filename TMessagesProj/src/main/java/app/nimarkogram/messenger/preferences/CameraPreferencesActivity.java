@@ -20,6 +20,8 @@ import android.text.SpannableString;
 import android.view.View;
 
 import org.telegram.messenger.R;
+import org.telegram.ui.RoundVideoSettingsActivity;
+import org.telegram.ui.Components.InstantCameraViewBase;
 import org.telegram.ui.Components.UItem;
 import org.telegram.ui.Components.UniversalAdapter;
 
@@ -57,6 +59,7 @@ public class CameraPreferencesActivity extends NimarkoUniversalPreferencesActivi
 
     private final int roundVideoSizeRow = 17;
     private final int roundVideoBitrateRow = 18;
+    private final int roundVideoSettingsRow = 19;
 
     private boolean cameraImprovementsExpanded = false;
 
@@ -72,10 +75,16 @@ public class CameraPreferencesActivity extends NimarkoUniversalPreferencesActivi
     }
 
     @Override
+    public void onResume() {
+        super.onResume();
+        if (listView != null && listView.adapter != null) listView.adapter.update(false);
+    }
+    @Override
     public void fillItems(ArrayList<UItem> items, UniversalAdapter adapter) {
         final boolean cameraX = CameraXUtils.isCurrentCameraCameraX();
         final boolean camera2 = app.nimarkogram.messenger.NimarkoConfig.cameraType == NimarkoConfig.CAMERA_2;
         final boolean advanced = cameraX || camera2;
+        final boolean upstreamRoundCamera2 = InstantCameraViewBase.isUsingCamera2Implementation();
 
         if (CameraXUtils.isCameraXSupported()) {
             items.add(UItem.asHeader(getString(R.string.CP_CameraType)));
@@ -102,8 +111,12 @@ public class CameraPreferencesActivity extends NimarkoUniversalPreferencesActivi
         items.add(UItem.asShadow(null));
 
         items.add(UItem.asHeader(getString(R.string.CP_Header_Videomessages)));
-        items.add(UItem.asButton(rearCamRow, getString(R.string.NM_CAM_RoundCamera), getRoundCameraText()));
-        if (advanced) {
+        if (upstreamRoundCamera2) {
+            items.add(UItem.asButton(roundVideoSettingsRow, getString(R.string.RoundVideoSettings), "Camera2"));
+        } else {
+            items.add(UItem.asButton(rearCamRow, getString(R.string.NM_CAM_RoundCamera), getRoundCameraText()));
+        }
+        if (advanced && !upstreamRoundCamera2) {
             items.add(SettingsHelper.asSwitchCG(cameraUseDualCameraRow, getString(R.string.CP_CameraDualCamera), getString(R.string.CP_CameraDualCamera_Desc))
                     .setChecked(app.nimarkogram.messenger.NimarkoConfig.useDualCamera)
             );
@@ -115,9 +128,13 @@ public class CameraPreferencesActivity extends NimarkoUniversalPreferencesActivi
         }
         items.add(UItem.asShadow(null));
 
-        items.add(UItem.asHeader(getString(R.string.NM_CAM_VideoQuality)));
-        items.add(UItem.asButton(roundVideoSizeRow, getString(R.string.NM_CAM_RoundVideoSize), getRoundVideoSizeText()));
-        items.add(UItem.asButton(roundVideoBitrateRow, getString(R.string.NM_CAM_RoundVideoBitrate), getRoundVideoBitrateText()));
+        if (!upstreamRoundCamera2) {
+            items.add(UItem.asHeader(getString(R.string.NM_CAM_VideoQuality)));
+            items.add(UItem.asButton(roundVideoSizeRow, getString(R.string.NM_CAM_RoundVideoSize), getRoundVideoSizeText()));
+            items.add(UItem.asButton(roundVideoBitrateRow, getString(R.string.NM_CAM_RoundVideoBitrate), getRoundVideoBitrateText()));
+        } else if (advanced) {
+            items.add(UItem.asHeader(getString(R.string.CP_Category_Camera)));
+        }
         if (advanced) {
             items.add(UItem.asButton(cameraXQualityRow, getString(R.string.CP_CameraQuality),
                     getCameraQualityText(app.nimarkogram.messenger.NimarkoConfig.cameraResolution)));
@@ -162,7 +179,9 @@ public class CameraPreferencesActivity extends NimarkoUniversalPreferencesActivi
 
     @Override
     public void onClick(UItem item, View view, int position, float x, float y) {
-        if (item.id == disableAttachCameraRow) {
+        if (item.id == roundVideoSettingsRow) {
+            presentFragment(new RoundVideoSettingsActivity());
+        } else if (item.id == disableAttachCameraRow) {
             NimarkoConfig.toggleDisableAttachCamera();
             updateCheckState(view, app.nimarkogram.messenger.NimarkoConfig.disableAttachCamera);
 

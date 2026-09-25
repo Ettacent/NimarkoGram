@@ -105,3 +105,4 @@ public class Transitions {
         for forbidden in ('userInfo != null', 'mediaCount', 'loadFullUser', 'Thread.sleep',
                           'scrollToPosition', 'setPadding'):
             self.assertNotIn(forbidden, schedule)
+

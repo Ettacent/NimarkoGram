@@ -69,6 +69,28 @@ public class ChatActivitySideControlsButtonsLayout extends FrameLayout implement
 
     private ButtonOnClickListener onClickListener;
     private ButtonOnLongClickListener onLongClickListener;
+    private Runnable onPositionsChanged;
+    public void setOnPositionsChanged(Runnable listener) {
+        onPositionsChanged = listener;
+    }
+    public float getObstructionTop(float left, float right) {
+        if (getVisibility() != VISIBLE || getAlpha() <= 0f) {
+            return Float.POSITIVE_INFINITY;
+        }
+        float top = Float.POSITIVE_INFINITY;
+        for (ButtonHolder holder : buttonHolders) {
+            if (holder == null || holder.button.getVisibility() != VISIBLE || holder.button.getAlpha() <= 0f) {
+                continue;
+            }
+            final ChatActivityBlurredRoundPageDownButton button = holder.button;
+            final float l = getX() + button.getX() + button.getPivotX() * (1f - button.getScaleX());
+            final float r = l + button.getWidth() * button.getScaleX();
+            if (left < r && right > l) {
+                top = Math.min(top, getY() + button.getY() + button.getPivotY() * (1f - button.getScaleY()));
+            }
+        }
+        return top;
+    }
 
     public ChatActivitySideControlsButtonsLayout(@NonNull Context context,
                                             Theme.ResourcesProvider resourcesProvider,
@@ -189,6 +211,9 @@ public class ChatActivitySideControlsButtonsLayout extends FrameLayout implement
             final int gap = dp(10 + 10 * counterVisibility);
 
             totalHeight += (height + gap) * visibility;
+        }
+        if (onPositionsChanged != null) {
+            onPositionsChanged.run();
         }
     }
 

@@ -893,6 +893,9 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
         default boolean canDrawOutboundsContent() {
             return true;
         }
+        default float getUnobscuredShareButtonY(ChatMessageCell cell, float x, float y, float size) {
+            return y;
+        }
 
         default boolean didPressAnimatedEmoji(ChatMessageCell cell, AnimatedEmojiSpan span) {
             return false;
@@ -6726,11 +6729,10 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
     protected void onDetachedFromWindow() {
         super.onDetachedFromWindow();
 
-        NotificationCenter.getGlobalInstance().removeObserver(this, NotificationCenter.startSpoilers);
-        NotificationCenter.getGlobalInstance().removeObserver(this, NotificationCenter.stopSpoilers);
-        NotificationCenter.getGlobalInstance().removeObserver(this, NotificationCenter.emojiLoaded);
-        NotificationCenter.getGlobalInstance().removeObserver(this, NotificationCenter.didUpdatePremiumGiftStickers);
-        NotificationCenter.getInstance(currentAccount).removeObserver(this, NotificationCenter.userInfoDidLoad);
+        if (observersGroup != null) {
+            observersGroup.removeAllObservers();
+            observersGroup = null;
+        }
 
         cancelShakeAnimation();
         if (checkBox != null) {
@@ -6828,17 +6830,24 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
 
         Choreographer60FpsContent.getInstance().removeFrameCallback(invalidateOutboundsRunnable);
     }
+    private NotificationCenter.ObserversGroup observersGroup;
 
     @Override
     protected void onAttachedToWindow() {
         super.onAttachedToWindow();
         resetOnlineIndicatorOnAttach();
 
-        NotificationCenter.getGlobalInstance().addObserver(this, NotificationCenter.startSpoilers);
-        NotificationCenter.getGlobalInstance().addObserver(this, NotificationCenter.stopSpoilers);
-        NotificationCenter.getGlobalInstance().addObserver(this, NotificationCenter.emojiLoaded);
-        NotificationCenter.getGlobalInstance().addObserver(this, NotificationCenter.didUpdatePremiumGiftStickers);
-        NotificationCenter.getInstance(currentAccount).addObserver(this, NotificationCenter.userInfoDidLoad);
+        if (observersGroup != null) {
+            observersGroup.removeAllObservers();
+            observersGroup = null;
+        }
+        observersGroup = NotificationCenter.getInstance(currentAccount)
+            .createObserversGroup(this)
+            .add(NotificationCenter.userInfoDidLoad)
+            .addGlobal(NotificationCenter.startSpoilers)
+            .addGlobal(NotificationCenter.stopSpoilers)
+            .addGlobal(NotificationCenter.emojiLoaded)
+            .addGlobal(NotificationCenter.didUpdatePremiumGiftStickers);
 
         if (currentMessageObject != null) {
             currentMessageObject.animateComments = false;
@@ -22428,6 +22437,9 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
             sideStartX -= offsetX;
             sideStartY -= offsetY;
         }
+        if (!fromQuickShare && drawSideButton == 1 && !currentMessageObject.isOutOwner() && delegate != null) {
+            sideStartY = delegate.getUnobscuredShareButtonY(this, sideStartX, sideStartY, dp(32));
+        }
         sideButtonVisible = true;
         if (drawSideButton == 3) {
             if (!(enterTransitionInProgress && !currentMessageObject.isVoice())) {
@@ -28852,7 +28864,8 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
 
     @Override
     public void setAlpha(float alpha) {
-        if ((alpha == 1f) != (getAlpha() == 1)) {
+        final boolean outboundsOwnerChanged = (alpha == 1f) != (getAlpha() == 1f);
+        if (outboundsOwnerChanged) {
             invalidate();
         }
         if (ALPHA_PROPERTY_WORKAROUND) {
@@ -28860,6 +28873,9 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
             invalidate();
         } else {
             super.setAlpha(alpha);
+        }
+        if (outboundsOwnerChanged) {
+            invalidateOutbounds();
         }
         if ((currentPosition == null || currentPosition.minY == 0 && currentPosition.minX == 0) && !(enterTransitionInProgress && !currentMessageObject.isVoice()) && replyNameLayout != null && replyTextLayout != null ||
                 (currentPosition == null || ((currentPosition.flags & MessageObject.POSITION_FLAG_BOTTOM) != 0 && (currentPosition.flags & MessageObject.POSITION_FLAG_LEFT) != 0)) && !reactionsLayoutInBubble.isSmall) {

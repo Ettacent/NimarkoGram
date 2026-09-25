@@ -36,6 +36,39 @@ public class SettingsSearchCell extends FrameLayout {
     private ImageView imageView;
     private boolean needDivider;
     private int left;
+    private boolean standardLayout;
+    private int textInset() {
+        return standardLayout ? 64 : 71;
+    }
+    private void setStandardLayout(boolean standard) {
+        standardLayout = standard;
+        imageView.setScaleType(standard ? ImageView.ScaleType.FIT_CENTER : ImageView.ScaleType.CENTER);
+        imageView.setLayoutParams(LayoutHelper.createFrame(standard ? 24 : 48, standard ? 24 : 48,
+                LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT,
+                standard ? 22 : 10, standard ? 20 : 8, standard ? 22 : 10, 0));
+        valueTextView.setEllipsize(standard ? TextUtils.TruncateAt.END : null);
+    }
+    public static int standardIcon(ProfileActivity.SearchAdapter.SearchResult result) {
+        switch (result.guid) {
+            case 500: return R.drawable.msg_edit;
+            case 501: case 5: case 105: case 122: case 218: return R.drawable.msg_calls;
+            case 502: return R.drawable.msg_add;
+            case 3: return R.drawable.msg_groups;
+            case 4: return R.drawable.msg_channel;
+            case 8: return R.drawable.msg_contacts;
+            case 101: return R.drawable.msg2_block2;
+            case 102: return R.drawable.msg_recent;
+            case 103: case 222: case 223: case 224: case 225: return R.drawable.msg_gallery;
+            case 110: return R.drawable.settings_devices;
+            case 124: return R.drawable.msg2_autodelete;
+            case 125: return R.drawable.msg2_email;
+            case 220: return R.drawable.pill_proxy;
+            case 302: case 303: case 304: return R.drawable.msg_background;
+            case 604: return R.drawable.msg2_archived_stickers;
+            case 608: case 609: case 610: case 611: return R.drawable.input_smile;
+            default: return result.iconResId != 0 ? result.iconResId : R.drawable.msg_settings;
+        }
+    }
 
     public static class VerticalImageSpan extends ImageSpan {
 
@@ -114,10 +147,9 @@ public class SettingsSearchCell extends FrameLayout {
     public void setTextAndValueAndIcon(CharSequence text, String[] value, int icon, boolean divider) {
         textView.setText(text);
         LayoutParams layoutParams = (LayoutParams) textView.getLayoutParams();
-        layoutParams.leftMargin = AndroidUtilities.dp(LocaleController.isRTL ? 16 : 71);
-        layoutParams.rightMargin = AndroidUtilities.dp(LocaleController.isRTL ? 71 : 16);
-
-        if (value != null) {
+        layoutParams.leftMargin = AndroidUtilities.dp(LocaleController.isRTL ? 16 : textInset());
+        layoutParams.rightMargin = AndroidUtilities.dp(LocaleController.isRTL ? textInset() : 16);
+        if (value != null && value.length > 0) {
             SpannableStringBuilder builder = new SpannableStringBuilder();
             for (int a = 0; a < value.length; a++) {
                 if (a != 0) {
@@ -134,8 +166,8 @@ public class SettingsSearchCell extends FrameLayout {
             layoutParams.topMargin = AndroidUtilities.dp(10);
 
             layoutParams = (LayoutParams) valueTextView.getLayoutParams();
-            layoutParams.leftMargin = AndroidUtilities.dp(LocaleController.isRTL ? 16 : 71);
-            layoutParams.rightMargin = AndroidUtilities.dp(LocaleController.isRTL ? 71 : 16);
+            layoutParams.leftMargin = AndroidUtilities.dp(LocaleController.isRTL ? 16 : textInset());
+            layoutParams.rightMargin = AndroidUtilities.dp(LocaleController.isRTL ? textInset() : 16);
         } else {
             layoutParams.topMargin = AndroidUtilities.dp(21);
             valueTextView.setVisibility(GONE);
@@ -146,9 +178,10 @@ public class SettingsSearchCell extends FrameLayout {
         } else {
             imageView.setVisibility(GONE);
         }
-        left = 69;
+        left = standardLayout ? textInset() : 69;
         needDivider = divider;
         setWillNotDraw(!needDivider);
+        requestLayout();
     }
 
     public void setTextAndValue(CharSequence text, String[] value, boolean faq, boolean divider) {
@@ -220,13 +253,25 @@ public class SettingsSearchCell extends FrameLayout {
 
         @Override
         public void bindView(View view, UItem item, boolean divider, UniversalAdapter adapter, UniversalRecyclerView listView) {
+            SettingsSearchCell cell = (SettingsSearchCell) view;
+            boolean standard = item.intValue == 1;
+            cell.setStandardLayout(standard);
             if (item.object instanceof ProfileActivity.SearchAdapter.SearchResult) {
                 final ProfileActivity.SearchAdapter.SearchResult r = (ProfileActivity.SearchAdapter.SearchResult) item.object;
-                ((SettingsSearchCell) view).setTextAndValueAndIcon(item.text, r.path, r.iconResId, divider);
+                cell.setTextAndValueAndIcon(item.text, r.path, standard ? standardIcon(r) : r.iconResId, divider);
             } else if (item.object instanceof MessagesController.FaqSearchResult) {
                 final MessagesController.FaqSearchResult r = (MessagesController.FaqSearchResult) item.object;
-                ((SettingsSearchCell) view).setTextAndValue(item.text, r.path, true, divider);
+                if (standard) {
+                    cell.setTextAndValueAndIcon(item.text, r.path, R.drawable.msg2_help, divider);
+                } else {
+                    cell.setTextAndValue(item.text, r.path, true, divider);
+                }
             }
+        }
+        public static UItem ofStandard(CharSequence text, Object result) {
+            UItem item = of(text, result);
+            item.intValue = 1;
+            return item;
         }
 
         public static UItem of(CharSequence text, Object obj) {

@@ -208,6 +208,18 @@ public abstract class BlurredBackgroundDrawable extends Drawable {
         updateColors();
         return this;
     }
+    private int outsetX, outsetY;
+    public BlurredBackgroundDrawable setOutset(int dx, int dy) {
+        this.outsetX = dx;
+        this.outsetY = dy;
+        return this;
+    }
+    public int getOutsetX() {
+        return outsetX;
+    }
+    public int getOutsetY() {
+        return outsetY;
+    }
 
     @CallSuper
     public void updateColors() {
@@ -386,6 +398,11 @@ public abstract class BlurredBackgroundDrawable extends Drawable {
     @Override
     public void getOutline(@NonNull Outline outline) {
         BlurredBackgroundDrawable.getOutline(outline, boundProps.boundsWithPadding, boundProps.radii);
+    }
+    public boolean hasDisplayList() {
+        return false;
+    }
+    public void updateDisplayList() {
     }
 
     private static Path tmpPath = new Path();

@@ -752,7 +752,7 @@ public final class NimarkoMediaController implements NotificationCenter.Notifica
                 String captionForThis = (isLast && isFinal) ? sourceCaption : null;
                 ArrayList<TLRPC.MessageEntity> entsForThis = (isLast && isFinal)
                         ? sourceEntities : null;
-                MessageObject replyForThis = (chunkIdx == 0 && i == from) ? replyTo : null;
+                MessageObject replyForThis = chunkIdx == 0 ? replyTo : null;
 
                 SendMessagesHelper.SendMessageParams params =
                         SendMessagesHelper.SendMessageParams.of(

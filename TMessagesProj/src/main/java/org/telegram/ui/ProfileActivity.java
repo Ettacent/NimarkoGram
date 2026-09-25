@@ -11172,7 +11172,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
         cancelProfileBannerReclaim();
         refreshGiftsOnReturn = true;
         // NimarkoGram: ALWAYS tear down (null/no-op safe) regardless of feature toggle.
-        try { app.nimarkogram.messenger.banners.NimarkoBannerRenderer.getInstance().onProfilePaused(topView, currentAccount); } catch (Throwable ignored) {}
+        try { app.nimarkogram.messenger.banners.NimarkoBannerRenderer.getInstance().onProfileFullyHidden(topView, currentAccount, getDialogId()); } catch (Throwable ignored) {}
         if (undoView != null) {
             undoView.hide(true, 0);
         }
@@ -17514,7 +17514,6 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                     new SearchResult(218, getString(R.string.VoipUseLessData), "useLessDataForCallsRow", getString(R.string.DataSettings), R.drawable.msg2_data, () -> f.presentFragment(new DataSettingsActivity())).withLink("tg://settings/data/use-less-data"),
                     new SearchResult(219, getString(R.string.VoipQuickReplies), "quickRepliesRow", getString(R.string.DataSettings), R.drawable.msg2_data, () -> f.presentFragment(new DataSettingsActivity())),
                     new SearchResult(220, getString(R.string.ProxySettings), getString(R.string.DataSettings), R.drawable.msg2_data, () -> f.presentFragment(new ProxyListActivity())).withLink("tg://settings/data/proxy"),
-                    new SearchResult(221, getString(R.string.UseProxyForCalls), "callsRow", getString(R.string.DataSettings), getString(R.string.ProxySettings), R.drawable.msg2_data, () -> f.presentFragment(new ProxyListActivity())).withLink("tg://settings/data/proxy/use-for-calls"),
                     new SearchResult(111, getString(R.string.PrivacyDeleteCloudDrafts), "clearDraftsRow", getString(R.string.DataSettings), R.drawable.msg2_data, () -> f.presentFragment(new DataSettingsActivity())).withLink("tg://settings/privacy/data-settings/delete-cloud-drafts"),
                     new SearchResult(222, getString(R.string.SaveToGallery), "saveToGallerySectionRow", getString(R.string.DataSettings), R.drawable.msg2_data, () -> f.presentFragment(new DataSettingsActivity())),
                     new SearchResult(223, getString(R.string.SaveToGalleryPrivate), "saveToGalleryPeerRow", getString(R.string.DataSettings), getString(R.string.SaveToGallery), R.drawable.msg2_data, () -> f.presentFragment(new DataSettingsActivity())).withLink("tg://settings/data/save-to-photos/chats"),
@@ -17833,12 +17832,12 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             int position = 0;
             if (searchWas) {
                 for (SearchResult r : searchResults) {
-                    items.add(SettingsSearchCell.Factory.of(resultNames.get(position++), r));
+                    items.add(SettingsSearchCell.Factory.ofStandard(resultNames.get(position++), r));
                 }
                 if (!faqSearchResults.isEmpty()) {
                     items.add(UItem.asGraySection(getString(R.string.SettingsFaqSearchTitle)));
                     for (MessagesController.FaqSearchResult r : faqSearchResults) {
-                        items.add(SettingsSearchCell.Factory.of(resultNames.get(position++), r));
+                        items.add(SettingsSearchCell.Factory.ofStandard(resultNames.get(position++), r));
                     }
                 }
             } else {
@@ -17846,17 +17845,42 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                     items.add(UItem.asGraySection(getString(R.string.SettingsRecent)));
                     for (Object r : recentSearches) {
                         if (r instanceof SearchResult) {
-                            items.add(SettingsSearchCell.Factory.of(((SearchResult) r).searchTitle, (SearchResult) r));
+                            items.add(SettingsSearchCell.Factory.ofStandard(((SearchResult) r).searchTitle, (SearchResult) r));
                         } else if (r instanceof MessagesController.FaqSearchResult) {
-                            items.add(SettingsSearchCell.Factory.of(((MessagesController.FaqSearchResult) r).title, (MessagesController.FaqSearchResult) r));
+                            items.add(SettingsSearchCell.Factory.ofStandard(((MessagesController.FaqSearchResult) r).title, (MessagesController.FaqSearchResult) r));
                         }
                     }
                 }
+                appendSettingsQuickAccess(items);
                 if (!faqSearchArray.isEmpty()) {
                     items.add(UItem.asGraySection(getString(R.string.SettingsFaqSearchTitle)));
                     for (MessagesController.FaqSearchResult r : faqSearchArray) {
-                        items.add(SettingsSearchCell.Factory.of(r.title, r));
+                        items.add(SettingsSearchCell.Factory.ofStandard(r.title, r));
                     }
+                }
+            }
+        }
+        private void appendSettingsQuickAccess(ArrayList<UItem> items) {
+            final int[] quickAccessIds = {100, 1, 300, 700, 200, 110, 220, 400, 600, 900};
+            HashSet<Integer> shown = new HashSet<>();
+            for (Object recent : recentSearches) {
+                if (recent instanceof SearchResult) {
+                    shown.add(((SearchResult) recent).guid);
+                }
+            }
+            boolean headerAdded = false;
+            for (int guid : quickAccessIds) {
+                for (SearchResult result : searchArray) {
+                    if (result == null || result.guid != guid || TextUtils.isEmpty(result.searchTitle)
+                            || !shown.add(result.guid)) {
+                        continue;
+                    }
+                    if (!headerAdded) {
+                        items.add(UItem.asGraySection(getString(R.string.NM_SettingsQuickAccess)));
+                        headerAdded = true;
+                    }
+                    items.add(SettingsSearchCell.Factory.ofStandard(result.searchTitle, result));
+                    break;
                 }
             }
         }
@@ -17942,7 +17966,8 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             return 0;
         }
 
-        public void search(String text) {
+        public void search(String query) {
+            final String text = query == null ? "" : query.trim();
             lastSearchString = text;
             if (searchRunnable != null) {
                 Utilities.searchQueue.cancelRunnable(searchRunnable);
@@ -18726,6 +18751,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                 app.nimarkogram.messenger.banners.NimarkoBannerRenderer rr = app.nimarkogram.messenger.banners.NimarkoBannerRenderer.getInstance();
                 rr.setAvatarViews(currentAccount, avatarImage, avatarContainer, avatarsViewPager, storyView, giftsView, avatarGooey);
                 rr.onProfileResumed(topView, currentAccount, getDialogId());
+                rr.onProfileFullyVisible(topView, currentAccount, getDialogId());
             } catch (Throwable ignored) {}
         }
         writeButtonSetBackground();

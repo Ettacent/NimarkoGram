@@ -3593,8 +3593,8 @@ public class VoIPService extends Service implements SensorEventListener, AudioMa
 
 			Instance.Proxy proxy = null;
 			if (preferences.getBoolean("proxy_enabled", false) && preferences.getBoolean("proxy_enabled_calls", false)) {
-				final org.telegram.proxy.ProxySettings settings = org.telegram.proxy.ProxySettings.fromSharedPreferences(preferences);
-				if (settings.isValid() && settings.getType() == org.telegram.proxy.ProxySettings.Type.SOCKS5) {
+				final org.telegram.utils.proxy.ProxySettings settings = org.telegram.utils.proxy.ProxySettings.fromSharedPreferences(preferences);
+				if (settings.isValid() && settings.getType() == org.telegram.utils.proxy.ProxySettings.Type.SOCKS5) {
 					proxy = new Instance.Proxy(settings.getAddress(), settings.getPort(), settings.getUser(), settings.getPassword());
 				}
 			}

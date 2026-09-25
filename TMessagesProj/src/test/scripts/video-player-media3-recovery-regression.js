@@ -69,7 +69,7 @@ public class VideoPlayer {
   void init(){check(!initialized,"shared TrackSelector owner");initialized=true;}
  }
  static class DefaultRenderersFactory {
-  static int EXTENSION_RENDERER_MODE_PREFER=2;
+  static int EXTENSION_RENDERER_MODE_ON=1, EXTENSION_RENDERER_MODE_PREFER=2;
   DefaultRenderersFactory(Object context){}
   void setExtensionRendererMode(int mode){} void setEnableDecoderFallback(boolean enabled){}
  }
