@@ -3,8 +3,8 @@ package org.telegram.messenger;
 import android.content.SharedPreferences;
 import android.os.SystemClock;
 
-import org.telegram.proxy.ProxySettings;
 import org.telegram.tgnet.ConnectionsManager;
+import org.telegram.utils.proxy.ProxySettings;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -21,6 +21,10 @@ public class ProxyRotationController implements NotificationCenter.NotificationC
 
     private boolean isCurrentlyChecking;
     private Runnable checkProxyAndSwitchRunnable = () -> {
+        if (!canRotate()) {
+            isCurrentlyChecking = false;
+            return;
+        }
         isCurrentlyChecking = true;
 
         int currentAccount = UserConfig.selectedAccount;
@@ -55,12 +59,19 @@ public class ProxyRotationController implements NotificationCenter.NotificationC
     public static void init() {
         INSTANCE.initInternal();
     }
+    private static boolean canRotate() {
+        SharedConfig.ProxyInfo current = SharedConfig.currentProxy;
+        return SharedConfig.isProxyEnabled() && SharedConfig.proxyRotationEnabled
+                && SharedConfig.proxyList.size() > 1 && current != null
+                && current.getSettings().getType() != ProxySettings.Type.WEB
+                && !app.nimarkogram.messenger.wsbypass.NimarkoWsBypassConfig.enabled;
+    }
 
     @SuppressWarnings("ComparatorCombinators")
     private void switchToAvailable() {
         isCurrentlyChecking = false;
 
-        if (!SharedConfig.proxyRotationEnabled) {
+        if (!canRotate()) {
             return;
         }
 
@@ -74,7 +85,7 @@ public class ProxyRotationController implements NotificationCenter.NotificationC
             SharedPreferences.Editor editor = MessagesController.getGlobalMainSettings().edit();
             editor.putBoolean("proxy_enabled", true);
             info.getSettings().toSharedPreferences(editor);
-            if (!info.getSettings().getSecret().isEmpty()) {
+            if (info.getSettings().getType() != ProxySettings.Type.SOCKS5) {
                 editor.putBoolean("proxy_enabled_calls", false);
             }
             editor.apply();
@@ -98,15 +109,18 @@ public class ProxyRotationController implements NotificationCenter.NotificationC
     @Override
     public void didReceivedNotification(int id, int account, Object... args) {
         if (id == NotificationCenter.proxyCheckDone) {
-            if (!SharedConfig.isProxyEnabled() || !SharedConfig.proxyRotationEnabled || SharedConfig.proxyList.size() <= 1 || !isCurrentlyChecking) {
+            if (!canRotate() || !isCurrentlyChecking) {
                 return;
             }
 
             switchToAvailable();
         } else if (id == NotificationCenter.proxySettingsChanged) {
             AndroidUtilities.cancelRunOnUIThread(checkProxyAndSwitchRunnable);
+            isCurrentlyChecking = false;
         } else if (id == NotificationCenter.didUpdateConnectionState && account == UserConfig.selectedAccount) {
-            if (!SharedConfig.isProxyEnabled() && !SharedConfig.proxyRotationEnabled || SharedConfig.proxyList.size() <= 1) {
+            if (!canRotate()) {
+                AndroidUtilities.cancelRunOnUIThread(checkProxyAndSwitchRunnable);
+                isCurrentlyChecking = false;
                 return;
             }
 

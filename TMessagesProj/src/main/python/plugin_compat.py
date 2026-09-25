@@ -22,6 +22,10 @@ _MAX_BINARY_SIZE = 64 * 1024 * 1024
 _BINARY_SUFFIXES = (".dex", ".jar", ".apk", ".zip", ".so", ".bin")
 _EXTERA_PREFIX = "com.exteragram.messenger."
 _NIMARKO_PREFIX = "app.nimarkogram.messenger."
+_PROXY_CLASS_REMAP = {
+    "org.telegram.proxy." + name: "org.telegram.utils.proxy." + name
+    for name in ("ProxySettings", "WebProxyConnectionTester", "WebProxyTransport")
+}
 _HEAD_CACHE_LIMIT = 4 * 1024 * 1024
 _HEAD_CACHE_TTL = 60.0
 _HEAD_CACHE_LOCK = threading.Lock()
@@ -34,6 +38,8 @@ _RAW_PATH = re.compile(
 def _gitverse_contents_url(url):
     try:
         string_url = str(url)
+        # This function sits on the process-wide requests hot path. Avoid URL
+        # parsing for virtually every normal plugin request.
         if not string_url.startswith("https://gitverse.ru/api/repos/"):
             return None
         parsed = urlsplit(string_url)
@@ -119,8 +125,19 @@ def _pop_head_binary(key):
     return (data, metadata) if expires_at >= time.monotonic() else None
 
 
+def _remap_proxy_class(name):
+    """Resolve only the three moved proxy classes and their JVM nested types.
+
+    Return the real host type, not a wrapper: reflection parameter types and
+    hooks must match the running app. This does not bridge compiled Java ABI.
+    """
+    outer, separator, nested = name.partition("$")
+    current = _PROXY_CLASS_REMAP.get(outer)
+    return current + separator + nested if current is not None else None
+
+
 def _install_jclass_compat():
-    """Fallback direct Python jclass imports to the current package name."""
+    """Resolve moved proxy types and fallback legacy extera package names."""
     try:
         import java
 
@@ -131,6 +148,9 @@ def _install_jclass_compat():
 
         def jclass_with_compat(class_name):
             name = str(class_name)
+            proxy_name = _remap_proxy_class(name)
+            if proxy_name is not None:
+                return original(proxy_name)
             mapped = aliases.get(name)
             if mapped is not None:
                 return original(mapped)
@@ -148,6 +168,9 @@ def _install_jclass_compat():
         jclass_with_compat.__nimarko_original_jclass__ = original
         java.jclass = jclass_with_compat
     except Exception:
+        # The Java bridge is optional during early interpreter bootstrap and in
+        # host-side tests. A vendor-specific Chaquopy implementation must not
+        # prevent the independent HTTP compatibility layer from installing.
         return
 
 
@@ -218,6 +241,9 @@ def install():
                 api_response._content = (
                     b"" if normalized_method == "HEAD" else data)
                 api_response._content_consumed = True
+                # A few legacy plugins consume Response.raw directly instead
+                # of using content/iter_content. The original raw object still
+                # points at the JSON Contents response, so replace it as well.
                 api_response.raw = io.BytesIO(api_response._content)
                 api_response.encoding = None
                 api_response.url = str(url)
@@ -227,6 +253,7 @@ def install():
                     api_response.headers["ETag"] = '"{}"'.format(payload["sha"])
                 return api_response
             except Exception:
+                # Compatibility must never make an otherwise valid request fail.
                 return original(session, method, url, *args, **kwargs)
 
         request_with_binary_compat.__nimarko_gitverse_binary_compat__ = True

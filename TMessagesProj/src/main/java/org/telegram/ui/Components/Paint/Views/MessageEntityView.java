@@ -1498,6 +1498,9 @@ public class MessageEntityView extends EntityView {
 
         @Override
         public Paint getPaint(String paintKey) {
+            if (staticPresentation) {
+                return Theme.getThemePaint(paintKey, staticResourcesProvider);
+            }
             if (staticResourcesProvider != null) {
                 Paint paint = staticResourcesProvider.getPaint(paintKey);
                 if (paint != null) {

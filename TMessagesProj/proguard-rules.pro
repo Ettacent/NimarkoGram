@@ -67,9 +67,9 @@
 -keep class org.telegram.tgnet.ConnectionsManager { *; }
 # Both proxy APIs are reflection entry points for Python plugins.
 -keep class org.telegram.messenger.SharedConfig$ProxyInfo { *; }
--keep class org.telegram.proxy.ProxySettings { *; }
--keep class org.telegram.proxy.ProxySettings$Builder { *; }
--keep class org.telegram.proxy.ProxySettings$Type { *; }
+-keep class org.telegram.utils.proxy.ProxySettings { *; }
+-keep class org.telegram.utils.proxy.ProxySettings$Builder { *; }
+-keep class org.telegram.utils.proxy.ProxySettings$Type { *; }
 -keep class org.telegram.tgnet.NativeByteBuffer { *; }
 -keep class org.telegram.tgnet.RequestTimeDelegate { *; }
 -keep class org.telegram.tgnet.RequestDelegate { *; }
@@ -101,6 +101,8 @@
 -dontwarn javax.annotation.**
 
 -keep class io.nano.tex.** {*;}
+
+-keep class org.telegram.tgnet.** { *; }
 
 # JLatexMath: macro/atom classes are loaded reflectively by Class.forName
 -keep class org.scilab.forge.jlatexmath.** { *; }

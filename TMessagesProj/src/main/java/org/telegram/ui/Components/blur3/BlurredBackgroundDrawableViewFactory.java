@@ -13,6 +13,7 @@ import org.telegram.ui.Components.blur3.drawable.BlurredBackgroundDrawableRender
 import org.telegram.ui.Components.blur3.drawable.color.BlurredBackgroundColorProvider;
 import org.telegram.ui.Components.blur3.source.BlurredBackgroundSource;
 import org.telegram.ui.Components.chat.ViewPositionWatcher;
+import org.telegram.utils.glass.GlassEngine;
 import java.lang.ref.WeakReference;
 import java.util.WeakHashMap;
 
@@ -24,6 +25,7 @@ public class BlurredBackgroundDrawableViewFactory {
     private final WeakHashMap<BlurredBackgroundDrawable, WeakReference<View>> drawableViews = new WeakHashMap<>();
 
     private final BlurredBackgroundSource source;
+    private int outsetX, outsetY;
 
     public BlurredBackgroundDrawableViewFactory(BlurredBackgroundSource source) {
         this.source = source;
@@ -40,6 +42,9 @@ public class BlurredBackgroundDrawableViewFactory {
             }
             factory.invalidateAllLinkedViews();
             factory.source.dispatchOnDrawablesRelativePositionChange();
+            if (factory.engine != null) {
+                factory.engine.invalidate();
+            }
         }
     }
     public static boolean isLiquidGlassEnabled() {
@@ -57,11 +62,22 @@ public class BlurredBackgroundDrawableViewFactory {
         this.viewPositionWatcher = watcher;
         this.parent = parent;
     }
+    public void setGlassEngine(GlassEngine engine) {
+        this.engine = engine;
+    }
+    public void setOutset(int outset) {
+        setOutset(outset, outset);
+    }
+    public void setOutset(int dx, int dy) {
+        outsetX = dx;
+        outsetY = dy;
+    }
 
     private @Nullable ReferenceList<BlurredBackgroundDrawable> linkedDrawables;
     private @Nullable ReferenceList<View> linkedViews;
     private @Nullable ViewPositionWatcher viewPositionWatcher;
     private @Nullable ViewGroup parent;
+    private @Nullable GlassEngine engine;
     public View getSourceRootView() {
         return parent;
     }
@@ -82,6 +98,7 @@ public class BlurredBackgroundDrawableViewFactory {
         }
     }
     public void release(View view, BlurredBackgroundDrawable drawable) {
+        if (engine != null && view != null) engine.unregisterDrawable(view, drawable);
         createdDrawables.remove(drawable);
         drawableViews.remove(drawable);
         if (viewPositionWatcher != null) viewPositionWatcher.unsubscribe(view);
@@ -137,12 +154,16 @@ public class BlurredBackgroundDrawableViewFactory {
         }
 
         drawable.setColorProvider(provider);
+        drawable.setOutset(outsetX, outsetY);
 
         if (linkedViews != null && view != null) {
             linkedViews.add(view);
         }
 
-        if (trackPosition && viewPositionWatcher != null && parent != null && view != null) {
+        if (trackPosition && !multiwindow && engine != null && view != null) {
+            engine.registerDrawable(view, drawable);
+        }
+        if (trackPosition && (engine == null || multiwindow) && viewPositionWatcher != null && parent != null && view != null) {
             
             viewPositionWatcher.subscribe(view, parent, (v, pos) -> {
                 drawable.setSourceOffset(pos.left, pos.top);

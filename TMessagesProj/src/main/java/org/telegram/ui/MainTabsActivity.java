@@ -1243,7 +1243,6 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
     }
 
     private NotificationCenter.ObserversGroup observersGroup;
-    private NotificationCenter.ObserversGroup globalObserversGroup;
     private boolean lifecycleDestroyed;
 
 
@@ -1260,11 +1259,11 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
             .add(NotificationCenter.mainUserInfoChanged)
             .add(NotificationCenter.contactsPermissionBadgeCheck);
 
-        globalObserversGroup = NotificationCenter.getGlobalInstance().createObserversGroup(this)
-            .add(NotificationCenter.appUpdateAvailable)
-            .add(NotificationCenter.appUpdateLoading)
-            .add(NotificationCenter.needSetDayNightTheme)
-            .add(NotificationCenter.cgTabsUpdated);
+        observersGroup
+            .addGlobal(NotificationCenter.appUpdateAvailable)
+            .addGlobal(NotificationCenter.appUpdateLoading)
+            .addGlobal(NotificationCenter.needSetDayNightTheme)
+            .addGlobal(NotificationCenter.cgTabsUpdated);
 
         return super.onFragmentCreate();
     }
@@ -1287,10 +1286,6 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
         if (observersGroup != null) {
             observersGroup.removeAllObservers();
             observersGroup = null;
-        }
-        if (globalObserversGroup != null) {
-            globalObserversGroup.removeAllObservers();
-            globalObserversGroup = null;
         }
         super.onFragmentDestroy();
     }

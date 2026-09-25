@@ -2,6 +2,7 @@ from typing import Any, Optional
 import traceback
 from java import jclass, jarray
 from android_utils import log
+from plugin_compat import _remap_proxy_class
 
 JavaClass = type(jclass('java.lang.Object'))
 JavaObject = jclass('java.lang.Object')
@@ -76,7 +77,8 @@ def find_class(class_name: str) -> Optional[JavaClass]:
     # HOOK-TARGET remap: resolve the REAL app class so hooks fire / reflection
     # signatures match. On any failure, fall through to the normal resolution
     # of the original name so behavior never regresses. Never raises.
-    remapped = _HOOK_TARGET_REMAP.get(class_name)
+    # Also works if this module captured java.jclass before compat installation.
+    remapped = _HOOK_TARGET_REMAP.get(class_name) or _remap_proxy_class(class_name)
     if remapped is not None:
         try:
             clazz = jclass(remapped)

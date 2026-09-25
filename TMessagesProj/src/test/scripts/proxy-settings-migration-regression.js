@@ -41,11 +41,18 @@ const connectionMethods = [
     'private void checkWebProxyInternal(',
     'public static void setProxySettings(boolean enabled, String address,',
     'public static void setProxySettings(boolean enabled, ProxySettings settings)',
+    'private static void applyProxySettings(',
 ].map(m => block(cm, m)).join('\n');
 const constants = applier.match(/private static final String SNAP_\w+ = "[^"]+";/g);
 assert(constants && constants.length >= 10);
 const files = {
-    'org/telegram/proxy/ProxySettings.java': read('org/telegram/proxy/ProxySettings.java'),
+    'org/telegram/utils/proxy/ProxySettings.java': read('org/telegram/utils/proxy/ProxySettings.java'),
+    'android/util/Base64.java': `package android.util;
+public class Base64 {
+ public static final int URL_SAFE=8, NO_WRAP=2, NO_PADDING=1;
+ public static byte[] decode(String s,int flags){return java.util.Base64.getUrlDecoder().decode(s);}
+ public static String encodeToString(byte[] b,int flags){return java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(b);}
+}`,
     'android/content/SharedPreferences.java': `package android.content;
 public interface SharedPreferences {
  String getString(String k,String d); int getInt(String k,int d); boolean getBoolean(String k,boolean d);
@@ -74,7 +81,7 @@ public class Uri {
 import java.util.*;
 import android.content.SharedPreferences;
 import android.text.TextUtils;
-import org.telegram.proxy.ProxySettings;
+import org.telegram.utils.proxy.ProxySettings;
 public class ProxyMigrationHostTest {
  ${constants.join('\n')}
  static final Object PROXY_LIST_LOCK=new Object();
@@ -102,7 +109,8 @@ public class ProxyMigrationHostTest {
  static class MessagesController {static Prefs prefs=new Prefs();
   static SharedPreferences getGlobalMainSettings(){return prefs;}void checkPromoInfo(boolean ignored){} }
  static class SharedConfig {
-  static class ProxyInfo {ProxySettings settings;ProxyInfo(ProxySettings s){settings=s;}}
+  static class ProxyInfo {ProxySettings settings;ProxyInfo(ProxySettings s){settings=s;}
+   ProxySettings getSettings(){return settings;}}
   static ProxyInfo currentProxy;static ArrayList<ProxyInfo> proxyList=new ArrayList<>();
   static void loadProxyList(){} static void saveProxyList(){} static void saveConfig(){}
   static ProxyInfo addProxy(ProxyInfo info){for(ProxyInfo p:proxyList)if(p.settings.equals(info.settings))return p;
@@ -122,6 +130,7 @@ public class ProxyMigrationHostTest {
  static class WebProxyTransport {static int starts,stops;static String host;
   static int start(String h,String secret){starts++;host=h;return 23001;}static void stop(){stops++;}}
  static class ConnectionsManager {
+  private static final ThreadLocal<ProxySettings> proxySettingsDispatch = new ThreadLocal<>();
   int currentAccount;static int applies,checks,reconnects;static boolean failApply;
   static String lastAddress,lastSecret;static int lastPort;
   static ConnectionsManager getInstance(int a){ConnectionsManager c=new ConnectionsManager();c.currentAccount=a;return c;}
@@ -185,8 +194,9 @@ public class ProxyMigrationHostTest {
   SharedConfig.currentProxy=SharedConfig.addProxy(new SharedConfig.ProxyInfo(local));save(local,true);
   for(int type:new int[]{0,2}){
    MessagesController.prefs.edit().putInt("proxy_type",type).apply();
-   check(!isApplyVerified(true,local),"stale type rejected even when old scalar tuple matches");
+   check(isApplyVerified(true,local),"legacy scalar selection overrides stale type for compatibility");
    save(local,true);check(isApplyVerified(true,local),"typed bypass write repairs stale type");
+   check(MessagesController.prefs.getInt("proxy_type",-1)==ProxySettings.typeToInt(local.getType()),"typed write persists canonical type");
   }
   SharedConfig.proxyList.clear();check(!isApplyVerified(true,local),"missing list identity rejected");
   reset();save(proxy(ProxySettings.Type.WEB),true);captureSnapshotIfMissing("127.0.0.1");save(local,true);

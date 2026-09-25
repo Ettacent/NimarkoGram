@@ -274,6 +274,7 @@ public final class NimarkoBannerRenderer {
     private Runnable resumeCaptureTimeout;
     private Bitmap videoCrossfadeBitmap;
     private boolean resumeFadeWaitingForFrame;
+    private boolean profileCoveredByNavigation;
 
     private final View[] fxViews = new View[5];
     private double lastFxTime, lastFxExtra = -1, lastFxExpand = -1;
@@ -494,6 +495,7 @@ public final class NimarkoBannerRenderer {
         boolean topViewChanged = samePeer && prevTopView != topView;
         currentTopView = topView;
         if (topViewChanged) {
+            profileCoveredByNavigation = false;
             videoHierarchyGeneration++;
             firstCommitTime = 0;
             frameLastExtra = -999f;
@@ -532,6 +534,16 @@ public final class NimarkoBannerRenderer {
 
     public void onProfilePaused() {
         onProfilePaused(null, rendererAccount);
+    }
+    public void onProfileFullyHidden(ViewGroup topView, int account, long dialogId) {
+        if (!isCurrentProfile(topView, account, dialogId)) return;
+        profileCoveredByNavigation = true;
+        onProfilePaused(topView, account);
+    }
+    public void onProfileFullyVisible(ViewGroup topView, int account, long dialogId) {
+        if (!isCurrentProfile(topView, account, dialogId)) return;
+        profileCoveredByNavigation = false;
+        resumePlayerIfReady();
     }
 
     public void onProfilePaused(ViewGroup topView, int account) {
@@ -665,7 +677,7 @@ public final class NimarkoBannerRenderer {
         if (!isCurrentVideoSession(sessionId, player, path) || !vidReady) {
             return;
         }
-        if (appPaused || videoPausedByTab || overlayOpen || !isProfileOpen) {
+        if (appPaused || videoPausedByTab || overlayOpen || !isProfileOpen || profileCoveredByNavigation) {
             return;
         }
         if (!isVideoAttachedTo(currentTopView)) {
@@ -713,6 +725,7 @@ public final class NimarkoBannerRenderer {
     }
 
     private void resetState() {
+        profileCoveredByNavigation = false;
         isProfileOpen = false; openAnimDone = false; animDoneTime = 0; frameTime = 0;
         firstCommitTime = 0;
         suppressBg = false;
@@ -2006,7 +2019,7 @@ public final class NimarkoBannerRenderer {
             if (p != null) {
                 try { p.setTextureView(videoTexture); } catch (Throwable ignored) {}
                 try { updateVidTransform(0, 0); } catch (Throwable ignored) {}
-                boolean playGate = vidReady && !appPaused && isProfileOpen && !videoPausedByTab && !overlayOpen;
+                boolean playGate = vidReady && !appPaused && isProfileOpen && !videoPausedByTab && !overlayOpen && !profileCoveredByNavigation;
                 if (playGate) {
                     try { p.play(); } catch (Throwable ignored) {}
                 }
@@ -2243,7 +2256,7 @@ public final class NimarkoBannerRenderer {
         resumeFadeWaitingForFrame = true;
     }
     private void startResumeCrossfadeOnFrame() {
-        if (!resumeFadeWaitingForFrame || appPaused || videoPausedByTab
+        if (!resumeFadeWaitingForFrame || profileCoveredByNavigation || appPaused || videoPausedByTab
                 || overlayOpen || !isProfileOpen || !isVideoAttachedTo(currentTopView)) return;
         resumeFadeWaitingForFrame = false;
         doFreezeSwap(videoTexture, vidFreeze, videoCrossfadeBitmap, RESUME_FADE);
@@ -2287,7 +2300,7 @@ public final class NimarkoBannerRenderer {
         doFreezeSwap(tex, fv, old, VID_FADE);
     }
 
-    private static final long RESUME_FADE = 700;
+    private static final long RESUME_FADE = 1000;
 
     private void doFreezeSwap(final TextureView tex, final ImageView fv, final Bitmap old, final long dur) {
         try {

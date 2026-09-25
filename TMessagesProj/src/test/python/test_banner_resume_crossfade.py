@@ -12,18 +12,30 @@ SOURCE = (Path(__file__).resolve().parents[2] /
 
 
 class BannerResumeCrossfadeTests(unittest.TestCase):
+    def test_profile_navigation_drives_visibility_gate(self):
+        profile = (Path(__file__).resolve().parents[2] /
+                   'main/java/org/telegram/ui/ProfileActivity.java').read_text()
+        hidden = method(profile, 'public void onBecomeFullyHidden()')
+        visible = method(profile, 'public void onBecomeFullyVisible()')
+        self.assertIn('onProfileFullyHidden(topView, currentAccount, getDialogId())', hidden)
+        self.assertIn('onProfileFullyVisible(topView, currentAccount, getDialogId())', visible)
+        self.assertLess(visible.index('onProfileResumed('), visible.index('onProfileFullyVisible('))
+        self.assertIn('profileCoveredByNavigation = false', method(SOURCE, 'private void resetState()'))
+
     def test_retained_surface_resume_and_interruptions(self):
         production = re.search(r'private static final long RESUME_FADE = \d+;', SOURCE)[0] + '\n'
         production += '\n'.join(method(SOURCE, name) for name in (
             'private void resumePlayerIfReady()', 'private void cancelResumeCapture()',
             'private void finishResumeCapture(', 'private void armResumeCrossfade(Bitmap',
             'private void startResumeCrossfadeOnFrame()',
+            'public void onProfileFullyHidden(', 'public void onProfileFullyVisible(',
             'private void doFreezeSwap(final TextureView tex, final ImageView fv, final Bitmap old, final long dur)'))
         source = r'''
 import java.util.*;
 public class ResumeTest {
  static class Bitmap {boolean recycled;}
  static class View {static final int VISIBLE=0;}
+ static class ViewGroup {}
  static class Animator {
   Surface owner;Runnable end;long duration;float target;
   Animator(Surface s){owner=s;}void cancel(){end=null;}
@@ -51,13 +63,15 @@ public class ResumeTest {
  VideoPlayer videoPlayer=new VideoPlayer();String curVidPath="a";long videoSessionId=1;
  boolean active=true,attached=true,vidReady=true,videoFrameReady=true,isProfileOpen=true;
  boolean appPaused,videoPausedByTab,overlayOpen,waitFrame;
- double vidFirstFrameTime=10;Object currentTopView=new Object();
+ double vidFirstFrameTime=10;ViewGroup currentTopView=new ViewGroup();
  int resumeCaptureGeneration,captures;Runnable resumeCaptureTimeout;
- Bitmap videoCrossfadeBitmap,freezeBmp;Animator vidXfade;boolean resumeFadeWaitingForFrame;
+ Bitmap videoCrossfadeBitmap,freezeBmp;Animator vidXfade;boolean resumeFadeWaitingForFrame,profileCoveredByNavigation;
  VideoFrameCallback callback;
  boolean isCurrentVideoSession(long s,VideoPlayer p,String path){
   return active&&s==videoSessionId&&p==videoPlayer&&Objects.equals(path,curVidPath);}
  boolean isVideoAttachedTo(Object top){return attached;}
+ boolean isCurrentProfile(ViewGroup top,int account,long id){return active&&top==currentTopView&&account==1&&id==42;}
+ void onProfilePaused(ViewGroup top,int account){cancelResumeCapture();isProfileOpen=false;videoPlayer.playing=false;}
  void invalidateTopView(){}void startBlur(){}
  void captureVideoFrameAsync(long s,String p,VideoFrameCallback c){captures++;callback=c;}
  static boolean okBmp(Bitmap b){return b!=null&&!b.recycled;}
@@ -76,7 +90,7 @@ public class ResumeTest {
   r.appPaused=false;r.startResumeCrossfadeOnFrame();
   check(!r.resumeFadeWaitingForFrame,"first resumed frame starts fade once");
   check(r.vidFreeze.alpha==1&&r.vidFreeze.animator.target==0,"cover fades out, not in");
-  check(r.vidFreeze.animator.duration==700,"resume duration");
+  check(r.vidFreeze.animator.duration==1000,"resume duration");
   check(!r.waitFrame&&r.vidFirstFrameTime==10,"no second first-frame dependency");
   r.resumePlayerIfReady();check(r.captures==1,"playing video not recaptured");
   r.vidFreeze.animator.finish();check(b.recycled&&r.vidFreeze.bitmap==null,"completed cover released");
@@ -92,6 +106,15 @@ public class ResumeTest {
   r.videoPlayer.playing=false;r.resumePlayerIfReady();Bitmap replacement=new Bitmap();r.callback.onFrame(replacement);
   check(b.recycled&&r.vidFreeze.bitmap==replacement,"cancelled fade can be replaced on return");
   r.startResumeCrossfadeOnFrame();r.vidFreeze.animator.finish();check(replacement.recycled,"replacement cleaned up");
+  r=new ResumeTest();r.onProfileFullyHidden(r.currentTopView,1,42);
+  r.isProfileOpen=true;r.resumePlayerIfReady();
+  check(r.captures==0&&r.videoPlayer.plays==0,"channel return waits for visible profile");
+  r.onProfileFullyVisible(new ViewGroup(),1,42);r.onProfileFullyVisible(r.currentTopView,2,42);
+  check(r.captures==0&&r.profileCoveredByNavigation,"wrong host/account cannot resume");
+  r.onProfileFullyVisible(r.currentTopView,1,42);r.onProfileFullyVisible(r.currentTopView,1,42);
+  check(r.captures==1&&!r.profileCoveredByNavigation,"one capture after transition completion");
+  b=new Bitmap();r.callback.onFrame(b);r.startResumeCrossfadeOnFrame();
+  check(r.vidFreeze.animator.duration==1000,"full fade starts after channel returns");
   for(int mode=0;mode<8;mode++){
    r=new ResumeTest();r.resumePlayerIfReady();VideoFrameCallback late=r.callback;
    switch(mode){

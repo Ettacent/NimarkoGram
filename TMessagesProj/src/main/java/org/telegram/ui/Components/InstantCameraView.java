@@ -132,7 +132,7 @@ import javax.microedition.khronos.egl.EGLDisplay;
 import javax.microedition.khronos.egl.EGLSurface;
 
 @SuppressLint("ViewConstructor")
-public class InstantCameraView extends FrameLayout implements NotificationCenter.NotificationCenterDelegate {
+public class InstantCameraView extends InstantCameraViewBase implements NotificationCenter.NotificationCenterDelegate {
 
     public boolean WRITE_TO_FILE_IN_BACKGROUND;
 
@@ -180,6 +180,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
     private File cameraFile;
     private Object pausePreviewToken;
     private long recordStartTime;
+    private VideoRecorder heavyOperationsOwner;
     private long recordPlusTime;
     private boolean recording;
     private long recordedTime;
@@ -1061,7 +1062,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         float y = cameraContainer.getY();
         rect.set(x - dp(8), y - dp(8), x + cameraContainer.getMeasuredWidth() + dp(8), y + cameraContainer.getMeasuredHeight() + dp(8));
         if (recording) {
-            recordedTime = System.currentTimeMillis() - recordStartTime + recordPlusTime;
+            recordedTime = SystemClock.elapsedRealtime() - recordStartTime + recordPlusTime;
             progress = Math.min(1f, recordedTime / 60000.0f);
             invalidate();
         }
@@ -1462,6 +1463,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
     }
 
     public void startAnimation(boolean open, boolean fromPaused) {
+        dispatchAnimationState(open, fromPaused);
         if (animatorSet != null) {
             animatorSet.removeAllListeners();
             animatorSet.cancel();
@@ -1539,9 +1541,14 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         cameraContainer.setTranslationY(animationTranslationY + panTranslationY);
     }
 
-    public RectOld getCameraRect() {
+    public RectF getCameraRect() {
         cameraContainer.getLocationOnScreen(position);
-        return new RectOld(position[0], position[1], cameraContainer.getWidth(), cameraContainer.getHeight());
+        return new RectF(
+                position[0],
+                position[1],
+                position[0] + cameraContainer.getWidth(),
+                position[1] + cameraContainer.getHeight()
+        );
     }
 
     public void changeVideoPreviewState(int state, float progress) {
@@ -4874,7 +4881,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                 int readResult;
                 boolean done = false;
                 AudioTimestamp audioTimestamp = new AudioTimestamp();
-                boolean shouldUseTimestamp = true;
+                boolean shouldUseTimestamp = Build.VERSION.SDK_INT >= Build.VERSION_CODES.N;
 
                 while (!done) {
                     if ((!running || pauseRecorder) && audioRecorder.getRecordingState() != AudioRecord.RECORDSTATE_STOPPED) {
@@ -4929,7 +4936,10 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                         long timestamp;
                         if (shouldUseTimestamp) {
                             try {
-                                audioRecorder.getTimestamp(audioTimestamp, AudioTimestamp.TIMEBASE_MONOTONIC);
+                                if (audioRecorder.getTimestamp(audioTimestamp, AudioTimestamp.TIMEBASE_MONOTONIC)
+                                        != AudioRecord.SUCCESS) {
+                                    throw new IllegalStateException("AudioRecord timestamp unavailable");
+                                }
                                 timestamp = audioTimestamp.nanoTime / 1000;
                             } catch (Exception e) {
                                 FileLog.e(e);
@@ -4996,9 +5006,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             int resolution = mc.roundVideoSize;
             int bitrate = mc.roundVideoBitrate * 1024;
             recordedVideoBitrate = bitrate;
-            AndroidUtilities.runOnUIThread(() -> {
-                NotificationCenter.getInstance(currentAccount).postNotificationName(NotificationCenter.stopAllHeavyOperations, 512);
-            });
+            setHeavyOperationsStopped(true);
 
             videoFile = outputFile;
             videoWidth = resolution;
@@ -5050,8 +5058,20 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
 
         public void stopRecording(int send, SendOptions options) {
             handler.sendMessage(handler.obtainMessage(MSG_STOP_RECORDING, send, 0, options));
+            setHeavyOperationsStopped(false);
+        }
+        private void setHeavyOperationsStopped(boolean stopped) {
             AndroidUtilities.runOnUIThread(() -> {
-                NotificationCenter.getInstance(currentAccount).postNotificationName(NotificationCenter.stopAllHeavyOperations, 512);
+                if (stopped) {
+                    boolean alreadyStopped = heavyOperationsOwner != null;
+                    heavyOperationsOwner = this;
+                    if (!alreadyStopped) {
+                        NotificationCenter.getGlobalInstance().postNotificationName(NotificationCenter.stopAllHeavyOperations, 512);
+                    }
+                } else if (heavyOperationsOwner == this) {
+                    heavyOperationsOwner = null;
+                    NotificationCenter.getGlobalInstance().postNotificationName(NotificationCenter.startAllHeavyOperations, 512);
+                }
             });
         }
 
@@ -5800,6 +5820,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         private boolean sentMedia;
 
         private void handleStopRecording(final int send, final SendOptions sendOptions) {
+            setHeavyOperationsStopped(false);
             final boolean runDone;
             if (send == ENCODER_SEND_SEND && hasWrittenVideoSample
                     && (videoEditedInfo == null || !videoEditedInfo.needConvert())
@@ -5818,8 +5839,8 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                         videoEditedInfo.key = key;
                         videoEditedInfo.iv = iv;
                         videoEditedInfo.framerate = frameRate;
-                        videoEditedInfo.resultWidth = videoEditedInfo.originalWidth = 360;
-                        videoEditedInfo.resultHeight = videoEditedInfo.originalHeight = 360;
+                        videoEditedInfo.resultWidth = videoEditedInfo.originalWidth = videoWidth;
+                        videoEditedInfo.resultHeight = videoEditedInfo.originalHeight = videoHeight;
                         videoEditedInfo.originalPath = videoFile.getAbsolutePath();
                         videoEditedInfo.notReadyYet = true;
                         videoEditedInfo.thumb = firstFrameThumb;
@@ -5988,8 +6009,8 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                         videoEditedInfo.key = key;
                         videoEditedInfo.iv = iv;
                         videoEditedInfo.framerate = frameRate;
-                        videoEditedInfo.resultWidth = videoEditedInfo.originalWidth = 360;
-                        videoEditedInfo.resultHeight = videoEditedInfo.originalHeight = 360;
+                        videoEditedInfo.resultWidth = videoEditedInfo.originalWidth = videoWidth;
+                        videoEditedInfo.resultHeight = videoEditedInfo.originalHeight = videoHeight;
                         videoEditedInfo.originalPath = videoFile.getAbsolutePath();
                         final VideoEditedInfo info = videoEditedInfo;
                         if (send == ENCODER_SEND_SEND) {
@@ -6407,7 +6428,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                     }
                     AndroidUtilities.lockOrientation(delegate.getParentActivity());
                     recordPlusTime = fromPause ? recordedTime : 0;
-                    recordStartTime = System.currentTimeMillis();
+                    recordStartTime = SystemClock.elapsedRealtime();
                     recording = true;
                     legacyZoom = 0f; // each new round starts un-zoomed (legacy path)
                     updateFlash();
@@ -6944,7 +6965,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                 "}\n";
     }
 
-    public class InstantViewCameraContainer extends FrameLayout {
+    public class InstantViewCameraContainer extends InstantCameraViewBase.InstantViewCameraContainer {
 
         ImageReceiver imageReceiver;
         float imageProgress;
@@ -6953,6 +6974,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             super(context);
             InstantCameraView.this.setWillNotDraw(false);
         }
+        @Override
 
         public void setImageReceiver(ImageReceiver imageReceiver) {
             if (this.imageReceiver == null) {

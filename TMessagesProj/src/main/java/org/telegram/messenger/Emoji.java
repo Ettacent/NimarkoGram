@@ -145,33 +145,7 @@ public class Emoji {
         }
     }
     private static Bitmap loadEmojiBitmap(byte page, short page2) {
-        synchronized (EmojiPack.class) {
-            final EmojiPack emojiPack = EmojiPack.getInstance();
-            Bitmap bitmap = emojiPack.getEmoji(page, page2);
-            if (bitmap == null) {
-                return null;
-            }
-            int maskIndex = emojiPack.getMaskId(page, page2);
-            if (maskIndex != -1 && maskIndex != 0xFFFF) {
-                Bitmap alphaBitmap = emojiPack.getMask(maskIndex);
-                if (alphaBitmap != null) {
-                    int w = bitmap.getWidth();
-                    int h = bitmap.getHeight();
-                    int[] rgbPixels = new int[w * h];
-                    int[] alphaPixels = new int[w * h];
-                    bitmap.getPixels(rgbPixels, 0, w, 0, 0, w, h);
-                    alphaBitmap.getPixels(alphaPixels, 0, w, 0, 0, w, h);
-                    alphaBitmap.recycle();
-                    for (int i = 0; i < rgbPixels.length; i++) {
-                        rgbPixels[i] = (rgbPixels[i] & 0x00FFFFFF) | ((alphaPixels[i] & 0xFF) << 24);
-                    }
-                    bitmap.recycle();
-                    bitmap = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
-                    bitmap.setPixels(rgbPixels, 0, w, 0, 0, w, h);
-                }
-            }
-            return bitmap;
-        }
+        return EmojiPack.getInstance().getEmoji(page, page2);
     }
 
     private static void loadEmoji(final byte page, final short page2) {

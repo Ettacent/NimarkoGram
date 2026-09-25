@@ -2810,6 +2810,7 @@ public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayou
         if (cameraView == null || cameraInitAnimation != null || parentAlert.isDismissed()) {
             return;
         }
+        cameraView.setAlpha(1f);
         cameraView.initTexture();
         if (shouldLoadAllMedia()) {
             tooltipTextView.setVisibility(VISIBLE);
@@ -3086,8 +3087,7 @@ public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayou
                     } else {
                         next = createdCameraView.isFlashAvailable() ? "on" : current;
                     }
-                    if (current == null || next == null) return;
-                    if (current.equals(next)) {
+                    if (current == null || next == null || current.equals(next)) {
                         for (int a = 0; a < 2; a++) {
                             flashModeButton[a].setVisibility(View.INVISIBLE);
                             flashModeButton[a].setAlpha(0.0f);

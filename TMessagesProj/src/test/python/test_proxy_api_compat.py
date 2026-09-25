@@ -24,7 +24,7 @@ def block(source, marker):
 class ProxyCompatibilityTests(unittest.TestCase):
     @unittest.skipUnless(shutil.which("javac") and shutil.which("java"), "JDK required")
     def test_production_model_and_dispatch(self):
-        settings = (JAVA / "org/telegram/proxy/ProxySettings.java").read_text()
+        settings = (JAVA / "org/telegram/utils/proxy/ProxySettings.java").read_text()
         settings = block(settings, "public final class ProxySettings")
         settings = settings.replace(block(settings, "public static ProxySettings fromUri"), "")
         settings = settings.replace("public final class", "public static final class", 1)
@@ -57,16 +57,24 @@ class ProxyCompatibilityTests(unittest.TestCase):
             self.assertIsNone(re.search(r"\b(?:currentProxy|currentProxyInfo|proxyInfo|proxy|curr|p|info|localProxy)\.settings\b", source), path)
         rules = (ROOT.parent / "proguard-rules.pro").read_text()
         self.assertIn("-keep class org.telegram.messenger.SharedConfig$ProxyInfo { *; }", rules)
-        self.assertIn("-keep class org.telegram.proxy.ProxySettings$Builder { *; }", rules)
+        for suffix in ("", "$Builder", "$Type"):
+            self.assertIn("-keep class org.telegram.utils.proxy.ProxySettings" + suffix + " { *; }", rules)
 
 
 HARNESS = r'''
 import java.util.*;
 import java.net.URLEncoder;
+import java.net.IDN;
+import java.util.regex.Pattern;
 import java.io.UnsupportedEncodingException;
 public class ProxyCompatHarness {
   static final int PROXY_SCHEMA_V2 = 2, PROXY_SCHEMA_V3 = 3;
   static class TextUtils { static boolean isEmpty(CharSequence s) { return s == null || s.length() == 0; } }
+  static class Base64 {
+    static final int URL_SAFE=8, NO_WRAP=2, NO_PADDING=1;
+    static byte[] decode(String s,int flags){return java.util.Base64.getUrlDecoder().decode(s);}
+    static String encodeToString(byte[] b,int flags){return java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(b);}
+  }
   static class SharedPreferences {
     Map<String, Object> values = new HashMap<>();
     String getString(String k, String d) { return (String) values.getOrDefault(k, d); }
@@ -121,6 +129,7 @@ public class ProxyCompatHarness {
   }
   // DISPATCH
   static void check(boolean value, String label) { if (!value) throw new AssertionError(label); }
+  static final String WEB_SECRET="0123456789abcdef0123456789abcdef";
   public static void main(String[] args) throws Exception {
     ProxyInfo old = new ProxyInfo("local",1080,"u","p","");
     check(old.getSettings().getType()==ProxySettings.Type.SOCKS5 && old.username.equals("u"), "legacy constructor");
@@ -130,13 +139,14 @@ public class ProxyCompatHarness {
     check(old.getSettings().getType()==ProxySettings.Type.MTPROTO && old.username.isEmpty(), "legacy type conversion");
     old.secret=""; old.username=null; old.password=null;
     check(old.getSettings().getType()==ProxySettings.Type.SOCKS5 && old.username.equals(""), "null aliases normalized");
-    ProxySettings web=ProxySettings.builder().setType(ProxySettings.Type.WEB).setAddress("web.test").setSecret("token").build();
+    ProxySettings web=ProxySettings.builder().setType(ProxySettings.Type.WEB).setAddress("web.test").setSecret(WEB_SECRET).build();
+    check(web.isValid(), "valid WEB fixture");
     old.settings=web; old.address="stale concurrent alias";
     check(old.getSettings()==web && old.address.equals("web.test"), "modern replacement wins");
     old.address="new.web";
     check(old.getSettings().getType()==ProxySettings.Type.WEB && old.getSettings().getPort()==0, "web type preserved");
     old.setSettings(web);
-    check(old.address.equals(web.getAddress()) && old.secret.equals("token"), "modern setter publishes aliases");
+    check(old.address.equals(web.getAddress()) && old.secret.equals(WEB_SECRET), "modern setter publishes aliases");
     InputSerializedData data=new InputSerializedData(); old.ping=42; old.availableCheckTime=123;
     old.toSerializedData(data);
     ProxyInfo restored=ProxyInfo.fromSerializedData(PROXY_SCHEMA_V3,data);
@@ -156,7 +166,7 @@ public class ProxyCompatHarness {
     check(ProxySettings.fromSharedPreferences(prefs).getUser().equals("u"), "stale mtproto type after legacy write");
     setProxySettings(true,web);
     check(hooks==1 && WebProxyTransport.starts==1 && applied.size()==3, "modern web dispatch once for all accounts");
-    check(applied.get(0).equals("0:127.0.0.1:7777::token"), "web transport preserved");
+    check(applied.get(0).equals("0:127.0.0.1:7777::"+WEB_SECRET), "web transport preserved");
     check(proxySettingsDispatch.get()==null, "dispatch scope cleared");
     setProxySettings(true,"legacy",1080,"u","p","");
     check(hooks==2 && applied.get(3).equals("0:legacy:1080:u:"), "old setter preserved");

@@ -261,7 +261,7 @@ public class VideoPlayer implements Player.Listener, VideoListener, AnalyticsLis
             } else {
                 factory = new DefaultRenderersFactory(ApplicationLoader.applicationContext);
             }
-            factory.setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER);
+            factory.setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON);
             // NG: when the primary (hardware) decoder can't init a format — e.g. H.264 4K@60 High L5.2,
             // which many mobile AVC decoders top out below (they support 4K only via HEVC) — ExoPlayer
             // would otherwise fail with a decoder-init error and the video just wouldn't play. Enabling

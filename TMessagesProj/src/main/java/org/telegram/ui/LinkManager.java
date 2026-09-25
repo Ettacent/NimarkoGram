@@ -1023,8 +1023,6 @@ public class LinkManager {
                     scrollTo("useProxyRow");
                 if ("add-proxy".equalsIgnoreCase(third))
                     scrollTo("proxyAddRow");
-                if ("use-for-calls".equalsIgnoreCase(third))
-                    scrollTo("callsRow");
 
                 return true;
             }
@@ -1353,7 +1351,7 @@ public class LinkManager {
         if (fragment == null || fragment.getContext() == null) return true;
 
         init();
-        final TLRPC.User[] manager = new TLRPC.User[] { null   };
+        final TLRPC.User[] manager = new TLRPC.User[] { null                                                                               };
         final Runnable open = () -> {
             CreateBotAlert.show(fragment.getContext(), currentAccount, manager[0], peer_type, true, newBot -> {
                 done();

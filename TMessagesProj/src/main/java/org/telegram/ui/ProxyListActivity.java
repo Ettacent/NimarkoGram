@@ -47,7 +47,7 @@ import org.telegram.messenger.NotificationCenter;
 import org.telegram.messenger.ProxyRotationController;
 import org.telegram.messenger.R;
 import org.telegram.messenger.SharedConfig;
-import org.telegram.proxy.ProxySettings;
+import org.telegram.utils.proxy.ProxySettings;
 import org.telegram.tgnet.ConnectionsManager;
 import org.telegram.ui.ActionBar.ActionBar;
 import org.telegram.ui.ActionBar.ActionBarMenu;
@@ -103,11 +103,11 @@ public class ProxyListActivity extends BaseFragment implements NotificationCente
     private int proxyAddRow;
     private int proxyShadowRow;
     @Keep
-    private int callsRow;
+    private int callsRow = -1;
+    private int callsDetailRow = -1;
     private int rotationRow;
     private int rotationTimeoutRow;
     private int rotationTimeoutInfoRow;
-    private int callsDetailRow;
     private int deleteAllRow;
 
     private ItemTouchHelper itemTouchHelper;
@@ -393,9 +393,7 @@ public class ProxyListActivity extends BaseFragment implements NotificationCente
         NotificationCenter.getGlobalInstance().addObserver(this, NotificationCenter.proxyCheckDone);
         NotificationCenter.getInstance(currentAccount).addObserver(this, NotificationCenter.didUpdateConnectionState);
 
-        final SharedPreferences preferences = MessagesController.getGlobalMainSettings();
-        useProxySettings = preferences.getBoolean("proxy_enabled", false) && !SharedConfig.proxyList.isEmpty();
-        useProxyForCalls = preferences.getBoolean("proxy_enabled_calls", false);
+        reconcileProxyState();
 
         updateRows(true);
 
@@ -489,24 +487,15 @@ public class ProxyListActivity extends BaseFragment implements NotificationCente
                     }
                 }
                 useProxySettings = !useProxySettings;
-                updateRows(true);
-
-                SharedPreferences preferences = MessagesController.getGlobalMainSettings();
 
                 TextCheckCell textCheckCell = (TextCheckCell) view;
                 textCheckCell.setChecked(useProxySettings);
-                if (!useProxySettings) {
-                    RecyclerListView.Holder holder = (RecyclerListView.Holder) listView.findViewHolderForAdapterPosition(callsRow);
-                    if (holder != null) {
-                        textCheckCell = (TextCheckCell) holder.itemView;
-                        textCheckCell.setChecked(false);
-                    }
-                    useProxyForCalls = false;
-                }
 
                 SharedPreferences.Editor editor = MessagesController.getGlobalMainSettings().edit();
                 editor.putBoolean("proxy_enabled", useProxySettings);
                 editor.commit();
+                reconcileProxyState();
+                updateRows(true);
 
                 ConnectionsManager.setProxySettings(useProxySettings, SharedConfig.currentProxy.getSettings());
                 NotificationCenter.getGlobalInstance().removeObserver(ProxyListActivity.this, NotificationCenter.proxySettingsChanged);
@@ -528,12 +517,16 @@ public class ProxyListActivity extends BaseFragment implements NotificationCente
 
                 updateRows(true);
             } else if (position == callsRow) {
+                reconcileProxyState();
+                if (!canUseProxyForCalls()) {
+                    updateRows(true);
+                    return;
+                }
                 useProxyForCalls = !useProxyForCalls;
-                TextCheckCell textCheckCell = (TextCheckCell) view;
-                textCheckCell.setChecked(useProxyForCalls);
-                SharedPreferences.Editor editor = MessagesController.getGlobalMainSettings().edit();
-                editor.putBoolean("proxy_enabled_calls", useProxyForCalls);
-                editor.commit();
+                MessagesController.getGlobalMainSettings().edit()
+                        .putBoolean("proxy_enabled_calls", useProxyForCalls).apply();
+                ((TextCheckCell) view).setChecked(useProxyForCalls);
+                NotificationCenter.getGlobalInstance().postNotificationName(NotificationCenter.proxySettingsChanged);
             } else if (position >= proxyStartRow && position < proxyEndRow) {
                 if (!selectedItems.isEmpty()) {
                     listAdapter.toggleSelected(position);
@@ -547,12 +540,13 @@ public class ProxyListActivity extends BaseFragment implements NotificationCente
                 SharedPreferences.Editor editor = MessagesController.getGlobalMainSettings().edit();
                 info.getSettings().toSharedPreferences(editor);
                 editor.putBoolean("proxy_enabled", useProxySettings);
-                if (!info.getSettings().getSecret().isEmpty()) {
+                if (info.getSettings().getType() != ProxySettings.Type.SOCKS5) {
                     useProxyForCalls = false;
                     editor.putBoolean("proxy_enabled_calls", false);
                 }
                 editor.commit();
                 SharedConfig.currentProxy = info;
+                reconcileProxyState();
                 for (int a = proxyStartRow; a < proxyEndRow; a++) {
                     RecyclerListView.Holder holder = (RecyclerListView.Holder) listView.findViewHolderForAdapterPosition(a);
                     if (holder != null) {
@@ -561,7 +555,7 @@ public class ProxyListActivity extends BaseFragment implements NotificationCente
                         cell.updateStatus();
                     }
                 }
-                updateRows(false);
+                updateRows(true);
                 RecyclerListView.Holder holder = (RecyclerListView.Holder) listView.findViewHolderForAdapterPosition(useProxyRow);
                 if (holder != null) {
                     TextCheckCell textCheckCell = (TextCheckCell) holder.itemView;
@@ -592,7 +586,6 @@ public class ProxyListActivity extends BaseFragment implements NotificationCente
                     updateRows(true);
                     if (listAdapter != null) {
                         listAdapter.notifyItemChanged(useProxyRow, ListAdapter.PAYLOAD_CHECKED_CHANGED);
-                        listAdapter.notifyItemChanged(callsRow, ListAdapter.PAYLOAD_CHECKED_CHANGED);
                         listAdapter.clearSelected();
                     }
                 });
@@ -649,7 +642,6 @@ public class ProxyListActivity extends BaseFragment implements NotificationCente
                                 SharedConfig.deleteProxy(info);
                             }
                             if (SharedConfig.currentProxy == null) {
-                                useProxyForCalls = false;
                                 useProxySettings = false;
                             }
                             NotificationCenter.getGlobalInstance().removeObserver(ProxyListActivity.this, NotificationCenter.proxySettingsChanged);
@@ -659,7 +651,6 @@ public class ProxyListActivity extends BaseFragment implements NotificationCente
                             if (listAdapter != null) {
                                 if (SharedConfig.currentProxy == null) {
                                     listAdapter.notifyItemChanged(useProxyRow, ListAdapter.PAYLOAD_CHECKED_CHANGED);
-                                    listAdapter.notifyItemChanged(callsRow, ListAdapter.PAYLOAD_CHECKED_CHANGED);
                                 }
                                 listAdapter.clearSelected();
                             }
@@ -816,7 +807,7 @@ public class ProxyListActivity extends BaseFragment implements NotificationCente
         }
         proxyAddRow = rowCount++;
         proxyShadowRow = rowCount++;
-        if (SharedConfig.currentProxy == null || SharedConfig.currentProxy.getSettings().getSecret().isEmpty()) {
+        if (SharedConfig.currentProxy == null || SharedConfig.currentProxy.getSettings().getType() == ProxySettings.Type.SOCKS5) {
             boolean change = callsRow == -1;
             callsRow = rowCount++;
             callsDetailRow = rowCount++;
@@ -944,10 +935,21 @@ public class ProxyListActivity extends BaseFragment implements NotificationCente
         useProxySettings = preferences.getBoolean("proxy_enabled", false)
                 && SharedConfig.currentProxy != null && !SharedConfig.proxyList.isEmpty();
         useProxyForCalls = preferences.getBoolean("proxy_enabled_calls", false);
-        if (!useProxySettings || SharedConfig.currentProxy == null
-                || !TextUtils.isEmpty(SharedConfig.currentProxy.getSettings().getSecret())) {
+        if (!canUseProxyForCalls()) {
             useProxyForCalls = false;
         }
+    }
+    private boolean canUseProxyForCalls() {
+        SharedConfig.ProxyInfo current = SharedConfig.currentProxy;
+        if (!useProxySettings || current == null) {
+            return false;
+        }
+        ProxySettings settings = current.getSettings();
+        return settings.getType() == ProxySettings.Type.SOCKS5 && settings.isValid();
+    }
+    private static String callsString(String key, String fallback) {
+        String value = LocaleController.getString(key);
+        return TextUtils.isEmpty(value) || value.startsWith("LOC_ERR") ? fallback : value;
     }
 
     @Override
@@ -1118,10 +1120,11 @@ public class ProxyListActivity extends BaseFragment implements NotificationCente
                 }
                 case VIEW_TYPE_TEXT_CHECK: {
                     TextCheckCell checkCell = (TextCheckCell) holder.itemView;
+                    checkCell.setEnabled(position != callsRow || canUseProxyForCalls());
                     if (position == useProxyRow) {
                         checkCell.setTextAndCheck(getString(R.string.UseProxySettings), useProxySettings, rotationRow != -1);
                     } else if (position == callsRow) {
-                        checkCell.setTextAndCheck(getString(R.string.UseProxyForCalls), useProxyForCalls, false);
+                        checkCell.setTextAndCheck(callsString("UseProxyForCalls", "Use Proxy for Calls"), useProxyForCalls, false);
                     } else if (position == rotationRow) {
                         checkCell.setTextAndCheck(getString(R.string.UseProxyRotation), SharedConfig.proxyRotationEnabled, true);
                     }
@@ -1130,7 +1133,7 @@ public class ProxyListActivity extends BaseFragment implements NotificationCente
                 case VIEW_TYPE_INFO: {
                     TextInfoPrivacyCell cell = (TextInfoPrivacyCell) holder.itemView;
                     if (position == callsDetailRow) {
-                        cell.setText(getString(R.string.UseProxyForCallsInfo));
+                        cell.setText(callsString("UseProxyForCallsInfo", "Proxy servers may decrease the quality of your calls."));
                     } else if (position == rotationTimeoutInfoRow) {
                         cell.setText(getString(R.string.ProxyRotationTimeoutInfo));
                     } else if (position == nimarkoVpnInfoRow) {
@@ -1179,6 +1182,7 @@ public class ProxyListActivity extends BaseFragment implements NotificationCente
                 }
             } else if (holder.getItemViewType() == VIEW_TYPE_TEXT_CHECK && payloads.contains(PAYLOAD_CHECKED_CHANGED)) {
                 TextCheckCell checkCell = (TextCheckCell) holder.itemView;
+                checkCell.setEnabled(position != callsRow || canUseProxyForCalls());
                 if (position == useProxyRow) {
                     checkCell.setChecked(useProxySettings);
                 } else if (position == callsRow) {
@@ -1197,6 +1201,7 @@ public class ProxyListActivity extends BaseFragment implements NotificationCente
             if (viewType == VIEW_TYPE_TEXT_CHECK) {
                 TextCheckCell checkCell = (TextCheckCell) holder.itemView;
                 int position = holder.getAdapterPosition();
+                checkCell.setEnabled(position != callsRow || canUseProxyForCalls());
                 if (position == useProxyRow) {
                     checkCell.setChecked(useProxySettings);
                 } else if (position == callsRow) {
@@ -1210,7 +1215,9 @@ public class ProxyListActivity extends BaseFragment implements NotificationCente
         @Override
         public boolean isEnabled(RecyclerView.ViewHolder holder) {
             int position = holder.getAdapterPosition();
-            return position == nimarkoVpnRow || position == nimarkoVlessRow || position == useProxyRow || position == rotationRow || position == callsRow || position == proxyAddRow || position == deleteAllRow || position >= proxyStartRow && position < proxyEndRow;
+            if (position == RecyclerView.NO_POSITION) return false;
+            if (position == callsRow) return canUseProxyForCalls();
+            return position == nimarkoVpnRow || position == nimarkoVlessRow || position == useProxyRow || position == rotationRow || position == proxyAddRow || position == deleteAllRow || position >= proxyStartRow && position < proxyEndRow;
         }
 
         @Override
@@ -1265,6 +1272,8 @@ public class ProxyListActivity extends BaseFragment implements NotificationCente
                 return -4;
             } else if (position == callsRow) {
                 return -5;
+            } else if (position == callsDetailRow) {
+                return -7;
             } else if (position == connectionsHeaderRow) {
                 return -6;
             } else if (position == deleteAllRow) {
@@ -1275,6 +1284,12 @@ public class ProxyListActivity extends BaseFragment implements NotificationCente
                 return -10;
             } else if (position == rotationTimeoutInfoRow) {
                 return -11;
+            } else if (position == nimarkoVpnRow) {
+                return -12;
+            } else if (position == nimarkoVlessRow) {
+                return -13;
+            } else if (position == nimarkoVpnInfoRow) {
+                return -14;
             } else if (position >= proxyStartRow && position < proxyEndRow) {
                 return proxyList.get(position - proxyStartRow).hashCode();
             } else {
@@ -1292,6 +1307,8 @@ public class ProxyListActivity extends BaseFragment implements NotificationCente
                 return VIEW_TYPE_TEXT_SETTING;
             } else if (position == useProxyRow || position == rotationRow || position == callsRow) {
                 return VIEW_TYPE_TEXT_CHECK;
+            } else if (position == callsDetailRow) {
+                return VIEW_TYPE_INFO;
             } else if (position == connectionsHeaderRow) {
                 return VIEW_TYPE_HEADER;
             } else if (position == rotationTimeoutRow) {

@@ -30,10 +30,11 @@ import android.text.format.DateFormat;
 import android.text.format.DateUtils;
 import android.util.Xml;
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 
 import androidx.annotation.RequiresApi;
 import androidx.annotation.StringRes;
-import org.telegram.localization.Localization;
+import org.telegram.utils.localization.Localization;
 import org.telegram.localization.LocalizationUtils;
 
 import org.telegram.messenger.time.FastDateFormat;
@@ -1446,34 +1447,13 @@ public class LocaleController {
     }
 
     private String getStringInternal(String key, int res) {
-        return getStringInternal(key, null, 0, res);
+        return getStringInternal(key, null, res);
     }
 
-    private String getStringInternal(String key, String fallback, int fallbackRes, int res) {
-        boolean forceLocal = isNimarkoBrandedString(key, res) || isNimarkoBrandedString(fallback, fallbackRes);
-        String value = (!forceLocal && BuildVars.USE_CLOUD_STRINGS) ? localizationExternal.getByResNameOrResId(ApplicationLoader.applicationContext, key, res) : null;
+    private String getStringInternal(String key, String fallback, int res) {
+        final String value = getStringV2(key, res, fallback);
         if (value == null) {
-            if (!forceLocal && BuildVars.USE_CLOUD_STRINGS && fallback != null) {
-                value = localizationExternal.getByResNameOrResId(ApplicationLoader.applicationContext, fallback, fallbackRes);
-            }
-            if (value == null) {
-                try {
-                    value = getLocalizedString(key, res);
-                    if (value == null && (fallback != null || fallbackRes != 0)) {
-                        value = getLocalizedString(fallback, fallbackRes);
-                    }
-                } catch (Exception e) {
-                    if (fallbackRes != 0) {
-                        try {
-                            value = getLocalizedString(fallback, fallbackRes);
-                        } catch (Exception ignored) {}
-                    }
-                    FileLog.e(e);
-                }
-            }
-        }
-        if (value == null) {
-            value = "LOC_ERR:" + key;
+            return "LOC_ERR:" + key;
         }
         return value;
     }
@@ -1510,8 +1490,7 @@ public class LocaleController {
     public static String getServerString(String key) {
         String value = isNimarkoBrandedKey(key) ? null : getInstance().localizationExternal.getByResName(key);
         if (value == null) {
-            int resourceId = getStringResId(key);
-            value = getInstance().getLocalizedString(key, resourceId);
+            value = getInstance().getLocalizedString(key);
         }
         return value;
     }
@@ -1568,9 +1547,7 @@ public class LocaleController {
         }
         String param = getInstance().stringForQuantity(getInstance().currentPluralRules.quantityForNumber(plural));
         param = key + "_" + param;
-        int resourceId = getStringResId(param);
-        int fallbackResourceId = getStringResId(key + "_other");
-        return getInstance().getStringInternal(param, key + "_other", fallbackResourceId, resourceId);
+        return getInstance().getStringInternal(param, key + "_other", 0);
     }
 
     public static String formatPluralString(String key, int plural, Object... args) {
@@ -1579,12 +1556,10 @@ public class LocaleController {
         }
         String param = getInstance().stringForQuantity(getInstance().currentPluralRules.quantityForNumber(plural));
         param = key + "_" + param;
-        int resourceId = getStringResId(param);
-        int fallbackResourceId = getStringResId(key + "_other");
         Object[] argsWithPlural = new Object[args.length + 1];
         argsWithPlural[0] = plural;
         System.arraycopy(args, 0, argsWithPlural, 1, args.length);
-        return formatString(param, key + "_other", resourceId, fallbackResourceId, argsWithPlural);
+        return formatString(param, key + "_other", 0, argsWithPlural);
     }
 
     public static CharSequence formatPluralSpannable(String key, int plural, CharSequence... args) {
@@ -1593,12 +1568,10 @@ public class LocaleController {
         }
         String param = getInstance().stringForQuantity(getInstance().currentPluralRules.quantityForNumber(plural));
         param = key + "_" + param;
-        int resourceId = getStringResId(param);
-        int fallbackResourceId = getStringResId(key + "_other");
         Object[] argsWithPlural = new Object[args.length + 1];
         argsWithPlural[0] = plural;
         System.arraycopy(args, 0, argsWithPlural, 1, args.length);
-        return formatSpannable(param, key + "_other", resourceId, fallbackResourceId, argsWithPlural);
+        return formatSpannable(param, key + "_other", 0, argsWithPlural);
     }
 
     public static String getStringParamForNumber(int number) {
@@ -1655,13 +1628,11 @@ public class LocaleController {
             }
             if (value == null) {
                 try {
-                    int resourceId = getStringResId(param);
-                    value = getInstance().getLocalizedString(param, resourceId);
+                    value = getInstance().getLocalizedString(param);
                 } catch (Exception e2) {}
             }
             if (value == null) {
-                int resourceId = getStringResId(key + "_other");
-                value = getInstance().getLocalizedString(key + "_other", resourceId);
+                value = getInstance().getLocalizedString(key + "_other");
             }
             value = value.replace("%d", "%1$s");
             value = value.replace("%1$d", "%1$s");
@@ -1707,12 +1678,15 @@ public class LocaleController {
 
     @Deprecated
     public static String formatString(String key, int res, Object... args) {
-        return formatString(key, null, res, 0, args);
+        return formatString(key, null, res, args);
     }
 
-    private static String formatString(String key, String fallback, int res, int fallbackRes, Object... args) {
+    private static String formatString(String key, String fallback, int res, Object... args) {
         try {
-            String value = getInstance().getStringInternal(key, fallback, fallbackRes, res);
+            final String value = getInstance().getStringV2(key, res, fallback);
+            if (value == null) {
+                return "LOC_ERR: " + key;
+            }
 
             if (getInstance().currentLocale != null) {
                 return String.format(getInstance().currentLocale, value, args);
@@ -1730,12 +1704,15 @@ public class LocaleController {
     }
 
     public static CharSequence formatSpannable(String key, int res, Object... args) {
-        return formatSpannable(key, null, res, 0, args);
+        return formatSpannable(key, null, res, args);
     }
 
-    private static CharSequence formatSpannable(String key, String fallback, int res, int fallbackRes, Object... args) {
+    private static CharSequence formatSpannable(String key, String fallback, int res, Object... args) {
         try {
-            String value = getInstance().getStringInternal(key, fallback, fallbackRes, res);
+            final String value = getInstance().getStringV2(key, res, fallback);
+            if (value == null) {
+                return "LOC_ERR: " + key;
+            }
 
             SpannableStringBuilder builder = new SpannableStringBuilder(value);
             for (int i = 0; i < args.length; i++) {
@@ -4635,6 +4612,30 @@ public class LocaleController {
             } catch (android.content.res.Resources.NotFoundException ignored) {}
         }
         return value;
+    }
+    private String getLocalizedString(String key) {
+        return getLocalizedString(key, getStringResId(key));
+    }
+    @Nullable
+    private String getStringV2(String key, @StringRes int stringRes, String fallback) {
+        final Context context = ApplicationLoader.applicationContext;
+        String value;
+        final boolean forceLocal = isNimarkoBrandedString(key, stringRes) || isNimarkoBrandedKey(fallback);
+        if (BuildVars.USE_CLOUD_STRINGS && !forceLocal) {
+            value = localizationExternal.getByResNameOrResId(context, key, stringRes);
+            if (value != null) {
+                return value;
+            }
+            value = localizationExternal.getByResName(fallback);
+            if (value != null) {
+                return value;
+            }
+        }
+        value = getLocalizedString(key, stringRes != 0 ? stringRes : getStringResId(key));
+        if (value != null) {
+            return value;
+        }
+        return fallback == null ? null : getLocalizedString(fallback);
     }
     private Localization localizationInternalDefault;
     private volatile Locale localizationInternalLastLocale;

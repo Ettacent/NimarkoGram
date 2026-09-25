@@ -1,4 +1,7 @@
 package app.nimarkogram.messenger.plugins.ui.components;
+import android.animation.Animator;
+import android.animation.AnimatorListenerAdapter;
+import android.animation.ValueAnimator;
 
 import android.annotation.SuppressLint;
 import android.content.Context;
@@ -8,6 +11,7 @@ import android.graphics.PorterDuff;
 import android.graphics.PorterDuffColorFilter;
 import android.graphics.RectF;
 import android.graphics.drawable.Drawable;
+import android.os.Build;
 import android.text.SpannableStringBuilder;
 import android.text.TextUtils;
 import android.view.Gravity;
@@ -28,9 +32,11 @@ import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.MediaDataController;
 import org.telegram.messenger.NotificationCenter;
 import org.telegram.messenger.R;
+import org.telegram.messenger.SharedConfig;
 import org.telegram.messenger.UserConfig;
 import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.Components.BackupImageView;
+import org.telegram.ui.Components.CubicBezierInterpolator;
 import org.telegram.ui.Components.EffectsTextView;
 import org.telegram.ui.Components.LayoutHelper;
 import org.telegram.ui.Components.Switch;
@@ -61,6 +67,10 @@ public class PluginCell extends FrameLayout implements NotificationCenter.Notifi
     private final ImageView kebabButton;
     
     private final ProgressBar loadingSpinner;
+    private final FrameLayout trailingSlot;
+    private boolean loading;
+    private float loadingProgress;
+    private ValueAnimator loadingAnimator;
     private Plugin plugin;
     private PluginCellDelegate pluginCellDelegate;
     private final TextView pluginNameView;
@@ -198,7 +208,7 @@ public class PluginCell extends FrameLayout implements NotificationCenter.Notifi
         actionsFrame.addView(kebabButton, LayoutHelper.createFrame(40, 40,
                 Gravity.START | Gravity.CENTER_VERTICAL));
 
-        FrameLayout trailingSlot = new FrameLayout(context);
+        trailingSlot = new FrameLayout(context);
         actionsFrame.addView(trailingSlot, LayoutHelper.createFrame(39, 40,
                 Gravity.END | Gravity.CENTER_VERTICAL));
 
@@ -216,21 +226,83 @@ public class PluginCell extends FrameLayout implements NotificationCenter.Notifi
         loadingSpinner.setIndeterminateTintList(android.content.res.ColorStateList.valueOf(
                 Theme.getColor(Theme.key_switchTrackChecked)));
         loadingSpinner.setVisibility(View.GONE);
+        loadingSpinner.setAlpha(0f);
         loadingSpinner.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_YES);
         trailingSlot.addView(loadingSpinner, LayoutHelper.createFrame(24, 24, Gravity.CENTER));
     }
 
     public void setLoading(boolean loading) {
-        loadingSpinner.setVisibility(loading ? View.VISIBLE : View.GONE);
-        checkBox.setVisibility(loading ? View.INVISIBLE : View.VISIBLE);
+        setLoading(loading, true);
+    }
+    private boolean canAnimateLoading() {
+        return isAttachedToWindow() && isShown() && getWindowVisibility() == View.VISIBLE
+                && SharedConfig.animationsEnabled()
+                && (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
+                ? ValueAnimator.areAnimatorsEnabled() : AndroidUtilities.getAnimatorDurationScale() > 0);
+    }
+    private void setLoading(boolean loading, boolean animated) {
+        final boolean changed = this.loading != loading;
+        this.loading = loading;
+        checkBox.setEnabled(!loading);
+        checkBox.setImportantForAccessibility(loading
+                ? View.IMPORTANT_FOR_ACCESSIBILITY_NO : View.IMPORTANT_FOR_ACCESSIBILITY_YES);
+        loadingSpinner.setImportantForAccessibility(loading
+                ? View.IMPORTANT_FOR_ACCESSIBILITY_YES : View.IMPORTANT_FOR_ACCESSIBILITY_NO);
         if (plugin != null) {
             loadingSpinner.setContentDescription(plugin.getName() + ", "
                     + LocaleController.getString(R.string.Loading));
         }
+        final float target = loading ? 1f : 0f;
+        if (!animated || !canAnimateLoading()) {
+            cancelLoadingAnimator();
+            applyLoadingProgress(target);
+            return;
+        }
+        if (!changed && loadingAnimator != null) {
+            return;
+        }
+        cancelLoadingAnimator();
+        if (loadingProgress == target) {
+            applyLoadingProgress(target);
+            return;
+        }
+        final ValueAnimator animator = ValueAnimator.ofFloat(loadingProgress, target);
+        loadingAnimator = animator;
+        animator.setDuration(180);
+        animator.setInterpolator(CubicBezierInterpolator.EASE_OUT);
+        animator.addUpdateListener(animation -> {
+            if (loadingAnimator == animator) {
+                applyLoadingProgress((float) animation.getAnimatedValue());
+            }
+        });
+        animator.addListener(new AnimatorListenerAdapter() {
+            @Override
+            public void onAnimationEnd(Animator animation) {
+                if (loadingAnimator == animator) {
+                    loadingAnimator = null;
+                    applyLoadingProgress(target);
+                }
+            }
+        });
+        animator.start();
+    }
+    private void cancelLoadingAnimator() {
+        final ValueAnimator animator = loadingAnimator;
+        loadingAnimator = null;
+        if (animator != null) {
+            animator.cancel();
+        }
+    }
+    private void applyLoadingProgress(float progress) {
+        loadingProgress = progress;
+        loadingSpinner.setAlpha(progress);
+        checkBox.setAlpha(1f - progress);
+        loadingSpinner.setVisibility(progress > 0f ? View.VISIBLE : View.GONE);
+        checkBox.setVisibility(progress < 1f ? View.VISIBLE : View.INVISIBLE);
     }
 
     public boolean isLoading() {
-        return loadingSpinner.getVisibility() == View.VISIBLE;
+        return loading;
     }
 
     private void onKebabClicked(View view) {
@@ -248,8 +320,7 @@ public class PluginCell extends FrameLayout implements NotificationCenter.Notifi
             return true;
         }
         
-        if (loadingSpinner != null && loadingSpinner.getVisibility() == View.VISIBLE
-                && isInsideViewRelativeToSelf(loadingSpinner, x, y)) {
+        if (isInsideViewRelativeToSelf(trailingSlot, x, y)) {
             return true;
         }
         
@@ -381,6 +452,8 @@ public class PluginCell extends FrameLayout implements NotificationCenter.Notifi
         if (plugin == null || pluginCellDelegate == null) {
             return;
         }
+        final boolean samePlugin = this.plugin != null
+                && TextUtils.equals(this.plugin.getId(), plugin.getId());
         bindingEpoch++;
         this.pluginCellDelegate = pluginCellDelegate;
         this.plugin = plugin;
@@ -425,7 +498,7 @@ public class PluginCell extends FrameLayout implements NotificationCenter.Notifi
         PluginsController controller = PluginsController.getInstance();
         boolean requestedEnabled =
                 controller.getRequestedPluginEnabled(plugin.getId());
-        this.checkBox.setChecked(requestedEnabled, false);
+        this.checkBox.setChecked(requestedEnabled, samePlugin && isAttachedToWindow());
         this.checkBox.setContentDescription(plugin.getName() + ", "
                 + LocaleController.getString(
                 requestedEnabled ? R.string.Disable : R.string.Enable));
@@ -433,7 +506,7 @@ public class PluginCell extends FrameLayout implements NotificationCenter.Notifi
         
         setLoading(uiOperationEpoch != NO_UI_OPERATION_EPOCH
                 || controller.isTogglingInProgress(plugin.getId())
-                || controller.isEnablingInProgress(plugin.getId()));
+                || controller.isEnablingInProgress(plugin.getId()), samePlugin);
     }
 
     private void bindErrorState() {
@@ -452,7 +525,6 @@ public class PluginCell extends FrameLayout implements NotificationCenter.Notifi
         
         bindReportActions();
         
-        this.checkBox.setVisibility(View.VISIBLE);
     }
 
     private void bindReportActions() {
@@ -539,6 +611,8 @@ public class PluginCell extends FrameLayout implements NotificationCenter.Notifi
     @Override
     protected void onDetachedFromWindow() {
         super.onDetachedFromWindow();
+        setLoading(loading, false);
+        checkBox.setChecked(checkBox.isChecked(), false);
         NotificationCenter.getGlobalInstance().removeObserver(this, NotificationCenter.pluginsUpdated);
         NotificationCenter.getGlobalInstance().removeObserver(this, NotificationCenter.pluginSettingsRegistered);
         NotificationCenter.getGlobalInstance().removeObserver(this, NotificationCenter.pluginSettingsUnregistered);
@@ -558,6 +632,15 @@ public class PluginCell extends FrameLayout implements NotificationCenter.Notifi
             UItem.UItemFactory.setup(new Factory());
         }
 
+        @Override
+        public boolean equals(UItem a, UItem b) {
+            return a.plugin != null && b.plugin != null
+                    && TextUtils.equals(a.plugin.getId(), b.plugin.getId());
+        }
+        @Override
+        public boolean contentsEquals(UItem a, UItem b) {
+            return false;
+        }
         @Override
         public PluginCell createView(Context context, org.telegram.ui.Components.RecyclerListView listView, int currentAccount, int classGuid, Theme.ResourcesProvider resourcesProvider) {
             return new PluginCell(context, resourcesProvider);
