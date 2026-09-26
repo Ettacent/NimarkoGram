@@ -45,21 +45,25 @@ public class HookFilter {
                 case "condition":
                     HashMap<String, Object> vars = VARS_TL.get();
                     
-                    vars.clear();
-                    vars.put("param", param);
-                    vars.put("result", isBeforeHook ? null : param.getResult());
-                    vars.put("object", this.object);
-
-                    if (this.mvelExpression != null) {
-                        
-                        if (mvelExpressionCache.size() > 256) {
-                            mvelExpressionCache.clear();
+                    VARS_TL.remove();
+                    try {
+                        vars.clear();
+                        vars.put("param", param);
+                        vars.put("result", isBeforeHook ? null : param.getResult());
+                        vars.put("object", this.object);
+                        if (this.mvelExpression != null) {
+                            if (mvelExpressionCache.size() > 256) {
+                                mvelExpressionCache.clear();
+                            }
+                            Serializable compiled = mvelExpressionCache.computeIfAbsent(this.mvelExpression, MVEL::compileExpression);
+                            Object result = MVEL.executeExpression(compiled, param.thisObject, vars, Boolean.class);
+                            return Objects.requireNonNullElse((Boolean) result, Boolean.FALSE);
                         }
-                        Serializable compiled = mvelExpressionCache.computeIfAbsent(this.mvelExpression, MVEL::compileExpression);
-                        Object result = MVEL.executeExpression(compiled, param.thisObject, vars, Boolean.class);
-                        return Objects.requireNonNullElse((Boolean) result, Boolean.FALSE);
+                        return false;
+                    } finally {
+                        vars.clear();
+                        VARS_TL.set(vars);
                     }
-                    return false;
             }
 
             if (this.filterType.startsWith("result_")) {
@@ -81,7 +85,7 @@ public class HookFilter {
                     case "result_not_equal":
                         return !Objects.equals(result, this.object);
                     case "result_is_instance_of":
-                        return this.instanceOf != null && result != null && this.instanceOf.equals(result.getClass());
+                        return this.instanceOf != null && this.instanceOf.isInstance(result);
                     default:
                         return false;
                 }
@@ -107,7 +111,7 @@ public class HookFilter {
                     case "argument_not_equal":
                         return !Objects.equals(arg, this.object);
                     case "argument_is_instance_of":
-                        return this.instanceOf != null && arg != null && this.instanceOf.equals(arg.getClass());
+                        return this.instanceOf != null && this.instanceOf.isInstance(arg);
                     default:
                         return false;
                 }

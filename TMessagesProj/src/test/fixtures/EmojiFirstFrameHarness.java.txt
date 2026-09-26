@@ -50,6 +50,7 @@ class RLottieDrawable extends BitmapDrawable {
     void setAutoRepeatTimeout(long n) {} void setAllowDrawFramesWhileCacheGenerating(boolean b) {}
 }
 class AnimatedFileDrawable extends BitmapDrawable {
+    boolean hasParents() { return !getParents().isEmpty(); }
     boolean ready, publishOnNextRead, isWebmSticker = true;
     boolean hasBitmap() {
         boolean result = ready;
@@ -76,9 +77,10 @@ class CubicBezierInterpolator {
     static final CubicBezierInterpolator EASE_IN = new CubicBezierInterpolator();
     float getInterpolation(float f) { return f; }
 }
-class MessageObject { boolean isRoundVideo() { return false; } boolean isSending() { return false; } }
+class MessageObject { static final int TYPE_FILE = 9; int type; boolean isRoundVideo() { return false; } boolean isSending() { return false; } }
 class FileLog { static void e(Exception e) { throw new AssertionError(e); } }
 class NotificationCenter {
+    static class ObserversGroup { void removeAllObservers() {} }
     static final int didReplacedPhotoInMemCache = 1, stopAllHeavyOperations = 2, startAllHeavyOperations = 3;
     static NotificationCenter getGlobalInstance() { return new NotificationCenter(); }
     void removeObserver(Object o,int n) {}
@@ -90,6 +92,7 @@ class ImageLoader {
     void cancelLoadingForImageReceiver(ImageReceiver r, boolean b) {}
 }
 class ImageReceiver {
+    NotificationCenter.ObserversGroup observersGroup;
     /* PREVIEW_APPEARANCE */
     static final int LOAD_TYPE_COUNT = 4;
     static final PorterDuffXfermode CROSSFADE_ADD = new PorterDuffXfermode(PorterDuff.Mode.ADD);

@@ -687,8 +687,7 @@ public class NimarkoCameraXController implements CameraXProviderCoordinator.Owne
                 }
             }
             if (previewExtender != null && (observeLensMetadata || startFromUltraWide)) {
-                previewExtender.setSessionCaptureCallback(
-                        createLensCaptureCallback(captureGraphToken));
+                previewExtender.setSessionCaptureCallback(createLensCaptureCallback(captureGraphToken));
             }
             if (applyEnhancements && !concurrentPreview
                     && CameraXUtils.shouldEnablePreviewStabilization(provider, boundSelector)) {

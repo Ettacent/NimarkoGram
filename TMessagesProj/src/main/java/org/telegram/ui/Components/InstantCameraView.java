@@ -4690,8 +4690,7 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
                         encoder.prepareEncoder(inputMessage.arg1 == 1);
                     } catch (Exception e) {
                         FileLog.e(e);
-                        encoder.handleStopRecording(0, null);
-                        Looper.myLooper().quit();
+                        encoder.handleStartRecordingError();
                     }
                     break;
                 }
@@ -5818,6 +5817,45 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
         public static final int ENCODER_SEND_PLAYER = 2;
 
         private boolean sentMedia;
+        private volatile boolean startupFailed;
+        private void handleStartRecordingError() {
+            startupFailed = true;
+            running = false;
+            if (audioRecorder != null) {
+                try {
+                    audioRecorder.stop();
+                } catch (Exception e) {
+                    FileLog.e(e);
+                }
+                try {
+                    audioRecorder.release();
+                } catch (Exception e) {
+                    FileLog.e(e);
+                }
+                audioRecorder = null;
+            }
+            AndroidUtilities.runOnUIThread(() -> {
+                if (InstantCameraView.this.videoEncoder != this) return;
+                recording = false;
+                MediaController.getInstance().requestRecordAudioFocus(false);
+                NotificationCenter.getInstance(currentAccount).postNotificationName(NotificationCenter.recordStartError, recordingGuid);
+                startAnimation(false, false);
+            });
+            handleStopRecording(ENCODER_SEND_CANCEL, null);
+        }
+        private void releaseEncoder(MediaCodec codec) {
+            if (codec == null) return;
+            try {
+                codec.stop();
+            } catch (Exception e) {
+                FileLog.e(e);
+            }
+            try {
+                codec.release();
+            } catch (Exception e) {
+                FileLog.e(e);
+            }
+        }
 
         private void handleStopRecording(final int send, final SendOptions sendOptions) {
             setHeavyOperationsStopped(false);
@@ -5866,29 +5904,18 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
             }
             try {
                 FileLog.d("InstantCamera handleStopRecording drain encoders");
-                drainEncoder(true);
+                if (!startupFailed) drainEncoder(true);
             } catch (Exception e) {
                 FileLog.e(e);
             }
-            if (videoEncoder != null) {
-                try {
-                    videoEncoder.stop();
-                    videoEncoder.release();
-                    videoEncoder = null;
-                } catch (Exception e) {
-                    FileLog.e(e);
-                }
-            }
-            if (audioEncoder != null) {
-                try {
-                    audioEncoder.stop();
-                    audioEncoder.release();
-                    audioEncoder = null;
-
-                    setBluetoothScoOn(false);
-                } catch (Exception e) {
-                    FileLog.e(e);
-                }
+            releaseEncoder(videoEncoder);
+            videoEncoder = null;
+            releaseEncoder(audioEncoder);
+            audioEncoder = null;
+            try {
+                setBluetoothScoOn(false);
+            } catch (Exception e) {
+                FileLog.e(e);
             }
             if (previewFile != null) {
                 previewFile.delete();
@@ -6052,13 +6079,24 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
                     MediaController.getInstance().requestRecordAudioFocus(false);
                 });
             }
-            EGL14.eglDestroySurface(eglDisplay, eglSurface);
+            if (overlayHelper != null) {
+                try {
+                    overlayHelper.destroy();
+                } catch (Exception e) {
+                    FileLog.e(e);
+                }
+                overlayHelper = null;
+            }
+            if (eglDisplay != null && eglDisplay != EGL14.EGL_NO_DISPLAY
+                    && eglSurface != null && eglSurface != EGL14.EGL_NO_SURFACE) {
+                EGL14.eglDestroySurface(eglDisplay, eglSurface);
+            }
             eglSurface = EGL14.EGL_NO_SURFACE;
             if (surface != null) {
                 surface.release();
                 surface = null;
             }
-            if (eglDisplay != EGL14.EGL_NO_DISPLAY) {
+            if (eglDisplay != null && eglDisplay != EGL14.EGL_NO_DISPLAY) {
                 EGL14.eglMakeCurrent(eglDisplay, EGL14.EGL_NO_SURFACE, EGL14.EGL_NO_SURFACE, EGL14.EGL_NO_CONTEXT);
                 EGL14.eglDestroyContext(eglDisplay, eglContext);
                 EGL14.eglReleaseThread();
@@ -6068,10 +6106,6 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
             eglContext = EGL14.EGL_NO_CONTEXT;
             eglConfig = null;
             handler.exit();
-            if (overlayHelper != null) {
-                overlayHelper.destroy();
-                overlayHelper = null;
-            }
             AndroidUtilities.runOnUIThread(() -> {
                 if (InstantCameraView.this.videoEncoder == this) {
                     InstantCameraView.this.videoEncoder = null;
@@ -6372,9 +6406,6 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
                     FileLog.d("InstantCamera initied audio record with channels " + audioRecorder.getChannelCount() + " sample rate = " + audioRecorder.getSampleRate() + " bufferSize = " + bufferSize);
                 }
                 pauseRecorder = false;
-                Thread thread = new Thread(recorderRunnable);
-                thread.setPriority(Thread.MAX_PRIORITY);
-                thread.start();
 
                 audioBufferInfo = new MediaCodec.BufferInfo();
                 videoBufferInfo = new MediaCodec.BufferInfo();
@@ -6417,24 +6448,6 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
                     mediaMuxer.setAllowSyncFiles(allowSendingWhileRecording = SharedConfig.deviceIsHigh());
                 }
 
-                AndroidUtilities.runOnUIThread(() -> {
-                    if (cancelled) {
-                        return;
-                    }
-                    if (!app.nimarkogram.messenger.NimarkoConfig.disableVibration) {
-                        try {
-                            performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP, HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING);
-                        } catch (Exception ignore) {}
-                    }
-                    AndroidUtilities.lockOrientation(delegate.getParentActivity());
-                    recordPlusTime = fromPause ? recordedTime : 0;
-                    recordStartTime = SystemClock.elapsedRealtime();
-                    recording = true;
-                    legacyZoom = 0f; // each new round starts un-zoomed (legacy path)
-                    updateFlash();
-                    invalidate();
-                    NotificationCenter.getInstance(currentAccount).postNotificationName(NotificationCenter.recordStarted, recordingGuid, false);
-                });
             } catch (Exception ioe) {
                 throw new RuntimeException(ioe);
             }
@@ -6571,6 +6584,25 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
                     throw new IllegalStateException("Unable to create CameraX snapshot encoder shader");
                 }
             }
+            Thread thread = new Thread(recorderRunnable);
+            thread.setPriority(Thread.MAX_PRIORITY);
+            AndroidUtilities.runOnUIThread(() -> {
+                if (cancelled || startupFailed || InstantCameraView.this.videoEncoder != this) return;
+                if (!app.nimarkogram.messenger.NimarkoConfig.disableVibration) {
+                    try {
+                        performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP, HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING);
+                    } catch (Exception ignore) {}
+                }
+                AndroidUtilities.lockOrientation(delegate.getParentActivity());
+                recordPlusTime = fromPause ? recordedTime : 0;
+                recordStartTime = SystemClock.elapsedRealtime();
+                recording = true;
+                legacyZoom = 0f;
+                updateFlash();
+                invalidate();
+                NotificationCenter.getInstance(currentAccount).postNotificationName(NotificationCenter.recordStarted, recordingGuid, false);
+            });
+            thread.start();
         }
 
         public Surface getInputSurface() {

@@ -1268,11 +1268,15 @@ public class AudioPlayerAlert extends BottomSheet implements NotificationCenter.
             if (messageObject1 == null || parentActivity == null) {
                 return;
             }
-            saveToProfile(messageObject1, true, () -> {}, false);
-            setVisibleInProfile(true);
-            BulletinFactory.of((FrameLayout) containerView, resourcesProvider)
-                .createSimpleBulletin(R.raw.saved_messages, getString(R.string.AudioSaveToMyProfileSaved))
-                .show();
+            saveToProfile(messageObject1, true, () -> {
+                if (isDismissed()) return;
+                if (MediaController.getInstance().getPlayingMessageObject() == messageObject1) {
+                    setVisibleInProfile(true);
+                }
+                BulletinFactory.of((FrameLayout) containerView, resourcesProvider)
+                    .createSimpleBulletin(R.raw.saved_messages, getString(R.string.AudioSaveToMyProfileSaved))
+                    .show();
+            }, false);
         });
         playerLayout.addView(saveToProfileButton, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, 42, Gravity.FILL_HORIZONTAL | Gravity.BOTTOM, 12, 12, 12, 12));
 
@@ -1292,11 +1296,15 @@ public class AudioPlayerAlert extends BottomSheet implements NotificationCenter.
             if (messageObject1 == null || parentActivity == null) {
                 return;
             }
-            saveToProfile(messageObject1, false, () -> {}, false);
-            setVisibleInProfile(false);
-            BulletinFactory.of((FrameLayout) containerView, resourcesProvider)
-                .createSimpleBulletin(R.raw.ic_delete, getString(R.string.AudioSaveToMyProfileUnsaved))
-                .show();
+            saveToProfile(messageObject1, false, () -> {
+                if (isDismissed()) return;
+                if (MediaController.getInstance().getPlayingMessageObject() == messageObject1) {
+                    setVisibleInProfile(false);
+                }
+                BulletinFactory.of((FrameLayout) containerView, resourcesProvider)
+                    .createSimpleBulletin(R.raw.ic_delete, getString(R.string.AudioSaveToMyProfileUnsaved))
+                    .show();
+            }, false);
         });
         playerLayout.addView(unsaveFromProfileButton, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, 42, Gravity.FILL_HORIZONTAL | Gravity.BOTTOM, 12, 12, 12, 12));
 
@@ -2874,6 +2882,16 @@ public class AudioPlayerAlert extends BottomSheet implements NotificationCenter.
                     BulletinFactory.of((FrameLayout) containerView, resourcesProvider)
                         .showForError(err);
                 });
+                return;
+            }
+            if (!(res instanceof TLRPC.TL_boolTrue)) {
+                AndroidUtilities.runOnUIThread(() -> {
+                    if (!isDismissed()) {
+                        BulletinFactory.of((FrameLayout) containerView, resourcesProvider)
+                            .createErrorBulletin(getString(R.string.UnknownError)).show();
+                    }
+                });
+                return;
             }
 
             AndroidUtilities.runOnUIThread(() -> {

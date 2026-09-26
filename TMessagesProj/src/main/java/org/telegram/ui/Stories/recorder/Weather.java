@@ -682,30 +682,51 @@ public class Weather {
                         }
                     }
                 } else {
-                    try {
-                        final Utilities.Callback<Location>[] callback = new Utilities.Callback[] { whenGot };
-                        final LocationListener[] listenerArr = new LocationListener[] { null };
-                        final LocationListener listener = location -> {
-                            if (listenerArr[0] != null) {
-                                lm.removeUpdates(listenerArr[0]);
-                                listenerArr[0] = null;
-                            }
-                            if (callback[0] != null) {
-                                callback[0].run(location);
-                                callback[0] = null;
-                            }
-                        };
-                        listenerArr[0] = listener;
-                        lm.requestLocationUpdates(LocationManager.GPS_PROVIDER, 1, 0, listener);
-                    } catch (Exception e) {
-                        FileLog.e(e);
-                        whenGot.run(null);
-                    }
+                    requestLegacyGps(lm, whenGot);
                     return;
                 }
             }
             whenGot.run(l);
         });
+    }
+    @SuppressLint("MissingPermission")
+    private static void requestLegacyGps(LocationManager manager, Utilities.Callback<Location> callback) {
+        class GpsRequest implements LocationListener, Runnable {
+            private boolean finished;
+            private void finish(Location location) {
+                if (finished) return;
+                finished = true;
+                AndroidUtilities.cancelRunOnUIThread(this);
+                try {
+                    manager.removeUpdates(this);
+                } catch (Exception e) {
+                    FileLog.e(e);
+                }
+                callback.run(location);
+            }
+            @Override
+            public void run() {
+                finish(null);
+            }
+            @Override
+            public void onLocationChanged(Location location) {
+                finish(location);
+            }
+            @Override
+            public void onStatusChanged(String provider, int status, Bundle extras) {}
+            @Override
+            public void onProviderEnabled(String provider) {}
+            @Override
+            public void onProviderDisabled(String provider) {}
+        }
+        GpsRequest request = new GpsRequest();
+        AndroidUtilities.runOnUIThread(request, 15_000);
+        try {
+            manager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 1, 0, request, Looper.getMainLooper());
+        } catch (Exception e) {
+            FileLog.e(e);
+            request.run();
+        }
     }
 
 }

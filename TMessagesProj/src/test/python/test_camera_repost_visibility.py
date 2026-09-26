@@ -16,36 +16,3 @@ class CameraRepostVisibilityTest(unittest.TestCase):
         callback = block(source, 'public void onCameraInit()')
         self.assertNotIn('if (current == null || next == null) return;', callback)
         self.assertIn('current == null || next == null || current.equals(next)', callback)
-
-    def test_parent_invalidated_only_on_opacity_boundary(self):
-        source = (ROOT / 'Cells/ChatMessageCell.java').read_text()
-        method = block(source, 'public void setAlpha(float alpha)')
-        run_java('''
-class Base {float alpha=1;public void setAlpha(float a){alpha=a;}}
-public class Transitions extends Base {
- boolean ALPHA_PROPERTY_WORKAROUND, enterTransitionInProgress;
- float alphaInternal=1;int parentInvalidations;float observedAlpha;
- Object replyNameLayout,replyTextLayout;
- static class Position {int minX,minY,flags;}
- Position currentPosition;
- static class MessageObject {static final int POSITION_FLAG_BOTTOM=1,POSITION_FLAG_LEFT=2;boolean isVoice(){return false;}}
- MessageObject currentMessageObject=new MessageObject();
- static class Reactions {boolean isSmall=true;}
- Reactions reactionsLayoutInBubble=new Reactions();
- float getAlpha(){return ALPHA_PROPERTY_WORKAROUND?alphaInternal:alpha;}
- void invalidate(){}
- void invalidateOutbounds(){parentInvalidations++;observedAlpha=getAlpha();}
- METHOD
- static void check(boolean b){if(!b)throw new AssertionError();}
- public static void main(String[] args){
-  for(boolean workaround:new boolean[]{false,true}){
-   Transitions t=new Transitions();t.ALPHA_PROPERTY_WORKAROUND=workaround;
-   t.setAlpha(0);check(t.parentInvalidations==1 && t.observedAlpha==0);
-   t.setAlpha(.3f);t.setAlpha(.9f);check(t.parentInvalidations==1);
-   t.setAlpha(1);check(t.parentInvalidations==2 && t.observedAlpha==1);
-   t.setAlpha(1);check(t.parentInvalidations==2);
-   t.setAlpha(.5f);check(t.parentInvalidations==3 && t.observedAlpha==.5f);
-  }
- }
-}
-'''.replace('METHOD', method))

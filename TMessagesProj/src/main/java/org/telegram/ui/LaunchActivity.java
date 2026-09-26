@@ -275,6 +275,8 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
 
     private boolean finished;
     private final AtomicLong navigationRequestGeneration = new AtomicLong();
+    private static final org.telegram.messenger.DispatchQueue sharedFileCopyQueue =
+            new org.telegram.messenger.DispatchQueue("shared-file-copy");
     private long fragmentPresentationGeneration;
     private Bundle pendingProfileRestore;
     private java.util.function.BooleanSupplier pendingProfileRestoreCurrent;
@@ -1765,6 +1767,9 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
         boolean newContactAlert = false;
         boolean scanQr = false;
         boolean openBot = false;
+        Uri sharedFileToCache = null;
+        String sharedFileMimeType = null;
+        Runnable pendingSharedFileCopy = null;
         long botId = 0;
         long botType = -1;
         String searchQuery = null;
@@ -1909,9 +1914,12 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
                                         }
                                     }
                                     if (exportingChatUri == null) {
-                                        path = AndroidUtilities.getPath(uri);
                                         if (!BuildVars.NO_SCOPED_STORAGE) {
-                                            path = MediaController.copyFileToCache(uri, "file");
+                                            sharedFileToCache = uri;
+                                            sharedFileMimeType = type;
+                                            path = null;
+                                        } else {
+                                            path = AndroidUtilities.getPath(uri);
                                         }
                                         if (path != null) {
                                             if (path.startsWith("file:")) {
@@ -3404,16 +3412,17 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
                 });
                 pushOpened = false;
             } else if (videoPath != null || voicePath != null || photoPathsArray != null || sendingText != null || documentsPathsArray != null || contactsToSend != null || documentsUrisArray != null) {
-                if (!AndroidUtilities.isTablet()) {
-                    NotificationCenter.getInstance(intentAccount[0]).postNotificationName(NotificationCenter.closeChats);
-                }
-                if (dialogId == 0) {
-                    openDialogsToSend(false);
-                    pushOpened = true;
+                if (sharedFileToCache != null) {
+                    final Uri copyUri = sharedFileToCache;
+                    final String copyMime = sharedFileMimeType;
+                    final CharSequence copyCaption = sendingText;
+                    final int copyAccount = intentAccount[0];
+                    final long copyDialogId = dialogId;
+                    pendingSharedFileCopy = () -> stageSharedFile(copyUri, copyMime, copyCaption,
+                            copyAccount, copyDialogId, navigationRequestGeneration.get());
                 } else {
-                    ArrayList<MessagesStorage.TopicKey> dids = new ArrayList<>();
-                    dids.add(MessagesStorage.TopicKey.of(dialogId, 0));
-                    didSelectDialogs(null, dids, null, false, true, 0, 0, null);
+                    openSharedContent(intentAccount[0], dialogId);
+                    pushOpened = dialogId == 0;
                 }
             } else if (open_settings == 7 || open_settings == 8 || open_settings == 9) {
                 CharSequence bulletinText = null;
@@ -3651,6 +3660,7 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
         }
 
         intent.setAction(null);
+        if (pendingSharedFileCopy != null) pendingSharedFileCopy.run();
         return pushOpened;
     }
 
@@ -3807,6 +3817,71 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
                 rightActionBarLayout.rebuildFragments(INavigationLayout.REBUILD_FLAG_REBUILD_LAST);
             }
         }
+    }
+    private void openSharedContent(int account, long dialogId) {
+        if (!AndroidUtilities.isTablet()) {
+            NotificationCenter.getInstance(account).postNotificationName(NotificationCenter.closeChats);
+        }
+        if (dialogId == 0) {
+            openDialogsToSend(false);
+        } else {
+            ArrayList<MessagesStorage.TopicKey> dids = new ArrayList<>();
+            dids.add(MessagesStorage.TopicKey.of(dialogId, 0));
+            didSelectDialogs(null, dids, null, false, true, 0, 0, null);
+        }
+    }
+    private void stageSharedFile(Uri uri, String mime, CharSequence caption, int account, long dialogId, long generation) {
+        final java.util.concurrent.atomic.AtomicBoolean cancelled = new java.util.concurrent.atomic.AtomicBoolean();
+        final AlertDialog progress = new AlertDialog(this, AlertDialog.ALERT_TYPE_SPINNER);
+        progress.setOnCancelListener(dialog -> cancelled.set(true));
+        final View decor = getWindow().getDecorView();
+        final Runnable showProgress = () -> {
+            if (!cancelled.get() && decor.isAttachedToWindow() && isNavigationRequestCurrent(account, generation)) {
+                try {
+                    progress.show();
+                } catch (Exception ignored) {
+                    cancelled.set(true);
+                }
+            }
+        };
+        decor.postDelayed(showProgress, 300);
+        documentsUrisArray = null;
+        documentsMimeType = null;
+        sendingText = null;
+        sharedFileCopyQueue.postRunnable(() -> {
+            final String path = MediaController.copyFileToCache(uri, "file", -1,
+                    () -> cancelled.get() || navigationRequestGeneration.get() != generation);
+            final boolean opus = path != null && mime != null && mime.startsWith("audio/ogg")
+                    && mime.contains("codecs=opus") && MediaController.isOpusFile(path) == 1;
+            AndroidUtilities.runOnUIThread(() -> {
+                decor.removeCallbacks(showProgress);
+                try {
+                    progress.dismiss();
+                } catch (Exception ignored) { }
+                if (cancelled.get() || !isNavigationRequestCurrent(account, generation)
+                        || SharedConfig.appLocked || SharedConfig.isWaitingForPasscodeEnter || AndroidUtilities.needShowPasscode(true)) {
+                    if (path != null) Utilities.globalQueue.postRunnable(() -> new File(path).delete());
+                    return;
+                }
+                if (path == null) {
+                    Toast.makeText(this, "Unsupported content", Toast.LENGTH_SHORT).show();
+                    return;
+                }
+                sendingText = caption;
+                if (mime != null && mime.startsWith("video/")) {
+                    videoPath = path;
+                } else if (opus) {
+                    voicePath = path;
+                } else {
+                    documentsMimeType = mime;
+                    documentsPathsArray = new ArrayList<>();
+                    documentsOriginalPathsArray = new ArrayList<>();
+                    documentsPathsArray.add(path);
+                    documentsOriginalPathsArray.add(uri.toString());
+                }
+                openSharedContent(account, dialogId);
+            });
+        });
     }
 
     private int runCommentRequest(int intentAccount, Runnable dismissLoading, Integer messageId, Integer commentId, Long threadId, Integer taskId, TLRPC.Chat chat) {

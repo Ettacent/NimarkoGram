@@ -4595,12 +4595,32 @@ public class MediaDataController extends BaseController {
         } else if (!message.entities.isEmpty()) {
             for (int a = 0; a < message.entities.size(); a++) {
                 final TLRPC.MessageEntity entity = message.entities.get(a);
-                if (entity instanceof TLRPC.TL_messageEntityUrl || entity instanceof TLRPC.TL_messageEntityTextUrl || entity instanceof TLRPC.TL_messageEntityEmail) {
+                if ((entity instanceof TLRPC.TL_messageEntityUrl || entity instanceof TLRPC.TL_messageEntityTextUrl || entity instanceof TLRPC.TL_messageEntityEmail)
+                        && (media instanceof TLRPC.TL_messageMediaWebPage
+                        || !app.nimarkogram.messenger.utils.NimarkoLocalEmoji.isLocalEmojiLink(message.message, entity))) {
                     return MEDIA_URL;
                 }
             }
         }
         return -1;
+    }
+    public static boolean isLocalEmojiOnlyLinkMessage(TLRPC.Message message) {
+        if (message == null || message.entities == null) return false;
+        TLRPC.MessageMedia media = MessageObject.getMedia(message);
+        if (media != null && !(media instanceof TLRPC.TL_messageMediaEmpty)) return false;
+        boolean local = false;
+        for (TLRPC.MessageEntity entity : message.entities) {
+            if (app.nimarkogram.messenger.utils.NimarkoLocalEmoji.isLocalEmojiLink(message.message, entity)
+                    || entity instanceof TLRPC.TL_messageEntityCustomEmoji
+                    && ((TLRPC.TL_messageEntityCustomEmoji) entity).local) {
+                local = true;
+            } else if (entity instanceof TLRPC.TL_messageEntityUrl
+                    || entity instanceof TLRPC.TL_messageEntityTextUrl
+                    || entity instanceof TLRPC.TL_messageEntityEmail) {
+                return false;
+            }
+        }
+        return local;
     }
 
     public static boolean canAddMessageToMedia(TLRPC.Message message) {
@@ -7928,6 +7948,7 @@ public class MediaDataController extends BaseController {
             boolean sameDraft;
             if (currentDraft != null) {
                 sameDraft = (currentDraft.message.equals(draftMessage.message)
+                    && draftEntitiesEqual(currentDraft.entities, draftMessage.entities)
                     && replyToEquals(currentDraft.reply_to, draftMessage.reply_to)
                     && suggestedPostEquals(currentDraft.suggested_post, draftMessage.suggested_post)
                     && richMessageEquals(currentDraft.rich_message, draftMessage.rich_message)
@@ -7991,6 +8012,34 @@ public class MediaDataController extends BaseController {
         draftDialogsReloadScheduled = false;
         getMessagesController().sortDialogs(null);
         getNotificationCenter().postNotificationName(NotificationCenter.dialogsNeedReload);
+    }
+    private static boolean draftEntitiesEqual(ArrayList<TLRPC.MessageEntity> a, ArrayList<TLRPC.MessageEntity> b) {
+        if (a == b) {
+            return true;
+        }
+        final int sizeA = a == null ? 0 : a.size();
+        final int sizeB = b == null ? 0 : b.size();
+        if (sizeA != sizeB) {
+            return false;
+        }
+        if (sizeA == 0) {
+            return true;
+        }
+        SerializedData dataA = new SerializedData();
+        SerializedData dataB = new SerializedData();
+        try {
+            for (int i = 0; i < sizeA; i++) {
+                a.get(i).serializeToStream(dataA);
+                b.get(i).serializeToStream(dataB);
+            }
+            return Arrays.equals(dataA.toByteArray(), dataB.toByteArray());
+        } catch (Exception e) {
+            FileLog.e(e);
+            return false;
+        } finally {
+            dataA.cleanup();
+            dataB.cleanup();
+        }
     }
 
     private static boolean suggestedPostEquals(TLRPC.SuggestedPost a, TLRPC.SuggestedPost b) {

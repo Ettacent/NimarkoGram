@@ -10,8 +10,8 @@ import android.hardware.camera2.CameraCharacteristics;
 import android.hardware.camera2.CameraDevice;
 import android.hardware.camera2.CameraManager;
 import android.hardware.camera2.CameraMetadata;
-import android.hardware.camera2.CaptureFailure;
 import android.hardware.camera2.CaptureRequest;
+import android.hardware.camera2.CaptureFailure;
 import android.hardware.camera2.params.StreamConfigurationMap;
 import android.media.Image;
 import android.media.ImageReader;
@@ -224,6 +224,9 @@ public class Camera2Session {
                     if (confMap != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                         Size[] outputs = confMap.getOutputSizes(SurfaceTexture.class);
                         Size size = chooseQualityAwareSize(outputs, viewWidth, viewHeight, requestedHeight);
+                        size = chooseRoundVideoCompatibilitySize(Build.MANUFACTURER, Build.MODEL,
+                                front, logicalId != null && logicalId.equals(id), noStillSurface,
+                                size, outputs);
                         if (size != null) {
                             bestAspectRatio = cameraAspectRatio;
                             cameraId = id;
@@ -867,6 +870,65 @@ public class Camera2Session {
             return null;
         }
     }
+    private static Integer choosePreviewDistortionMode(int[] supportedModes) {
+        if (supportedModes != null) {
+            for (int mode : supportedModes) {
+                if (mode == CaptureRequest.DISTORTION_CORRECTION_MODE_FAST) {
+                    return mode;
+                }
+            }
+        }
+        return null;
+    }
+    private static Integer chooseStabilizationMode(int[] supportedModes, boolean enabled, int on, int off) {
+        Integer fallback = null;
+        if (supportedModes != null) {
+            for (int mode : supportedModes) {
+                if (enabled && mode == on) return on;
+                if (mode == off) fallback = off;
+            }
+        }
+        return fallback;
+    }
+    private static Integer[] chooseStabilizationModes(int[] opticalModes, int[] videoModes,
+            Integer templateOptical, Integer templateVideo, boolean opticalEnabled, boolean videoEnabled) {
+        final int opticalOn = CaptureRequest.LENS_OPTICAL_STABILIZATION_MODE_ON;
+        final int opticalOff = CaptureRequest.LENS_OPTICAL_STABILIZATION_MODE_OFF;
+        final int videoOn = CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE_ON;
+        final int videoOff = CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE_OFF;
+        Integer optical = chooseStabilizationMode(opticalModes, opticalEnabled, opticalOn, opticalOff);
+        Integer disableVideo = chooseStabilizationMode(videoModes, false, videoOn, videoOff);
+        if (Integer.valueOf(opticalOn).equals(optical) && disableVideo == null
+                && !Integer.valueOf(videoOff).equals(templateVideo)) {
+            optical = chooseStabilizationMode(opticalModes, false, opticalOn, opticalOff);
+        }
+        Integer effectiveOptical = optical != null ? optical : templateOptical;
+        Integer video = chooseStabilizationMode(videoModes,
+                videoEnabled && Integer.valueOf(opticalOff).equals(effectiveOptical), videoOn, videoOff);
+        return new Integer[] { optical, video };
+    }
+    private void applyStabilizationModes(boolean opticalEnabled, boolean videoEnabled) {
+        if (cameraCharacteristics == null) return;
+        List<CaptureRequest.Key<?>> requestKeys = cameraCharacteristics.getAvailableCaptureRequestKeys();
+        if (requestKeys == null) return;
+        int[] opticalModes = requestKeys.contains(CaptureRequest.LENS_OPTICAL_STABILIZATION_MODE)
+                ? cameraCharacteristics.get(CameraCharacteristics.LENS_INFO_AVAILABLE_OPTICAL_STABILIZATION) : null;
+        int[] videoModes = requestKeys.contains(CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE)
+                ? cameraCharacteristics.get(CameraCharacteristics.CONTROL_AVAILABLE_VIDEO_STABILIZATION_MODES) : null;
+        Integer[] modes = chooseStabilizationModes(opticalModes, videoModes,
+                captureRequestBuilder.get(CaptureRequest.LENS_OPTICAL_STABILIZATION_MODE),
+                captureRequestBuilder.get(CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE),
+                opticalEnabled, videoEnabled);
+        if (Integer.valueOf(CaptureRequest.LENS_OPTICAL_STABILIZATION_MODE_OFF).equals(modes[0])) {
+            captureRequestBuilder.set(CaptureRequest.LENS_OPTICAL_STABILIZATION_MODE, modes[0]);
+        }
+        if (modes[1] != null) {
+            captureRequestBuilder.set(CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE, modes[1]);
+        }
+        if (Integer.valueOf(CaptureRequest.LENS_OPTICAL_STABILIZATION_MODE_ON).equals(modes[0])) {
+            captureRequestBuilder.set(CaptureRequest.LENS_OPTICAL_STABILIZATION_MODE, modes[0]);
+        }
+    }
 
     private boolean updateCaptureRequest() {
         if (cameraDevice == null || surface == null || captureSession == null) return false;
@@ -910,22 +972,8 @@ public class Camera2Session {
             }
             
             try {
-                int mode = app.nimarkogram.messenger.NimarkoConfig.cameraStabilisation
-                        ? CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE_ON
-                        : CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE_OFF;
-                captureRequestBuilder.set(CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE, mode);
-            } catch (Throwable ignored) {}
-
-            try {
-                if (app.nimarkogram.messenger.NimarkoConfig.cameraOpticalStabilization) {
-                    captureRequestBuilder.set(CaptureRequest.LENS_OPTICAL_STABILIZATION_MODE,
-                            CaptureRequest.LENS_OPTICAL_STABILIZATION_MODE_ON);
-                    captureRequestBuilder.set(CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE,
-                            CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE_OFF);
-                } else {
-                    captureRequestBuilder.set(CaptureRequest.LENS_OPTICAL_STABILIZATION_MODE,
-                            CaptureRequest.LENS_OPTICAL_STABILIZATION_MODE_OFF);
-                }
+                applyStabilizationModes(app.nimarkogram.messenger.NimarkoConfig.cameraOpticalStabilization,
+                        app.nimarkogram.messenger.NimarkoConfig.cameraStabilisation);
             } catch (Throwable ignored) {}
 
             try {
@@ -949,8 +997,12 @@ public class Camera2Session {
 
             try {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                    captureRequestBuilder.set(CaptureRequest.DISTORTION_CORRECTION_MODE,
-                            CaptureRequest.DISTORTION_CORRECTION_MODE_HIGH_QUALITY);
+                    Integer distortionMode = choosePreviewDistortionMode(cameraCharacteristics.get(
+                            CameraCharacteristics.DISTORTION_CORRECTION_AVAILABLE_MODES));
+                    if (distortionMode != null) {
+                        captureRequestBuilder.set(CaptureRequest.DISTORTION_CORRECTION_MODE,
+                                distortionMode);
+                    }
                 }
             } catch (Throwable ignored) {}
 
@@ -1090,6 +1142,20 @@ public class Camera2Session {
         if (bestAspect != null) return bestAspect;
         if (bestAnyCapped != null) return bestAnyCapped;
         return bestAnyUncapped;
+    }
+    static Size chooseRoundVideoCompatibilitySize(String manufacturer, String model,
+            boolean front, boolean logical, boolean noStillSurface, Size selected, Size[] outputs) {
+        if (!"OPPO".equalsIgnoreCase(manufacturer) || !"CPH2791".equalsIgnoreCase(model)
+                || front || !logical || !noStillSurface || selected == null || outputs == null
+                || selected.getWidth() != 1088 || selected.getHeight() != 1088) {
+            return selected;
+        }
+        for (Size size : outputs) {
+            if (size != null && size.getWidth() == 1920 && size.getHeight() == 1088) {
+                return size;
+            }
+        }
+        return selected;
     }
 
     public static Size chooseOptimalSize(Size[] choices, int width, int height, boolean notBigger) {

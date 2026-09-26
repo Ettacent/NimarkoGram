@@ -370,12 +370,12 @@ public class SizeNotifierFrameLayout extends FrameLayout implements Theme.Colora
         if (attached && backgroundDrawable instanceof ChatBackgroundDrawable) {
             ((ChatBackgroundDrawable) backgroundDrawable).onDetachedFromWindow(backgroundView);
         }
+        if (attached && backgroundDrawable instanceof MotionBackgroundDrawable) {
+            ((MotionBackgroundDrawable) backgroundDrawable).onDetachedFromWindow();
+        }
         backgroundDrawable = bitmap;
         if (attached && backgroundDrawable instanceof ChatBackgroundDrawable) {
             ((ChatBackgroundDrawable) backgroundDrawable).onAttachedToWindow(backgroundView);
-        }
-        if (attached && backgroundDrawable instanceof MotionBackgroundDrawable) {
-            ((MotionBackgroundDrawable) backgroundDrawable).onDetachedFromWindow();
         }
         if (attached && backgroundDrawable instanceof MotionBackgroundDrawable) {
             ((MotionBackgroundDrawable) backgroundDrawable).onAttachedToWindow();

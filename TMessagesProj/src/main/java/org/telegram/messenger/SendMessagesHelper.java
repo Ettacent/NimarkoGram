@@ -9851,6 +9851,10 @@ public class SendMessagesHelper extends BaseController implements NotificationCe
 
     @UiThread
     public static void prepareSendingDocument(AccountInstance accountInstance, String path, String originalPath, Uri uri, String caption, String mine, long dialogId, MessageObject replyToMsg, MessageObject replyToTopMsg, TL_stories.StoryItem storyItem, ChatActivity.ReplyQuote quote, MessageObject editingMessageObject, boolean notify, int scheduleDate, InputContentInfoCompat inputContent, SendMessageChatArguments sendMessageChatArguments, boolean invertMedia) {
+        prepareSendingDocument(accountInstance, path, originalPath, uri, caption, mine, dialogId, replyToMsg, replyToTopMsg, storyItem, quote, editingMessageObject, notify, scheduleDate, 0, inputContent, sendMessageChatArguments, invertMedia);
+    }
+    @UiThread
+    public static void prepareSendingDocument(AccountInstance accountInstance, String path, String originalPath, Uri uri, String caption, String mine, long dialogId, MessageObject replyToMsg, MessageObject replyToTopMsg, TL_stories.StoryItem storyItem, ChatActivity.ReplyQuote quote, MessageObject editingMessageObject, boolean notify, int scheduleDate, int scheduleRepeatPeriod, InputContentInfoCompat inputContent, SendMessageChatArguments sendMessageChatArguments, boolean invertMedia) {
         if ((path == null || originalPath == null) && uri == null) {
             return;
         }
@@ -9865,7 +9869,7 @@ public class SendMessagesHelper extends BaseController implements NotificationCe
             paths.add(path);
             originalPaths.add(originalPath);
         }
-        prepareSendingDocuments(accountInstance, paths, originalPaths, uris, caption, mine, dialogId, replyToMsg, replyToTopMsg, storyItem, quote, editingMessageObject, notify, scheduleDate, inputContent, sendMessageChatArguments, 0, invertMedia, 0);
+        prepareSendingDocuments(accountInstance, paths, originalPaths, uris, caption, null, mine, dialogId, replyToMsg, replyToTopMsg, storyItem, quote, editingMessageObject, notify, scheduleDate, scheduleRepeatPeriod, inputContent, sendMessageChatArguments, 0, invertMedia, 0, 0, null);
     }
 
     @UiThread
@@ -10104,7 +10108,11 @@ public class SendMessagesHelper extends BaseController implements NotificationCe
 
     @UiThread
     public static void prepareSendingPhoto(AccountInstance accountInstance, String imageFilePath, Uri imageUri, long dialogId, MessageObject replyToMsg, MessageObject replyToTopMsg, ChatActivity.ReplyQuote quote, CharSequence caption, ArrayList<TLRPC.MessageEntity> entities, ArrayList<TLRPC.InputDocument> stickers, InputContentInfoCompat inputContent, int ttl, MessageObject editingMessageObject, boolean notify, int scheduleDate, int mode, SendMessageChatArguments sendMessageChatArguments) {
-        prepareSendingPhoto(accountInstance, imageFilePath, null, imageUri, dialogId, replyToMsg, replyToTopMsg, null, null, entities, stickers, inputContent, ttl, editingMessageObject, null, notify, scheduleDate, 0, mode, false, caption, sendMessageChatArguments, 0, 0, 0, null);
+        prepareSendingPhoto(accountInstance, imageFilePath, imageUri, dialogId, replyToMsg, replyToTopMsg, quote, caption, entities, stickers, inputContent, ttl, editingMessageObject, notify, scheduleDate, 0, mode, sendMessageChatArguments);
+    }
+    @UiThread
+    public static void prepareSendingPhoto(AccountInstance accountInstance, String imageFilePath, Uri imageUri, long dialogId, MessageObject replyToMsg, MessageObject replyToTopMsg, ChatActivity.ReplyQuote quote, CharSequence caption, ArrayList<TLRPC.MessageEntity> entities, ArrayList<TLRPC.InputDocument> stickers, InputContentInfoCompat inputContent, int ttl, MessageObject editingMessageObject, boolean notify, int scheduleDate, int scheduleRepeatPeriod, int mode, SendMessageChatArguments sendMessageChatArguments) {
+        prepareSendingPhoto(accountInstance, imageFilePath, null, imageUri, dialogId, replyToMsg, replyToTopMsg, null, quote, entities, stickers, inputContent, ttl, editingMessageObject, null, notify, scheduleDate, scheduleRepeatPeriod, mode, false, caption, sendMessageChatArguments, 0, 0, 0, null);
     }
 
     @UiThread
@@ -10129,7 +10137,7 @@ public class SendMessagesHelper extends BaseController implements NotificationCe
         info.videoEditedInfo = videoEditedInfo;
         ArrayList<SendingMediaInfo> infos = new ArrayList<>();
         infos.add(info);
-        prepareSendingMedia(accountInstance, infos, dialogId, replyToMsg, replyToTopMsg, null, quote, forceDocument, false, editingMessageObject, notify, scheduleDate, 0, mode, false, inputContent, sendMessageChatArguments, effectId, false, payStars, monoForumPeerId, suggestionParams);
+        prepareSendingMedia(accountInstance, infos, dialogId, replyToMsg, replyToTopMsg, storyItem, quote, forceDocument, false, editingMessageObject, notify, scheduleDate, scheduleRepeatPeriod, mode, false, inputContent, sendMessageChatArguments, effectId, false, payStars, monoForumPeerId, suggestionParams);
     }
 
     @UiThread

@@ -68,11 +68,15 @@ public final class NimarkoUpdateConfig {
     }
 
     public static void setLastUpdate(String version, int versionCode, String url, String changelog, String size, String uploadDate) {
+        setLastUpdate(version, versionCode, url, changelog, size, uploadDate, "");
+    }
+    public static void setLastUpdate(String version, int versionCode, String url, String changelog, String size, String uploadDate, String changelogs) {
         prefs().edit()
                 .putString("lastUpdateVersion", version == null ? "" : version)
                 .putInt("lastUpdateVersionCode", versionCode)
                 .putString("lastUpdateUrl", url == null ? "" : url)
                 .putString("lastUpdateChangelog", changelog == null ? "" : changelog)
+                .putString("lastUpdateChangelogs", changelogs == null ? "" : changelogs)
                 .putString("lastUpdateSize", size == null ? "" : size)
                 .putString("lastUpdateDate", uploadDate == null ? "" : uploadDate)
                 .apply();
@@ -81,6 +85,7 @@ public final class NimarkoUpdateConfig {
     public static int getLastUpdateVersionCode() { return prefs().getInt("lastUpdateVersionCode", 0); }
     public static String getLastUpdateUrl() { return prefs().getString("lastUpdateUrl", ""); }
     public static String getLastUpdateChangelog() { return prefs().getString("lastUpdateChangelog", ""); }
+    public static String getLastUpdateChangelogs() { return prefs().getString("lastUpdateChangelogs", ""); }
     public static String getLastUpdateSize() { return prefs().getString("lastUpdateSize", ""); }
     public static String getLastUpdateDate() { return prefs().getString("lastUpdateDate", ""); }
 

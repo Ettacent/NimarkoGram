@@ -606,7 +606,7 @@ public class AvatarDrawable extends Drawable {
         if (avatarType == AVATAR_TYPE_ARCHIVED) {
             if (archivedAvatarProgress != 0) {
                 backgroundPaint.setColor(ColorUtils.setAlphaComponent(getThemedColor(Theme.key_avatar_backgroundArchived), alpha));
-                canvas.drawCircle(size / 2.0f, size / 2.0f, size / 2.0f * archivedAvatarProgress, backgroundPaint);
+                drawArchivedBackground(canvas, size, backgroundPaint);
                 if (Theme.dialogs_archiveAvatarDrawableRecolored) {
                     Theme.dialogs_archiveAvatarDrawable.beginApplyLayerColors();
                     Theme.dialogs_archiveAvatarDrawable.setLayerColor("Arrow1", Theme.getNonAnimatedColor(Theme.key_avatar_backgroundArchived));
@@ -774,6 +774,14 @@ public class AvatarDrawable extends Drawable {
 
     private int getThemedColor(int key) {
         return Theme.getColor(key, resourcesProvider);
+    }
+    private void drawArchivedBackground(Canvas canvas, int size, Paint backgroundPaint) {
+        final float progress = Math.max(0f, Math.min(1f, archivedAvatarProgress));
+        final float inset = size * (1f - progress) / 2f;
+        final float radius = (roundRadius > 0 ? roundRadius
+                : app.nimarkogram.messenger.NimarkoConfig.getAvatarCorners(size, true)) * progress;
+        AndroidUtilities.rectTmp.set(inset, inset, size - inset, size - inset);
+        canvas.drawRoundRect(AndroidUtilities.rectTmp, radius, radius, backgroundPaint);
     }
 
     public void setRoundRadius(int roundRadius) {

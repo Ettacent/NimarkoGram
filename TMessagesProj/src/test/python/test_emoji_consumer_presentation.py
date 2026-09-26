@@ -26,7 +26,6 @@ class ConsumerPresentationTests(unittest.TestCase):
             "    float alpha = 1;\n" + draw + "\n    private void createImageReceiver() {")
         source = source.replace("    void invalidate() { invalidations++; }", """
     void setImageCoords(Rect r) {} void setAlpha(float a) { overrideAlpha = a; }
-    void draw(Canvas c) { draw(c, null); }
     void invalidate() { invalidations++; }
 """)
         # Execute actual null-receiver draws, marker, factory, delivery, receiver
@@ -130,6 +129,9 @@ class ConsumerPresentationTests(unittest.TestCase):
         emoji = (JAVA / "ui/Components/AnimatedEmojiDrawable.java").read_text()
         lifecycle = "\n".join(method(emoji, signature) for signature in (
             "private void updateAttachState()",
+            "private boolean hasAttachedHosts()",
+            "private void setReceiverAttached(boolean attach)",
+            "private void requestDocument()",
             "public void addView(View callback)",
             "public void addView(AnimatedEmojiSpan.InvalidateHolder holder)",
             "public void removeView(View view)",
@@ -137,11 +139,25 @@ class ConsumerPresentationTests(unittest.TestCase):
         # Exercise the whole production outer lifecycle, not a copy of its
         # null-receiver branch. Only unused Android/diagnostic dependencies fake.
         source = source.replace("void updateAttachState() {}", lifecycle)
+        detach_start = emoji.index("    private final Runnable detachRunnable =")
+        detach_end = emoji.index("\n    };", detach_start) + len("\n    };")
+        source = source.replace("    ImageReceiver imageReceiver;",
+                                "    ImageReceiver imageReceiver;\n" + emoji[detach_start:detach_end])
         source = source.replace("class AnimatedEmojiDrawable extends Drawable {", """
 class AnimatedEmojiDrawable extends Drawable {
     ArrayList<View> views;
     ArrayList<AnimatedEmojiSpan.InvalidateHolder> holders;
     boolean attached;
+    boolean detachPending, documentRequestPending;
+    Object document;
+    interface ReceivedDocument { void run(Object document); }
+    static class Fetcher {
+        ReceivedDocument pending;
+        void fetchDocumentInternal(long id, ReceivedDocument callback) { pending = callback; }
+    }
+    static Fetcher fetcher = new Fetcher();
+    static Fetcher getDocumentFetcher(int account) { return fetcher; }
+    void initDocument(boolean force) { createImageReceiver(); }
     static boolean LOG_MEMORY_LEAK;
     static int attachedCount;
     static ArrayList<AnimatedEmojiDrawable> attachedDrawable;
@@ -160,6 +176,11 @@ class ImageReceiver {
 class AnimatedEmojiSpan { interface InvalidateHolder { void invalidate(); } }
 class SelectAnimatedEmojiDialog { static class EmojiListView extends View {} }
 class Log { static void d(String tag, String text) {} }
+class Looper {
+    static final Thread main = Thread.currentThread();
+    static Looper getMainLooper() { return new Looper(); }
+    Thread getThread() { return main; }
+}
 """
         source = source.replace("    public static void main(String[] args) {", """
     public static void main(String[] args) {

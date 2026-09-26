@@ -817,6 +817,10 @@ public class FileLoader extends BaseController {
     public void loadFile(WebFile document, int priority, int cacheType) {
         loadFile(null, null, document, null, null, null, null, 0, priority, cacheType);
     }
+    private static boolean isVideoStoryboardDocument(TLRPC.Document document) {
+        return document != null && ("application/x-tgstoryboard".equalsIgnoreCase(document.mime_type)
+                || "application/x-tgstoryboardmap".equalsIgnoreCase(document.mime_type));
+    }
 
 
     private FileLoadOperation loadFileInternal(final TLRPC.Document document, final SecureDocument secureDocument, final WebFile webDocument, TLRPC.TL_fileLocationToBeDeprecated location, final ImageLocation imageLocation, Object parentObject, final String locationExt, final long locationSize, int priority, FileLoadOperationStream stream, final long streamOffset, boolean streamPriority, final int cacheType) {
@@ -843,7 +847,7 @@ public class FileLoader extends BaseController {
             loadOperationPathsUI.put(fileName, new LoadOperationUIObject());
         }
 
-        if (document != null && parentObject instanceof MessageObject && ((MessageObject) parentObject).putInDownloadsStore && !((MessageObject) parentObject).isAnyKindOfSticker()) {
+        if (document != null && !isVideoStoryboardDocument(document) && parentObject instanceof MessageObject && ((MessageObject) parentObject).putInDownloadsStore && !((MessageObject) parentObject).isAnyKindOfSticker()) {
             getDownloadController().startDownloadFile(document, (MessageObject) parentObject);
         }
 
@@ -1012,7 +1016,7 @@ public class FileLoader extends BaseController {
                 }
                 if (parentObject instanceof MessageObject) {
                     MessageObject messageObject = (MessageObject) parentObject;
-                    if (document != null && messageObject.putInDownloadsStore) {
+                    if (document != null && !isVideoStoryboardDocument(document) && messageObject.putInDownloadsStore) {
                         getDownloadController().onDownloadComplete(messageObject);
                     }
                 }
@@ -1035,7 +1039,7 @@ public class FileLoader extends BaseController {
                     delegate.fileDidFailedLoad(fileName, reason);
                 }
 
-                if (document != null && parentObject instanceof MessageObject && reason == 0) {
+                if (document != null && !isVideoStoryboardDocument(document) && parentObject instanceof MessageObject && reason == 0) {
                     getDownloadController().onDownloadFail((MessageObject) parentObject, reason);
                 } else if (reason == -1) {
                     LaunchActivity.checkFreeDiscSpaceStatic(2);

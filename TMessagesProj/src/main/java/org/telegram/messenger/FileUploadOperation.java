@@ -458,6 +458,9 @@ public class FileUploadOperation {
                     currentPartNum = 1;
                 }
             }
+            if (currentUploadRequetsCount >= maxRequestsCount) {
+                return;
+            }
 
             if (estimatedSize != 0) {
                 if (readBytesCount + uploadChunkSize > availableSize) {

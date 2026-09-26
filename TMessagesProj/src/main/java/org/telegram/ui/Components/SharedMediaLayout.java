@@ -1476,6 +1476,16 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
         }
 
         public boolean addMessage(MessageObject messageObject, int loadIndex, boolean isNew, boolean enc) {
+            if (!enc) {
+                if (messageObject.getId() > 0) {
+                    max_id[loadIndex] = Math.min(messageObject.getId(), max_id[loadIndex]);
+                    min_id = Math.max(messageObject.getId(), min_id);
+                }
+            } else {
+                max_id[loadIndex] = Math.max(messageObject.getId(), max_id[loadIndex]);
+                min_id = Math.min(messageObject.getId(), min_id);
+            }
+            if (MediaDataController.isLocalEmojiOnlyLinkMessage(messageObject.messageOwner)) return false;
             if (messagesDict[loadIndex].indexOfKey(messageObject.getId()) >= 0) {
                 return false;
             }
@@ -1497,15 +1507,6 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
                 messages.add(messageObject);
             }
             messagesDict[loadIndex].put(messageObject.getId(), messageObject);
-            if (!enc) {
-                if (messageObject.getId() > 0) {
-                    max_id[loadIndex] = Math.min(messageObject.getId(), max_id[loadIndex]);
-                    min_id = Math.max(messageObject.getId(), min_id);
-                }
-            } else {
-                max_id[loadIndex] = Math.max(messageObject.getId(), max_id[loadIndex]);
-                min_id = Math.min(messageObject.getId(), min_id);
-            }
             if (!hasVideos && messageObject.isVideo()) {
                 hasVideos = true;
             }
@@ -6366,6 +6367,7 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
                 }
                 int oldItemCount;
                 int oldMessagesCount = sharedMediaData[type].messages.size();
+                int oldPageCursor = fromStart ? sharedMediaData[type].min_id : sharedMediaData[type].max_id[loadIndex];
                 if (adapter != null) {
                     oldItemCount = adapter.getItemCount();
                     if (adapter instanceof RecyclerListView.SectionsAdapter) {
@@ -6417,6 +6419,14 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
                         }
                         sharedMediaData[type].setTotalCount(loadIndex, localCount);
                     }
+                }
+                int nextPageCursor = fromStart ? sharedMediaData[type].min_id : sharedMediaData[type].max_id[loadIndex];
+                if (type == MediaDataController.MEDIA_URL && !arr.isEmpty() && addedMesages.size() == 0
+                        && nextPageCursor != oldPageCursor && !(Boolean) args[5]) {
+                    sharedMediaData[type].loading = true;
+                    profileActivity.getMediaDataController().loadMedia(uid, 50,
+                            fromStart ? 0 : nextPageCursor, fromStart ? nextPageCursor : 0,
+                            type, topicId, 1, profileActivity.getClassGuid(), sharedMediaData[type].requestIndex, null, null);
                 }
                 if (!fromStart && loadIndex == 0 && sharedMediaData[type].endReached[loadIndex] && mergeDialogId != 0) {
                     sharedMediaData[type].loading = true;
@@ -7959,7 +7969,7 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
                             type = MediaDataController.MEDIA_VIDEOS_ONLY;
                         }
                     }
-                    profileActivity.getMediaDataController().loadMedia(dialog_id, 50, 0, 0, type, topicId, 1, profileActivity.getClassGuid(), sharedMediaData[type].requestIndex, null, null);
+                    profileActivity.getMediaDataController().loadMedia(dialog_id, 50, type == MediaDataController.MEDIA_URL ? sharedMediaData[type].max_id[0] : 0, 0, type, topicId, 1, profileActivity.getClassGuid(), sharedMediaData[type].requestIndex, null, null);
                 }
             }
             if (mediaPages[a].selectedType == TAB_STORIES || isStoryAlbumPageType(mediaPages[a].selectedType)) {
@@ -9777,6 +9787,8 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
                         if (max_id != 0 && message.id > max_id) {
                             continue;
                         }
+                        if (currentType == MediaDataController.MEDIA_URL
+                                && MediaDataController.isLocalEmojiOnlyLinkMessage(message)) continue;
                         messageObjects.add(new MessageObject(profileActivity.getCurrentAccount(), message, false, true));
                     }
                 }

@@ -795,19 +795,7 @@ public final class NimarkoConfig {
     public static void setCameraType(int v) { cameraType = v; getEditor().putInt("cameraType", v).apply(); }
 
     private static int initCameraType() {
-        SharedPreferences prefs = getPreferences();
-        boolean defaultCameraX = app.nimarkogram.messenger.camera.CameraXUtils.isCameraXSupported();
-        int stored = prefs.getInt("cameraType", defaultCameraX ? CAMERA_X : TELEGRAM_CAMERA);
-        boolean migrated = prefs.getBoolean("cameraTypeMigratedToV20", false);
-        if (!migrated) {
-            SharedPreferences.Editor ed = prefs.edit();
-            if (stored == TELEGRAM_CAMERA && defaultCameraX) {
-                stored = CAMERA_X;
-                ed.putInt("cameraType", stored);
-            }
-            ed.putBoolean("cameraTypeMigratedToV20", true).apply();
-        }
-        return stored;
+        return getPreferences().getInt("cameraType", TELEGRAM_CAMERA);
     }
 
     public static final int CAMERA_RESOLUTION_720P = 720;

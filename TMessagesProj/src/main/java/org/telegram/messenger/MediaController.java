@@ -6369,11 +6369,18 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
 
     @SuppressLint("DiscouragedPrivateApi")
     public static String copyFileToCache(Uri uri, String ext, long sizeLimit) {
+        return copyFileToCache(uri, ext, sizeLimit, () -> false);
+    }
+    @SuppressLint("DiscouragedPrivateApi")
+    public static String copyFileToCache(Uri uri, String ext, long sizeLimit, java.util.function.BooleanSupplier cancelled) {
         InputStream inputStream = null;
         FileOutputStream output = null;
-        int totalLen = 0;
+        long totalLen = 0;
         File f = null;
+        boolean created = false;
+        boolean complete = false;
         try {
+            if (cancelled.getAsBoolean()) return null;
             String name = FileLoader.fixFileName(getFileName(uri));
             if (name == null) {
                 int id = SharedConfig.getLastLocalId();
@@ -6399,7 +6406,9 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
                     }
                 }
                 count++;
-            } while (f.exists());
+                if (cancelled.getAsBoolean()) return null;
+            } while (!f.createNewFile());
+            created = true;
             inputStream = ApplicationLoader.applicationContext.getContentResolver().openInputStream(uri);
             if (inputStream instanceof FileInputStream) {
                 FileInputStream fileInputStream = (FileInputStream) inputStream;
@@ -6417,12 +6426,15 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
             byte[] buffer = new byte[1024 * 20];
             int len;
             while ((len = inputStream.read(buffer)) != -1) {
+                if (cancelled.getAsBoolean()) return null;
+                if (sizeLimit > 0 && len > sizeLimit - totalLen) return null;
                 output.write(buffer, 0, len);
                 totalLen += len;
-                if (sizeLimit > 0 && totalLen > sizeLimit) {
-                    return null;
-                }
             }
+            output.close();
+            output = null;
+            if (cancelled.getAsBoolean()) return null;
+            complete = true;
             return f.getAbsolutePath();
         } catch (Exception e) {
             FileLog.e(e);
@@ -6441,7 +6453,7 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
             } catch (Exception e2) {
                 FileLog.e(e2);
             }
-            if (sizeLimit > 0 && totalLen > sizeLimit) {
+            if (created && !complete) {
                 f.delete();
             }
         }
