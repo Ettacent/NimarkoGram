@@ -4,9 +4,14 @@ import static org.telegram.messenger.AndroidUtilities.dp;
 
 import android.content.Context;
 import android.graphics.Canvas;
+import android.graphics.Matrix;
 import android.graphics.PointF;
+import android.graphics.Rect;
 import android.graphics.drawable.Drawable;
+import android.os.SystemClock;
+import android.text.TextUtils;
 import android.view.View;
+import android.view.ViewTreeObserver;
 import android.widget.TextView;
 
 import org.telegram.messenger.AndroidUtilities;
@@ -49,6 +54,20 @@ public class ProfileBirthdayEffect extends View {
 
 
     public PointF sourcePoint = new PointF();
+    private final Matrix sourceMatrix = new Matrix();
+    private final Matrix overlayInverse = new Matrix();
+    private final float[] anchor = new float[2];
+    private final Rect visibleText = new Rect();
+    private ViewTreeObserver observedTree;
+    private final ViewTreeObserver.OnPreDrawListener anchorListener = () -> {
+        if (!this.autoplayed) tryAutoplay();
+        return true;
+    };
+    private void tryAutoplay() {
+        if (!autoplayed && !profileActivity.profileTransitionInProgress && start()) {
+            autoplayed = true;
+        }
+    }
 
     public ProfileBirthdayEffect(ProfileActivity profileActivity, BirthdayEffectFetcher fetcher) {
         super(profileActivity.getContext());
@@ -78,35 +97,32 @@ public class ProfileBirthdayEffect extends View {
             }
             attached = true;
 
-            if (!autoplayed) {
-                autoplayed = true;
-                post(() -> {
-//                    final String key = "bdayanim_" + LocalDate.now().getYear() + "_" + dialogId;
-//                    if (MessagesController.getInstance(currentAccount).getMainSettings().getBoolean(key, true)) {
-                        start();
-//                        MessagesController.getInstance(currentAccount).getMainSettings().edit().putBoolean(key, false).apply();
-//                    }
-                });
-            }
         }
+        tryAutoplay();
 
         if (!isPlaying) {
             return;
         }
 
-        final long now = System.currentTimeMillis();
+        if (!updateSourcePoint()) {
+            isPlaying = false;
+            t = 1;
+            updateFetcher(fetcherToSet);
+            fetcherToSet = null;
+            return;
+        }
+        final long now = SystemClock.elapsedRealtime();
         final float delta = Utilities.clamp((now - lastTime), 20, 0) / (float) duration;
         t = Utilities.clamp(t + delta, 1, 0);
         lastTime = now;
 
-        updateSourcePoint();
 
         final int iw = EmojiAnimationsOverlay.getFilterWidth();
         fetcher.interactionAsset.setImageCoords((getWidth() - dp(iw)) / 2f, Math.max(0, sourcePoint.y - dp(iw) * .5f), dp(iw), dp(iw));
         canvas.save();
         canvas.scale(-1, 1, getWidth() / 2f, 0);
+        fetcher.interactionAsset.setAlpha(Utilities.clamp((1f - t) / .1f, 1f, 0f));
         fetcher.interactionAsset.draw(canvas);
-        fetcher.interactionAsset.setAlpha(1f - (t - .9f) / .1f);
         canvas.restore();
 
         final int sz = dp(110);
@@ -153,6 +169,7 @@ public class ProfileBirthdayEffect extends View {
             }
             this.fetcher.removeView(this);
             this.fetcher = fetcher;
+            if (isAttachedToWindow()) this.fetcher.addView(this);
             if (!attached) {
                 for (int i = 0; i < fetcher.allAssets.size(); ++i) {
                     fetcher.allAssets.get(i).setParentView(this);
@@ -164,7 +181,7 @@ public class ProfileBirthdayEffect extends View {
 
     private boolean isPlaying = false;
     public boolean start() {
-        if (!fetcher.loaded) {
+        if (!isAttachedToWindow() || !fetcher.loaded || !updateSourcePoint()) {
             return false;
         }
         if (t < 1) {
@@ -175,7 +192,11 @@ public class ProfileBirthdayEffect extends View {
             fetcher.interactionAsset.getLottieAnimation().restart(true);
         }
         isPlaying = true;
+        autoplayed = true;
         t = 0;
+        lastTime = SystemClock.elapsedRealtime();
+        animate().cancel();
+        setAlpha(1f);
         invalidate();
         return true;
     }
@@ -184,33 +205,52 @@ public class ProfileBirthdayEffect extends View {
         animate().alpha(0).setDuration(200).setInterpolator(CubicBezierInterpolator.EASE_OUT_QUINT).start();
     }
 
-    private void updateSourcePoint() {
+    private boolean updateSourcePoint() {
         RecyclerListView listView = profileActivity.getListView();
         final int position = profileActivity.birthdayRow;
-        if (position < 0) return;
+        if (position < 0 || listView == null || !listView.isShown()) return false;
         for (int i = 0; i < listView.getChildCount(); ++i) {
             View child = listView.getChildAt(i);
             final int childPosition = listView.getChildAdapterPosition(child);
             if (position == childPosition && child instanceof TextDetailCell) {
                 TextView textView = ((TextDetailCell) child).textView;
-                sourcePoint.set(
-                        listView.getX() + child.getX() + textView.getX() + dp(12),
-                        listView.getY() + child.getY() + textView.getY() + textView.getMeasuredHeight() / 2f
-                );
-                return;
+                if (!textView.isShown() || textView.getAlpha() <= 0f || TextUtils.isEmpty(textView.getText())
+                        || textView.getWidth() <= 0 || textView.getHeight() <= 0
+                        || !textView.getGlobalVisibleRect(visibleText)
+                        || textView.getRootView() != getRootView()) return false;
+                sourceMatrix.reset();
+                ProfileActivity.profileViewToRoot(this, sourceMatrix);
+                if (!sourceMatrix.invert(overlayInverse)) return false;
+                sourceMatrix.reset();
+                ProfileActivity.profileViewToRoot(textView, sourceMatrix);
+                overlayInverse.preConcat(sourceMatrix);
+                anchor[0] = textView.getLayoutDirection() == View.LAYOUT_DIRECTION_RTL
+                        ? textView.getWidth() - dp(12) : dp(12);
+                anchor[1] = textView.getHeight() / 2f;
+                overlayInverse.mapPoints(anchor);
+                if (anchor[0] < 0 || anchor[0] > getWidth() || anchor[1] < 0 || anchor[1] > getHeight()) return false;
+                sourcePoint.set(anchor[0], anchor[1]);
+                return true;
             }
         }
+        return false;
     }
 
     @Override
     protected void onAttachedToWindow() {
         super.onAttachedToWindow();
         fetcher.addView(this);
+        observedTree = getViewTreeObserver();
+        observedTree.addOnPreDrawListener(anchorListener);
     }
 
     @Override
     protected void onDetachedFromWindow() {
         super.onDetachedFromWindow();
+        if (observedTree != null && observedTree.isAlive()) observedTree.removeOnPreDrawListener(anchorListener);
+        observedTree = null;
+        isPlaying = false;
+        t = 1;
         if (attached) {
             for (int i = 0; i < fetcher.allAssets.size(); ++i) {
                 fetcher.allAssets.get(i).setParentView(null);

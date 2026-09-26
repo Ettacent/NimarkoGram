@@ -10605,6 +10605,9 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                     if (listAdapter != null && bioRow >= 0 && !TextUtils.equals(userInfo.about, currentBio)) {
                         listAdapter.notifyItemChanged(bioRow);
                     }
+                    if (myProfile) {
+                        requestProfileRowsUpdate(false, false);
+                    }
                 } else {
                     if (!openAnimationInProgress && !isCallAvailable) {
                         createActionBarMenu(true);
@@ -11481,7 +11484,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
     private final android.graphics.Matrix profileTransitionHeaderMatrix = new android.graphics.Matrix();
     private final android.graphics.Matrix profileTransitionParentMatrix = new android.graphics.Matrix();
     private final RectF profileTransitionHeaderBounds = new RectF();
-    private static void profileViewToRoot(View view, android.graphics.Matrix matrix) {
+    static void profileViewToRoot(View view, android.graphics.Matrix matrix) {
         if (view.getParent() instanceof View) {
             View parent = (View) view.getParent();
             profileViewToRoot(parent, matrix);
@@ -16310,7 +16313,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                                 : "DC ?";
                         detailCell.setTextAndValue("ID: " + formattedID, dcValue, false);
                     } else if (position == birthdayRow) {
-                        TLRPC.UserFull userFull = getMessagesController().getUserFull(userId);
+                        TLRPC.UserFull userFull = userInfo;
                         if (userFull != null && userFull.birthday != null) {
                             final boolean today = BirthdayController.isToday(userFull);
                             final boolean withYear = (userFull.birthday.flags & 1) != 0;
@@ -16335,6 +16338,8 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                             );
 
                             containsGift = !myProfile && today && !getMessagesController().premiumPurchaseBlocked();
+                        } else {
+                            detailCell.setTextAndValue("", LocaleController.getString(R.string.ProfileBirthday), false);
                         }
                     } else if (position == phoneRow) {
                         String text;
@@ -17513,7 +17518,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                     new SearchResult(217, getString(R.string.Calls), "callsSectionRow", getString(R.string.DataSettings), R.drawable.msg2_data, () -> f.presentFragment(new DataSettingsActivity())),
                     new SearchResult(218, getString(R.string.VoipUseLessData), "useLessDataForCallsRow", getString(R.string.DataSettings), R.drawable.msg2_data, () -> f.presentFragment(new DataSettingsActivity())).withLink("tg://settings/data/use-less-data"),
                     new SearchResult(219, getString(R.string.VoipQuickReplies), "quickRepliesRow", getString(R.string.DataSettings), R.drawable.msg2_data, () -> f.presentFragment(new DataSettingsActivity())),
-                    new SearchResult(220, getString(R.string.ProxySettings), getString(R.string.DataSettings), R.drawable.msg2_data, () -> f.presentFragment(new ProxyListActivity())).withLink("tg://settings/data/proxy"),
+                    new SearchResult(220, getString(R.string.ProxySettings), R.drawable.msg2_data, () -> f.presentFragment(new ProxyListActivity())).withLink("tg://settings/data/proxy"),
                     new SearchResult(111, getString(R.string.PrivacyDeleteCloudDrafts), "clearDraftsRow", getString(R.string.DataSettings), R.drawable.msg2_data, () -> f.presentFragment(new DataSettingsActivity())).withLink("tg://settings/privacy/data-settings/delete-cloud-drafts"),
                     new SearchResult(222, getString(R.string.SaveToGallery), "saveToGallerySectionRow", getString(R.string.DataSettings), R.drawable.msg2_data, () -> f.presentFragment(new DataSettingsActivity())),
                     new SearchResult(223, getString(R.string.SaveToGalleryPrivate), "saveToGalleryPeerRow", getString(R.string.DataSettings), getString(R.string.SaveToGallery), R.drawable.msg2_data, () -> f.presentFragment(new DataSettingsActivity())).withLink("tg://settings/data/save-to-photos/chats"),

@@ -63,6 +63,7 @@ import org.telegram.ui.Components.AvatarDrawable;
 import org.telegram.ui.Components.BackupImageView;
 import org.telegram.ui.Components.Bulletin;
 import org.telegram.ui.Components.CubicBezierInterpolator;
+import org.telegram.ui.Components.CounterView;
 import org.telegram.ui.Components.FolderDrawable;
 import org.telegram.ui.Components.HintsController;
 import org.telegram.ui.Components.ItemOptions;
@@ -838,6 +839,39 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
         textView.setMaxLines(2);
         textView.setEllipsize(TextUtils.TruncateAt.END);
         btn.addView(textView, LayoutHelper.createLinear(0, LayoutHelper.WRAP_CONTENT, 1f, Gravity.CENTER_VERTICAL, 13, 0, 14, 0));
+        final CounterView unreadView = new CounterView(getContext(), resourceProvider) {
+            private final NotificationCenter.NotificationCenterDelegate unreadObserver = (id, eventAccount, args) -> {
+                if (id == NotificationCenter.notificationsCountUpdated
+                        ? args.length > 0 && args[0] instanceof Integer && (Integer) args[0] == account
+                        : eventAccount == account) {
+                    updateUnread(true);
+                }
+            };
+            private void updateUnread(boolean animated) {
+                final int count = Math.max(0, MessagesStorage.getInstance(account).getMainUnreadCount());
+                setCount(count, animated);
+                setContentDescription(count > 0 ? LocaleController.formatPluralString("AccDescrUnreadCount", count) : null);
+            }
+            @Override
+            protected void onAttachedToWindow() {
+                super.onAttachedToWindow();
+                NotificationCenter.getGlobalInstance().addObserver(unreadObserver, NotificationCenter.notificationsCountUpdated);
+                NotificationCenter.getInstance(account).addObserver(unreadObserver, NotificationCenter.updateInterfaces);
+                NotificationCenter.getInstance(account).addObserver(unreadObserver, NotificationCenter.dialogsNeedReload);
+                updateUnread(false);
+            }
+            @Override
+            protected void onDetachedFromWindow() {
+                NotificationCenter.getGlobalInstance().removeObserver(unreadObserver, NotificationCenter.notificationsCountUpdated);
+                NotificationCenter.getInstance(account).removeObserver(unreadObserver, NotificationCenter.updateInterfaces);
+                NotificationCenter.getInstance(account).removeObserver(unreadObserver, NotificationCenter.dialogsNeedReload);
+                super.onDetachedFromWindow();
+            }
+        };
+        unreadView.counterDrawable.shortFormat = true;
+        unreadView.setColors(Theme.key_chats_unreadCounterText, Theme.key_chats_unreadCounter);
+        unreadView.setGravity(Gravity.RIGHT);
+        btn.addView(unreadView, LayoutHelper.createLinear(56, 28, Gravity.CENTER_VERTICAL, 0, 0, 14, 0));
 
         return btn;
     }
