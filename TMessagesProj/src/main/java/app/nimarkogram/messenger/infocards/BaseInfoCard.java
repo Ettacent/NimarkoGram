@@ -49,6 +49,7 @@ public abstract class BaseInfoCard extends FrameLayout {
 
     private static final int CHIP_HEIGHT_DP = 28;
     private static final int CORNER_RADIUS_DP = 14;
+    private static final int CONTENT_PADDING_DP = 8;
 
     private static final long RESIZE_DURATION_MS = 300;
     private static final float RESIZE_TEXT_SCALE_POP = 0.12f; 
@@ -111,7 +112,7 @@ public abstract class BaseInfoCard extends FrameLayout {
         content.setClipToPadding(false);
         content.setBackground(background);
         
-        content.setPadding(AndroidUtilities.dp(8), 0, AndroidUtilities.dp(8), 0);
+        content.setPadding(AndroidUtilities.dp(CONTENT_PADDING_DP), 0, AndroidUtilities.dp(CONTENT_PADDING_DP), 0);
         content.setMinimumWidth(AndroidUtilities.dp(48));
         
         content.setOutlineProvider(new ViewOutlineProvider() {
@@ -186,10 +187,11 @@ public abstract class BaseInfoCard extends FrameLayout {
         }
     }
     private void updateGlassBackground() {
-        boolean enabled = isAttachedToWindow() && glassBackgroundFactory != null
-                && glassBackgroundFactory.supportsLiquidGlass()
+        boolean liquidGlass = glassBackgroundFactory != null && glassBackgroundFactory.supportsLiquidGlass()
                 && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
                 && SharedConfig.chatBlurEnabled() && LiteMode.isEnabled(LiteMode.FLAG_LIQUID_GLASS);
+        boolean enabled = isAttachedToWindow() && glassBackgroundFactory != null
+                && (inlineFolderStyle || liquidGlass);
         if (!enabled) {
             releaseGlassBackground();
             return;
@@ -198,6 +200,7 @@ public abstract class BaseInfoCard extends FrameLayout {
             background.glass = glassBackgroundFactory.create(content);
             background.glass.setCallback(background);
             background.glass.setRadius(getChipCornerRadius());
+            background.glass.setAlpha(background.drawableAlpha);
             setLayerType(View.LAYER_TYPE_NONE, null);
         }
         if (inlineFolderStyle || isFlat()) {
@@ -325,6 +328,10 @@ public abstract class BaseInfoCard extends FrameLayout {
         FrameLayout.LayoutParams params = (FrameLayout.LayoutParams) content.getLayoutParams();
         params.height = getChipHeight(inline);
         content.setLayoutParams(params);
+        int padding = AndroidUtilities.dp(CONTENT_PADDING_DP)
+                + (inline ? (int) Math.ceil(getInlineSurfaceInset(params.height)) : 0);
+        content.setPadding(padding, 0, padding, 0);
+        applyMaxChipWidth();
         background.inlineFolderStyle = inline;
         background.setCornerRadius(getChipCornerRadius());
         content.invalidateOutline();
@@ -343,10 +350,14 @@ public abstract class BaseInfoCard extends FrameLayout {
     private float getChipCornerRadius() {
         return inlineFolderStyle ? getChipHeight(true) / 2f : AndroidUtilities.dp(CORNER_RADIUS_DP);
     }
+    private static float getInlineSurfaceInset(float height) {
+        return Math.max(0, (height - AndroidUtilities.dp(CHIP_HEIGHT_DP)) / 2f);
+    }
     private static void setSurfaceBounds(RectF rect, boolean inline, float left, float top, float right, float bottom) {
         rect.set(left, top, right, bottom);
         if (inline) {
-            rect.inset(AndroidUtilities.dp(4), Math.max(0, (bottom - top - AndroidUtilities.dp(CHIP_HEIGHT_DP)) / 2f));
+            float inset = getInlineSurfaceInset(bottom - top);
+            rect.inset(inset, inset);
         }
     }
 
@@ -812,8 +823,9 @@ public abstract class BaseInfoCard extends FrameLayout {
             canvas.drawRoundRect(rf, r, r, strokePaint);
         }
         private void drawInline(Canvas canvas, Rect bounds) {
-            boolean liveGlass = glass != null && canvas.isHardwareAccelerated();
-            if (liveGlass) {
+            boolean liveGlass = glass != null && canvas.isHardwareAccelerated()
+                    && BlurredBackgroundDrawableViewFactory.isLiquidGlassEnabled();
+            if (glass != null) {
                 glass.setBounds(bounds);
                 glass.draw(canvas);
             } else {
