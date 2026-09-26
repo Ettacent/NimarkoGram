@@ -3470,8 +3470,8 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
             if (playingMessageObject != null && playingMessageObject.isRoundVideo()) {
                 if (currentTextureView != null) {
                     currentTextureView.animate().cancel();
+                    currentTextureView.setAlpha(1f);
                     if (roundVideoPlaybackCover != null && roundVideoCoverTexture == currentTextureView) {
-                        currentTextureView.setAlpha(1f);
                         roundVideoCoverPending = false;
                         final int generation = roundVideoCoverGeneration;
                         roundVideoPlaybackCover.animate().alpha(0f).setDuration(180).withEndAction(() -> {
@@ -3479,8 +3479,6 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
                                 clearInlineRoundVideoFrame();
                             }
                         }).start();
-                    } else {
-                        currentTextureView.animate().alpha(1f).setDuration(180).start();
                     }
                 }
                 NotificationCenter.getInstance(playingMessageObject.currentAccount).postNotificationName(

@@ -129,6 +129,33 @@ public class Transitions {
   t.pipRoundVideoView.retainPlaybackFrame();t.bindRoundVideoPip();return t;
  }
  public static void main(String[] args){
+  // Cold inline tap: the opaque preview is above the video. Fading both
+  // layers exposes the chat background, which reads as a white flash.
+  for(boolean surfaceFirst:new boolean[]{true,false}) {
+   Transitions cold=new Transitions();cold.pipRoundVideoView=null;
+   cold.currentTextureView=new View();cold.currentTextureView.setAlpha(0);
+   SurfaceTexture output=cold.currentTextureView.surface;
+   check(cold.getRoundVideoThumbnailAlpha()==1,"preview owns cold tap");
+   if(surfaceFirst){cold.onRoundVideoSurfaceUpdated(1,output);AndroidUtilities.drain();}
+   else cold.onVideoFirstFrame(1,true);
+   check(cold.currentTextureView.alpha==0&&cold.getRoundVideoThumbnailAlpha()==1,
+     "one callback must not reveal an unlatched frame");
+   if(surfaceFirst)cold.onVideoFirstFrame(1,true);
+   else {cold.onRoundVideoSurfaceUpdated(1,output);AndroidUtilities.drain();}
+   check(cold.currentTextureView.alpha==1&&cold.currentTextureView.starts==0,
+     "first video frame must be opaque beneath the fading preview");
+   long firstFrame=SystemClock.now;
+   for(int ms=0;ms<=240;ms+=5) {
+    SystemClock.now=firstFrame+ms;
+    float preview=cold.getRoundVideoThumbnailAlpha();
+    float coverage=preview+(1-preview)*cold.currentTextureView.alpha;
+    check(Math.abs(coverage-1)<.00001,"no background leak during cold crossfade");
+   }
+   check(cold.getRoundVideoThumbnailAlpha()==0,"preview fully leaves after handoff");
+   cold.onVideoFirstFrame(1,true);cold.onRoundVideoSurfaceUpdated(1,output);AndroidUtilities.drain();
+   check(cold.roundVideoFrameReadyAt==firstFrame&&cold.currentTextureView.starts==0,
+     "duplicate callbacks must not restart the cold transition");
+  }
   for(boolean surfaceFirst:new boolean[]{true,false}){
    Transitions t=handoff();PipRoundVideoView p=t.pipRoundVideoView;
    SurfaceTexture s=p.textureView.surface;

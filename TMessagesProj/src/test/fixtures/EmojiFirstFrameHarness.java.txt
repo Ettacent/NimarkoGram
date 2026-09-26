@@ -80,7 +80,11 @@ class CubicBezierInterpolator {
 class MessageObject { static final int TYPE_FILE = 9; int type; boolean isRoundVideo() { return false; } boolean isSending() { return false; } }
 class FileLog { static void e(Exception e) { throw new AssertionError(e); } }
 class NotificationCenter {
-    static class ObserversGroup { void removeAllObservers() {} }
+    static class ObserversGroup {
+        void removeAllObservers() {}
+        ObserversGroup add(int id) { return this; }
+    }
+    ObserversGroup createWeakObserversGroup(Object owner) { return new ObserversGroup(); }
     static final int didReplacedPhotoInMemCache = 1, stopAllHeavyOperations = 2, startAllHeavyOperations = 3;
     static NotificationCenter getGlobalInstance() { return new NotificationCenter(); }
     void removeObserver(Object o,int n) {}

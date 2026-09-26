@@ -36,6 +36,10 @@ public class RoundVideoShadow extends Drawable {
     }
 
     @Override
+    public int getAlpha() {
+        return paint.getAlpha();
+    }
+    @Override
     public void setColorFilter(@Nullable ColorFilter colorFilter) {
 
     }
