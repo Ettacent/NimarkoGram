@@ -181,6 +181,140 @@ class ImageCompositingContinuityTest(unittest.TestCase):
     def test_layer_bounds_and_specialized_geometry_paths(self):
         self.scenario("geometry")
 
+    def test_round_playback_fades_complete_loading_preview(self):
+        cell = (first_frame.JAVA / "ui/Cells/ChatMessageCell.java").read_text()
+        helper = first_frame.method(cell, "private boolean drawPhotoImageWithRoundVideoBackground(")
+        shadow_helper = first_frame.method(cell, "private void drawRoundVideoShadow(")
+        shadow = (first_frame.JAVA / "ui/ActionBar/RoundVideoShadow.java").read_text()
+        shadow_draw = first_frame.method(shadow, "public void draw(").replace("@NonNull ", "")
+        shadow_get_alpha = first_frame.method(shadow, "public int getAlpha()")
+        self.assertEqual(cell.count("Theme.chat_roundVideoShadow.draw(canvas)"), 1)
+        wrapper = first_frame.method(cell, "protected boolean drawPhotoImage(Canvas canvas)")
+        self.assertIn("drawPhotoImageWithRoundVideoBackground(canvas, roundVideoThumbnailAlpha)", wrapper)
+        self.assertNotIn("setAlpha(oldAlpha * roundVideoThumbnailAlpha)", wrapper)
+        source = self.production_source.replace("class Paint {", """class Paint {
+    int color;
+    void setColor(int c) { color=c; alpha=255; }
+    int getAlpha(){return alpha;}
+""").replace("class AndroidUtilities {", "class AndroidUtilities { static int roundMessageInset=2; static int dp(int n){return n;}")
+        source = source.replace("class Canvas {", """class Canvas {
+    void drawCircle(float x,float y,float radius,Paint paint) {
+        Drawable d=new Drawable(); d.coverage=new double[]{1,1,1};
+        d.rgb=new double[]{paint.color,paint.color,paint.color};
+        composite(d,paint.alpha);
+    }
+""").replace("class ImageReceiver {", """class ImageReceiver {
+    float getImageX(){return imageX;} float getImageY(){return imageY;}
+    float getImageX2(){return imageX+imageW;} float getImageY2(){return imageY+imageH;}
+    float getImageWidth(){return imageW;}
+    float getImageHeight(){return imageH;}
+    boolean hasBitmapImage(){return staticThumbDrawable!=null || currentMediaDrawable!=null;}
+    float getCurrentAlpha(){return currentAlpha;}
+""")
+        source = source.replace("class Theme {", """class Theme {
+    static RoundVideoShadow chat_roundVideoShadow=new RoundVideoShadow();
+    static Paint chat_docBackPaint=new Paint();
+    static int key_chat_outBubble,key_chat_inBubble;
+""")
+        source += r'''
+class RoundVideoShadow {
+    Paint paint=new Paint();
+    static class Bounds {
+        int l,t,r,b;
+        int centerX(){return (l+r)/2;} int centerY(){return (t+b)/2;}
+        int width(){return r-l;}
+    }
+    Bounds bounds=new Bounds();
+    Bounds getBounds(){return bounds;}
+    void setBounds(int l,int t,int r,int b){bounds.l=l;bounds.t=t;bounds.r=r;bounds.b=b;}
+    void setAlpha(int a){paint.setAlpha(a);}
+    SHADOW_DRAW
+    SHADOW_GET_ALPHA
+}
+class RoundPreviewHarness {
+    static class Message {boolean isRoundVideo(){return true;} boolean isOutOwner(){return false;}}
+    Message currentMessageObject=new Message();
+    ImageReceiver photoImage;
+    int background;
+    boolean fail;
+    static int dp(int n){return n;}
+    float getVideoTranscriptionProgress(){return 0;}
+    int getThemedColor(int key){return background;}
+    boolean drawPhotoImageInternal(Canvas c){
+        if(fail)throw new IllegalStateException("draw failed");
+        return photoImage.draw(c,null);
+    }
+    PRODUCTION_HELPER
+    SHADOW_HELPER
+    public static void main(String[] args) {
+        RoundPreviewHarness cell=new RoundPreviewHarness();
+        ImageReceiver r=cell.photoImage=EmojiFirstFrameHarness.receiver();
+        r.isRoundVideo=true;
+        r.staticThumbDrawable=EmojiFirstFrameHarness.paint(new BitmapDrawable(),"thumb",.1,.2,.3,1,1,1);
+        r.frame(1000,false);
+        AnimatedFileDrawable frame=EmojiFirstFrameHarness.paint(new AnimatedFileDrawable(),"first",.4,.5,.6,1,1,1);
+        r.deliver(frame,ImageReceiver.TYPE_MEDIA,false);
+        r.frame(1000,false); frame.ready=true; r.frame(1000,false);
+        Drawable live=EmojiFirstFrameHarness.paint(new Drawable(),"live",.7,.8,.9,1,1,1);
+        Theme.chat_roundVideoShadow.setAlpha(73);
+        for(int bg:new int[]{0,1})for(int load=0;load<=100;load+=5)for(int fade=0;fade<=100;fade+=5){
+            cell.background=bg; r.currentAlpha=load/100f; r.overrideAlpha=1;
+            r.lastUpdateAlphaTime=SystemClock.now;
+            Canvas c=new Canvas(); c.composite(live,255);
+            if(args.length>0 && args[0].equals("old")) {
+                // Previous cell path: tint, static thumb and incoming frame
+                // each receive playback opacity independently.
+                if(load!=100) {
+                    Theme.chat_docBackPaint.setColor(bg);
+                    Theme.chat_docBackPaint.setAlpha((int)(255*fade/100f));
+                    c.drawCircle(0,0,1,Theme.chat_docBackPaint);
+                }
+                r.overrideAlpha=fade/100f;
+                cell.drawPhotoImageInternal(c);
+            } else {
+                if(args.length>0 && args[0].equals("shadowOutside") && fade>0) {
+                    // Regression in the previous fix: the filled shadow disk
+                    // remained between the video and the fading composition.
+                    cell.drawRoundVideoShadow(c);
+                }
+                cell.drawPhotoImageWithRoundVideoBackground(c,fade/100f);
+            }
+            double incoming=(int)(load/100f*255)/255.0, preview=Math.round(255*fade/100f)/255.0;
+            for(int channel=0;channel<3;channel++){
+                double old=.1+.1*channel, next=.4+.1*channel, video=.7+.1*channel;
+                double expected=(old*(1-incoming)+next*incoming)*preview+video*(1-preview);
+                EmojiFirstFrameHarness.check(Math.abs(c.pixels[0][channel]-expected)<.00001,
+                    "round preview leaked bubble color: background="+bg+" load="+load+" fade="+fade);
+            }
+            EmojiFirstFrameHarness.check(c.stack.isEmpty(),"all composition layers restored");
+            EmojiFirstFrameHarness.check(Theme.chat_roundVideoShadow.getAlpha()==73,"shared shadow alpha restored");
+            if(args.length==0)EmojiFirstFrameHarness.check(c.layerCount==(fade==100?0:1),"one bounded transient layer only");
+        }
+        cell.fail=true; Canvas c=new Canvas();
+        try {cell.drawPhotoImageWithRoundVideoBackground(c,.5f);}
+        catch(IllegalStateException expected){}
+        EmojiFirstFrameHarness.check(c.stack.isEmpty(),"exception restores composition");
+    }
+}
+'''.replace("PRODUCTION_HELPER", helper).replace("SHADOW_HELPER", shadow_helper).replace(
+            "SHADOW_DRAW", shadow_draw).replace("SHADOW_GET_ALPHA", shadow_get_alpha)
+        with tempfile.TemporaryDirectory(prefix="round-preview-compositing-") as tmp:
+            java = Path(tmp) / "EmojiFirstFrameHarness.java"
+            java.write_text(source)
+            compiled = subprocess.run(["javac", "-d", tmp, str(java)], capture_output=True, text=True, timeout=30)
+            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            run = subprocess.run(["java", "-ea", "-cp", tmp, "RoundPreviewHarness"],
+                                 capture_output=True, text=True, timeout=30)
+            self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
+            old = subprocess.run(["java", "-ea", "-cp", tmp, "RoundPreviewHarness", "old"],
+                                 capture_output=True, text=True, timeout=30)
+            self.assertNotEqual(old.returncode, 0, "old per-drawable fade must expose the regression")
+            self.assertIn("round preview leaked bubble color", old.stderr)
+            black = subprocess.run(["java", "-ea", "-cp", tmp, "RoundPreviewHarness", "shadowOutside"],
+                                   capture_output=True, text=True, timeout=30)
+            self.assertNotEqual(black.returncode, 0, "shadow outside composition must reproduce black flash")
+            self.assertIn("round preview leaked bubble color", black.stderr)
+
     def test_negative_controls(self):
         for before, after, scenario in [
             ("addPaint.setXfermode(CROSSFADE_ADD);", "addPaint.setXfermode(null);", "svg"),
