@@ -1302,11 +1302,9 @@ public class ItemOptions {
 
         if (dimAlpha > 0 || blur || blurForMenu) {
             DimView dimViewLocal = dimView = new DimView(context);
-            preDrawListener = () -> {
-                dimViewLocal.invalidate();
-                return true;
-            };
+            preDrawListener = dimViewLocal;
             preDrawObserver = container.getViewTreeObserver();
+            dimViewLocal.ownerObserver = preDrawObserver;
             preDrawObserver.addOnPreDrawListener(preDrawListener);
             container.addView(dimView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT));
             dimView.setProgress(0);
@@ -2069,7 +2067,44 @@ public class ItemOptions {
         return this;
     }
 
-    public class DimView extends View {
+    public class DimView extends View implements ViewTreeObserver.OnPreDrawListener {
+        private ViewTreeObserver ownerObserver;
+        private void stopObservingOwner() {
+            final ViewTreeObserver oldObserver = ownerObserver;
+            ownerObserver = null;
+            if (oldObserver != null && oldObserver.isAlive()) {
+                oldObserver.removeOnPreDrawListener(this);
+            }
+            if (preDrawListener == this) {
+                preDrawListener = null;
+                if (preDrawObserver == oldObserver) preDrawObserver = null;
+            }
+        }
+        @Override
+        public boolean onPreDraw() {
+            if (fragment != null && fragment.isFinished) {
+                blurCaptureActive = false;
+                restoreBlurAnchor();
+                setAlpha(0f);
+                stopObservingOwner();
+                final boolean current = dimView == this;
+                if (current) dimView = null;
+                AndroidUtilities.removeFromParent(this);
+                if (current && accountSwitchPopup == null && actionBarPopupWindow != null) {
+                    actionBarPopupWindow.dismiss(false);
+                }
+                return true;
+            }
+            invalidate();
+            return true;
+        }
+        @Override
+        protected void onDetachedFromWindow() {
+            blurCaptureActive = false;
+            restoreBlurAnchor();
+            stopObservingOwner();
+            super.onDetachedFromWindow();
+        }
 
         private final Bitmap cachedBitmap;
         private final Paint cachedBitmapPaint;

@@ -108,6 +108,7 @@ public class BotButtons extends FrameLayout {
             textDrawable.setOverrideFullWidth(AndroidUtilities.displaySize.x * 4);
             textDrawable.setEllipsizeByGradient(true);
             textDrawable.setCallback(BotButtons.this);
+            textDrawable.setEmojiAttached(isAttachedToWindow());
 
             progress.setCallback(BotButtons.this);
             ripple.setCallback(BotButtons.this);
@@ -115,6 +116,16 @@ public class BotButtons extends FrameLayout {
             flicker.frameInside = true;
             flicker.repeatProgress = 2f;
         }
+    }
+    @Override
+    protected void onAttachedToWindow() {
+        super.onAttachedToWindow();
+        for (Button button : buttons) button.textDrawable.setEmojiAttached(true);
+    }
+    @Override
+    protected void onDetachedFromWindow() {
+        for (Button button : buttons) button.textDrawable.setEmojiAttached(false);
+        super.onDetachedFromWindow();
     }
 
     private final Paint backgroundPaint = new Paint(Paint.ANTI_ALIAS_FLAG);

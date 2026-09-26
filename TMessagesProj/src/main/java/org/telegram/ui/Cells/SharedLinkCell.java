@@ -335,6 +335,10 @@ public class SharedLinkCell extends FrameLayout {
         if (message != null && !message.messageOwner.entities.isEmpty()) {
             for (int a = 0; a < message.messageOwner.entities.size(); a++) {
                 TLRPC.MessageEntity entity = message.messageOwner.entities.get(a);
+                if (app.nimarkogram.messenger.utils.NimarkoLocalEmoji.isLocalEmojiLink(
+                        message.messageOwner.message, entity)) {
+                    continue;
+                }
                 if (entity.length <= 0 || entity.offset < 0 || entity.offset >= message.messageOwner.message.length()) {
                     continue;
                 } else if (entity.offset + entity.length > message.messageOwner.message.length()) {

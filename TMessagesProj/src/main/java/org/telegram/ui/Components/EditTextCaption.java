@@ -30,6 +30,7 @@ import android.text.TextPaint;
 import android.text.TextUtils;
 import android.text.TextWatcher;
 import android.text.style.CharacterStyle;
+import android.text.style.URLSpan;
 import android.util.TypedValue;
 import android.view.ActionMode;
 import android.view.Gravity;
@@ -333,10 +334,14 @@ public class EditTextCaption extends EditTextBoldCursor implements FloatingToolb
             start = getSelectionStart();
             end = getSelectionEnd();
         }
+        final Editable text = getText();
+        if (text == null || start < 0 || end <= start || end > text.length()) {
+            return;
+        }
         showInputDialog(
             LocaleController.getString(R.string.CreateLink),
             LocaleController.getString(R.string.URL),
-            "http://",
+            getSelectedLinkUrl(text, start, end),
             true,
             url -> {
                 Editable editable = getText();
@@ -371,6 +376,23 @@ public class EditTextCaption extends EditTextBoldCursor implements FloatingToolb
 
     public interface InputDialogCallback {
         void run(String value);
+    }
+    private static String getSelectedLinkUrl(Spanned text, int start, int end) {
+        String result = null;
+        for (URLSpan span : text.getSpans(start, end, URLSpan.class)) {
+            if (!(span instanceof URLSpanReplacement) && !(span instanceof URLSpanBrowser)
+                    && span.getClass() != URLSpan.class) {
+                continue;
+            }
+            if (text.getSpanStart(span) <= start && text.getSpanEnd(span) >= end) {
+                final String url = span.getURL();
+                if (TextUtils.isEmpty(url) || result != null && !result.equals(url)) {
+                    return "https://";
+                }
+                result = url;
+            }
+        }
+        return result != null ? result : "https://";
     }
 
     protected URLSpanReplacement createUrlSpan(String url) {

@@ -2,6 +2,11 @@ const fs = require('node:fs'), path = require('node:path'), os = require('node:o
 const cp = require('node:child_process'), assert = require('node:assert/strict');
 const read = name => fs.readFileSync(path.resolve(__dirname, '../../main/java/app/nimarkogram/messenger/updater', name), 'utf8');
 const updater = read('NimarkoUpdater.java'), sheet = read('NimarkoUpdaterSheet.java');
+// Execute the production JSON/cache path against the locally cached JSON library.
+const jsonCache = path.join(process.env.GRADLE_USER_HOME || path.join(os.homedir(), '.gradle'), 'caches/modules-2/files-2.1/org.json/json');
+const jsonJar = process.env.JSON_JAR || fs.readdirSync(jsonCache, {recursive:true})
+    .filter(p => p.endsWith('.jar')).map(p => path.join(jsonCache,p)).sort()[0];
+assert(jsonJar, 'Set JSON_JAR or populate the offline Gradle org.json cache');
 function extract(source, signature) {
     const start = source.indexOf(signature);
     assert(start >= 0, signature);
@@ -19,6 +24,17 @@ const methods = ['public static boolean isUpdateDownloaded()', 'public static Up
     'public static final class DownloadUiState', 'public static class Update']
     .map(s => extract(updater, s)).join('\n');
 const java = `
+import java.util.*;
+import org.json.JSONObject;
+${extract(read('LocalizedChangelog.java'), 'public final class LocalizedChangelog').replace('public final class', 'final class')}
+class LocaleController {
+ static LocaleController instance=new LocaleController();
+ static LocaleController getInstance(){return instance;}
+ static class LocaleInfo {String shortName="ru",baseLangCode,pluralLangCode;}
+ LocaleInfo info=new LocaleInfo();
+ LocaleInfo getCurrentLocaleInfo(){return info;}
+ Locale getCurrentLocale(){return Locale.forLanguageTag(info.shortName);}
+}
 class File {boolean present=true;File(){}File(File parent,String child){}boolean isFile(){return present;}}
 class Context {File external=new File();File getExternalFilesDir(Object ignored){return external;}}
 class ApplicationLoader {static Context applicationContext=new Context();}
@@ -43,6 +59,8 @@ class NimarkoUpdateConfig {
  static int getLastUpdateVersionCode(){return code;}
  static String getLastUpdateUrl(){return "https://example.org/update.apk";}
  static String getLastUpdateChangelog(){return "Changes";}
+ static String translations="";
+ static String getLastUpdateChangelogs(){return translations;}
  static String getLastUpdateSize(){return "1 MB";}
  static String getLastUpdateDate(){return "Today";}
 }
@@ -109,6 +127,15 @@ public class UpdaterInstalledStateTest {
   check(!shownAvailable,"latest request wins and download state is resolved after preparation");
   NimarkoUpdateConfig.available=false;update(101).isNew();
   check(!NimarkoUpdateConfig.available,"version predicate has no preference write side effects");
+  NimarkoUpdateConfig.translations="{\\"ru\\":\\"Russian\\",\\"en\\":\\"English\\",\\"bad\\":1}";
+  NimarkoUpdater.lastUpdate=null;
+  NimarkoUpdater.Update restored=NimarkoUpdater.getOrRestoreLastUpdate();
+  check(restored.getLocalizedChangelog().equals("Russian"),"cold restore preserves translation map");
+  LocaleController.instance.info.shortName="fr";
+  check(restored.getLocalizedChangelog().equals("English"),"warm cache reselects after language change");
+  check(!new JSONObject(restored.getChangelogsJson()).has("bad"),"invalid translation types discarded");
+  NimarkoUpdateConfig.translations="broken";NimarkoUpdater.lastUpdate=null;
+  check(NimarkoUpdater.getOrRestoreLastUpdate().getLocalizedChangelog().equals("Changes"),"broken cache falls back to legacy");
   System.out.println("PASS: "+checks+" actual updater state checks, warm/cold metadata, cleanup, same versionName, active downloads");
  }
 }`;
@@ -116,8 +143,8 @@ const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'nimarko-updater-state-'));
 try {
     function run(code) {
         fs.writeFileSync(path.join(dir, 'UpdaterInstalledStateTest.java'), code);
-        cp.execFileSync('javac', ['UpdaterInstalledStateTest.java'], {cwd:dir});
-        return cp.spawnSync('java', ['UpdaterInstalledStateTest'], {cwd:dir,encoding:'utf8'});
+        cp.execFileSync('javac', ['-cp',jsonJar,'UpdaterInstalledStateTest.java'], {cwd:dir});
+        return cp.spawnSync('java', ['-cp',dir+path.delimiter+jsonJar,'UpdaterInstalledStateTest'], {cwd:dir,encoding:'utf8'});
     }
     const result = run(java);assert.equal(result.status,0,result.stderr);process.stdout.write(result.stdout);
     for (const [before,after] of [

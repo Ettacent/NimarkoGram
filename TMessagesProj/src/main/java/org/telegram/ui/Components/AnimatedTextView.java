@@ -65,6 +65,21 @@ public class AnimatedTextView extends View {
         private Part[] oldParts;
         private CharSequence oldText;
         private int layoutWidth = Integer.MIN_VALUE;
+        private boolean emojiAttached = true;
+        public void setEmojiAttached(boolean attached) {
+            if (emojiAttached == attached) return;
+            emojiAttached = attached;
+            if (currentParts != null) {
+                for (Part part : currentParts) {
+                    if (attached) part.attach(); else part.detach();
+                }
+            }
+            if (oldParts != null) {
+                for (Part part : oldParts) {
+                    if (attached) part.attach(); else part.detach();
+                }
+            }
+        }
 
         public void setSplitByWords(boolean b) {
             splitByWords = b;
@@ -73,6 +88,7 @@ public class AnimatedTextView extends View {
         private class Part {
 
             AnimatedEmojiSpan.EmojiGroupedSpans emoji;
+            View emojiHost;
             StaticLayout layout;
             float offset;
             int toOppositeIndex;
@@ -83,16 +99,20 @@ public class AnimatedTextView extends View {
                 this.toOppositeIndex = toOppositeIndex;
                 layout(offset);
 
-                if (getCallback() instanceof View) {
-                    View view = (View) getCallback();
-                    emoji = AnimatedEmojiSpan.update(emojiCacheType, view, emoji, layout);
+                attach();
+            }
+            public void attach() {
+                if (emojiAttached && emojiHost == null && getCallback() instanceof View) {
+                    emojiHost = (View) getCallback();
+                    emoji = AnimatedEmojiSpan.update(emojiCacheType, emojiHost, emoji, layout);
                 }
             }
 
             public void detach() {
-                if (getCallback() instanceof View) {
-                    View view = (View) getCallback();
-                    AnimatedEmojiSpan.release(view, emoji);
+                if (emojiHost != null) {
+                    AnimatedEmojiSpan.release(emojiHost, emoji);
+                    emojiHost = null;
+                    emoji = null;
                 }
             }
 
@@ -1215,6 +1235,16 @@ public class AnimatedTextView extends View {
             this.includeFontPadding = includeFontPadding;
         }
     }
+    @Override
+    protected void onAttachedToWindow() {
+        super.onAttachedToWindow();
+        drawable.setEmojiAttached(true);
+    }
+    @Override
+    protected void onDetachedFromWindow() {
+        drawable.setEmojiAttached(false);
+        super.onDetachedFromWindow();
+    }
 
     private boolean hideBackgroundIfEmpty;
     private Drawable backgroundDrawable;
@@ -1233,6 +1263,7 @@ public class AnimatedTextView extends View {
         super(context);
         drawable = new AnimatedTextDrawable(splitByWords, preserveIndex, startFromEnd);
         drawable.setCallback(this);
+        drawable.setEmojiAttached(false);
         drawable.setOnAnimationFinishListener(() -> {
             if (adaptWidth) {
                 requestLayout();

@@ -125,7 +125,9 @@ public class RoundHarness {
         finish = method(VIEW, "private void handleStopRecording(")
         self.assertIn("setHeavyOperationsStopped(true);", start)
         self.assertIn("setHeavyOperationsStopped(false);", stop)
-        self.assertIn("encoder.handleStopRecording(0, null);", VIEW)
+        self.assertIn("encoder.handleStartRecordingError();", VIEW)
+        failure = method(VIEW, "private void handleStartRecordingError()")
+        self.assertLess(failure.index("running = false;"), failure.index("handleStopRecording(ENCODER_SEND_CANCEL, null);"))
         self.assertLess(finish.index("setHeavyOperationsStopped(false);"), finish.index("final boolean runDone;"))
 
     @unittest.skipUnless(shutil.which("javac") and shutil.which("java"), "JDK required")

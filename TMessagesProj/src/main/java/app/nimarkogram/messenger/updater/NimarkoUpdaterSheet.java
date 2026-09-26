@@ -141,7 +141,8 @@ public class NimarkoUpdaterSheet extends BottomSheet implements NimarkoUpdater.D
         version.setOnClickListener(v -> copyText(version.getTextView().getText() + ": " + version.getValueTextView().getText()));
         contentLayout.addView(version);
 
-        if (available && !TextUtils.isEmpty(update.changelog)) {
+        String localizedChangelog = available ? update.getLocalizedChangelog() : "";
+        if (!TextUtils.isEmpty(localizedChangelog)) {
             HeaderCell changelogHeader = new HeaderCell(context, resourcesProvider);
             changelogHeader.setText(getString(R.string.UP_Changelog));
             contentLayout.addView(changelogHeader);
@@ -162,7 +163,7 @@ public class NimarkoUpdaterSheet extends BottomSheet implements NimarkoUpdater.D
             changelogView.setGravity((LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT) | Gravity.TOP);
             changelogView.setMovementMethod(new AndroidUtilities.LinkMovementMethodMy());
             changelogView.setPadding(AndroidUtilities.dp(21), 0, AndroidUtilities.dp(21), AndroidUtilities.dp(16));
-            String markdown = normalizeMarkdown(update.changelog);
+            String markdown = normalizeMarkdown(localizedChangelog);
             ChangelogStyle style = ChangelogStyle.from(resourcesProvider);
             CharSequence formatted = CHANGELOG_CACHE.get(new ChangelogCacheKey(markdown, style));
             if (formatted != null) {

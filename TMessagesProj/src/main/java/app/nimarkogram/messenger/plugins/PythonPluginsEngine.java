@@ -2367,10 +2367,10 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
                 }
                 PyObject module = getPython().getModule("sys");
                 try {
-                    PyObject pyObject = module.get("path");
-                    if (pyObject != null && !pluginsPathAdded) {
-                         pyObject.callAttr("append", getPluginsController().pluginsDir.getAbsolutePath());
-                         pluginsPathAdded = true;
+                    if (!pluginsPathAdded) {
+                        getPython().getModule("plugin_imports").callAttr("install",
+                                getPluginsController().pluginsDir.getAbsolutePath());
+                        pluginsPathAdded = true;
                     }
                     module.callAttr("setswitchinterval", 0.01d);
                     if (NimarkoConfig.pluginsSafeMode) {
@@ -2817,12 +2817,9 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
             }
             PluginDebugLog.log("loadPlugin importing module id=" + str);
             loadPhase = "import";
-            PyObject module = getPython().getModule(str);
+            PyObject module = getPython().getModule("plugin_imports").callAttr(
+                    "load_plugin", str, file.getAbsolutePath(), runtimeToken);
             importedModule = module;
-            module.put("__nimarko_runtime_token__", runtimeToken);
-            module.put("__nimarko_plugin_id__", str);
-            module.put("__nimarko_plugin_generation__", enableGeneration);
-            module.put("__nimarko_plugin_instance_id__", runtimeToken.getInstanceId());
             ensureEnableStillRequested(str, enableGeneration);
             PluginDebugLog.log("loadPlugin module imported id=" + str + " → finding BasePlugin class");
             PyObject pyObjectFindPluginClass = findPluginClass(module);
@@ -3602,49 +3599,7 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
         try {
             Python py = getPython();
             if (py != null) {
-                PyObject modules = py.getModule("sys").get("modules");
-                PyObject module = modules != null
-                        ? modules.callAttr("get", pluginId) : null;
-                boolean ownsModule = runtimeToken == null;
-                if (module != null && runtimeToken != null) {
-                    try {
-                        PyObject owner = module.get("__nimarko_runtime_token__");
-                        PluginsController.PluginRuntimeToken moduleToken = owner != null
-                                ? owner.toJava(PluginsController.PluginRuntimeToken.class)
-                                : null;
-                        ownsModule = runtimeToken.equals(moduleToken);
-                    } catch (Throwable ignored) {
-                        ownsModule = false;
-                    }
-                    if (!ownsModule && expectedModule != null) {
-                        try {
-                            if (module == expectedModule) {
-                                ownsModule = true;
-                            } else {
-                                PyObject builtins = py.getModule("builtins");
-                                long moduleId = builtins.callAttr("id", module).toLong();
-                                long expectedId =
-                                        builtins.callAttr("id", expectedModule).toLong();
-                                ownsModule = moduleId == expectedId;
-                            }
-                        } catch (Throwable ignored) {
-                            ownsModule = false;
-                        }
-                    }
-                    if (!ownsModule && allowUnpublishedFallback) {
-                        PluginsController.PluginRuntimeToken mapped =
-                                pluginRuntimeTokens.get(pluginId);
-                        PluginsController.PluginRuntimeToken current =
-                                getPluginsController()
-                                        .getCurrentPluginRuntime(pluginId);
-                        ownsModule = pluginInstances.get(pluginId) == null
-                                && (mapped == null || mapped.equals(runtimeToken))
-                                && (current == null || current.equals(runtimeToken));
-                    }
-                }
-                if (module != null && ownsModule) {
-                    modules.callAttr("pop", pluginId, null);
-                }
+                py.getModule("plugin_imports").callAttr("remove_plugin", pluginId, runtimeToken);
             }
         } catch (Throwable t) {
             FileLog.e("nimarko: failed to pop sys.modules[" + pluginId + "]", t);

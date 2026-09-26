@@ -223,6 +223,7 @@ public class MusicPlayerService extends Service implements NotificationCenter.No
 
                 @Override
                 public void onStop() {
+                    MediaController.getInstance().cleanupPlayer(true, true);
                 }
             });
             mediaSession.setActive(true);

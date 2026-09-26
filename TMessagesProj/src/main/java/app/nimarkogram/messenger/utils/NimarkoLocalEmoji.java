@@ -3,9 +3,11 @@ package app.nimarkogram.messenger.utils;
 import org.telegram.messenger.Emoji;
 import org.telegram.messenger.FileLog;
 import org.telegram.messenger.MediaDataController;
+import org.telegram.messenger.MessageObject;
 import org.telegram.messenger.MessagesController;
 import org.telegram.messenger.UserConfig;
 import org.telegram.tgnet.TLRPC;
+import org.telegram.ui.Components.AnimatedEmojiDrawable;
 
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -17,6 +19,21 @@ public final class NimarkoLocalEmoji {
     private NimarkoLocalEmoji() {}
 
     private static final String PREFIX = "tg://emoji?id=";
+    public static boolean isLocalEmojiLink(CharSequence text, TLRPC.MessageEntity entity) {
+        if (text == null || !(entity instanceof TLRPC.TL_messageEntityTextUrl)
+                || entity.url == null || !entity.url.startsWith(PREFIX)) return false;
+        try {
+            Long.parseLong(entity.url.substring(PREFIX.length()));
+            int off = entity.offset, len = entity.length;
+            if (off < 0 || len <= 0 || off > text.length() || len > text.length() - off) return false;
+            int[] emojiOnly = new int[1];
+            ArrayList<Emoji.EmojiSpanRange> emojis =
+                    Emoji.parseEmojis(text.subSequence(off, off + len).toString(), emojiOnly);
+            return emojiOnly[0] > 0 && emojis.size() == 1;
+        } catch (NumberFormatException ignored) {
+            return false;
+        }
+    }
 
     public static boolean canUse(int account) {
         try {
@@ -66,6 +83,13 @@ public final class NimarkoLocalEmoji {
                 TLRPC.TL_messageEntityCustomEmoji ce = (TLRPC.TL_messageEntityCustomEmoji) e;
                 if (force && !ce.local) continue;
                 if (groupSetIds.contains(ce.document_id)) continue;
+                if (!force) {
+                    TLRPC.Document document = ce.document;
+                    if (document == null || document.id != ce.document_id) {
+                        document = AnimatedEmojiDrawable.findDocument(account, ce.document_id);
+                    }
+                    if (MessageObject.isFreeEmoji(document)) continue;
+                }
                 TLRPC.TL_messageEntityTextUrl url = new TLRPC.TL_messageEntityTextUrl();
                 url.offset = ce.offset;
                 url.length = ce.length;

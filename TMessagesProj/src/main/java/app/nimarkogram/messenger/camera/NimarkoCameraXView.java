@@ -320,7 +320,7 @@ public class NimarkoCameraXView extends BaseCameraView {
     @Override
     public void destroyCamera() {
         RecordingSession session = recordingSession;
-        if (session != null) {
+        if (session != null && !session.finalizing) {
             
             destroyAfterRecordingFinalizes = true;
             if (session != null) {
@@ -397,12 +397,12 @@ public class NimarkoCameraXView extends BaseCameraView {
             isStreaming = false;
             cameraSwitchInProgress = false;
             removeStreamStateObserver();
-            if (!isRecordingOrFinalizing()) {
+            if (!isRecordingCaptureActive()) {
                 try { unbindOwnedUseCases(); } catch (Throwable t) { FileLog.e(t); }
                 camera = null;
                 initied = false;
             }
-        } else if (!isRecordingOrFinalizing() && provider != null
+        } else if (!isRecordingCaptureActive() && provider != null
                 && lifecycle.getLifecycle().getCurrentState() != Lifecycle.State.DESTROYED) {
             initied = bindUseCases();
             if (initied && readyCallback != null) readyCallback.onCameraReady();
@@ -412,6 +412,9 @@ public class NimarkoCameraXView extends BaseCameraView {
 
     public boolean isRecordingOrFinalizing() {
         return recordingSession != null;
+    }
+    private boolean isRecordingCaptureActive() {
+        return recordingSession != null && !recordingSession.finalizing;
     }
 
     @SuppressLint({"RestrictedApi", "UnsafeOptInUsageError"})
@@ -453,7 +456,7 @@ public class NimarkoCameraXView extends BaseCameraView {
 
     @SuppressLint({"RestrictedApi", "UnsafeOptInUsageError"})
     private boolean bindUseCases() {
-        if (provider == null || !streamingEnabled || isRecordingOrFinalizing()) {
+        if (provider == null || !streamingEnabled || isRecordingCaptureActive()) {
             if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("CXView bind skipped provider=" + (provider != null)
                     + " streamingEnabled=" + streamingEnabled
                     + " recording=" + isRecordingOrFinalizing());
@@ -518,7 +521,7 @@ public class NimarkoCameraXView extends BaseCameraView {
                     
                     if (!cameraControlsReady && pendingPreviewReady == null) {
                         schedulePreviewReady(boundCamera, generation, applyInitialZoom(boundCamera, generation));
-                        }
+                    }
                 } else if (state == PreviewView.StreamState.IDLE) {
                     cancelPendingPreviewReady();
                     cameraControlsReady = false;
@@ -1407,7 +1410,7 @@ public class NimarkoCameraXView extends BaseCameraView {
     public void stopVideoRecording(boolean abandon) {
         RecordingSession session = recordingSession;
         if (session == null) return;
-        session.abandoned = abandon;
+        session.abandoned |= abandon;
         session.stopRequested = true;
         try {
             if (session.recording != null) {
@@ -1423,6 +1426,7 @@ public class NimarkoCameraXView extends BaseCameraView {
         if (recordingSession != session || session.finalizing) return;
         session.finalizing = true;
         session.recording = null;
+        finishDeferredDestroy();
         final File file = session.file;
         final VideoSavedCallback cb = session.callback;
         final boolean abandoned = session.abandoned;
@@ -1459,7 +1463,14 @@ public class NimarkoCameraXView extends BaseCameraView {
             final String thumbPath = generateVideoThumb(file);
             AndroidUtilities.runOnUIThread(() -> {
                 try {
-                    if (cb != null) cb.onFinishVideoRecording(thumbPath, fDurationMs);
+                    if (session.abandoned) {
+                        try { file.delete(); } catch (Throwable ignored) {}
+                        if (thumbPath != null) {
+                            try { new File(thumbPath).delete(); } catch (Throwable ignored) {}
+                        }
+                    } else if (cb != null) {
+                        cb.onFinishVideoRecording(thumbPath, fDurationMs);
+                    }
                 } finally {
                     completeRecordingSession(session);
                 }
@@ -1469,7 +1480,6 @@ public class NimarkoCameraXView extends BaseCameraView {
 
     private void completeRecordingSession(RecordingSession session) {
         if (recordingSession == session) recordingSession = null;
-        finishDeferredDestroy();
     }
 
     private long readVideoDuration(File file) {

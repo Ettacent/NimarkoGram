@@ -120,7 +120,7 @@ public class NimarkoChatHelper extends BaseController {
         SpannableStringBuilder spannableStringBuilder = new SpannableStringBuilder();
 
         if (forwardsDrawable == null) {
-            forwardsDrawable = Objects.requireNonNull(ContextCompat.getDrawable(ApplicationLoader.applicationContext, R.drawable.forwards_solar)).mutate();
+            forwardsDrawable = MessageStatusIcons.create(R.drawable.forwards_solar);
         }
         if (forwardsSpan == null) {
             forwardsSpan = new SpannableStringBuilder("​");
@@ -140,7 +140,7 @@ public class NimarkoChatHelper extends BaseController {
     public static SpannableStringBuilder getEditedSpan() {
         if (editedDrawable == null) {
             
-            editedDrawable = Objects.requireNonNull(ContextCompat.getDrawable(ApplicationLoader.applicationContext, R.drawable.msg_edited)).mutate();
+            editedDrawable = MessageStatusIcons.create(R.drawable.msg_edited);
         }
         if (editedSpan == null) {
             editedSpan = new SpannableStringBuilder("​");
@@ -157,14 +157,14 @@ public class NimarkoChatHelper extends BaseController {
 
         if (editedDrawable == null) {
             
-            editedDrawable = Objects.requireNonNull(ContextCompat.getDrawable(ApplicationLoader.applicationContext, R.drawable.msg_edited)).mutate();
+            editedDrawable = MessageStatusIcons.create(R.drawable.msg_edited);
         }
         if (editedSpan == null) {
             editedSpan = new SpannableStringBuilder("​");
             editedSpan.setSpan(new ColoredImageSpan(editedDrawable, 0), 0, 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
         }
         if (forwardsDrawable == null) {
-            forwardsDrawable = Objects.requireNonNull(ContextCompat.getDrawable(ApplicationLoader.applicationContext, R.drawable.forwards_solar)).mutate();
+            forwardsDrawable = MessageStatusIcons.create(R.drawable.forwards_solar);
         }
         if (forwardsSpan == null) {
             forwardsSpan = new SpannableStringBuilder("​");

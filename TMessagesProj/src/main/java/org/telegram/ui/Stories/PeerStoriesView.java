@@ -1081,22 +1081,37 @@ public class PeerStoriesView extends SizeNotifierFrameLayout implements Notifica
                                 .show(true);
                         })
                         .add(R.drawable.msg_tone_add, getString(R.string.StoryAudioAddToProfile), () -> {
+                            final int account = currentAccount;
+                            final long selfId = UserConfig.getInstance(account).getClientUserId();
                             final TLRPC.TL_account_saveMusic req = new TLRPC.TL_account_saveMusic();
                             req.id = new TLRPC.TL_inputDocument();
                             req.id.id = music.id;
                             req.id.access_hash = music.access_hash;
-                            req.id.file_reference = music.file_reference;
-                            if (MediaController.getInstance().currentSavedMusicList != null && MediaController.getInstance().currentSavedMusicList.dialogId == UserConfig.getInstance(currentAccount).getClientUserId()) {
-                                MediaController.getInstance().currentSavedMusicList.add(music);
-                            }
-                            ConnectionsManager.getInstance(currentAccount).sendRequest(req, null);
-
-                            BulletinFactory.of(storyContainer, resourcesProvider)
-                                .createSimpleBulletin(
-                                    R.raw.ic_save_to_music,
-                                    LocaleController.getString(R.string.StoryAudioAddToProfileToast)
-                                )
-                                .show(true);
+                            req.id.file_reference = music.file_reference != null ? music.file_reference : new byte[0];
+                            ConnectionsManager.getInstance(account).sendRequest(req, (res, err) -> AndroidUtilities.runOnUIThread(() -> {
+                                final boolean canShowBulletin = attachedToWindow && currentAccount == account;
+                                if (err != null || !(res instanceof TLRPC.TL_boolTrue)) {
+                                    if (canShowBulletin) {
+                                        if (err != null) {
+                                            BulletinFactory.of(storyContainer, resourcesProvider).showForError(err);
+                                        } else {
+                                            BulletinFactory.of(storyContainer, resourcesProvider)
+                                                .createErrorBulletin(getString(R.string.UnknownError)).show();
+                                        }
+                                    }
+                                    return;
+                                }
+                                MessagesController.getInstance(account).getSavedMusicIds().update(music.id, true);
+                                final MessagesController.SavedMusicList list = MediaController.getInstance().currentSavedMusicList;
+                                if (list != null && list.currentAccount == account && list.dialogId == selfId) {
+                                    list.add(music);
+                                }
+                                if (canShowBulletin) {
+                                    BulletinFactory.of(storyContainer, resourcesProvider)
+                                        .createSimpleBulletin(R.raw.ic_save_to_music, getString(R.string.StoryAudioAddToProfileToast))
+                                        .show(true);
+                                }
+                            }));
                         })
                         .show();
                     return;

@@ -129,6 +129,8 @@ public class PyMethodHook extends XC_MethodHook {
             }
             boolean watchdogStarted = false;
             try {
+                controller.getWatchdog().onPluginExecutionStarted(this.pluginId);
+                watchdogStarted = true;
                 if (!this.beforeHookedFilters.isEmpty()) {
                     ArrayList<HookFilter> arrayList = this.beforeHookedFilters;
                     int size = arrayList.size();
@@ -142,8 +144,6 @@ public class PyMethodHook extends XC_MethodHook {
                     }
                 }
                 
-                controller.getWatchdog().onPluginExecutionStarted(this.pluginId);
-                watchdogStarted = true;
                 try {
                     
                     if (this.boundBefore != null) {
@@ -181,6 +181,8 @@ public class PyMethodHook extends XC_MethodHook {
             }
             boolean watchdogStarted = false;
             try {
+                controller.getWatchdog().onPluginExecutionStarted(this.pluginId);
+                watchdogStarted = true;
                 if (!this.afterHookedFilters.isEmpty()) {
                     ArrayList<HookFilter> arrayList = this.afterHookedFilters;
                     int size = arrayList.size();
@@ -193,8 +195,6 @@ public class PyMethodHook extends XC_MethodHook {
                         }
                     }
                 }
-                controller.getWatchdog().onPluginExecutionStarted(this.pluginId);
-                watchdogStarted = true;
                 try {
                     
                     if (this.boundAfter != null) {

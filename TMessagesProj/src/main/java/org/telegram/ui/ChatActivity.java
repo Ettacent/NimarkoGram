@@ -7573,11 +7573,6 @@ public class ChatActivity extends BaseFragment implements
         bizBotButton = null;
 
         sideControlsButtonsLayout = new ChatActivitySideControlsButtonsLayout(context, resourceProvider, blurredBackgroundColorProvider, glassBackgroundDrawableFactory);
-        sideControlsButtonsLayout.setOnPositionsChanged(() -> {
-            if (chatListView != null) {
-                chatListView.invalidate();
-            }
-        });
         sideControlsButtonsLayout.setOnClickListener(this::onSideControlButtonOnClick);
         sideControlsButtonsLayout.setOnLongClickListener(this::onSideControlButtonOnLongClick);
         {
@@ -11706,8 +11701,13 @@ public class ChatActivity extends BaseFragment implements
                     int hasPoll = 0;
                     boolean hasInvoice = false;
                     if (messagePreviewParams.forwardMessages != null) {
+                        selectedMessagesIds[0].clear();
+                        selectedMessagesIds[1].clear();
                         for (int a = 0, N = messagePreviewParams.forwardMessages.messages.size(); a < N; a++) {
                             MessageObject messageObject = messagePreviewParams.forwardMessages.messages.get(a);
+                            if (!messagePreviewParams.forwardMessages.selectedIds.get(messageObject.getId(), false)) {
+                                continue;
+                            }
                             if (messageObject.isTodo()) {
                                 hasPoll = 3;
                             } else if (messageObject.isPoll()) {
@@ -11735,7 +11735,7 @@ public class ChatActivity extends BaseFragment implements
                     }
                     args.putInt("hasPoll", hasPoll);
                     args.putBoolean("hasInvoice", hasInvoice);
-                    args.putInt("messagesCount", messagePreviewParams.forwardMessages == null ? 0 : messagePreviewParams.forwardMessages.messages.size());
+                    args.putInt("messagesCount", messagePreviewParams.forwardMessages == null ? 0 : selectedMessagesIds[0].size());
                     args.putBoolean("canSelectTopics", true);
                     putForwardPickerSource(args);
                     final DialogsActivity fragment = new DialogsActivity(args);
@@ -36250,7 +36250,9 @@ public class ChatActivity extends BaseFragment implements
             ngForwardOptions = new NimarkoForwardOptions(false, false);
         }
         ArrayList<MessageObject> fmessages = new ArrayList<>();
-        if (forwardingMessage != null) {
+        if (recipientForwardSource != null && recipientForwardSource.forwardMessages != null) {
+            recipientForwardSource.forwardMessages.getSelectedMessages(fmessages);
+        } else if (forwardingMessage != null) {
             if (forwardingMessageGroup != null) {
                 fmessages.addAll(forwardingMessageGroup.messages);
             } else {
@@ -44118,17 +44120,6 @@ public class ChatActivity extends BaseFragment implements
             return false;
         }
 
-        @Override
-        public float getUnobscuredShareButtonY(ChatMessageCell cell, float x, float y, float size) {
-            if (chatListView == null || cell.getParent() != chatListView || sideControlsButtonsLayout == null
-                    || sideControlsButtonsLayout.getParent() != chatListView.getParent()) {
-                return y;
-            }
-            final float left = chatListView.getX() + cell.getX() + x;
-            final float obstacleTop = sideControlsButtonsLayout.getObstructionTop(left, left + size);
-            final float cellTop = chatListView.getY() + cell.getY() + cell.getPaddingTopAnimated();
-            return Math.min(y, Math.max(dp(4), obstacleTop - cellTop - size - dp(6)));
-        }
         @Override
         public boolean onAccessibilityAction(int action, Bundle arguments) {
             if (action == AccessibilityNodeInfo.ACTION_CLICK || action == R.id.acc_action_small_button || action == R.id.acc_action_msg_options) {

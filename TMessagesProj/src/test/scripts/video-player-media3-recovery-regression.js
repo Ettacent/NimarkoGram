@@ -74,7 +74,8 @@ public class VideoPlayer {
   void setExtensionRendererMode(int mode){} void setEnableDecoderFallback(boolean enabled){}
  }
  static class AudioVisualizerRenderersFactory extends DefaultRenderersFactory { AudioVisualizerRenderersFactory(Object c){super(c);} }
- interface Player { int STATE_READY=3; interface Listener { default void onPlayerStateChanged(boolean ready,int state){} } }
+ static class Tracks {}
+ interface Player { int STATE_READY=3; interface Listener { default void onPlayerStateChanged(boolean ready,int state){} default void onTracksChanged(Tracks tracks){} default void onVolumeChanged(float volume){} } }
  static class ExoPlayer {
   static int REPEAT_MODE_ALL=2,REPEAT_MODE_OFF=0;
   Looper looper; DefaultLoadControl load; DefaultTrackSelector selector;
@@ -122,6 +123,7 @@ public class VideoPlayer {
  String videoUri="video",videoType="other",audioUri="audio",audioType="other";
  int errors,prepares; VideoPlayerDelegate delegate=(p,e)->{check(Looper.current==Looper.MAIN,"error delegate must run on main");errors++;};
  void checkPlayersReady(){}
+ void maybeNotifyPlayingWithAudio(){} // Audible-track behavior has its own production-method harness.
  void preparePlayer(String uri,String type){player.checkThread();prepares++;player.load.prepared(player.playbackThread);}
  void preparePlayer(ArrayList<Quality> qualities,Quality selected){check(!qualities.isEmpty(),"empty fallback");check(selected==null||qualities.contains(selected),"retired quality");preparePlayer("quality","hls");}
  void preparePlayerLoop(String v,String vt,String a,String at){preparePlayer(v,vt);audioPlayer.load.prepared(audioPlayer.playbackThread);audioPlayerReady=videoPlayerReady=false;}

@@ -199,6 +199,11 @@ public class AnimatedEmojiDrawable extends Drawable {
         }
 
         public void fetchDocument(long id, ReceivedDocument onDone) {
+            fetchDocumentInternal(id, document -> {
+                if (document != null && onDone != null) onDone.run(document);
+            });
+        }
+        private void fetchDocumentInternal(long id, ReceivedDocument onDone) {
             if (id == 0) return;
             synchronized (this) {
                 if (emojiDocumentsCache != null) {
@@ -236,8 +241,8 @@ public class AnimatedEmojiDrawable extends Drawable {
             AndroidUtilities.runOnUIThread(fetchRunnable = () -> {
                 ArrayList<Long> emojiToLoad = new ArrayList<>(toFetchDocuments);
                 toFetchDocuments.clear();
-                loadFromDatabase(emojiToLoad, uiDbCallback == null);
                 fetchRunnable = null;
+                loadFromDatabase(emojiToLoad, uiDbCallback == null);
             });
         }
 
@@ -328,27 +333,71 @@ public class AnimatedEmojiDrawable extends Drawable {
         }
 
         private void loadFromServer(ArrayList<Long> loadFromServerIds) {
+            loadFromServer(loadFromServerIds, 0);
+        }
+        private void loadFromServer(ArrayList<Long> loadFromServerIds, int attempt) {
+            final HashMap<Long, ArrayList<ReceivedDocument>> owners = new HashMap<>();
+            for (Long id : loadFromServerIds) {
+                ArrayList<ReceivedDocument> callbacks = loadingDocuments.get(id);
+                if (callbacks != null) owners.put(id, callbacks);
+            }
+            if (owners.isEmpty()) return;
             final TLRPC.TL_messages_getCustomEmojiDocuments req = new TLRPC.TL_messages_getCustomEmojiDocuments();
-            req.document_id = loadFromServerIds;
+            req.document_id = new ArrayList<>(owners.keySet());
             ConnectionsManager.getInstance(currentAccount).sendRequest(req, (res, err) -> AndroidUtilities.runOnUIThread(() -> {
-                HashSet<Long> loadedFromServer = new HashSet<>(loadFromServerIds);
-                if (res instanceof Vector) {
-                    ArrayList<Object> objects = ((Vector) res).objects;
-                    putToStorage(objects);
-                    for (int i = 0; i < objects.size(); i++) {
-                        if (objects.get(i) instanceof TLRPC.Document) {
-                            TLRPC.Document document = (TLRPC.Document) objects.get(i);
-                            loadedFromServer.remove(document.id);
+                ArrayList<Object> objects = new ArrayList<>();
+                if (err == null && res instanceof Vector) {
+                    for (Object object : ((Vector) res).objects) {
+                        if (object instanceof TLRPC.Document) {
+                            TLRPC.Document document = (TLRPC.Document) object;
+                            if (owners.containsKey(document.id)
+                                    && loadingDocuments.get(document.id) == owners.get(document.id)) {
+                                objects.add(document);
+                            }
                         }
                     }
 
-                    deliverDocuments(objects, 0, () -> {
-                        if (!loadedFromServer.isEmpty() && loadedFromServer.size() < loadFromServerIds.size()) {
-                            loadFromServer(new ArrayList<>(loadedFromServer));
-                        }
-                    });
+                    putToStorage(objects);
                 }
+                deliverDocuments(objects, 0, () -> {
+                    ArrayList<Long> missing = new ArrayList<>();
+                    for (Long id : owners.keySet()) {
+                        if (loadingDocuments.get(id) == owners.get(id)) missing.add(id);
+                    }
+                    if (missing.isEmpty()) return;
+                    int state = ConnectionsManager.getInstance(currentAccount).getConnectionState();
+                    if (attempt == 0 && (state == ConnectionsManager.ConnectionStateConnected
+                            || state == ConnectionsManager.ConnectionStateUpdating)) {
+                        AndroidUtilities.runOnUIThread(() -> {
+                            missing.removeIf(id -> loadingDocuments.get(id) != owners.get(id));
+                            int retryState = ConnectionsManager.getInstance(currentAccount).getConnectionState();
+                            if (retryState == ConnectionsManager.ConnectionStateConnected
+                                    || retryState == ConnectionsManager.ConnectionStateUpdating) {
+                                loadFromServer(missing, 1);
+                            } else {
+                                finishFailedDocuments(owners);
+                            }
+                        }, 1000);
+                    } else {
+                        finishFailedDocuments(owners);
+                    }
+                });
             }));
+        }
+        private void finishFailedDocuments(HashMap<Long, ArrayList<ReceivedDocument>> owners) {
+            ArrayList<ReceivedDocument> failed = new ArrayList<>();
+            for (Long id : owners.keySet()) {
+                if (loadingDocuments.get(id) == owners.get(id)) {
+                    failed.addAll(loadingDocuments.remove(id));
+                }
+            }
+            for (ReceivedDocument callback : failed) {
+                try {
+                    if (callback != null) callback.run(null);
+                } catch (Exception e) {
+                    FileLog.e(e);
+                }
+            }
         }
 
         private void putToStorage(ArrayList<Object> objects) {
@@ -400,7 +449,11 @@ public class AnimatedEmojiDrawable extends Drawable {
                             for (int j = 0; j < loadingCallbacks.size(); ++j) {
                                 ReceivedDocument callback = loadingCallbacks.get(j);
                                 if (callback != null) {
-                                    callback.run(document);
+                                    try {
+                                        callback.run(document);
+                                    } catch (Exception e) {
+                                        FileLog.e(e);
+                                    }
                                 }
                             }
                             loadingCallbacks.clear();
@@ -494,16 +547,28 @@ public class AnimatedEmojiDrawable extends Drawable {
         }
     }
     private float alpha = 1f;
+    private boolean documentRequestPending;
+    private void requestDocument() {
+        if (Thread.currentThread() != Looper.getMainLooper().getThread()) {
+            AndroidUtilities.runOnUIThread(this::requestDocument);
+            return;
+        }
+        if (document != null || documentRequestPending || documentId == 0) return;
+        documentRequestPending = true;
+        getDocumentFetcher(currentAccount).fetchDocumentInternal(documentId, document -> {
+            documentRequestPending = false;
+            if (document == null) return;
+            this.document = document;
+            this.initDocument(false);
+        });
+    }
 
     public AnimatedEmojiDrawable(int cacheType, int currentAccount, long documentId) {
         this.currentAccount = currentAccount;
         this.cacheType = cacheType;
         updateSize();
         this.documentId = documentId;
-        getDocumentFetcher(currentAccount).fetchDocument(documentId, document -> {
-            this.document = document;
-            this.initDocument(false);
-        });
+        requestDocument();
     }
 
     public AnimatedEmojiDrawable(int cacheType, int currentAccount, long documentId, String absolutePath) {
@@ -512,10 +577,7 @@ public class AnimatedEmojiDrawable extends Drawable {
         updateSize();
         this.documentId = documentId;
         this.absolutePath = absolutePath;
-        getDocumentFetcher(currentAccount).fetchDocument(documentId, document -> {
-            this.document = document;
-            this.initDocument(false);
-        });
+        requestDocument();
     }
 
     public AnimatedEmojiDrawable(int cacheType, int currentAccount, @NonNull TLRPC.Document document) {
@@ -1002,6 +1064,7 @@ public class AnimatedEmojiDrawable extends Drawable {
     private void updateAttachState() {
         boolean attach = hasAttachedHosts();
         if (attach) {
+            requestDocument();
             if (detachPending) {
                 AndroidUtilities.cancelRunOnUIThread(detachRunnable);
                 detachPending = false;

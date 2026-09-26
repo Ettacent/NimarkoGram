@@ -306,6 +306,15 @@ public class VideoPlayer implements Player.Listener, VideoListener, AnalyticsLis
                             audioPlayerReady = true;
                             checkPlayersReady();
                         }
+                        maybeNotifyPlayingWithAudio();
+                    }
+                    @Override
+                    public void onTracksChanged(Tracks tracks) {
+                        maybeNotifyPlayingWithAudio();
+                    }
+                    @Override
+                    public void onVolumeChanged(float volume) {
+                        maybeNotifyPlayingWithAudio();
                     }
                 });
                 audioPlayer.setPlayWhenReady(autoplay);
@@ -1707,9 +1716,7 @@ public class VideoPlayer implements Player.Listener, VideoListener, AnalyticsLis
             return;
         }
         maybeReportPlayerState();
-        if (playWhenReady && playbackState == Player.STATE_READY && !isMuted() && shouldPauseOther) {
-            NotificationCenter.getGlobalInstance().postNotificationName(NotificationCenter.playerDidStartPlaying, this);
-        }
+        maybeNotifyPlayingWithAudio();
         if (!videoPlayerReady && playbackState == Player.STATE_READY) {
             videoPlayerReady = true;
             checkPlayersReady();
@@ -2074,9 +2081,24 @@ public class VideoPlayer implements Player.Listener, VideoListener, AnalyticsLis
     @Override
     public void onTracksChanged(Tracks tracks) {
         Player.Listener.super.onTracksChanged(tracks);
+        maybeNotifyPlayingWithAudio();
         if (onQualityChangeListener != null) {
             AndroidUtilities.runOnUIThread(onQualityChangeListener);
         }
+    }
+    private static boolean hasPlayingAudio(ExoPlayer source) {
+        return source != null && source.getPlayWhenReady()
+                && source.getPlaybackState() == Player.STATE_READY && source.getVolume() > 0f
+                && source.getCurrentTracks().isTypeSelected(C.TRACK_TYPE_AUDIO);
+    }
+    private void maybeNotifyPlayingWithAudio() {
+        if (!released && shouldPauseOther && (hasPlayingAudio(player) || mixedAudio && hasPlayingAudio(audioPlayer))) {
+            NotificationCenter.getGlobalInstance().postNotificationName(NotificationCenter.playerDidStartPlaying, this);
+        }
+    }
+    @Override
+    public void onVolumeChanged(float volume) {
+        maybeNotifyPlayingWithAudio();
     }
 
     @Override

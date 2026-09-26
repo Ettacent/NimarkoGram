@@ -1,0 +1,5 @@
+{
+  "ru": "### Что нового\n\n- В меню выбора аккаунтов по удержанию аватара в органайзере добавлен счётчик непрочитанных чатов. Он использует тот же подсчёт, что и настройки, и обновляется при новых сообщениях и прочтении.\n\n### Исправления\n\n- Исправлено отображение даты рождения при загрузке данных профиля.\n- Анимация дня рождения теперь запускается у видимой строки с датой, а не в верхней части профиля.\n- Убрано лишнее описание у пункта «Настройки прокси» в стандартном поиске настроек.",
+  "en": "### What's new\n\n- Added an unread chat counter to the account picker opened by holding the avatar in the organizer. It uses the same counting rules as Settings and updates when messages arrive or are read.\n\n### Fixes\n\n- Fixed the birthday date display while profile information is loading.\n- The birthday animation now starts at the visible birthday row instead of the top of the profile.\n- Removed the extra description from Proxy Settings in the standard settings search.",
+  "zh": "### 新功能\n\n- 在长按整理器中的头像打开的账号切换菜单中，新增未读聊天计数。计数规则与设置中一致，并会在收到新消息或阅读消息后更新。\n\n### 修复\n\n- 修复了加载个人资料时生日日期的显示问题。\n- 生日动画现在会在可见的生日信息行处播放，而不是在个人资料顶部。\n- 移除了标准设置搜索中“代理设置”条目多余的说明文字。"
+}

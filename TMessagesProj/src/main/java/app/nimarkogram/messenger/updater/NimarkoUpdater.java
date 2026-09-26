@@ -233,7 +233,8 @@ public class NimarkoUpdater {
                 NimarkoUpdateConfig.getLastUpdateChangelog(),
                 NimarkoUpdateConfig.getLastUpdateSize(),
                 url,
-                NimarkoUpdateConfig.getLastUpdateDate());
+                NimarkoUpdateConfig.getLastUpdateDate(),
+                NimarkoUpdateConfig.getLastUpdateChangelogs());
         return lastUpdate.isNew() ? lastUpdate : null;
     }
 
@@ -393,9 +394,12 @@ public class NimarkoUpdater {
                 long dateMs = obj.optLong("date", 0);
                 uploadDate = dateMs > 0 ? LocaleController.formatDateTime(dateMs / 1000, true) : "";
 
-                Update update = new Update(version, versionCode, changelog, size, downloadURL, uploadDate);
+                JSONObject translations = obj.optJSONObject("changelogs");
+                Update update = new Update(version, versionCode, changelog, size, downloadURL, uploadDate,
+                        translations == null ? "" : translations.toString());
                 lastUpdate = update;
-                NimarkoUpdateConfig.setLastUpdate(version, versionCode, downloadURL, changelog, size, uploadDate);
+                NimarkoUpdateConfig.setLastUpdate(version, versionCode, downloadURL, changelog, size, uploadDate,
+                        update.getChangelogsJson());
                 boolean newer = update.isNew();
                 NimarkoUpdateConfig.setUpdateAvailable(newer);
                 if (newer && fragment != null && fragment.getContext() != null) {
@@ -1160,14 +1164,44 @@ public class NimarkoUpdater {
     public static class Update {
         public final String version, size, downloadURL, uploadDate, changelog;
         public final int versionCode;
+        private final LocalizedChangelog localizedChangelog;
 
         public Update(String version, int versionCode, String changelog, String size, String downloadURL, String uploadDate) {
+            this(version, versionCode, changelog, size, downloadURL, uploadDate, "");
+        }
+        public Update(String version, int versionCode, String changelog, String size, String downloadURL, String uploadDate, String changelogsJson) {
             this.version = version;
             this.versionCode = versionCode;
             this.changelog = changelog;
             this.size = size;
             this.downloadURL = downloadURL;
             this.uploadDate = uploadDate;
+            java.util.Map<String, String> translations = new java.util.LinkedHashMap<>();
+            try {
+                if (changelogsJson != null && !changelogsJson.isEmpty()) {
+                    JSONObject json = new JSONObject(changelogsJson);
+                    java.util.Iterator<String> keys = json.keys();
+                    while (keys.hasNext()) {
+                        String key = keys.next();
+                        Object value = json.opt(key);
+                        if (value instanceof String) translations.put(key, (String) value);
+                    }
+                }
+            } catch (org.json.JSONException ignored) {
+            }
+            localizedChangelog = new LocalizedChangelog(changelog, translations);
+        }
+        public String getChangelogsJson() {
+            return new JSONObject(localizedChangelog.getTranslations()).toString();
+        }
+        public String getLocalizedChangelog() {
+            LocaleController controller = LocaleController.getInstance();
+            LocaleController.LocaleInfo info = controller.getCurrentLocaleInfo();
+            Locale locale = controller.getCurrentLocale();
+            return localizedChangelog.resolve(info == null ? null : info.shortName,
+                    info == null ? null : info.baseLangCode,
+                    info == null ? null : info.pluralLangCode,
+                    locale == null ? null : locale.toLanguageTag());
         }
 
         public boolean isNew() {
