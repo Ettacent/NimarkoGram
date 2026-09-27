@@ -133,7 +133,7 @@ public class SharedPhotoVideoCell2 extends FrameLayout {
     private float spoilerMaxRadius;
     private SpoilerEffect2 mediaSpoilerEffect2;
     private int mediaSpoilerAttachIndex = -1;
-    private java.lang.ref.WeakReference<Bitmap> spoilerBlurSource;
+    private String spoilerBlurKey;
     private final Path rectPath = new Path();
     private Text sensitiveText, sensitiveTextShort, sensitiveTextShort2;
 
@@ -164,8 +164,8 @@ public class SharedPhotoVideoCell2 extends FrameLayout {
         setChecked(false, false);
         imageReceiver.setParentView(this);
         imageReceiverFullSize.setParentView(this);
-        imageReceiver.setCrossfadeOnReady(true);
-        imageReceiverFullSize.setCrossfadeOnReady(true);
+        imageReceiver.setCrossfadeOnReady(false);
+        imageReceiverFullSize.setCrossfadeOnReady(false);
         blurImageReceiver.setParentView(this);
 
         imageReceiver.setDelegate((imageReceiver1, set, thumb, memCache) -> {
@@ -1091,11 +1091,9 @@ public class SharedPhotoVideoCell2 extends FrameLayout {
                 mediaSpoilerEffect2.attach(this);
             }
             if (mediaSpoilerEffect2 != null) {
-                if (mediaSpoilerAttachIndex < 0) {
-                    mediaSpoilerAttachIndex = mediaSpoilerEffect2.getAttachIndex(this);
-                } else {
-                    mediaSpoilerEffect2.reassignAttach(this, mediaSpoilerAttachIndex);
-                }
+                mediaSpoilerAttachIndex = (currentAccount ^ Long.hashCode(currentMessageObject.getDialogId())
+                        ^ currentMessageObject.getId()) & 3;
+                mediaSpoilerEffect2.reassignAttach(this, mediaSpoilerAttachIndex);
             }
         } else {
             if (mediaSpoilerEffect2 != null) {
@@ -1109,15 +1107,23 @@ public class SharedPhotoVideoCell2 extends FrameLayout {
                 && !currentMessageObject.isMediaSpoilersRevealedInSharedMedia ? imageReceiver.getBitmap() : null;
         if (source != null && source.isRecycled()) source = null;
         Bitmap previous = blurImageReceiver.getBitmap();
-        if (source != null && spoilerBlurSource != null && spoilerBlurSource.get() == source
+        String key = null;
+        if (currentMessageObject != null && currentMessageObject.hasMediaSpoilers()
+                && !currentMessageObject.isMediaSpoilersRevealedInSharedMedia) {
+            TLRPC.MessageMedia media = currentMessageObject.messageOwner == null ? null : currentMessageObject.messageOwner.media;
+            key = currentAccount + ":" + currentMessageObject.getDialogId() + ":" + currentMessageObject.getId()
+                    + ":" + (media != null && media.photo != null ? media.photo.id : 0)
+                    + ":" + (currentMessageObject.getDocument() != null ? currentMessageObject.getDocument().id : 0);
+        }
+        if (key != null && key.equals(spoilerBlurKey)
                 && previous != null && !previous.isRecycled()) return;
         if (source == null && previous == null) {
-            spoilerBlurSource = null;
+            spoilerBlurKey = null;
             return;
         }
         Bitmap replacement = source == null ? null : Utilities.stackBlurBitmapMax(source);
         blurImageReceiver.setImageBitmap(replacement);
-        spoilerBlurSource = source == null ? null : new java.lang.ref.WeakReference<>(source);
+        spoilerBlurKey = replacement == null ? null : key;
         if (previous != null && previous != replacement && !previous.isRecycled()) previous.recycle();
     }
 

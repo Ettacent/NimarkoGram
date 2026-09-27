@@ -19,7 +19,10 @@ public class SpoilerLifecycleCheck {
   Bitmap getBitmap(){return bitmap;}
   void setImageBitmap(Bitmap next){if(bitmap!=null&&bitmap.isRecycled())throw new AssertionError("recycled before replacement");bitmap=next;writes++;}
  }
- static class Message {boolean spoiler=true,isMediaSpoilersRevealedInSharedMedia;boolean hasMediaSpoilers(){return spoiler;}}
+ static class TLRPC {static class MessageMedia {Photo photo=new Photo();} static class Photo {long id=42;}}
+ static class Owner {TLRPC.MessageMedia media=new TLRPC.MessageMedia();}
+ static class Document {long id;}
+ static class Message {int id=10;Owner messageOwner=new Owner();boolean spoiler=true,isMediaSpoilersRevealedInSharedMedia;boolean hasMediaSpoilers(){return spoiler;}long getDialogId(){return -100;}int getId(){return id;}Document getDocument(){return null;}}
  static class Utilities {static int calls;static Bitmap stackBlurBitmapMax(Bitmap b){calls++;return new Bitmap();}}
  static class SpoilerEffect2 {
   static int created;boolean destroyed;int index=-1,next;
@@ -32,7 +35,7 @@ public class SpoilerLifecycleCheck {
  }
  boolean attached;Message currentMessageObject=new Message();
  Receiver imageReceiver=new Receiver(),blurImageReceiver=new Receiver();
- java.lang.ref.WeakReference<Bitmap> spoilerBlurSource;
+ String spoilerBlurKey;int currentAccount;
  SpoilerEffect2 mediaSpoilerEffect2;int mediaSpoilerAttachIndex=-1;
  int getMeasuredHeight(){return 100;}int getMeasuredWidth(){return 100;}
  void updateSpoilers2(){SPOILERS}
@@ -47,9 +50,16 @@ public class SpoilerLifecycleCheck {
   h.updateSpoilers2();check(SpoilerEffect2.created==1,"renderer recreated on measure");
   h.mediaSpoilerEffect2.destroyed=true;h.updateSpoilers2();
   check(h.mediaSpoilerEffect2.getAttachIndex(h)==original,"pattern changed on renderer recreation");
+  SpoilerLifecycleCheck replacement=new SpoilerLifecycleCheck();replacement.attached=true;replacement.updateSpoilers2();
+  check(replacement.mediaSpoilerAttachIndex==original,"same message changed pattern in a new cell");
   h.imageReceiver.bitmap=new Bitmap();h.updateSpoilerBlur();Bitmap first=h.blurImageReceiver.bitmap;
   h.updateSpoilerBlur();check(Utilities.calls==1&&h.blurImageReceiver.bitmap==first&&!first.recycled,"same source reblurred");
   h.imageReceiver.bitmap=new Bitmap();h.updateSpoilerBlur();
+  check(Utilities.calls==1&&h.blurImageReceiver.bitmap==first&&!first.recycled,"quality upgrade flashed blur");
+  h.imageReceiver.bitmap=null;h.updateSpoilerBlur();
+  check(h.blurImageReceiver.bitmap==first&&!first.recycled,"temporary receiver gap cleared blur");
+  h.imageReceiver.bitmap=new Bitmap();
+  h.currentMessageObject.messageOwner.media.photo.id++;h.updateSpoilerBlur();
   check(Utilities.calls==2&&first.recycled&&h.blurImageReceiver.bitmap!=first,"replacement ownership");
   Bitmap second=h.blurImageReceiver.bitmap;h.currentMessageObject.isMediaSpoilersRevealedInSharedMedia=true;h.updateSpoilerBlur();
   check(h.blurImageReceiver.bitmap==null&&second.recycled,"revealed blur retained");
@@ -69,7 +79,7 @@ public class SpoilerLifecycleCheck {
         draw = body(source, "private void drawImpl(")
         self.assertIn("if ((currentMessageObject == null && style != STYLE_CACHE) || !imageReceiver.hasBitmapImage())", draw)
         self.assertNotIn("|| imageReceiver.getCurrentAlpha() != 1.0f || imageAlpha != 1f", draw)
-        self.assertIn("imageReceiver.setCrossfadeOnReady(true)", source)
+        self.assertIn("imageReceiver.setCrossfadeOnReady(false)", source)
         self.assertIn("currentMessageObject.getDialogId() == messageObject.getDialogId()", source)
 
 
