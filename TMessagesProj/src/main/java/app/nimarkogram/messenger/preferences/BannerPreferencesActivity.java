@@ -163,7 +163,10 @@ public class BannerPreferencesActivity extends BasePreferencesActivity {
 
         items.add(UItem.asHeader(LocaleController.getString(R.string.NM_BAN_LocalHeader)));
         if ("approved".equals(st)) {
-            items.add(UItem.asShadow(LocaleController.getString(R.string.NM_BAN_LocalDisabledHint)));
+            items.add(asSettingsLink(ID_PICK_LOCAL, IconBackgroundColors.BLUE_DEEP,
+                    R.drawable.msg_gallery, LocaleController.getString(R.string.NM_BAN_PickLocal),
+                    LocaleController.getString(R.string.NM_BAN_LocalDisabledHint)).setEnabled(false));
+            items.add(UItem.asShadow(null));
         } else {
             items.add(SettingsHelper.asSwitchCG(ID_USE_AVATAR,
                     LocaleController.getString(R.string.NM_BAN_AvatarBanner))

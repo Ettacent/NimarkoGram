@@ -32,6 +32,7 @@ class EmojiFirstFrameFadeTest(unittest.TestCase):
             "private boolean isDrawableReadyForDraw(",
             "public void setCrossfadeOnReady(", "private boolean canCrossfadeOnReady(",
             "private boolean canAnimateLoadingTransition(",
+            "private boolean hasRoundVideoPreview(",
             "private void trackCrossfadeOnReady(", "private boolean prepareCrossfadeOnReady(",
             "private boolean prepareDrawAlpha(",
             "private void checkAlphaAnimation(",

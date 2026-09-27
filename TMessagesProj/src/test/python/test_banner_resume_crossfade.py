@@ -12,6 +12,40 @@ SOURCE = (Path(__file__).resolve().parents[2] /
 
 
 class BannerResumeCrossfadeTests(unittest.TestCase):
+    def test_custom_player_rebuffer_keeps_position_and_excludes_normal_playback(self):
+        player_source = (Path(__file__).resolve().parents[2] /
+                        'main/java/org/telegram/ui/Components/VideoPlayer.java').read_text()
+        production = method(player_source, 'public boolean rebufferPausedCustomPlayback()')
+        source = r'''
+public class RebufferTest {
+ static class Player {
+  boolean playing; long position=12345; String calls="";
+  boolean getPlayWhenReady(){return playing;}
+  void stop(){calls+="stop;";} void prepare(){calls+="prepare;";}
+ }
+ boolean released,mixedAudio; Object customRenderersFactory=new Object(); Player player=new Player();
+ /* PRODUCTION */
+ public static void main(String[] args){
+  RebufferTest r=new RebufferTest();
+  if(!r.rebufferPausedCustomPlayback()||!r.player.calls.equals("stop;prepare;")||r.player.position!=12345)
+   throw new AssertionError("rebuffer ordering / position");
+  for(int mode=0;mode<5;mode++){
+   r=new RebufferTest();Player original=r.player;
+   switch(mode){case 0:r.released=true;break;case 1:r.player=null;break;
+    case 2:r.customRenderersFactory=null;break;case 3:r.mixedAudio=true;break;
+    case 4:r.player.playing=true;break;}
+   if(r.rebufferPausedCustomPlayback()||!original.calls.isEmpty())throw new AssertionError("gate "+mode);
+  }
+ }
+}
+'''.replace('/* PRODUCTION */', production)
+        with tempfile.TemporaryDirectory(prefix='banner-rebuffer-') as directory:
+            java = Path(directory) / 'RebufferTest.java'
+            java.write_text(source)
+            for command in (['javac', str(java)], ['java', '-cp', directory, 'RebufferTest']):
+                result = subprocess.run(command, capture_output=True, text=True, timeout=30)
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
     def test_profile_navigation_drives_visibility_gate(self):
         profile = (Path(__file__).resolve().parents[2] /
                    'main/java/org/telegram/ui/ProfileActivity.java').read_text()
@@ -42,6 +76,7 @@ public class ResumeTest {
   Animator(Surface s){owner=s;}void cancel(){end=null;}
   Animator alpha(float a){target=a;return this;}Animator setDuration(long d){duration=d;return this;}
   Animator setInterpolator(Object x){return this;}Animator withEndAction(Runnable r){end=r;return this;}
+  Animator setUpdateListener(java.util.function.Consumer<Object> c){return this;}
   void start(){}void finish(){owner.alpha=target;Runnable r=end;end=null;if(r!=null)r.run();}
  }
  static class Surface {float alpha=1;int visibility;Animator animator=new Animator(this);
@@ -50,9 +85,13 @@ public class ResumeTest {
  static class TextureView extends Surface {boolean available=true;boolean isAvailable(){return available;}}
  static class ImageView extends Surface {Bitmap bitmap;Object drawable;
   void setImageBitmap(Bitmap b){bitmap=b;drawable=new Object();}Object getDrawable(){return drawable;}}
- static class VideoPlayer {boolean playing;int plays;
+ static class VideoPlayer {boolean playing;int plays,rebufferings;
+  boolean rebufferPausedCustomPlayback(){rebufferings++;return true;}
   boolean isPlaying(){return playing;}void play(){playing=true;plays++;}}
- static class android {static class view {static class animation {static class LinearInterpolator {}}}}
+ static class org {static class telegram {static class messenger {static class FileLog {
+  static void e(Throwable e){}
+ }}}}
+ static class android {static class view {static class animation {static class AccelerateDecelerateInterpolator {}}}}
  static class AndroidUtilities {
   static List<Runnable> timers=new ArrayList<>();
   static void runOnUIThread(Runnable r){r.run();}
@@ -61,9 +100,12 @@ public class ResumeTest {
  }
  interface VideoFrameCallback {void onFrame(Bitmap b);}
  TextureView videoTexture=new TextureView();ImageView vidFreeze=new ImageView();
- VideoPlayer videoPlayer=new VideoPlayer();String curVidPath="a";long videoSessionId=1;
+ VideoPlayer videoPlayer=new VideoPlayer();String curVidPath="a",frozenPath;long videoSessionId=1;
+ boolean pathEq(String a,String b){return a!=null&&a.equals(b);}
  boolean active=true,attached=true,vidReady=true,videoFrameReady=true,isProfileOpen=true;
- boolean appPaused,videoPausedByTab,overlayOpen,waitFrame;
+ boolean curVidSound=false,videoDecoderFrameReady=true,resumeAudioUnchanged;
+ void endProfileExit(ViewGroup view,int account,long eid){profileExitActive=false;}
+ boolean appPaused,videoPausedByTab,overlayOpen,waitFrame,profileExitActive;
  double vidFirstFrameTime=10;ViewGroup currentTopView=new ViewGroup();
  int resumeCaptureGeneration,captures;Runnable resumeCaptureTimeout;
  Bitmap videoCrossfadeBitmap,freezeBmp;Animator vidXfade;boolean resumeFadeWaitingForFrame,profileCoveredByNavigation;
@@ -74,6 +116,7 @@ public class ResumeTest {
  boolean isCurrentProfile(ViewGroup top,int account,long id){return active&&top==currentTopView&&account==1&&id==42;}
  void onProfilePaused(ViewGroup top,int account){cancelResumeCapture();isProfileOpen=false;videoPlayer.playing=false;}
  void invalidateTopView(){}void startBlur(){}
+ float lastAudioExtra;void applyAudioVolume(float extra){}
  void captureVideoFrameAsync(long s,String p,VideoFrameCallback c){captures++;callback=c;}
  static boolean okBmp(Bitmap b){return b!=null&&!b.recycled;}
  static void recycle(Bitmap b){if(b!=null)b.recycled=true;}
@@ -104,9 +147,18 @@ public class ResumeTest {
   }
   r=new ResumeTest();r.resumePlayerIfReady();b=new Bitmap();r.callback.onFrame(b);
   r.startResumeCrossfadeOnFrame();r.vidFreeze.alpha=.4f;r.vidFreeze.animator.cancel();
-  r.videoPlayer.playing=false;r.resumePlayerIfReady();Bitmap replacement=new Bitmap();r.callback.onFrame(replacement);
-  check(b.recycled&&r.vidFreeze.bitmap==replacement,"cancelled fade can be replaced on return");
-  r.startResumeCrossfadeOnFrame();r.vidFreeze.animator.finish();check(replacement.recycled,"replacement cleaned up");
+  r.videoPlayer.playing=false;r.resumePlayerIfReady();
+  check(!b.recycled&&r.vidFreeze.bitmap==b&&r.resumeFadeWaitingForFrame,"cancelled fade resumes with same cover");
+  r.startResumeCrossfadeOnFrame();r.vidFreeze.animator.finish();check(b.recycled,"resumed cover cleaned up");
+  for(int cycle=0;cycle<100;cycle++){
+   r=new ResumeTest();b=new Bitmap();r.freezeBmp=b;r.frozenPath="a";
+   r.vidFreeze.setImageBitmap(b);r.vidFreeze.alpha=1;r.waitFrame=false;
+   r.resumePlayerIfReady();
+   check(r.freezeBmp==null&&r.frozenPath==null&&r.videoCrossfadeBitmap==b,"transition snapshot ownership transferred");
+   check(r.captures==0&&r.videoPlayer.playing&&r.resumeFadeWaitingForFrame,"no stuck freeze or duplicate capture");
+   r.startResumeCrossfadeOnFrame();r.vidFreeze.animator.finish();
+   check(b.recycled&&r.vidFreeze.bitmap==null,"freeze is gone after return fade");
+  }
   r=new ResumeTest();r.onProfileFullyHidden(r.currentTopView,1,42);
   r.isProfileOpen=true;r.resumePlayerIfReady();
   check(r.captures==0&&r.videoPlayer.plays==0,"channel return waits for visible profile");
@@ -116,6 +168,14 @@ public class ResumeTest {
   check(r.captures==1&&!r.profileCoveredByNavigation,"one capture after transition completion");
   b=new Bitmap();r.callback.onFrame(b);r.startResumeCrossfadeOnFrame();
   check(r.vidFreeze.animator.duration==700,"full fade starts after channel returns");
+  r=new ResumeTest();r.videoTexture.alpha=.4f;r.profileExitActive=true;
+  r.profileCoveredByNavigation=true;r.videoCrossfadeBitmap=new Bitmap();
+  r.vidFreeze.setImageBitmap(r.videoCrossfadeBitmap);r.vidFreeze.alpha=1;
+  r.onProfileFullyVisible(r.currentTopView,1,42);
+  check(!r.profileExitActive&&r.videoPlayer.plays==1&&r.resumeFadeWaitingForFrame,"interrupted exit rearms cover");
+  r.startResumeCrossfadeOnFrame();
+  check(r.videoTexture.alpha==1&&r.vidFreeze.animator.duration==700,"live video visible behind fading cover");
+  r.vidFreeze.animator.finish();check(r.vidFreeze.bitmap==null,"no stuck still above playing video");
   for(int mode=0;mode<8;mode++){
    r=new ResumeTest();r.resumePlayerIfReady();VideoFrameCallback late=r.callback;
    switch(mode){
@@ -143,6 +203,14 @@ public class ResumeTest {
   check(r.captures==0&&r.videoPlayer.plays==1,"cold open unchanged");
   r=new ResumeTest();r.freezeBmp=new Bitmap();r.vidFreeze.setImageBitmap(r.freezeBmp);r.vidFreeze.alpha=.4f;r.resumePlayerIfReady();
   check(r.captures==0&&r.vidFreeze.alpha==.4f,"first-frame cover not replaced");
+  r=new ResumeTest();r.curVidSound=true;r.resumePlayerIfReady();
+  b=new Bitmap();r.callback.onFrame(b);
+  check(r.videoPlayer.rebufferings==0&&r.videoPlayer.plays==1,"sound return never restarts decoder");
+  check(r.vidReady&&r.videoFrameReady&&r.videoDecoderFrameReady,"prepared decoder stays ready");
+  check(r.vidFreeze.bitmap==b&&r.vidFreeze.alpha==1,"retained picture covers rebuffer");
+  r.resumePlayerIfReady();check(r.videoPlayer.rebufferings==0,"no duplicate rebuffer on return");
+  r=new ResumeTest();r.videoFrameReady=false;
+  r.resumePlayerIfReady();check(r.captures==0&&r.videoPlayer.plays==1,"no audio preroll gate");
  }
 }
 '''.replace('/* PRODUCTION */', production)
@@ -156,7 +224,7 @@ public class ResumeTest {
     def test_pause_and_teardown_invalidate_pending_copies(self):
         for signature in ('public void onProfilePaused(ViewGroup', 'public void onOverlayOpen(Object',
                           'public void onAppPause()', 'public void onTabVisibilityChanged(',
-                          'private void removeVidViews(boolean', 'private void releasePlayer()'):
+                          'private void removeVidViews(boolean', 'private void releasePlayer(boolean retainAudio)'):
             self.assertIn('cancelResumeCapture();', method(SOURCE, signature))
         self.assertIn('resumePlayerIfReady();', method(SOURCE, 'public void onTabVisibilityChanged('))
         ready = method(SOURCE, '@Override public void onStateChanged(')

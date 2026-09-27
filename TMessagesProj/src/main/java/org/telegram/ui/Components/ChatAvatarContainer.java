@@ -741,6 +741,9 @@ public class ChatAvatarContainer extends FrameLayout implements FactorAnimator.T
         canvas.scale(s, s, getPivotX(), getHeight() - ActionBar.getCurrentActionBarHeight() / 2f);
         if (title == titleTextView && title.getVisibility() == VISIBLE) {
             drawChild(canvas, title, getDrawingTime());
+            if (shouldUseInlineCommunityIndicator()) {
+                drawChild(canvas, communityItem, getDrawingTime());
+            }
         }
         if (subtitle != null && subtitle == getSubtitleTextView() && subtitle.getVisibility() == VISIBLE) {
             drawChild(canvas, subtitle, getDrawingTime());
@@ -810,7 +813,7 @@ public class ChatAvatarContainer extends FrameLayout implements FactorAnimator.T
         return false;
     }
 
-    private boolean shouldUseInlineCommunityIndicator() {
+    public boolean shouldUseInlineCommunityIndicator() {
         return centerChatTitle
                 && !isInlineCenteredAvatar()
                 && communityItem != null

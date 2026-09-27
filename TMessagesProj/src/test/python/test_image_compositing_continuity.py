@@ -196,7 +196,7 @@ class ImageCompositingContinuityTest(unittest.TestCase):
     int color;
     void setColor(int c) { color=c; alpha=255; }
     int getAlpha(){return alpha;}
-""").replace("class AndroidUtilities {", "class AndroidUtilities { static int roundMessageInset=2; static int dp(int n){return n;}")
+""").replace("class AndroidUtilities {", "class AndroidUtilities { static int dp(int n){return n;}")
         source = source.replace("class Canvas {", """class Canvas {
     void drawCircle(float x,float y,float radius,Paint paint) {
         Drawable d=new Drawable(); d.coverage=new double[]{1,1,1};
@@ -327,7 +327,9 @@ class RoundPreviewHarness {
              "", "frozen"),
         ]:
             with self.subTest(scenario=scenario), tempfile.TemporaryDirectory(prefix="compositing-mutation-") as tmp:
-                self.assertEqual(self.production_source.count(before), 1)
+                # Round and ordinary handoffs now both isolate their endpoints;
+                # these scenarios still exercise the ordinary compositor.
+                self.assertEqual(self.production_source.count(before), 2 if scenario in ("svg", "layers") else 1)
                 java = Path(tmp) / "EmojiFirstFrameHarness.java"
                 java.write_text(self.production_source.replace(before, after))
                 build = subprocess.run(["javac", "-d", tmp, str(java)], capture_output=True, text=True, timeout=30)

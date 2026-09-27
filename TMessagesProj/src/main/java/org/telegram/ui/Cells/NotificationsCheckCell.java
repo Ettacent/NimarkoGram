@@ -12,6 +12,7 @@ import static org.telegram.messenger.AndroidUtilities.dp;
 
 import android.content.Context;
 import android.graphics.Canvas;
+import android.graphics.Paint;
 import android.graphics.PorterDuff;
 import android.graphics.PorterDuffColorFilter;
 import android.text.TextUtils;
@@ -22,6 +23,8 @@ import android.view.accessibility.AccessibilityNodeInfo;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.TextView;
+import androidx.core.graphics.ColorUtils;
+import app.nimarkogram.messenger.utils.ui.MonetHelper;
 
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.LocaleController;
@@ -44,6 +47,7 @@ public class NotificationsCheckCell extends FrameLayout {
     private Switch checkBox;
     private boolean needDivider;
     private boolean drawLine = true;
+    private final Paint switchDividerPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private boolean isMultiline;
     private int currentHeight;
     private boolean animationsEnabled;
@@ -247,7 +251,14 @@ public class NotificationsCheckCell extends FrameLayout {
         if (drawLine) {
             int x = LocaleController.isRTL ? dp(76) : getMeasuredWidth() - dp(76) - 1;
             int y = (getMeasuredHeight() - dp(22)) / 2;
-            canvas.drawRect(x, y, x + 2, y + dp(22), Theme.dividerPaint);
+            Paint paint = Theme.dividerPaint;
+            if (MonetHelper.isActiveMonetTheme()) {
+                switchDividerPaint.setColor(ColorUtils.blendARGB(
+                        Theme.getColor(Theme.key_windowBackgroundWhite, resourcesProvider),
+                        Theme.getColor(Theme.key_windowBackgroundWhiteBlackText, resourcesProvider), .28f));
+                paint = switchDividerPaint;
+            }
+            canvas.drawRect(x, y, x + dp(1), y + dp(22), paint);
         }
     }
 

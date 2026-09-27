@@ -50,6 +50,9 @@ class RLottieDrawable extends BitmapDrawable {
     void setAutoRepeatTimeout(long n) {} void setAllowDrawFramesWhileCacheGenerating(boolean b) {}
 }
 class AnimatedFileDrawable extends BitmapDrawable {
+    boolean blockPromotion;
+    boolean hasRenderingBitmap() { return ready && !blockPromotion; }
+    void updateCurrentFrame(long time, boolean background) {}
     boolean hasParents() { return !getParents().isEmpty(); }
     boolean ready, publishOnNextRead, isWebmSticker = true;
     boolean hasBitmap() {
@@ -69,6 +72,7 @@ class VectorAvatarThumbDrawable extends Drawable { void setParent(ImageReceiver 
 interface AttachableDrawable { void onDetachedFromWindow(ImageReceiver r); }
 class View { void invalidate() {} }
 class AndroidUtilities {
+    static int roundMessageInset = 3;
     static final RectF rectTmp = new RectF();
     static void runOnUIThread(Runnable r) { r.run(); }
     static void recycleBitmaps(List<Bitmap> b) {}
@@ -103,6 +107,10 @@ class ImageReceiver {
     final Paint crossfadePaint = new Paint();
     volatile int loadingPresentationGeneration, loadingPlaceholderGeneration = -1, loadingBlankGeneration = -1;
     volatile Drawable presentedImagePreview;
+    float roundPreviewPreviousAlpha = 1f;
+    boolean roundPreviewWithThumb;
+    boolean roundPreviewFromThumb;
+    boolean skipUpdateFrame;
     volatile int presentedImagePreviewGeneration = -1;
     PreviewAppearance previewAppearance;
     static final int TYPE_IMAGE = 0, TYPE_THUMB = 1, TYPE_CROSSFDADE = 2, TYPE_MEDIA = 3;

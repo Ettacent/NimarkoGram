@@ -17,6 +17,8 @@ public final class ProfileNotificationPlacement extends RecyclerView.ItemDecorat
     private int reservedRow = RecyclerView.NO_POSITION;
     private boolean released;
     private boolean reservationLayoutPending;
+    private boolean preserveHeaderAnchor;
+    private int preservedHeaderOffset;
 
     public ProfileNotificationPlacement(RecyclerView list, LinearLayoutManager layout, IntSupplier anchorRow) {
         this.list = list;
@@ -47,16 +49,25 @@ public final class ProfileNotificationPlacement extends RecyclerView.ItemDecorat
         int row = requestedHeight == 0 ? RecyclerView.NO_POSITION : getAnchorRow();
         int next = row < 0 ? 0 : requestedHeight;
         if (next == reservedHeight && row == reservedRow) return;
+        preserveHeaderAnchor = preserveHeaderAnchor && reservationLayoutPending
+                && layout.hasPendingScrollPosition(0, preservedHeaderOffset);
         if (list.isShown() && list.getLayoutManager() == layout
                 && layout.getOrientation() == RecyclerView.VERTICAL
                 && !layout.hasPendingScrollPosition() && !layout.isSmoothScrolling()) {
             int position = layout.getReverseLayout()
                     ? layout.findLastVisibleItemPosition() : layout.findFirstVisibleItemPosition();
             View first = layout.findViewByPosition(position);
+            View header = layout.getReverseLayout() ? null : layout.findViewByPosition(0);
+            if (header != null && header.getTop() >= 0 && header.getTop() < list.getHeight()) {
+                position = 0;
+                first = header;
+            }
             if (position != RecyclerView.NO_POSITION && first != null) {
+                preserveHeaderAnchor = position == 0;
                 int top = layout.getDecoratedTop(first)
                         - ((RecyclerView.LayoutParams) first.getLayoutParams()).topMargin;
                 layout.scrollToPositionWithOffset(position, top - list.getPaddingTop(), false);
+                if (preserveHeaderAnchor) preservedHeaderOffset = top - list.getPaddingTop();
             }
         }
         reservedHeight = next;
@@ -79,10 +90,14 @@ public final class ProfileNotificationPlacement extends RecyclerView.ItemDecorat
         list.layout(list.getLeft(), list.getTop(), list.getRight(), list.getBottom());
         reservationLayoutPending = false;
     }
+    public boolean shouldPreserveHeaderAnchor() {
+        return !released && reservationLayoutPending && preserveHeaderAnchor;
+    }
 
     @Override public void onLayoutChange(View v, int left, int top, int right, int bottom,
                                          int oldLeft, int oldTop, int oldRight, int oldBottom) {
         reservationLayoutPending = false;
+        preserveHeaderAnchor = false;
     }
 
     public int getAnchorBottom(int fallback) {
@@ -112,6 +127,7 @@ public final class ProfileNotificationPlacement extends RecyclerView.ItemDecorat
         requestedHeight = reservedHeight = 0;
         reservedRow = RecyclerView.NO_POSITION;
         reservationLayoutPending = false;
+        preserveHeaderAnchor = false;
         list.removeCallbacks(this);
         list.removeOnLayoutChangeListener(this);
         run();

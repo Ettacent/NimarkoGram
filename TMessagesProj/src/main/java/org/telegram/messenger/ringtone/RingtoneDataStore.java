@@ -226,7 +226,8 @@ public class RingtoneDataStore {
         }
         for (int i = 0; i < userRingtones.size(); i++) {
             if (userRingtones.get(i).document != null && userRingtones.get(i).document.id == id) {
-                if (!TextUtils.isEmpty(userRingtones.get(i).localUri)) {
+                if (!TextUtils.isEmpty(userRingtones.get(i).localUri)
+                        && new File(userRingtones.get(i).localUri).isFile()) {
                     return userRingtones.get(i).localUri;
                 }
                 return FileLoader.getInstance(currentAccount).getPathToAttach(userRingtones.get(i).document).toString();
@@ -249,7 +250,7 @@ public class RingtoneDataStore {
                 }
                 if (!TextUtils.isEmpty(tone.localUri)) {
                     File file = new File(tone.localUri);
-                    if (file.exists()) {
+                    if (file.isFile()) {
                         continue;
                     }
                 }
@@ -257,7 +258,7 @@ public class RingtoneDataStore {
                 if (tone.document != null) {
                     TLRPC.Document document = tone.document;
                     File file = FileLoader.getInstance(currentAccount).getPathToAttach(document);
-                    if (file == null || !file.exists()) {
+                    if (file == null || !file.isFile()) {
                         AndroidUtilities.runOnUIThread(() -> {
                             FileLoader.getInstance(currentAccount).loadFile(document, document, FileLoader.PRIORITY_LOW, 0);
                         });

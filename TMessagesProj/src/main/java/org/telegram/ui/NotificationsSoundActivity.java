@@ -1,4 +1,5 @@
 package org.telegram.ui;
+import android.app.Activity;
 
 import android.content.ClipData;
 import android.content.Context;
@@ -911,6 +912,7 @@ public class NotificationsSoundActivity extends BaseFragment implements ChatAtta
                 editor.putString(prefName, selectedTone.title);
                 editor.putString(prefPath, "NoSound");
             } else if (selectedTone.uri != null) {
+                NotificationsController.retainNotificationSoundPermission(Uri.parse(selectedTone.uri), null);
                 editor.putString(prefName, selectedTone.title);
                 editor.putString(prefPath, selectedTone.uri);
                 editor.remove(prefDocId);
@@ -954,7 +956,7 @@ public class NotificationsSoundActivity extends BaseFragment implements ChatAtta
     @Override
     public void onActivityResultFragment(int requestCode, int resultCode, Intent data) {
         if (requestCode == 21) {
-            if (data == null) {
+            if (resultCode != Activity.RESULT_OK || data == null) {
                 return;
             }
 
