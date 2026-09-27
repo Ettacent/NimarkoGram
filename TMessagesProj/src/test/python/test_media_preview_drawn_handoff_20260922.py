@@ -17,6 +17,7 @@ METHODS = (
     "private boolean isDrawableReadyForDraw(",
     "private boolean canCrossfadeOnReady(",
     "private boolean canAnimateLoadingTransition(",
+    "private boolean hasRoundVideoPreview(",
     "private void trackCrossfadeOnReady(",
     "private boolean prepareCrossfadeOnReady(",
     "private boolean prepareDrawAlpha(",
@@ -34,6 +35,8 @@ public class MediaPreviewHandoffHarness {
     static class AnimatedFileDrawable extends BitmapDrawable {
         boolean ready;
         boolean hasBitmap() { return ready; }
+        boolean hasRenderingBitmap() { return ready; }
+        void updateCurrentFrame(long time, boolean background) {}
     }
     static class RLottieDrawable extends BitmapDrawable {
         boolean ready;
@@ -46,6 +49,10 @@ public class MediaPreviewHandoffHarness {
         boolean manualAlphaAnimator, crossfadeOnReady, isVisible = true;
         boolean forcePreview, forceNotMedia, crossfadeWithOldImage;
         boolean crossfadeWithThumb, crossfadingWithThumb, crossfadeFromImage;
+        boolean isRoundVideo, roundPreviewWithThumb;
+        boolean roundPreviewFromThumb;
+        boolean skipUpdateFrame;
+        float roundPreviewPreviousAlpha = 1f;
         byte crossfadeAlpha = 1;
         int crossfadeDuration = 150, loadingPresentationGeneration;
         int loadingPlaceholderGeneration = -1, presentedImagePreviewGeneration = -1;

@@ -193,6 +193,16 @@ public class EmojiFirstFrameHarness {
             if (mode == 2) r.clip = false;
             if (mode == 3) r.isRoundVideo = true;
             if (mode == 4) r.currentImageDrawable = new ReactionLastFrame();
+            if (mode == 3) {
+                Canvas round = at(r,.5f,bg);
+                check(round.layerCount == 3,"opted-in round handoff blends bounded endpoints");
+                float inset = AndroidUtilities.roundMessageInset + 1;
+                for (float[] bounds : round.bounds) {
+                    check(Arrays.equals(bounds,new float[]{10-inset,20-inset,42+inset,52+inset}),
+                        "round snapshot bounds retain expanded draw region");
+                }
+                r.setCrossfadeOnReady(false);
+            }
             check(at(r,.5f,bg).layerCount == 0,"overdraw geometry retains legacy path, mode="+mode);
         }
     }

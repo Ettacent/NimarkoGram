@@ -526,11 +526,15 @@ public class ProfileNotificationsActivity extends BaseFragment implements Notifi
 
     @Override
     public void onActivityResultFragment(int requestCode, int resultCode, Intent data) {
+        if (requestCode != 12 && requestCode != 13) {
+            return;
+        }
         if (resultCode == Activity.RESULT_OK) {
             if (data == null) {
                 return;
             }
             Uri ringtone = data.getParcelableExtra(RingtoneManager.EXTRA_RINGTONE_PICKED_URI);
+            NotificationsController.retainNotificationSoundPermission(ringtone, data);
             String name = null;
             if (ringtone != null) {
                 Ringtone rng = RingtoneManager.getRingtone(ApplicationLoader.applicationContext, ringtone);
@@ -557,6 +561,9 @@ public class ProfileNotificationsActivity extends BaseFragment implements Notifi
 
             String key = NotificationsController.getSharedPrefKey(dialogId, topicId);
             if (requestCode == 12) {
+                editor.remove("sound_document_id_" + key);
+                editor.putBoolean("custom_" + key, true);
+                editor.putBoolean("sound_enabled_" + key, true);
                 if (name != null) {
                     editor.putString("sound_" + key, name);
                     editor.putString("sound_path_" + key, ringtone.toString());
@@ -564,7 +571,6 @@ public class ProfileNotificationsActivity extends BaseFragment implements Notifi
                     editor.putString("sound_" + key, "NoSound");
                     editor.putString("sound_path_" + key, "NoSound");
                 }
-                getNotificationsController().deleteNotificationChannel(dialogId, topicId);
             } else if (requestCode == 13) {
                 if (name != null) {
                     editor.putString("ringtone_" + key, name);
@@ -575,6 +581,10 @@ public class ProfileNotificationsActivity extends BaseFragment implements Notifi
                 }
             }
             editor.apply();
+            if (requestCode == 12) {
+                getNotificationsController().deleteNotificationChannel(dialogId, topicId);
+                getNotificationsController().updateServerNotificationsSettings(dialogId, topicId);
+            }
             if (adapter != null) {
                 adapter.notifyItemChanged(requestCode == 13 ? ringtoneRow : soundRow);
             }

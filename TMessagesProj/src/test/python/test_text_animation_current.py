@@ -26,10 +26,10 @@ def harness():
     return r'''
 import java.util.*;
 public class TextEdits {
- static boolean smoothCursorEnabled, deleteEnabled=true;
+ static boolean smoothCursorEnabled, deleteEnabled=true, appearEnabled=true, spoilerEnabled;
  interface Spannable {}
  static class Editable implements Spannable {
-  String value=""; public String toString(){return value;}
+  String value=""; public String toString(){return value;}int length(){return value.length();}
  }
  static class EditText {
   Editable text=new Editable(); State state=new State();
@@ -39,6 +39,7 @@ public class TextEdits {
   int drawingDepth,prevLen; boolean focused,hasAnimatingChars;
   String prevText=""; Map<Integer,CharData> charStartTimes=new HashMap<>();
   List<String> particles=new ArrayList<>();
+  Map<Integer,Object> spoilerParticles=new HashMap<>();Stack<Object> spoilerPool=new Stack<>();
  }
  static State getState(EditText e){return e.state;}
  static void startHeartbeat(EditText e){} static void setupCursor(EditText e,State s){}
@@ -76,7 +77,10 @@ public class TextEdits {
     e.state.particles.add("old");edit(e,"");
     check(e.state.particles.isEmpty(),"bulk delete clears old particle cloud");
     edit(e,"abcdef");edit(e,"");
-    check(e.state.particles.size()==MAX_DELETE_GLYPHS,"bounded delete emissions");
+    check(e.state.particles.isEmpty()&&e.state.charStartTimes.isEmpty(),"clear-all bypasses emissions and reindexing");
+    appearEnabled=false;spoilerEnabled=false;edit(e,"abc");
+    check(e.state.charStartTimes.isEmpty(),"disabled appearance does not hide native text");
+    edit(e,"");appearEnabled=true;
     e.state.particles.clear();deleteEnabled=false;edit(e,"abc");edit(e,"");
     check(e.state.particles.isEmpty(),"disabled deletion emits nothing");
     edit(e,"😀");check(e.state.charStartTimes.isEmpty(),"surrogate pair not split into glyphs");
@@ -124,7 +128,8 @@ class CurrentTextAnimationTests(unittest.TestCase):
             ('shifted.put(n, e.getValue());', 'shifted.put(idx, e.getValue());', 'rapid', 'insertion rebases'),
             ('boolean isReplace = (delCount > 0 && insCount > 0);', 'boolean isReplace = false;',
              'replacement', 'T9 replacement animates'),
-            ('st.particles.clear();', ';', 'bulk', 'bulk delete clears'),
+            ('st.charStartTimes.clear();\n            st.particles.clear();',
+             'st.charStartTimes.clear();', 'bulk', 'bulk delete clears'),
         ):
             with self.subTest(scenario=scenario):
                 source = harness()

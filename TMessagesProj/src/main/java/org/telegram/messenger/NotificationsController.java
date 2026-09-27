@@ -3841,10 +3841,65 @@ public class NotificationsController extends BaseController implements Notificat
             channelGroupsCreated = true;
         }
     }
+    public static void retainNotificationSoundPermission(Uri sound, Intent result) {
+        if (sound == null || !"content".equals(sound.getScheme())) {
+            return;
+        }
+        if (Build.VERSION.SDK_INT >= 19 && result != null
+                && (result.getFlags() & Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION) != 0
+                && (result.getFlags() & Intent.FLAG_GRANT_READ_URI_PERMISSION) != 0) {
+            try {
+                ApplicationLoader.applicationContext.getContentResolver().takePersistableUriPermission(
+                        sound, Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            } catch (SecurityException e) {
+                FileLog.e(e);
+            }
+        }
+        grantNotificationSoundPermission(sound);
+    }
+    private static void grantNotificationSoundPermission(Uri sound) {
+        if (sound == null || !"content".equals(sound.getScheme())) {
+            return;
+        }
+        try {
+            ApplicationLoader.applicationContext.grantUriPermission(
+                    "com.android.systemui", sound, Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        } catch (RuntimeException e) {
+            FileLog.e(e);
+        }
+    }
+    private static Uri resolveNotificationSound(String path, String defaultPath, boolean internalSound) {
+        if (path == null || "NoSound".equalsIgnoreCase(path)) {
+            return null;
+        }
+        if ("Default".equalsIgnoreCase(path) || path.equals(defaultPath)) {
+            return Settings.System.DEFAULT_NOTIFICATION_URI;
+        }
+        Uri sound = Uri.parse(path);
+        if (sound.getScheme() == null || "file".equals(sound.getScheme())) {
+            File file = new File(sound.getScheme() == null ? path : sound.getPath());
+            sound = Uri.fromFile(file);
+            if (!internalSound && AndroidUtilities.isInternalUri(sound)) {
+                return Settings.System.DEFAULT_NOTIFICATION_URI;
+            }
+            if (Build.VERSION.SDK_INT >= 24) {
+                try {
+                    sound = FileProvider.getUriForFile(ApplicationLoader.applicationContext,
+                            ApplicationLoader.getApplicationId() + ".provider", file);
+                } catch (IllegalArgumentException e) {
+                    FileLog.e(e);
+                    return Settings.System.DEFAULT_NOTIFICATION_URI;
+                }
+            }
+        }
+        grantNotificationSoundPermission(sound);
+        return sound;
+    }
 
     @TargetApi(26)
     private String validateChannelId(long dialogId, long topicId, String name, long[] vibrationPattern, int ledColor, Uri sound, int importance, boolean isDefault, boolean isInApp, boolean isSilent, int type) {
         ensureGroupsCreated();
+        grantNotificationSoundPermission(sound);
 
         SharedPreferences preferences = getAccountInstance().getNotificationsSettings();
 
@@ -3922,6 +3977,7 @@ public class NotificationsController extends BaseController implements Notificat
                 if (!isSilent && !shouldOverwrite) {
                     int channelImportance = existingChannel.getImportance();
                     Uri channelSound = existingChannel.getSound();
+                    grantNotificationSoundPermission(channelSound);
                     long[] channelVibrationPattern = existingChannel.getVibrationPattern();
                     boolean vibrate = existingChannel.shouldVibrate();
                     if (!vibrate && channelVibrationPattern == null) {
@@ -4788,33 +4844,11 @@ public class NotificationsController extends BaseController implements Notificat
                     mBuilder.setTicker(lastMessage);
                 }
                 if (soundPath != null && !soundPath.equalsIgnoreCase("NoSound")) {
+                    Uri resolvedSound = resolveNotificationSound(soundPath, defaultPath, isInternalSoundFile);
                     if (Build.VERSION.SDK_INT >= 26) {
-                        if (soundPath.equalsIgnoreCase("Default") || soundPath.equals(defaultPath)) {
-                            sound = Settings.System.DEFAULT_NOTIFICATION_URI;
-                        } else {
-                            if (isInternalSoundFile) {
-                                sound = FileProvider.getUriForFile(ApplicationLoader.applicationContext, ApplicationLoader.getApplicationId() + ".provider", new File(soundPath));
-                                ApplicationLoader.applicationContext.grantUriPermission("com.android.systemui", sound, Intent.FLAG_GRANT_READ_URI_PERMISSION);
-                            } else {
-                                sound = Uri.parse(soundPath);
-                            }
-                        }
+                        sound = resolvedSound;
                     } else {
-                        if (soundPath.equals(defaultPath)) {
-                            mBuilder.setSound(Settings.System.DEFAULT_NOTIFICATION_URI, AudioManager.STREAM_NOTIFICATION);
-                        } else {
-                            if (Build.VERSION.SDK_INT >= 24 && soundPath.startsWith("file://") && !AndroidUtilities.isInternalUri(Uri.parse(soundPath))) {
-                                try {
-                                    Uri uri = FileProvider.getUriForFile(ApplicationLoader.applicationContext, ApplicationLoader.getApplicationId() + ".provider", new File(soundPath.replace("file://", "")));
-                                    ApplicationLoader.applicationContext.grantUriPermission("com.android.systemui", uri, Intent.FLAG_GRANT_READ_URI_PERMISSION);
-                                    mBuilder.setSound(uri, AudioManager.STREAM_NOTIFICATION);
-                                } catch (Exception e) {
-                                    mBuilder.setSound(Uri.parse(soundPath), AudioManager.STREAM_NOTIFICATION);
-                                }
-                            } else {
-                                mBuilder.setSound(Uri.parse(soundPath), AudioManager.STREAM_NOTIFICATION);
-                            }
-                        }
+                        mBuilder.setSound(resolvedSound, AudioManager.STREAM_NOTIFICATION);
                     }
                 }
                 if (ledColor != 0) {

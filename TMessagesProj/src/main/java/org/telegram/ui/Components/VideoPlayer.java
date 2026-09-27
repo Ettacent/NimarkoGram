@@ -168,6 +168,10 @@ public class VideoPlayer implements Player.Listener, VideoListener, AnalyticsLis
     private boolean autoplay;
     private boolean mixedAudio;
     public boolean allowMultipleInstances;
+    private VideoPlayer concurrentPlaybackPeer;
+    public void setConcurrentPlaybackPeer(VideoPlayer peer) {
+        concurrentPlaybackPeer = peer;
+    }
 
     private boolean triedReinit;
 
@@ -193,6 +197,8 @@ public class VideoPlayer implements Player.Listener, VideoListener, AnalyticsLis
     private int repeatCount;
 
     private boolean shouldPauseOther;
+    private DefaultRenderersFactory customRenderersFactory;
+    private float customInitialVolume = 1f;
     MediaSource.Factory dashMediaSourceFactory;
     HlsMediaSource.Factory hlsMediaSourceFactory;
     ProgressiveMediaSource.Factory progressiveMediaSourceFactory;
@@ -203,6 +209,11 @@ public class VideoPlayer implements Player.Listener, VideoListener, AnalyticsLis
 
     public VideoPlayer() {
         this(true, false);
+    }
+    public VideoPlayer(DefaultRenderersFactory renderersFactory, float initialVolume) {
+        this();
+        customRenderersFactory = renderersFactory;
+        customInitialVolume = Math.max(0f, Math.min(1f, initialVolume));
     }
 
     static int playerCounter = 0;
@@ -225,7 +236,7 @@ public class VideoPlayer implements Player.Listener, VideoListener, AnalyticsLis
     public void didReceivedNotification(int id, int account, Object... args) {
         if (id == NotificationCenter.playerDidStartPlaying) {
             VideoPlayer p = (VideoPlayer) args[0];
-            if (p != this && isPlaying() && !allowMultipleInstances) {
+            if (p != this && p != concurrentPlaybackPeer && isPlaying() && !allowMultipleInstances) {
                 pause();
             }
         }
@@ -256,7 +267,9 @@ public class VideoPlayer implements Player.Listener, VideoListener, AnalyticsLis
     private void ensurePlayerCreated() {
         if (player == null) {
             DefaultRenderersFactory factory;
-            if (audioVisualizerDelegate != null) {
+            if (customRenderersFactory != null) {
+                factory = customRenderersFactory;
+            } else if (audioVisualizerDelegate != null) {
                 factory = new AudioVisualizerRenderersFactory(ApplicationLoader.applicationContext);
             } else {
                 factory = new DefaultRenderersFactory(ApplicationLoader.applicationContext);
@@ -275,6 +288,7 @@ public class VideoPlayer implements Player.Listener, VideoListener, AnalyticsLis
                 builder.setLooper(looper);
             }
             player = builder.build();
+            if (customRenderersFactory != null) player.setVolume(customInitialVolume);
 
             player.addAnalyticsListener(this);
             player.addListener(this);
@@ -1476,6 +1490,15 @@ public class VideoPlayer implements Player.Listener, VideoListener, AnalyticsLis
     public Uri getCurrentUri() {
         return currentUri;
     }
+    public boolean rebufferPausedCustomPlayback() {
+        if (released || player == null || customRenderersFactory == null
+                || mixedAudio || player.getPlayWhenReady()) {
+            return false;
+        }
+        player.stop();
+        player.prepare();
+        return true;
+    }
 
     public void play() {
         mixedPlayWhenReady = true;
@@ -1582,9 +1605,25 @@ public class VideoPlayer implements Player.Listener, VideoListener, AnalyticsLis
     public void onRepeatModeChanged(int repeatMode) {
 
     }
+    public interface SourceVolumeController {
+        void setSourceVolume(float volume);
+        float getSourceVolume();
+    }
+    public void setPlaybackEnvelope(float envelope) {
+        if (!(customRenderersFactory instanceof SourceVolumeController)) return;
+        customInitialVolume = Math.max(0f, Math.min(1f, envelope));
+        if (player != null) player.setVolume(customInitialVolume);
+    }
 
 
     public void setVolume(float volume) {
+        if (customRenderersFactory instanceof SourceVolumeController) {
+            ((SourceVolumeController) customRenderersFactory).setSourceVolume(volume);
+            return;
+        }
+        if (customRenderersFactory != null) {
+            customInitialVolume = Math.max(0f, Math.min(1f, volume));
+        }
         if (player != null) {
             player.setVolume(volume);
         }
@@ -1594,6 +1633,9 @@ public class VideoPlayer implements Player.Listener, VideoListener, AnalyticsLis
     }
 
     public float getVolume() {
+        if (customRenderersFactory instanceof SourceVolumeController) {
+            return ((SourceVolumeController) customRenderersFactory).getSourceVolume();
+        }
         if (player != null) {
             return player.getVolume();
         }

@@ -6854,8 +6854,6 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
     @Override
     protected void onAttachedToWindow() {
         super.onAttachedToWindow();
-        setBotButtonEmojiAttached(botButtons, true);
-        setBotButtonEmojiAttached(transitionParams.transitionBotButtons, true);
         resetOnlineIndicatorOnAttach();
 
         if (observersGroup != null) {
@@ -6919,6 +6917,8 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
         }
 
         attachedToWindow = true;
+        setBotButtonEmojiAttached(botButtons, true);
+        setBotButtonEmojiAttached(transitionParams.transitionBotButtons, true);
 
         animationOffsetX = 0;
         slidingOffsetX = 0;
@@ -7316,7 +7316,7 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
             boolean wasPlayingRound = isPlayingRound;
             isPlayingRound = isRoundVideo && MediaController.getInstance().isPlayingMessage(currentMessageObject) && delegate != null && !delegate.keyboardIsOpened() && !delegate.isLandscape();
             photoImage.setCrossfadeWithOldImage(false);
-            photoImage.setCrossfadeDuration(ImageReceiver.DEFAULT_CROSSFADE_DURATION);
+            photoImage.setCrossfadeDuration(messageObject.isRoundVideo() ? 220 : ImageReceiver.DEFAULT_CROSSFADE_DURATION);
             photoImage.setCrossfadeByScale(0);
             photoImage.setCrossfadeOnReady(messageObject.isRoundVideo()
                     || messageObject.isAnyKindOfSticker() && !messageObject.isDice());
@@ -10839,7 +10839,7 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
                         if (((MessageObject.isGifDocument(document, messageObject.hasValidGroupId()) && messageObject.videoEditedInfo == null) || (!messageObject.isSending() && !messageObject.isEditing())) && (localFile != 0 || FileLoader.getInstance(currentAccount).isLoadingFile(fileName) || autoDownload)) {
                             if (localFile != 1 && !messageObject.needDrawBluredPreview() && (localFile != 0 || messageObject.canStreamVideo() && autoDownload)) {
                                 autoPlayingMedia = true;
-                                if (!messageIdChanged && (!isRoundVideo || photoImage.hasReadyImage())) {
+                                if (!messageIdChanged && (!isRoundVideo || photoImage.hasFullyVisibleImage())) {
                                     photoImage.setCrossfadeWithOldImage(true);
                                     photoImage.setCrossfadeDuration(250);
                                 }
@@ -10867,7 +10867,7 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
                                 photoImage.setMediaStartEndTime(currentMessageObject.videoEditedInfo.startTime / 1000, currentMessageObject.videoEditedInfo.endTime / 1000);
                             } else {
                                 if (!messageIdChanged && !currentMessageObject.needDrawBluredPreview()
-                                        && (!isRoundVideo || photoImage.hasReadyImage())) {
+                                        && (!isRoundVideo || photoImage.hasFullyVisibleImage())) {
                                     photoImage.setCrossfadeWithOldImage(true);
                                     photoImage.setCrossfadeDuration(250);
                                 }
@@ -30128,13 +30128,6 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
         try {
             if (round) {
                 drawRoundVideoShadow(canvas);
-            }
-            if (round && Theme.chat_roundVideoShadow != null
-                    && (!photoImage.hasBitmapImage() || photoImage.getCurrentAlpha() != 1f)) {
-                Theme.chat_docBackPaint.setColor(getThemedColor(currentMessageObject.isOutOwner()
-                        ? Theme.key_chat_outBubble : Theme.key_chat_inBubble));
-                canvas.drawCircle(photoImage.getCenterX(), photoImage.getCenterY(),
-                        photoImage.getImageWidth() / 2, Theme.chat_docBackPaint);
             }
             return drawPhotoImageInternal(canvas);
         } finally {

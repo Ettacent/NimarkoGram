@@ -1270,8 +1270,12 @@ public class QrActivity extends BaseFragment {
         qrView.setPosAnimationProgress(currMotionDrawable.posAnimationProgress);
 
         TLRPC.WallPaper wallPaper = currentTheme.getWallpaper(isDarkTheme ? 1 : 0);
-        if (wallPaper != null) {
-            currMotionDrawable.setPatternBitmap(wallPaper.settings.intensity);
+        final int requestedIntensity = wallPaper != null && wallPaper.settings != null
+                ? wallPaper.settings.intensity : 34;
+        final Bitmap cachedPattern = qrPatternCache.get(qrPatternKey(currentTheme, isDarkTheme));
+        if (cachedPattern != null && !cachedPattern.isRecycled()) {
+            currMotionDrawable.setPatternBitmap(requestedIntensity, cachedPattern, true);
+        } else if (wallPaper != null) {
             final long startedLoading = SystemClock.elapsedRealtime();
             currentTheme.loadWallpaper(isDarkTheme ? 1 : 0, pair -> {
                 if (themesViewController == null || currMotionDrawable != requestedDrawable) return;
@@ -1281,7 +1285,7 @@ public class QrActivity extends BaseFragment {
                     final Bitmap bitmap = pair.second.bitmap;
                     if (themeId == currentThemeId && bitmap != null) {
                         long elapsed = SystemClock.elapsedRealtime() - startedLoading;
-                        onPatternLoaded(bitmap, currMotionDrawable.getIntensity(), openTransitionFinished || elapsed > 150);
+                        onPatternLoaded(bitmap, requestedIntensity, openTransitionFinished || elapsed > 150);
                     }
                 }
             });

@@ -451,8 +451,20 @@ public final class NimarkoTextAnim {
         if (smoothCursorEnabled) setupCursor(edit, st);
         Editable text = edit.getText();
         if (text == null) return;
+        if (text.length() == 0) {
+            st.charStartTimes.clear();
+            st.particles.clear();
+            st.spoilerParticles.clear();
+            st.spoilerPool.clear();
+            st.hasAnimatingChars = false;
+            removeSpan(edit, st);
+            st.prevText = "";
+            st.prevLen = 0;
+            return;
+        }
         String now = text.toString();
         int newLen = now.length();
+        if (now.equals(st.prevText)) return;
 
         int minLen = Math.min(newLen, st.prevLen);
         int prefix = 0;
@@ -505,7 +517,7 @@ public final class NimarkoTextAnim {
             st.charStartTimes.putAll(shifted);
         }
 
-        if (insCount > 0 && insCount <= MASS_INSERT_THRESHOLD) {
+        if ((appearEnabled || spoilerEnabled) && insCount > 0 && insCount <= MASS_INSERT_THRESHOLD) {
             long nowMs = System.currentTimeMillis();
             
             boolean isReplace = (delCount > 0 && insCount > 0);

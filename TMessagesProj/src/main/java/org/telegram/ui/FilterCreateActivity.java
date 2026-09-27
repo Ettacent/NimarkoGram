@@ -1724,6 +1724,9 @@ public class FilterCreateActivity extends BaseFragment {
         ArrayList<ThemeDescription> themeDescriptions = new ArrayList<>();
 
         ThemeDescription.ThemeDescriptionDelegate themeDelegate = () -> {
+            if (nameEditTextCell != null) {
+                nameEditTextCell.updateIconColors();
+            }
             if (listView != null) {
                 int count = listView.getChildCount();
                 for (int a = 0; a < count; a++) {
@@ -1746,6 +1749,10 @@ public class FilterCreateActivity extends BaseFragment {
         themeDescriptions.add(new ThemeDescription(listView, ThemeDescription.FLAG_SELECTOR, null, null, null, null, Theme.key_listSelector));
 
         themeDescriptions.add(new ThemeDescription(listView, 0, new Class[]{View.class}, Theme.dividerPaint, null, null, Theme.key_divider));
+        for (int key : new int[]{Theme.key_divider, Theme.key_windowBackgroundWhite,
+                Theme.key_windowBackgroundWhiteBlackText, Theme.key_windowBackgroundWhiteBlueIcon}) {
+            themeDescriptions.add(new ThemeDescription(null, 0, null, null, null, themeDelegate, key));
+        }
 
         themeDescriptions.add(new ThemeDescription(listView, 0, new Class[]{HeaderCell.class}, new String[]{"textView"}, null, null, null, Theme.key_windowBackgroundWhiteBlueHeader));
 

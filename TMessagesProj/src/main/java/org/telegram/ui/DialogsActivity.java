@@ -11793,15 +11793,6 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             // while the overflow popup is open — dismiss and rebuild it so the
             // injected plugin rows appear/relabel/disappear without reopening
             // (mirror ChatActivity's pluginMenuItemsUpdated observer).
-            try {
-                if (nimarkoOpenItemOptions != null && nimarkoOpenItemOptions.isShown()) {
-                    nimarkoOpenItemOptions.dismiss();
-                    nimarkoOpenItemOptions = null;
-                    showItemOptions();
-                }
-            } catch (Throwable t) {
-                FileLog.e("nimarko: DialogsActivity pluginMenuItemsUpdated rebuild failed", t);
-            }
             return;
         }
         if (id == NotificationCenter.dialogsNeedReload) {
@@ -15072,11 +15063,9 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
     // C5: handle to the currently open overflow popup so the
     // pluginMenuItemsUpdated observer can dismiss + rebuild it live when a
     // plugin registers/unregisters menu items (mirror ChatActivity).
-    private ItemOptions nimarkoOpenItemOptions;
 
     private void showItemOptions() {
         ItemOptions io = ItemOptions.makeOptions(this, optionsItem, true);
-        nimarkoOpenItemOptions = io;
         io.setGravity(Gravity.RIGHT);
         io.setSwipebackGravity(true, false);
         io.translate(0, -dp(4));

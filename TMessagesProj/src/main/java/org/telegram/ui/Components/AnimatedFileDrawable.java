@@ -1258,6 +1258,11 @@ public final class AnimatedFileDrawable extends BitmapDrawable implements Animat
     public boolean hasBitmap() {
         return canLoadFrames() && (renderingBuffer != null || nextRenderingBuffer != null);
     }
+    public boolean hasRenderingBitmap() {
+        synchronized (frameLock) {
+            return canLoadFrames() && !destroyWhenDone && renderingBuffer != null;
+        }
+    }
 
     public int getOrientation() {
         return metaData[2];

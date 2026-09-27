@@ -140,6 +140,9 @@ public final class NimarkoBannerController {
     private volatile boolean started;
     private volatile Thread statusLoopThread;
     private volatile Scope currentScope;
+    private Scope cacheRestoreScheduledFor;
+    private Scope pendingCacheRestore;
+    private final Set<CacheKey> deferredBannerLoads = new HashSet<>();
 
     private volatile Runnable settingsReloader;
 
@@ -171,6 +174,7 @@ public final class NimarkoBannerController {
             }
             started = true;
             myId();
+            scheduleCacheRestore(currentScope, null);
             if (NimarkoBannerConfig.enabled) startStatusLoop();
         }
     }
@@ -250,29 +254,48 @@ public final class NimarkoBannerController {
             synchronized (statusStateLock) {
                 currentScope = next;
             }
-            if (started && next.uid != 0L) {
-                final long indexStartRevision;
-                synchronized (indexPersistenceLock) {
-                    indexStartRevision = indexRevisions.getOrDefault(next, 0L);
-                }
-                final Scope displacedScope = displacedUid != 0L
-                        ? new Scope(next.account, displacedUid) : null;
-                executor.submit(() -> {
-                    if (displacedScope != null) {
-                        cleanupScopeFiles(displacedScope);
-                    }
-                    if (!isCurrentScope(next)) return;
-                    migrateLegacyScopeFiles(next);
-                    readStatusCache(next);
-                    readIndex(next, indexStartRevision);
-                    if (isCurrentScope(next)) {
-                        reloadSettings();
-                        AndroidUtilities.runOnUIThread(this::invalidate);
-                    }
-                });
-            }
+            scheduleCacheRestore(next, displacedUid != 0L ? new Scope(next.account, displacedUid) : null);
         }
         if (previous != null) invalidate();
+    }
+    private synchronized void scheduleCacheRestore(Scope next, Scope displacedScope) {
+        if (!started || next == null || next.uid == 0L || !isCurrentScope(next)
+                || cacheRestoreScheduledFor == next) return;
+        final long indexStartRevision;
+        synchronized (indexPersistenceLock) {
+            indexStartRevision = indexRevisions.getOrDefault(next, 0L);
+        }
+        cacheRestoreScheduledFor = next;
+        synchronized (cacheLock) {
+            pendingCacheRestore = next;
+        }
+        executor.submit(() -> {
+            try {
+                if (displacedScope != null) cleanupScopeFiles(displacedScope);
+                if (!isCurrentScope(next)) return;
+                migrateLegacyScopeFiles(next);
+                readStatusCache(next);
+                readIndex(next, indexStartRevision);
+            } finally {
+                ArrayList<CacheKey> deferred = new ArrayList<>();
+                synchronized (cacheLock) {
+                    if (pendingCacheRestore == next) pendingCacheRestore = null;
+                    Iterator<CacheKey> iterator = deferredBannerLoads.iterator();
+                    while (iterator.hasNext()) {
+                        CacheKey key = iterator.next();
+                        if (key.scope == next) {
+                            deferred.add(key);
+                            iterator.remove();
+                        }
+                    }
+                }
+                if (isCurrentScope(next)) {
+                    for (CacheKey key : deferred) loadBannerAsync(key);
+                    reloadSettings();
+                    AndroidUtilities.runOnUIThread(this::invalidate);
+                }
+            }
+        });
     }
 
     private void clearMemoryCaches() {
@@ -285,6 +308,7 @@ public final class NimarkoBannerController {
             failTimes.clear();
             checkTimes.clear();
             existsTimes.clear();
+            deferredBannerLoads.clear();
         }
     }
 
@@ -491,8 +515,12 @@ public final class NimarkoBannerController {
     private void loadBannerAsync(CacheKey k) {
         final Object request = new Object();
         synchronized (cacheLock) {
-            if (k == null || !isCurrentScope(k.scope)
-                    || now() - getOr(failTimes, k) < FAIL_CD
+            if (k == null || !isCurrentScope(k.scope)) return;
+            if (pendingCacheRestore == k.scope) {
+                deferredBannerLoads.add(k);
+                return;
+            }
+            if (now() - getOr(failTimes, k) < FAIL_CD
                     || loading.putIfAbsent(k, request) != null) return;
         }
         executor.submit(() -> syncBanner(k, request));

@@ -26,6 +26,8 @@ import android.widget.ImageView;
 import android.widget.TextView;
 
 import androidx.annotation.NonNull;
+import androidx.core.graphics.ColorUtils;
+import app.nimarkogram.messenger.utils.ui.MonetHelper;
 
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.LocaleController;
@@ -124,6 +126,7 @@ public class EditEmojiTextCell extends FrameLayout {
 
     private ImageView iconImage;
     private View iconDivider;
+    private final Theme.ResourcesProvider iconResourcesProvider;
     private View.OnClickListener iconOnClickListener;
 
     private int savedEditTextLeftPadding = -1;
@@ -132,7 +135,6 @@ public class EditEmojiTextCell extends FrameLayout {
         if (iconImage == null) {
             iconImage = new ImageView(getContext());
             iconImage.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
-            iconImage.setColorFilter(Theme.getColor(Theme.key_windowBackgroundWhiteBlueIcon));
             if (iconOnClickListener != null) {
                 iconImage.setOnClickListener(iconOnClickListener);
             }
@@ -140,12 +142,12 @@ public class EditEmojiTextCell extends FrameLayout {
         }
         if (iconDivider == null) {
             iconDivider = new View(getContext());
-            iconDivider.setBackgroundColor(Theme.getColor(Theme.key_divider));
             addView(iconDivider, LayoutHelper.createFrame(1, 22, Gravity.LEFT | Gravity.CENTER_VERTICAL, 56, 0, 0, 0));
         }
         iconImage.setImageResource(resId);
         iconImage.setVisibility(visible ? VISIBLE : GONE);
         iconDivider.setVisibility(visible ? VISIBLE : GONE);
+        updateIconColors();
         EditTextCaption editText = editTextEmoji != null ? editTextEmoji.getEditText() : null;
         if (editText != null) {
             if (savedEditTextLeftPadding < 0) {
@@ -156,6 +158,24 @@ public class EditEmojiTextCell extends FrameLayout {
                 editText.setPadding(target, editText.getPaddingTop(), editText.getPaddingRight(), editText.getPaddingBottom());
             }
         }
+    }
+    public void updateIconColors() {
+        if (iconImage != null) {
+            iconImage.setColorFilter(Theme.getColor(Theme.key_windowBackgroundWhiteBlueIcon, iconResourcesProvider));
+        }
+        if (iconDivider != null) {
+            int color = MonetHelper.isActiveMonetTheme()
+                    ? ColorUtils.blendARGB(
+                            Theme.getColor(Theme.key_windowBackgroundWhite, iconResourcesProvider),
+                            Theme.getColor(Theme.key_windowBackgroundWhiteBlackText, iconResourcesProvider), .28f)
+                    : Theme.getColor(Theme.key_divider, iconResourcesProvider);
+            iconDivider.setBackgroundColor(color);
+        }
+    }
+    @Override
+    protected void onAttachedToWindow() {
+        super.onAttachedToWindow();
+        updateIconColors();
     }
 
     public EditEmojiTextCell(
@@ -185,6 +205,7 @@ public class EditEmojiTextCell extends FrameLayout {
         Theme.ResourcesProvider resourceProvider
     ) {
         super(context);
+        iconResourcesProvider = resourceProvider;
         this.maxLength = maxLength;
 
         editTextEmoji = new EditTextEmoji(context, parent, null, style, true) {

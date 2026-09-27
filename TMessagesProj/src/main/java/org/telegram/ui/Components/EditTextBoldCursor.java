@@ -159,6 +159,7 @@ public class EditTextBoldCursor extends EditTextEffects {
     private int headerHintColor;
     private boolean hintVisible = true;
     private float hintAlpha = 1.0f;
+    private long hintTextRevealStart;
     private long hintLastUpdateTime;
     private boolean allowDrawCursor = true;
     private boolean forceCursorEnd = false;
@@ -747,6 +748,13 @@ public class EditTextBoldCursor extends EditTextEffects {
     protected void onTextChanged(CharSequence text, int start, int lengthBefore, int lengthAfter) {
         cancelStaleSuggestionsPopup();
         super.onTextChanged(text, start, lengthBefore, lengthAfter);
+        if (!TextUtils.isEmpty(text)) {
+            hintTextRevealStart = 0;
+        } else if (lengthBefore > 0) {
+            hintTextRevealStart = app.nimarkogram.messenger.NimarkoConfig.nimarkoTextAnim
+                    && !transformHintToHeader && hintVisible && isFocused()
+                    && getWindowToken() != null ? -1 : 0;
+        }
         if (transformHintToHeader && !transformHintToHeaderOnFocus) {
             checkHeaderVisibility(true);
         }
@@ -821,6 +829,23 @@ public class EditTextBoldCursor extends EditTextEffects {
     }
 
     public int hintLayoutOffset;
+    private float getHintTextRevealAlpha() {
+        if (!app.nimarkogram.messenger.NimarkoConfig.nimarkoTextAnim
+                || transformHintToHeader || !hintVisible || length() != 0) {
+            hintTextRevealStart = 0;
+            return 1f;
+        }
+        if (hintTextRevealStart == 0) return 1f;
+        long now = SystemClock.uptimeMillis();
+        if (hintTextRevealStart < 0) hintTextRevealStart = now;
+        float progress = Math.max(0f, Math.min(1f, (now - hintTextRevealStart) / 300f));
+        if (progress >= 1f) {
+            hintTextRevealStart = 0;
+            return 1f;
+        }
+        postInvalidateOnAnimation();
+        return progress * progress * (3f - 2f * progress);
+    }
 
     private void drawHint(Canvas canvas) {
         if (length() != 0 && !transformHintToHeader) {
@@ -846,19 +871,20 @@ public class EditTextBoldCursor extends EditTextEffects {
             }
             invalidate();
         }
+        final float drawHintAlpha = hintAlpha * getHintTextRevealAlpha();
         if (hintAnimatedDrawable != null && !TextUtils.isEmpty(hintAnimatedDrawable.getText()) && (hintVisible || hintAlpha != 0)) {
             if (hintAnimatedDrawable2 != null) {
                 if (hintAnimatedDrawable.getCurrentWidth() + hintAnimatedDrawable2.getCurrentWidth() < getMeasuredWidth()) {
                     canvas.save();
                     canvas.translate(hintAnimatedDrawable2.getCurrentWidth() - getMeasuredWidth() + hintAnimatedDrawable.getCurrentWidth(), 0);
-                    hintAnimatedDrawable2.setAlpha((int) (Color.alpha(hintColor) * hintAlpha));
+                    hintAnimatedDrawable2.setAlpha((int) (Color.alpha(hintColor) * drawHintAlpha));
                     hintAnimatedDrawable2.draw(canvas);
                     canvas.restore();
                     hintAnimatedDrawable.setRightPadding(0);
                 } else {
                     canvas.save();
                     canvas.translate(rightHintOffset, 0);
-                    hintAnimatedDrawable2.setAlpha((int) (Color.alpha(hintColor) * hintAlpha));
+                    hintAnimatedDrawable2.setAlpha((int) (Color.alpha(hintColor) * drawHintAlpha));
                     hintAnimatedDrawable2.draw(canvas);
                     canvas.restore();
                     hintAnimatedDrawable.setRightPadding(hintAnimatedDrawable2.getCurrentWidth() + dp(2) - rightHintOffset);
@@ -866,7 +892,7 @@ public class EditTextBoldCursor extends EditTextEffects {
             } else {
                 hintAnimatedDrawable.setRightPadding(0);
             }
-            hintAnimatedDrawable.setAlpha((int) (Color.alpha(hintColor) * hintAlpha));
+            hintAnimatedDrawable.setAlpha((int) (Color.alpha(hintColor) * drawHintAlpha));
             hintAnimatedDrawable.draw(canvas);
         } else if (hintLayout != null && (hintVisible || hintAlpha != 0)) {
             int oldColor = getPaint().getColor();
@@ -897,7 +923,7 @@ public class EditTextBoldCursor extends EditTextEffects {
                 getPaint().setColor(ColorUtils.blendARGB(hintColor, headerHintColor, headerAnimationProgress));
             } else {
                 getPaint().setColor(hintColor);
-                getPaint().setAlpha((int) (255 * hintAlpha * (Color.alpha(hintColor) / 255.0f)));
+                getPaint().setAlpha((int) (255 * drawHintAlpha * (Color.alpha(hintColor) / 255.0f)));
             }
             if (hintAnimator != null && hintAnimator.animateTextChange) {
                 canvas.save();
@@ -1214,6 +1240,7 @@ public class EditTextBoldCursor extends EditTextEffects {
 
     @Override
     protected void onDetachedFromWindow() {
+        hintTextRevealStart = 0;
         if (!(this instanceof EditTextCaption)) {
             app.nimarkogram.messenger.textanim.NimarkoTextAnim.onEditorFocusChanged(this, false);
         }

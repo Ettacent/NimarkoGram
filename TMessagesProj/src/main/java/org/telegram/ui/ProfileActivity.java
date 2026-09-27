@@ -4785,7 +4785,10 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
 
             @Override
             protected void onLayout(boolean changed, int l, int t, int r, int b) {
+                boolean notificationRelayout = notificationPlacement != null
+                        && notificationPlacement.shouldPreserveHeaderAnchor();
                 super.onLayout(changed, l, t, r, b);
+                if (notificationRelayout) checkListViewScroll();
                 updateBottomButtonY();
             }
         };
@@ -4855,6 +4858,17 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
         listView.setHideIfEmpty(false);
 
         layoutManager = new LinearLayoutManager(context) {
+            @Override
+            public void onLayoutChildren(RecyclerView.Recycler recycler, RecyclerView.State state) {
+                boolean preserveHeader = notificationPlacement != null
+                        && notificationPlacement.shouldPreserveHeaderAnchor();
+                if (preserveHeader) setNeedFixGap(false);
+                try {
+                    super.onLayoutChildren(recycler, state);
+                } finally {
+                    if (preserveHeader) setNeedFixGap(true);
+                }
+            }
 
             @Override
             public boolean supportsPredictiveItemAnimations() {
@@ -10806,8 +10820,11 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
 
         boolean visible = false;
         if (previousTransitionFragment instanceof ChatActivity) {
-            final TLRPC.Chat chat = ((ChatActivity) previousTransitionFragment).getCurrentChat();
-            visible = chat != null && chat.linked_community_id != 0;
+            final ChatActivity sourceChat = (ChatActivity) previousTransitionFragment;
+            final TLRPC.Chat chat = sourceChat.getCurrentChat();
+            final ChatAvatarContainer sourceHeader = sourceChat.getAvatarContainer();
+            visible = chat != null && chat.linked_community_id != 0
+                    && (sourceHeader == null || !sourceHeader.shouldUseInlineCommunityIndicator());
         }
         if (visible) {
             communityItem.setTag(1);
