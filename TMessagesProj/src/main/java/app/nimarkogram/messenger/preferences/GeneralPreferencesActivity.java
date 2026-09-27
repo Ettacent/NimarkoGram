@@ -343,6 +343,8 @@ public class GeneralPreferencesActivity extends NimarkoUniversalPreferencesActiv
 
             configStringKeys.add(getString(R.string.EP_NavigationAnimationBezier));
             configValues.add(NimarkoConfig.SPRING_CLASSIC);
+            configStringKeys.add(getString(R.string.NimarkoNavigationAnimationMaterial));
+            configValues.add(NimarkoConfig.SPRING_MATERIAL);
 
             PopupHelper.show(configStringKeys, getString(R.string.EP_NavigationAnimation), configValues.indexOf(NimarkoConfig.springAnimation), getContext(), i -> {
                 NimarkoConfig.setSpringAnimation(configValues.get(i));
@@ -453,6 +455,7 @@ public class GeneralPreferencesActivity extends NimarkoUniversalPreferencesActiv
     private String getSpringValue()  {
         return switch (NimarkoConfig.springAnimation) {
             case NimarkoConfig.SPRING_CLASSIC -> getString(R.string.EP_NavigationAnimationBezier);
+            case NimarkoConfig.SPRING_MATERIAL -> getString(R.string.NimarkoNavigationAnimationMaterial);
             default -> getString(R.string.EP_NavigationAnimationSpring);
         };
     }

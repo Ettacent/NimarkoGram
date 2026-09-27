@@ -792,6 +792,11 @@ public final class NimarkoConfig {
     public static final int SYSTEM_CAMERA = CAMERA_SYSTEM;
     public static final int CAMERA_1 = TELEGRAM_CAMERA;
     public static int cameraType = initCameraType();
+    public static boolean smoothCameraModuleTransitions = getPreferences().getBoolean("smoothCameraModuleTransitions", false);
+    public static void toggleSmoothCameraModuleTransitions() {
+        smoothCameraModuleTransitions = !smoothCameraModuleTransitions;
+        getEditor().putBoolean("smoothCameraModuleTransitions", smoothCameraModuleTransitions).apply();
+    }
     public static void setCameraType(int v) { cameraType = v; getEditor().putInt("cameraType", v).apply(); }
 
     private static int initCameraType() {
@@ -928,11 +933,21 @@ public final class NimarkoConfig {
 
     public static final int SPRING_SPRING = 0;
     public static final int SPRING_CLASSIC = 1;
+    public static final int SPRING_MATERIAL = 2;
     public static final int ANIMATION_SPRING = SPRING_SPRING;
     public static final int ANIMATION_CLASSIC = SPRING_CLASSIC;
-    public static int springAnimation = getIntSafe("springAnimation", SPRING_SPRING);
+    public static int springAnimation = migrateMaterialNavigationDefault();
+    private static int migrateMaterialNavigationDefault() {
+        if (!getPreferences().getBoolean("materialNavigationDefaultApplied", false)) {
+            getEditor().putInt("springAnimation", SPRING_MATERIAL)
+                    .putBoolean("materialNavigationDefaultApplied", true).apply();
+            return SPRING_MATERIAL;
+        }
+        return getIntSafe("springAnimation", SPRING_MATERIAL);
+    }
     public static void setSpringAnimation(int v) { springAnimation = v; getEditor().putInt("springAnimation", v).apply(); }
     public static boolean isSpringAnimationEnabled() { return springAnimation == SPRING_SPRING; }
+    public static boolean isMaterialAnimationEnabled() { return springAnimation == SPRING_MATERIAL; }
 
     public static boolean predictiveBack = getPreferences().getBoolean("predictiveBack", true);
     public static void togglePredictiveBack() { predictiveBack = !predictiveBack; getEditor().putBoolean("predictiveBack", predictiveBack).apply(); }

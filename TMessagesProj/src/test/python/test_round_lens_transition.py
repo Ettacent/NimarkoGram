@@ -1,6 +1,7 @@
 """Production rear-lens state machine and UI coordination on JVM stubs, not camera hardware."""
 import shutil
 import unittest
+import xml.etree.ElementTree as ET
 from pathlib import Path
 from test_recording_composer_lifecycle import method
 from test_sender_infocard_transitions import run_java
@@ -14,6 +15,18 @@ STATE = STATE[STATE.index('public final class'):].replace(
 
 @unittest.skipUnless(shutil.which('javac'), 'JDK required')
 class RoundLensTests(unittest.TestCase):
+    def test_setting_is_opt_in_and_translated(self):
+        config = (ROOT / 'app/nimarkogram/messenger/NimarkoConfig.java').read_text()
+        self.assertIn('getBoolean("smoothCameraModuleTransitions", false)', config)
+        self.assertIn('putBoolean("smoothCameraModuleTransitions", smoothCameraModuleTransitions)', config)
+        for locale in ('values', 'values-ru', 'values-zh-rCN', 'values-zh-rTW'):
+            strings = ET.parse(ROOT.parent / 'res' / locale / 'strings.xml').getroot()
+            for key in ('NM_CAM_SmoothModules', 'NM_CAM_SmoothModulesDesc'):
+                self.assertIsNotNone(strings.find(f"string[@name='{key}']"))
+        frame = method(VIEW, 'private void onCameraXRearLensFrame(')
+        self.assertLess(frame.index('cancelRunOnUIThread(cameraXRearLensTimeout)'),
+                        frame.index('finishCameraXVideoTransition()'))
+
     def test_frame_readiness_and_bounded_vendor_fallback(self):
         run_java('''public class Transitions {
  STATE
@@ -59,6 +72,7 @@ class RoundLensTests(unittest.TestCase):
         run_java('''import java.util.*;
 public class Transitions {
  STATE
+ static class NimarkoConfig {static boolean smoothCameraModuleTransitions=true;}
  static void check(boolean b){if(!b)throw new AssertionError();}
  static List<String> events=new ArrayList<>();
  static class SystemClock {static long elapsedRealtime(){return 100;}}
@@ -95,6 +109,12 @@ public class Transitions {
  CameraXRoundLensTransition cameraXRearLensTransition;
  boolean cancelled,flipAnimationInProgress,cameraXSingleSwitchAwaitingBind,useCamera2;
  boolean cameraReady=true,recording=true,useCameraX=true,active;
+ // This harness drives module handoffs directly; spring physics has its own harness.
+ boolean roundZoomSpringRunning;
+ Object roundZoomSession;
+ Object roundZoomSessionIdentity(){return videoMessagesHelper.session;}
+ static class SpringStub {float target(){return 1f;}}
+ SpringStub roundZoomSpring=new SpringStub();
  float cameraXPendingZoomRatio=Float.NaN,legacyZoom;
  Runnable cameraXRearLensTimeout;int cameraXSingleSwitchSnapshot;
  long cameraXSingleSwitchSnapshotTimestamp=100;
@@ -135,6 +155,12 @@ public class Transitions {
   t=new Transitions();t.requestRoundCameraXZoom(.8f);
   check(t.cameraThread.captures==0); // ordinary digital zoom stays live
   t.requestRoundCameraXZoom(Float.NaN);check(t.videoMessagesHelper.session.ratio==.8f);
+
+  NimarkoConfig.smoothCameraModuleTransitions=false;
+  t=new Transitions();t.requestRoundCameraXZoom(1.2f);
+  check(t.cameraThread.captures==0&&t.videoMessagesHelper.session.ratio==1.2f);
+  check(t.cameraXRearLensTransition==null&&!t.flipAnimationInProgress);
+  NimarkoConfig.smoothCameraModuleTransitions=true;
 
   t=new Transitions();t.requestRoundCameraXZoom(1.1f);t.cameraThread.finish(true);
   t.requestRoundCameraXZoom(1.8f);check(t.videoMessagesHelper.session.ratio==1.8f);

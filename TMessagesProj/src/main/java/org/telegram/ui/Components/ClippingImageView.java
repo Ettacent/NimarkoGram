@@ -54,6 +54,8 @@ public class ClippingImageView extends View {
     private float animationProgress;
     private boolean fade;
     private float[][] animationValues;
+    private boolean hasTransitionViewport;
+    private float viewportTop, viewportBottom, viewportHeight;
 
     private float additionalTranslationY;
     private float additionalTranslationX;
@@ -75,6 +77,13 @@ public class ClippingImageView extends View {
         animationValues = values;
         this.in = in;
         this.fade = fade;
+        hasTransitionViewport = false;
+    }
+    public void setTransitionViewport(float top, float bottom, float height) {
+        viewportTop = Math.max(0f, top);
+        viewportBottom = Math.max(viewportTop, bottom);
+        viewportHeight = height;
+        hasTransitionViewport = true;
     }
 
     public void setAdditionalTranslationY(float value) {
@@ -111,6 +120,13 @@ public class ClippingImageView extends View {
         setClipHorizontal((int) (animationValues[0][4] + (animationValues[1][4] - animationValues[0][4]) * animationProgress));
         setClipTop((int) (animationValues[0][5] + (animationValues[1][5] - animationValues[0][5]) * animationProgress));
         setClipBottom((int) (animationValues[0][6] + (animationValues[1][6] - animationValues[0][6]) * animationProgress));
+        if (hasTransitionViewport && !in) {
+            final float top = viewportTop * animationProgress;
+            final float bottom = viewportHeight + (viewportBottom - viewportHeight) * animationProgress;
+            setClipTop(Math.max(clipTop, Math.round(top - getTranslationY())));
+            setClipBottom(Math.max(clipBottom,
+                    Math.round(getTranslationY() + getHeight() * getScaleY() - bottom)));
+        }
         for (int a = 0; a < radius.length; a++) {
             radius[a] = (int) (animationValues[0][7 + a] + (animationValues[1][7 + a] - animationValues[0][7 + a]) * animationProgress);
             setRadius(radius);

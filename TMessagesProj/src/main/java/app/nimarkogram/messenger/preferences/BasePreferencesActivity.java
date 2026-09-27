@@ -288,15 +288,7 @@ public abstract class BasePreferencesActivity extends BaseFragment {
      * startup (e.g. systemFonts, springAnimation, snowflakes…).
      */
     public void showRestartBulletin() {
-        BulletinFactory.of(this).createSimpleBulletin(
-                R.raw.info,
-                LocaleController.getString(R.string.NM_RestartRequired),
-                LocaleController.getString(R.string.NM_Restart),
-                () -> {
-                    Context ctx = getParentActivity() != null ? getParentActivity() : getContext();
-                    AppRestartHelper.triggerRebirth(ctx);
-                }
-        ).show();
+        app.nimarkogram.messenger.ui.RestartBulletin.show(this);
     }
 
     public void toggleBooleanSettingAndRefresh(UItem uItem, Consumer<Boolean> consumer) {

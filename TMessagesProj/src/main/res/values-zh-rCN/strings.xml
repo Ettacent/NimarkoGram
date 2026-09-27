@@ -544,7 +544,7 @@
     <string name="NM_HUB_ForkedFromCherrygramSub">NimarkoGram 基于官方 Telegram 客户端构建；功能移植自 &lt;a href=\"https://github.com/arslan4k1390/Cherrygram\"&gt;Cherrygram&lt;/a&gt; — 感谢上游项目。</string>
     <string name="NM_HUB_Debug">调试</string>
     <string name="NM_HUB_Experimental">实验性</string>
-    <string name="NM_RestartRequired">需要重启以应用更改</string>
+    <string name="NM_RestartRequired">需要重启</string>
     <string name="NM_Restart">重启</string>
     <string name="NM_Menu_TelegramPlus">现代消息菜单</string>
     <string name="NM_Menu_TelegramPlus_Desc">Liquid Glass 菜单，支持操作分组和弹性反馈。</string>
@@ -988,6 +988,7 @@
     <string name="EP_DownloadSpeedBoost">加快下载</string>
     <string name="EP_SlowNetworkMode">弱网模式</string>
     <string name="EP_NavigationAnimationBezier">经典</string>
+    <string name="NimarkoNavigationAnimationMaterial">Material</string>
     <string name="EP_NavigationAnimationSpring">弹簧</string>
     <string name="EP_DownloadSpeedBoostExtreme">极限</string>
     <string name="NM_PR_RequireBiometricsToDelete">确认删除</string>
@@ -1123,7 +1124,7 @@
     <string name="CG_ReportDetailsCopied">举报详情已复制到剪贴板。</string>
     <string name="CG_ResidentNotification">显示常驻通知</string>
     <string name="CG_Restart">重启应用</string>
-    <string name="CG_RestartToApply">重启应用以应用更改</string>
+    <string name="CG_RestartToApply">需要重启</string>
     <string name="CG_SaveSticker">保存贴纸</string>
     <string name="CG_SearchFilter">筛选搜索结果</string>
     <string name="CG_SearchFilter_Contacts">联系人</string>
@@ -1258,4 +1259,6 @@
     <string name="NM_CP_LatexRendering_Desc">识别消息中 $…$ 和 $$…$$ 内的公式。</string>
     <string name="NM_Menu_More">更多操作</string>
     <string name="NM_Menu_Manage">管理</string>
+    <string name="NM_CAM_SmoothModules">平滑切换摄像头模组</string>
+    <string name="NM_CAM_SmoothModulesDesc">录制视频消息时，缩放可在超广角与主摄之间平滑过渡。</string>
 </resources>

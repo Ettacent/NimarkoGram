@@ -561,7 +561,7 @@
     <string name="NM_HUB_Debug">Отладка</string>
     <string name="NM_HUB_Experimental">Экспериментальные</string>
 
-    <string name="NM_RestartRequired">Требуется перезапуск для применения изменений</string>
+    <string name="NM_RestartRequired">Нужен перезапуск</string>
     <string name="NM_Restart">Перезапустить</string>
 
     <!-- NimarkoGram: меню сообщения (порядок, виброотклик, режим на чат) -->
@@ -1046,6 +1046,7 @@
     <string name="EP_DownloadSpeedBoost">Ускорение загрузки</string>
     <string name="EP_SlowNetworkMode">Режим слабой сети</string>
     <string name="EP_NavigationAnimationBezier">Обычная</string>
+    <string name="NimarkoNavigationAnimationMaterial">Material</string>
     <string name="EP_NavigationAnimationSpring">Пружинная</string>
     <string name="EP_DownloadSpeedBoostExtreme">Экстра</string>
     <!-- Privacy -->
@@ -1193,7 +1194,7 @@
     <string name="CG_ReportDetailsCopied">Детали отчёта скопированы в буфер обмена.</string>
     <string name="CG_ResidentNotification">Включить постоянное уведомление</string>
     <string name="CG_Restart">Перезапустить приложение</string>
-    <string name="CG_RestartToApply">Перезапустите приложение</string>
+    <string name="CG_RestartToApply">Нужен перезапуск</string>
     <string name="CG_SaveSticker">Сохранить стикер</string>
     <string name="CG_SearchFilter">Фильтр по результатам поиска</string>
     <string name="CG_SearchFilter_Contacts">Контакты</string>
@@ -1334,4 +1335,6 @@
     <string name="NM_CP_LatexRendering_Desc">Распознаёт формулы внутри $…$ и $$…$$ в сообщениях.</string>
     <string name="NM_Menu_More">Дополнительно</string>
     <string name="NM_Menu_Manage">Управление</string>
+    <string name="NM_CAM_SmoothModules">Плавное переключение модулей камеры</string>
+    <string name="NM_CAM_SmoothModulesDesc">Плавный переход между широкоугольной и основной камерой при изменении зума во время записи кружков.</string>
 </resources>

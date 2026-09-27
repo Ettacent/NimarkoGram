@@ -1684,6 +1684,10 @@ public class ChatActivity extends BaseFragment implements
             refreshGlassAfterPhotoViewerClose();
         }
         @Override
+        public void onPreClose() {
+            refreshGlassAfterPhotoViewerClose();
+        }
+        @Override
         public boolean validateGroupId(long groupId) {
             MessageObject.GroupedMessages groupedMessages = groupedMessagesMap.get(groupId);
             return groupedMessages != null && groupedMessages.messages.size() > 1;
@@ -1698,6 +1702,10 @@ public class ChatActivity extends BaseFragment implements
 
         @Override
         public void willHidePhotoViewer() {
+            refreshGlassAfterPhotoViewerClose();
+        }
+        @Override
+        public void onPreClose() {
             refreshGlassAfterPhotoViewerClose();
         }
         @Override
@@ -18166,8 +18174,32 @@ public class ChatActivity extends BaseFragment implements
             ChatMessageCell.drawingGlassBackdrop = true;
             try {
                 drawListBackdrop(blurCanvas, position);
+                drawPhotoViewerBackdrop(blurCanvas, position);
             } finally {
                 ChatMessageCell.drawingGlassBackdrop = previousCapture;
+            }
+        }
+        private void drawPhotoViewerBackdrop(Canvas canvas, RectF position) {
+            if (!PhotoViewer.hasInstance() || !PhotoViewer.getInstance().isVisible()) return;
+            for (int i = 0; i < chatListView.getChildCount(); i++) {
+                View child = chatListView.getChildAt(i);
+                if (!(child instanceof ChatMessageCell) || child.getVisibility() != VISIBLE
+                        || child.getAlpha() <= 0f || quickRejectChild(child, position)) continue;
+                ChatMessageCell cell = (ChatMessageCell) child;
+                if (!PhotoViewer.isShowingImage(cell.getMessageObject())) continue;
+                int save = canvas.save();
+                try {
+                    canvas.translate(child.getLeft(), child.getTop());
+                    canvas.concat(child.getMatrix());
+                    canvas.translate(0, child.getPaddingTop());
+                    if (child.getAlpha() < 1f) {
+                        canvas.saveLayerAlpha(0, 0, child.getWidth(), child.getHeight(),
+                                Math.round(255 * child.getAlpha()));
+                    }
+                    cell.drawPhotoViewerBackdrop(canvas);
+                } finally {
+                    canvas.restoreToCount(save);
+                }
             }
         }
         private void drawListBackdrop(Canvas blurCanvas, RectF position) {
@@ -20935,6 +20967,7 @@ public class ChatActivity extends BaseFragment implements
                 object.viewY = coords[1] - 0 + view.getPaddingTop();
                 object.parentView = chatListView;
                 object.animatingImageView = null;
+                object.clipTransitionToParent = true;
                 object.imageReceiver = imageReceiver;
                 if (needPreview) {
                     object.thumb = imageReceiver.getBitmapSafe();
@@ -45140,6 +45173,9 @@ public class ChatActivity extends BaseFragment implements
 
     @Override
     public AnimatorSet onCustomTransitionAnimation(boolean isOpen, Runnable callback) {
+        if (getParentLayout() != null && getParentLayout().isMaterialNavigationEnabled()) {
+            return null;
+        }
         if (isOpen && fromPullingDownTransition && getParentLayout() != null && getParentLayout().getFragmentStack().size() > 1) {
             BaseFragment previousFragment = getParentLayout().getFragmentStack().get(getParentLayout().getFragmentStack().size() - 2);
             if (previousFragment instanceof ChatActivity) {
@@ -49314,6 +49350,15 @@ public class ChatActivity extends BaseFragment implements
     private void refreshGlassAfterPhotoViewerClose() {
         if (contentView == null || invalidateBlurredSourcesView == null || scrollableViewNoiseSuppressor == null) {
             return;
+        }
+        if (chatListView != null) {
+            for (int i = 0; i < chatListView.getChildCount(); i++) {
+                View child = chatListView.getChildAt(i);
+                if (child instanceof ChatMessageCell) {
+                    child.invalidate();
+                }
+            }
+            chatListView.invalidate();
         }
         invalidateMergedVisibleBlurredPositionsAndSources(
                 BLUR_INVALIDATE_FLAG_SCROLL | BLUR_INVALIDATE_FLAG_POSITIONS);

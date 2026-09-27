@@ -73,6 +73,7 @@ import org.telegram.messenger.AnimationNotificationsLocker;
 import org.telegram.messenger.BuildVars;
 import org.telegram.messenger.FileLog;
 import org.telegram.messenger.ImageLoader;
+import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.MessagesController;
 import org.telegram.messenger.R;
 import org.telegram.messenger.SharedConfig;
@@ -273,7 +274,7 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
 
         @Override
         public boolean hasOverlappingRendering() {
-            if (Build.VERSION.SDK_INT >= 28) {
+            if (materialTransitionActive || Build.VERSION.SDK_INT >= 28) {
                 return true;
             }
             return false;
@@ -701,6 +702,26 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
 
     private float animationProgress;
     private long lastFrameTime;
+    private boolean materialTransitionActive;
+    private View materialRoundedSurface;
+    private ViewOutlineProvider materialOriginalOutline;
+    private boolean materialOriginalClip;
+    private final ViewOutlineProvider materialGestureOutline = new ViewOutlineProvider() {
+        @Override
+        public void getOutline(View view, Outline outline) {
+            float radius = dp(28) * MaterialSharedAxisMotion.gestureCornerProgress(materialGestureProgress);
+            outline.setRoundRect(0, 0, view.getWidth(), view.getHeight(), radius);
+        }
+    };
+    private View materialTopSurface;
+    private float materialTopAlpha;
+    private float materialBottomAlpha = 1f;
+    private final Paint materialTopPaint = new Paint();
+    private final Paint materialBottomPaint = new Paint();
+    private boolean materialGestureActive;
+    private float materialGestureProgress;
+    private float materialGestureDirection = 1f;
+    private final Paint materialTransitionPaint = new Paint();
 
     private String titleOverlayText;
     private int titleOverlayTextId;
@@ -1013,7 +1034,9 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
 
         if (fragmentsStack.size() >= 2 && containerView.getMeasuredWidth() > 0) {
             float progress;
-            if (newBackTransitions() && slideTransitionSpring == null) {
+            if (materialGestureActive) {
+                progress = materialGestureProgress;
+            } else if (newBackTransitions() && slideTransitionSpring == null) {
                 progress = Utilities.clamp01(value / (6 * dp(56)));
             } else {
                 progress = value / containerView.getMeasuredWidth();
@@ -1134,6 +1157,9 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
             clipPath.addRoundRect(AndroidUtilities.rectTmp, r, r, Path.Direction.CW);
             canvas.clipPath(clipPath);
         }
+        if (materialTransitionActive) {
+            canvas.drawRect(getPaddingLeft(), 0, getWidth() - getPaddingRight(), getHeight(), materialTransitionPaint);
+        }
         super.dispatchDraw(canvas);
         if (isLayersLayout) {
             canvas.restore();
@@ -1171,7 +1197,7 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
             bottomSheetTabsClip.clip(canvas, withShadow, isKeyboardVisible, getWidth(), (int) getY() + getHeight(), 1.0f);
             withShadow = false;
         }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && !isSheet && (!USE_SPRING_ANIMATION || !isTransitionAnimationInProgress() && !animationInProgress) && (translationX != 0 || overrideWidthOffset != -1)) {
+        if (!materialTransitionActive && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && !isSheet && (!USE_SPRING_ANIMATION || !isTransitionAnimationInProgress() && !animationInProgress) && (translationX != 0 || overrideWidthOffset != -1)) {
             if (child == containerView) {
                 final WindowInsets insets = getRootWindowInsets();
                 if (insets != null) {
@@ -1231,16 +1257,28 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
         }
 
         final int restoreCount = canvas.save();
-        if (!isTransitionAnimationInProgress() && !inPreviewMode) {
+        if (!materialTransitionActive && !isTransitionAnimationInProgress() && !inPreviewMode) {
             canvas.clipRect(clipLeft, 0, clipRight, getHeight());
         }
         if ((inPreviewMode || transitionAnimationPreviewMode) && child == containerView) {
             drawPreviewDrawables(canvas, containerView);
         }
+        int materialLayer = -1;
+        if (materialTransitionActive && (child == containerView || child == containerViewBack)) {
+            boolean top = child == materialTopSurface;
+            int alpha = Math.round(255f * (top ? materialTopAlpha : materialBottomAlpha));
+            if (alpha < 255) {
+                materialLayer = canvas.saveLayerAlpha(0, 0, getWidth(), getHeight(), alpha);
+            }
+            if (!materialGestureActive) {
+                canvas.drawRect(getPaddingLeft(), 0, getWidth() - getPaddingRight(), getHeight(), top ? materialTopPaint : materialBottomPaint);
+            }
+        }
         final boolean result = super.drawChild(canvas, child, drawingTime);
+        if (materialLayer >= 0) canvas.restoreToCount(materialLayer);
         canvas.restoreToCount(restoreCount);
 
-        if (translationX != 0 || overrideWidthOffset != -1) {
+        if (!materialTransitionActive && (translationX != 0 || overrideWidthOffset != -1)) {
             int widthOffset = overrideWidthOffset != -1 ? overrideWidthOffset : width - translationX;
             // NimarkoGram (CG parity): when crossfade is active, shift the shadow/scrim down by
             // the action bar height so they don't paint over the bar currently crossfading.
@@ -1355,7 +1393,12 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
     }
 
     private void onSlideAnimationEnd(final boolean backAnimation) {
+        restoreMaterialGestureOutline();
         cancelSlideTransitionTimeout();
+        materialTopSurface = null;
+        materialGestureActive = false;
+        materialTransitionActive = false;
+        materialGestureProgress = 0f;
         if (!backAnimation) {
             if (fragmentsStack.size() < 2) {
                 checkBlackScreen("onSlideAnimationEnd exit");
@@ -1442,7 +1485,12 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
     }
 
     private void resetAbortedSlideAnimation() {
+        restoreMaterialGestureOutline();
         cancelSlideTransitionTimeout();
+        materialTopSurface = null;
+        materialGestureActive = false;
+        materialTransitionActive = false;
+        materialGestureProgress = 0f;
         maybeStartTracking = false;
         startedTracking = false;
         startedTrackingPointerId = -1;
@@ -1456,6 +1504,7 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
             containerView.setLayerType(LAYER_TYPE_NONE, null);
         }
         if (containerViewBack != null) {
+            containerViewBack.setAlpha(1f);
             containerViewBack.setTranslationX(0f);
             containerViewBack.setVisibility(View.INVISIBLE);
             containerViewBack.setLayerType(LAYER_TYPE_NONE, null);
@@ -1576,6 +1625,12 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
             swipeProgress = 0f;
             invalidateActionBars();
         }
+        if (shouldUseMaterialAnimationForStack()) {
+            materialGestureActive = true;
+            materialTransitionActive = true;
+            materialGestureDirection = predictiveBackInProgress && !predictiveBackLeft ? -1f : 1f;
+            applyMaterialGestureProgress(0f);
+        }
     }
 
     @Override
@@ -1643,7 +1698,9 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
                             currentFragment.onBeginSlide();
                             beginTrackingSent = true;
                         }
-                        if (newBackTransitions()) {
+                        if (materialGestureActive) {
+                            applyMaterialGestureProgress(MaterialSharedAxisMotion.dragProgress(dx, containerView.getMeasuredWidth()));
+                        } else if (newBackTransitions()) {
                             containerView.setTranslationX(dx / (float) getWidth() * (5 * dp(56)));
                             setInnerTranslationX(dx / (float) getWidth() * (5 * dp(56)));
                         } else {
@@ -1709,7 +1766,9 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
                         float velX = velocityTracker.getXVelocity(startedTrackingPointerId);
                         float velY = velocityTracker.getYVelocity(startedTrackingPointerId);
                         final boolean reverseFling = velX < -1000 && -velX > Math.abs(velY);
-                        final boolean backAnimation = reverseFling || (newBackTransitions() ? x < dp(56) / 2 || velX < -1000 : x < containerView.getMeasuredWidth() / 3.0f) && (velX < 3500 || Math.abs(velX) < Math.abs(velY));
+                        final boolean backAnimation = materialGestureActive
+                                ? MaterialSharedAxisMotion.cancelDrag(materialGestureProgress, velX, velY)
+                                : reverseFling || (newBackTransitions() ? x < dp(56) / 2 || velX < -1000 : x < containerView.getMeasuredWidth() / 3.0f) && (velX < 3500 || Math.abs(velX) < Math.abs(velY));
                         animateBackEndAnimation(backAnimation, velX);
                     } else {
                         clearPendingSlideTracking();
@@ -1732,6 +1791,9 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
     private float predictiveBackY;
     private boolean predictiveBackLeft;
     public boolean onBackStarted(float touchX, float touchY) {
+        return onBackStarted(touchX, touchY, touchX < AndroidUtilities.displaySize.x / 2f);
+    }
+    public boolean onBackStarted(float touchX, float touchY, boolean fromLeftEdge) {
         finishSettlingSlideForNextBack();
         if (animationInProgress) {
             if (backAnimator != null) {
@@ -1764,7 +1826,7 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
         predictiveBackHasProgress = false;
         predictiveBackInProgress = true;
         predictiveInput = true;
-        predictiveBackLeft = touchX < AndroidUtilities.displaySize.x / 2f;
+        predictiveBackLeft = fromLeftEdge;
         predictiveBackY = touchY;
         prepareForMoving();
         if (parentActivity != null && parentActivity.getCurrentFocus() != null) {
@@ -1779,7 +1841,9 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
         float dx = dp(56) * CubicBezierInterpolator.StandardDecelerate.getInterpolation(t);
         predictiveBackHasProgress = t > 0;
 
-        if (shouldUseSpringAnimationForStack()) {
+        if (materialGestureActive) {
+            applyMaterialGestureProgress(t);
+        } else if (shouldUseSpringAnimationForStack()) {
             swipeProgress = t;
 
             float maxMovement = containerView.getMeasuredWidth() * 0.15f;
@@ -1848,6 +1912,10 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
     private void animateBackEndAnimation(boolean backAnimation, float velX) {
         final BaseFragment currentFragment = !fragmentsStack.isEmpty() ? fragmentsStack.get(fragmentsStack.size() - 1) : null;
         if (currentFragment == null) return;
+        if (materialGestureActive) {
+            settleMaterialGesture(backAnimation, velX);
+            return;
+        }
 
         float x = containerView.getTranslationX();
         AnimatorSet animatorSet = new AnimatorSet();
@@ -2162,8 +2230,13 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
      * navigation-owned animators without running their completion logic.
      */
     private void cancelNavigationAnimationsForStackReset() {
+        restoreMaterialGestureOutline();
         previewRotationCloseFragment = null;
         navigationEpoch++;
+        materialTopSurface = null;
+        materialTransitionActive = false;
+        materialGestureActive = false;
+        materialGestureProgress = 0f;
 
         // Retire navigation ownership before cancel(). AnimatorSet cancellation
         // propagates to child custom animators synchronously; those children can
@@ -2273,6 +2346,9 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
         onCloseAnimationEndRunnable = null;
         onOpenAnimationEndRunnable = null;
         transitionAnimationInProgress = false;
+        materialTopSurface = null;
+        restoreMaterialGestureOutline();
+        materialTransitionActive = false;
         transitionAnimationPreviewMode = false;
         transitionAnimationStartTime = 0;
         layoutToIgnore = null;
@@ -2412,6 +2488,10 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
     }
 
     private void startLayoutAnimation(final boolean open, final boolean first, final boolean preview) {
+        if (!preview && shouldUseMaterialAnimationForTransition()) {
+            startMaterialLayoutAnimation(open);
+            return;
+        }
         if (first) {
             animationProgress = 0.0f;
             lastFrameTime = SystemClock.uptimeMillis();
@@ -2654,6 +2734,199 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
             }
         };
         postOnAnimation(animationRunnable);
+    }
+    private void prepareMaterialLayoutAnimation(boolean open) {
+        materialTransitionActive = true;
+        applyMaterialLayoutProgress(open, 0f);
+    }
+    private void applyMaterialLayoutProgress(boolean open, float progress) {
+        applyMaterialSurfaces(open, progress, containerView, containerViewBack, newFragment, oldFragment,
+                LocaleController.isRTL ? -1f : 1f);
+    }
+    private void applyMaterialSurfaces(boolean forward, float progress, View entering, View leaving,
+                                       BaseFragment destination, BaseFragment source, float direction) {
+        float p = MaterialSharedAxisMotion.clamp(progress);
+        float paneWidth = getWidth() - getPaddingLeft() - getPaddingRight();
+        if (paneWidth <= 0) paneWidth = Math.max(entering.getMeasuredWidth(), leaving.getMeasuredWidth());
+        if (paneWidth <= 0) paneWidth = AndroidUtilities.displaySize.x;
+        float distance = MaterialSharedAxisMotion.slideDistance(paneWidth) * direction;
+        entering.setTranslationX(distance * MaterialSharedAxisMotion.enteringOffset(forward, p));
+        leaving.setTranslationX(distance * MaterialSharedAxisMotion.leavingOffset(forward, p));
+        entering.setScaleX(1f);
+        entering.setScaleY(1f);
+        leaving.setScaleX(1f);
+        leaving.setScaleY(1f);
+        configureMaterialComposition(entering, leaving, destination, source, MaterialSharedAxisMotion.enteringAlpha(p));
+        invalidate();
+    }
+    private int materialSurfaceColor(BaseFragment fragment) {
+        if (fragment == null) return Theme.getColor(Theme.key_windowBackgroundGray);
+        if (fragment instanceof MainTabsActivity) {
+            return ((MainTabsActivity) fragment).getNavigationBackgroundColor();
+        }
+        View root = fragment.getFragmentView();
+        Drawable background = root != null ? root.getBackground() : null;
+        if (fragment instanceof DialogsActivity) {
+            return fragment.getThemedColor(Theme.key_windowBackgroundWhite);
+        }
+        if (fragment instanceof ChatActivity && root instanceof org.telegram.ui.Components.SizeNotifierFrameLayout) {
+            Drawable wallpaper = ((org.telegram.ui.Components.SizeNotifierFrameLayout) root).getBackgroundImage();
+            if (wallpaper instanceof org.telegram.ui.ChatBackgroundDrawable) {
+                wallpaper = ((org.telegram.ui.ChatBackgroundDrawable) wallpaper).getDrawable(false);
+            }
+            if (wallpaper instanceof ColorDrawable && Color.alpha(((ColorDrawable) wallpaper).getColor()) == 255) {
+                return ((ColorDrawable) wallpaper).getColor();
+            }
+        }
+        if (background instanceof ColorDrawable && Color.alpha(((ColorDrawable) background).getColor()) == 255) {
+            return ((ColorDrawable) background).getColor();
+        }
+        return fragment.getThemedColor(fragment instanceof ChatActivity
+                ? Theme.key_windowBackgroundWhite : Theme.key_windowBackgroundGray);
+    }
+    private void configureMaterialComposition(View entering, View leaving, BaseFragment destination, BaseFragment source, float mix) {
+        entering.setAlpha(1f);
+        leaving.setAlpha(1f);
+        int from = materialSurfaceColor(source);
+        int to = materialSurfaceColor(destination);
+        boolean enteringOnTop = indexOfChild(entering) > indexOfChild(leaving);
+        materialTopSurface = enteringOnTop ? entering : leaving;
+        materialTopAlpha = MaterialSharedAxisMotion.topAlpha(enteringOnTop, mix);
+        materialBottomAlpha = 1f;
+        materialTopPaint.setColor(enteringOnTop ? to : from);
+        materialBottomPaint.setColor(enteringOnTop ? from : to);
+        materialTransitionPaint.setColor(ColorUtils.setAlphaComponent(materialGestureActive ? (enteringOnTop ? from : to)
+                : ColorUtils.blendARGB(from, to, mix), 255));
+    }
+    private void applyMaterialGestureProgress(float progress) {
+        if (!materialGestureActive) return;
+        materialGestureProgress = MaterialSharedAxisMotion.clamp(progress);
+        if (materialRoundedSurface != containerView) {
+            restoreMaterialGestureOutline();
+            materialRoundedSurface = containerView;
+            materialOriginalOutline = containerView.getOutlineProvider();
+            materialOriginalClip = containerView.getClipToOutline();
+            containerView.setOutlineProvider(materialGestureOutline);
+            containerView.setClipToOutline(true);
+        }
+        containerView.invalidateOutline();
+        final BaseFragment destination = getBackgroundFragment();
+        final BaseFragment source = getLastFragment();
+        final long ownerEpoch = navigationEpoch;
+        float width = containerView.getWidth();
+        float scale = MaterialSharedAxisMotion.gestureScale(materialGestureProgress);
+        containerView.setScaleX(scale);
+        containerView.setScaleY(scale);
+        containerView.setTranslationX(materialGestureDirection * MaterialSharedAxisMotion.gestureOffset(width, materialGestureProgress));
+        containerView.setTranslationY(0f);
+        containerViewBack.setTranslationX(0f);
+        containerViewBack.setTranslationY(0f);
+        containerViewBack.setScaleX(1f);
+        containerViewBack.setScaleY(1f);
+        configureMaterialComposition(containerViewBack, containerView, destination, source,
+                MaterialSharedAxisMotion.gestureMix(materialGestureProgress));
+        setInnerTranslationX(0f);
+        if (ownerEpoch != navigationEpoch || !materialGestureActive) return;
+        if (source != null) source.onTransitionAnimationProgress(false, materialGestureProgress);
+        if (ownerEpoch != navigationEpoch || !materialGestureActive) return;
+        if (destination != null) destination.onTransitionAnimationProgress(true, materialGestureProgress);
+    }
+    private void restoreMaterialGestureOutline() {
+        if (materialRoundedSurface == null) return;
+        materialRoundedSurface.setOutlineProvider(materialOriginalOutline);
+        materialRoundedSurface.setClipToOutline(materialOriginalClip);
+        materialRoundedSurface.invalidateOutline();
+        materialRoundedSurface = null;
+        materialOriginalOutline = null;
+    }
+    private void settleMaterialGesture(boolean cancel, float velocity) {
+        final long ownerEpoch = navigationEpoch;
+        final AnimatorSet owner = new AnimatorSet();
+        final float start = materialGestureProgress;
+        final float width = containerView.getMeasuredWidth();
+        final long duration = MaterialSharedAxisMotion.settleDuration(start, cancel, velocity, width);
+        ValueAnimator progress = ValueAnimator.ofFloat(0f, 1f);
+        progress.setDuration(duration);
+        progress.setInterpolator(new android.view.animation.LinearInterpolator());
+        progress.addUpdateListener(value -> {
+            if (backAnimator == owner && navigationEpoch == ownerEpoch && materialGestureActive) {
+                applyMaterialGestureProgress(MaterialSharedAxisMotion.settleProgress(start, cancel, velocity,
+                        width, duration, (float) value.getAnimatedValue()));
+            }
+        });
+        owner.playTogether(progress);
+        owner.addListener(new AnimatorListenerAdapter() {
+            private boolean cancelled;
+            @Override
+            public void onAnimationCancel(Animator animation) {
+                cancelled = true;
+            }
+            @Override
+            public void onAnimationEnd(Animator animation) {
+                if (backAnimator != owner || navigationEpoch != ownerEpoch) return;
+                backAnimator = null;
+                predictiveBackInProgress = false;
+                predictiveInput = false;
+                predictiveBackHasProgress = false;
+                onSlideAnimationEnd(cancelled || cancel);
+            }
+        });
+        backAnimator = owner;
+        backAnimatorIsBack = cancel;
+        animationInProgress = true;
+        layoutToIgnore = containerViewBack;
+        owner.start();
+    }
+    private void startMaterialLayoutAnimation(boolean open) {
+        prepareMaterialLayoutAnimation(open);
+        transitionAnimationStartTime = SystemClock.uptimeMillis();
+        final long ownerEpoch = navigationEpoch;
+        final AnimatorSet owner = new AnimatorSet();
+        final BaseFragment entering = newFragment;
+        final BaseFragment leaving = oldFragment;
+        final Integer fromBar = leaving != null ? leaving.getNavigationBarColor() : null;
+        final Integer toBar = entering != null ? entering.getNavigationBarColor() : null;
+        ValueAnimator progress = ValueAnimator.ofFloat(0f, 1f);
+        progress.setDuration(MaterialSharedAxisMotion.DURATION_MS);
+        progress.setInterpolator(new android.view.animation.LinearInterpolator());
+        progress.addUpdateListener(value -> {
+            if (currentAnimation != owner || ownerEpoch != navigationEpoch || !transitionAnimationInProgress) return;
+            animationProgress = MaterialSharedAxisMotion.clamp((float) value.getAnimatedValue());
+            applyMaterialLayoutProgress(open, animationProgress);
+            if (entering != null) entering.onTransitionAnimationProgress(true, animationProgress);
+            if (currentAnimation != owner || ownerEpoch != navigationEpoch) return;
+            if (leaving != null) leaving.onTransitionAnimationProgress(false, animationProgress);
+            if (currentAnimation != owner || ownerEpoch != navigationEpoch) return;
+            if (entering != null && fromBar != null && toBar != null) {
+                entering.setNavigationBarColor(ColorUtils.blendARGB(fromBar, toBar, animationProgress));
+            }
+        });
+        owner.playTogether(progress);
+        owner.addListener(new AnimatorListenerAdapter() {
+            @Override
+            public void onAnimationEnd(Animator animation) {
+                if (currentAnimation == owner && ownerEpoch == navigationEpoch) {
+                    onAnimationEndCheck(false);
+                }
+            }
+        });
+        currentAnimation = owner;
+        owner.start();
+    }
+    @Override
+    public boolean isMaterialNavigationEnabled() {
+        return USE_MATERIAL_ANIMATION;
+    }
+    private boolean shouldUseMaterialAnimationForTransition() {
+        return USE_MATERIAL_ANIMATION
+                && !isCommunityDialogsFragment(oldFragment)
+                && !isCommunityDialogsFragment(newFragment);
+    }
+    private boolean shouldUseMaterialAnimationForStack() {
+        return USE_MATERIAL_ANIMATION && !inPreviewMode && !transitionAnimationPreviewMode
+                && MessagesController.getGlobalMainSettings().getBoolean("view_animations", true)
+                && !isCommunityDialogsFragment(getLastFragment())
+                && !isCommunityDialogsFragment(getBackgroundFragment());
     }
 
     private static boolean isCommunityDialogsFragment(BaseFragment fragment) {
@@ -3073,7 +3346,9 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
                     });
                 }
                 if (animation == null) {
-                    if (shouldUseSpringAnimationForTransition()) {
+                    if (!preview && shouldUseMaterialAnimationForTransition()) {
+                        prepareMaterialLayoutAnimation(true);
+                    } else if (shouldUseSpringAnimationForTransition()) {
                         if (preview) {
                             containerView.setAlpha(0.0f);
                             containerView.setTranslationX(0.0f);
@@ -4659,6 +4934,7 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
     private AnimatorSet previewExpandAnimator;
     private View previewExpandView;
     private final boolean USE_SPRING_ANIMATION = app.nimarkogram.messenger.NimarkoConfig.isSpringAnimationEnabled();
+    private final boolean USE_MATERIAL_ANIMATION = app.nimarkogram.messenger.NimarkoConfig.isMaterialAnimationEnabled();
     private static final boolean USE_ACTIONBAR_CROSSFADE = false;
     private final float SPRING_STIFFNESS = 700f;
     private final float SPRING_STIFFNESS_PREVIEW = 650f;
@@ -4670,7 +4946,7 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
     }
 
     private int getOpenDelay() {
-        return shouldUseSpringAnimationForTransition() ? 100 : 250;
+        return shouldUseSpringAnimationForTransition() || shouldUseMaterialAnimationForTransition() ? 100 : 250;
     }
 
     private void invalidateActionBars() {

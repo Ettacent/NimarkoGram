@@ -108,6 +108,7 @@ import org.telegram.ui.Stories.recorder.StoryEntry;
 
 import app.nimarkogram.messenger.camera.SlideControlView;
 import app.nimarkogram.messenger.camera.CameraXRoundLensTransition;
+import app.nimarkogram.messenger.NimarkoConfig;
 import app.nimarkogram.messenger.camera.CameraXLensFrame;
 import app.nimarkogram.messenger.camera.NimarkoCameraXSurfaceSession;
 
@@ -986,6 +987,7 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
 
     @Override
     protected void onDetachedFromWindow() {
+        stopRoundZoomSpring();
         ++cameraCoverGeneration;
         super.onDetachedFromWindow();
         NotificationCenter.getInstance(currentAccount).removeObserver(this, NotificationCenter.fileUploaded);
@@ -1011,6 +1013,7 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
     }
 
     public void destroy(boolean async) {
+        stopRoundZoomSpring();
         ++cameraCoverGeneration;
         pausePreviewToken = null;
         cancelCameraXVideoTransitions();
@@ -2219,6 +2222,7 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
     }
 
     private void switchCamera() {
+        stopRoundZoomSpring();
         if (app.nimarkogram.messenger.NimarkoCameraLog.DEBUG) app.nimarkogram.messenger.NimarkoCameraLog.log(
                 "InstantRound switch useCX=" + useCameraX + " dual=" + bothCameras
                         + " front=" + isFrontface + " ready=" + cameraReady
@@ -2576,7 +2580,8 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
         final CameraGLThread thread = cameraThread;
         if (session == null) return;
         final float previous = session.getZoomRatio();
-        if (session.isFrontFacing() || !cameraReady || !recording || thread == null
+        if (!NimarkoConfig.smoothCameraModuleTransitions
+                || session.isFrontFacing() || !cameraReady || !recording || thread == null
                 || !CameraXRoundLensTransition.crossesWideBoundary(
                         previous, ratio, session.getMinZoomRatio())) {
             session.setZoomRatio(ratio);
@@ -2624,6 +2629,10 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
                 frame == null ? null : frame.physicalId, SystemClock.elapsedRealtime())) {
             AndroidUtilities.runOnUIThread(() -> {
                 if (cameraXRearLensTransition == transition) {
+                    if (cameraXRearLensTimeout != null) {
+                        AndroidUtilities.cancelRunOnUIThread(cameraXRearLensTimeout);
+                        cameraXRearLensTimeout = null;
+                    }
                     cameraXSingleSwitchNewFrame = true;
                     finishCameraXVideoTransition();
                 }
@@ -7082,9 +7091,8 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
                 pinchStartDistance = (float) Math.hypot(ev.getX(1) - ev.getX(0), ev.getY(1) - ev.getY(0));
 
                 pinchScale = 1f;
-                if (useCameraX) {
-                    cameraXPinchStartRatio = currentRoundZoomRatio();
-                }
+                cameraXPinchStartRatio = currentRoundZoomRatio();
+                roundZoomGestureFilter.reset(pinchStartDistance / AndroidUtilities.density, ev.getEventTime());
 
                 pointerId1 = ev.getPointerId(0);
                 pointerId2 = ev.getPointerId(1);
@@ -7103,6 +7111,7 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
                     singleZoomActive = false;
                     singleZoomStartY = ev.getY();
                     singleZoomStartRatio = currentRoundZoomRatio();
+                    roundZoomGestureFilter.reset(0, ev.getEventTime());
                 }
             }
             return true;
@@ -7123,29 +7132,43 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
                 finishZoom();
                 return false;
             }
-            pinchScale = (float) Math.hypot(ev.getX(index2) - ev.getX(index1), ev.getY(index2) - ev.getY(index1)) / pinchStartDistance;
+            float span = (float) Math.hypot(ev.getX(index2) - ev.getX(index1), ev.getY(index2) - ev.getY(index1));
+            if (pinchStartDistance < AndroidUtilities.dp(24)) {
+                pinchStartDistance = span;
+                cameraXPinchStartRatio = currentRoundZoomRatio();
+                roundZoomGestureFilter.reset(span / AndroidUtilities.density, ev.getEventTime());
+                return true;
+            }
+            float filteredSpan = roundZoomGestureFilter.update(span / AndroidUtilities.density, ev.getEventTime())
+                    * AndroidUtilities.density;
+            pinchScale = filteredSpan / pinchStartDistance;
             if (useCameraX) {
                 float min = videoMessagesHelper.getMinZoomRatio();
                 float max = videoMessagesHelper.getMaxZoomRatio();
                 float ratio = cameraXPinchStartRatio * pinchScale;
-                requestRoundCameraXZoom(Math.max(min, Math.min(max, ratio)));
+                requestSmoothRoundZoom(Math.max(min, Math.min(max, ratio)));
             } else if (useCamera2) {
                 if (camera2SessionCurrent != null) {
-                    float zoom = Utilities.clamp(pinchScale, camera2SessionCurrent.getMaxZoom(), camera2SessionCurrent.getMinZoom());
-                    camera2SessionCurrent.setZoom(zoom);
+                    float zoom = Utilities.clamp(cameraXPinchStartRatio * pinchScale, camera2SessionCurrent.getMaxZoom(), camera2SessionCurrent.getMinZoom());
+                    requestSmoothRoundZoom(zoom);
                 }
             } else {
-                float zoom = Math.min(1f, Math.max(0, pinchScale - 1f));
-                cameraSession.setZoom(zoom);
+                float zoom = Math.min(1f, Math.max(0, (1f + cameraXPinchStartRatio) * pinchScale - 1f));
+                requestSmoothRoundZoom(zoom);
             }
         } else if (ev.getActionMasked() == MotionEvent.ACTION_MOVE && singleZoomMaybe
                 && !isInPinchToZoomTouchMode && ev.getPointerCount() == 1) {
             float dy = singleZoomStartY - ev.getY(); // up = positive = zoom in
             if (!singleZoomActive && Math.abs(dy) > AndroidUtilities.dp(8)) {
                 singleZoomActive = true;
+                singleZoomStartY = ev.getY();
+                singleZoomStartRatio = currentRoundZoomRatio();
+                roundZoomGestureFilter.reset(0, ev.getEventTime());
+                dy = 0;
             }
             if (singleZoomActive) {
-                applySingleDragZoom(dy);
+                applySingleDragZoom(roundZoomGestureFilter.update(dy / AndroidUtilities.density,
+                        ev.getEventTime()) * AndroidUtilities.density);
             }
         } else if (ev.getActionMasked() == MotionEvent.ACTION_UP
                 || ev.getActionMasked() == MotionEvent.ACTION_CANCEL
@@ -7164,6 +7187,9 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
 
     /** Current persistent zoom: ratio for camera2, 0..1 for the legacy path. */
     private float currentRoundZoomRatio() {
+        if (roundZoomSpringRunning && roundZoomSession == roundZoomSessionIdentity()) {
+            return roundZoomSpring.target() - (useCameraX || useCamera2 ? 0f : 1f);
+        }
         if (useCameraX) {
             return cameraXRearLensTransition != null && !Float.isNaN(cameraXPendingZoomRatio)
                     ? cameraXPendingZoomRatio : videoMessagesHelper.getZoomRatio();
@@ -7182,81 +7208,85 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
         if (useCameraX) {
             float min = videoMessagesHelper.getMinZoomRatio();
             float max = videoMessagesHelper.getMaxZoomRatio();
-            float ratio = singleZoomStartRatio + (dyPx / travel) * (max - min);
-            requestRoundCameraXZoom(Math.max(min, Math.min(max, ratio)));
+            float ratio = singleZoomStartRatio * (float) Math.pow(max / min, dyPx / travel);
+            requestSmoothRoundZoom(Math.max(min, Math.min(max, ratio)));
         } else if (useCamera2) {
             if (camera2SessionCurrent == null) return;
             float min = camera2SessionCurrent.getMinZoom();
             float max = camera2SessionCurrent.getMaxZoom();
             if (max <= min) return;
-            float ratio = singleZoomStartRatio + (dyPx / travel) * (max - min);
+            float ratio = singleZoomStartRatio * (float) Math.pow(max / min, dyPx / travel);
             ratio = Utilities.clamp(ratio, max, min);
-            camera2SessionCurrent.setZoom(ratio);
+            requestSmoothRoundZoom(ratio);
         } else {
             if (cameraSession == null) return;
             float v = singleZoomStartRatio + (dyPx / travel);
             v = Utilities.clamp(v, 1f, 0f);
-            legacyZoom = v;
-            cameraSession.setZoom(v);
+            requestSmoothRoundZoom(v);
         }
     }
 
     ValueAnimator finishZoomTransition;
 
+    private final app.nimarkogram.messenger.camera.RoundZoomSpring roundZoomSpring =
+            new app.nimarkogram.messenger.camera.RoundZoomSpring();
+    private final app.nimarkogram.messenger.camera.RoundZoomGestureFilter roundZoomGestureFilter =
+            new app.nimarkogram.messenger.camera.RoundZoomGestureFilter();
+    private boolean roundZoomSpringRunning;
+    private Object roundZoomSession;
+    private long roundZoomFrameTime;
+    private final android.view.Choreographer.FrameCallback roundZoomFrame = new android.view.Choreographer.FrameCallback() {
+        @Override public void doFrame(long frameTimeNanos) {
+            if (!roundZoomSpringRunning) return;
+            if (!recording || cancelled || roundZoomSession != roundZoomSessionIdentity()) {
+                stopRoundZoomSpring();
+                return;
+            }
+            long now = frameTimeNanos;
+            float value = roundZoomSpring.step((now - roundZoomFrameTime) / 1_000_000_000.0);
+            roundZoomFrameTime = now;
+            if (useCameraX) {
+                requestRoundCameraXZoom(value);
+            } else if (useCamera2) {
+                camera2SessionCurrent.setZoom(Utilities.clamp(value,
+                        camera2SessionCurrent.getMaxZoom(), camera2SessionCurrent.getMinZoom()));
+            } else {
+                legacyZoom = Utilities.clamp(value - 1f, 1f, 0f);
+                cameraSession.setZoom(legacyZoom);
+            }
+            if (roundZoomSpring.settled()) {
+                roundZoomSpringRunning = false;
+            } else {
+                android.view.Choreographer.getInstance().postFrameCallback(this);
+            }
+        }
+    };
+    private Object roundZoomSessionIdentity() {
+        return useCameraX ? videoMessagesHelper.getCurrentSession()
+                : useCamera2 ? camera2SessionCurrent : cameraSession;
+    }
+    private void stopRoundZoomSpring() {
+        android.view.Choreographer.getInstance().removeFrameCallback(roundZoomFrame);
+        roundZoomSpringRunning = false;
+        roundZoomSession = null;
+    }
+    private void requestSmoothRoundZoom(float target) {
+        if (!recording || cancelled || Float.isNaN(target) || Float.isInfinite(target)) return;
+        Object session = roundZoomSessionIdentity();
+        if (session == null) return;
+        float offset = useCameraX || useCamera2 ? 0f : 1f;
+        if (!roundZoomSpringRunning || roundZoomSession != session) {
+            stopRoundZoomSpring();
+            roundZoomSpring.reset(currentRoundZoomRatio() + offset);
+            roundZoomSession = session;
+            roundZoomFrameTime = System.nanoTime();
+            roundZoomSpringRunning = true;
+            android.view.Choreographer.getInstance().postFrameCallback(roundZoomFrame);
+        }
+        roundZoomSpring.target(target + offset);
+    }
     public void finishZoom() {
-        if (finishZoomTransition != null) {
-            return;
-        }
-
-        if (useCameraX) {
-            float current = currentRoundZoomRatio();
-            float min = videoMessagesHelper.getMinZoomRatio();
-            float max = videoMessagesHelper.getMaxZoomRatio();
-            // CameraX exposes the rear logical camera's ultra-wide sensor as a
-            // sub-1x zoom range. Pinch used to spring back to the gesture's
-            // starting ratio here, immediately undoing a successful physical
-            // switch on OPPO devices. Keep the absolute ratio just like the
-            // one-finger zoom gesture and make it the base of the next pinch.
-            float target = Math.max(min, Math.min(max, current));
-            requestRoundCameraXZoom(target);
-            cameraXPinchStartRatio = target;
-            return;
-        }
-
-        float zoom;
-        if (useCamera2) {
-            if (camera2SessionCurrent == null) return;
-            zoom = Utilities.clamp(pinchScale, camera2SessionCurrent.getMaxZoom(), camera2SessionCurrent.getMinZoom());
-        } else {
-            zoom = Math.min(1f, Math.max(0, pinchScale - 1f));
-        }
-
-        if (zoom > 0f) {
-            finishZoomTransition = ValueAnimator.ofFloat(zoom, 0);
-            finishZoomTransition.addUpdateListener(valueAnimator -> {
-                if (useCamera2) {
-                    if (camera2SessionCurrent != null) {
-                        camera2SessionCurrent.setZoom((float) valueAnimator.getAnimatedValue());
-                    }
-                } else {
-                    if (cameraSession != null) {
-                        cameraSession.setZoom((float) valueAnimator.getAnimatedValue());
-                    }
-                }
-            });
-            finishZoomTransition.addListener(new AnimatorListenerAdapter() {
-                @Override
-                public void onAnimationEnd(Animator animation) {
-                    if (finishZoomTransition != null) {
-                        finishZoomTransition = null;
-                    }
-                }
-            });
-
-            finishZoomTransition.setDuration(350);
-            finishZoomTransition.setInterpolator(CubicBezierInterpolator.DEFAULT);
-            finishZoomTransition.start();
-        }
+        cameraXPinchStartRatio = currentRoundZoomRatio();
     }
 
     public interface Delegate {

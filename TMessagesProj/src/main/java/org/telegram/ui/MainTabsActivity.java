@@ -282,6 +282,9 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
             }
         };
     }
+    public int getNavigationBackgroundColor() {
+        return ColorUtils.setAlphaComponent(getEstBackgroundColor(), 255);
+    }
 
     private int getEstBackgroundColor() {
         final float whiteSurfaceVisibility = viewPager == null ? 1f : Math.max(

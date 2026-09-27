@@ -60,6 +60,7 @@ public class CameraPreferencesActivity extends NimarkoUniversalPreferencesActivi
     private final int roundVideoSizeRow = 17;
     private final int roundVideoBitrateRow = 18;
     private final int roundVideoSettingsRow = 19;
+    private final int smoothCameraModuleTransitionsRow = 20;
 
     private boolean cameraImprovementsExpanded = false;
 
@@ -122,6 +123,9 @@ public class CameraPreferencesActivity extends NimarkoUniversalPreferencesActivi
             );
         }
         if (cameraX) {
+            items.add(SettingsHelper.asSwitchCG(smoothCameraModuleTransitionsRow,
+                    getString(R.string.NM_CAM_SmoothModules), getString(R.string.NM_CAM_SmoothModulesDesc))
+                    .setChecked(NimarkoConfig.smoothCameraModuleTransitions));
             items.add(SettingsHelper.asSwitchCG(startFromUltraWideRow, getString(R.string.CP_CameraUW), getString(R.string.CP_CameraUW_Desc))
                     .setChecked(app.nimarkogram.messenger.NimarkoConfig.startFromUltraWideCam)
             );
@@ -201,6 +205,9 @@ public class CameraPreferencesActivity extends NimarkoUniversalPreferencesActivi
                 NimarkoConfig.setVideoMessagesCamera(i);
                 SettingsHelper.updateButtonValue(view, getRoundCameraText());
             });
+        } else if (item.id == smoothCameraModuleTransitionsRow) {
+            NimarkoConfig.toggleSmoothCameraModuleTransitions();
+            updateCheckState(view, NimarkoConfig.smoothCameraModuleTransitions);
         } else if (item.id == startFromUltraWideRow) {
             NimarkoConfig.toggleStartFromUltraWideCam();
             updateCheckState(view, app.nimarkogram.messenger.NimarkoConfig.startFromUltraWideCam);

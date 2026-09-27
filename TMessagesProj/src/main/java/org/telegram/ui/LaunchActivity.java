@@ -838,7 +838,8 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
                         if (AndroidUtilities.isTablet()) return;
                         if (!onBackPressed(false)) return;
                         if (actionBarLayout != null) {
-                            boolean started = actionBarLayout.onBackStarted(backEvent.getTouchX(), backEvent.getTouchY());
+                            boolean started = actionBarLayout.onBackStarted(backEvent.getTouchX(), backEvent.getTouchY(),
+                                    backEvent.getSwipeEdge() == BackEvent.EDGE_LEFT);
                             if (started && !locked) {
                                 locker.lock();
                                 locked = true;

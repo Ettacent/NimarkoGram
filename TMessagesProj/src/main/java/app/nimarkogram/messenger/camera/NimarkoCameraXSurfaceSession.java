@@ -401,7 +401,7 @@ public final class NimarkoCameraXSurfaceSession {
     }
 
     public void setZoomRatio(float ratio) {
-        if (!closed) controller.setZoomRatio(ratio);
+        if (!closed) controller.setAnimatedZoomRatio(ratio);
     }
 
     public float getZoomRatio() {
