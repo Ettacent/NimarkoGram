@@ -1,4 +1,26 @@
- 
+/*
+ * NimarkoGram bulletin creator.
+ *
+ * Ported from Cherrygram's CGBulletinCreator (uz.unnarsx.cherrygram.core.ui).
+ * Bundles the three canonical bulletins used across CG preference screens:
+ *   - createRestartBulletin     — info-tip with "Restart" action that hands
+ *                                 off to AppRestartHelper.restartApp.
+ *   - createDebugSuccessBulletin — green-tick success toast.
+ *   - createSwitchAccountBulletin — chats-style "switched to <user>" toast
+ *                                  triggered after an account hop.
+ *
+ * Differences vs CG:
+ *   - createRequireDonateBulletin is dropped (NG has no donate flow).
+ *   - createRestartBulletin uses R.raw.info + NM_RestartRequired/NM_Restart
+ *     string keys (NG already standardised on these — see
+ *     BasePreferencesActivity.showRestartBulletin) instead of CG's
+ *     chats_infotip + CG_RestartToApply.
+ *   - Restart action calls the trampoline-based AppRestartHelper.restartApp
+ *     under extera.utils (NG-side port of CG's core.helpers.AppRestartHelper).
+ *   - CG_SwitchedToAccount is replaced with formatString-on-the-raw text
+ *     because NG has no equivalent string resource; renders the same
+ *     "Switched to <bold>Name</bold>" body.
+ */
 package app.nimarkogram.messenger.ui
 
 import org.telegram.messenger.AndroidUtilities
@@ -11,18 +33,11 @@ import org.telegram.tgnet.TLRPC
 import org.telegram.ui.ActionBar.BaseFragment
 import org.telegram.ui.Components.Bulletin
 import org.telegram.ui.Components.BulletinFactory
-import app.nimarkogram.messenger.utils.AppRestartHelper
 
 object BulletinCreator {
 
     fun createRestartBulletin(fragment: BaseFragment) {
-        BulletinFactory.of(fragment).createSimpleBulletin(
-            R.raw.info,
-            getString(R.string.NM_RestartRequired),
-            getString(R.string.NM_Restart)
-        ) {
-            AppRestartHelper.restartApp(fragment.context)
-        }.show()
+        RestartBulletin.show(fragment)
     }
 
     fun createDebugSuccessBulletin(fragment: BaseFragment) {

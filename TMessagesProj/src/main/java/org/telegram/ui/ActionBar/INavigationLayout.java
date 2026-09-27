@@ -52,6 +52,7 @@ public interface INavigationLayout {
     float getThemeAnimationValue();
     void setFragmentStackChangedListener(Runnable onFragmentStackChanged);
     boolean isTransitionAnimationInProgress();
+    default boolean isMaterialNavigationEnabled() { return false; }
     void resumeDelayedFragmentAnimation();
     boolean allowSwipe();
 

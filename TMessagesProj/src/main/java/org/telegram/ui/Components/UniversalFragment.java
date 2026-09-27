@@ -41,15 +41,7 @@ public abstract class UniversalFragment extends BaseFragment {
     }
 
     public void showRestartBulletin() {
-        org.telegram.ui.Components.BulletinFactory.of(this).createSimpleBulletin(
-                org.telegram.messenger.R.raw.info,
-                org.telegram.messenger.LocaleController.getString(org.telegram.messenger.R.string.NM_RestartRequired),
-                org.telegram.messenger.LocaleController.getString(org.telegram.messenger.R.string.NM_Restart),
-                () -> {
-                    android.content.Context ctx = getParentActivity() != null ? getParentActivity() : getContext();
-                    app.nimarkogram.messenger.utils.AppRestartHelper.triggerRebirth(ctx);
-                }
-        ).show();
+        app.nimarkogram.messenger.ui.RestartBulletin.show(this);
     }
 
     @Override
@@ -79,6 +71,10 @@ public abstract class UniversalFragment extends BaseFragment {
 
         listView = new UniversalRecyclerView(this, this::fillItemsInternal, this::onClick, this::onLongClick) {
             @Override
+            protected void onMeasure(int widthSpec, int heightSpec) {
+                super.onMeasure(widthSpec, heightSpec);
+            }
+            @Override
             protected void onLayout(boolean changed, int l, int t, int r, int b) {
                 super.onLayout(changed, l, t, r, b);
                 savedScrollPosition = -1;
@@ -99,7 +95,7 @@ public abstract class UniversalFragment extends BaseFragment {
         org.telegram.ui.Components.Bulletin.addDelegate(this, new org.telegram.ui.Components.Bulletin.Delegate() {
             @Override
             public int getBottomOffset(int tag) {
-                return 0;
+                return getBottomInset();
             }
 
             @Override

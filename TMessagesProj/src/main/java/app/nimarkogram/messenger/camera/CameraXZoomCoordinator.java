@@ -21,7 +21,6 @@ import java.util.concurrent.Executor;
 
 final class CameraXZoomCoordinator {
 
-    private static final float RATIO_EPSILON = 0.0015f;
     private final String operation;
     private final Executor mainExecutor = command -> AndroidUtilities.runOnUIThread(command);
     private final Choreographer.FrameCallback frameCallback = frameTimeNanos -> {
@@ -78,6 +77,16 @@ final class CameraXZoomCoordinator {
     }
 
     void requestZoomRatio(float ratio) {
+        requestZoomRatio(ratio, false);
+    }
+    void requestAnimatedZoomRatio(float ratio) {
+        if (Looper.myLooper() != Looper.getMainLooper()) {
+            requestZoomRatio(ratio);
+            return;
+        }
+        requestZoomRatio(ratio, true);
+    }
+    private void requestZoomRatio(float ratio, boolean animationFrame) {
         Camera targetCamera = camera;
         if (targetCamera == null || !isFinite(ratio)) {
             if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("CXZoom request ignored camera="
@@ -97,7 +106,17 @@ final class CameraXZoomCoordinator {
                     + " clamped=" + requestedRatio
                     + " range=" + state.getMinZoomRatio() + ".."
                     + state.getMaxZoomRatio() + " ready=" + ready);
-            if (ready) scheduleForNextFrame();
+            if (ready) {
+                if (animationFrame) {
+                    if (frameCallbackPosted) {
+                        Choreographer.getInstance().removeFrameCallback(frameCallback);
+                        frameCallbackPosted = false;
+                    }
+                    dispatchLatest();
+                } else {
+                    scheduleForNextFrame();
+                }
+            }
         } catch (Throwable error) {
             FileLog.e(operation + " state lookup failed", error);
         }
@@ -110,8 +129,9 @@ final class CameraXZoomCoordinator {
     private void scheduleForNextFrame() {
         if (!ready || camera == null || frameCallbackPosted) return;
         frameCallbackPosted = true;
+        final long token = attachmentToken;
         AndroidUtilities.runOnUIThread(() -> {
-            if (!frameCallbackPosted) return;
+            if (!frameCallbackPosted || attachmentToken != token) return;
             try {
                 Choreographer.getInstance().postFrameCallback(frameCallback);
             } catch (Throwable error) {
@@ -127,8 +147,7 @@ final class CameraXZoomCoordinator {
             return;
         }
         final float targetRatio = requestedRatio;
-        if (isFinite(submittedRatio)
-                && Math.abs(targetRatio - submittedRatio) <= RATIO_EPSILON) {
+        if (targetRatio == submittedRatio) {
             return;
         }
 
@@ -164,7 +183,7 @@ final class CameraXZoomCoordinator {
                     FileLog.e(operation + " failed", cause);
                 }
             }
-            if (Math.abs(requestedRatio - submittedRatio) > RATIO_EPSILON) {
+            if (requestedRatio != submittedRatio) {
                 scheduleForNextFrame();
             }
         }, mainExecutor);

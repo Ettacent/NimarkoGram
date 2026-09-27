@@ -1142,6 +1142,10 @@ public class NimarkoCameraXController implements CameraXProviderCoordinator.Owne
         if (camera == null || !boundCameraReady) return;
         zoomCoordinator.requestZoomRatio(ratio);
     }
+    public void setAnimatedZoomRatio(float ratio) {
+        if (boundCamera == null || !boundCameraReady) return;
+        zoomCoordinator.requestAnimatedZoomRatio(ratio);
+    }
 
     public float getZoomRatio() {
         if (boundCamera == null) return baseZoomRatio;

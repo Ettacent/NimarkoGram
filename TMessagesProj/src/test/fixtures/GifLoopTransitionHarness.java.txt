@@ -1,9 +1,18 @@
 import java.io.File;
+import java.lang.ref.WeakReference;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.*;
 
 public class Harness {
+    // Parent identity bookkeeping is external to the decoder/loop under test.
+    static class ReferenceList<T> extends ArrayList<T> {
+        ReferenceList(boolean weak) {}
+        @Override public boolean add(T value) {
+            for (T existing : this) if (existing == value) return false;
+            return super.add(value);
+        }
+    }
     @interface AnyThread {} @interface UiThread {} @interface WorkerThread {} @interface Nullable {}
     static int dp(int n) { return n; }
     static void check(boolean value, String message) { if (!value) throw new AssertionError(message); }

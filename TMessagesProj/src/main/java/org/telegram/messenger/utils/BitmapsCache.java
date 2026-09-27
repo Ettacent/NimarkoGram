@@ -178,6 +178,9 @@ public class BitmapsCache {
     }
 
     public void createCache() {
+        RandomAccessFile generationFile = null;
+        final CountDownLatch[] countDownLatch = new CountDownLatch[N];
+        final AtomicBoolean closed = new AtomicBoolean(false);
         try {
             if (file.exists()) {
                 RandomAccessFile randomAccessFile = null;
@@ -226,8 +229,11 @@ public class BitmapsCache {
                     }
                 }
             }
+            cacheCreated = false;
+            fileExist = false;
 
             RandomAccessFile randomAccessFile = new RandomAccessFile(file, "rw");
+            generationFile = randomAccessFile;
 
             if (sharedTools == null) {
                 sharedTools = new CacheGeneratorSharedTools();
@@ -235,7 +241,6 @@ public class BitmapsCache {
             sharedTools.allocate(h, w);
             Bitmap[] bitmap = sharedTools.bitmap;
             ImmutableByteArrayOutputStream[] byteArrayOutputStream = sharedTools.byteArrayOutputStream;
-            CountDownLatch[] countDownLatch = new CountDownLatch[N];
 
             ArrayList<FrameOffset> frameOffsets = new ArrayList<>();
             RandomAccessFile finalRandomAccessFile = randomAccessFile;
@@ -246,7 +251,6 @@ public class BitmapsCache {
             int index = 0;
             int framePosition = 0;
 
-            AtomicBoolean closed = new AtomicBoolean(false);
             source.prepareForGenerateCache();
 
             while (true) {
@@ -254,7 +258,8 @@ public class BitmapsCache {
                     try {
                         countDownLatch[index].await();
                     } catch (InterruptedException e) {
-                        e.printStackTrace();
+                        Thread.currentThread().interrupt();
+                        return;
                     }
                 }
 
@@ -263,28 +268,14 @@ public class BitmapsCache {
                         FileLog.d("cancelled cache generation");
                     }
                     closed.set(true);
-                    for (int i = 0; i < N; i++) {
-                        if (countDownLatch[i] != null) {
-                            try {
-                                countDownLatch[i].await();
-                            } catch (InterruptedException e) {
-                                e.printStackTrace();
-                            }
-                        }
-                        if (bitmap[i] != null) {
-                            try {
-                                bitmap[i].recycle();
-                            } catch (Exception e) {
-
-                            }
-                        }
-                    }
-                    randomAccessFile.close();
-                    source.releaseForGenerateCache();
                     return;
                 }
 
-                if (source.getNextFrame(bitmap[index]) != 1) {
+                int frameResult = source.getNextFrame(bitmap[index]);
+                if (frameResult < 0) {
+                    throw new IOException("Unable to decode sticker cache frame");
+                }
+                if (frameResult != 1) {
                     break;
                 }
                 countDownLatch[index] = new CountDownLatch(1);
@@ -293,41 +284,19 @@ public class BitmapsCache {
                 int finalIndex = index;
                 int finalFramePosition = framePosition;
                 RandomAccessFile finalRandomAccessFile1 = randomAccessFile;
-                bitmapCompressExecutor.execute(() -> {
-                    if (cancelled.get() || closed.get()) {
-                        return;
-                    }
-
-                    Bitmap.CompressFormat format = Bitmap.CompressFormat.WEBP;
-                    if (Build.VERSION.SDK_INT <= 28) {
-                        format = Bitmap.CompressFormat.PNG;
-                    }
-                    bitmap[finalIndex].compress(format, compressQuality, byteArrayOutputStream[finalIndex]);
-                    int size = byteArrayOutputStream[finalIndex].count;
-
-                    try {
-                        synchronized (mutex) {
-                            FrameOffset frameOffset = new FrameOffset(finalFramePosition);
-                            frameOffset.frameOffset = (int) finalRandomAccessFile1.length();
-
-                            frameOffsets.add(frameOffset);
-
-                            finalRandomAccessFile1.write(byteArrayOutputStream[finalIndex].buf, 0, size);
-                            frameOffset.frameSize = size;
-                            byteArrayOutputStream[finalIndex].reset();
-                        }
-                    } catch (IOException e) {
-                        e.printStackTrace();
-                        try {
-                            finalRandomAccessFile1.close();
-                        } catch (Exception e2) {
-                        } finally {
-                            closed.set(true);
-                        }
-                    }
+                final CountDownLatch frameCompleted = countDownLatch[finalIndex];
+                try {
+                    bitmapCompressExecutor.execute(() -> {
+                        compressFrame(bitmap[finalIndex], byteArrayOutputStream[finalIndex],
+                                finalRandomAccessFile1, finalFramePosition, frameOffsets,
+                                closed, frameCompleted);
+                    });
+                } catch (RuntimeException | OutOfMemoryError e) {
+                    closed.set(true);
 
                     countDownLatch[finalIndex].countDown();
-                });
+                    throw e;
+                }
 
                 index++;
                 framePosition++;
@@ -341,9 +310,14 @@ public class BitmapsCache {
                     try {
                         countDownLatch[i].await();
                     } catch (InterruptedException e) {
-                        e.printStackTrace();
+                        Thread.currentThread().interrupt();
+                        return;
                     }
                 }
+            }
+            if (closed.get() || cancelled.get() || frameOffsets.isEmpty()) {
+                randomAccessFile.close();
+                return;
             }
 
             int arrayOffset = (int) randomAccessFile.length();
@@ -376,7 +350,56 @@ public class BitmapsCache {
         } catch (IOException e) {
             e.printStackTrace();
         } finally {
+            closed.set(true);
+            boolean interrupted = false;
+            for (CountDownLatch task : countDownLatch) {
+                if (task == null) continue;
+                for (;;) {
+                    try {
+                        task.await();
+                        break;
+                    } catch (InterruptedException e) {
+                        interrupted = true;
+                    }
+                }
+            }
+            if (generationFile != null) {
+                try {
+                    generationFile.close();
+                } catch (IOException e) {
+                    FileLog.e(e);
+                }
+            }
             source.releaseForGenerateCache();
+            if (interrupted) Thread.currentThread().interrupt();
+        }
+    }
+    private void compressFrame(Bitmap bitmap, ImmutableByteArrayOutputStream output,
+                               RandomAccessFile target, int framePosition,
+                               ArrayList<FrameOffset> offsets, AtomicBoolean closed,
+                               CountDownLatch completed) {
+        try {
+            if (cancelled.get() || closed.get()) return;
+            Bitmap.CompressFormat format = Build.VERSION.SDK_INT <= 28
+                    ? Bitmap.CompressFormat.PNG : Bitmap.CompressFormat.WEBP;
+            output.reset();
+            if (!bitmap.compress(format, compressQuality, output) || output.count == 0) {
+                throw new IOException("Unable to encode sticker cache frame");
+            }
+            synchronized (mutex) {
+                if (cancelled.get() || closed.get()) return;
+                FrameOffset offset = new FrameOffset(framePosition);
+                offset.frameOffset = (int) target.length();
+                target.write(output.buf, 0, output.count);
+                offset.frameSize = output.count;
+                offsets.add(offset);
+            }
+        } catch (Exception | OutOfMemoryError e) {
+            closed.set(true);
+            FileLog.e(e);
+        } finally {
+            output.reset();
+            completed.countDown();
         }
     }
 

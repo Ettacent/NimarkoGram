@@ -89,7 +89,7 @@ public class Transitions {
         self.assertEqual(source.count("if (!isPhotoInPinchOverlay())"), 3)
         draw = block(source, "protected boolean drawPhotoImage(Canvas canvas)")
         self.assertIn("return false;", block(draw, "if (isPhotoInPinchOverlay())"))
-        self.assertLess(draw.index("if (isPhotoInPinchOverlay())"), draw.index("drawPhotoImageInternal(canvas)"))
+        self.assertLess(draw.index("if (isPhotoInPinchOverlay())"), draw.index("drawPhotoImageWithRoundVideoBackground(canvas,"))
 
     def test_hidden_image_capture_keeps_privacy_and_frame_guards(self):
         source = (UI / "Cells/ChatMessageCell.java").read_text()
@@ -101,10 +101,15 @@ public class Transitions {
                       "!SecretMediaViewer.getInstance().isShowingImage(currentMessageObject)",
                       "!StoryViewer.isShowingImage(currentMessageObject)"):
             self.assertIn(guard, draw)
-            self.assertLess(draw.index(guard), draw.index("if (drawingGlassBackdrop)"))
-        capture = block(draw, "if (drawingGlassBackdrop)")
+        self.assertNotIn("if (drawingGlassBackdrop)", draw)
+        capture = block(source, "public void drawPhotoViewerBackdrop(Canvas canvas)")
+        for guard in ("isPhotoInPinchOverlay()", "currentMessageObject.needDrawBluredPreview()",
+                      "currentMessageObject.hasMediaSpoilers()",
+                      "SecretMediaViewer.getInstance().isShowingImage(currentMessageObject)",
+                      "StoryViewer.isShowingImage(currentMessageObject)"):
+            self.assertLess(capture.index(guard), capture.index("photoImage.drawIgnoringVisibility(canvas)"))
         self.assertIn("photoImage.setSkipUpdateFrame(true)", capture)
-        self.assertIn("return drawn | photoImage.drawIgnoringVisibility(canvas)", capture)
+        self.assertIn("photoImage.drawIgnoringVisibility(canvas)", capture)
         self.assertNotIn("setVisible(true", draw)
 
 

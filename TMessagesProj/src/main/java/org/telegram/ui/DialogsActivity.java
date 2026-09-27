@@ -13946,6 +13946,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
 
     @Override
     public Animator getCustomSlideTransition(boolean topFragment, boolean backAnimation, float distanceToMove) {
+        if (getParentLayout() != null && getParentLayout().isMaterialNavigationEnabled()) return null;
         if (backAnimation) {
             slideBackTransitionAnimator = ValueAnimator.ofFloat(slideFragmentProgress, 1f);
             return slideBackTransitionAnimator;
@@ -13964,6 +13965,17 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
 
     @Override
     public void prepareFragmentToSlide(boolean topFragment, boolean beginSlide) {
+        if (getParentLayout() != null && getParentLayout().isMaterialNavigationEnabled()) {
+            if (slideBackTransitionAnimator != null) {
+                slideBackTransitionAnimator.cancel();
+                slideBackTransitionAnimator = null;
+            }
+            boolean wasSliding = isSlideBackTransition;
+            isSlideBackTransition = false;
+            if (wasSliding) setFragmentIsSliding(false);
+            setSlideTransitionProgress(1f);
+            return;
+        }
         if (!topFragment && beginSlide) {
             isSlideBackTransition = true;
             setFragmentIsSliding(true);
@@ -13976,7 +13988,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
     }
 
     private void setFragmentIsSliding(boolean sliding) {
-        if (SharedConfig.getDevicePerformanceClass() <= SharedConfig.PERFORMANCE_CLASS_AVERAGE || !LiteMode.isEnabled(LiteMode.FLAG_CHAT_SCALE)) {
+        if (sliding && (SharedConfig.getDevicePerformanceClass() <= SharedConfig.PERFORMANCE_CLASS_AVERAGE || !LiteMode.isEnabled(LiteMode.FLAG_CHAT_SCALE))) {
             return;
         }
         if (sliding) {
@@ -14024,6 +14036,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
 
     @Override
     public void onSlideProgress(boolean isOpen, float progress) {
+        if (getParentLayout() != null && getParentLayout().isMaterialNavigationEnabled()) return;
         if (SharedConfig.getDevicePerformanceClass() <= SharedConfig.PERFORMANCE_CLASS_LOW && !BuildVars.DEBUG_PRIVATE_VERSION) {
             return;
         }
@@ -14036,7 +14049,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
     }
 
     private void setSlideTransitionProgress(float progress) {
-        if (SharedConfig.getDevicePerformanceClass() <= SharedConfig.PERFORMANCE_CLASS_LOW && !BuildVars.DEBUG_PRIVATE_VERSION || slideFragmentProgress == progress) {
+        if (SharedConfig.getDevicePerformanceClass() <= SharedConfig.PERFORMANCE_CLASS_LOW && !BuildVars.DEBUG_PRIVATE_VERSION && progress != 1f || slideFragmentProgress == progress) {
             return;
         }
 

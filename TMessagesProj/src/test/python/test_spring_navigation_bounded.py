@@ -93,7 +93,7 @@ SEED
         cancellation = body(LAYOUT, "private void cancelActiveSlideTracking()")
         self.assertIn("animateBackEndAnimation(true, 0f);", cancellation)
         self.assertIn("animateBackEndAnimation(true, 0f);", body(LAYOUT, "public void onBackCancelled()"))
-        self.assertIn("finishSettlingSlideForNextBack();", body(LAYOUT, "public boolean onBackStarted("))
+        self.assertIn("finishSettlingSlideForNextBack();", body(LAYOUT, "public boolean onBackStarted(float touchX, float touchY, boolean fromLeftEdge)"))
         self.assertIn("finishSettlingSlideForNextBack();", body(LAYOUT, "public void onBackPressed()"))
 
 

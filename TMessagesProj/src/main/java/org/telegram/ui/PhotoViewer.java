@@ -2924,6 +2924,7 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
         public int starOffset;
         public boolean fadeIn;
         public boolean keepImageReceiverVisible;
+        public boolean clipTransitionToParent;
     }
 
     private static class TransitionGeometry {
@@ -19351,6 +19352,14 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
                     int[] coords2 = new int[2];
                     object.parentView.getLocationInWindow(coords2);
                     int clipTop = (int) (coords2[1] - 0 - (object.viewY + drawRegion.top) + object.clipTopAddition);
+                    if (object.clipTransitionToParent) {
+                        for (ClippingImageView imageView : animatingImageViews) {
+                            imageView.setTransitionViewport(
+                                    coords2[1] + object.clipTopAddition,
+                                    coords2[1] + object.parentView.getHeight() - object.clipBottomAddition,
+                                    windowView.getMeasuredHeight());
+                        }
+                    }
                     if (clipTop < 0) {
                         clipTop = 0;
                     }

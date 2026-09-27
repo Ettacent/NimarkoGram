@@ -11490,7 +11490,7 @@
     <string name="NM_HUB_Debug">Debug</string>
     <string name="NM_HUB_Experimental">Experimental</string>
 
-    <string name="NM_RestartRequired">Restart required to apply changes</string>
+    <string name="NM_RestartRequired">Restart required</string>
     <string name="NM_Restart">Restart</string>
 
     <!-- NimarkoGram message menu UX (drag-to-reorder, haptic, per-chat compact) -->
@@ -11736,6 +11736,7 @@
     <string name="EP_SlowNetworkMode">Weak network mode</string>
     <string name="EP_NavigationAnimationSpring">Spring</string>
     <string name="EP_NavigationAnimationBezier">Classic</string>
+    <string name="NimarkoNavigationAnimationMaterial">Material</string>
     <string name="EP_DownloadSpeedBoostExtreme">Extreme</string>
     <!-- Messages -->
     <string name="CP_MessageMenu">Message menu</string>
@@ -11878,7 +11879,7 @@
     <string name="CG_ReportDetailsCopied">Report details copied to clipboard.</string>
     <string name="CG_ResidentNotification">Show a resident notification</string>
     <string name="CG_Restart">Restart app</string>
-    <string name="CG_RestartToApply">Restart app to apply changes</string>
+    <string name="CG_RestartToApply">Restart required</string>
     <string name="CG_SaveSticker">Save sticker</string>
     <string name="CG_SearchFilter">Filter search results</string>
     <string name="CG_SearchFilter_Contacts">Contacts</string>
@@ -12497,4 +12498,6 @@
     <string name="RoundVideoComposition">Composition</string>
     <string name="RoundVideoCompositionEnabled">Round video styling</string>
     <string name="RoundVideoCompositionInfo">Disable styling to record a plain square without outside-circle blur, dimming or Telegram overlays.</string>
+    <string name="NM_CAM_SmoothModules">Smooth camera module transitions</string>
+    <string name="NM_CAM_SmoothModulesDesc">Blend between ultrawide and main cameras when zooming while recording video messages.</string>
 </resources>

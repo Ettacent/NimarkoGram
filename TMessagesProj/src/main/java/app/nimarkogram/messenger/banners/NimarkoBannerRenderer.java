@@ -60,8 +60,7 @@ public final class NimarkoBannerRenderer {
     private static final int BLUR_SR = 10;
     private static final double BLUR_INT = 4.0;
     private static final double BLUR_FADE_DUR = 0.5;
-    private static final int FREEZE_FADE = 1000;
-    private static final int VID_FADE = 1000;
+    private static final int VID_FADE = 700;
     private static final double BANNER_BLEED = 1.02;
     private static final int VID_HEIGHT_THRESHOLD = 8;
     private static final int BMP_MAX = 2048;
@@ -2300,7 +2299,7 @@ public final class NimarkoBannerRenderer {
         doFreezeSwap(tex, fv, old, VID_FADE);
     }
 
-    private static final long RESUME_FADE = 1000;
+    private static final long RESUME_FADE = VID_FADE;
 
     private void doFreezeSwap(final TextureView tex, final ImageView fv, final Bitmap old, final long dur) {
         try {

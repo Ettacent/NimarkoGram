@@ -29,10 +29,13 @@ class PhotoReturnSearchMotionTests(unittest.TestCase):
         self.assertIn("ChatMessageCell.drawingGlassBackdrop = previousCapture", capture)
         cell = (UI / "Cells/ChatMessageCell.java").read_text()
         photo = block(cell, "protected boolean drawPhotoImage(Canvas canvas)")
-        # Hidden source restoration is restricted to public, non-spoiler media.
-        self.assertLess(photo.index("!currentMessageObject.hasMediaSpoilers()"),
-                        photo.index("if (drawingGlassBackdrop)"))
-        self.assertIn("return drawn | photoImage.drawIgnoringVisibility(canvas)", photo)
+        # Capture-only pixels must never be recorded in the reusable cell node.
+        self.assertNotIn("if (drawingGlassBackdrop)", photo)
+        backdrop = block(cell, "public void drawPhotoViewerBackdrop(Canvas canvas)")
+        self.assertIn("currentMessageObject.hasMediaSpoilers()", backdrop)
+        self.assertIn("needDrawBluredPreview()", backdrop)
+        self.assertIn("photoImage.drawIgnoringVisibility(canvas)", backdrop)
+        self.assertIn("drawPhotoViewerBackdrop(blurCanvas, position)", capture)
         self.assertIn("photoImage.setAlpha(oldAlpha)", photo)
         self.assertIn("photoViewerVisible != wasPhotoViewerVisible", chat)
 

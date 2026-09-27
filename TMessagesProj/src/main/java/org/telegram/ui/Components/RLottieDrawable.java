@@ -93,7 +93,7 @@ public class RLottieDrawable extends BitmapDrawable implements Animatable, Bitma
 
     protected volatile boolean nextFrameIsLast;
 
-    private Runnable cacheGenerateTask;
+    private CacheGenerationTask cacheGenerateTask;
     protected Runnable loadFrameTask;
     private volatile Bitmap renderingBitmap;
     private volatile Bitmap nextRenderingBitmap;
@@ -133,7 +133,7 @@ public class RLottieDrawable extends BitmapDrawable implements Animatable, Bitma
     private static final Executor loadFrameRunnableQueue = Executors.newFixedThreadPool(4, r -> new Thread(r, "Lottie-" + threadId.getAndIncrement()));
     private static final Executor loadFrameRunnableQueueLimitFps = Executors.newFixedThreadPool(2, r -> new Thread(r, "LottieLow-" + threadId2.getAndIncrement()));
 
-    public static DispatchQueue lottieCacheGenerateQueue;
+    public static volatile DispatchQueue lottieCacheGenerateQueue;
 
     private File file;
     private boolean precache;
@@ -176,29 +176,44 @@ public class RLottieDrawable extends BitmapDrawable implements Animatable, Bitma
                 createCacheGenQueue();
             }
             BitmapsCache.incrementTaskCounter();
-            lottieCacheGenerateQueue.postRunnable(cacheGenerateTask = () -> {
-                try {
-                    BitmapsCache bitmapsCacheFinal = bitmapsCache;
-                    if (bitmapsCacheFinal != null) {
-                        bitmapsCacheFinal.createCache();
-                    }
-                } catch (Throwable ignoreThrowable) {
-
-                }
-                AndroidUtilities.runOnUIThread(uiRunnableCacheFinished);
-            });
+            cacheGenerateTask = new CacheGenerationTask();
+            lottieCacheGenerateQueue.postRunnable(cacheGenerateTask);
         }
     }
 
-    private final Runnable uiRunnableCacheFinished = this::uiRunnableCacheFinishedImpl;
-
-    @UiThread
-    private void uiRunnableCacheFinishedImpl() {
-        if (cacheGenerateTask != null) {
-            BitmapsCache.decrementTaskCounter();
-            cacheGenerateTask = null;
+    private final class CacheGenerationTask implements Runnable {
+        final AtomicInteger state = new AtomicInteger();
+        @Override
+        public void run() {
+            if (!state.compareAndSet(0, 1)) return;
+            try {
+                BitmapsCache cache = bitmapsCache;
+                if (cache != null) cache.createCache();
+            } catch (Throwable e) {
+                FileLog.e(e);
+            } finally {
+                AndroidUtilities.runOnUIThread(() -> uiRunnableCacheFinishedImpl(this));
+            }
         }
+    }
+    private void cancelQueuedCacheGeneration() {
+        CacheGenerationTask task = cacheGenerateTask;
+        if (task == null || !task.state.compareAndSet(0, 2)) return;
+        lottieCacheGenerateQueue.cancelRunnable(task);
+        cacheGenerateTask = null;
         generatingCache = false;
+        genCacheSend = false;
+        BitmapsCache.decrementTaskCounter();
+    }
+    @UiThread
+    private void uiRunnableCacheFinishedImpl(CacheGenerationTask task) {
+        if (cacheGenerateTask != task) return;
+        BitmapsCache.decrementTaskCounter();
+        cacheGenerateTask = null;
+        generatingCache = false;
+        if (!isRecycled && !destroyWhenDone && bitmapsCache != null && bitmapsCache.needGenCache()) {
+            allowDrawFramesWhileCacheGenerating = true;
+        }
         decodeFrameFinishedInternal();
         if (whenCacheDone != null) {
             whenCacheDone.run();
@@ -211,16 +226,14 @@ public class RLottieDrawable extends BitmapDrawable implements Animatable, Bitma
     BitmapsCache bitmapsCache;
     int generateCacheFramePointer;
 
-    public static void createCacheGenQueue() {
-        lottieCacheGenerateQueue = new DispatchQueue("cache generator queue");
+    public static synchronized void createCacheGenQueue() {
+        if (lottieCacheGenerateQueue == null) {
+            lottieCacheGenerateQueue = new DispatchQueue("cache generator queue");
+        }
     }
 
     protected final void checkRunningTasks() {
-        if (cacheGenerateTask != null) {
-            lottieCacheGenerateQueue.cancelRunnable(cacheGenerateTask);
-            BitmapsCache.decrementTaskCounter();
-            cacheGenerateTask = null;
-        }
+        cancelQueuedCacheGeneration();
         if (!hasParentView() && nextRenderingBitmap != null && loadFrameTask != null) {
             loadFrameTask = null;
             nextRenderingBitmap = null;
@@ -230,8 +243,9 @@ public class RLottieDrawable extends BitmapDrawable implements Animatable, Bitma
     protected void decodeFrameFinishedInternal() {
         if (destroyWhenDone) {
             checkRunningTasks();
-            if (loadFrameTask == null && cacheGenerateTask == null && nativePtr != null) {
-                recycleNativePtr(true);
+            if (loadFrameTask == null && cacheGenerateTask == null) {
+                recycle(true);
+                return;
             }
         }
         if ((nativePtr == null || fallbackCache) && bitmapsCache == null) {
@@ -284,8 +298,8 @@ public class RLottieDrawable extends BitmapDrawable implements Animatable, Bitma
         }
     }
 
-    private boolean genCacheSend;
-    private boolean allowDrawFramesWhileCacheGenerating;
+    private volatile boolean genCacheSend;
+    private volatile boolean allowDrawFramesWhileCacheGenerating;
 
     protected final Runnable loadFrameRunnable = this::loadFrameRunnableInternal;
 
@@ -741,13 +755,7 @@ public class RLottieDrawable extends BitmapDrawable implements Animatable, Bitma
             && (parent == null || !parent.isAttachedToWindow());
 
         if (mustCancel) {
-            if (cacheGenerateTask != null) {
-                lottieCacheGenerateQueue.cancelRunnable(cacheGenerateTask);
-                BitmapsCache.decrementTaskCounter();
-                cacheGenerateTask = null;
-            }
-            generatingCache = false;
-            genCacheSend = false;
+            cancelQueuedCacheGeneration();
         }
     }
 

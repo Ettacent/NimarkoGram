@@ -15489,36 +15489,15 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
                 x = (int) (photoImage.getImageX() + photoImage.getImageWidth() + dp(10));
                 titleY = (int) (photoImage.getImageY() + dp(8));
                 subtitleY = (int) (photoImage.getImageY() + (docTitleLayout != null ? docTitleLayout.getLineBottom(docTitleLayout.getLineCount() - 1) + dp(13) : dp(8)));
+                radialProgress.setColorKeys(Theme.key_chat_mediaLoaderPhoto, Theme.key_chat_mediaLoaderPhotoSelected, Theme.key_chat_mediaLoaderPhotoIcon, Theme.key_chat_mediaLoaderPhotoIconSelected);
+                radialProgress.setProgressColor(getThemedColor(Theme.key_chat_mediaProgress));
+                videoRadialProgress.setColorKeys(Theme.key_chat_mediaLoaderPhoto, Theme.key_chat_mediaLoaderPhotoSelected, Theme.key_chat_mediaLoaderPhotoIcon, Theme.key_chat_mediaLoaderPhotoIconSelected);
+                videoRadialProgress.setProgressColor(getThemedColor(Theme.key_chat_mediaProgress));
                 boolean documentControlsReady = imageDrawn
                         && photoImage.hasBitmapImage()
                         && photoImage.getCurrentAlpha() >= 0.999f;
-                if (!documentControlsReady) {
-                    if (currentMessageObject.isOutOwner()) {
-                        radialProgress.setColorKeys(Theme.key_chat_outLoader, Theme.key_chat_outLoaderSelected, Theme.key_chat_outMediaIcon, Theme.key_chat_outMediaIconSelected);
-                        radialProgress.setProgressColor(getThemedColor(isDrawSelectionBackground() ? Theme.key_chat_outFileProgressSelected : Theme.key_chat_outFileProgress));
-                        videoRadialProgress.setColorKeys(Theme.key_chat_outLoader, Theme.key_chat_outLoaderSelected, Theme.key_chat_outMediaIcon, Theme.key_chat_outMediaIconSelected);
-                        videoRadialProgress.setProgressColor(getThemedColor(isDrawSelectionBackground() ? Theme.key_chat_outFileProgressSelected : Theme.key_chat_outFileProgress));
-                    } else if (linkLine != null && hasLinkPreview) {
-                        radialProgress.setColors(linkLine.getColor(), linkLine.getColor(), Theme.blendOver(0xffffffff, Theme.multAlpha(linkLine.getColor(), .01f)), Theme.blendOver(0xffffffff, Theme.multAlpha(linkLine.getColor(), .05f)));
-                        radialProgress.setProgressColor(Theme.blendOver(0xffffffff, Theme.multAlpha(linkLine.getColor(), .01f)));
-                        videoRadialProgress.setColors(linkLine.getColor(), linkLine.getColor(), Theme.blendOver(0xffffffff, Theme.multAlpha(linkLine.getColor(), .01f)), Theme.blendOver(0xffffffff, Theme.multAlpha(linkLine.getColor(), .05f)));
-                        videoRadialProgress.setProgressColor(Theme.blendOver(0xffffffff, Theme.multAlpha(linkLine.getColor(), .01f)));
-                    } else {
-                        radialProgress.setColorKeys(Theme.key_chat_inLoader, Theme.key_chat_inLoaderSelected, Theme.key_chat_inMediaIcon, Theme.key_chat_inMediaIconSelected);
-                        radialProgress.setProgressColor(getThemedColor(isDrawSelectionBackground() ? Theme.key_chat_inFileProgressSelected : Theme.key_chat_inFileProgress));
-                        videoRadialProgress.setColorKeys(Theme.key_chat_inLoader, Theme.key_chat_inLoaderSelected, Theme.key_chat_inMediaIcon, Theme.key_chat_inMediaIconSelected);
-                        videoRadialProgress.setProgressColor(getThemedColor(isDrawSelectionBackground() ? Theme.key_chat_inFileProgressSelected : Theme.key_chat_inFileProgress));
-                    }
-
-                } else {
-                    radialProgress.setColorKeys(Theme.key_chat_mediaLoaderPhoto, Theme.key_chat_mediaLoaderPhotoSelected, Theme.key_chat_mediaLoaderPhotoIcon, Theme.key_chat_mediaLoaderPhotoIconSelected);
-                    radialProgress.setProgressColor(getThemedColor(Theme.key_chat_mediaProgress));
-                    videoRadialProgress.setColorKeys(Theme.key_chat_mediaLoaderPhoto, Theme.key_chat_mediaLoaderPhotoSelected, Theme.key_chat_mediaLoaderPhotoIcon, Theme.key_chat_mediaLoaderPhotoIconSelected);
-                    videoRadialProgress.setProgressColor(getThemedColor(Theme.key_chat_mediaProgress));
-
-                    if (buttonState == -1 && radialProgress.getIcon() != MediaActionDrawable.ICON_NONE) {
-                        radialProgress.setIcon(MediaActionDrawable.ICON_NONE, true, false);
-                    }
+                if (documentControlsReady && buttonState == -1 && radialProgress.getIcon() != MediaActionDrawable.ICON_NONE) {
+                    radialProgress.setIcon(MediaActionDrawable.ICON_NONE, true, false);
                 }
             } else {
                 setDrawableBounds(menuDrawable, otherX = (int) buttonX + backgroundWidth - dp(currentMessageObject.type == MessageObject.TYPE_TEXT ? 58 : 48) - dp(hasLinkPreview ? 18 + 6 : 0), otherY = (int) buttonY - dp(2));
@@ -30083,10 +30062,6 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
                     && !currentMessageObject.hasMediaSpoilers()
                     && !SecretMediaViewer.getInstance().isShowingImage(currentMessageObject)
                     && !StoryViewer.isShowingImage(currentMessageObject)) {
-                if (drawingGlassBackdrop) {
-                    photoImage.setSkipUpdateFrame(true);
-                    return drawn | photoImage.drawIgnoringVisibility(canvas);
-                }
                 float clipTop = delegate.getPhotoViewerClipTop() - getY() - getPaddingTop();
                 float clipBottom = delegate.getPhotoViewerClipBottom() - getY() - getPaddingTop();
                 if (clipTop > photoImage.getImageY()) {
@@ -30118,6 +30093,27 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
             if (roundVideoThumbnailAlpha > 0f && roundVideoThumbnailAlpha < 1f) {
                 invalidate();
             }
+        }
+    }
+    public void drawPhotoViewerBackdrop(Canvas canvas) {
+        if (delegate == null || currentMessageObject == null || isPhotoInPinchOverlay()
+                || !PhotoViewer.isShowingImage(currentMessageObject)
+                || currentMessageObject.needDrawBluredPreview()
+                || currentMessageObject.hasMediaSpoilers()
+                || SecretMediaViewer.getInstance().isShowingImage(currentMessageObject)
+                || StoryViewer.isShowingImage(currentMessageObject)) {
+            return;
+        }
+        final float top = delegate.getPhotoViewerClipTop() - getY() - getPaddingTop();
+        final float bottom = delegate.getPhotoViewerClipBottom() - getY() - getPaddingTop();
+        final int save = canvas.save();
+        try {
+            canvas.clipRect(0, Math.max(0f, top), getWidth(), Math.min(getHeight(), bottom));
+            photoImage.setSkipUpdateFrame(true);
+            photoImage.drawIgnoringVisibility(canvas);
+        } finally {
+            photoImage.setSkipUpdateFrame(skipFrameUpdate);
+            canvas.restoreToCount(save);
         }
     }
     private boolean drawPhotoImageWithRoundVideoBackground(Canvas canvas, float thumbnailAlpha) {

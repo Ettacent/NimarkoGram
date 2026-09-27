@@ -57,9 +57,11 @@ class RLottieReadiness {
             result = subprocess.run(["java", "-ea", "-cp", directory, "RLottieReadiness"],
                                     capture_output=True, text=True, timeout=10)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        decode = method(source, "protected int loadFrameRunnableImpl()")
-        self.assertLess(decode.index("if (result < 0)"), decode.index("nextRenderingBitmap = backgroundBitmap;"))
-        self.assertIn("return LOAD_FRAME_RESULT_ERROR;", decode)
+        decode = method(source, "private int loadFrameRunnableImpl()")
+        self.assertLess(decode.index("if (result == LOAD_FRAME_RESULT_OK)"), decode.index("nextRenderingBitmap = bitmap;"))
+        decoder = method(source, "protected int loadFrameRunnableImpl(Bitmap bitmap, boolean needClearBitmap)")
+        self.assertIn("if (result < 0)", decoder)
+        self.assertIn("return LOAD_FRAME_RESULT_ERROR;", decoder)
 
     def test_panel_frame_snapshots_are_released_and_rebound(self):
         for panel in ("EmojiPacksAlert", "StickerMasksAlert"):

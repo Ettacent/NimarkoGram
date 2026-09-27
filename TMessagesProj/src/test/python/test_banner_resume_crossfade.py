@@ -23,7 +23,8 @@ class BannerResumeCrossfadeTests(unittest.TestCase):
         self.assertIn('profileCoveredByNavigation = false', method(SOURCE, 'private void resetState()'))
 
     def test_retained_surface_resume_and_interruptions(self):
-        production = re.search(r'private static final long RESUME_FADE = \d+;', SOURCE)[0] + '\n'
+        production = re.search(r'private static final int VID_FADE = \d+;', SOURCE)[0] + '\n'
+        production += re.search(r'private static final long RESUME_FADE = VID_FADE;', SOURCE)[0] + '\n'
         production += '\n'.join(method(SOURCE, name) for name in (
             'private void resumePlayerIfReady()', 'private void cancelResumeCapture()',
             'private void finishResumeCapture(', 'private void armResumeCrossfade(Bitmap',
@@ -90,7 +91,7 @@ public class ResumeTest {
   r.appPaused=false;r.startResumeCrossfadeOnFrame();
   check(!r.resumeFadeWaitingForFrame,"first resumed frame starts fade once");
   check(r.vidFreeze.alpha==1&&r.vidFreeze.animator.target==0,"cover fades out, not in");
-  check(r.vidFreeze.animator.duration==1000,"resume duration");
+  check(r.vidFreeze.animator.duration==700,"resume duration");
   check(!r.waitFrame&&r.vidFirstFrameTime==10,"no second first-frame dependency");
   r.resumePlayerIfReady();check(r.captures==1,"playing video not recaptured");
   r.vidFreeze.animator.finish();check(b.recycled&&r.vidFreeze.bitmap==null,"completed cover released");
@@ -114,7 +115,7 @@ public class ResumeTest {
   r.onProfileFullyVisible(r.currentTopView,1,42);r.onProfileFullyVisible(r.currentTopView,1,42);
   check(r.captures==1&&!r.profileCoveredByNavigation,"one capture after transition completion");
   b=new Bitmap();r.callback.onFrame(b);r.startResumeCrossfadeOnFrame();
-  check(r.vidFreeze.animator.duration==1000,"full fade starts after channel returns");
+  check(r.vidFreeze.animator.duration==700,"full fade starts after channel returns");
   for(int mode=0;mode<8;mode++){
    r=new ResumeTest();r.resumePlayerIfReady();VideoFrameCallback late=r.callback;
    switch(mode){

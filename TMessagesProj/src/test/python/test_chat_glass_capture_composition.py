@@ -55,6 +55,7 @@ public class Transitions {
    void capture(Canvas c,RectF r){edgeCaptures++;}
  }
  ListView chatListView=new ListView();
+ void drawPhotoViewerBackdrop(Canvas c, RectF r) {}
  boolean quickRejectChild(View child,RectF position){return child.outside;}
  BODY
  static void check(boolean b){if(!b)throw new AssertionError();}

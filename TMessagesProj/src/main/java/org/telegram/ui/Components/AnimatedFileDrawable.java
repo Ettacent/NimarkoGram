@@ -176,34 +176,53 @@ public final class AnimatedFileDrawable extends BitmapDrawable implements Animat
 
 
     boolean generatingCache;
-    Runnable cacheGenRunnable;
+    private CacheGenerationTask cacheGenRunnable;
+    private volatile boolean cacheGenerationFailed;
     private final Runnable uiRunnableGenerateCache = this::uiRunnableGenerateCacheImpl;
 
     @UiThread
     private void uiRunnableGenerateCacheImpl() {
-        if (!isRecycled && !destroyWhenDone && !generatingCache && cacheGenRunnable == null) {
+        if (!isRecycled && !destroyWhenDone && !generatingCache && cacheGenRunnable == null && !cacheGenerationFailed) {
             if (RLottieDrawable.lottieCacheGenerateQueue == null) {
                 RLottieDrawable.createCacheGenQueue();
             }
             generatingCache = true;
             loadFrameTask = null;
             BitmapsCache.incrementTaskCounter();
-            RLottieDrawable.lottieCacheGenerateQueue.postRunnable(cacheGenRunnable = () -> {
-                bitmapsCache.createCache();
-                AndroidUtilities.runOnUIThread(() -> {
-                    if (cacheGenRunnable != null) {
-                        BitmapsCache.decrementTaskCounter();
-                        cacheGenRunnable = null;
-                    }
-                    generatingCache = false;
-                    chekDestroyDecoder();
-                    if (isRecycled || destroyWhenDone) {
-                        return;
-                    }
-                    scheduleNextGetFrame();
-                });
-            });
+            cacheGenRunnable = new CacheGenerationTask();
+            RLottieDrawable.lottieCacheGenerateQueue.postRunnable(cacheGenRunnable);
         }
+    }
+    private final class CacheGenerationTask implements Runnable {
+        final java.util.concurrent.atomic.AtomicInteger state = new java.util.concurrent.atomic.AtomicInteger();
+        @Override
+        public void run() {
+            if (!state.compareAndSet(0, 1)) return;
+            try {
+                bitmapsCache.createCache();
+            } catch (Throwable e) {
+                FileLog.e(e);
+            } finally {
+                AndroidUtilities.runOnUIThread(() -> finishCacheGeneration(this));
+            }
+        }
+    }
+    private void finishCacheGeneration(CacheGenerationTask task) {
+        if (cacheGenRunnable != task) return;
+        BitmapsCache.decrementTaskCounter();
+        cacheGenRunnable = null;
+        generatingCache = false;
+        cacheGenerationFailed = bitmapsCache.needGenCache();
+        chekDestroyDecoder();
+        if (!isRecycled && !destroyWhenDone) scheduleNextGetFrame();
+    }
+    private void cancelQueuedCacheGeneration() {
+        CacheGenerationTask task = cacheGenRunnable;
+        if (task == null || !task.state.compareAndSet(0, 2)) return;
+        RLottieDrawable.lottieCacheGenerateQueue.cancelRunnable(task);
+        BitmapsCache.decrementTaskCounter();
+        cacheGenRunnable = null;
+        generatingCache = false;
     }
 
     @UiThread
@@ -363,7 +382,7 @@ public final class AnimatedFileDrawable extends BitmapDrawable implements Animat
         }
         try {
             final long frameGeneration = gifPlaybackGeneration;
-            if (bitmapsCache != null) {
+            if (bitmapsCache != null && !cacheGenerationFailed) {
                 if (backgroundBuffer == null) {
                     backgroundBuffer = takeUnusedBuffer();
                     if (backgroundBuffer == null) {
@@ -727,12 +746,7 @@ public final class AnimatedFileDrawable extends BitmapDrawable implements Animat
         destroyWhenDone = true;
         resetGifLoopBlend();
         checkChoreographer();
-        if (cacheGenRunnable != null) {
-            BitmapsCache.decrementTaskCounter();
-            RLottieDrawable.lottieCacheGenerateQueue.cancelRunnable(cacheGenRunnable);
-            cacheGenRunnable = null;
-            generatingCache = false;
-        }
+        cancelQueuedCacheGeneration();
         if (stream != null) {
             stream.cancel(true);
             stream = null;
@@ -747,6 +761,7 @@ public final class AnimatedFileDrawable extends BitmapDrawable implements Animat
 
     @UiThread
     private void releaseResources() {
+        if (cacheGenRunnable != null) return;
         synchronized (frameLock) {
             releaseResourcesLocked();
         }

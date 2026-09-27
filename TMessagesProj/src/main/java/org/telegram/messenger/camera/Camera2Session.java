@@ -596,7 +596,7 @@ public class Camera2Session {
         if (captureRequestBuilder == null || cameraDevice == null || sensorSize == null) return;
 
         float requestedZoom = Utilities.clamp(value, maxZoom, minZoom);
-        if (Math.abs(requestedZoom - currentZoom) < 0.001f) return;
+        if (requestedZoom == currentZoom) return;
         currentZoom = requestedZoom;
         updateCaptureRequest();
     }
