@@ -12,6 +12,8 @@ import android.graphics.ColorMatrixColorFilter;
 import android.graphics.Outline;
 import android.graphics.Paint;
 import android.graphics.Path;
+import android.graphics.Matrix;
+import android.graphics.Region;
 import android.graphics.drawable.Drawable;
 import android.os.SystemClock;
 import android.view.Gravity;
@@ -109,6 +111,7 @@ public class PinchToZoomHelper {
     private float[] clipTopBottom = new float[2];
     private final int[] backdropRootLocation = new int[2];
     private final int[] backdropDecorLocation = new int[2];
+    private final Matrix underPanelsMatrix = new Matrix();
     public void drawBackdrop(Canvas canvas, View sourceRoot) {
         if (!inOverlayMode || isSimple || overlayView == null || childImage == null
                 || parentView == null || sourceRoot == null || hasMediaSpoiler
@@ -118,6 +121,8 @@ public class PinchToZoomHelper {
         sourceRoot.getLocationInWindow(backdropRootLocation);
         parentView.getLocationInWindow(backdropDecorLocation);
         int save = canvas.save();
+        final boolean childSkip = childImage.getSkipUpdateFrame();
+        final boolean fullSkip = fullImage != null && fullImage.getSkipUpdateFrame();
         childImage.setSkipUpdateFrame(true);
         if (fullImage != null) fullImage.setSkipUpdateFrame(true);
         try {
@@ -125,13 +130,40 @@ public class PinchToZoomHelper {
                     backdropDecorLocation[1] - backdropRootLocation[1]);
             overlayView.drawImage(canvas, false);
         } finally {
-            childImage.setSkipUpdateFrame(false);
-            if (fullImage != null) fullImage.setSkipUpdateFrame(false);
+            childImage.setSkipUpdateFrame(childSkip);
+            if (fullImage != null) fullImage.setSkipUpdateFrame(fullSkip);
             canvas.restoreToCount(save);
         }
     }
 
     private boolean isHardwareVideo;
+    public void drawImageUnderPanels(Canvas canvas, View sourceRoot) {
+        if (!inOverlayMode || isSimple || overlayView == null || childImage == null
+                || parentView == null || sourceRoot == null || !sourceRoot.isAttachedToWindow()
+                || clipBoundsListener == null || hasMediaSpoiler) return;
+        final float progress = finishProgress * CubicBezierInterpolator.DEFAULT.getInterpolation(enterProgress);
+        if (progress == 1f) return;
+        clipBoundsListener.getClipTopBottom(clipTopBottom);
+        underPanelsMatrix.reset();
+        overlayView.transformMatrixToGlobal(underPanelsMatrix);
+        sourceRoot.transformMatrixToLocal(underPanelsMatrix);
+        final int save = canvas.save();
+        final boolean childSkip = childImage.getSkipUpdateFrame();
+        final boolean fullSkip = fullImage != null && fullImage.getSkipUpdateFrame();
+        childImage.setSkipUpdateFrame(true);
+        if (fullImage != null) fullImage.setSkipUpdateFrame(true);
+        try {
+            canvas.concat(underPanelsMatrix);
+            canvas.clipRect(0, clipTopBottom[0] * (1f - progress), overlayView.getMeasuredWidth(),
+                    clipTopBottom[1] * (1f - progress) + overlayView.getMeasuredHeight() * progress,
+                    Region.Op.DIFFERENCE);
+            overlayView.drawMediaWithoutAdvancing(canvas);
+        } finally {
+            childImage.setSkipUpdateFrame(childSkip);
+            if (fullImage != null) fullImage.setSkipUpdateFrame(fullSkip);
+            canvas.restoreToCount(save);
+        }
+    }
 
     public PinchToZoomHelper(ViewGroup parentView, ViewGroup fragmentView) {
         this.parentView = parentView;
@@ -631,6 +663,10 @@ public class PinchToZoomHelper {
             float parentOffsetY = PinchToZoomHelper.this.parentOffsetY - getTop();
 
             drawOverlays(canvas, (1f - progress), parentOffsetX, parentOffsetY, clipTop, clipBottom);
+        }
+        private void drawMediaWithoutAdvancing(Canvas canvas) {
+            drawImage(canvas, false);
+            super.dispatchDraw(canvas);
         }
 
         private void drawImage(Canvas canvas, boolean advanceFrame) {

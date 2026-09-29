@@ -13835,7 +13835,7 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
                             }
                             radii[a * 2] = radii[a * 2 + 1] = 0;
                         }
-                        if (!out && !drawPinnedBottom && currentPosition == null && (currentPosition == null || pollInstantViewTouchesBottom)) {
+                        if (!out && !mediaBackground && !drawPinnedBottom && currentPosition == null && (currentMessageObject == null || currentMessageObject.type != MessageObject.TYPE_POLL || pollInstantViewTouchesBottom)) {
                             path.moveTo(rect.left + dp(6), rect.top);
                             path.lineTo(rect.left + dp(6), rect.bottom - dp(6) - dp(2 + 3));
                             AndroidUtilities.rectTmp.set(
@@ -14201,6 +14201,13 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
         if (lastSize != currentSize || !wasLayout || forcedLayout) {
             layoutWidth = getMeasuredWidth();
             layoutHeight = getMeasuredHeight() - substractBackgroundHeight - getPaddingTop() - getPaddingBottom() - additionalPaddingHeight;
+            if (signWidth > 0) {
+                int finalTimeWidth = Math.max(1, backgroundWidth - dp(31) - getExtraTimeX());
+                if (timeWidth > finalTimeWidth) {
+                    availableTimeWidth = finalTimeWidth;
+                    measureTime(currentMessageObject);
+                }
+            }
             if (timeTextWidth < 0) {
                 timeTextWidth = dp(10);
             }
@@ -19167,10 +19174,12 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
             timeWidth += dp(14 + 4);
         }
         if (signString != null) {
-            if (availableTimeWidth == 0) {
-                availableTimeWidth = dp(1000);
+            int signatureTimeWidth = availableTimeWidth;
+            if (signatureTimeWidth == 0) {
+                int parentWidth = AndroidUtilities.isTablet() ? AndroidUtilities.getMinTabletSide() : Math.min(getParentWidth(), AndroidUtilities.displaySize.y);
+                signatureTimeWidth = Math.max(0, parentWidth - dp(80 + (isSideMenuEnabled ? ChatActivity.SIDE_MENU_WIDTH : isAvatarVisible ? 42 : 0)));
             }
-            int widthForSign = availableTimeWidth - timeWidth;
+            int widthForSign = signatureTimeWidth - timeWidth;
             if (messageObject.isOutOwner()) {
                 if (messageObject.type == MessageObject.TYPE_ROUND_VIDEO) {
                     widthForSign -= dp(20);
@@ -19178,18 +19187,11 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
                     widthForSign -= dp(96);
                 }
             }
+            widthForSign = Math.max(0, widthForSign);
             signString = Emoji.replaceEmoji(signString, Theme.chat_timePaint.getFontMetricsInt(), false);
-            int width = (int) Math.ceil(Theme.chat_timePaint.measureText(signString, 0, signString.length()));
-            signWidth = Math.min(width, widthForSign);
-            if (width > widthForSign) {
-                if (widthForSign <= 0) {
-                    signString = "";
-                    width = 0;
-                } else {
-                    signString = TextUtils.ellipsize(signString, Theme.chat_timePaint, widthForSign, TextUtils.TruncateAt.END);
-                    width = widthForSign;
-                }
-            }
+            signString = widthForSign == 0 ? "" : TextUtils.ellipsize(signString, Theme.chat_timePaint, widthForSign, TextUtils.TruncateAt.END);
+            int width = (int) Math.ceil(Layout.getDesiredWidth(signString, Theme.chat_timePaint));
+            signWidth = width;
             SpannableStringBuilder currentTimeStringBuilder = new SpannableStringBuilder();
             if (messageObject.messageOwner.via_business_bot_id != 0) {
                 currentTimeStringBuilder.append(currentTimeString);
@@ -21420,6 +21422,10 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
         }
 
         int restoreCount = canvas.getSaveCount();
+        if (currentMessagesGroup != null && currentMessagesGroup.isDocuments && currentPosition != null) {
+            canvas.save();
+            canvas.clipRect(0, 0, getWidth(), layoutHeight);
+        }
         if (transitionYOffsetForDrawables != 0) {
             canvas.save();
             canvas.translate(0, transitionYOffsetForDrawables);
@@ -24034,7 +24040,7 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
                 buttonX -= dp(10);
             }
             commentButtonRect.set(
-                    buttonX - dp((currentMessageObject == null || !currentMessageObject.isOutOwner()) && !drawPinnedBottom && currentPosition == null && (currentMessageObject == null || currentMessageObject.type != MessageObject.TYPE_POLL || pollInstantViewTouchesBottom) ? 6 : 0),
+                    buttonX - dp((currentMessageObject == null || !currentMessageObject.isOutOwner()) && !mediaBackground && !drawPinnedBottom && currentPosition == null && (currentMessageObject == null || currentMessageObject.type != MessageObject.TYPE_POLL || pollInstantViewTouchesBottom) ? 6 : 0),
                     (int) buttonY,
                     endX - dp(14),
                     (int) (buttonBottom - dp(h) + 1)
@@ -30039,6 +30045,25 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
         return delegate != null && delegate.getPinchToZoomHelper() != null
                 && delegate.getPinchToZoomHelper().isInOverlayModeFor(this);
     }
+    private boolean drawingPhotoViewerBackdrop;
+    public boolean needsPhotoViewerBackdrop() {
+        return currentMessageObject != null && !isPhotoInPinchOverlay()
+                && PhotoViewer.isShowingImage(currentMessageObject)
+                && !PhotoViewer.getInstance().hasClosingBackdrop(photoImage)
+                && !currentMessageObject.needDrawBluredPreview()
+                && !currentMessageObject.hasMediaSpoilers()
+                && !SecretMediaViewer.getInstance().isShowingImage(currentMessageObject)
+                && !StoryViewer.isShowingImage(currentMessageObject);
+    }
+    public void drawWithPhotoViewerBackdrop(Canvas canvas) {
+        final boolean previous = drawingPhotoViewerBackdrop;
+        drawingPhotoViewerBackdrop = true;
+        try {
+            drawInternal(canvas);
+        } finally {
+            drawingPhotoViewerBackdrop = previous;
+        }
+    }
 
     protected boolean drawPhotoImage(Canvas canvas) {
         if (isPhotoInPinchOverlay()) {
@@ -30055,65 +30080,13 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
             roundVideoThumbnailAlpha = MediaController.getInstance().getRoundVideoThumbnailAlpha();
         }
         try {
-            boolean drawn = drawPhotoImageWithRoundVideoBackground(canvas, roundVideoThumbnailAlpha);
-            if (!photoImage.getVisible() && delegate != null && currentMessageObject != null
-                    && PhotoViewer.isShowingImage(currentMessageObject)
-                    && !currentMessageObject.needDrawBluredPreview()
-                    && !currentMessageObject.hasMediaSpoilers()
-                    && !SecretMediaViewer.getInstance().isShowingImage(currentMessageObject)
-                    && !StoryViewer.isShowingImage(currentMessageObject)) {
-                float clipTop = delegate.getPhotoViewerClipTop() - getY() - getPaddingTop();
-                float clipBottom = delegate.getPhotoViewerClipBottom() - getY() - getPaddingTop();
-                if (clipTop > photoImage.getImageY()) {
-                    int save = canvas.save();
-                    try {
-                        canvas.clipRect(0, 0, getWidth(), Math.min(getHeight(), clipTop));
-                        photoImage.setSkipUpdateFrame(true);
-                        drawn |= photoImage.drawIgnoringVisibility(canvas);
-                    } finally {
-                        canvas.restoreToCount(save);
-                    }
-                }
-                clipBottom = Math.max(clipTop, clipBottom);
-                if (clipBottom < photoImage.getImageY2()) {
-                    int save = canvas.save();
-                    try {
-                        canvas.clipRect(0, Math.max(0f, clipBottom), getWidth(), getHeight());
-                        photoImage.setSkipUpdateFrame(true);
-                        drawn |= photoImage.drawIgnoringVisibility(canvas);
-                    } finally {
-                        canvas.restoreToCount(save);
-                    }
-                }
-            }
-            return drawn;
+            return drawPhotoImageWithRoundVideoBackground(canvas, roundVideoThumbnailAlpha);
         } finally {
             photoImage.setAlpha(oldAlpha);
             photoImage.setSkipUpdateFrame(skipFrameUpdate);
             if (roundVideoThumbnailAlpha > 0f && roundVideoThumbnailAlpha < 1f) {
                 invalidate();
             }
-        }
-    }
-    public void drawPhotoViewerBackdrop(Canvas canvas) {
-        if (delegate == null || currentMessageObject == null || isPhotoInPinchOverlay()
-                || !PhotoViewer.isShowingImage(currentMessageObject)
-                || currentMessageObject.needDrawBluredPreview()
-                || currentMessageObject.hasMediaSpoilers()
-                || SecretMediaViewer.getInstance().isShowingImage(currentMessageObject)
-                || StoryViewer.isShowingImage(currentMessageObject)) {
-            return;
-        }
-        final float top = delegate.getPhotoViewerClipTop() - getY() - getPaddingTop();
-        final float bottom = delegate.getPhotoViewerClipBottom() - getY() - getPaddingTop();
-        final int save = canvas.save();
-        try {
-            canvas.clipRect(0, Math.max(0f, top), getWidth(), Math.min(getHeight(), bottom));
-            photoImage.setSkipUpdateFrame(true);
-            photoImage.drawIgnoringVisibility(canvas);
-        } finally {
-            photoImage.setSkipUpdateFrame(skipFrameUpdate);
-            canvas.restoreToCount(save);
         }
     }
     private boolean drawPhotoImageWithRoundVideoBackground(Canvas canvas, float thumbnailAlpha) {
@@ -30159,19 +30132,23 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
                 if (imageAlpha > 0) {
                     boolean r = true;
                     if (imageAlpha < 1) {
-                        r = photoImage.draw(canvas);
+                        r = drawPhotoReceiver(canvas);
                     }
                     photoImage.setForceNotMedia(true);
                     final float wasAlpha = photoImage.getAlpha();
                     photoImage.setAlpha(wasAlpha * imageAlpha);
-                    photoImage.draw(canvas);
+                    drawPhotoReceiver(canvas);
                     photoImage.setAlpha(wasAlpha);
                     photoImage.setForceNotMedia(false);
                     return r;
                 }
             }
         }
-        return photoImage.draw(canvas);
+        return drawPhotoReceiver(canvas);
+    }
+    private boolean drawPhotoReceiver(Canvas canvas) {
+        return drawingPhotoViewerBackdrop && !photoImage.getVisible()
+                ? photoImage.drawIgnoringVisibility(canvas) : photoImage.draw(canvas);
     }
 
     public boolean areTags() {

@@ -2263,6 +2263,49 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
     private float savedTx, savedTy, savedScale, savedRotation;
     private float animationValue;
     private float clippingImageProgress;
+    private ImageReceiver closingBackdropReceiver;
+    private final Matrix closingBackdropMatrix = new Matrix();
+    public boolean hasClosingBackdrop(ImageReceiver receiver) {
+        return Build.VERSION.SDK_INT >= 31 && hasClosingImage(receiver);
+    }
+    private boolean hasClosingImage(ImageReceiver receiver) {
+        return isVisible && animationInProgress == 3
+                && receiver != null && receiver == closingBackdropReceiver
+                && animatingImageView != null && animatingImageView.hasBitmap();
+    }
+    public boolean hasClosingBackdrop(PhotoViewerProvider provider) {
+        return provider == placeProvider && hasClosingBackdrop(closingBackdropReceiver);
+    }
+    public void drawClosingBackdrop(Canvas canvas, View sourceRoot, PhotoViewerProvider provider) {
+        if (!hasClosingBackdrop(provider)
+                || sourceRoot == null || !sourceRoot.isAttachedToWindow()) {
+            return;
+        }
+        closingBackdropMatrix.reset();
+        animatingImageView.transformMatrixToGlobal(closingBackdropMatrix);
+        sourceRoot.transformMatrixToLocal(closingBackdropMatrix);
+        final int save = canvas.save();
+        try {
+            canvas.concat(closingBackdropMatrix);
+            animatingImageView.drawBackdrop(canvas);
+        } finally {
+            canvas.restoreToCount(save);
+        }
+    }
+    public void drawClosingImageUnderPanels(Canvas canvas, View sourceRoot, PhotoViewerProvider provider) {
+        if (provider != placeProvider || !hasClosingImage(closingBackdropReceiver)
+                || sourceRoot == null || !sourceRoot.isAttachedToWindow()) return;
+        closingBackdropMatrix.reset();
+        animatingImageView.transformMatrixToGlobal(closingBackdropMatrix);
+        sourceRoot.transformMatrixToLocal(closingBackdropMatrix);
+        final int save = canvas.save();
+        try {
+            canvas.concat(closingBackdropMatrix);
+            animatingImageView.drawOutsideViewport(canvas);
+        } finally {
+            canvas.restoreToCount(save);
+        }
+    }
     private boolean applying;
     private long animationStartTime;
     private int switchingToMode = -1;
@@ -3210,6 +3253,8 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
 
         default void onPreOpen() {}
         default void onPreClose() {}
+        default void onCloseAnimationFrame() {}
+        default boolean capturesClosingBackdrop() { return false; }
         default void onEditModeChanged(boolean isEditMode) {}
         default boolean onDeletePhoto(int index) {
             return true;
@@ -18815,6 +18860,9 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
                     }
                     final int sourceHideGeneration = openGeneration;
                     backgroundDrawable.drawRunnable = () -> {
+                        if (sourceHideGeneration != openGeneration) {
+                            return;
+                        }
                         disableShowCheck = false;
                         // This callback is posted from BackgroundDrawable.draw().
                         // It can therefore arrive after a close has already
@@ -19343,6 +19391,8 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
                 if (object != null) {
                     int clipHorizontal = (int) Math.abs(drawRegion.left - transitionGeometry.imageX);
                     int clipVertical = (int) Math.abs(drawRegion.top - transitionGeometry.imageY);
+                    float closeOffsetX = 0f;
+                    float closeOffsetY = 0f;
 
                     if (transitionGeometry.aspectFit) {
                         clipHorizontal = 0;
@@ -19353,11 +19403,17 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
                     object.parentView.getLocationInWindow(coords2);
                     int clipTop = (int) (coords2[1] - 0 - (object.viewY + drawRegion.top) + object.clipTopAddition);
                     if (object.clipTransitionToParent) {
+                        int[] parentScreen = new int[2];
+                        int[] viewerScreen = new int[2];
+                        object.parentView.getLocationOnScreen(parentScreen);
+                        windowView.getLocationOnScreen(viewerScreen);
+                        closeOffsetX = parentScreen[0] - coords2[0] - viewerScreen[0] - animatingImageView.getLeft();
+                        closeOffsetY = parentScreen[1] - coords2[1] - viewerScreen[1] - animatingImageView.getTop();
                         for (ClippingImageView imageView : animatingImageViews) {
                             imageView.setTransitionViewport(
-                                    coords2[1] + object.clipTopAddition,
-                                    coords2[1] + object.parentView.getHeight() - object.clipBottomAddition,
-                                    windowView.getMeasuredHeight());
+                                    parentScreen[1] - viewerScreen[1] - animatingImageView.getTop() + object.clipTopAddition,
+                                    parentScreen[1] - viewerScreen[1] - animatingImageView.getTop() + object.parentView.getHeight() - object.clipBottomAddition,
+                                    windowView.getMeasuredHeight() - animatingImageView.getTop());
                         }
                     }
                     if (clipTop < 0) {
@@ -19387,8 +19443,8 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
 
                     animationValues[1][0] = object.scale;
                     animationValues[1][1] = object.scale;
-                    animationValues[1][2] = object.viewX + drawRegion.left * object.scale;
-                    animationValues[1][3] = object.viewY + drawRegion.top * object.scale;
+                    animationValues[1][2] = object.viewX + drawRegion.left * object.scale + closeOffsetX;
+                    animationValues[1][3] = object.viewY + drawRegion.top * object.scale + closeOffsetY;
                     animationValues[1][4] = clipHorizontal * object.scale;
                     animationValues[1][5] = clipTop * object.scale;
                     animationValues[1][6] = clipBottom * object.scale;
@@ -19405,6 +19461,9 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
                             animator.addUpdateListener(animation -> {
                                 clippingImageProgress = (float) animation.getAnimatedValue();
                                 invalidateBlur();
+                                if (placeProvider != null) {
+                                    placeProvider.onCloseAnimationFrame();
+                                }
                             });
                         }
                         animators.add(animator);
@@ -19478,6 +19537,9 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
                         releasePlayer(true);
                     }
                     animationInProgress = 3;
+                    closingBackdropReceiver = object != null && object.clipTransitionToParent
+                            && placeProvider != null && placeProvider.capturesClosingBackdrop()
+                            ? object.imageReceiver : null;
                     containerView.invalidate();
                     transitionAnimationStartTime = System.currentTimeMillis();
                     containerView.setLayerType(View.LAYER_TYPE_HARDWARE, null);
@@ -19709,6 +19771,7 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
     }
 
     private void onPhotoClosed(PlaceProviderObject object, int transitionGeneration) {
+        closingBackdropReceiver = null;
         normalizeParentScaleAfterClose();
         ++openGeneration;
         ++coverOperationGeneration;

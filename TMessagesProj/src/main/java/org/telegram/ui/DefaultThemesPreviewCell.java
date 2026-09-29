@@ -28,6 +28,7 @@ import org.telegram.messenger.NotificationCenter;
 import org.telegram.messenger.R;
 import org.telegram.messenger.Utilities;
 import org.telegram.tgnet.TLRPC;
+import org.telegram.tgnet.SerializedData;
 import org.telegram.ui.ActionBar.BaseFragment;
 import org.telegram.ui.ActionBar.EmojiThemes;
 import org.telegram.ui.ActionBar.Theme;
@@ -40,6 +41,7 @@ import org.telegram.ui.Components.RecyclerListView;
 import org.telegram.ui.Components.ThemeSmallPreviewView;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 
 @SuppressLint("ViewConstructor")
 public class DefaultThemesPreviewCell extends LinearLayout {
@@ -59,9 +61,11 @@ public class DefaultThemesPreviewCell extends LinearLayout {
 
     private int selectedPosition = -1;
     private long selectionRevision;
+    private boolean customPreviewRequested;
+    private ChatThemeBottomSheet.ChatThemeItem customPreview;
     BaseFragment parentFragment;
     int currentType;
-    int themeIndex;
+    int themeIndex = -1;
 
     private Boolean wasPortrait = null;
 
@@ -121,8 +125,13 @@ public class DefaultThemesPreviewCell extends LinearLayout {
                         accent = info.createNewAccent(theme, parentFragment.getCurrentAccount());
                     }
                     accentId = accent.id;
-                    info.setCurrentAccentId(accentId);
                 }
+            }
+            if (info == null) {
+                return;
+            }
+            if (accentId == -1) {
+                accentId = info.currentAccentId;
             }
 
             selectedPosition = selectedIndex;
@@ -305,10 +314,38 @@ public class DefaultThemesPreviewCell extends LinearLayout {
                 dayNightCell.setTextAndIcon(LocaleController.getString(R.string.SettingsSwitchToNightMode), darkThemeDrawable, true);
             }
         }
+        refreshThemes();
+        updateDayNightMode();
+        updateSelectedPosition();
+        updateColors();
+        if (selectedPosition >= 0 && layoutManager != null) {
+            layoutManager.scrollToPositionWithOffset(selectedPosition, AndroidUtilities.dp(16));
+        }
+    }
+    public void refreshThemes() {
+        if (themeIndex < 0) updateDayNightMode();
 
         if (!MediaDataController.getInstance(parentFragment.getCurrentAccount()).defaultEmojiThemes.isEmpty()) {
-            ArrayList<ChatThemeBottomSheet.ChatThemeItem> themes = new ArrayList<>(MediaDataController.getInstance(parentFragment.getCurrentAccount()).defaultEmojiThemes);
-            if (currentType == ThemeActivity.THEME_TYPE_BASIC) {
+            ArrayList<ChatThemeBottomSheet.ChatThemeItem> themes = new ArrayList<>();
+            for (ChatThemeBottomSheet.ChatThemeItem template : MediaDataController.getInstance(parentFragment.getCurrentAccount()).defaultEmojiThemes) {
+                ChatThemeBottomSheet.ChatThemeItem item = new ChatThemeBottomSheet.ChatThemeItem(template.chatTheme);
+                item.icon = template.icon;
+                item.themeIndex = themeIndex < 0 ? (!Theme.isCurrentThemeDay() ? 2 : 0) : themeIndex;
+                if (adapter.items != null) {
+                    for (ChatThemeBottomSheet.ChatThemeItem previous : adapter.items) {
+                        if (previous != customPreview && !themes.contains(previous)
+                                && samePreview(previous, template)) {
+                            item = previous;
+                            break;
+                        }
+                    }
+                }
+                themes.add(item);
+            }
+            if (customPreview != null) themes.add(customPreview);
+            applyThemeItems(themes);
+            if (currentType == ThemeActivity.THEME_TYPE_BASIC && !customPreviewRequested) {
+                customPreviewRequested = true;
                 EmojiThemes chatTheme = EmojiThemes.createPreviewCustom(parentFragment.getCurrentAccount());
                 ChatThemeBottomSheet.ChatThemeItem item = new ChatThemeBottomSheet.ChatThemeItem(chatTheme);
                 item.themeIndex = !Theme.isCurrentThemeDay() ? 2 : 0;
@@ -319,15 +356,14 @@ public class DefaultThemesPreviewCell extends LinearLayout {
                         if (adapter.items == null || adapter.items.contains(item)) {
                             return;
                         }
-                        ArrayList<ChatThemeBottomSheet.ChatThemeItem> updated = new ArrayList<>(adapter.items);
                         item.themeIndex = themeIndex;
-                        updated.add(item);
-                        adapter.setItems(updated);
+                        customPreview = item;
+                        adapter.appendItem(item);
                         if (selectionRevision == selectionRevisionAtLoad) {
-                            updateDayNightMode();
-                        } else if (selectedPosition >= 0 && selectedPosition < updated.size()) {
-                            for (int i = 0; i < updated.size(); i++) {
-                                updated.get(i).isSelected = i == selectedPosition;
+                            updateSelectedPosition();
+                        } else if (selectedPosition >= 0 && selectedPosition < adapter.items.size()) {
+                            for (int i = 0; i < adapter.items.size(); i++) {
+                                adapter.items.get(i).isSelected = i == selectedPosition;
                             }
                             adapter.setSelectedItem(selectedPosition);
                         }
@@ -335,14 +371,63 @@ public class DefaultThemesPreviewCell extends LinearLayout {
                 });
             }
 
-            adapter.setItems(themes);
+        } else {
+            ArrayList<ChatThemeBottomSheet.ChatThemeItem> themes = new ArrayList<>();
+            if (customPreview != null) themes.add(customPreview);
+            applyThemeItems(themes);
         }
-        updateDayNightMode();
         updateSelectedPosition();
-        updateColors();
-        if (selectedPosition >= 0 && layoutManager != null) {
-            layoutManager.scrollToPositionWithOffset(selectedPosition, AndroidUtilities.dp(16));
+    }
+    private void applyThemeItems(ArrayList<ChatThemeBottomSheet.ChatThemeItem> themes) {
+        if (adapter.items == null) adapter.items = new ArrayList<>();
+        for (int i = 0; i < themes.size(); i++) {
+            ChatThemeBottomSheet.ChatThemeItem item = themes.get(i);
+            if (i < adapter.items.size() && adapter.items.get(i) == item) continue;
+            int from = adapter.items.indexOf(item);
+            if (from >= 0) {
+                adapter.items.remove(from);
+                adapter.items.add(i, item);
+                adapter.notifyItemMoved(from, i);
+            } else {
+                adapter.items.add(i, item);
+                adapter.notifyItemInserted(i);
+            }
         }
+        int removed = adapter.items.size() - themes.size();
+        if (removed > 0) {
+            adapter.items.subList(themes.size(), adapter.items.size()).clear();
+            adapter.notifyItemRangeRemoved(themes.size(), removed);
+        }
+    }
+    private boolean samePreview(ChatThemeBottomSheet.ChatThemeItem a, ChatThemeBottomSheet.ChatThemeItem b) {
+        if (a.icon != b.icon || !TextUtils.equals(a.chatTheme.getEmoticonOrSlug(), b.chatTheme.getEmoticonOrSlug())
+                || a.chatTheme.items.size() != b.chatTheme.items.size()) return false;
+        if (a.chatTheme == b.chatTheme) return true;
+        if (a.chatTheme.items.isEmpty()) return true;
+        TLRPC.TL_theme oldTheme = a.chatTheme.getTlTheme(0), newTheme = b.chatTheme.getTlTheme(0);
+        if ((oldTheme == null) != (newTheme == null)) return false;
+        if (oldTheme != null && oldTheme != newTheme) {
+            SerializedData oldData = new SerializedData(oldTheme.getObjectSize());
+            SerializedData newData = new SerializedData(newTheme.getObjectSize());
+            try {
+                oldTheme.serializeToStream(oldData);
+                newTheme.serializeToStream(newData);
+                if (!Arrays.equals(oldData.toByteArray(), newData.toByteArray())) return false;
+            } finally {
+                oldData.cleanup();
+                newData.cleanup();
+            }
+        }
+        for (int i = 0; i < a.chatTheme.items.size(); i++) {
+            android.util.SparseIntArray x = a.chatTheme.items.get(i).currentPreviewColors;
+            android.util.SparseIntArray y = b.chatTheme.items.get(i).currentPreviewColors;
+            if (x == y) continue;
+            if (x == null || y == null || x.size() != y.size()) return false;
+            for (int j = 0; j < x.size(); j++) {
+                if (x.keyAt(j) != y.keyAt(j) || x.valueAt(j) != y.valueAt(j)) return false;
+            }
+        }
+        return true;
     }
 
     public void updateLayoutManager() {
@@ -380,6 +465,7 @@ public class DefaultThemesPreviewCell extends LinearLayout {
     }
 
     public void updateDayNightMode() {
+        final int previousThemeIndex = themeIndex;
         if (currentType == ThemeActivity.THEME_TYPE_BASIC || currentType == TYPE_CUSTOM_LIST) {
             themeIndex = !Theme.isCurrentThemeDay() ? 2 : 0;
         } else {
@@ -392,20 +478,25 @@ public class DefaultThemesPreviewCell extends LinearLayout {
             } else if (Theme.getActiveTheme().getKey().equals("Dark Blue")) {
                 themeIndex = 3;
             } else {
-                if (Theme.isCurrentThemeDay() && (themeIndex == 2 || themeIndex == 3)) {
+                if (Theme.isCurrentThemeDay() && (themeIndex < 0 || themeIndex == 2 || themeIndex == 3)) {
                     themeIndex = 0;
                 }
-                if (!Theme.isCurrentThemeDay() && (themeIndex == 0 || themeIndex == 1)) {
+                if (!Theme.isCurrentThemeDay() && (themeIndex < 0 || themeIndex == 0 || themeIndex == 1)) {
                     themeIndex = 2;
                 }
             }
 
         }
-        if (adapter.items != null) {
+        if (adapter.items != null && previousThemeIndex != themeIndex) {
             for (int i = 0; i < adapter.items.size(); i++) {
                 adapter.items.get(i).themeIndex = themeIndex;
             }
-            adapter.notifyItemRangeChanged(0, adapter.items.size());
+            for (int i = 0; i < recyclerView.getChildCount(); i++) {
+                ThemeSmallPreviewView child = (ThemeSmallPreviewView) recyclerView.getChildAt(i);
+                if (child.chatThemeItem != null) {
+                    child.setItem(child.chatThemeItem, true);
+                }
+            }
         }
         updateSelectedPosition();
     }
@@ -483,6 +574,9 @@ public class DefaultThemesPreviewCell extends LinearLayout {
     }
 
     public void updateColors() {
+        if (adapter != null && recyclerView != null) {
+            updateDayNightMode();
+        }
         if (currentType == ThemeActivity.THEME_TYPE_BASIC || currentType == TYPE_CUSTOM_LIST) {
             if (darkThemeDrawable != null) {
                 darkThemeDrawable.setColorFilter(new PorterDuffColorFilter(Theme.getColor(Theme.key_windowBackgroundWhiteBlueText4), PorterDuff.Mode.SRC_IN));

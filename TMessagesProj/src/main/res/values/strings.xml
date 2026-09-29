@@ -12500,4 +12500,8 @@
     <string name="RoundVideoCompositionInfo">Disable styling to record a plain square without outside-circle blur, dimming or Telegram overlays.</string>
     <string name="NM_CAM_SmoothModules">Smooth camera module transitions</string>
     <string name="NM_CAM_SmoothModulesDesc">Blend between ultrawide and main cameras when zooming while recording video messages.</string>
+    <string name="NM_CAM_RoundAudio">Video message audio</string>
+    <string name="NM_CAM_MultiMicrophone">Multi-microphone recording</string>
+    <string name="NM_CAM_MultiMicrophoneDesc">Request wider capture with built-in microphones.</string>
+    <string name="NM_CAM_RoundAudioInfo">For new video messages. Microphone support depends on the device; mono fallback is automatic.</string>
 </resources>

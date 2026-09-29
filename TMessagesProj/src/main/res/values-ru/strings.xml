@@ -1337,4 +1337,8 @@
     <string name="NM_Menu_Manage">Управление</string>
     <string name="NM_CAM_SmoothModules">Плавное переключение модулей камеры</string>
     <string name="NM_CAM_SmoothModulesDesc">Плавный переход между широкоугольной и основной камерой при изменении зума во время записи кружков.</string>
+    <string name="NM_CAM_RoundAudio">Звук видеосообщений</string>
+    <string name="NM_CAM_MultiMicrophone">Мультимикрофонная запись</string>
+    <string name="NM_CAM_MultiMicrophoneDesc">Запрашивать широкий захват встроенными микрофонами.</string>
+    <string name="NM_CAM_RoundAudioInfo">Для новых кружков. Работа микрофонов зависит от устройства; при необходимости используется моно.</string>
 </resources>

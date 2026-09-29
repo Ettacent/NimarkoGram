@@ -3104,7 +3104,12 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
     private boolean traversePlaylist(ArrayList<MessageObject> playlist, int direction) {
         boolean last = false;
         final int wasCurrentPlaylistNum = currentPlaylistNum;
-        int connectionState = ConnectionsManager.getInstance(UserConfig.selectedAccount).getConnectionState();
+        MessageObject accountOwner = playingMessageObject;
+        if (accountOwner == null && currentPlaylistNum >= 0 && currentPlaylistNum < playlist.size()) {
+            accountOwner = playlist.get(currentPlaylistNum);
+        }
+        int playbackAccount = accountOwner != null ? accountOwner.currentAccount : UserConfig.selectedAccount;
+        int connectionState = ConnectionsManager.getInstance(playbackAccount).getConnectionState();
         boolean offline = connectionState == ConnectionsManager.ConnectionStateWaitingForNetwork;
         currentPlaylistNum += direction;
         if (offline) {

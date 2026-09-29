@@ -4345,7 +4345,6 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
 
                     @Override
                     public void onAnimationEnd(Animator animation) {
-                        notificationsLocker.unlock();
                         if (animation.equals(themeAnimatorSet)) {
                             Theme.setAnimatingColor(false);
                             updateDetachedThemeViews();
@@ -4363,6 +4362,7 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
                                 settings.afterAnimationRunnable.run();
                             }
                         }
+                        notificationsLocker.unlock();
                     }
 
                     @Override

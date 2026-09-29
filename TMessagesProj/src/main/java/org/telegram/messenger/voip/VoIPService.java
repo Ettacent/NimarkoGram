@@ -218,7 +218,7 @@ public class VoIPService extends Service implements SensorEventListener, AudioMa
 	private int currentAccount = -1;
 	private static final int PROXIMITY_SCREEN_OFF_WAKE_LOCK = 32;
 	private static final long PROXIMITY_NEAR_DEBOUNCE_MS = 160L;
-	private static VoIPService sharedInstance;
+	private static volatile VoIPService sharedInstance;
 	private static Runnable setModeRunnable;
 	private static final Object sync = new Object();
 	private NetworkInfo lastNetInfo;
@@ -401,40 +401,64 @@ public class VoIPService extends Service implements SensorEventListener, AudioMa
 		public void run() {
 
 			AudioManager am = (AudioManager) getSystemService(AUDIO_SERVICE);
-			VoipAudioManager vam = VoipAudioManager.get();
-			am.abandonAudioFocus(VoIPService.this);
-			am.unregisterMediaButtonEventReceiver(new ComponentName(VoIPService.this, VoIPMediaButtonReceiver.class));
-			if (audioDeviceCallback != null) {
-				am.unregisterAudioDeviceCallback(audioDeviceCallback);
-			}
-			if (!USE_CONNECTION_SERVICE && sharedInstance == null) {
-				if (isBtHeadsetConnected) {
-					am.stopBluetoothSco();
-					am.setBluetoothScoOn(false);
-					bluetoothScoActive = false;
-					bluetoothScoConnecting = false;
+			try {
+				VoipAudioManager vam = VoipAudioManager.get();
+				am.abandonAudioFocus(VoIPService.this);
+				if (sharedInstance == null || sharedInstance == VoIPService.this) {
+					am.unregisterMediaButtonEventReceiver(new ComponentName(VoIPService.this, VoIPMediaButtonReceiver.class));
 				}
-				vam.setSpeakerphoneOn(false);
-			}
-
-			Utilities.globalQueue.postRunnable(() -> soundPool.release());
-			Utilities.globalQueue.postRunnable(setModeRunnable = () -> {
-				synchronized (sync) {
-					if (setModeRunnable == null) {
-						return;
+				if (audioDeviceCallback != null) {
+					am.unregisterAudioDeviceCallback(audioDeviceCallback);
+				}
+				if (!USE_CONNECTION_SERVICE && sharedInstance == null) {
+					if (isBtHeadsetConnected || bluetoothScoActive || bluetoothScoConnecting) {
+						am.stopBluetoothSco();
+						am.setBluetoothScoOn(false);
+						bluetoothScoActive = false;
+						bluetoothScoConnecting = false;
 					}
-					setModeRunnable = null;
+					vam.setSpeakerphoneOn(false);
 				}
-				try {
-					am.setMode(AudioManager.MODE_NORMAL);
-				} catch (SecurityException x) {
-					if (BuildVars.LOGS_ENABLED) {
-						FileLog.e("Error setting audio more to normal", x);
+			} catch (Exception e) {
+				FileLog.e(e);
+			} finally {
+				playingSound = false;
+				Utilities.globalQueue.postRunnable(() -> {
+					if (soundPool != null) {
+						soundPool.release();
+						soundPool = null;
+					}
+				});
+				resetAudioMode(am);
+			}
+		}
+	};
+	private void resetAudioMode(AudioManager am) {
+		synchronized (sync) {
+			if (sharedInstance != null && sharedInstance != this) {
+				return;
+			}
+			Utilities.globalQueue.postRunnable(setModeRunnable = new Runnable() {
+				@Override
+				public void run() {
+					synchronized (sync) {
+						if (setModeRunnable != this) {
+							return;
+						}
+						setModeRunnable = null;
+						if (sharedInstance != null) {
+							return;
+						}
+						try {
+							am.setMode(AudioManager.MODE_NORMAL);
+						} catch (SecurityException x) {
+							FileLog.e("Error setting audio mode to normal", x);
+						}
 					}
 				}
 			});
 		}
-	};
+	}
 
 	boolean fetchingBluetoothDeviceName;
 	private BluetoothProfile.ServiceListener serviceListener = new BluetoothProfile.ServiceListener() {
@@ -881,9 +905,9 @@ public class VoIPService extends Service implements SensorEventListener, AudioMa
 			stopSelf();
 			return START_NOT_STICKY;
 		}
-		sharedInstance = this;
-		FileLog.e("(4) set sharedInstance = this");
 		synchronized (sync) {
+			sharedInstance = this;
+			FileLog.e("(4) set sharedInstance = this");
 			if (setModeRunnable != null) {
 				Utilities.globalQueue.cancelRunnable(setModeRunnable);
 				setModeRunnable = null;
@@ -4302,6 +4326,11 @@ public class VoIPService extends Service implements SensorEventListener, AudioMa
 
 	@Override
 	public void onDestroy() {
+		isCallEnded = true;
+		if (delayedStartOutgoingCall != null) {
+			AndroidUtilities.cancelRunOnUIThread(delayedStartOutgoingCall);
+			delayedStartOutgoingCall = null;
+		}
 		nmGroupJoinGeneration.incrementAndGet();
 		nmPresentationJoinGeneration.incrementAndGet();
 		myParams = null;
@@ -4339,8 +4368,12 @@ public class VoIPService extends Service implements SensorEventListener, AudioMa
 			conference.destroy();
 		}
 		super.onDestroy();
-		sharedInstance = null;
-		FileLog.e("(5) set sharedInstance = null");
+		synchronized (sync) {
+			if (sharedInstance == this) {
+				sharedInstance = null;
+				FileLog.e("(5) set sharedInstance = null");
+			}
+		}
 		Arrays.fill(mySource, 0);
 		cancelGroupCheckShortPoll();
 		AndroidUtilities.runOnUIThread(() -> NotificationCenter.getGlobalInstance().postNotificationName(NotificationCenter.didEndCall));
@@ -4390,23 +4423,7 @@ public class VoIPService extends Service implements SensorEventListener, AudioMa
 					bluetoothScoActive = false;
 					bluetoothScoConnecting = false;
 				}
-				if (onDestroyRunnable == null) {
-					Utilities.globalQueue.postRunnable(setModeRunnable = () -> {
-						synchronized (sync) {
-							if (setModeRunnable == null) {
-								return;
-							}
-							setModeRunnable = null;
-						}
-						try {
-							am.setMode(AudioManager.MODE_NORMAL);
-						} catch (SecurityException x) {
-							if (BuildVars.LOGS_ENABLED) {
-								FileLog.e("Error setting audio more to normal", x);
-							}
-						}
-					});
-				}
+				resetAudioMode(am);
 				am.abandonAudioFocus(this);
 			}
 			try {
@@ -4421,6 +4438,7 @@ public class VoIPService extends Service implements SensorEventListener, AudioMa
 			Utilities.globalQueue.postRunnable(() -> {
 				if (soundPool != null) {
 					soundPool.release();
+					soundPool = null;
 				}
 			});
 		}
@@ -4972,6 +4990,9 @@ public class VoIPService extends Service implements SensorEventListener, AudioMa
 
 	@SuppressLint("InvalidWakeLockTag")
 	private void configureDeviceForCall() {
+		if (isCallEnded || sharedInstance != this) {
+			return;
+		}
 		if (BuildVars.LOGS_ENABLED) {
 			FileLog.d("configureDeviceForCall, route to set = " + audioRouteToSet);
 		}
@@ -4985,11 +5006,17 @@ public class VoIPService extends Service implements SensorEventListener, AudioMa
 		AudioManager am = (AudioManager) getSystemService(AUDIO_SERVICE);
 		if (!USE_CONNECTION_SERVICE) {
 			Utilities.globalQueue.postRunnable(() -> {
+				if (isCallEnded || sharedInstance != this) {
+					return;
+				}
 				try {
 					if (hasRtmpStream()) {
 						am.setMode(AudioManager.MODE_NORMAL);
 						am.setBluetoothScoOn(false);
 						AndroidUtilities.runOnUIThread(() -> {
+							if (isCallEnded || sharedInstance != this) {
+								return;
+							}
 							if (!MediaController.getInstance().isMessagePaused()) {
 								MediaController.getInstance().pauseMessage(MediaController.getInstance().getPlayingMessageObject());
 							}
@@ -5002,6 +5029,9 @@ public class VoIPService extends Service implements SensorEventListener, AudioMa
 					FileLog.e(e);
 				}
 				AndroidUtilities.runOnUIThread(() -> {
+					if (isCallEnded || sharedInstance != this) {
+						return;
+					}
 					int focusResult = am.requestAudioFocus(VoIPService.this, AudioManager.STREAM_VOICE_CALL, AudioManager.AUDIOFOCUS_GAIN_TRANSIENT);
 					hasAudioFocus = focusResult == AudioManager.AUDIOFOCUS_REQUEST_GRANTED;
 					final VoipAudioManager vam = VoipAudioManager.get();

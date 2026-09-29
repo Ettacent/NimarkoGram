@@ -526,7 +526,11 @@ public class ThemeActivity extends BaseFragment implements NotificationCenter.No
     }
 
     private void updateRows(boolean notify) {
+        updateRows(notify, false);
+    }
+    private void updateRows(boolean notify, boolean contentSettingsOnly) {
         int oldRowCount = rowCount;
+        int previousSensitiveContentRow = sensitiveContentRow;
 
         int prevThemeAccentListRow = themeAccentListRow;
         int prevEditThemeRow = editThemeRow;
@@ -744,11 +748,21 @@ public class ThemeActivity extends BaseFragment implements NotificationCenter.No
             }
         }
 
-        if (themesHorizontalListCell != null) {
+        if (!contentSettingsOnly && themesHorizontalListCell != null) {
             themesHorizontalListCell.notifyDataSetChanged(listView.getWidth());
         }
 
         if (listAdapter != null) {
+            if (contentSettingsOnly && currentType == THEME_TYPE_BASIC) {
+                if (previousSensitiveContentRow < 0 && sensitiveContentRow >= 0) {
+                    listAdapter.notifyItemInserted(sensitiveContentRow);
+                } else if (previousSensitiveContentRow >= 0 && sensitiveContentRow < 0) {
+                    listAdapter.notifyItemRemoved(previousSensitiveContentRow);
+                } else if (sensitiveContentRow >= 0) {
+                    listAdapter.notifyItemChanged(sensitiveContentRow, NotificationCenter.contentSettingsLoaded);
+                }
+                return;
+            }
             if (currentType != THEME_TYPE_NIGHT || previousUpdatedType == Theme.selectedAutoNightType || previousUpdatedType == -1) {
                 if (notify || previousUpdatedType == -1) {
                     listAdapter.notifyDataSetChanged();
@@ -925,12 +939,17 @@ public class ThemeActivity extends BaseFragment implements NotificationCenter.No
             updateMenuItem();
             checkCurrentDayNight();
         } else if (id == NotificationCenter.emojiPreviewThemesChanged) {
-            if (themeListRow2 >= 0) {
-                listAdapter.notifyItemChanged(themeListRow2);
+            if (themeListRow2 >= 0 && listView != null && listAdapter != null) {
+                RecyclerView.ViewHolder holder = listView.findViewHolderForAdapterPosition(themeListRow2);
+                if (holder != null && holder.itemView instanceof DefaultThemesPreviewCell) {
+                    ((DefaultThemesPreviewCell) holder.itemView).refreshThemes();
+                } else {
+                    listAdapter.notifyItemChanged(themeListRow2, NotificationCenter.emojiPreviewThemesChanged);
+                }
             }
         } else if (id == NotificationCenter.contentSettingsLoaded || id == NotificationCenter.appConfigUpdated) {
-            if (sensitiveContentRow >= 0) {
-                listAdapter.notifyItemChanged(sensitiveContentRow);
+            if (currentType == THEME_TYPE_BASIC && listAdapter != null) {
+                updateRows(false, true);
             }
         }
     }
@@ -965,11 +984,7 @@ public class ThemeActivity extends BaseFragment implements NotificationCenter.No
             if (getMessagesController().getContentSettings() == null) {
                 getMessagesController().getContentSettings(settings -> {
                     if (listView != null && listView.isAttachedToWindow() && listAdapter != null) {
-                        if ((sensitiveContentRow >= 0) == (settings != null && settings.sensitive_can_change)) {
-                            listAdapter.notifyItemChanged(sensitiveContentRow);
-                        } else {
-                            updateRows(true);
-                        }
+                        updateRows(false, true);
                     }
                 });
             }
@@ -2700,6 +2715,7 @@ public class ThemeActivity extends BaseFragment implements NotificationCenter.No
                 }
                 case TYPE_DEFAULT_THEMES_PREVIEW: {
                     DefaultThemesPreviewCell cell = (DefaultThemesPreviewCell) holder.itemView;
+                    cell.refreshThemes();
                     cell.updateDayNightMode();
                     break;
                 }

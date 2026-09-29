@@ -66,7 +66,7 @@ public class MusicPlayerService extends Service implements NotificationCenter.No
     private AudioManager audioManager;
 
     private static boolean supportBigNotifications = Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN;
-    private static boolean supportLockScreenControls = Build.VERSION.SDK_INT < Build.VERSION_CODES.LOLLIPOP || !TextUtils.isEmpty(AndroidUtilities.getSystemProperty("ro.miui.ui.version.code"));
+    private static final boolean supportLockScreenControls = Build.VERSION.SDK_INT < Build.VERSION_CODES.LOLLIPOP;
 
     private MediaSessionCompat mediaSession;
     private PlaybackStateCompat.Builder playbackState;
@@ -113,13 +113,13 @@ public class MusicPlayerService extends Service implements NotificationCenter.No
         });
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-            mediaSession = new MediaSessionCompat(this, "telegramAudioPlayer");
+            mediaSession = TelegramMediaSession.getInstance(this).getSession();
             playbackState = new PlaybackStateCompat.Builder();
             albumArtPlaceholder = Bitmap.createBitmap(AndroidUtilities.dp(102), AndroidUtilities.dp(102), Bitmap.Config.ARGB_8888);
             Drawable placeholder = getResources().getDrawable(R.drawable.nocover_big);
             placeholder.setBounds(0, 0, albumArtPlaceholder.getWidth(), albumArtPlaceholder.getHeight());
             placeholder.draw(new Canvas(albumArtPlaceholder));
-            mediaSession.setCallback(new MediaSessionCompat.Callback() {
+            mediaSession.setCallback(TelegramMediaSession.getInstance(this).new SessionCallback() {
                 @Override
                 public void onPlay() {
                     MediaController.getInstance().playMessage(MediaController.getInstance().getPlayingMessageObject());
@@ -828,7 +828,7 @@ public class MusicPlayerService extends Service implements NotificationCenter.No
             audioManager.unregisterRemoteControlClient(remoteControlClient);
         }
         if (mediaSession != null) {
-            mediaSession.release();
+            TelegramMediaSession.getInstance(this).deactivate();
             mediaSession = null;
         }
         try {

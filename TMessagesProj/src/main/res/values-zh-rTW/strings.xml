@@ -1258,4 +1258,8 @@
     <string name="NM_CP_LatexRendering_Desc">辨識訊息中 $…$ 和 $$…$$ 內的公式。</string>
     <string name="NM_CAM_SmoothModules">平滑切換相機模組</string>
     <string name="NM_CAM_SmoothModulesDesc">錄製視訊訊息時，縮放可在超廣角與主鏡頭之間平滑過渡。</string>
+    <string name="NM_CAM_RoundAudio">影片訊息音訊</string>
+    <string name="NM_CAM_MultiMicrophone">多麥克風錄音</string>
+    <string name="NM_CAM_MultiMicrophoneDesc">要求內建麥克風進行廣域收音。</string>
+    <string name="NM_CAM_RoundAudioInfo">適用於新影片訊息。麥克風支援取決於裝置，必要時使用單聲道。</string>
 </resources>

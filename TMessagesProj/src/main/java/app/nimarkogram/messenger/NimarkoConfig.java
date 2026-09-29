@@ -793,6 +793,11 @@ public final class NimarkoConfig {
     public static final int CAMERA_1 = TELEGRAM_CAMERA;
     public static int cameraType = initCameraType();
     public static boolean smoothCameraModuleTransitions = getPreferences().getBoolean("smoothCameraModuleTransitions", false);
+    public static boolean cameraXMultiMicrophone = getPreferences().getBoolean("cameraXMultiMicrophone", false);
+    public static void toggleCameraXMultiMicrophone() {
+        cameraXMultiMicrophone = !cameraXMultiMicrophone;
+        getEditor().putBoolean("cameraXMultiMicrophone", cameraXMultiMicrophone).apply();
+    }
     public static void toggleSmoothCameraModuleTransitions() {
         smoothCameraModuleTransitions = !smoothCameraModuleTransitions;
         getEditor().putBoolean("smoothCameraModuleTransitions", smoothCameraModuleTransitions).apply();

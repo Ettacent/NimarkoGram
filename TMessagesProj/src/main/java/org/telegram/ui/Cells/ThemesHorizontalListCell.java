@@ -757,7 +757,7 @@ public class ThemesHorizontalListCell extends RecyclerListView implements Notifi
             }
             pendingThemeInfo = themeInfo;
             updateCurrentThemeChecks();
-            NotificationCenter.getGlobalInstance().postNotificationName(NotificationCenter.needSetDayNightTheme, themeInfo, false, null, -1);
+            NotificationCenter.getGlobalInstance().postNotificationName(NotificationCenter.needSetDayNightTheme, themeInfo, false, null, themeInfo.currentAccentId);
         }
         updateRows();
         updateCurrentThemeChecks();
@@ -837,7 +837,9 @@ public class ThemesHorizontalListCell extends RecyclerListView implements Notifi
                 updateCurrentThemeChecks();
             }
         } else if (id == NotificationCenter.didSetNewTheme) {
-            pendingThemeInfo = null;
+            if (pendingThemeInfo == Theme.getCurrentTheme()) {
+                pendingThemeInfo = null;
+            }
             updateCurrentThemeChecks();
         } else if (id == NotificationCenter.fileLoaded) {
             String fileName = (String) args[0];

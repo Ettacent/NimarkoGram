@@ -61,6 +61,7 @@ public class CameraPreferencesActivity extends NimarkoUniversalPreferencesActivi
     private final int roundVideoBitrateRow = 18;
     private final int roundVideoSettingsRow = 19;
     private final int smoothCameraModuleTransitionsRow = 20;
+    private final int multiMicrophoneRow = 21;
 
     private boolean cameraImprovementsExpanded = false;
 
@@ -131,6 +132,13 @@ public class CameraPreferencesActivity extends NimarkoUniversalPreferencesActivi
             );
         }
         items.add(UItem.asShadow(null));
+        if (cameraX && !upstreamRoundCamera2) {
+            items.add(UItem.asHeader(getString(R.string.NM_CAM_RoundAudio)));
+            items.add(SettingsHelper.asSwitchCG(multiMicrophoneRow,
+                    getString(R.string.NM_CAM_MultiMicrophone), getString(R.string.NM_CAM_MultiMicrophoneDesc))
+                    .setChecked(NimarkoConfig.cameraXMultiMicrophone));
+            items.add(UItem.asShadow(getString(R.string.NM_CAM_RoundAudioInfo)));
+        }
 
         if (!upstreamRoundCamera2) {
             items.add(UItem.asHeader(getString(R.string.NM_CAM_VideoQuality)));
@@ -205,6 +213,10 @@ public class CameraPreferencesActivity extends NimarkoUniversalPreferencesActivi
                 NimarkoConfig.setVideoMessagesCamera(i);
                 SettingsHelper.updateButtonValue(view, getRoundCameraText());
             });
+        } else if (item.id == multiMicrophoneRow) {
+            NimarkoConfig.toggleCameraXMultiMicrophone();
+            item.checked = NimarkoConfig.cameraXMultiMicrophone;
+            updateCheckState(view, item.checked);
         } else if (item.id == smoothCameraModuleTransitionsRow) {
             NimarkoConfig.toggleSmoothCameraModuleTransitions();
             updateCheckState(view, NimarkoConfig.smoothCameraModuleTransitions);

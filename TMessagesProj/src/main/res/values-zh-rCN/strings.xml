@@ -1261,4 +1261,8 @@
     <string name="NM_Menu_Manage">管理</string>
     <string name="NM_CAM_SmoothModules">平滑切换摄像头模组</string>
     <string name="NM_CAM_SmoothModulesDesc">录制视频消息时，缩放可在超广角与主摄之间平滑过渡。</string>
+    <string name="NM_CAM_RoundAudio">视频消息音频</string>
+    <string name="NM_CAM_MultiMicrophone">多麦克风录音</string>
+    <string name="NM_CAM_MultiMicrophoneDesc">请求内置麦克风进行广域拾音。</string>
+    <string name="NM_CAM_RoundAudioInfo">适用于新视频消息。麦克风支持取决于设备，必要时使用单声道。</string>
 </resources>
