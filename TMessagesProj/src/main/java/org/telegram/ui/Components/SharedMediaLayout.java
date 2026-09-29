@@ -3566,6 +3566,7 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
                 @Override
                 public void onScrollStateChanged(RecyclerView recyclerView, int newState) {
                     scrolling = newState != RecyclerView.SCROLL_STATE_IDLE;
+                    if (scrolling && mediaPage.listView.memberCrossfade.isRunning()) mediaPage.listView.memberCrossfade.finish();
                 }
 
                 @Override
@@ -7081,44 +7082,21 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
             chatUsersStateInitialized = true;
             firstData = oldCount == 0 && chatUsersAdapter.getItemCount() > 0;
         }
-        if (tabVisibilityChanged) {
-            updateTabs(true);
-        }
         if (!dataChanged) {
             return;
         }
-        final ArrayList<Long> newUserIds = chatUserIds;
-        final ArrayList<Integer> newContentHashes = chatUserContentHashes;
-        boolean animateChanges = false;
         for (MediaPage page : mediaPages) {
             if (page.listView.getAdapter() == chatUsersAdapter) {
-                boolean visible = isChatUsersPageVisible(page);
-                page.listView.setItemAnimator(visible ? page.itemAnimator : null);
-                animateChanges |= visible;
+                page.listView.setItemAnimator(null);
+                if (!firstData && isChatUsersPageVisible(page) && SharedConfig.animationsEnabled()) {
+                    page.listView.captureMemberContent();
+                }
             }
         }
-        if (!firstData && animateChanges) {
-            DiffUtil.calculateDiff(new DiffUtil.Callback() {
-                @Override
-                public int getOldListSize() {
-                    return oldUserIds.size();
-                }
-                @Override
-                public int getNewListSize() {
-                    return newUserIds.size();
-                }
-                @Override
-                public boolean areItemsTheSame(int oldPosition, int newPosition) {
-                    return oldUserIds.get(oldPosition).equals(newUserIds.get(newPosition));
-                }
-                @Override
-                public boolean areContentsTheSame(int oldPosition, int newPosition) {
-                    return oldContentHashes.get(oldPosition).equals(newContentHashes.get(newPosition));
-                }
-            }).dispatchUpdatesTo(chatUsersAdapter);
-        } else {
-            chatUsersAdapter.notifyDataSetChanged();
+        if (tabVisibilityChanged) {
+            updateTabs(true);
         }
+        chatUsersAdapter.notifyDataSetChanged();
         for (int a = 0; a < mediaPages.length; a++) {
             if (isChatUsersPageVisible(mediaPages[a])) {
                 if (firstData) {
@@ -7979,12 +7957,12 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
             if (mediaPages[a].selectedType == TAB_SAVED_DIALOGS) {
                 mediaPages[a].listView.setItemAnimator(mediaPages[a].itemAnimator);
             } else {
-                mediaPages[a].listView.setItemAnimator(mediaPages[a].selectedType == TAB_GROUPUSERS
-                        ? mediaPages[a].itemAnimator : null);
+                mediaPages[a].listView.setItemAnimator(null);
                 if (savedDialogsAdapter != null && mediaPages[a].listView == savedDialogsAdapter.attachedToRecyclerView) {
                     savedDialogsAdapter.itemTouchHelper.attachToRecyclerView(savedDialogsAdapter.attachedToRecyclerView = null);
                 }
             }
+            mediaPages[a].listView.clipMemberContent = mediaPages[a].selectedType == TAB_GROUPUSERS;
             if (savedMessagesContainer != null && mediaPages[a].selectedType != TAB_SAVED_MESSAGES && savedMessagesContainer.getParent() == mediaPages[a]) {
                 savedMessagesContainer.chatActivity.onRemoveFromParent();
                 mediaPages[a].removeView(savedMessagesContainer);
@@ -12393,16 +12371,36 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
 
     public static class InternalListView extends BlurredRecyclerView implements StoriesListPlaceProvider.ClippedView {
         private final ProfileContentFade profileContentFade = new ProfileContentFade();
+        private final MessagePreviewCrossfade memberCrossfade = new MessagePreviewCrossfade(this);
+        private boolean clipMemberContent;
+        void captureMemberContent() {
+            if (getScrollState() == RecyclerView.SCROLL_STATE_IDLE && isAttachedToWindow() && isShown() && getWidth() > 0 && getHeight() > 0) {
+                memberCrossfade.capture(this::drawMemberContent);
+            }
+        }
+        private void drawMemberContent(Canvas canvas) {
+            super.dispatchDraw(canvas);
+        }
+        @Override
+        protected void dispatchDraw(Canvas canvas) {
+            int save = canvas.save();
+            if (clipMemberContent) canvas.clipRect(0, getPaddingTop(), getWidth(), getHeight() - getPaddingBottom());
+            if (!SharedConfig.animationsEnabled() && memberCrossfade.isRunning()) memberCrossfade.finish();
+            memberCrossfade.draw(canvas, this::drawMemberContent);
+            canvas.restoreToCount(save);
+        }
         @Override
         public void setAdapter(RecyclerView.Adapter adapter) {
             if (profileContentFade != null && getAdapter() != adapter) {
                 profileContentFade.reset(this);
+                memberCrossfade.finish();
             }
             super.setAdapter(adapter);
         }
         @Override
         protected void onDetachedFromWindow() {
             profileContentFade.reset(this);
+            memberCrossfade.finish();
             super.onDetachedFromWindow();
         }
         private final java.util.WeakHashMap<View, Integer> presentedMessages = new java.util.WeakHashMap<>();
