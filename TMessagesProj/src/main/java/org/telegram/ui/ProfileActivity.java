@@ -6982,6 +6982,9 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
 
     private void onCallClicked(boolean isVideoCall) {
         if (userId != 0) {
+            if (isOwnUserProfile()) {
+                return;
+            }
             TLRPC.User user = getMessagesController().getUser(userId);
             if (user != null) {
                 VoIPHelper.startCall(user, isVideoCall, userInfo != null && userInfo.video_calls_available, getParentActivity(), userInfo, getAccountInstance());
@@ -8501,7 +8504,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             o.setScrimViewBackground(listView.getClipBackground(view));
             o.setLongPressSelectionEnabled(false);
             if (position == phoneRow) {
-                if (userInfo != null && userInfo.phone_calls_available) {
+                if (!isOwnUserProfile() && userInfo != null && userInfo.phone_calls_available) {
                     o.add(R.drawable.msg_calls, getString(R.string.CallViaTelegram), () -> {
                         if (getParentActivity() == null) return;
                         VoIPHelper.startCall(user, false, userInfo != null && userInfo.video_calls_available, getParentActivity(), userInfo, getAccountInstance());
@@ -14690,6 +14693,10 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
         }
         return color;
     }
+    private boolean isOwnUserProfile() {
+        return userId != 0 && (userId == getUserConfig().getClientUserId()
+                || UserObject.isUserSelf(getMessagesController().getUser(userId)));
+    }
 
     private void createActionBarMenu(boolean animated) {
         if (actionBar == null || otherItem == null) {
@@ -14725,7 +14732,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             if (user == null) {
                 return;
             }
-            if (UserObject.isUserSelf(user)) {
+            if (isOwnUserProfile()) {
                 if (myProfile) {
                     if (actionsView != null) {
                         editItemVisible = !actionsView.supportsEditInfo();
@@ -15380,6 +15387,9 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             imageUpdater.onRequestPermissionsResultFragment(requestCode, permissions, grantResults);
         }
         if (requestCode == 101 || requestCode == 102) {
+            if (isOwnUserProfile()) {
+                return;
+            }
             final TLRPC.User user = getMessagesController().getUser(userId);
             if (user == null) {
                 return;

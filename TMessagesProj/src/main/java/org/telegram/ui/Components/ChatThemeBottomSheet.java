@@ -1128,7 +1128,7 @@ public class ChatThemeBottomSheet extends BottomSheet implements NotificationCen
             }
             boolean animated = true;
             ChatThemeItem newItem = items.get(position);
-            if (view.chatThemeItem == null || !ThemeKey.equals(view.chatThemeItem.chatTheme.getThemeKey(), newItem.chatTheme.getThemeKey()) || DialogsActivity.switchingTheme || view.lastThemeIndex != newItem.themeIndex) {
+            if (view.chatThemeItem == null || !ThemeKey.equals(view.chatThemeItem.chatTheme.getThemeKey(), newItem.chatTheme.getThemeKey()) || !view.isShown()) {
                 animated = false;
             }
 
@@ -1301,6 +1301,14 @@ public class ChatThemeBottomSheet extends BottomSheet implements NotificationCen
         public void setItems(List<ChatThemeItem> newItems) {
             items = newItems;
             notifyDataSetChanged();
+        }
+        public void appendItem(ChatThemeItem item) {
+            if (items == null) {
+                items = new ArrayList<>();
+            }
+            int position = items.size();
+            items.add(item);
+            notifyItemInserted(position);
         }
 
         public void setSelectedItem(int position) {

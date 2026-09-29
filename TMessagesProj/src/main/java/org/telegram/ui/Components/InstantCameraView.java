@@ -4871,6 +4871,10 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
         private InstantCameraVideoEncoderOverlayHelper overlayHelper;
 
         private AudioRecord audioRecorder;
+        private int audioInputChannels = 1;
+        private final int audioOutputChannels = 1;
+        private boolean wideMicrophoneCapture;
+        private boolean audioChannelsLocked;
 
         private ArrayBlockingQueue<AudioBufferInfo> buffers = new ArrayBlockingQueue<>(10);
         private ArrayList<Bitmap> keyframeThumbs = new ArrayList<>();
@@ -4886,6 +4890,7 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
             @Override
             public void run() {
                 long audioPresentationTimeUs = -1;
+                long audioFramesRead = 0;
                 int readResult;
                 boolean done = false;
                 AudioTimestamp audioTimestamp = new AudioTimestamp();
@@ -4921,8 +4926,15 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
                         }
 
                         ByteBuffer byteBuffer = buffer.buffer[a];
-                        byteBuffer.rewind();
+                        byteBuffer.clear();
                         readResult = audioRecorder.read(byteBuffer, 2048);
+                        int capturedBytes = readResult;
+                        if (readResult > 0) {
+                            byteBuffer.limit(readResult);
+                            if (audioInputChannels == 2 && audioOutputChannels == 1) {
+                                readResult = app.nimarkogram.messenger.camera.CameraXAudioCapture.downmixStereo16(byteBuffer, readResult);
+                            }
+                        }
                         if (readResult > 0 && a % 2 == 0) {
                             byteBuffer.limit(readResult);
                             double s = 0;
@@ -4948,11 +4960,15 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
                                         != AudioRecord.SUCCESS) {
                                     throw new IllegalStateException("AudioRecord timestamp unavailable");
                                 }
-                                timestamp = audioTimestamp.nanoTime / 1000;
+                                timestamp = audioInputChannels == 2
+                                        ? app.nimarkogram.messenger.camera.CameraXAudioCapture.bufferTimeUs(
+                                                audioTimestamp.nanoTime, audioTimestamp.framePosition, audioFramesRead, audioSampleRate)
+                                        : audioTimestamp.nanoTime / 1000;
                             } catch (Exception e) {
                                 FileLog.e(e);
                                 shouldUseTimestamp = false;
-                                timestamp = audioPresentationTimeUs = System.nanoTime() / 1000;
+                                timestamp = audioPresentationTimeUs = audioInputChannels == 2 && audioPresentationTimeUs >= 0
+                                        ? audioPresentationTimeUs : System.nanoTime() / 1000;
                             }
                         } else {
                             timestamp = audioPresentationTimeUs;
@@ -4960,9 +4976,11 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
                         buffer.offset[a] = timestamp;
 
                         buffer.read[a] = readResult;
-                        int bufferDurationUs = 1000000 * readResult / audioSampleRate / 2;
-                        if (!shouldUseTimestamp) {
-                            audioPresentationTimeUs += bufferDurationUs;
+                        long bufferDurationUs = app.nimarkogram.messenger.camera.CameraXAudioCapture.durationUs(
+                                capturedBytes, audioSampleRate, audioInputChannels);
+                        audioFramesRead += capturedBytes / (audioInputChannels * 2);
+                        if (!shouldUseTimestamp || audioInputChannels == 2) {
+                            audioPresentationTimeUs = timestamp + bufferDurationUs;
                         }
                     }
                     if (buffer.results >= 0 || buffer.last) {
@@ -6160,6 +6178,18 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
          * camera/mic sources.
          */
         private AudioRecord createStartedAudioRecorder(int configuredSource, int bufferSize) {
+            int requestedChannels = audioInputChannels;
+            for (int channels = requestedChannels; channels >= 1; channels--) {
+                if (audioChannelsLocked && channels != requestedChannels) break;
+                AudioRecord recorder = createStartedAudioRecorder(configuredSource, bufferSize, channels);
+                if (recorder != null) {
+                    audioInputChannels = channels;
+                    return recorder;
+                }
+            }
+            return null;
+        }
+        private AudioRecord createStartedAudioRecorder(int configuredSource, int bufferSize, int channels) {
             int[] sources = {configuredSource, MediaRecorder.AudioSource.CAMCORDER,
                     MediaRecorder.AudioSource.MIC, MediaRecorder.AudioSource.DEFAULT};
             for (int i = 0; i < sources.length; i++) {
@@ -6169,8 +6199,11 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
                 if (duplicate) continue;
                 AudioRecord candidate = null;
                 try {
+                    int channelMask = channels == 2 ? AudioFormat.CHANNEL_IN_STEREO : AudioFormat.CHANNEL_IN_MONO;
+                    int minimum = AudioRecord.getMinBufferSize(audioSampleRate, channelMask, AudioFormat.ENCODING_PCM_16BIT);
+                    if (minimum <= 0) continue;
                     candidate = new AudioRecord(source, audioSampleRate,
-                            AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT, bufferSize);
+                            channelMask, AudioFormat.ENCODING_PCM_16BIT, Math.max(bufferSize, minimum));
                     if (candidate.getState() != AudioRecord.STATE_INITIALIZED) {
                         candidate.release();
                         continue;
@@ -6187,6 +6220,9 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
                             }
                         }
                     } catch (Throwable ignored) {}
+                    if (wideMicrophoneCapture) {
+                        app.nimarkogram.messenger.camera.CameraXAudioCapture.requestWideCapture(candidate);
+                    }
                     candidate.startRecording();
                     if (candidate.getRecordingState() == AudioRecord.RECORDSTATE_RECORDING) {
                         if (source != configuredSource) {
@@ -6367,11 +6403,38 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
                 }
             }
         }
+        private void configureAudioEncoder() throws Exception {
+            try {
+                startAudioEncoder();
+            } catch (Exception error) {
+                if (audioEncoder != null) {
+                    try { audioEncoder.release(); } catch (Exception ignored) {}
+                    audioEncoder = null;
+                }
+                throw error;
+            }
+        }
+        private void startAudioEncoder() throws Exception {
+            MediaFormat audioFormat = new MediaFormat();
+            audioFormat.setString(MediaFormat.KEY_MIME, AUDIO_MIME_TYPE);
+            audioFormat.setInteger(MediaFormat.KEY_SAMPLE_RATE, audioSampleRate);
+            audioFormat.setInteger(MediaFormat.KEY_CHANNEL_COUNT, audioOutputChannels);
+            audioFormat.setInteger(MediaFormat.KEY_BIT_RATE, MessagesController.getInstance(currentAccount).roundAudioBitrate * 1024 * audioOutputChannels);
+            audioFormat.setInteger(MediaFormat.KEY_MAX_INPUT_SIZE, 2048 * AudioBufferInfo.MAX_SAMPLES);
+            audioEncoder = MediaCodec.createEncoderByType(AUDIO_MIME_TYPE);
+            audioEncoder.configure(audioFormat, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE);
+            audioEncoder.start();
+        }
 
         private void prepareEncoder(boolean fromPause) {
             setBluetoothScoOn(true);
 
             try {
+                if (!fromPause) {
+                    wideMicrophoneCapture = useCameraX && app.nimarkogram.messenger.NimarkoConfig.cameraXMultiMicrophone;
+                    audioInputChannels = wideMicrophoneCapture ? 2 : 1;
+                    audioChannelsLocked = false;
+                }
                 int recordBufferSize = AudioRecord.getMinBufferSize(audioSampleRate, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT);
                 if (recordBufferSize <= 0) {
                     recordBufferSize = 3584;
@@ -6407,7 +6470,8 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
                 skippedTime = 0;
 
                 audioRecorder = createStartedAudioRecorder(
-                        app.nimarkogram.messenger.NimarkoConfig.getMediaRecorderAudioSource(), bufferSize);
+                        wideMicrophoneCapture ? MediaRecorder.AudioSource.CAMCORDER
+                                : app.nimarkogram.messenger.NimarkoConfig.getMediaRecorderAudioSource(), bufferSize);
                 if (audioRecorder == null) {
                     throw new IllegalStateException("No usable AudioRecord source");
                 }
@@ -6419,16 +6483,8 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
                 audioBufferInfo = new MediaCodec.BufferInfo();
                 videoBufferInfo = new MediaCodec.BufferInfo();
 
-                MediaFormat audioFormat = new MediaFormat();
-                audioFormat.setString(MediaFormat.KEY_MIME, AUDIO_MIME_TYPE);
-                audioFormat.setInteger(MediaFormat.KEY_SAMPLE_RATE, audioSampleRate);
-                audioFormat.setInteger(MediaFormat.KEY_CHANNEL_COUNT, 1);
-                audioFormat.setInteger(MediaFormat.KEY_BIT_RATE, MessagesController.getInstance(currentAccount).roundAudioBitrate * 1024);
-                audioFormat.setInteger(MediaFormat.KEY_MAX_INPUT_SIZE, 2048 * AudioBufferInfo.MAX_SAMPLES);
-
-                audioEncoder = MediaCodec.createEncoderByType(AUDIO_MIME_TYPE);
-                audioEncoder.configure(audioFormat, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE);
-                audioEncoder.start();
+                configureAudioEncoder();
+                audioChannelsLocked = true;
 
                 firstEncode = true;
                 startConfiguredVideoEncoder();

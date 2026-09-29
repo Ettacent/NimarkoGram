@@ -4165,6 +4165,9 @@ public class ImageReceiver implements NotificationCenter.NotificationCenterDeleg
     public void setSkipUpdateFrame(boolean skipUpdateFrame) {
         this.skipUpdateFrame = skipUpdateFrame;
     }
+    public boolean getSkipUpdateFrame() {
+        return skipUpdateFrame;
+    }
 
     public void setCurrentTime(long time) {
         this.currentTime = time;

@@ -16,6 +16,7 @@ import android.graphics.Matrix;
 import android.graphics.Paint;
 import android.graphics.Path;
 import android.graphics.RectF;
+import android.graphics.Region;
 import android.graphics.Shader;
 import androidx.annotation.Keep;
 import android.view.View;
@@ -176,13 +177,37 @@ public class ClippingImageView extends View {
     public int[] getRadius() {
         return radius;
     }
+    public boolean hasBitmap() {
+        return bmp != null && !bmp.isRecycled();
+    }
+    public void drawBackdrop(Canvas canvas) {
+        drawImage(canvas, true);
+    }
+    public void drawOutsideViewport(Canvas canvas) {
+        final float scale = getScaleY();
+        if (scale <= 0 || !hasBitmap()) return;
+        final int save = canvas.save();
+        try {
+            canvas.clipRect(clipLeft / scale, clipTop / scale,
+                    getWidth() - clipRight / scale, getHeight() - clipBottom / scale,
+                    Region.Op.DIFFERENCE);
+            drawBackdrop(canvas);
+        } finally {
+            canvas.restoreToCount(save);
+        }
+    }
 
     public void onDraw(Canvas canvas) {
+        drawImage(canvas, false);
+    }
+    private void drawImage(Canvas canvas, boolean backdrop) {
         if (getVisibility() != VISIBLE) {
             return;
         }
         if (bmp != null && !bmp.isRecycled()) {
             float scaleY = getScaleY();
+            final float top = backdrop ? imageY : clipTop;
+            final float bottom = backdrop ? imageY : clipBottom;
             canvas.save();
 
             if (needRadius) {
@@ -191,7 +216,7 @@ public class ClippingImageView extends View {
                 bitmapRect.set(0, 0, bmp.getWidth(), bmp.getHeight());
                 AndroidUtilities.setRectToRect(shaderMatrix, bitmapRect, roundRect, orientation, invert, false);
                 bitmapShader.setLocalMatrix(shaderMatrix);
-                canvas.clipRect(clipLeft / scaleY, clipTop / scaleY, getWidth() - clipRight / scaleY, getHeight() - clipBottom / scaleY);
+                canvas.clipRect(clipLeft / scaleY, top / scaleY, getWidth() - clipRight / scaleY, getHeight() - bottom / scaleY);
 
                 for (int a = 0; a < radius.length; a++) {
                     radii[a * 2] = radius[a];
@@ -232,7 +257,7 @@ public class ClippingImageView extends View {
                     matrix.setRectToRect(bitmapRect, drawRect, Matrix.ScaleToFit.FILL);
                 }
 
-                canvas.clipRect(clipLeft / scaleY, clipTop / scaleY, getWidth() - clipRight / scaleY, getHeight() - clipBottom / scaleY);
+                canvas.clipRect(clipLeft / scaleY, top / scaleY, getWidth() - clipRight / scaleY, getHeight() - bottom / scaleY);
                 try {
                     canvas.drawBitmap(bmp.bitmap, matrix, paint);
                 } catch (Exception e) {

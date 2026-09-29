@@ -1688,6 +1688,13 @@ public class ChatActivity extends BaseFragment implements
             refreshGlassAfterPhotoViewerClose();
         }
         @Override
+        public boolean capturesClosingBackdrop() { return true; }
+        @Override
+        public void onCloseAnimationFrame() {
+            if (chatListView != null) chatListView.invalidate();
+            invalidateMergedVisibleBlurredPositionsAndSources(BLUR_INVALIDATE_FLAG_SCROLL);
+        }
+        @Override
         public boolean validateGroupId(long groupId) {
             MessageObject.GroupedMessages groupedMessages = groupedMessagesMap.get(groupId);
             return groupedMessages != null && groupedMessages.messages.size() > 1;
@@ -1707,6 +1714,13 @@ public class ChatActivity extends BaseFragment implements
         @Override
         public void onPreClose() {
             refreshGlassAfterPhotoViewerClose();
+        }
+        @Override
+        public boolean capturesClosingBackdrop() { return true; }
+        @Override
+        public void onCloseAnimationFrame() {
+            if (chatListView != null) chatListView.invalidate();
+            invalidateMergedVisibleBlurredPositionsAndSources(BLUR_INVALIDATE_FLAG_SCROLL);
         }
         @Override
         public boolean validateGroupId(long groupId) {
@@ -5747,18 +5761,22 @@ public class ChatActivity extends BaseFragment implements
                     }
 
                     if (isSkeletonVisible()) {
-                        boolean drawService = SharedConfig.getDevicePerformanceClass() != SharedConfig.PERFORMANCE_CLASS_LOW && Theme.hasGradientService();
-                        boolean darkOverlay = ColorUtils.calculateLuminance(getThemedColor(Theme.key_windowBackgroundWhite)) <= 0.7f && Theme.hasGradientService();
-                        boolean blackOverlay = ColorUtils.calculateLuminance(getThemedColor(Theme.key_windowBackgroundWhite)) <= 0.01f && Theme.hasGradientService();
+                        boolean hasGradientService = themeDelegate != null ? themeDelegate.hasGradientService() : Theme.hasGradientService();
+                        boolean drawService = SharedConfig.getDevicePerformanceClass() != SharedConfig.PERFORMANCE_CLASS_LOW && hasGradientService;
+                        boolean darkOverlay = ColorUtils.calculateLuminance(getThemedColor(Theme.key_windowBackgroundWhite)) <= 0.7f && hasGradientService;
+                        boolean blackOverlay = ColorUtils.calculateLuminance(getThemedColor(Theme.key_windowBackgroundWhite)) <= 0.01f && hasGradientService;
                         if (drawService) {
-                            Theme.applyServiceShaderMatrix(getMeasuredWidth(), AndroidUtilities.displaySize.y, 0, getY() - contentPanTranslation);
-                        }
-                        int wasDarkenAlpha = Theme.chat_actionBackgroundGradientDarkenPaint.getAlpha();
-                        if (blackOverlay) {
-                            Theme.chat_actionBackgroundGradientDarkenPaint.setAlpha((int) (wasDarkenAlpha * 4f));
+                            if (themeDelegate != null) {
+                                themeDelegate.applyServiceShaderMatrix(getMeasuredWidth(), AndroidUtilities.displaySize.y, 0, getY() - contentPanTranslation);
+                            } else {
+                                Theme.applyServiceShaderMatrix(getMeasuredWidth(), AndroidUtilities.displaySize.y, 0, getY() - contentPanTranslation);
+                            }
                         }
 
-                        float topSkeletonAlpha = startMessageAppearTransitionMs != 0 ? 1f - (System.currentTimeMillis() - startMessageAppearTransitionMs) / (float) SKELETON_DISAPPEAR_MS : 1f;
+                        Paint skeletonDarkenPaint = getThemedPaint(Theme.key_paint_chatActionBackgroundDarken);
+                        int wasDarkenAlpha = skeletonDarkenPaint.getAlpha();
+                        float topSkeletonAlpha = startMessageAppearTransitionMs != 0 ? Math.max(0f, Math.min(1f, 1f - (System.currentTimeMillis() - startMessageAppearTransitionMs) / (float) SKELETON_DISAPPEAR_MS)) : 1f;
+                        skeletonDarkenPaint.setAlpha((int) (Math.min(255, wasDarkenAlpha * (blackOverlay ? 4f : 1f)) * topSkeletonAlpha));
                         int alpha = skeletonPaint.getAlpha();
                         int wasServiceAlpha = skeletonServicePaint.getAlpha();
                         int wasOutlineAlpha = skeletonOutlinePaint.getAlpha();
@@ -5803,7 +5821,7 @@ public class ChatActivity extends BaseFragment implements
                             }
                             skeletonBackgroundDrawable.drawCached(canvas, skeletonBackgroundCacheParams, skeletonPaint);
                             if (darkOverlay) {
-                                skeletonBackgroundDrawable.drawCached(canvas, skeletonBackgroundCacheParams, Theme.chat_actionBackgroundGradientDarkenPaint);
+                                skeletonBackgroundDrawable.drawCached(canvas, skeletonBackgroundCacheParams, skeletonDarkenPaint);
                             }
                             skeletonBackgroundDrawable.drawCached(canvas, skeletonBackgroundCacheParams, skeletonOutlinePaint);
 
@@ -5813,7 +5831,7 @@ public class ChatActivity extends BaseFragment implements
                                 }
                                 canvas.drawCircle(dp(48 - 21), bottom - dp(21), dp(21), skeletonPaint);
                                 if (darkOverlay) {
-                                    canvas.drawCircle(dp(48 - 21), bottom - dp(21), dp(21), Theme.chat_actionBackgroundGradientDarkenPaint);
+                                    canvas.drawCircle(dp(48 - 21), bottom - dp(21), dp(21), skeletonDarkenPaint);
                                 }
                                 canvas.drawCircle(dp(48 - 21), bottom - dp(21), dp(21), skeletonOutlinePaint);
                             }
@@ -5824,7 +5842,7 @@ public class ChatActivity extends BaseFragment implements
                         skeletonServicePaint.setAlpha(wasServiceAlpha);
                         skeletonPaint.setAlpha(alpha);
                         skeletonOutlinePaint.setAlpha(wasOutlineAlpha);
-                        Theme.chat_actionBackgroundGradientDarkenPaint.setAlpha(wasDarkenAlpha);
+                        skeletonDarkenPaint.setAlpha(wasDarkenAlpha);
                         invalidated = false;
                         invalidate();
                     } else if (System.currentTimeMillis() - startMessageAppearTransitionMs > SKELETON_DISAPPEAR_MS) {
@@ -5908,6 +5926,13 @@ public class ChatActivity extends BaseFragment implements
                     drawChatForegroundElements(canvas);
                 }
                 canvas.restore();
+                if (PhotoViewer.hasInstance()) {
+                    PhotoViewer.getInstance().drawClosingImageUnderPanels(canvas, this, photoViewerProvider);
+                    PhotoViewer.getInstance().drawClosingImageUnderPanels(canvas, this, photoViewerPaidMediaProvider);
+                }
+                if (pinchToZoomHelper != null) {
+                    pinchToZoomHelper.drawImageUnderPanels(canvas, this);
+                }
             }
 
             protected void drawChatForegroundElements(Canvas canvas, RectF position) {
@@ -6394,7 +6419,26 @@ public class ChatActivity extends BaseFragment implements
                                 b - AndroidUtilities.dp(4)
                         );
                     }
-                    if (cell != null && cell.transitionParams.needsStopClipping) {
+                    if (cell != null && ChatMessageCell.drawingGlassBackdrop && cell.needsPhotoViewerBackdrop()) {
+                        final int save = canvas.save();
+                        final boolean previousClip = cell.clipToGroupBounds;
+                        try {
+                            canvas.translate(child.getLeft(), child.getTop());
+                            canvas.concat(child.getMatrix());
+                            if (!cell.transitionParams.needsStopClipping) {
+                                canvas.clipRect(0, 0, child.getWidth(), child.getHeight());
+                            }
+                            if (child.getAlpha() < 1f) {
+                                canvas.saveLayerAlpha(null, Math.round(255 * child.getAlpha()));
+                            }
+                            cell.clipToGroupBounds = clipToGroupBounds;
+                            cell.drawWithPhotoViewerBackdrop(canvas);
+                        } finally {
+                            cell.clipToGroupBounds = previousClip;
+                            canvas.restoreToCount(save);
+                        }
+                        result = cell.transitionParams.animateChange;
+                    } else if (cell != null && cell.transitionParams.needsStopClipping) {
                         canvas.save();
                         canvas.translate(cell.getX(), cell.getY());
                         cell.drawInternal(canvas);
@@ -9255,6 +9299,11 @@ public class ChatActivity extends BaseFragment implements
             private final int[] contentLocation = new int[2];
             private final int[] decorLocation = new int[2];
             @Override
+            protected void invalidateViews() {
+                super.invalidateViews();
+                if (chatListView != null) chatListView.invalidate();
+            }
+            @Override
             protected void drawOverlays(Canvas canvas, float alpha, float parentOffsetX, float parentOffsetY, float clipTop, float clipBottom) {
                 if (alpha > 0 && isInOverlayMode()) {
                     View view = getChild();
@@ -9324,7 +9373,7 @@ public class ChatActivity extends BaseFragment implements
                             ChatMessageCell cell = (ChatMessageCell) chatListView.getChildAt(i);
                             if (cell.getMessageObject() != null && cell.getMessageObject().getId() == messageObject.getId()) {
                                 AnimatedFileDrawable animation = cell.getPhotoImage().getAnimation();
-                                if (animation.isRunning()) {
+                                if (animation != null && animation.isRunning()) {
                                     animation.stop();
                                 }
                                 if (animation != null) {
@@ -18174,32 +18223,8 @@ public class ChatActivity extends BaseFragment implements
             ChatMessageCell.drawingGlassBackdrop = true;
             try {
                 drawListBackdrop(blurCanvas, position);
-                drawPhotoViewerBackdrop(blurCanvas, position);
             } finally {
                 ChatMessageCell.drawingGlassBackdrop = previousCapture;
-            }
-        }
-        private void drawPhotoViewerBackdrop(Canvas canvas, RectF position) {
-            if (!PhotoViewer.hasInstance() || !PhotoViewer.getInstance().isVisible()) return;
-            for (int i = 0; i < chatListView.getChildCount(); i++) {
-                View child = chatListView.getChildAt(i);
-                if (!(child instanceof ChatMessageCell) || child.getVisibility() != VISIBLE
-                        || child.getAlpha() <= 0f || quickRejectChild(child, position)) continue;
-                ChatMessageCell cell = (ChatMessageCell) child;
-                if (!PhotoViewer.isShowingImage(cell.getMessageObject())) continue;
-                int save = canvas.save();
-                try {
-                    canvas.translate(child.getLeft(), child.getTop());
-                    canvas.concat(child.getMatrix());
-                    canvas.translate(0, child.getPaddingTop());
-                    if (child.getAlpha() < 1f) {
-                        canvas.saveLayerAlpha(0, 0, child.getWidth(), child.getHeight(),
-                                Math.round(255 * child.getAlpha()));
-                    }
-                    cell.drawPhotoViewerBackdrop(canvas);
-                } finally {
-                    canvas.restoreToCount(save);
-                }
             }
         }
         private void drawListBackdrop(Canvas blurCanvas, RectF position) {
@@ -18242,6 +18267,14 @@ public class ChatActivity extends BaseFragment implements
 
             if (chatListView.getVisibility() == View.VISIBLE) {
                 Blur3Utils.captureRelativeParent(this::drawListImpl, blurCanvas, blurListPosition, chatListView, parent, chatListAlpha);
+                if (PhotoViewer.hasInstance() && chatListAlpha > 0
+                        && (PhotoViewer.getInstance().hasClosingBackdrop(photoViewerProvider)
+                        || PhotoViewer.getInstance().hasClosingBackdrop(photoViewerPaidMediaProvider))) {
+                    final int save = blurCanvas.saveLayerAlpha(position, chatListAlpha);
+                    PhotoViewer.getInstance().drawClosingBackdrop(blurCanvas, parent, photoViewerProvider);
+                    PhotoViewer.getInstance().drawClosingBackdrop(blurCanvas, parent, photoViewerPaidMediaProvider);
+                    blurCanvas.restoreToCount(save);
+                }
                 if (pinchToZoomHelper != null && pinchToZoomHelper.isInOverlayMode() && chatListAlpha > 0) {
                     int save = blurCanvas.saveLayerAlpha(position, chatListAlpha);
                     pinchToZoomHelper.drawBackdrop(blurCanvas, parent);
@@ -21405,8 +21438,9 @@ public class ChatActivity extends BaseFragment implements
         if (!visible && startMessageAppearTransitionMs == 0) {
             checkDispatchHideSkeletons(fragmentBeginToShow);
         }
+        boolean fading = startMessageAppearTransitionMs != 0 && System.currentTimeMillis() - startMessageAppearTransitionMs <= SKELETON_DISAPPEAR_MS;
         if (SharedConfig.getDevicePerformanceClass() != SharedConfig.PERFORMANCE_CLASS_LOW && !fromPullingDownTransition && fragmentBeginToShow) {
-            boolean rotate = visible && startMessageAppearTransitionMs == 0;
+            boolean rotate = visible && startMessageAppearTransitionMs == 0 || fading;
             Drawable wallpaper = themeDelegate.getWallpaperDrawable();
             if (contentView != null) {
                 wallpaper = contentView.getBackgroundImage();
@@ -21425,7 +21459,7 @@ public class ChatActivity extends BaseFragment implements
                 }
             }
         }
-        return visible || startMessageAppearTransitionMs != 0 && System.currentTimeMillis() - startMessageAppearTransitionMs <= SKELETON_DISAPPEAR_MS;
+        return visible || fading;
     }
 
     private void checkDispatchHideSkeletons(boolean animate) {

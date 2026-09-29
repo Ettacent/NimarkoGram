@@ -5,6 +5,7 @@ import android.animation.AnimatorListenerAdapter;
 import android.animation.ValueAnimator;
 import android.content.Context;
 import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.LinearGradient;
@@ -15,6 +16,7 @@ import android.graphics.Shader;
 import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.Drawable;
+import android.os.SystemClock;
 import android.text.Layout;
 import android.text.StaticLayout;
 import android.text.TextPaint;
@@ -29,6 +31,7 @@ import org.telegram.messenger.ChatThemeController;
 import org.telegram.messenger.DocumentObject;
 import org.telegram.messenger.Emoji;
 import org.telegram.messenger.FileLoader;
+import org.telegram.messenger.FileLog;
 import org.telegram.messenger.ImageLoader;
 import org.telegram.messenger.ImageLocation;
 import org.telegram.messenger.ImageReceiver;
@@ -44,8 +47,10 @@ import org.telegram.ui.ActionBar.MessageDrawable;
 import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.ActionBar.theme.ITheme;
 import org.telegram.ui.ChatBackgroundDrawable;
+import java.util.LinkedHashMap;
 
 import java.util.List;
+import java.io.File;
 
 public class ThemeSmallPreviewView extends FrameLayout implements NotificationCenter.NotificationCenterDelegate {
 
@@ -67,6 +72,12 @@ public class ThemeSmallPreviewView extends FrameLayout implements NotificationCe
     ThemeDrawable themeDrawable = new ThemeDrawable();
     ThemeDrawable animateOutThemeDrawable;
     private float changeThemeProgress = 1f;
+    private long changeThemeStartedAt;
+    private Bitmap paletteFrom;
+    private boolean waitingForPattern;
+    private boolean transitionPending;
+    private boolean patternFailed;
+    private PatternLoad patternLoad;
 
     Paint outlineBackgroundPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint backgroundFillPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -143,6 +154,7 @@ public class ThemeSmallPreviewView extends FrameLayout implements NotificationCe
         rectF.set(INNER_RECT_SPACE, INNER_RECT_SPACE, w - INNER_RECT_SPACE, h - INNER_RECT_SPACE);
         clipPath.reset();
         clipPath.addRoundRect(rectF, INNER_RADIUS, INNER_RADIUS, Path.Direction.CW);
+        paletteFrom = null;
     }
 
     MessageDrawable messageDrawableOut = new MessageDrawable(MessageDrawable.TYPE_TEXT, true, false);
@@ -154,6 +166,15 @@ public class ThemeSmallPreviewView extends FrameLayout implements NotificationCe
             super.dispatchDraw(canvas);
             return;
         }
+        if (transitionPending && !waitingForPattern) {
+            transitionPending = false;
+            changeThemeStartedAt = SystemClock.uptimeMillis();
+        }
+        if (waitingForPattern && animateOutThemeDrawable == null && paletteFrom == null) {
+            return;
+        }
+        int reveal = animateOutThemeDrawable == null && paletteFrom == null && changeThemeProgress < 1f
+                ? canvas.saveLayerAlpha(0, 0, getWidth(), getHeight(), Math.round(255 * previewProgress())) : -1;
         if (chatBackgroundDrawable != null) {
             canvas.save();
             canvas.clipPath(clipPath);
@@ -161,26 +182,44 @@ public class ThemeSmallPreviewView extends FrameLayout implements NotificationCe
             chatBackgroundDrawable.draw(canvas);
             canvas.restore();
         }
+        drawPalette(canvas);
+        super.dispatchDraw(canvas);
+        if (reveal != -1) canvas.restoreToCount(reveal);
+    }
+    private float previewProgress() {
+        return transitionPending || waitingForPattern ? 0f
+                : Math.min(1f, (SystemClock.uptimeMillis() - changeThemeStartedAt) / 220f);
+    }
+    private void drawPalette(Canvas canvas) {
+        if (patternFailed && (paletteFrom != null || animateOutThemeDrawable != null)) {
+            if (paletteFrom != null) canvas.drawBitmap(paletteFrom, 0, 0, null);
+            if (animateOutThemeDrawable != null) {
+                animateOutThemeDrawable.drawBackground(canvas, 1f);
+                animateOutThemeDrawable.draw(canvas, 1f);
+            }
+            return;
+        }
+        if (changeThemeProgress < 1f) changeThemeProgress = previewProgress();
+        if (changeThemeProgress != 1 && paletteFrom != null) {
+            canvas.drawBitmap(paletteFrom, 0, 0, null);
+        }
         if (changeThemeProgress != 1 && animateOutThemeDrawable != null) {
             animateOutThemeDrawable.drawBackground(canvas, 1f);
-        }
-        if (changeThemeProgress != 0) {
-            themeDrawable.drawBackground(canvas, changeThemeProgress);
-        }
-        if (changeThemeProgress != 1 && animateOutThemeDrawable != null) {
             animateOutThemeDrawable.draw(canvas, 1f);
         }
-        if (changeThemeProgress != 0) {
-            themeDrawable.draw(canvas, changeThemeProgress);
+        if (!waitingForPattern) {
+            int save = changeThemeProgress < 1f && (animateOutThemeDrawable != null || paletteFrom != null)
+                    ? canvas.saveLayerAlpha(0, 0, getWidth(), getHeight(), Math.round(255 * changeThemeProgress)) : -1;
+            themeDrawable.drawBackground(canvas, 1f);
+            themeDrawable.draw(canvas, 1f);
+            if (save != -1) canvas.restoreToCount(save);
         }
-        if (changeThemeProgress != 1f) {
-            changeThemeProgress += AndroidUtilities.screenRefreshTime / 150f;
-            if (changeThemeProgress >= 1f) {
-                changeThemeProgress = 1f;
-            }
+        if (changeThemeProgress != 1f && !waitingForPattern) {
             invalidate();
+        } else if (changeThemeProgress == 1f) {
+            animateOutThemeDrawable = null;
+            paletteFrom = null;
         }
-        super.dispatchDraw(canvas);
     }
 
     public TLRPC.WallPaper fallbackWallpaper;
@@ -198,6 +237,196 @@ public class ThemeSmallPreviewView extends FrameLayout implements NotificationCe
     private long themeUserByUserId;
 
     public int lastThemeIndex;
+    private int previewGeneration;
+    private final LinkedHashMap<String, Bitmap> previewPatterns = new LinkedHashMap<>();
+    private static String patternKey(TLRPC.WallPaper wallpaper) {
+        if (wallpaper.document != null && wallpaper.document.id != 0) {
+            return "document:" + wallpaper.document.id;
+        }
+        return wallpaper.id != 0 ? "wallpaper:" + wallpaper.id : null;
+    }
+    private boolean reusePattern(Drawable target, String key, int intensity, int color) {
+        Bitmap bitmap = key == null ? null : previewPatterns.get(key);
+        if (bitmap == null || bitmap.isRecycled()) {
+            return false;
+        }
+        applyPattern(target, key, bitmap, intensity, color, true);
+        return true;
+    }
+    private void applyPattern(Drawable target, String key, Bitmap bitmap, int intensity, int color, boolean immediate) {
+        if (!(target instanceof MotionBackgroundDrawable) || target != themeDrawable.previewDrawable || patternFailed) {
+            return;
+        }
+        if (bitmap == null || bitmap.isRecycled()) {
+            failPattern(target, intensity);
+            return;
+        }
+        MotionBackgroundDrawable motion = (MotionBackgroundDrawable) target;
+        if (motion.getPatternBitmap() != null) {
+            return;
+        }
+        if (!immediate) {
+            try {
+                bitmap = prescaleBitmap(bitmap).copy(Bitmap.Config.ARGB_8888, false);
+            } catch (Throwable e) {
+                FileLog.e(e);
+                failPattern(target, intensity);
+                return;
+            }
+            if (bitmap == null) {
+                failPattern(target, intensity);
+                return;
+            }
+            if (key != null) {
+                previewPatterns.put(key, bitmap);
+                if (previewPatterns.size() > 2) {
+                    previewPatterns.remove(previewPatterns.keySet().iterator().next());
+                }
+            }
+        }
+        motion.setPatternBitmap(intensity, bitmap, true);
+        motion.setPatternColorFilter(color);
+        waitingForPattern = false;
+        invalidate();
+    }
+    private void failPattern(Drawable target, int intensity) {
+        if (target != themeDrawable.previewDrawable || !waitingForPattern || patternFailed) return;
+        patternFailed = true;
+        waitingForPattern = false;
+        if (paletteFrom == null && animateOutThemeDrawable == null && intensity < 0) {
+            themeDrawable.previewDrawable = new ColorDrawable(Color.BLACK);
+        }
+        transitionPending = true;
+        invalidate();
+    }
+    private void loadPattern(TLRPC.Document document, Drawable target, String key, int intensity, int color) {
+        patternLoad = new PatternLoad(document, target, key, intensity, color);
+        if (attached) patternLoad.start();
+    }
+    private void resumePatternLoad() {
+        if (patternLoad != null && waitingForPattern) {
+            PatternLoad pending = patternLoad;
+            if (pending.finished) {
+                loadPattern(pending.document, pending.target, pending.key, pending.intensity, pending.color);
+            } else if (!pending.started) {
+                pending.start();
+            }
+        }
+    }
+    private Bitmap decodePatternThumb(TLRPC.PhotoSize thumb) {
+        try {
+            return thumb instanceof TLRPC.TL_photoStrippedSize
+                    ? ImageLoader.getStrippedPhotoBitmap(thumb.bytes, "b")
+                    : BitmapFactory.decodeByteArray(thumb.bytes, 0, thumb.bytes.length);
+        } catch (Throwable e) {
+            FileLog.e(e);
+            return null;
+        }
+    }
+    private Bitmap decodeDefaultPattern() {
+        try {
+            return SvgHelper.getBitmap(R.raw.default_pattern, AndroidUtilities.dp(PATTERN_BITMAP_MAXWIDTH),
+                    AndroidUtilities.dp(PATTERN_BITMAP_MAXHEIGHT), Color.BLACK, AndroidUtilities.density);
+        } catch (Throwable e) {
+            FileLog.e(e);
+            return null;
+        }
+    }
+    private class PatternLoad implements NotificationCenter.NotificationCenterDelegate {
+        final int generation = previewGeneration;
+        final TLRPC.Document document;
+        final Drawable target;
+        final String key;
+        final int intensity, color;
+        String fileName;
+        boolean finished;
+        boolean started;
+        PatternLoad(TLRPC.Document document, Drawable target, String key, int intensity, int color) {
+            this.document = document;
+            this.target = target;
+            this.key = key;
+            this.intensity = intensity;
+            this.color = color;
+        }
+        void stopObserving() {
+            NotificationCenter.getInstance(currentAccount).removeObserver(this, NotificationCenter.fileLoaded);
+            NotificationCenter.getInstance(currentAccount).removeObserver(this, NotificationCenter.fileLoadFailed);
+        }
+        void cancel() {
+            finished = true;
+            stopObserving();
+        }
+        void start() {
+            if (started || finished || !attached) return;
+            started = true;
+            try {
+                startRequest();
+            } catch (Throwable e) {
+                FileLog.e(e);
+                complete(null);
+            }
+        }
+        void startRequest() {
+            TLRPC.PhotoSize thumb = FileLoader.getClosestPhotoSizeWithSize(document.thumbs, PATTERN_BITMAP_MAXWIDTH);
+            if (thumb instanceof TLRPC.TL_photoCachedSize || thumb instanceof TLRPC.TL_photoStrippedSize) {
+                ChatThemeController.chatThemeQueue.postRunnable(() -> {
+                    final Bitmap result = decodePatternThumb(thumb);
+                    AndroidUtilities.runOnUIThread(() -> complete(result));
+                });
+                return;
+            }
+            ImageLocation location = ImageLocation.getForDocument(thumb, document);
+            if (location == null || location.location == null) {
+                complete(null);
+                return;
+            }
+            fileName = FileLoader.getAttachFileName(location.location);
+            if (TextUtils.isEmpty(fileName)) {
+                complete(null);
+                return;
+            }
+            FileLoader loader = FileLoader.getInstance(currentAccount);
+            File local = loader.getLocalFile(location);
+            if (local != null) {
+                decode(local);
+                return;
+            }
+            NotificationCenter.getInstance(currentAccount).addObserver(this, NotificationCenter.fileLoaded);
+            NotificationCenter.getInstance(currentAccount).addObserver(this, NotificationCenter.fileLoadFailed);
+            loader.loadFile(location, document, null, FileLoader.PRIORITY_NORMAL, 1);
+        }
+        @Override
+        public void didReceivedNotification(int id, int account, Object... args) {
+            if (finished || account != currentAccount || !fileName.equals(args[0])) return;
+            if (id == NotificationCenter.fileLoaded) {
+                stopObserving();
+                decode((File) args[1]);
+            } else if (id == NotificationCenter.fileLoadFailed) {
+                complete(null);
+            }
+        }
+        void decode(File file) {
+            ChatThemeController.chatThemeQueue.postRunnable(() -> {
+                Bitmap bitmap = null;
+                try {
+                    bitmap = AndroidUtilities.getScaledBitmap(AndroidUtilities.dp(PATTERN_BITMAP_MAXWIDTH),
+                            AndroidUtilities.dp(PATTERN_BITMAP_MAXHEIGHT), file.getAbsolutePath(), null, 0);
+                } catch (Throwable e) {
+                    FileLog.e(e);
+                }
+                final Bitmap result = bitmap;
+                AndroidUtilities.runOnUIThread(() -> complete(result));
+            });
+        }
+        void complete(Bitmap bitmap) {
+            if (finished) return;
+            finished = true;
+            stopObserving();
+            if (patternLoad != this || generation != previewGeneration) return;
+            patternLoad = null;
+            applyPattern(target, key, bitmap, intensity, color, false);
+        }
+    }
     public void setItem(ChatThemeBottomSheet.ChatThemeItem item, boolean animated) {
         setItem(item, 0, animated);
     }
@@ -205,6 +434,13 @@ public class ThemeSmallPreviewView extends FrameLayout implements NotificationCe
     public void setItem(ChatThemeBottomSheet.ChatThemeItem item, long parentDialogId, boolean animated) {
         boolean itemChanged = chatThemeItem != item;
         boolean darkModeChanged = lastThemeIndex != item.themeIndex;
+        boolean hasPreviousPalette = !waitingForPattern || animateOutThemeDrawable != null || paletteFrom != null;
+        Bitmap interruptedPalette = null;
+        if (!itemChanged && darkModeChanged && animated && hasPreviousPalette && changeThemeProgress < 1f
+                && getWidth() > 0 && getHeight() > 0) {
+            interruptedPalette = Bitmap.createBitmap(getWidth(), getHeight(), Bitmap.Config.ARGB_8888);
+            drawPalette(new Canvas(interruptedPalette));
+        }
         lastThemeIndex = item.themeIndex;
         this.chatThemeItem = item;
         hasAnimatedEmoji = false;
@@ -267,30 +503,31 @@ public class ThemeSmallPreviewView extends FrameLayout implements NotificationCe
         backupImageView.setVisibility(item.chatTheme.isAnyStub() && fallbackWallpaper != null ? View.GONE : View.VISIBLE);
 
         if (itemChanged || darkModeChanged) {
-            if (animated) {
-                changeThemeProgress = 0f;
-                animateOutThemeDrawable = themeDrawable;
-                themeDrawable = new ThemeDrawable();
-                invalidate();
-            } else {
-                changeThemeProgress = 1f;
+            if (patternLoad != null) {
+                patternLoad.cancel();
+                patternLoad = null;
             }
+            final int generation = ++previewGeneration;
+            animateOutThemeDrawable = animated && !itemChanged && hasPreviousPalette && interruptedPalette == null ? themeDrawable : null;
+            paletteFrom = interruptedPalette;
+            changeThemeProgress = 0f;
+            transitionPending = true;
+            waitingForPattern = false;
+            patternFailed = false;
+            themeDrawable = new ThemeDrawable();
             updatePreviewBackground(themeDrawable);
+            final Drawable targetPreview = themeDrawable.previewDrawable;
+            final int targetPatternColor = patternColor;
             final long themeId = item.chatTheme.getThemeId(lastThemeIndex);
             if (themeId != 0) {
                 TLRPC.WallPaper wallPaper = item.chatTheme.getWallpaper(lastThemeIndex);
-                if (wallPaper != null) {
-                    final int intensity = wallPaper.settings.intensity;
-                    item.chatTheme.loadWallpaperThumb(lastThemeIndex, result -> {
-                        if (result != null && result.first == themeId) {
-                            if (item.previewDrawable instanceof MotionBackgroundDrawable) {
-                                MotionBackgroundDrawable motionBackgroundDrawable = (MotionBackgroundDrawable) item.previewDrawable;
-                                motionBackgroundDrawable.setPatternBitmap(intensity >= 0 ? 100 : -100, prescaleBitmap(result.second), true);
-                                motionBackgroundDrawable.setPatternColorFilter(patternColor);
-                            }
-                            invalidate();
-                        }
-                    });
+                if (wallPaper != null && wallPaper.document != null && targetPreview instanceof MotionBackgroundDrawable) {
+                    waitingForPattern = true;
+                    final int intensity = wallPaper.settings == null ? 100 : wallPaper.settings.intensity;
+                    final String key = patternKey(wallPaper);
+                    if (!reusePattern(targetPreview, key, intensity >= 0 ? 100 : -100, targetPatternColor)) {
+                        loadPattern(wallPaper.document, targetPreview, key, intensity >= 0 ? 100 : -100, targetPatternColor);
+                    }
                 }
             } else {
                 Theme.ThemeInfo themeInfo = item.chatTheme.getThemeInfo(lastThemeIndex);
@@ -303,46 +540,28 @@ public class ThemeSmallPreviewView extends FrameLayout implements NotificationCe
                 if (accent != null && accent.info != null && accent.info.settings.size() > 0) {
                     TLRPC.WallPaper wallPaper = accent.info.settings.get(0).wallpaper;
 
-                    if (wallPaper != null && wallPaper.document != null) {
+                    if (wallPaper != null && wallPaper.document != null && targetPreview instanceof MotionBackgroundDrawable) {
+                        waitingForPattern = true;
                         TLRPC.Document wallpaperDocument = wallPaper.document;
-                        final TLRPC.PhotoSize thumbSize = FileLoader.getClosestPhotoSizeWithSize(wallpaperDocument.thumbs, PATTERN_BITMAP_MAXWIDTH);
-                        ImageLocation imageLocation = ImageLocation.getForDocument(thumbSize, wallpaperDocument);
-                        ImageReceiver imageReceiver = new ImageReceiver();
-                        imageReceiver.setAllowLoadingOnAttachedOnly(false);
-                        imageReceiver.setImage(imageLocation, PATTERN_BITMAP_MAXWIDTH + "_" + PATTERN_BITMAP_MAXHEIGHT, null, null, null, 1);
-                        imageReceiver.setDelegate((receiver, set, thumb, memCache) -> {
-                            ImageReceiver.BitmapHolder holder = receiver.getBitmapSafe();
-                            if (!set || holder == null) {
-                                return;
-                            }
-                            Bitmap resultBitmap = holder.bitmap;
-                            if (resultBitmap != null) {
-                                if (item.previewDrawable instanceof MotionBackgroundDrawable) {
-                                    MotionBackgroundDrawable motionBackgroundDrawable = (MotionBackgroundDrawable) item.previewDrawable;
-                                    motionBackgroundDrawable.setPatternBitmap(wallPaper.settings == null || wallPaper.settings.intensity >= 0 ? 100 : -100, prescaleBitmap(resultBitmap), true);
-                                    motionBackgroundDrawable.setPatternColorFilter(patternColor);
-                                    invalidate();
-                                }
-                            }
-                        });
-                        ImageLoader.getInstance().loadImageForImageReceiver(imageReceiver);
+                        final String key = patternKey(wallPaper);
+                        final int intensity = wallPaper.settings == null || wallPaper.settings.intensity >= 0 ? 100 : -100;
+                        if (!reusePattern(targetPreview, key, intensity, targetPatternColor)) {
+                            loadPattern(wallpaperDocument, targetPreview, key, intensity, targetPatternColor);
+                        }
                     }
-                } else if (accent != null && accent.info == null) {
+                } else if (accent != null && accent.info == null && targetPreview instanceof MotionBackgroundDrawable) {
+                    waitingForPattern = true;
                     int intensity = (int) (accent.patternIntensity * 100);
-                    if (item.previewDrawable instanceof MotionBackgroundDrawable) {
-                        ((MotionBackgroundDrawable) item.previewDrawable).setPatternBitmap(intensity);
-                    }
-                    ChatThemeController.chatThemeQueue.postRunnable(() -> {
-                        Bitmap bitmap = SvgHelper.getBitmap(R.raw.default_pattern, AndroidUtilities.dp(PATTERN_BITMAP_MAXWIDTH), AndroidUtilities.dp(PATTERN_BITMAP_MAXHEIGHT), Color.BLACK, AndroidUtilities.density);
-                        AndroidUtilities.runOnUIThread(() -> {
-                            if (item.previewDrawable instanceof MotionBackgroundDrawable) {
-                                MotionBackgroundDrawable motionBackgroundDrawable = (MotionBackgroundDrawable) item.previewDrawable;
-                                motionBackgroundDrawable.setPatternBitmap(intensity, prescaleBitmap(bitmap), true);
-                                motionBackgroundDrawable.setPatternColorFilter(patternColor);
-                                invalidate();
-                            }
+                    if (!reusePattern(targetPreview, "default", intensity, targetPatternColor)) {
+                        ChatThemeController.chatThemeQueue.postRunnable(() -> {
+                            final Bitmap result = decodeDefaultPattern();
+                            AndroidUtilities.runOnUIThread(() -> {
+                                if (generation == previewGeneration && chatThemeItem == item && targetPreview instanceof MotionBackgroundDrawable) {
+                                    applyPattern(targetPreview, "default", result, intensity, targetPatternColor, false);
+                                }
+                            });
                         });
-                    });
+                    }
                 }
             }
         }
@@ -628,6 +847,9 @@ public class ThemeSmallPreviewView extends FrameLayout implements NotificationCe
         }
 
         public void drawBackground(Canvas canvas, float alpha) {
+            drawPreviewBackground(canvas, alpha);
+        }
+        private void drawPreviewBackground(Canvas canvas, float alpha) {
             if (previewDrawable != null) {
                 canvas.save();
                 canvas.clipPath(clipPath);
@@ -664,11 +886,6 @@ public class ThemeSmallPreviewView extends FrameLayout implements NotificationCe
 
         public void draw(Canvas canvas, float alpha) {
             if (isSelected || strokeAlphaAnimator != null) {
-                EmojiThemes.ThemeItem themeItem = chatThemeItem.chatTheme.getThemeItem(chatThemeItem.themeIndex);
-                int strokeColor = chatThemeItem.chatTheme.isAnyStub()
-                        ? getThemedColor(Theme.key_featuredStickers_addButton)
-                        : themeItem.outLineColor;
-                strokePaint.setColor(strokeColor);
                 strokePaint.setAlpha((int) (selectionProgress * alpha * 255));
                 float rectSpace = strokePaint.getStrokeWidth() * 0.5f + AndroidUtilities.dp(4) * (1f - selectionProgress);
                 rectF.set(rectSpace, rectSpace, getWidth() - rectSpace, getHeight() - rectSpace);
@@ -769,6 +986,10 @@ public class ThemeSmallPreviewView extends FrameLayout implements NotificationCe
         super.onAttachedToWindow();
         NotificationCenter.getGlobalInstance().addObserver(this, NotificationCenter.emojiLoaded);
         attached = true;
+        if (chatThemeItem != null && lastThemeIndex != chatThemeItem.themeIndex) {
+            setItem(chatThemeItem, false);
+        }
+        resumePatternLoad();
         if (chatBackgroundDrawable != null) {
             chatBackgroundDrawable.onAttachedToWindow(ThemeSmallPreviewView.this);
         }
@@ -780,6 +1001,9 @@ public class ThemeSmallPreviewView extends FrameLayout implements NotificationCe
         super.onDetachedFromWindow();
         NotificationCenter.getGlobalInstance().removeObserver(this, NotificationCenter.emojiLoaded);
         attached = false;
+        if (patternLoad != null) {
+            patternLoad.cancel();
+        }
         if (chatBackgroundDrawable != null) {
             chatBackgroundDrawable.onDetachedFromWindow(ThemeSmallPreviewView.this);
         }

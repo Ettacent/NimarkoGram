@@ -112,7 +112,7 @@ public class TelegramMediaSession {
         extras.putBoolean(SLOT_RESERVATION_SKIP_TO_NEXT, true);
         session.setExtras(extras);
 
-        session.setActive(true);
+        session.setActive(false);
 
         PlaybackStateCompat.Builder pb = new PlaybackStateCompat.Builder()
                 .setState(PlaybackStateCompat.STATE_NONE, 0, 1f)
@@ -195,6 +195,7 @@ public class TelegramMediaSession {
             return;
         }
         try {
+            session.setCallback(new SessionCallback());
             PlaybackStateCompat stopped = new PlaybackStateCompat.Builder()
                     .setState(PlaybackStateCompat.STATE_STOPPED, 0, 1f)
                     .setActions(getAvailableActions())
@@ -612,7 +613,7 @@ public class TelegramMediaSession {
         return null;
     }
 
-    private final class SessionCallback extends MediaSessionCompat.Callback {
+    public class SessionCallback extends MediaSessionCompat.Callback {
 
         @Override
         public void onPlay() {

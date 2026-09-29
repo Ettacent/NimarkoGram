@@ -71,6 +71,7 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.core.view.accessibility.AccessibilityNodeInfoCompat;
 import androidx.recyclerview.widget.DefaultItemAnimator;
+import androidx.recyclerview.widget.DiffUtil;
 import androidx.recyclerview.widget.GridLayoutManager;
 import androidx.recyclerview.widget.ItemTouchHelper;
 import androidx.recyclerview.widget.LinearLayoutManager;
@@ -749,8 +750,9 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
     private int initialTab;
     private boolean showGroupUsersTab;
     private int groupUsersExpectedCount;
-    private int chatUsersStateHash;
     private boolean chatUsersStateInitialized;
+    private ArrayList<Long> chatUserIds = new ArrayList<>();
+    private ArrayList<Integer> chatUserContentHashes = new ArrayList<>();
     private boolean forceGiftsTabUntilInfoLoaded;
 
     private SparseArray<MessageObject>[] selectedFiles = new SparseArray[]{new SparseArray<>(), new SparseArray<>()};
@@ -2384,8 +2386,9 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
         }
         chatUsersAdapter = new ChatUsersAdapter(context);
         if (topicId == 0) {
-            chatUsersAdapter.sortedUsers = sortedUsers;
-            chatUsersAdapter.chatInfo = showGroupUsersTab && chatInfo != null && chatInfo.participants != null ? chatInfo : null;
+            chatUsersAdapter.setParticipants(sortedUsers, showGroupUsersTab ? chatInfo : null);
+            chatUserIds = getChatUserIds(chatUsersAdapter.participants, chatUsersAdapter.chatInfo != null);
+            chatUserContentHashes = getChatUserContentHashes();
         }
         storiesAdapter = new StoriesAdapter(context, false) {
             @Override
@@ -3251,16 +3254,9 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
             });
             mediaPages[a].listView.setOnItemClickListener((view, position, x, y) -> {
                 if (mediaPage.selectedType == TAB_GROUPUSERS) {
-                    if (view instanceof UserCell) {
-                        TLRPC.ChatParticipant participant;
-                        final int i;
-                        if (!chatUsersAdapter.sortedUsers.isEmpty()) {
-                            i = chatUsersAdapter.sortedUsers.get(position);
-                        } else {
-                            i = position;
-                        }
-                        participant = chatUsersAdapter.chatInfo.participants.participants.get(i);
-                        if (i < 0 || i >= chatUsersAdapter.chatInfo.participants.participants.size()) {
+                    if (view instanceof UserCell && mediaPage.listView.getAdapter() == chatUsersAdapter) {
+                        TLRPC.ChatParticipant participant = chatUsersAdapter.getParticipant(position);
+                        if (participant == null) {
                             return;
                         }
                         onMemberClick(participant, false, view);
@@ -3603,19 +3599,12 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
                         mediaPage.listView.clickItem(view, position);
                         return true;
                     }
-                    if (mediaPage.selectedType == TAB_GROUPUSERS && view instanceof UserCell) {
-                        final TLRPC.ChatParticipant participant;
-                        int index = position;
-                        if (!chatUsersAdapter.sortedUsers.isEmpty()) {
-                            if (position >= chatUsersAdapter.sortedUsers.size()) {
-                                return false;
-                            }
-                            index = chatUsersAdapter.sortedUsers.get(position);
-                        }
-                        if (index < 0 || index >= chatUsersAdapter.chatInfo.participants.participants.size()) {
+                    if (mediaPage.selectedType == TAB_GROUPUSERS && view instanceof UserCell
+                            && mediaPage.listView.getAdapter() == chatUsersAdapter) {
+                        final TLRPC.ChatParticipant participant = chatUsersAdapter.getParticipant(position);
+                        if (participant == null) {
                             return false;
                         }
-                        participant = chatUsersAdapter.chatInfo.participants.participants.get(index);
                         RecyclerListView listView = (RecyclerListView) view.getParent();
                         for (int i = 0; i < listView.getChildCount(); ++i) {
                             View child = listView.getChildAt(i);
@@ -7019,15 +7008,16 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
         boolean expectedCountChanged = groupUsersExpectedCount != normalizedExpectedCount;
         groupUsersExpectedCount = normalizedExpectedCount;
         if (showGroupUsersTab == visible) {
-            if (visible && expectedCountChanged) {
+            if (visible && expectedCountChanged && chatUsersAdapter.chatInfo == null) {
                 notifyGroupUsersPageChanged();
             }
             return;
         }
         showGroupUsersTab = visible;
         if (!visible) {
-            chatUsersAdapter.chatInfo = null;
-            chatUsersAdapter.sortedUsers = null;
+            chatUsersAdapter.setParticipants(null, null);
+            chatUserIds = new ArrayList<>();
+            chatUserContentHashes = new ArrayList<>();
             chatUsersStateInitialized = false;
         }
         updateTabs(true);
@@ -7060,21 +7050,22 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
         boolean tabVisibilityChanged = false;
         boolean firstData = false;
         boolean dataChanged = false;
+        final ArrayList<Long> oldUserIds = chatUserIds;
+        final ArrayList<Integer> oldContentHashes = chatUserContentHashes;
         if (topicId == 0) {
-            boolean showUsers = chatInfo != null && chatInfo.participants != null
-                    && chatInfo.participants.participants.size() > 5;
+            chatUsersAdapter.setParticipants(sortedUsers, chatInfo);
+            boolean showUsers = chatUsersAdapter.participants.size() > 5;
             tabVisibilityChanged = showGroupUsersTab != showUsers;
             showGroupUsersTab = showUsers;
-            int oldCount = chatUsersAdapter.getItemCount();
+            int oldCount = oldUserIds.size();
             if (chatInfo != null) {
                 groupUsersExpectedCount = Math.max(groupUsersExpectedCount, chatInfo.participants_count);
             }
-            int stateHash = getChatUsersStateHash(sortedUsers, chatInfo);
-            dataChanged = !chatUsersStateInitialized || chatUsersStateHash != stateHash;
+            chatUserIds = getChatUserIds(chatUsersAdapter.participants, chatUsersAdapter.chatInfo != null);
+            chatUserContentHashes = getChatUserContentHashes();
+            dataChanged = !chatUsersStateInitialized || !oldUserIds.equals(chatUserIds)
+                    || !oldContentHashes.equals(chatUserContentHashes);
             chatUsersStateInitialized = true;
-            chatUsersStateHash = stateHash;
-            chatUsersAdapter.chatInfo = chatInfo;
-            chatUsersAdapter.sortedUsers = sortedUsers;
             firstData = oldCount == 0 && chatUsersAdapter.getItemCount() > 0;
         }
         if (tabVisibilityChanged) {
@@ -7083,30 +7074,116 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
         if (!dataChanged) {
             return;
         }
+        final ArrayList<Long> newUserIds = chatUserIds;
+        final ArrayList<Integer> newContentHashes = chatUserContentHashes;
+        boolean animateChanges = false;
+        for (MediaPage page : mediaPages) {
+            if (page.listView.getAdapter() == chatUsersAdapter) {
+                boolean visible = isChatUsersPageVisible(page);
+                page.listView.setItemAnimator(visible ? page.itemAnimator : null);
+                animateChanges |= visible;
+            }
+        }
+        if (!firstData && animateChanges) {
+            DiffUtil.calculateDiff(new DiffUtil.Callback() {
+                @Override
+                public int getOldListSize() {
+                    return oldUserIds.size();
+                }
+                @Override
+                public int getNewListSize() {
+                    return newUserIds.size();
+                }
+                @Override
+                public boolean areItemsTheSame(int oldPosition, int newPosition) {
+                    return oldUserIds.get(oldPosition).equals(newUserIds.get(newPosition));
+                }
+                @Override
+                public boolean areContentsTheSame(int oldPosition, int newPosition) {
+                    return oldContentHashes.get(oldPosition).equals(newContentHashes.get(newPosition));
+                }
+            }).dispatchUpdatesTo(chatUsersAdapter);
+        } else {
+            chatUsersAdapter.notifyDataSetChanged();
+        }
         for (int a = 0; a < mediaPages.length; a++) {
-            if (mediaPages[a].selectedType == TAB_GROUPUSERS && mediaPages[a].listView.getAdapter() != null) {
-                AndroidUtilities.notifyDataSetChanged(mediaPages[a].listView);
+            if (isChatUsersPageVisible(mediaPages[a])) {
                 if (firstData) {
                     animateItemsEnter(mediaPages[a].listView, 0, null);
                 }
             }
         }
     }
-    private static int getChatUsersStateHash(ArrayList<Integer> sortedUsers, TLRPC.ChatFull chatInfo) {
-        int result = 1;
-        if (chatInfo != null && chatInfo.participants != null) {
-            result = 31 * result + chatInfo.participants.participants.size();
-            for (TLRPC.ChatParticipant participant : chatInfo.participants.participants) {
-                result = 31 * result + Long.hashCode(participant.user_id);
+    private boolean isChatUsersPageVisible(MediaPage page) {
+        return page.selectedType == TAB_GROUPUSERS && page.listView.getAdapter() == chatUsersAdapter
+                && !destroyed && !profileActivity.isPaused() && page.listView.isShown()
+                && page.listView.getGlobalVisibleRect(new Rect());
+    }
+    private static ArrayList<TLRPC.ChatParticipant> getOrderedChatParticipants(ArrayList<Integer> sortedUsers, TLRPC.ChatFull chatInfo) {
+        ArrayList<TLRPC.ChatParticipant> result = new ArrayList<>();
+        if (chatInfo == null || chatInfo.participants == null) {
+            return result;
+        }
+        ArrayList<TLRPC.ChatParticipant> source = chatInfo.participants.participants;
+        if (source == null) {
+            return result;
+        }
+        boolean sorted = sortedUsers != null && sortedUsers.size() == source.size();
+        boolean[] seen = new boolean[source.size()];
+        if (sorted) {
+            for (Integer index : sortedUsers) {
+                if (index == null || index < 0 || index >= source.size() || seen[index]) {
+                    sorted = false;
+                    break;
+                }
+                seen[index] = true;
             }
         }
-        if (sortedUsers != null) {
-            result = 31 * result + sortedUsers.size();
-            for (int index : sortedUsers) {
-                result = 31 * result + index;
+        HashSet<Long> ids = new HashSet<>();
+        for (int i = 0; i < source.size(); i++) {
+            TLRPC.ChatParticipant participant = source.get(sorted ? sortedUsers.get(i) : i);
+            if (participant != null && participant.user_id != 0
+                    && (!(participant instanceof TLRPC.TL_chatChannelParticipant)
+                    || ((TLRPC.TL_chatChannelParticipant) participant).channelParticipant != null)
+                    && ids.add(participant.user_id)) {
+                result.add(participant);
             }
         }
         return result;
+    }
+    private static ArrayList<Long> getChatUserIds(ArrayList<TLRPC.ChatParticipant> participants, boolean hasInfo) {
+        ArrayList<Long> ids = new ArrayList<>();
+        if (hasInfo) {
+            if (participants.isEmpty()) {
+                ids.add(0L);
+            } else {
+                for (int i = 0; i < participants.size(); i++) {
+                    ids.add(participants.get(i).user_id);
+                }
+            }
+        }
+        return ids;
+    }
+    private ArrayList<Integer> getChatUserContentHashes() {
+        ArrayList<Integer> hashes = new ArrayList<>();
+        for (TLRPC.ChatParticipant participant : chatUsersAdapter.participants) {
+            TLRPC.ChannelParticipant channel = participant instanceof TLRPC.TL_chatChannelParticipant
+                    ? ((TLRPC.TL_chatChannelParticipant) participant).channelParticipant : null;
+            TLRPC.User user = profileActivity.getMessagesController().getUser(participant.user_id);
+            hashes.add(Objects.hash(participant.getClass(), participant.rank, participant.inviter_id,
+                    channel == null ? null : channel.getClass(), channel == null ? null : channel.rank,
+                    channel == null ? 0L : channel.promoted_by,
+                    user == null ? null : user.first_name, user == null ? null : user.last_name,
+                    user == null ? null : user.username, user != null && user.self,
+                    user != null && user.bot, user != null && user.bot_chat_history,
+                    user == null || user.status == null ? null : user.status.getClass(),
+                    user == null || user.status == null ? 0 : user.status.expires,
+                    user == null || user.photo == null ? 0L : user.photo.photo_id,
+                    profileActivity.getMessagesController().onlinePrivacy.containsKey(participant.user_id),
+                    participant == chatUsersAdapter.participants.get(chatUsersAdapter.participants.size() - 1)));
+        }
+        if (hashes.isEmpty() && chatUsersAdapter.chatInfo != null) hashes.add(0);
+        return hashes;
     }
 
     public void updateAdapters() {
@@ -7879,7 +7956,8 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
             if (mediaPages[a].selectedType == TAB_SAVED_DIALOGS) {
                 mediaPages[a].listView.setItemAnimator(mediaPages[a].itemAnimator);
             } else {
-                mediaPages[a].listView.setItemAnimator(null);
+                mediaPages[a].listView.setItemAnimator(mediaPages[a].selectedType == TAB_GROUPUSERS
+                        ? mediaPages[a].itemAnimator : null);
                 if (savedDialogsAdapter != null && mediaPages[a].listView == savedDialogsAdapter.attachedToRecyclerView) {
                     savedDialogsAdapter.itemTouchHelper.attachToRecyclerView(savedDialogsAdapter.attachedToRecyclerView = null);
                 }
@@ -11420,7 +11498,14 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
 
         private Context mContext;
         private TLRPC.ChatFull chatInfo;
-        private ArrayList<Integer> sortedUsers;
+        private ArrayList<TLRPC.ChatParticipant> participants = new ArrayList<>();
+        private void setParticipants(ArrayList<Integer> sortedUsers, TLRPC.ChatFull info) {
+            chatInfo = info != null && info.participants != null && info.participants.participants != null ? info : null;
+            participants = getOrderedChatParticipants(sortedUsers, chatInfo);
+        }
+        private TLRPC.ChatParticipant getParticipant(int position) {
+            return position >= 0 && position < participants.size() ? participants.get(position) : null;
+        }
 
         public ChatUsersAdapter(Context context) {
             mContext = context;
@@ -11433,17 +11518,15 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
 
         @Override
         public int getItemCount() {
-            if (chatInfo != null && chatInfo.participants.participants.isEmpty()) {
+            if (chatInfo != null && participants.isEmpty()) {
                 return 1;
             }
-            return chatInfo != null ? chatInfo.participants.participants.size() : 0;
+            return participants.size();
         }
 
         public void updateRank(long userId, String rank) {
-            if (chatInfo == null) return;
-            if (chatInfo.participants == null) return;
-            for (int i = 0; i < chatInfo.participants.participants.size(); ++i) {
-                final TLRPC.ChatParticipant p = chatInfo.participants.participants.get(i);
+            for (int i = 0; i < participants.size(); ++i) {
+                final TLRPC.ChatParticipant p = participants.get(i);
                 p.setRank(userId, rank);
             }
         }
@@ -11466,12 +11549,7 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
                 return;
             }
             UserCell userCell = (UserCell) holder.itemView;
-            TLRPC.ChatParticipant part;
-            if (!sortedUsers.isEmpty()) {
-                part = chatInfo.participants.participants.get(sortedUsers.get(position));
-            } else {
-                part = chatInfo.participants.participants.get(position);
-            }
+            TLRPC.ChatParticipant part = getParticipant(position);
             if (part != null) {
                 String role;
                 final boolean isAdmin, isOwner, canEditAdmin;
@@ -11517,13 +11595,13 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
                 userCell.setAdminRole(role, isAdmin, isOwner, showAddTag, v -> {
                     TagEditCell.showInfoSheet(getContext(), profileActivity.getCurrentAccount(), dialog_id, user, finalRole, isAdmin, isOwner, canEditAdmin, resourcesProvider);
                 });
-                userCell.setData(user, null, null, 0, position != chatInfo.participants.participants.size() - 1);
+                userCell.setData(user, null, null, 0, position != participants.size() - 1);
             }
         }
 
         @Override
         public int getItemViewType(int i) {
-            if (chatInfo != null && chatInfo.participants.participants.isEmpty()) {
+            if (chatInfo != null && participants.isEmpty()) {
                 return VIEW_TYPE_GROUPUSER_EMPTY;
             }
             return VIEW_TYPE_GROUPUSER;

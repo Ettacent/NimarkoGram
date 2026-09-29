@@ -695,6 +695,14 @@ public class NotificationCenter {
             }
         }
         if (!allowDuringAnimation && isAnimationInProgress()) {
+            if (id == needSetDayNightTheme && args.length == 4 && args[2] == null) {
+                for (int i = delayedPosts.size() - 1; i >= 0; i--) {
+                    DelayedPost previous = delayedPosts.get(i);
+                    if (previous.id == id && previous.args.length == 4 && previous.args[2] == null) {
+                        delayedPosts.remove(i);
+                    }
+                }
+            }
             DelayedPost delayedPost = new DelayedPost(id, args);
             delayedPosts.add(delayedPost);
             return;
