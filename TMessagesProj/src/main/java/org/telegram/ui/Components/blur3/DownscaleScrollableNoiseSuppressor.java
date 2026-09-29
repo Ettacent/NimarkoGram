@@ -30,8 +30,12 @@ public class DownscaleScrollableNoiseSuppressor {
     public final boolean allowNoiseSuppress;
     private float scrollPhaseX, scrollPhaseY;
     private final boolean simpleMode;
-    private final int k;
+    private int k;
     private boolean modeGraphChanged;
+    private boolean drawableGraphChanged;
+    public boolean didDrawableGraphChange() {
+        return drawableGraphChanged;
+    }
 
     public DownscaleScrollableNoiseSuppressor() {
         this(true, false);
@@ -40,7 +44,7 @@ public class DownscaleScrollableNoiseSuppressor {
     public DownscaleScrollableNoiseSuppressor(boolean simple, boolean allowNoiseSuppress) {
         isLiquidGlassEnabled = BlurredBackgroundDrawableViewFactory.isLiquidGlassEnabled();
         simpleMode = simple;
-        k = 1;
+        k = isLiquidGlassEnabled || allowNoiseSuppress ? 1 : 8;
 
         this.allowNoiseSuppress = allowNoiseSuppress;
         resultRenderNodes = new RenderNode[2];
@@ -59,7 +63,16 @@ public class DownscaleScrollableNoiseSuppressor {
         }
         isLiquidGlassEnabled = enabled;
         modeGraphChanged = true;
+        final int nextScale = enabled || allowNoiseSuppress ? 1 : 8;
+        final boolean captureScaleChanged = k != nextScale;
+        k = nextScale;
+        if (captureScaleChanged) {
+            invalidateCapturePositions();
+        }
         for (SourcePart part : rectRenderNodes) {
+            if (captureScaleChanged) {
+                part.renderNode.discardDisplayList();
+            }
             part.setupEffects();
             if (part.renderNode.hasDisplayList()) {
                 part.invalidate();
@@ -70,7 +83,7 @@ public class DownscaleScrollableNoiseSuppressor {
         for (RenderNode node : resultRenderNodes) {
             node.discardDisplayList();
         }
-        if (width > 0 && height > 0) {
+        if (!captureScaleChanged && width > 0 && height > 0) {
             invalidateResultRenderNodes(width, height);
         }
     }
@@ -194,6 +207,10 @@ public class DownscaleScrollableNoiseSuppressor {
             final float divisor = (float) Math.sqrt(passes);
             final float passRadiusX = convertSigmaToRadius(sigmaX / divisor);
             final float passRadiusY = convertSigmaToRadius(sigmaY / divisor);
+            if (!isLiquidGlassEnabled) {
+                setPrimaryEffect(OrdinaryBlurEffectCache.get(passRadiusX, passRadiusY, input, passes));
+                return;
+            }
             RenderEffect effect = input;
             for (int i = 0; i < passes; i++) {
                 effect = effect == null
@@ -285,8 +302,8 @@ public class DownscaleScrollableNoiseSuppressor {
         private void setScrollPhase(float x, float y) {
             scrollX = scaleX >= 2 ? (x % scaleX) : 0;
             scrollY = scaleY >= 2 ? (y % scaleY) : 0;
-            renderNodeOriginalWithOffset.setTranslationX(scrollX);
-            renderNodeOriginalWithOffset.setTranslationY(scrollY);
+            renderNodeOriginalWithOffset.setTranslationX(k == 1 ? scrollX : 0);
+            renderNodeOriginalWithOffset.setTranslationY(k == 1 ? scrollY : 0);
             for (RenderNode renderNode : renderNodeRestored) {
                 renderNode.setTranslationX(-scrollX);
                 renderNode.setTranslationY(-scrollY);
@@ -344,11 +361,13 @@ public class DownscaleScrollableNoiseSuppressor {
     private boolean invalidateResultRenderNodes(int width, int height) {
         boolean ignoreHashCheck = false;
         long hash = 0;
+        final int resultCount = !isLiquidGlassEnabled && simpleMode ? 1 : resultRenderNodes.length;
+        hash = MediaDataController.calcHash(hash, resultCount);
 
         hash = MediaDataController.calcHash(hash, width);
         hash = MediaDataController.calcHash(hash, height);
 
-        for (int a = 0; a < resultRenderNodes.length; a++) {
+        for (int a = 0; a < resultCount; a++) {
             RenderNode renderNode = resultRenderNodes[a];
             hash = MediaDataController.calcHash(hash, renderNode.getUniqueId());
             for (int b = 0; b < rectRenderNodesCount; b++) {
@@ -372,7 +391,7 @@ public class DownscaleScrollableNoiseSuppressor {
 
         lastHash = hash;
 
-        for (int a = 0; a < resultRenderNodes.length; a++) {
+        for (int a = 0; a < resultCount; a++) {
             RenderNode renderNode = resultRenderNodes[a];
             renderNode.setPosition(0, 0, width, height);
             Canvas canvas = renderNode.beginRecording(width, height);
@@ -446,6 +465,7 @@ public class DownscaleScrollableNoiseSuppressor {
             captureChanged = true;
         }
         final boolean compositionChanged = invalidateResultRenderNodes(width, height);
+        drawableGraphChanged = materialChanged;
         capturedPositionsGeneration = captureGeneration;
         modeGraphChanged = false;
         return positionsChanged || materialChanged || captureChanged || compositionChanged;
@@ -594,6 +614,9 @@ public class DownscaleScrollableNoiseSuppressor {
         sourcePart.renderNode.setPosition(0, 0, width, height);
         RecordingCanvas c = sourcePart.renderNode.beginRecording(width, height);
         c.scale(1f / k, 1f / k);
+        if (k > 1) {
+            c.translate(scrollPhaseX % 8, scrollPhaseY % 8);
+        }
         return c;
     }
 

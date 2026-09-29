@@ -1244,9 +1244,7 @@ public class SharedConfig {
 
     public static void overrideDevicePerformanceClass(int performanceClass) {
         MessagesController.getGlobalMainSettings().edit().putInt("overrideDevicePerformanceClass", overrideDevicePerformanceClass = performanceClass).remove("lite_mode").apply();
-        if (liteMode != null) {
-            liteMode.loadPreference();
-        }
+        LiteMode.loadPreference();
     }
 
     public static void toggleAutoplayGifs() {
@@ -1814,7 +1812,10 @@ public class SharedConfig {
     }
 
     public static boolean canBlurChat() {
-        return getDevicePerformanceClass() >= (Build.VERSION.SDK_INT >= 31 ? PERFORMANCE_CLASS_AVERAGE : PERFORMANCE_CLASS_HIGH) || BuildVars.DEBUG_PRIVATE_VERSION;
+        return getDevicePerformanceClass() == PERFORMANCE_CLASS_HIGH;
+    }
+    public static boolean canUseLiquidGlass() {
+        return Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && canBlurChat();
     }
 
     public static boolean chatBlurEnabled() {

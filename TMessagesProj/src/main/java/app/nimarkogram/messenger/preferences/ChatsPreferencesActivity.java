@@ -140,7 +140,7 @@ public class ChatsPreferencesActivity extends NimarkoUniversalPreferencesActivit
             case PAGE_MEDIA -> {
                 items.add(UItem.asHeader(getString(R.string.NM_SettingsSectionMediaPlayback)));
                 fillMedia(items);
-                items.add(UItem.asShadow(getString(R.string.NM_SettingsSummaryMediaPlayback)));
+                items.add(UItem.asShadow(null));
             }
             case PAGE_REACTIONS -> {
                 items.add(UItem.asHeader(getString(R.string.NM_SettingsSectionReactionsEffects)));

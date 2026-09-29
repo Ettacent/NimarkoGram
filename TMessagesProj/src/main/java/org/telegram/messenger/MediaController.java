@@ -2510,13 +2510,16 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
         }
 
         if (audioPlayer != null) {
+            audioPlayer.markPlaybackFinishing();
             if (reporter != null) {
                 reporter.destroy();
                 reporter = null;
             }
             if (audioVolumeAnimator != null) {
+                audioVolumeAnimator.removeAllListeners();
                 audioVolumeAnimator.removeAllUpdateListeners();
                 audioVolumeAnimator.cancel();
+                audioVolumeAnimator = null;
             }
 
             if (!CastSync.isActive() && audioPlayer.isPlaying() && playingMessageObject != null && !playingMessageObject.isVoice()) {
@@ -4651,20 +4654,23 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
         }
         stopProgressTimer();
         try {
+            isPaused = true;
             if (audioPlayer != null) {
                 if (smoothFade && !CastSync.isActive() && !playingMessageObject.isVoice() && (playingMessageObject.getDuration() * (1f - playingMessageObject.audioProgress) > 1) && LaunchActivity.isResumed) {
                     if (audioVolumeAnimator != null) {
+                        audioVolumeAnimator.removeAllListeners();
                         audioVolumeAnimator.removeAllUpdateListeners();
                         audioVolumeAnimator.cancel();
                     }
-                    audioVolumeAnimator = ValueAnimator.ofFloat(1f, 0);
+                    final VideoPlayer pausingPlayer = audioPlayer;
+                    audioVolumeAnimator = ValueAnimator.ofFloat(audioVolume, 0);
                     audioVolumeAnimator.addUpdateListener(audioVolumeUpdateListener);
                     audioVolumeAnimator.setDuration(300);
                     audioVolumeAnimator.addListener(new AnimatorListenerAdapter() {
                         @Override
                         public void onAnimationEnd(Animator animation) {
-                            if (audioPlayer != null) {
-                                audioPlayer.pause();
+                            if (audioVolumeAnimator == animation && audioPlayer == pausingPlayer && isPaused) {
+                                pausingPlayer.pause();
                             }
                         }
                     });
@@ -4675,7 +4681,6 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
             } else if (videoPlayer != null) {
                 videoPlayer.pause();
             }
-            isPaused = true;
             NotificationCenter.getInstance(playingMessageObject.currentAccount).postNotificationName(NotificationCenter.messagePlayingPlayStateChanged, playingMessageObject.getId());
         } catch (Exception e) {
             FileLog.e(e);

@@ -90,6 +90,7 @@ public class BlurredBackgroundSourceRenderNode implements BlurredBackgroundSourc
     }
 
     private boolean inRecording;
+    private boolean recordedWithoutCapture;
     private RecordingCanvas recordingCanvas;
 
     public boolean needUpdateDisplayList(int width, int height) {
@@ -147,7 +148,11 @@ public class BlurredBackgroundSourceRenderNode implements BlurredBackgroundSourc
             canvas.clipRect(left, top, right, bottom);
         }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && scrollableNoiseSuppressor != null) {
-            scrollableNoiseSuppressor.draw(canvas, getEffectiveSuppressorIndex());
+            final int index = getEffectiveSuppressorIndex();
+            if (!scrollableNoiseSuppressor.isDisplayListReady(index)) {
+                recordedWithoutCapture = true;
+            }
+            scrollableNoiseSuppressor.draw(canvas, index);
         } else {
             canvas.drawRenderNode(renderNode);
         }
@@ -197,8 +202,14 @@ public class BlurredBackgroundSourceRenderNode implements BlurredBackgroundSourc
     }
 
     public void invalidateDisplayListForDrawables() {
+        recordedWithoutCapture = false;
         for (BlurredBackgroundDrawableRenderNode d : drawables) {
             d.invalidateDisplayList();
+        }
+    }
+    public void onCaptureUpdated(boolean graphChanged) {
+        if (graphChanged || recordedWithoutCapture) {
+            invalidateDisplayListForDrawables();
         }
     }
 

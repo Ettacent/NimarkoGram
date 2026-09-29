@@ -1,13 +1,9 @@
 /**
- * This file is part of NimarkoGram for Android.
+ * This is the source code of Nimarko for Android.
  * It is licensed under GNU GPL v. 2 or later.
  * You should have received a copy of the license in this archive (see LICENSE).
  *
- * NimarkoGram modifications:
- * Copyright Ettacent, 2026.
- *
- * Portions derived from Cherrygram:
- * Copyright github.com/arsLan4k1390, 2022-2026.
+ * Copyright Ettacent, 2022-2026.
  */
 
 package app.nimarkogram.messenger.preferences;
@@ -44,7 +40,7 @@ public class MessageMenuPreferencesActivity extends NimarkoUniversalPreferencesA
     public void fillItems(ArrayList<UItem> items, UniversalAdapter adapter) {
         items.add(UItem.asHeader(getString(R.string.NM_SettingsSectionActions)));
         items.add(asSettingsLink(SETTING_ITEMS, IconBackgroundColors.BLUE,
-                R.drawable.msg_list, getString(R.string.CP_MessageMenuItems)));
+                R.drawable.msg_settings, getString(R.string.CP_MessageMenuItems)));
         items.add(asSettingsLink(SETTING_ORDER, IconBackgroundColors.PURPLE,
                 R.drawable.msg_reorder, getString(R.string.NM_Menu_Reorder)));
         items.add(UItem.asShadow(null));

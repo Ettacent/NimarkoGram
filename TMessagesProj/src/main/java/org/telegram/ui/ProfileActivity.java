@@ -11234,6 +11234,11 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
         cancelProfileBannerReclaim();
         if (isOpen) cancelReactionProfileOpenAfterLayout();
         super.onTransitionAnimationStart(isOpen, backward);
+        if (!isOpen && backward) {
+            suppressProfileBackSelector();
+        } else if (isOpen) {
+            restoreProfileBackSelector();
+        }
         if (sharedMediaLayout != null && (!isOpen || !backward)) {
             sharedMediaLayout.beginProfileTransition(isOpen);
         }
@@ -11285,6 +11290,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
 
     @Override
     public void onTransitionAnimationEnd(boolean isOpen, boolean backward) {
+        restoreProfileBackSelector();
         if (isOpen) {
             if (!backward) {
                 if (playProfileAnimation != 0 && allowProfileAnimation) {
@@ -11843,6 +11849,29 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
         }
         finishProfileTransitionIfNeeded(true);
     }
+    private void suppressProfileBackSelector() {
+        if (actionBar == null || actionBar.getBackButton() == null) {
+            return;
+        }
+        View backButton = actionBar.getBackButton();
+        backButton.setPressed(false);
+        backButton.jumpDrawablesToCurrentState();
+        actionBar.setBackButtonSelectorUpdatesSuppressed(true);
+        actionBar.setBackButtonBackgroundAlpha(0f);
+        profileBackSelectorFading = true;
+    }
+    private void restoreProfileBackSelector() {
+        if (!profileBackSelectorFading || actionBar == null) {
+            return;
+        }
+        if (actionBar.getBackButton() != null) {
+            actionBar.getBackButton().setPressed(false);
+            actionBar.getBackButton().jumpDrawablesToCurrentState();
+        }
+        actionBar.setBackButtonBackgroundAlpha(1f);
+        actionBar.setBackButtonSelectorUpdatesSuppressed(false);
+        profileBackSelectorFading = false;
+    }
 
     private void prepareProfileTransitionStart(boolean isOpen, ActionBar previousActionBar) {
         if (previousActionBar != null) {
@@ -11861,19 +11890,8 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             }
         }
 
-        if (!isOpen && actionBar != null && actionBar.getBackButton() != null) {
-            // ACTION_UP starts the custom morph while RippleDrawable is still
-            // drawing its release wave. End that state before the first
-            // transition frame and keep the existing selector transparent
-            // until the outgoing profile is no longer visible. Replacing or
-            // progressively fading the selector lets a white Monet ripple
-            // survive over the whole collapse.
-            View backButton = actionBar.getBackButton();
-            backButton.setPressed(false);
-            backButton.jumpDrawablesToCurrentState();
-            actionBar.setBackButtonSelectorUpdatesSuppressed(true);
-            actionBar.setBackButtonBackgroundAlpha(0f);
-            profileBackSelectorFading = true;
+        if (!isOpen) {
+            suppressProfileBackSelector();
         }
 
         if (previousTransitionFragment == null) {
@@ -12390,11 +12408,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                 // transition itself has finished.
                 fragmentView.setVisibility(View.INVISIBLE);
             }
-            if (profileBackSelectorFading && actionBar != null) {
-                actionBar.setBackButtonBackgroundAlpha(1f);
-                actionBar.setBackButtonSelectorUpdatesSuppressed(false);
-                profileBackSelectorFading = false;
-            }
+            restoreProfileBackSelector();
             if (actionBar != null && actionBar.getBackButton() != null) {
                 // The transition crossfades two different arrows. Restore the
                 // profile view for a completed or cancelled morph so a later
@@ -17669,7 +17683,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                         set.setExpanded(LiteMode.FLAGS_CHAT, true);
                         set.scrollToFlags(LiteMode.FLAG_CHAT_SPOILER);
                     }),
-                    SharedConfig.getDevicePerformanceClass() >= SharedConfig.PERFORMANCE_CLASS_AVERAGE ? new SearchResult(326 /* for compatibility */, getString(R.string.LiteOptionsBlur2), null, getString(R.string.PowerUsage), getString(R.string.LiteOptionsChat), R.drawable.msg2_battery, () -> {
+                    SharedConfig.canBlurChat() ? new SearchResult(326                        , getString(R.string.LiteOptionsBlur2), null, getString(R.string.PowerUsage), getString(R.string.LiteOptionsChat), R.drawable.msg2_battery, () -> {
                         LiteModeSettingsActivity set = new LiteModeSettingsActivity();
                         f.presentFragment(set);
                         set.setExpanded(LiteMode.FLAGS_CHAT, true);

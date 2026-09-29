@@ -402,6 +402,14 @@ public class ConnectionsManager extends BaseController {
         });
         return requestToken;
     }
+    private static void completeCancelledDialogsRequest(TLObject request, RequestDelegate callback) {
+        if (request instanceof TLRPC.TL_messages_getDialogs && callback != null) {
+            TLRPC.TL_error error = new TLRPC.TL_error();
+            error.code = -2000;
+            error.text = "PLUGIN_REQUEST_CANCELLED";
+            Utilities.stageQueue.postRunnable(() -> callback.run(null, error));
+        }
+    }
 
     private void sendRequestInternal(TLObject objectIn, RequestDelegate onCompleteIn, RequestDelegateTimestamp onCompleteTimestamp, QuickAckDelegate onQuickAck, WriteToSocketDelegate onWriteToSocket, int flags, int datacenterId, int connectionType, boolean immediate, int requestToken) {
         // NimarkoGram: pre-request plugin hook
@@ -412,6 +420,7 @@ public class ConnectionsManager extends BaseController {
             TLObject pre = app.nimarkogram.messenger.plugins.PluginsController.getInstance()
                     .executePreRequestHook(requestName, currentAccount, objectIn);
             if (pre == null) {
+                completeCancelledDialogsRequest(objectIn, onCompleteIn);
                 return;
             }
             hookedObject = pre;
@@ -431,6 +440,7 @@ public class ConnectionsManager extends BaseController {
                     userOnComplete.run(post.response, post.error);
                     return;
                 } else {
+                    completeCancelledDialogsRequest(objectIn, userOnComplete);
                     return;
                 }
             } catch (Throwable t) {

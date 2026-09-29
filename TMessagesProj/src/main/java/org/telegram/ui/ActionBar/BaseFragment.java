@@ -274,7 +274,11 @@ public abstract class BaseFragment {
         return fragmentView;
     }
     protected app.nimarkogram.messenger.notifications.NotificationInlinePanel notificationInlinePanel;
+    private app.nimarkogram.messenger.notifications.NotificationListGlassSource notificationGlassSource;
+    private View[] notificationGlassContents;
     protected void releaseInAppNotificationPanel() {
+        notificationGlassSource = null;
+        notificationGlassContents = null;
         if (notificationInlinePanel != null) {
             notificationInlinePanel.release();
             notificationInlinePanel = null;
@@ -294,7 +298,8 @@ public abstract class BaseFragment {
                 if (child.getLayoutParams().height == ViewGroup.LayoutParams.MATCH_PARENT) contents.add(child);
             }
             if (contents.isEmpty()) return null;
-            notificationInlinePanel = new app.nimarkogram.messenger.notifications.NotificationInlinePanel(this, root, contents.toArray(new View[0]));
+            notificationGlassContents = contents.toArray(new View[0]);
+            notificationInlinePanel = new app.nimarkogram.messenger.notifications.NotificationInlinePanel(this, root, notificationGlassContents);
         }
         return notificationInlinePanel;
     }
@@ -1266,7 +1271,14 @@ public abstract class BaseFragment {
         parentDialog = dialog;
     }
     public org.telegram.ui.Components.blur3.BlurredBackgroundDrawableViewFactory getNotificationGlassFactory() {
-        return null;
+        if (android.os.Build.VERSION.SDK_INT < 31 || !org.telegram.messenger.SharedConfig.chatBlurEnabled()
+                || notificationInlinePanel == null || !notificationInlinePanel.isAttachedToWindow()
+                || notificationGlassContents == null || !(fragmentView instanceof ViewGroup)) return null;
+        if (notificationGlassSource == null) {
+            notificationGlassSource = new app.nimarkogram.messenger.notifications.NotificationListGlassSource(
+                    (ViewGroup) fragmentView, notificationGlassContents);
+        }
+        return notificationGlassSource.update(notificationInlinePanel, getResourceProvider());
     }
 
     public Theme.ResourcesProvider getResourceProvider() {

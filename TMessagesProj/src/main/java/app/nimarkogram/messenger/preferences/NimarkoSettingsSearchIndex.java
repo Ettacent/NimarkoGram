@@ -465,7 +465,7 @@ final class NimarkoSettingsSearchIndex {
                 1, R.string.NM_DBG_ShowRPCErrors,
                 3, R.string.NM_DBG_JacksonJSONProvider);
 
-        pageRow(entries, guid, SCREEN_MESSAGE_MENU_ITEMS, R.string.CP_MessageMenuItems, R.drawable.msg_list,
+        pageRow(entries, guid, SCREEN_MESSAGE_MENU_ITEMS, R.string.CP_MessageMenuItems, R.drawable.msg_settings,
                 R.string.NM_Cat_Chats, R.string.CP_MessageMenu);
         pageRow(entries, guid, SCREEN_MESSAGE_MENU_ORDER, R.string.NM_Menu_Reorder, R.drawable.msg_reorder,
                 R.string.NM_Cat_Chats, R.string.CP_MessageMenu);

@@ -35,6 +35,22 @@ public class BlurredBackgroundDrawableRenderNode extends BlurredBackgroundDrawab
     private final Paint paintStrokeFull = new Paint(Paint.ANTI_ALIAS_FLAG);
 
     private boolean renderNodeInvalidated;
+    private boolean shadowPaintConfigured;
+    private int lastShadowPaintColor;
+    private float lastShadowRadius, lastShadowDx, lastShadowDy;
+    private void updateShadowPaint(int color) {
+        if (shadowPaintConfigured && lastShadowPaintColor == color
+                && lastShadowRadius == shadowLayerRadius
+                && lastShadowDx == shadowLayerDx && lastShadowDy == shadowLayerDy) {
+            return;
+        }
+        paintShadow.setShadowLayer(shadowLayerRadius, shadowLayerDx, shadowLayerDy, color);
+        shadowPaintConfigured = true;
+        lastShadowPaintColor = color;
+        lastShadowRadius = shadowLayerRadius;
+        lastShadowDx = shadowLayerDx;
+        lastShadowDy = shadowLayerDy;
+    }
 
     public BlurredBackgroundDrawableRenderNode(BlurredBackgroundSource source) {
         this.renderNode = new RenderNode("BlurredNode");
@@ -195,7 +211,7 @@ public class BlurredBackgroundDrawableRenderNode extends BlurredBackgroundDrawab
     public void updateColors() {
         super.updateColors();
 
-        paintShadow.setShadowLayer(shadowLayerRadius, shadowLayerDx, shadowLayerDy, shadowColor);
+        updateShadowPaint(shadowColor);
         paintStrokeTop.setColor(strokeColorTop);
         paintStrokeBottom.setColor(strokeColorBottom);
         paintStrokeFull.setColor(strokeColorFull);
@@ -215,14 +231,14 @@ public class BlurredBackgroundDrawableRenderNode extends BlurredBackgroundDrawab
             return;
         }
 
-        if (!renderNode.hasDisplayList() || renderNodeInvalidated) {
+        if (!renderNode.hasDisplayList() || !renderNodeFill.hasDisplayList() || renderNodeInvalidated) {
             updateDisplayList();
         }
         renderNodeInvalidated = false;
 
         int color = Theme.multAlpha(shadowColor, renderNode.getAlpha() * shadowAlpha);
         if (Color.alpha(color) != 0) {
-            paintShadow.setShadowLayer(shadowLayerRadius, shadowLayerDx, shadowLayerDy, color);
+            updateShadowPaint(color);
             boundProps.drawShadows(canvas, paintShadow, inAppKeyboardOptimization);
         }
 

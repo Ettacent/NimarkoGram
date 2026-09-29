@@ -358,6 +358,8 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
             invalidate();
         } else {
             badgeOwnerDrawn = false;
+            messagePreviewCrossfade.finish();
+            previewPresented = false;
             forumTopicPreviewTransition.finish();
             outgoingForumLoadingLayout = null;
         }
@@ -688,6 +690,18 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
     private int swipeMessageWidth;
     private int readOutboxMaxId = -1;
     private final DialogUpdateHelper updateHelper = new DialogUpdateHelper();
+    private final org.telegram.ui.Components.MessagePreviewCrossfade messagePreviewCrossfade =
+            new org.telegram.ui.Components.MessagePreviewCrossfade(this);
+    private long previewDialogId;
+    private int previewAccount;
+    private int previewMessageId;
+    private int previewWidth;
+    private boolean previewPresented;
+    private CharSequence previewTypingText;
+    public Runnable onPreviewCrossfadeStarted;
+    public boolean isMessagePreviewTransitionRunning() {
+        return messagePreviewCrossfade.isRunning();
+    }
 
     public static class BounceInterpolator implements Interpolator {
         public float getInterpolation(float t) {
@@ -952,6 +966,8 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
     protected void onDetachedFromWindow() {
         super.onDetachedFromWindow();
         badgeOwnerDrawn = false;
+        messagePreviewCrossfade.finish();
+        previewPresented = false;
         forumTopicPreviewTransition.finish();
         outgoingForumLoadingLayout = null;
         resetModernPressFeedback();
@@ -1289,9 +1305,25 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
         if (isTransitionSupport) {
             return;
         }
+        final CharSequence nextPreviewTyping = isDialogCell && !isForumCell()
+                ? MessagesController.getInstance(currentAccount).getPrintingString(currentDialogId, getTopicId(), true) : null;
+        final boolean previewChanged = (message == null ? 0 : message.getId()) != previewMessageId
+                || !TextUtils.equals(previewTypingText, nextPreviewTyping);
+        boolean crossfadePreview = false;
+        if (previewDialogId != currentDialogId || previewAccount != currentAccount || previewWidth != getWidth()) {
+            messagePreviewCrossfade.finish();
+            previewPresented = false;
+        } else if (previewPresented && messageLayout != null && previewChanged && isDialogCell && !isForumCell()
+                && attachedToWindow && SharedConfig.animationsEnabled()) {
+            messagePreviewCrossfade.capture(this::drawMessagePreviewText);
+            if (messagePreviewCrossfade.isRunning() && onPreviewCrossfadeStarted != null) {
+                onPreviewCrossfadeStarted.run();
+            }
+            crossfadePreview = true;
+        }
         if (isDialogCell) {
             boolean needUpdate = updateHelper.update();
-            if (!needUpdate && !badgeLayoutDirty && currentDialogFolderId == 0 && currentDialogCommunityId == 0 && encryptedChat == null) {
+            if (!needUpdate && !previewChanged && !badgeLayoutDirty && currentDialogFolderId == 0 && currentDialogCommunityId == 0 && encryptedChat == null) {
                 return;
             }
         }
@@ -2988,6 +3020,15 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
             forumTopicPreviewTransition.reset();
             outgoingForumLoadingLayout = null;
         }
+        previewDialogId = currentDialogId;
+        previewAccount = currentAccount;
+        previewMessageId = message == null ? 0 : message.getId();
+        previewWidth = getWidth();
+        previewTypingText = nextPreviewTyping == null ? null : TextUtils.stringOrSpannedString(nextPreviewTyping);
+        if (crossfadePreview) {
+            updateHelper.waitngNewMessageFroTypingAnimation = false;
+            updateHelper.typingProgres = updateHelper.lastDrawnPrintingType == null ? 0f : 1f;
+        }
     }
 
     public void setTitleOverride(String s) {
@@ -3923,6 +3964,189 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
     public boolean isDrawArchive() {
         return drawArchive && (currentDialogFolderId != 0 || isTopic && forumTopic != null && forumTopic.id == 1) && translationX == 0 && archivedChatsDrawable != null;
     }
+    private void drawMessagePreviewText(Canvas canvas) {
+            if (messageNameLayout != null && !isForumCell()) {
+                if (currentDialogFolderId != 0) {
+                    Theme.dialogs_messageNamePaint.setColor(Theme.dialogs_messageNamePaint.linkColor = Theme.getColor(Theme.key_chats_nameMessageArchived_threeLines, resourcesProvider));
+                } else if (draftMessage != null) {
+                    Theme.dialogs_messageNamePaint.setColor(Theme.dialogs_messageNamePaint.linkColor = Theme.getColor(Theme.key_chats_draft, resourcesProvider));
+                } else {
+                    Theme.dialogs_messageNamePaint.setColor(Theme.dialogs_messageNamePaint.linkColor = Theme.getColor(Theme.key_chats_nameMessage_threeLines, resourcesProvider));
+                }
+                canvas.save();
+                canvas.translate(messageNameLeft, messageNameTop);
+                try {
+                    SpoilerEffect.layoutDrawMaybe(messageNameLayout, canvas);
+                    AnimatedEmojiSpan.drawAnimatedEmojis(canvas, messageNameLayout, animatedEmojiStack2, -.075f, null, 0, 0, 0, 1f, getAdaptiveEmojiColorFilter(1, messageNameLayout.getPaint().getColor()));
+                } catch (Exception e) {
+                    FileLog.e(e);
+                }
+                canvas.restore();
+            }
+            if (thumbsCount > 0 && updateHelper.typingProgres != 1f) {
+                float alpha = 1f;
+                if (updateHelper.typingProgres > 0) {
+                    alpha = (1f - updateHelper.typingProgres);
+                    canvas.saveLayerAlpha(0, 0, getWidth(), getHeight(), (int) (255 * alpha), Canvas.ALL_SAVE_FLAG);
+                    float top;
+                    if (updateHelper.typingOutToTop) {
+                        top = -dp(14) * updateHelper.typingProgres;
+                    } else {
+                        top = dp(14) * updateHelper.typingProgres;
+                    }
+                    canvas.translate(0, top);
+                }
+                for (int i = 0; i < thumbsCount; ++i) {
+                    if (!thumbImageSeen[i]) {
+                        continue;
+                    }
+                    if (thumbBackgroundPaint == null) {
+                        thumbBackgroundPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+                        thumbBackgroundPaint.setShadowLayer(dp(1.34f), 0, dp(0.34f), 0x18000000);
+                        thumbBackgroundPaint.setColor(0x00000000);
+                    }
+                    AndroidUtilities.rectTmp.set(
+                            thumbImage[i].getImageX(),
+                            thumbImage[i].getImageY(),
+                            thumbImage[i].getImageX2(),
+                            thumbImage[i].getImageY2()
+                    );
+                    thumbImage[i].draw(canvas);
+                    if (drawSpoiler[i]) {
+                        if (thumbPath == null) {
+                            thumbPath = new Path();
+                        } else {
+                            thumbPath.rewind();
+                        }
+                        thumbPath.addRoundRect(AndroidUtilities.rectTmp, thumbImage[i].getRoundRadius()[0], thumbImage[i].getRoundRadius()[1], Path.Direction.CW);
+                        canvas.save();
+                        canvas.clipPath(thumbPath);
+                        int sColor = Color.WHITE;
+                        if (thumbSpoiler == null) {
+                            thumbSpoiler = new SpoilerEffect();
+                            thumbSpoiler.setParentView(this);
+                        }
+                        thumbSpoiler.setColor(ColorUtils.setAlphaComponent(sColor, (int) (Color.alpha(sColor) * 0.325f)));
+                        thumbSpoiler.setBounds((int) thumbImage[i].getImageX(), (int) thumbImage[i].getImageY(), (int) thumbImage[i].getImageX2(), (int) thumbImage[i].getImageY2());
+                        thumbSpoiler.draw(canvas);
+                        invalidate();
+                        canvas.restore();
+                    }
+                    if (drawPlay[i]) {
+                        int x = (int) (thumbImage[i].getCenterX() - Theme.dialogs_playDrawable.getIntrinsicWidth() / 2);
+                        int y = (int) (thumbImage[i].getCenterY() - Theme.dialogs_playDrawable.getIntrinsicHeight() / 2);
+                        setDrawableBounds(Theme.dialogs_playDrawable, x, y);
+                        Theme.dialogs_playDrawable.draw(canvas);
+                    }
+                }
+                if (updateHelper.typingProgres > 0) {
+                    canvas.restore();
+                }
+            }
+            if (messageLayout != null) {
+                if (currentDialogFolderId != 0) {
+                    if (chat != null) {
+                        Theme.dialogs_messagePaint[paintIndex].setColor(Theme.dialogs_messagePaint[paintIndex].linkColor = Theme.getColor(Theme.key_chats_nameMessageArchived, resourcesProvider));
+                    } else {
+                        Theme.dialogs_messagePaint[paintIndex].setColor(Theme.dialogs_messagePaint[paintIndex].linkColor = Theme.getColor(Theme.key_chats_messageArchived, resourcesProvider));
+                    }
+                } else {
+                    Theme.dialogs_messagePaint[paintIndex].setColor(Theme.dialogs_messagePaint[paintIndex].linkColor = Theme.getColor(Theme.key_chats_message, resourcesProvider));
+                }
+                float top;
+                float typingAnimationOffset = dp(14);
+                if (updateHelper.typingOutToTop) {
+                    top = messageTop - typingAnimationOffset * updateHelper.typingProgres;
+                } else {
+                    top = messageTop + typingAnimationOffset * updateHelper.typingProgres;
+                }
+                if ((!(useForceThreeLines || SharedConfig.useThreeLinesLayout) || isForumCell()) && hasTags()) {
+                    top -= dp(isForumCell() ? 10 : 11);
+                }
+                if (updateHelper.typingProgres != 1f) {
+                    if (outgoingForumLoadingLayout != null && forumTopicPreviewTransition.outgoingAlpha() > 0f) {
+                        final int loadingLayer = canvas.saveLayerAlpha(0, 0, getWidth(), getHeight(),
+                                Math.round(255 * forumTopicPreviewTransition.outgoingAlpha() * (1f - updateHelper.typingProgres)));
+                        canvas.translate(outgoingForumLoadingLeft, top);
+                        outgoingForumLoadingLayout.draw(canvas);
+                        canvas.restoreToCount(loadingLayer);
+                    }
+                    final int topicLayer = forumTopicPreviewTransition.alpha() < 1f
+                            ? canvas.saveLayerAlpha(0, 0, getWidth(), getHeight(), Math.round(255 * forumTopicPreviewTransition.alpha()))
+                            : canvas.save();
+                    canvas.save();
+                    canvas.translate(messageLeft, top);
+                    int oldAlpha = messageLayout.getPaint().getAlpha();
+                    messageLayout.getPaint().setAlpha((int) (oldAlpha * (1f - updateHelper.typingProgres)));
+                    if (!spoilers.isEmpty()) {
+                        try {
+                            canvas.save();
+                            SpoilerEffect.clipOutCanvas(canvas, spoilers);
+                            SpoilerEffect.layoutDrawMaybe(messageLayout, canvas);
+                            AnimatedEmojiSpan.drawAnimatedEmojis(canvas, messageLayout, animatedEmojiStack, -.075f, spoilers, 0, 0, 0, 1f, getAdaptiveEmojiColorFilter(2, messageLayout.getPaint().getColor()));
+                            canvas.restore();
+                            for (int i = 0; i < spoilers.size(); i++) {
+                                SpoilerEffect eff = spoilers.get(i);
+                                eff.setColor(messageLayout.getPaint().getColor());
+                                eff.draw(canvas);
+                            }
+                        } catch (Exception e) {
+                            FileLog.e(e);
+                        }
+                    } else {
+                        SpoilerEffect.layoutDrawMaybe(messageLayout, canvas);
+                        AnimatedEmojiSpan.drawAnimatedEmojis(canvas, messageLayout, animatedEmojiStack, -.075f, null, 0, 0, 0, 1f, getAdaptiveEmojiColorFilter(2, messageLayout.getPaint().getColor()));
+                    }
+                    messageLayout.getPaint().setAlpha(oldAlpha);
+                    canvas.restore();
+                    canvas.restoreToCount(topicLayer);
+                }
+                final int typingLayer = typingLayout != null && updateHelper.typingProgres > 0f
+                        && updateHelper.typingProgres < 1f
+                        ? canvas.saveLayerAlpha(0, 0, getWidth(), getHeight(), Math.round(255 * updateHelper.typingProgres))
+                        : canvas.save();
+                canvas.save();
+                if (updateHelper.typingOutToTop) {
+                    top = messageTop + typingAnimationOffset * (1f - updateHelper.typingProgres);
+                } else {
+                    top = messageTop - typingAnimationOffset * (1f - updateHelper.typingProgres);
+                }
+                if ((!(useForceThreeLines || SharedConfig.useThreeLinesLayout) || isForumCell()) && hasTags()) {
+                    top -= dp(isForumCell() ? 10 : 11);
+                }
+                canvas.translate(typingLeft, top);
+                if (typingLayout != null && updateHelper.typingProgres > 0) {
+                    typingLayout.draw(canvas);
+                }
+                canvas.restore();
+                if (typingLayout != null && updateHelper.typingProgres > 0 && (printingStringType >= 0 || updateHelper.lastKnownTypingType >= 0)) {
+                    int type = printingStringType >= 0 ? printingStringType : updateHelper.lastKnownTypingType;
+                    StatusDrawable statusDrawable = Theme.getChatStatusDrawable(type);
+                    if (statusDrawable != null) {
+                        canvas.save();
+                        int color = Theme.getColor(Theme.key_chats_actionMessage);
+                        statusDrawable.setColor(color);
+                        if (updateHelper.typingOutToTop) {
+                            top = messageTop + typingAnimationOffset * (1f - updateHelper.typingProgres);
+                        } else {
+                            top = messageTop - typingAnimationOffset * (1f - updateHelper.typingProgres);
+                        }
+                        if ((!(useForceThreeLines || SharedConfig.useThreeLinesLayout) || isForumCell()) && hasTags()) {
+                            top -= dp(isForumCell() ? 10 : 11);
+                        }
+                        if (type == 1 || type == 4) {
+                            canvas.translate(statusDrawableLeft, top + (type == 1 ? dp(1) : 0));
+                        } else {
+                            canvas.translate(statusDrawableLeft, top + (dp(18) - statusDrawable.getIntrinsicHeight()) / 2f);
+                        }
+                        statusDrawable.draw(canvas);
+                        invalidate();
+                        canvas.restore();
+                    }
+                }
+                canvas.restoreToCount(typingLayer);
+            }
+    }
 
     private GradientDrawable archiveFadeGradientDrawable;
     private int archiveFadeGradientDrawableColor;
@@ -3945,6 +4169,7 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
 
         long now = SystemClock.uptimeMillis();
         if (!SharedConfig.animationsEnabled()) forumTopicPreviewTransition.finish();
+        if (!SharedConfig.animationsEnabled() && messagePreviewCrossfade.isRunning()) messagePreviewCrossfade.finish();
         forumTopicPreviewTransition.draw(now);
         if (forumTopicPreviewTransition.isAnimating()) invalidate();
         if (forumTopicPreviewTransition.outgoingAlpha() == 0f) outgoingForumLoadingLayout = null;
@@ -4370,131 +4595,8 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
                 Theme.dialogs_lock2Drawable.draw(canvas);
             }
 
-            if (messageNameLayout != null && !isForumCell()) {
-                if (currentDialogFolderId != 0) {
-                    Theme.dialogs_messageNamePaint.setColor(Theme.dialogs_messageNamePaint.linkColor = Theme.getColor(Theme.key_chats_nameMessageArchived_threeLines, resourcesProvider));
-                } else if (draftMessage != null) {
-                    Theme.dialogs_messageNamePaint.setColor(Theme.dialogs_messageNamePaint.linkColor = Theme.getColor(Theme.key_chats_draft, resourcesProvider));
-                } else {
-                    Theme.dialogs_messageNamePaint.setColor(Theme.dialogs_messageNamePaint.linkColor = Theme.getColor(Theme.key_chats_nameMessage_threeLines, resourcesProvider));
-                }
-                canvas.save();
-                canvas.translate(messageNameLeft, messageNameTop);
-                try {
-                    SpoilerEffect.layoutDrawMaybe(messageNameLayout, canvas);
-                    AnimatedEmojiSpan.drawAnimatedEmojis(canvas, messageNameLayout, animatedEmojiStack2, -.075f, null, 0, 0, 0, 1f, getAdaptiveEmojiColorFilter(1, messageNameLayout.getPaint().getColor()));
-                } catch (Exception e) {
-                    FileLog.e(e);
-                }
-                canvas.restore();
-            }
-
-            if (messageLayout != null) {
-                if (currentDialogFolderId != 0) {
-                    if (chat != null) {
-                        Theme.dialogs_messagePaint[paintIndex].setColor(Theme.dialogs_messagePaint[paintIndex].linkColor = Theme.getColor(Theme.key_chats_nameMessageArchived, resourcesProvider));
-                    } else {
-                        Theme.dialogs_messagePaint[paintIndex].setColor(Theme.dialogs_messagePaint[paintIndex].linkColor = Theme.getColor(Theme.key_chats_messageArchived, resourcesProvider));
-                    }
-                } else {
-                    Theme.dialogs_messagePaint[paintIndex].setColor(Theme.dialogs_messagePaint[paintIndex].linkColor = Theme.getColor(Theme.key_chats_message, resourcesProvider));
-                }
-                float top;
-                float typingAnimationOffset = dp(14);
-                if (updateHelper.typingOutToTop) {
-                    top = messageTop - typingAnimationOffset * updateHelper.typingProgres;
-                } else {
-                    top = messageTop + typingAnimationOffset * updateHelper.typingProgres;
-                }
-                if ((!(useForceThreeLines || SharedConfig.useThreeLinesLayout) || isForumCell()) && hasTags()) {
-                    top -= dp(isForumCell() ? 10 : 11);
-                }
-                if (updateHelper.typingProgres != 1f) {
-                    if (outgoingForumLoadingLayout != null && forumTopicPreviewTransition.outgoingAlpha() > 0f) {
-                        final int loadingLayer = canvas.saveLayerAlpha(0, 0, getWidth(), getHeight(),
-                                Math.round(255 * forumTopicPreviewTransition.outgoingAlpha() * (1f - updateHelper.typingProgres)));
-                        canvas.translate(outgoingForumLoadingLeft, top);
-                        outgoingForumLoadingLayout.draw(canvas);
-                        canvas.restoreToCount(loadingLayer);
-                    }
-                    final int topicLayer = forumTopicPreviewTransition.alpha() < 1f
-                            ? canvas.saveLayerAlpha(0, 0, getWidth(), getHeight(), Math.round(255 * forumTopicPreviewTransition.alpha()))
-                            : canvas.save();
-                    canvas.save();
-                    canvas.translate(messageLeft, top);
-                    int oldAlpha = messageLayout.getPaint().getAlpha();
-                    messageLayout.getPaint().setAlpha((int) (oldAlpha * (1f - updateHelper.typingProgres)));
-                    if (!spoilers.isEmpty()) {
-                        try {
-                            canvas.save();
-                            SpoilerEffect.clipOutCanvas(canvas, spoilers);
-                            SpoilerEffect.layoutDrawMaybe(messageLayout, canvas);
-                            AnimatedEmojiSpan.drawAnimatedEmojis(canvas, messageLayout, animatedEmojiStack, -.075f, spoilers, 0, 0, 0, 1f, getAdaptiveEmojiColorFilter(2, messageLayout.getPaint().getColor()));
-                            canvas.restore();
-
-                            for (int i = 0; i < spoilers.size(); i++) {
-                                SpoilerEffect eff = spoilers.get(i);
-                                eff.setColor(messageLayout.getPaint().getColor());
-                                eff.draw(canvas);
-                            }
-                        } catch (Exception e) {
-                            FileLog.e(e);
-                        }
-                    } else {
-                        SpoilerEffect.layoutDrawMaybe(messageLayout, canvas);
-                        AnimatedEmojiSpan.drawAnimatedEmojis(canvas, messageLayout, animatedEmojiStack, -.075f, null, 0, 0, 0, 1f, getAdaptiveEmojiColorFilter(2, messageLayout.getPaint().getColor()));
-                    }
-                    messageLayout.getPaint().setAlpha(oldAlpha);
-                    canvas.restore();
-                    canvas.restoreToCount(topicLayer);
-                }
-                final int typingLayer = typingLayout != null && updateHelper.typingProgres > 0f
-                        && updateHelper.typingProgres < 1f
-                        ? canvas.saveLayerAlpha(0, 0, getWidth(), getHeight(), Math.round(255 * updateHelper.typingProgres))
-                        : canvas.save();
-
-                canvas.save();
-                if (updateHelper.typingOutToTop) {
-                    top = messageTop + typingAnimationOffset * (1f - updateHelper.typingProgres);
-                } else {
-                    top = messageTop - typingAnimationOffset * (1f - updateHelper.typingProgres);
-                }
-                if ((!(useForceThreeLines || SharedConfig.useThreeLinesLayout) || isForumCell()) && hasTags()) {
-                    top -= dp(isForumCell() ? 10 : 11);
-                }
-                canvas.translate(typingLeft, top);
-                if (typingLayout != null && updateHelper.typingProgres > 0) {
-                    typingLayout.draw(canvas);
-                }
-                canvas.restore();
-
-                if (typingLayout != null && updateHelper.typingProgres > 0 && (printingStringType >= 0 || updateHelper.lastKnownTypingType >= 0)) {
-                    int type = printingStringType >= 0 ? printingStringType : updateHelper.lastKnownTypingType;
-                    StatusDrawable statusDrawable = Theme.getChatStatusDrawable(type);
-                    if (statusDrawable != null) {
-                        canvas.save();
-                        int color = Theme.getColor(Theme.key_chats_actionMessage);
-                        statusDrawable.setColor(color);
-                        if (updateHelper.typingOutToTop) {
-                            top = messageTop + typingAnimationOffset * (1f - updateHelper.typingProgres);
-                        } else {
-                            top = messageTop - typingAnimationOffset * (1f - updateHelper.typingProgres);
-                        }
-                        if ((!(useForceThreeLines || SharedConfig.useThreeLinesLayout) || isForumCell()) && hasTags()) {
-                            top -= dp(isForumCell() ? 10 : 11);
-                        }
-                        if (type == 1 || type == 4) {
-                            canvas.translate(statusDrawableLeft, top + (type == 1 ? dp(1) : 0));
-                        } else {
-                            canvas.translate(statusDrawableLeft, top + (dp(18) - statusDrawable.getIntrinsicHeight()) / 2f);
-                        }
-                        statusDrawable.draw(canvas);
-                        invalidate();
-                        canvas.restore();
-                    }
-                }
-                canvas.restoreToCount(typingLayer);
-            }
+            messagePreviewCrossfade.draw(canvas, this::drawMessagePreviewText);
+            previewPresented = !isTransitionSupport && visibleOnScreen && getAlpha() > 0f;
 
             if (buttonLayout != null) {
                 canvas.save();
@@ -4816,76 +4918,6 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
                 canvas.restore();
             }
 
-            if (thumbsCount > 0 && updateHelper.typingProgres != 1f) {
-                float alpha = 1f;
-                if (updateHelper.typingProgres > 0) {
-                    alpha = (1f - updateHelper.typingProgres);
-                    canvas.saveLayerAlpha(0, 0, getWidth(), getHeight(), (int) (255 * alpha), Canvas.ALL_SAVE_FLAG);
-                    float top;
-                    if (updateHelper.typingOutToTop) {
-                        top = -dp(14) * updateHelper.typingProgres;
-                    } else {
-                        top = dp(14) * updateHelper.typingProgres;
-                    }
-                    canvas.translate(0, top);
-                }
-                for (int i = 0; i < thumbsCount; ++i) {
-                    if (!thumbImageSeen[i]) {
-                        continue;
-                    }
-                    if (thumbBackgroundPaint == null) {
-                        thumbBackgroundPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-                        thumbBackgroundPaint.setShadowLayer(dp(1.34f), 0, dp(0.34f), 0x18000000);
-                        thumbBackgroundPaint.setColor(0x00000000);
-                    }
-                    AndroidUtilities.rectTmp.set(
-                            thumbImage[i].getImageX(),
-                            thumbImage[i].getImageY(),
-                            thumbImage[i].getImageX2(),
-                            thumbImage[i].getImageY2()
-                    );
-                    //canvas.drawRoundRect(
-                    //        AndroidUtilities.rectTmp,
-                    //        thumbImage[i].getRoundRadius()[0],
-                    //        thumbImage[i].getRoundRadius()[1],
-                    //        thumbBackgroundPaint
-                    //);
-                    thumbImage[i].draw(canvas);
-                    if (drawSpoiler[i]) {
-                        if (thumbPath == null) {
-                            thumbPath = new Path();
-                        } else {
-                            thumbPath.rewind();
-                        }
-                        thumbPath.addRoundRect(AndroidUtilities.rectTmp, thumbImage[i].getRoundRadius()[0], thumbImage[i].getRoundRadius()[1], Path.Direction.CW);
-
-                        canvas.save();
-                        canvas.clipPath(thumbPath);
-
-                        int sColor = Color.WHITE;
-                        if (thumbSpoiler == null) {
-                            thumbSpoiler = new SpoilerEffect();
-                            thumbSpoiler.setParentView(this);
-                        }
-                        thumbSpoiler.setColor(ColorUtils.setAlphaComponent(sColor, (int) (Color.alpha(sColor) * 0.325f)));
-                        thumbSpoiler.setBounds((int) thumbImage[i].getImageX(), (int) thumbImage[i].getImageY(), (int) thumbImage[i].getImageX2(), (int) thumbImage[i].getImageY2());
-                        thumbSpoiler.draw(canvas);
-                        invalidate();
-
-                        canvas.restore();
-                    }
-                    if (drawPlay[i]) {
-                        int x = (int) (thumbImage[i].getCenterX() - Theme.dialogs_playDrawable.getIntrinsicWidth() / 2);
-                        int y = (int) (thumbImage[i].getCenterY() - Theme.dialogs_playDrawable.getIntrinsicHeight() / 2);
-                        setDrawableBounds(Theme.dialogs_playDrawable, x, y);
-                        Theme.dialogs_playDrawable.draw(canvas);
-                    }
-                }
-
-                if (updateHelper.typingProgres > 0) {
-                    canvas.restore();
-                }
-            }
 
             if (tags != null && !tags.isEmpty()) {
                 canvas.save();

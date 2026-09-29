@@ -6,6 +6,7 @@ import androidx.media3.exoplayer.ExoPlayer;
 import org.telegram.tgnet.TLRPC;
 
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 
 public class AnimatedFileDrawableStream implements FileLoadOperationStream {
 
@@ -18,11 +19,12 @@ public class AnimatedFileDrawableStream implements FileLoadOperationStream {
     private volatile boolean canceled;
     private final Object sync = new Object();
     private long lastOffset;
-    private boolean waitingForLoad;
+    private volatile boolean waitingForLoad;
     private boolean preview;
     private boolean finishedLoadingFile;
     private String finishedFilePath;
     private int loadingPriority;
+    private final int cacheType;
 
     private int debugCanceledCount;
     private boolean debugReportSend;
@@ -34,6 +36,7 @@ public class AnimatedFileDrawableStream implements FileLoadOperationStream {
         currentAccount = a;
         preview = prev;
         this.loadingPriority = loadingPriority;
+        this.cacheType = cacheType;
         loadOperation = FileLoader.getInstance(currentAccount).loadStreamFile(this, document, location, parentObject, 0, preview, loadingPriority, cacheType);
     }
 
@@ -62,11 +65,19 @@ public class AnimatedFileDrawableStream implements FileLoadOperationStream {
             long availableLength = 0;
             try {
                 while (availableLength == 0) {
+                    final CountDownLatch wakeup = new CountDownLatch(1);
+                    synchronized (sync) {
+                        if (canceled) return 0;
+                        countDownLatch = wakeup;
+                    }
                     long[] result = loadOperation.getDownloadedLengthFromOffset(offset, readLength);
                     availableLength = result[0];
                     if (!finishedLoadingFile && result[1] != 0) {
                         finishedLoadingFile = true;
                         finishedFilePath = loadOperation.getCacheFileFinal().getAbsolutePath();
+                    }
+                    if (availableLength == 0 && result[1] != 0) {
+                        return 0;
                     }
                     if (availableLength == 0) {
                         synchronized (sync) {
@@ -75,12 +86,12 @@ public class AnimatedFileDrawableStream implements FileLoadOperationStream {
                                 return 0;
                             }
                         }
-                        countDownLatch = new CountDownLatch(1);
                         if (loadOperation.isPaused() || lastOffset != offset || preview) {
-                            FileLoadOperation loadOperation = FileLoader.getInstance(currentAccount).loadStreamFile(this, document, location, parentObject, offset, preview, loadingPriority);
+                            FileLoadOperation loadOperation = FileLoader.getInstance(currentAccount).loadStreamFile(this, document, location, parentObject, offset, preview, loadingPriority, cacheType);
                             if (this.loadOperation != loadOperation) {
                                 this.loadOperation.removeStreamListener(this);
                                 this.loadOperation = loadOperation;
+                                continue;
                             }
                             lastOffset = offset + availableLength;
                         }
@@ -94,9 +105,10 @@ public class AnimatedFileDrawableStream implements FileLoadOperationStream {
                         if (!preview) {
                             FileLoader.getInstance(currentAccount).setLoadingVideo(document, false, true);
                         }
-                        if (countDownLatch != null) {
-                            waitingForLoad = true;
-                            countDownLatch.await();
+                        waitingForLoad = true;
+                        try {
+                            wakeup.await(1, TimeUnit.SECONDS);
+                        } finally {
                             waitingForLoad = false;
                         }
                     }
@@ -104,6 +116,12 @@ public class AnimatedFileDrawableStream implements FileLoadOperationStream {
                 lastOffset = offset + availableLength;
             } catch (Exception e) {
                 FileLog.e(e, false);
+                if (e instanceof InterruptedException) Thread.currentThread().interrupt();
+            } finally {
+                synchronized (sync) {
+                    countDownLatch = null;
+                }
+                waitingForLoad = false;
             }
             return (int) availableLength;
         }
@@ -177,9 +195,10 @@ public class AnimatedFileDrawableStream implements FileLoadOperationStream {
 
     @Override
     public void newDataAvailable() {
-        if (countDownLatch != null) {
-            countDownLatch.countDown();
-            countDownLatch = null;
+        synchronized (sync) {
+            if (countDownLatch != null) {
+                countDownLatch.countDown();
+            }
         }
     }
 

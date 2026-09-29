@@ -355,6 +355,8 @@ public class MessagesController extends BaseController implements NotificationCe
     public boolean dialogsLoaded;
     private SparseIntArray nextDialogsCacheOffset = new SparseIntArray();
     private SparseBooleanArray loadingDialogs = new SparseBooleanArray();
+    private final android.util.SparseLongArray dialogsLoadRetryAfter = new android.util.SparseLongArray();
+    private final SparseBooleanArray dialogsLoadRetried = new SparseBooleanArray();
     private SparseBooleanArray dialogsEndReached = new SparseBooleanArray();
     private SparseBooleanArray serverDialogsEndReached = new SparseBooleanArray();
 
@@ -6690,6 +6692,8 @@ public class MessagesController extends BaseController implements NotificationCe
         dialogsLoaded = false;
         nextDialogsCacheOffset.clear();
         loadingDialogs.clear();
+        dialogsLoadRetryAfter.clear();
+        dialogsLoadRetried.clear();
         dialogsEndReached.clear();
         serverDialogsEndReached.clear();
 
@@ -12544,7 +12548,8 @@ public class MessagesController extends BaseController implements NotificationCe
     }
 
     public void loadDialogs(final int folderId, int offset, int count, boolean fromCache, Runnable onEmptyCallback) {
-        if (loadingDialogs.get(folderId) || resetingDialogs) {
+        if (loadingDialogs.get(folderId) || resetingDialogs
+                || android.os.SystemClock.elapsedRealtime() < dialogsLoadRetryAfter.get(folderId)) {
             return;
         }
         loadingDialogs.put(folderId, true);
@@ -12629,14 +12634,32 @@ public class MessagesController extends BaseController implements NotificationCe
                 }
             }
             getConnectionsManager().sendRequest(req, (response, error) -> {
-                if (error == null) {
+                if (error == null && response instanceof TLRPC.messages_Dialogs) {
                     TLRPC.messages_Dialogs dialogsRes = (TLRPC.messages_Dialogs) response;
                     processLoadedDialogs(dialogsRes, null, null, folderId, 0, count, 0, false, false, false);
                     if (onEmptyCallback != null && dialogsRes.dialogs.isEmpty()) {
                         AndroidUtilities.runOnUIThread(onEmptyCallback);
                     }
+                } else {
+                    AndroidUtilities.runOnUIThread(() -> onDialogsLoadFailed(folderId, count,
+                            error == null || error.code >= 500 || error.code < 0 && error.code != -2000));
                 }
             });
+        }
+    }
+    private void onDialogsLoadFailed(int folderId, int count, boolean retryAllowed) {
+        long retryAt = android.os.SystemClock.elapsedRealtime() + 3000;
+        dialogsLoadRetryAfter.put(folderId, retryAt);
+        loadingDialogs.put(folderId, false);
+        boolean retry = retryAllowed && !dialogsLoadRetried.get(folderId);
+        dialogsLoadRetried.put(folderId, true);
+        getNotificationCenter().postNotificationName(NotificationCenter.dialogsNeedReload);
+        if (retry) {
+            AndroidUtilities.runOnUIThread(() -> {
+                if (dialogsLoadRetryAfter.get(folderId) == retryAt && getUserConfig().isClientActivated()) {
+                    loadDialogs(folderId, 0, count, false);
+                }
+            }, 3000);
         }
     }
 
@@ -13669,6 +13692,10 @@ public class MessagesController extends BaseController implements NotificationCe
                 }
                 if (!migrate && loadType != DIALOGS_LOAD_TYPE_UNKNOWN && loadType != DIALOGS_LOAD_TYPE_CHANNEL) {
                     loadingDialogs.put(folderId, false);
+                    if (loadType != DIALOGS_LOAD_TYPE_CACHE) {
+                        dialogsLoadRetryAfter.delete(folderId);
+                        dialogsLoadRetried.delete(folderId);
+                    }
                 }
                 boolean added = false;
                 dialogsLoaded = true;

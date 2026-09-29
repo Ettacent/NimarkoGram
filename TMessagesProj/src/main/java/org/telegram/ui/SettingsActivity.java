@@ -369,7 +369,12 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
         otherItem.setOnClickListener(view -> showProfileMenuItemOptions(otherItem));
 
 
-        listView = new UniversalRecyclerView(this, this::fillItems, this::onClick, this::onLongClick);
+        listView = new UniversalRecyclerView(this, this::fillItems, this::onClick, this::onLongClick) {
+            @Override
+            public void capture(Canvas canvas, RectF position) {
+                captureChildren(canvas, position, android.os.SystemClock.uptimeMillis());
+            }
+        };
         listView.adapter.setApplyBackground(false);
         listView.setSections();
         listView.setPadding(0, AndroidUtilities.statusBarHeight + dp(12), 0, AndroidUtilities.navigationBarHeight + additionNavigationBarHeight);
@@ -1229,7 +1234,7 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
         private final LinearLayout textLayout;
         private final TextView titleView;
         private final TextView subtitleView;
-        private final TextView valueView;
+        private final org.telegram.ui.Components.AnimatedTextView valueView;
         private final boolean mini;
         private int originalIconColorTop;
         private int originalIconColorBottom;
@@ -1265,18 +1270,26 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
             subtitleView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 13);
             textLayout.addView(subtitleView, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, 0, 4, 0, 0));
 
-            valueView = new TextView(context);
-            valueView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 16);
-            valueView.setSingleLine(true);
-            valueView.setEllipsize(TextUtils.TruncateAt.END);
+            valueView = new org.telegram.ui.Components.AnimatedTextView(context) {
+                @Override
+                protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
+                    super.onMeasure(widthMeasureSpec, heightMeasureSpec);
+                    setMeasuredDimension(Math.min(getMeasuredWidth(),
+                            (int) Math.ceil(getDrawable().getCurrentWidth())), getMeasuredHeight());
+                }
+            };
+            valueView.setTextSize(dp(16));
+            valueView.setGravity(LocaleController.isRTL ? Gravity.LEFT : Gravity.RIGHT);
+            valueView.setAnimationProperties(0f, 0, 220, CubicBezierInterpolator.EASE_OUT_QUINT);
+            valueView.setOnWidthUpdatedListener(valueView::requestLayout);
             if (LocaleController.isRTL) {
-                addView(valueView, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, Gravity.CENTER_VERTICAL, 20, 0, 0, 0));
+                addView(valueView, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, 24, Gravity.CENTER_VERTICAL, 20, 0, 0, 0));
                 addView(textLayout, LayoutHelper.createLinear(0, LayoutHelper.WRAP_CONTENT, 1, Gravity.CENTER_VERTICAL | Gravity.FILL_HORIZONTAL, 20, 0, mini ? 12 : 18, 0));
                 addView(iconLayout, LayoutHelper.createLinear(28, 28, Gravity.CENTER_VERTICAL | Gravity.RIGHT, 0, 0, mini ? 9 : 18, 0));
             } else {
                 addView(iconLayout, LayoutHelper.createLinear(28, 28, Gravity.CENTER_VERTICAL | Gravity.LEFT, mini ? 9 : 18, 0, 0, 0));
                 addView(textLayout, LayoutHelper.createLinear(0, LayoutHelper.WRAP_CONTENT, 1, Gravity.CENTER_VERTICAL | Gravity.FILL_HORIZONTAL,  mini ? 12 : 18, 0, 20, 0));
-                addView(valueView, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, Gravity.CENTER_VERTICAL, 0, 0, 20, 0));
+                addView(valueView, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, 24, Gravity.CENTER_VERTICAL, 0, 0, 20, 0));
             }
             updateColors();
         }
@@ -1300,6 +1313,26 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
         }
 
         private boolean twoLines;
+        private UItem boundSettingItem;
+        private boolean animateValueHeight;
+        private ValueAnimator valueHeightAnimator;
+        private int valueTargetHeight;
+        private float valueAnimatedHeight;
+        private void stopValueHeightAnimation() {
+            if (valueHeightAnimator != null) {
+                valueHeightAnimator.cancel();
+                valueHeightAnimator = null;
+            }
+            animateValueHeight = false;
+            valueTargetHeight = 0;
+        }
+        @Override
+        protected void onDetachedFromWindow() {
+            stopValueHeightAnimation();
+            valueView.cancelAnimation();
+            boundSettingItem = null;
+            super.onDetachedFromWindow();
+        }
 
         public void set(
             int iconColorTop, int iconColorBottom, int icon,
@@ -1307,6 +1340,16 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
             CharSequence subtitle,
             CharSequence value,
             boolean destructive
+        ) {
+            set(iconColorTop, iconColorBottom, icon, title, subtitle, value, destructive, false);
+        }
+        private void set(
+            int iconColorTop, int iconColorBottom, int icon,
+            CharSequence title,
+            CharSequence subtitle,
+            CharSequence value,
+            boolean destructive,
+            boolean animateValue
         ) {
             this.destructive = destructive;
             iconLayout.setVisibility(icon != 0 ? View.VISIBLE : View.GONE);
@@ -1326,13 +1369,23 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
             titleView.setText(title);
             subtitleView.setVisibility((twoLines = !TextUtils.isEmpty(subtitle)) ? View.VISIBLE : View.GONE);
             subtitleView.setText(subtitle);
-            setValue(value);
+            if (!animateValue || !TextUtils.equals(valueView.getText(), value)) {
+                setValue(value, animateValue);
+            }
             updateColors();
         }
 
         public void setValue(CharSequence value) {
+            setValue(value, isAttachedToWindow() && getWidth() > 0);
+        }
+        public void setValue(CharSequence value, boolean animated) {
+            if (!animated) {
+                stopValueHeightAnimation();
+            } else {
+                animateValueHeight = true;
+            }
             valueView.setVisibility(!TextUtils.isEmpty(value) ? View.VISIBLE : View.GONE);
-            valueView.setText(value);
+            valueView.setText(value, animated);
         }
 
         @Override
@@ -1344,9 +1397,26 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
                 super.onMeasure(width, MeasureSpec.makeMeasureSpec(dp(mini ? 44 : 50), MeasureSpec.EXACTLY));
                 return;
             }
+            final int previousHeight = getMeasuredHeight();
 
             super.onMeasure(width, MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED));
             int height = Math.max(dp(60), textLayout.getMeasuredHeight() + dp(16));
+            if (animateValueHeight && isAttachedToWindow() && previousHeight > 0) {
+                if (valueTargetHeight != height) {
+                    if (valueHeightAnimator != null) valueHeightAnimator.cancel();
+                    valueTargetHeight = height;
+                    valueAnimatedHeight = previousHeight;
+                    valueHeightAnimator = ValueAnimator.ofFloat(previousHeight, height);
+                    valueHeightAnimator.setDuration(220);
+                    valueHeightAnimator.setInterpolator(CubicBezierInterpolator.EASE_OUT_QUINT);
+                    valueHeightAnimator.addUpdateListener(animation -> {
+                        valueAnimatedHeight = (float) animation.getAnimatedValue();
+                        requestLayout();
+                    });
+                    valueHeightAnimator.start();
+                }
+                height = Math.round(valueAnimatedHeight);
+            }
             super.onMeasure(width, MeasureSpec.makeMeasureSpec(height, MeasureSpec.EXACTLY));
         }
 
@@ -1414,13 +1484,27 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
             public void bindView(View view, UItem item, boolean divider, UniversalAdapter adapter, UniversalRecyclerView listView) {
                 int iconColorTop    = (int) item.longValue;
                 int iconColorBottom = (int) (item.longValue >>> 32);
-                ((SettingCell) view).set(
+                SettingCell cell = (SettingCell) view;
+                boolean animateValue = cell.isAttachedToWindow() && cell.boundSettingItem != null
+                        && equals(cell.boundSettingItem, item);
+                cell.boundSettingItem = item;
+                cell.set(
                     iconColorTop, iconColorBottom, item.iconResId,
                     item.text,
                     item.subtext,
                     item.textValue,
-                    item.red
+                    item.red,
+                    animateValue
                 );
+            }
+            @Override
+            public boolean equals(UItem a, UItem b) {
+                return a.id == b.id && a.dialogId == b.dialogId && a.view == b.view
+                        && java.util.Objects.equals(a.object, b.object);
+            }
+            @Override
+            public boolean contentsEquals(UItem a, UItem b) {
+                return a.itemEquals(b) && a.enabled == b.enabled;
             }
 
             public static UItem of(int id, int iconColorTop, int iconColorBottom, int icon, CharSequence title) {
@@ -2168,6 +2252,17 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
     private final @Nullable DownscaleScrollableNoiseSuppressor scrollableViewNoiseSuppressor;
     private final @Nullable BlurredBackgroundSourceRenderNode iBlur3SourceGlassFrosted;
     private final @Nullable BlurredBackgroundSourceRenderNode iBlur3SourceGlass;
+    private org.telegram.ui.Components.blur3.BlurredBackgroundDrawableViewFactory notificationGlassFactory;
+    @Override
+    public org.telegram.ui.Components.blur3.BlurredBackgroundDrawableViewFactory getNotificationGlassFactory() {
+        if (iBlur3SourceGlass == null || !(fragmentView instanceof android.view.ViewGroup)) return null;
+        if (notificationGlassFactory == null) {
+            notificationGlassFactory = new org.telegram.ui.Components.blur3.BlurredBackgroundDrawableViewFactory(iBlur3SourceGlass);
+            notificationGlassFactory.setLiquidGlassEffectAllowed(true);
+        }
+        notificationGlassFactory.setSourceRootView(null, (android.view.ViewGroup) fragmentView);
+        return notificationGlassFactory;
+    }
 
     private IBlur3Capture iBlur3Capture;
     private boolean iBlur3Invalidated;
@@ -2188,7 +2283,9 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
         final int mainTabBottom = fragmentView.getMeasuredHeight() - navigationBarHeight - dp(DialogsActivity.MAIN_TABS_MARGIN);
         final int mainTabTop = mainTabBottom - dp(DialogsActivity.MAIN_TABS_HEIGHT);
 
-        iBlur3PositionActionBar.set(0, -additionalList, fragmentView.getMeasuredWidth(), actionBar.getMeasuredHeight() + additionalList);
+        int notificationHeight = notificationInlinePanel == null ? 0
+                : Math.round(notificationInlinePanel.getAnimatedHeightWithPadding());
+        iBlur3PositionActionBar.set(0, -additionalList, fragmentView.getMeasuredWidth(), actionBar.getMeasuredHeight() + notificationHeight + additionalList);
         iBlur3PositionMainTabs.set(0, mainTabTop, fragmentView.getMeasuredWidth(), mainTabBottom);
         iBlur3PositionMainTabs.inset(0, -dp(LiteMode.isEnabled(LiteMode.FLAG_LIQUID_GLASS) ? 24 : 48));
 
