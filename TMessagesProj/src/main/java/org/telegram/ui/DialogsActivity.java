@@ -392,6 +392,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         private int lastItemsCount;
         private DialogsItemAnimator dialogsItemAnimator;
         private RecyclerItemsEnterAnimator recyclerItemsEnterAnimator;
+        private app.nimarkogram.messenger.ui.DialogAppearance dialogAppearance;
 
         private boolean isLocked;
         public boolean animateStoriesView;
@@ -413,6 +414,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             if (!isCurrentViewPage(this)) {
                 return;
             }
+            if (dialogAppearance != null) dialogAppearance.beforeUpdate();
             if (listView != null && listView.getScrollState() == RecyclerView.SCROLL_STATE_IDLE && listView.getChildCount() > 0 && listView.getLayoutManager() != null) {
                 boolean hasHiddenArchive = dialogsType == DIALOGS_TYPE_DEFAULT && hasHiddenArchive() && archivePullViewState == ARCHIVE_ITEM_STATE_HIDDEN;
                 float tabsTranslation = scrollYOffset;
@@ -5151,6 +5153,8 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             });
             viewPage.swipeController = new SwipeController(viewPage);
             viewPage.recyclerItemsEnterAnimator = new RecyclerItemsEnterAnimator(viewPage.listView, false);
+            viewPage.dialogAppearance = new app.nimarkogram.messenger.ui.DialogAppearance(
+                    viewPage.listView, () -> canFadeDialogAppearance(viewPage));
 
             viewPage.itemTouchhelper = new ItemTouchHelper(viewPage.swipeController);
             viewPage.itemTouchhelper.attachToRecyclerView(viewPage.listView);
@@ -11719,6 +11723,22 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         return getParentActivity() instanceof LaunchActivity
                 && ((LaunchActivity) getParentActivity()).isAccountSwitchAnimating();
     }
+    private boolean canFadeDialogAppearance(ViewPage page) {
+        if (isPaused || onlySelect || folderId != 0 || communityId != 0 || searching || searchIsShowed
+                || tabsAnimationInProgress || startedTracking || maybeStartTracking || dialogsListFrozen
+                || isAccountSwitchAnimating() || !isCurrentViewPage(page) || page.getVisibility() != View.VISIBLE
+                || !page.isDefaultDialogType() || !page.listView.isAttachedToWindow()
+                || page.listView.getScrollState() != RecyclerView.SCROLL_STATE_IDLE
+                || page.listView.getItemAnimator() != null && page.listView.getItemAnimator().isRunning()
+                || page.itemTouchhelper != null && page.itemTouchhelper.isDraggingOrRecovering()
+                || parentLayout != null && (parentLayout.isTransitionAnimationInProgress() || parentLayout.isSwipeInProgress())) {
+            return false;
+        }
+        for (int i = 0; i < page.listView.getChildCount(); i++) {
+            if (page.listView.getChildAt(i) instanceof DialogCell) return true;
+        }
+        return false;
+    }
 
     private void reloadViewPageDialogs(ViewPage viewPage, boolean newMessage) {
         if (viewPage == null || viewPage.getVisibility() != View.VISIBLE) {
@@ -11738,7 +11758,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                 viewPage.updateList(true);
             } else {
                 viewPage.updateList(false);
-                if (newItemCount > oldItemCount && initialDialogsType != 11 && initialDialogsType != 12 && initialDialogsType != 13
+                if (!canFadeDialogAppearance(viewPage) && newItemCount > oldItemCount && initialDialogsType != 11 && initialDialogsType != 12 && initialDialogsType != 13
                         && !isAccountSwitchAnimating()) {
                     viewPage.recyclerItemsEnterAnimator.showItemsAnimated(oldItemCount);
                 }
@@ -15978,7 +15998,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
 
     @Override
     public BlurredBackgroundDrawableViewFactory getNotificationGlassFactory() {
-        return iBlur3FactoryFrostedLiquidGlass;
+        return iBlur3FactoryLiquidGlass;
     }
     @Override
     public org.telegram.ui.Components.AnimatedLinearLayout getInAppNotificationPanel() {

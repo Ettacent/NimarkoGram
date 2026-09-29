@@ -3478,9 +3478,9 @@ public class RecyclerListView extends RecyclerView implements IBlur3Capture {
 
         AndroidUtilities.rectTmp.set(
             from.getLeft(),
-            Math.max(applyPaddingToSections ? getPaddingTop() : -sectionRadius, top(from) - (hasAbove ? sectionRadius : 0)),
+            Math.max(applyPaddingToSections ? getPaddingTop() : -sectionRadius, sectionTop(from) - (hasAbove ? sectionRadius : 0)),
             from.getRight(),
-            Math.min(getHeight() - (applyPaddingToSections ? getPaddingBottom() : -sectionRadius), bottom(to) + (hasBelow ? sectionRadius : 0) - bottomMargin)
+            Math.min(getHeight() - (applyPaddingToSections ? getPaddingBottom() : -sectionRadius), sectionBottom(to) + (hasBelow ? sectionRadius : 0) - bottomMargin)
         );
         if (AndroidUtilities.rectTmp.bottom < AndroidUtilities.rectTmp.top) return;
         drawSectionBackground.run(canvas, AndroidUtilities.rectTmp, sectionRadius, sectionRadius, from.getAlpha());
@@ -3513,10 +3513,31 @@ public class RecyclerListView extends RecyclerView implements IBlur3Capture {
         }
         return false;
     }
+    private boolean reorderingSections;
+    private boolean hasSectionReorderGesture() {
+        for (int i = 0; i < getItemDecorationCount(); i++) {
+            ItemDecoration decoration = getItemDecorationAt(i);
+            if (decoration instanceof androidx.recyclerview.widget.ItemTouchHelper
+                    && ((androidx.recyclerview.widget.ItemTouchHelper) decoration).isDraggingOrRecovering()) {
+                return true;
+            }
+        }
+        for (int i = 0; i < getChildCount(); i++) {
+            if (getChildAt(i).getTag(R.id.dragging) != null) return true;
+        }
+        return false;
+    }
+    private float sectionTop(View child) {
+        return reorderingSections ? child.getTop() : top(child);
+    }
+    private float sectionBottom(View child) {
+        return reorderingSections ? child.getBottom() : bottom(child);
+    }
     public void drawSectionsBackgrounds(Canvas canvas) {
         if (drawSectionBackground == null) return;
 
-        if (isAnimating()) {
+        reorderingSections = hasSectionReorderGesture() || reorderingSections && isAnimating();
+        if (isAnimating() && !reorderingSections) {
             if (sections == null) {
                 sections = new ArrayList<>();
             }
@@ -3606,8 +3627,8 @@ public class RecyclerListView extends RecyclerView implements IBlur3Capture {
                     final int position = getChildAdapterPosition(child);
 
                     if (position >= beginPosition && position <= endPosition) {
-                        from = Math.min(from, top(child));
-                        to = Math.max(to, bottom(child));
+                        from = Math.min(from, sectionTop(child));
+                        to = Math.max(to, sectionBottom(child));
                     }
                 }
 

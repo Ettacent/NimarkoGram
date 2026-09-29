@@ -108,13 +108,22 @@ public class LiteMode {
                 if (!lastPowerSaverApplied) {
                     onPowerSaverApplied(lastPowerSaverApplied = true);
                 }
-                return PRESET_POWER_SAVER;
+                return restrictBlurFlags(PRESET_POWER_SAVER);
             }
             if (lastPowerSaverApplied) {
                 onPowerSaverApplied(lastPowerSaverApplied = false);
             }
         }
-        return value;
+        return restrictBlurFlags(value);
+    }
+    private static int restrictBlurFlags(int flags) {
+        if (!SharedConfig.canBlurChat()) {
+            return flags & ~(FLAG_CHAT_BLUR | FLAG_LIQUID_GLASS);
+        }
+        if (!SharedConfig.canUseLiquidGlass()) {
+            return flags & ~FLAG_LIQUID_GLASS;
+        }
+        return flags;
     }
 
     private static int lastBatteryLevelCached = -1;
@@ -170,7 +179,7 @@ public class LiteMode {
         final int previousEffectiveFlags = getValue();
         // in settings it is already handled. would you handle it? 🫵
         // onFlagsUpdate(value, flags);
-        value = flags;
+        value = restrictBlurFlags(flags);
         savePreference();
         onGlassFlagsUpdate(previousEffectiveFlags, getValue());
     }
@@ -202,15 +211,16 @@ public class LiteMode {
     }
 
     public static void loadPreference() {
+        final int performanceClass = SharedConfig.getDevicePerformanceClass();
         int defaultValue = PRESET_HIGH, batteryDefaultValue = BATTERY_HIGH;
-        if (SharedConfig.getDevicePerformanceClass() == SharedConfig.PERFORMANCE_CLASS_LOW) {
+        if (performanceClass == SharedConfig.PERFORMANCE_CLASS_LOW) {
             defaultValue = PRESET_LOW;
             batteryDefaultValue = BATTERY_LOW;
-        } else if (SharedConfig.getDevicePerformanceClass() == SharedConfig.PERFORMANCE_CLASS_AVERAGE) {
+        } else if (performanceClass == SharedConfig.PERFORMANCE_CLASS_AVERAGE) {
             defaultValue = PRESET_MEDIUM;
             batteryDefaultValue = BATTERY_MEDIUM;
         }
-        defaultValue &= ~FLAG_LIQUID_GLASS;
+        defaultValue &= ~(FLAG_CHAT_BLUR | FLAG_LIQUID_GLASS);
 
         final SharedPreferences preferences = MessagesController.getGlobalMainSettings();
         if (!preferences.contains("lite_mode6")) {
@@ -280,7 +290,16 @@ public class LiteMode {
         }
 
         int prevValue = value;
-        value = preferences.getInt("lite_mode6", defaultValue);
+        final int savedValue = preferences.getInt("lite_mode6", defaultValue);
+        value = restrictBlurFlags(savedValue);
+        final boolean migrateBlurDefaults = !preferences.getBoolean("nimarko_blur_opt_in_migrated_v1", false);
+        if (migrateBlurDefaults) {
+            value &= ~(FLAG_CHAT_BLUR | FLAG_LIQUID_GLASS);
+        }
+        if (migrateBlurDefaults || value != savedValue) {
+            preferences.edit().putInt("lite_mode6", value)
+                    .putBoolean("nimarko_blur_opt_in_migrated_v1", true).apply();
+        }
         if (loaded) {
             onFlagsUpdate(prevValue, value);
         }
@@ -289,6 +308,7 @@ public class LiteMode {
     }
 
     public static void savePreference() {
+        value = restrictBlurFlags(value);
         MessagesController.getGlobalMainSettings().edit().putInt("lite_mode6", value).putInt("lite_mode_battery_level", powerSaverLevel).apply();
     }
 

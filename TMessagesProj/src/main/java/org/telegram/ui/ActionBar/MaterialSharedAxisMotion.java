@@ -1,7 +1,7 @@
 package org.telegram.ui.ActionBar;
 
 
-final class MaterialSharedAxisMotion {
+public final class MaterialSharedAxisMotion {
     static final long DURATION_MS = 360;
 
 
@@ -14,6 +14,9 @@ final class MaterialSharedAxisMotion {
     private static final float[] ENTER_SLOPES = slopes(FADE_TIMES, ENTER_ALPHA);
 
     private MaterialSharedAxisMotion() { }
+    public static float appearanceAlpha(float fraction) {
+        return enteringAlpha(clamp(fraction) * 200f / DURATION_MS);
+    }
 
     static float clamp(float progress) {
         return Math.max(0f, Math.min(1f, progress));

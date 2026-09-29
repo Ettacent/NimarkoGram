@@ -1250,6 +1250,14 @@ public class ItemTouchHelper extends RecyclerView.ItemDecoration
     public boolean isIdle() {
         return mActionState == ACTION_STATE_IDLE;
     }
+    public boolean isDraggingOrRecovering() {
+        if (mActionState == ACTION_STATE_DRAG) return true;
+        for (int i = 0; i < mRecoverAnimations.size(); i++) {
+            RecoverAnimation animation = mRecoverAnimations.get(i);
+            if (animation.mActionState == ACTION_STATE_DRAG && !animation.mEnded) return true;
+        }
+        return false;
+    }
 
     public int checkHorizontalSwipe(ViewHolder viewHolder, int flags) {
         if ((flags & (LEFT | RIGHT)) != 0) {

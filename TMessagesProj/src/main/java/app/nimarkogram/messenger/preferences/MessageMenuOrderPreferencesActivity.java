@@ -3,10 +3,16 @@ package app.nimarkogram.messenger.preferences;
 import static org.telegram.messenger.LocaleController.getString;
 
 import android.content.Context;
+import android.animation.ValueAnimator;
+import android.graphics.Canvas;
+import android.graphics.Paint;
 import android.view.HapticFeedbackConstants;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.MotionEvent;
 import android.widget.FrameLayout;
+import android.widget.ImageView;
+import android.widget.LinearLayout;
 
 import androidx.annotation.NonNull;
 import androidx.core.view.ViewCompat;
@@ -25,10 +31,12 @@ import org.telegram.ui.ActionBar.BackDrawable;
 import org.telegram.ui.ActionBar.BaseFragment;
 import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.Cells.TextCell;
+import org.telegram.ui.Cells.TextInfoPrivacyCell;
 import org.telegram.ui.ChatActivity;
 import org.telegram.ui.Components.LayoutHelper;
 import org.telegram.ui.Components.IconBackgroundColors;
 import org.telegram.ui.Components.RecyclerListView;
+import org.telegram.ui.Components.CubicBezierInterpolator;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -152,14 +160,22 @@ public class MessageMenuOrderPreferencesActivity extends BaseFragment {
         FrameLayout frameLayout = (FrameLayout) fragmentView;
 
         listView = new RecyclerListView(context);
+        listView.setDrawSelection(false);
         listView.setVerticalScrollBarEnabled(false);
         listView.setLayoutManager(new LinearLayoutManager(context, LinearLayoutManager.VERTICAL, false));
         adapter = new ListAdapter(context);
         listView.setAdapter(adapter);
         if (listView.getItemAnimator() != null) {
             ((DefaultItemAnimator) listView.getItemAnimator()).setDelayAnimations(false);
+            ((DefaultItemAnimator) listView.getItemAnimator()).setSupportsChangeAnimations(false);
         }
-        frameLayout.addView(listView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT));
+        LinearLayout content = new LinearLayout(context);
+        content.setOrientation(LinearLayout.VERTICAL);
+        TextInfoPrivacyCell hint = new TextInfoPrivacyCell(context);
+        hint.setText(getString(R.string.NM_Menu_Reorder_Desc));
+        content.addView(hint, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
+        content.addView(listView, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 0, 1f));
+        frameLayout.addView(content, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT));
 
         listView.setSections(true);
         actionBar.setAdaptiveBackground(listView);
@@ -215,6 +231,7 @@ public class MessageMenuOrderPreferencesActivity extends BaseFragment {
     }
 
     private class TouchHelperCallback extends ItemTouchHelper.Callback {
+        private MenuOrderCell draggedCell;
         @Override
         public boolean isLongPressDragEnabled() { return true; }
 
@@ -242,13 +259,30 @@ public class MessageMenuOrderPreferencesActivity extends BaseFragment {
         @Override
         public void onSelectedChanged(RecyclerView.ViewHolder vh, int actionState) {
             super.onSelectedChanged(vh, actionState);
+            MenuOrderCell next = actionState == ItemTouchHelper.ACTION_STATE_DRAG && vh != null
+                    ? (MenuOrderCell) vh.itemView : null;
+            if (draggedCell != null && draggedCell != next) {
+                draggedCell.setDragging(false, true);
+            }
+            draggedCell = next;
+            listView.cancelClickRunnables(true);
             if (actionState == ItemTouchHelper.ACTION_STATE_DRAG && vh != null) {
+                ((MenuOrderCell) vh.itemView).setDragging(true, true);
                 try {
                     vh.itemView.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
                 } catch (Throwable ignored) {}
             }
         }
 
+        @Override
+        public void clearView(@NonNull RecyclerView rv, @NonNull RecyclerView.ViewHolder vh) {
+            super.clearView(rv, vh);
+            ((MenuOrderCell) vh.itemView).setDragging(false, true);
+            if (draggedCell == vh.itemView) draggedCell = null;
+            listView.cancelClickRunnables(true);
+            adapter.notifyItemRangeChanged(0, workingOrder.size());
+            vh.itemView.announceForAccessibility(((TextCell) vh.itemView).getTextView().getText());
+        }
         @Override
         public void onSwiped(@NonNull RecyclerView.ViewHolder vh, int direction) {}
     }
@@ -258,21 +292,36 @@ public class MessageMenuOrderPreferencesActivity extends BaseFragment {
         private final Map<Integer, Integer> labels = labelByOption();
         private final Map<Integer, Integer> icons = iconByOption();
 
-        ListAdapter(Context context) { this.ctx = context; }
+        ListAdapter(Context context) { this.ctx = context; setHasStableIds(true); }
+        @Override
+        public long getItemId(int position) { return workingOrder.get(position); }
 
         @Override
         public int getItemCount() { return workingOrder.size(); }
 
         @Override
         public boolean isEnabled(@NonNull RecyclerView.ViewHolder holder) { return true; }
+        @Override
+        public void onViewRecycled(@NonNull RecyclerView.ViewHolder holder) {
+            ((MenuOrderCell) holder.itemView).setDragging(false, false);
+            super.onViewRecycled(holder);
+        }
 
         @NonNull
         @Override
         public RecyclerView.ViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
-            TextCell cell = new TextCell(ctx);
+            MenuOrderCell cell = new MenuOrderCell(ctx);
             cell.setLayoutParams(new RecyclerView.LayoutParams(
                     RecyclerView.LayoutParams.MATCH_PARENT, RecyclerView.LayoutParams.WRAP_CONTENT));
-            return new RecyclerListView.Holder(cell);
+            RecyclerListView.Holder holder = new RecyclerListView.Holder(cell);
+            cell.handle.setOnTouchListener((v, event) -> {
+                if (event.getActionMasked() == MotionEvent.ACTION_DOWN
+                        && holder.getAdapterPosition() != RecyclerView.NO_POSITION) {
+                    itemTouchHelper.startDrag(holder);
+                }
+                return false;
+            });
+            return holder;
         }
 
         @Override
@@ -284,8 +333,81 @@ public class MessageMenuOrderPreferencesActivity extends BaseFragment {
             String text = labelRes != null ? LocaleController.getString(labelRes) : ("#" + opt);
             int icon = iconRes != null ? iconRes : R.drawable.msg_reorder;
             cell.setTextAndIcon(text, icon, position < workingOrder.size() - 1);
-            IconBackgroundColors color = ROW_COLORS[position % ROW_COLORS.length];
+            int catalogueIndex = 0;
+            while (catalogueIndex < CATALOGUE.length - 1 && CATALOGUE[catalogueIndex] != opt) catalogueIndex++;
+            IconBackgroundColors color = ROW_COLORS[catalogueIndex % ROW_COLORS.length];
             cell.setColorfulIcon(color.top, color.bottom, icon);
+            ViewCompat.setStateDescription(cell, (position + 1) + " / " + workingOrder.size());
+        }
+    }
+    private static class MenuOrderCell extends TextCell {
+        final ImageView handle;
+        private final Paint dragPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private float dragHighlight;
+        private boolean dragging;
+        private ValueAnimator dragAnimator;
+        void setDragging(boolean value, boolean animated) {
+            if (dragging == value && animated) return;
+            dragging = value;
+            if (dragAnimator != null) {
+                dragAnimator.cancel();
+                dragAnimator = null;
+            }
+            final float target = value ? 1f : 0f;
+            if (!animated || !isAttachedToWindow()) {
+                dragHighlight = target;
+                invalidate();
+                return;
+            }
+            dragAnimator = ValueAnimator.ofFloat(dragHighlight, target);
+            dragAnimator.setDuration(180);
+            dragAnimator.setInterpolator(CubicBezierInterpolator.EASE_OUT_QUINT);
+            dragAnimator.addUpdateListener(animation -> {
+                dragHighlight = (float) animation.getAnimatedValue();
+                invalidate();
+            });
+            dragAnimator.start();
+        }
+        @Override
+        protected void dispatchDraw(Canvas canvas) {
+            if (dragHighlight > 0f) {
+                dragPaint.setColor(androidx.core.graphics.ColorUtils.blendARGB(
+                        Theme.getColor(Theme.key_windowBackgroundWhite),
+                        Theme.getColor(Theme.key_windowBackgroundWhiteBlueText), 0.12f));
+                dragPaint.setAlpha(Math.round(255 * dragHighlight));
+                canvas.drawRoundRect(0, 0, getWidth(), getHeight(),
+                        AndroidUtilities.dp(12), AndroidUtilities.dp(12), dragPaint);
+            }
+            super.dispatchDraw(canvas);
+        }
+        @Override
+        protected void onDetachedFromWindow() {
+            setDragging(false, false);
+            super.onDetachedFromWindow();
+        }
+        MenuOrderCell(Context context) {
+            super(context);
+            handle = new ImageView(context);
+            handle.setImageResource(R.drawable.msg_reorder);
+            handle.setColorFilter(Theme.getColor(Theme.key_windowBackgroundWhiteGrayIcon));
+            handle.setScaleType(ImageView.ScaleType.CENTER);
+            handle.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+            addView(handle);
+        }
+        @Override
+        protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
+            super.onMeasure(widthMeasureSpec, heightMeasureSpec);
+            handle.measure(MeasureSpec.makeMeasureSpec(AndroidUtilities.dp(48), MeasureSpec.EXACTLY),
+                    MeasureSpec.makeMeasureSpec(getMeasuredHeight(), MeasureSpec.EXACTLY));
+            getTextView().measure(MeasureSpec.makeMeasureSpec(Math.max(0,
+                    getMeasuredWidth() - AndroidUtilities.dp(120)), MeasureSpec.AT_MOST),
+                    MeasureSpec.makeMeasureSpec(AndroidUtilities.dp(20), MeasureSpec.EXACTLY));
+        }
+        @Override
+        protected void onLayout(boolean changed, int left, int top, int right, int bottom) {
+            super.onLayout(changed, left, top, right, bottom);
+            int x = LocaleController.isRTL ? 0 : getMeasuredWidth() - handle.getMeasuredWidth();
+            handle.layout(x, 0, x + handle.getMeasuredWidth(), getMeasuredHeight());
         }
     }
 }

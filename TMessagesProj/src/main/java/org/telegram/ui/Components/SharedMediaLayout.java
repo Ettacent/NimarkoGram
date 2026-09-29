@@ -5172,6 +5172,11 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
             return;
         }
         destroyed = true;
+        for (MediaPage page : mediaPages) {
+            if (page != null && page.listView != null) {
+                page.listView.profileContentFade.reset(page.listView);
+            }
+        }
         updateStoryViewPollers();
         observersGroup.removeAllObservers();
         removeCallbacks(adaptersUpdateRunnable);
@@ -6828,6 +6833,14 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
                 return 0;
         }
     }
+    private void fadeFirstProfileContent(RecyclerView.Adapter adapter) {
+        if (destroyed || viewType != VIEW_TYPE_PROFILE_ACTIVITY) return;
+        for (MediaPage page : mediaPages) {
+            if (page != null && page.listView != null && page.listView.getAdapter() == adapter) {
+                page.listView.profileContentFade.start(page.listView);
+            }
+        }
+    }
 
     private void animateItemsEnter(final RecyclerListView finalListView, int oldItemCount, SparseBooleanArray addedMesages) {
         final RecyclerView.Adapter expectedAdapter = finalListView.getAdapter();
@@ -7447,6 +7460,11 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
                 transitionSet.addTransition(new Visibility() {
                     @Override
                     public Animator onAppear(ViewGroup sceneRoot, View view, TransitionValues startValues, TransitionValues endValues) {
+                        if (viewType == VIEW_TYPE_PROFILE_ACTIVITY) {
+                            ObjectAnimator fade = ObjectAnimator.ofFloat(view, View.ALPHA, 0f, 1f);
+                            fade.setInterpolator(org.telegram.ui.ActionBar.MaterialSharedAxisMotion::appearanceAlpha);
+                            return fade;
+                        }
                         AnimatorSet set = new AnimatorSet();
                         set.playTogether(
                                 ObjectAnimator.ofFloat(view, View.ALPHA, 0, 1f),
@@ -7459,6 +7477,11 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
 
                     @Override
                     public Animator onDisappear(ViewGroup sceneRoot, View view, TransitionValues startValues, TransitionValues endValues) {
+                        if (viewType == VIEW_TYPE_PROFILE_ACTIVITY) {
+                            ObjectAnimator fade = ObjectAnimator.ofFloat(view, View.ALPHA, view.getAlpha(), 0f);
+                            fade.setInterpolator(org.telegram.ui.ActionBar.MaterialSharedAxisMotion::appearanceAlpha);
+                            return fade;
+                        }
                         AnimatorSet set = new AnimatorSet();
                         set.playTogether(
                                 ObjectAnimator.ofFloat(view, View.ALPHA, view.getAlpha(), 0f),
@@ -10718,6 +10741,7 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
                 }
             }
             final MessagesController.ChannelRecommendations rec = MessagesController.getInstance(profileActivity.getCurrentAccount()).getChannelRecommendations(dialog_id);
+            final boolean wasEmpty = chats.isEmpty();
             chats.clear();
             if (rec != null) {
                 for (int i = 0; i < rec.chats.size(); ++i) {
@@ -10732,6 +10756,9 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
             more = chats.isEmpty() || UserConfig.getInstance(profileActivity.getCurrentAccount()).isPremium() ? 0 : rec.more;
             if (notify) {
                 notifyDataSetChanged();
+                if (wasEmpty && !chats.isEmpty()) {
+                    fadeFirstProfileContent(this);
+                }
             }
         }
 
@@ -10954,6 +10981,7 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
             notifyDataSetChanged();
             int reqId = profileActivity.getConnectionsManager().sendRequest(req, (response, error) -> AndroidUtilities.runOnUIThread(() -> {
                 if (destroyed) return;
+                final boolean wasEmpty = chats.isEmpty();
                 if (error == null) {
                     TLRPC.messages_Chats res = (TLRPC.messages_Chats) response;
                     profileActivity.getMessagesController().putChats(res.chats, false);
@@ -10966,6 +10994,9 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
 
                 loading = false;
                 notifyDataSetChanged();
+                if (wasEmpty && !chats.isEmpty()) {
+                    fadeFirstProfileContent(this);
+                }
                 if (refreshPending) {
                     refreshPending = false;
                     refresh();
@@ -11103,6 +11134,7 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
     }
 
     public class StoriesAdapter extends SharedPhotoVideoAdapter {
+        private int presentedLoadedCount;
 
         private final boolean isArchive;
         private final int albumId;
@@ -11258,6 +11290,11 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
                 supportingAdapter.notifyDataSetChanged();
             }
             checkColumns();
+            int loadedCount = storiesList == null ? 0 : storiesList.messageObjects.size();
+            if (presentedLoadedCount == 0 && loadedCount > 0) {
+                fadeFirstProfileContent(this);
+            }
+            presentedLoadedCount = loadedCount;
         }
 
         public int columnsCount() {
@@ -11325,6 +11362,7 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
             if (storiesList == null) {
                 return;
             }
+            presentedLoadedCount = storiesList.messageObjects.size();
             int viewType = holder.getItemViewType();
             if (viewType == VIEW_TYPE_STORY) {
                 if (!(holder.itemView instanceof SharedPhotoVideoCell2)) return;
@@ -12354,6 +12392,19 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
     protected void onTabScroll(boolean scrolling) {}
 
     public static class InternalListView extends BlurredRecyclerView implements StoriesListPlaceProvider.ClippedView {
+        private final ProfileContentFade profileContentFade = new ProfileContentFade();
+        @Override
+        public void setAdapter(RecyclerView.Adapter adapter) {
+            if (profileContentFade != null && getAdapter() != adapter) {
+                profileContentFade.reset(this);
+            }
+            super.setAdapter(adapter);
+        }
+        @Override
+        protected void onDetachedFromWindow() {
+            profileContentFade.reset(this);
+            super.onDetachedFromWindow();
+        }
         private final java.util.WeakHashMap<View, Integer> presentedMessages = new java.util.WeakHashMap<>();
         boolean hasPresentedMessage(View child, int messageId) {
             Integer presented = presentedMessages.get(child);

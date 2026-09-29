@@ -197,6 +197,12 @@ public class VideoPlayer implements Player.Listener, VideoListener, AnalyticsLis
     private int repeatCount;
 
     private boolean shouldPauseOther;
+    private boolean playingAudioNotified;
+    private boolean playbackFinishing;
+    public void markPlaybackFinishing() {
+        playbackFinishing = true;
+        playingAudioNotified = false;
+    }
     private DefaultRenderersFactory customRenderersFactory;
     private float customInitialVolume = 1f;
     MediaSource.Factory dashMediaSourceFactory;
@@ -2134,7 +2140,11 @@ public class VideoPlayer implements Player.Listener, VideoListener, AnalyticsLis
                 && source.getCurrentTracks().isTypeSelected(C.TRACK_TYPE_AUDIO);
     }
     private void maybeNotifyPlayingWithAudio() {
-        if (!released && shouldPauseOther && (hasPlayingAudio(player) || mixedAudio && hasPlayingAudio(audioPlayer))) {
+        final boolean playingAudio = !released && !playbackFinishing && shouldPauseOther
+                && (hasPlayingAudio(player) || mixedAudio && hasPlayingAudio(audioPlayer));
+        final boolean notify = playingAudio && !playingAudioNotified;
+        playingAudioNotified = playingAudio;
+        if (notify) {
             NotificationCenter.getGlobalInstance().postNotificationName(NotificationCenter.playerDidStartPlaying, this);
         }
     }

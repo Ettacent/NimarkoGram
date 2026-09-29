@@ -4965,7 +4965,8 @@ public class ChatActivity extends BaseFragment implements
                             BLUR_INVALIDATE_FLAG_SCROLL | BLUR_INVALIDATE_FLAG_POSITIONS);
                     wasPhotoViewerVisible = photoViewerVisible;
                 }
-                if (running || wasListItemAnimatorRunning) {
+                if ((running || wasListItemAnimatorRunning)
+                        && chatListView != null && chatListView.getVisibility() == View.VISIBLE) {
                     invalidateMergedVisibleBlurredPositionsAndSources(BLUR_INVALIDATE_FLAG_SCROLL);
                 }
                 wasListItemAnimatorRunning = running;
@@ -49473,11 +49474,12 @@ public class ChatActivity extends BaseFragment implements
 
         final boolean hasChanges = scrollableViewNoiseSuppressor.invalidateResultRenderNodes(contentView::drawList, contentView.getWidth(), contentView.getHeight());
         if (hasChanges) {
+            final boolean graphChanged = scrollableViewNoiseSuppressor.didDrawableGraphChange();
             if (glassBackgroundSourceRenderNode != null) {
-                glassBackgroundSourceRenderNode.invalidateDisplayListForDrawables();
+                glassBackgroundSourceRenderNode.onCaptureUpdated(graphChanged);
             }
             if (glassBackgroundSourceFrostedRenderNode != null) {
-                glassBackgroundSourceFrostedRenderNode.invalidateDisplayListForDrawables();
+                glassBackgroundSourceFrostedRenderNode.onCaptureUpdated(graphChanged);
             }
             if (actionBar != null) {
                 actionBar.invalidate();
