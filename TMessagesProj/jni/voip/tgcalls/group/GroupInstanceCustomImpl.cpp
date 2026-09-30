@@ -785,7 +785,6 @@ public:
         webrtc::MutexLock lock(&_mutex);
         _value = value;
     }
-    
     GroupLevelValue get() {
         webrtc::MutexLock lock(&_mutex);
         return _value;
@@ -1648,7 +1647,6 @@ public:
             strong->writeStateLogRecords();
 
             strong->beginLogTimer(1000);
-            
             //strong->generateVideoKeyframe();
         }, webrtc::TimeDelta::Millis(delayMs));
     }
@@ -1912,7 +1910,6 @@ public:
             }
         });
     }
-    
     void generateVideoKeyframe() {
         if (!_outgoingVideoChannel) {
             return;
@@ -2843,7 +2840,6 @@ public:
             _connectionMode = connectionMode;
             _isUnifiedBroadcast = isUnifiedBroadcast;
             onConnectionModeUpdated(previousMode, keepBroadcastIfWasEnabled);
-            
             GroupNetworkState effectiveNetworkState = _effectiveNetworkState;
             effectiveNetworkState.connectionMode = _connectionMode;
 
@@ -3408,6 +3404,14 @@ public:
     void addIncomingVideoChannel(uint32_t audioSsrc, int64_t userId, GroupParticipantVideoInformation const &videoInformation, VideoChannelDescription::Quality minQuality, VideoChannelDescription::Quality maxQuality) {
         if (!_sharedVideoInformation) {
             return;
+        }
+        if (videoInformation.ssrcGroups.empty()) {
+            return;
+        }
+        for (const auto &group : videoInformation.ssrcGroups) {
+            if (group.ssrcs.empty()) {
+                return;
+            }
         }
         if (_incomingVideoChannels.find(VideoChannelId(videoInformation.endpointId)) != _incomingVideoChannels.end()) {
             return;

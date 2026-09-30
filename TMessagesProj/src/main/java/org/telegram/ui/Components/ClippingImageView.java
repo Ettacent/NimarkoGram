@@ -180,18 +180,42 @@ public class ClippingImageView extends View {
     public boolean hasBitmap() {
         return bmp != null && !bmp.isRecycled();
     }
+    private final RectF backdropBounds = new RectF();
+    public boolean getBackdropBounds(RectF bounds) {
+        bounds.setEmpty();
+        final float scale = getScaleY();
+        if (getVisibility() != VISIBLE || !hasBitmap() || !Float.isFinite(scale) || scale <= 0) return false;
+        final float horizontalInset = needRadius ? imageX : 0;
+        final float verticalInset = needRadius ? imageY : Math.max(0, imageY);
+        bounds.set(Math.max(horizontalInset, clipLeft) / scale,
+                verticalInset / scale,
+                getWidth() - Math.max(horizontalInset, clipRight) / scale,
+                getHeight() - verticalInset / scale);
+        return !bounds.isEmpty();
+    }
     public void drawBackdrop(Canvas canvas) {
-        drawImage(canvas, true);
+        if (getBackdropBounds(backdropBounds) && !canvas.quickReject(backdropBounds, Canvas.EdgeType.AA)) {
+            drawImage(canvas, true);
+        }
+    }
+    public boolean hasBackdropOutsideViewport() {
+        if (!getBackdropBounds(backdropBounds)) return false;
+        final float scale = getScaleY();
+        return backdropBounds.left < clipLeft / scale
+                || backdropBounds.top < clipTop / scale
+                || backdropBounds.right > getWidth() - clipRight / scale
+                || backdropBounds.bottom > getHeight() - clipBottom / scale;
     }
     public void drawOutsideViewport(Canvas canvas) {
         final float scale = getScaleY();
         if (scale <= 0 || !hasBitmap()) return;
         final int save = canvas.save();
         try {
-            canvas.clipRect(clipLeft / scale, clipTop / scale,
+            if (canvas.clipRect(clipLeft / scale, clipTop / scale,
                     getWidth() - clipRight / scale, getHeight() - clipBottom / scale,
-                    Region.Op.DIFFERENCE);
-            drawBackdrop(canvas);
+                    Region.Op.DIFFERENCE)) {
+                drawBackdrop(canvas);
+            }
         } finally {
             canvas.restoreToCount(save);
         }

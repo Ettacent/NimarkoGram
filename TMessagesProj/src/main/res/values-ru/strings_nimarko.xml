@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="NM_EnhancedGlassBlur">Улучшенное стекло и размытие</string>
+    <string name="NM_EnhancedGlassBlur_Desc">Более качественные эффекты. Повышает нагрузку.</string>
     <!-- NimarkoGram настройки (отсортировано по ключу) -->
     <string name="NimarkoAbout">О NimarkoGram</string>
     <string name="NimarkoAboutAuthor">от @NimarkoProject</string>

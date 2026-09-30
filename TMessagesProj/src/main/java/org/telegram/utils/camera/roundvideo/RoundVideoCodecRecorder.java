@@ -328,6 +328,7 @@ final class RoundVideoCodecRecorder implements RoundVideoGlProcessor.FrameTiming
             while (!outputEnded) {
                 outputEnded = drainAudioOutput(info, inputEnded ? CODEC_TIMEOUT_US : 0);
                 if (outputEnded) break;
+                if (inputEnded) continue;
                 int index = audioCodec.dequeueInputBuffer(CODEC_TIMEOUT_US);
                 if (index < 0) continue;
                 if (stopping) {

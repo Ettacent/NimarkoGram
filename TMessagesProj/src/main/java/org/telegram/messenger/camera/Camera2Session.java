@@ -49,10 +49,10 @@ import java.util.List;
 @TargetApi(Build.VERSION_CODES.LOLLIPOP)
 public class Camera2Session {
 
-    private volatile boolean isError;   
+    private volatile boolean isError;   // NimarkoGram: read from the camera/handler thread (checkOpen), written on the UI thread
     private boolean isSuccess;
-    private volatile boolean isClosed;   
-    private volatile boolean deviceErrored;   
+    private volatile boolean isClosed;   // NimarkoGram: written by destroy() on the UI thread, read on the camera/handler thread
+    private volatile boolean deviceErrored;   // NimarkoGram: set synchronously on the camera handler thread when the CameraDevice errors
     private volatile int lastErrorCode = -1;
 
     private org.telegram.messenger.Utilities.Callback<Integer> errorCallback;
@@ -67,7 +67,7 @@ public class Camera2Session {
         if (destroyed || isClosed) {
             return;
         }
-        AndroidUtilities.runOnUIThread(() -> {   
+        AndroidUtilities.runOnUIThread(() -> {   // callback mutates UI-thread state; safe from any caller thread
             if (destroyed || isClosed) {
                 return;
             }
@@ -98,7 +98,6 @@ public class Camera2Session {
     private float maxZoom = 1f;
     private float minZoom = 1f;
     private float currentZoom = 1f;
-    
     private boolean zoomRatioSupported = false;
 
     private final Size previewSize;
@@ -112,12 +111,10 @@ public class Camera2Session {
     }
 
     public static Camera2Session create(boolean front, int viewWidth, int viewHeight, boolean preferLogical) {
-        
         return create(front, viewWidth, viewHeight, preferLogical, app.nimarkogram.messenger.NimarkoConfig.cameraResolution);
     }
 
     public static Camera2Session create(boolean front, int viewWidth, int viewHeight, boolean preferLogical, int requestedHeight) {
-        
         return create(front, viewWidth, viewHeight, preferLogical, requestedHeight, false);
     }
 
@@ -194,7 +191,6 @@ public class Camera2Session {
             }
             for (int i = 0; i < cameraIds.length; ++i) {
                 final String id = cameraIds[i];
-                
                 if (logicalId != null && !logicalId.equals(id)) continue;
                 CameraCharacteristics characteristics = cameraManager.getCameraCharacteristics(id);
                 if (characteristics == null) continue;
@@ -202,7 +198,6 @@ public class Camera2Session {
                         || characteristics.get(CameraCharacteristics.LENS_FACING) != wantFacing) {
                     continue;
                 }
-                
                 if (!preferLogical) {
                     int[] mcaps = characteristics.get(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES);
                     boolean mLogical = false;
@@ -247,7 +242,6 @@ public class Camera2Session {
     }
 
     private boolean nmIsLogical;
-     
     public boolean isLogical() { return nmIsLogical; }
 
     private Camera2Session(Context context, boolean isFront, String cameraId, Size size, boolean logicalCamera, boolean noStillSurface) {
@@ -292,7 +286,7 @@ public class Camera2Session {
                 openPending = false;
                 closingCameraDevice = camera;
                 Camera2Session.this.cameraDevice = null;
-                deviceErrored = true;   
+                deviceErrored = true;   // NimarkoGram: handler-thread visible so checkOpen() never touches it
                 lastErrorCode = error;
                 FileLog.e("Camera2Session camera #" + cameraId + " received " + error + " error");
                 if (!destroyed) {
@@ -318,7 +312,6 @@ public class Camera2Session {
         this.nmIsLogical = logicalCamera;
         this.previewSize = size;
         this.lastTime = System.currentTimeMillis();
-        
         this.imageReader = noStillSurface ? null : ImageReader.newInstance(size.getWidth(), size.getHeight(), ImageFormat.JPEG, 1);
         cameraManager = (CameraManager) context.getSystemService(Context.CAMERA_SERVICE);
         try {
@@ -386,7 +379,6 @@ public class Camera2Session {
     private void checkOpen() {
         if (opened || destroyed || isClosed) return;
         if (surfaceTexture == null || cameraDevice == null) return;
-        
         if (isError || deviceErrored) {
             nmFireError(lastErrorCode); return;
         }
@@ -397,7 +389,7 @@ public class Camera2Session {
         try {
             ArrayList<Surface> surfaces = new ArrayList<>();
             surfaces.add(surface);
-            if (imageReader != null) {   
+            if (imageReader != null) {   // NimarkoGram: round video has no JPEG still stream -> configure preview only (faster)
                 surfaces.add(imageReader.getSurface());
             }
             final CameraDevice expectedDevice = cameraDevice;
@@ -527,8 +519,8 @@ public class Camera2Session {
             int displayOrientation;
             if (isFront) {
                 displayOrientation = (sensorOrientation + degrees) % 360;
-                displayOrientation = (360 - displayOrientation) % 360; 
-            } else { 
+                displayOrientation = (360 - displayOrientation) % 360; // compensate the mirror
+            } else { // back-facing
                 displayOrientation = (sensorOrientation - degrees + 360) % 360;
             }
             return displayOrientation;
@@ -565,8 +557,8 @@ public class Camera2Session {
             int jpegOrientation;
             if (isFront) {
                 jpegOrientation = (sensorOrientation + degrees) % 360;
-                jpegOrientation = (360 - jpegOrientation) % 360; 
-            } else { 
+                jpegOrientation = (360 - jpegOrientation) % 360; // compensate the mirror
+            } else { // back-facing
                 jpegOrientation = (sensorOrientation - degrees + 360) % 360;
             }
             return jpegOrientation;
@@ -602,7 +594,6 @@ public class Camera2Session {
     }
 
     private boolean flashing;
-    
     private int flashIntensityPercent = 100;
     public void setFlash(boolean flash) {
         if (flashing != flash) {
@@ -640,7 +631,7 @@ public class Camera2Session {
             CameraCharacteristics cc = cameraCharacteristics;
             if (cc == null) cc = cameraManager.getCameraCharacteristics(cameraId);
             Integer maxLevel = cc.get(CameraCharacteristics.FLASH_INFO_STRENGTH_MAXIMUM_LEVEL);
-            if (maxLevel == null || maxLevel <= 1) return; 
+            if (maxLevel == null || maxLevel <= 1) return; // device doesn't support variable strength
             int strength = Math.round((flashIntensityPercent / 100f) * maxLevel);
             if (strength < 1) strength = 1;
             if (strength > maxLevel) strength = maxLevel;
@@ -693,7 +684,6 @@ public class Camera2Session {
     }
 
     public float getMinZoom() {
-        
         return minZoom;
     }
 
@@ -728,7 +718,6 @@ public class Camera2Session {
             errorCallback = null;
             doneCallback = null;
         }
-        
         if (Looper.myLooper() == thread.getLooper()) {
             closeResourcesForDestroy();
         } else {
@@ -771,7 +760,6 @@ public class Camera2Session {
             closingCameraDevice = device;
             try { device.close(); } catch (Throwable ignored) {}
         } else if (openPending) {
-            
         } else {
             completeDestroyOnHandler();
         }
@@ -846,16 +834,14 @@ public class Camera2Session {
         if (requested == null) return null;
         try {
             CameraCharacteristics cc = cameraCharacteristics;
-            if (cc == null) return null; 
+            if (cc == null) return null; // unknown lens -> play safe, let HAL choose
             Range<Integer>[] ranges = cc.get(CameraCharacteristics.CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES);
-            if (ranges == null || ranges.length == 0) return null; 
-            
+            if (ranges == null || ranges.length == 0) return null; // unknown -> play safe
             for (Range<Integer> r : ranges) {
                 if (r != null && r.getLower().equals(requested.getLower()) && r.getUpper().equals(requested.getUpper())) {
                     return requested;
                 }
             }
-            
             Range<Integer> best = null;
             for (Range<Integer> r : ranges) {
                 if (r == null) continue;
@@ -864,7 +850,7 @@ public class Camera2Session {
                     if (best == null || r.getLower() < best.getLower()) best = r;
                 }
             }
-            return best; 
+            return best; // may be null -> caller omits the override (HAL default)
         } catch (Throwable t) {
             FileLog.e("Camera2Session nmValidateFpsRange failed", t);
             return null;
@@ -952,25 +938,21 @@ public class Camera2Session {
             captureRequestBuilder.set(CaptureRequest.FLASH_MODE, flashing ? (recordingVideo ? CaptureRequest.FLASH_MODE_TORCH : CaptureRequest.FLASH_MODE_SINGLE) : CaptureRequest.FLASH_MODE_OFF);
 
             if (recordingVideo) {
-                
                 Range<Integer> aeFps;
                 switch (app.nimarkogram.messenger.NimarkoConfig.cameraXFpsRange) {
                     case app.nimarkogram.messenger.NimarkoConfig.CameraXFpsRange25to30: aeFps = new Range<>(25, 30); break;
                     case app.nimarkogram.messenger.NimarkoConfig.CameraXFpsRange30to30: aeFps = new Range<>(30, 30); break;
                     case app.nimarkogram.messenger.NimarkoConfig.CameraXFpsRange30to60: aeFps = new Range<>(30, 60); break;
-                    
                     case app.nimarkogram.messenger.NimarkoConfig.CameraXFpsRange60to60: aeFps = new Range<>(30, 60); break;
                     case app.nimarkogram.messenger.NimarkoConfig.CameraXFpsRangeDefault:
                     default:                                                            aeFps = new Range<>(30, 60); break;
                 }
-                
                 Range<Integer> supportedFps = nmValidateFpsRange(aeFps);
                 if (supportedFps != null) {
                     captureRequestBuilder.set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, supportedFps);
                 }
                 captureRequestBuilder.set(CaptureRequest.CONTROL_CAPTURE_INTENT, CaptureRequest.CONTROL_CAPTURE_INTENT_VIDEO_RECORD);
             }
-            
             try {
                 applyStabilizationModes(app.nimarkogram.messenger.NimarkoConfig.cameraOpticalStabilization,
                         app.nimarkogram.messenger.NimarkoConfig.cameraStabilisation);
@@ -1020,7 +1002,6 @@ public class Camera2Session {
             }
 
             if (zoomRatioSupported && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                
                 try {
                     captureRequestBuilder.set(CaptureRequest.CONTROL_ZOOM_RATIO, currentZoom);
                 } catch (Throwable ignored) {}
@@ -1048,7 +1029,7 @@ public class Camera2Session {
     }
 
     public boolean takePicture(final File file, Utilities.Callback<Integer> whenDone) {
-        if (imageReader == null) return false;   
+        if (imageReader == null) return false;   // NimarkoGram: round-video sessions have no JPEG still stream
         if (cameraDevice == null || captureSession == null) return false;
         try {
             CaptureRequest.Builder captureRequestBuilder = cameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE);
@@ -1058,7 +1039,7 @@ public class Camera2Session {
                 @Override
                 public void onImageAvailable(ImageReader reader) {
                     Image image = reader.acquireLatestImage();
-                    if (image == null) return;   
+                    if (image == null) return;   // NimarkoGram: acquireLatestImage can return null (maxImages=1) -> avoid NPE
                     ByteBuffer buffer = image.getPlanes()[0].getBuffer();
                     byte[] bytes = new byte[buffer.remaining()];
                     buffer.get(bytes);
@@ -1104,7 +1085,6 @@ public class Camera2Session {
         if (requestedHeight <= 0) {
             return chooseOptimalSize(choices, viewWidth, viewHeight, false);
         }
-        
         final int w = Math.max(viewWidth, viewHeight);
         final int h = Math.min(viewWidth, viewHeight);
         final float targetRatio = h == 0 ? 0f : (float) w / h;
@@ -1131,7 +1111,6 @@ public class Camera2Session {
             if (targetRatio > 0 && s.getHeight() > 0) {
                 float ratio = (float) s.getWidth() / s.getHeight();
                 if (Math.abs(ratio - targetRatio) < 0.05f) {
-                    
                     if (dHeight < bestAspectDelta && s.getHeight() <= heightCap) {
                         bestAspectDelta = dHeight;
                         bestAspect = s;

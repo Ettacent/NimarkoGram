@@ -30,6 +30,7 @@ public class AddReactionsSpan extends ReplacementSpan {
     private StaticLayout layout;
     private float width, height;
     private int alpha;
+    private ValueAnimator alphaAnimator;
 
     public AddReactionsSpan(float textSize, Theme.ResourcesProvider resourcesProvider) {
         textPaint.setTextSize(dp(textSize));
@@ -62,17 +63,20 @@ public class AddReactionsSpan extends ReplacementSpan {
     }
 
     public void show(View parent) {
-        ValueAnimator valueAnimator = ValueAnimator.ofInt(alpha, 255);
-        valueAnimator.addUpdateListener(animator -> {
-            alpha = (int) animator.getAnimatedValue();
-            parent.invalidate();
-        });
-        valueAnimator.setDuration(200);
-        valueAnimator.start();
+        animateAlpha(parent, 255, null);
     }
 
     public void hide(View parent, Runnable after) {
-        ValueAnimator valueAnimator = ValueAnimator.ofInt(alpha, 0);
+        animateAlpha(parent, 0, after);
+    }
+    private void animateAlpha(View parent, int target, Runnable after) {
+        if (alphaAnimator != null) {
+            alphaAnimator.removeAllListeners();
+            alphaAnimator.removeAllUpdateListeners();
+            alphaAnimator.cancel();
+        }
+        ValueAnimator valueAnimator = ValueAnimator.ofInt(alpha, target);
+        alphaAnimator = valueAnimator;
         valueAnimator.addUpdateListener(animator -> {
             alpha = (int) animator.getAnimatedValue();
             parent.invalidate();
@@ -80,7 +84,9 @@ public class AddReactionsSpan extends ReplacementSpan {
         valueAnimator.addListener(new AnimatorListenerAdapter() {
             @Override
             public void onAnimationEnd(Animator animation) {
-                after.run();
+                if (alphaAnimator != animation) return;
+                alphaAnimator = null;
+                if (after != null) after.run();
             }
         });
         valueAnimator.setDuration(200);

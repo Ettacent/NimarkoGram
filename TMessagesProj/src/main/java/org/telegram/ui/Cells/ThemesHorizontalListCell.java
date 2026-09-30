@@ -343,16 +343,17 @@ public class ThemesHorizontalListCell extends RecyclerListView implements Notifi
                         TLRPC.TL_inputWallPaperSlug inputWallPaperSlug = new TLRPC.TL_inputWallPaperSlug();
                         inputWallPaperSlug.slug = themeInfo.slug;
                         req.wallpaper = inputWallPaperSlug;
-                        ConnectionsManager.getInstance(themeInfo.account).sendRequest(req, (response, error) -> AndroidUtilities.runOnUIThread(() -> {
+                        final Theme.ThemeInfo requestedTheme = themeInfo;
+                        ConnectionsManager.getInstance(requestedTheme.account).sendRequest(req, (response, error) -> AndroidUtilities.runOnUIThread(() -> {
                             if (response instanceof TLRPC.TL_wallPaper) {
                                 TLRPC.WallPaper wallPaper = (TLRPC.WallPaper) response;
                                 String name = FileLoader.getAttachFileName(wallPaper.document);
                                 if (!loadingThemes.containsKey(name)) {
-                                    loadingThemes.put(name, themeInfo);
-                                    FileLoader.getInstance(themeInfo.account).loadFile(wallPaper.document, wallPaper, FileLoader.PRIORITY_NORMAL, 1);
+                                    loadingThemes.put(name, requestedTheme);
+                                    FileLoader.getInstance(requestedTheme.account).loadFile(wallPaper.document, wallPaper, FileLoader.PRIORITY_NORMAL, 1);
                                 }
                             } else {
-                                themeInfo.badWallpaper = true;
+                                requestedTheme.badWallpaper = true;
                             }
                         }));
                     }

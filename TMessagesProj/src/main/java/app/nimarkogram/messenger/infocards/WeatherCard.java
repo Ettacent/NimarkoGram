@@ -3,10 +3,14 @@ package app.nimarkogram.messenger.infocards;
 import android.Manifest;
 import android.content.Context;
 import android.content.pm.PackageManager;
+import android.text.SpannableString;
+import android.text.Spanned;
+import android.text.style.AbsoluteSizeSpan;
 
 import androidx.core.content.ContextCompat;
 
 import org.json.JSONObject;
+import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.ApplicationLoader;
 import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.NotificationCenter;
@@ -21,8 +25,8 @@ import java.lang.ref.WeakReference;
 public class WeatherCard extends BaseInfoCard implements NotificationCenter.NotificationCenterDelegate {
 
     private static final String PLACEHOLDER = "—";
+    private static AbsoluteSizeSpan weatherEmojiSize;
 
-    
     private int requestGeneration;
     private boolean lifecycleAttached;
     private boolean requestPending;
@@ -30,11 +34,10 @@ public class WeatherCard extends BaseInfoCard implements NotificationCenter.Noti
 
     public WeatherCard(Context context, Theme.ResourcesProvider resourcesProvider, int iconRes) {
         super(context, resourcesProvider);
-        
         setIconVisible(false);
         Weather.State cached = Weather.getCached();
         if (cached != null) {
-            setText(render(cached), false);
+            setText(renderCardValue(cached), false);
         } else {
             setText(PLACEHOLDER, false);
         }
@@ -47,7 +50,7 @@ public class WeatherCard extends BaseInfoCard implements NotificationCenter.Noti
 
     @Override
     public long getRefreshInterval() {
-        return 1800000; 
+        return 1800000; // 30 minutes
     }
 
     @Override
@@ -74,10 +77,9 @@ public class WeatherCard extends BaseInfoCard implements NotificationCenter.Noti
             if (!userInitiated) return;
             startLoading();
         } else {
-            
             showWeatherState();
             Weather.State cached = Weather.getCached();
-            if (cached != null) setText(render(cached), true); else startLoading();
+            if (cached != null) setText(renderCardValue(cached), true); else startLoading();
         }
 
         requestPending = true;
@@ -104,14 +106,14 @@ public class WeatherCard extends BaseInfoCard implements NotificationCenter.Noti
         cancelFetch = null;
         if (state != null) {
             showWeatherState();
-            setText(render(state), true);
+            setText(renderCardValue(state), true);
             markDataUpdated();
         } else if (customLocation() == null && !hasLocationPermission()) {
             showGrantState();
         } else {
             showWeatherState();
             Weather.State cached = Weather.getCached();
-            setText(cached != null ? render(cached) : PLACEHOLDER, true);
+            setText(cached != null ? renderCardValue(cached) : PLACEHOLDER, true);
         }
         stopLoading();
     }
@@ -130,7 +132,7 @@ public class WeatherCard extends BaseInfoCard implements NotificationCenter.Noti
 
     private void showGrantState() {
         stopLoading();
-        setIcon(R.drawable.msg_location_solar);   
+        setIcon(R.drawable.msg_location_solar);   // setIcon also makes the icon slot visible
         setText(LocaleController.getString(R.string.NM_CARDS_NameWeather), true);
         setContentDescription(LocaleController.getString(R.string.NM_CARDS_NameWeather) + ": "
                 + LocaleController.getString(R.string.NM_CARDS_GrantLocation));
@@ -149,6 +151,19 @@ public class WeatherCard extends BaseInfoCard implements NotificationCenter.Noti
         return emoji + " " + temp;
     }
 
+    private static CharSequence renderCardValue(Weather.State state) {
+        String value = render(state);
+        String emoji = state.getEmoji();
+        if (PLACEHOLDER.equals(value) || emoji == null || emoji.isEmpty()) return value;
+        int size = AndroidUtilities.dp(16);
+        if (weatherEmojiSize == null || weatherEmojiSize.getSize() != size) {
+            weatherEmojiSize = new AbsoluteSizeSpan(size);
+        }
+        SpannableString result = new SpannableString(value);
+        result.setSpan(weatherEmojiSize, 0, emoji.length(),
+                Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        return result;
+    }
     private static boolean hasLocationPermission() {
         Context ctx = ApplicationLoader.applicationContext;
         if (ctx == null) return false;
@@ -183,7 +198,6 @@ public class WeatherCard extends BaseInfoCard implements NotificationCenter.Noti
 
     @Override
     protected void onDetachedFromWindow() {
-        
         lifecycleAttached = false;
         NotificationCenter.getGlobalInstance().removeObserver(this, NotificationCenter.activeAccountChanged);
         cancelRequest();

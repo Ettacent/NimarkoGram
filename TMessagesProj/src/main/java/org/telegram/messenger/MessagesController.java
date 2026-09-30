@@ -25405,9 +25405,6 @@ public class MessagesController extends BaseController implements NotificationCe
     }
     public boolean isWebBrowserOpenInApp(String url, boolean preferInApp) {
         if (url == null) return false;
-        // NimarkoGram: a local toggle (default ON) forces the built-in browser. DrKLO 12.8 defaults the in-app
-        // browser OFF (server-synced WebBrowserSettings, open_external_browser=true, and null until the config
-        // round-trip completes), which sent every link to an external browser. Off -> upstream behaviour.
         if (webBrowserSettings != null && hasWebBrowserException(webBrowserSettings, url)) {
             return !isWebBrowserOpenInExternal(webBrowserSettings, url);
         }
@@ -25674,8 +25671,6 @@ public class MessagesController extends BaseController implements NotificationCe
     }
 
     public void toggleWebBrowserInAppEnabled() {
-        // NimarkoGram: the toggle drives the local default (works even before the server config loads), and
-        // mirrors to the server setting when it's available.
         final boolean enabled = !isWebBrowserInAppEnabled();
         app.nimarkogram.messenger.NimarkoConfig.setInappBrowser(enabled);
         updateWebBrowserSettings(!enabled, webBrowserSettings == null || webBrowserSettings.display_close_button);

@@ -1,6 +1,5 @@
 package app.nimarkogram.messenger.camera;
 
-
 public final class RoundZoomSpring {
     private static final double FREQUENCY = 24.0;
     private double position, target, velocity;
@@ -12,7 +11,6 @@ public final class RoundZoomSpring {
 
     public void target(float ratio) {
         target = Math.log(Math.max(0.001f, ratio));
-
         if (velocity * (target - position) < 0) velocity = 0;
     }
 

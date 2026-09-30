@@ -85,7 +85,7 @@ public class CameraPreferencesActivity extends NimarkoUniversalPreferencesActivi
     public void fillItems(ArrayList<UItem> items, UniversalAdapter adapter) {
         final boolean cameraX = CameraXUtils.isCurrentCameraCameraX();
         final boolean camera2 = app.nimarkogram.messenger.NimarkoConfig.cameraType == NimarkoConfig.CAMERA_2;
-        final boolean advanced = cameraX || camera2;
+        final boolean advanced = cameraX || camera2;   // Camera 2 / CameraX expose the extra knobs
         final boolean upstreamRoundCamera2 = InstantCameraViewBase.isUsingCamera2Implementation();
 
         if (CameraXUtils.isCameraXSupported()) {
@@ -139,7 +139,6 @@ public class CameraPreferencesActivity extends NimarkoUniversalPreferencesActivi
                     .setChecked(NimarkoConfig.cameraXMultiMicrophone));
             items.add(UItem.asShadow(getString(R.string.NM_CAM_RoundAudioInfo)));
         }
-
         if (!upstreamRoundCamera2) {
             items.add(UItem.asHeader(getString(R.string.NM_CAM_VideoQuality)));
             items.add(UItem.asButton(roundVideoSizeRow, getString(R.string.NM_CAM_RoundVideoSize), getRoundVideoSizeText()));

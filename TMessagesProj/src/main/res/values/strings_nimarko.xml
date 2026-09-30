@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="NM_EnhancedGlassBlur">Enhanced glass and blur</string>
+    <string name="NM_EnhancedGlassBlur_Desc">Higher-quality effects. Uses more processing power.</string>
     <!-- NimarkoGram settings UI (sorted alphabetically by key) -->
     <string name="NimarkoAbout">About NimarkoGram</string>
     <string name="NimarkoAboutAuthor">by @NimarkoProject</string>

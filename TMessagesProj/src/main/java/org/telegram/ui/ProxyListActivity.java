@@ -19,6 +19,8 @@ import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.graphics.Canvas;
+import android.graphics.ColorFilter;
+import android.graphics.PixelFormat;
 import android.graphics.PorterDuff;
 import android.graphics.PorterDuffColorFilter;
 import android.graphics.drawable.Drawable;
@@ -34,6 +36,7 @@ import android.widget.TextView;
 
 import androidx.annotation.Keep;
 import androidx.annotation.NonNull;
+import androidx.core.graphics.ColorUtils;
 import androidx.recyclerview.widget.DefaultItemAnimator;
 import androidx.recyclerview.widget.ItemTouchHelper;
 import androidx.recyclerview.widget.LinearLayoutManager;
@@ -67,6 +70,7 @@ import org.telegram.ui.Components.CheckBox2;
 import org.telegram.ui.Components.CubicBezierInterpolator;
 import org.telegram.ui.Components.LayoutHelper;
 import org.telegram.ui.Components.NumberTextView;
+import org.telegram.ui.Components.ProxyCheckStatusView;
 import org.telegram.ui.Components.RecyclerListView;
 import org.telegram.ui.Components.SlideChooseView;
 
@@ -152,7 +156,7 @@ public class ProxyListActivity extends BaseFragment implements NotificationCente
     public class TextDetailProxyCell extends FrameLayout {
 
         private TextView textView;
-        private TextView valueTextView;
+        private ProxyCheckStatusView valueTextView;
         private ImageView checkImageView;
         private SharedConfig.ProxyInfo currentInfo;
         private Drawable checkDrawable;
@@ -162,6 +166,14 @@ public class ProxyListActivity extends BaseFragment implements NotificationCente
         private boolean isSelectionEnabled;
 
         private int color;
+        private boolean statusInitialized;
+        private ValueAnimator statusAnimator;
+        private boolean checked;
+        private boolean checkInitialized;
+        private float checkProgress;
+        private ValueAnimator checkAnimator;
+        private float selectionProgress;
+        private ValueAnimator selectionAnimator;
 
         public TextDetailProxyCell(Context context) {
             super(context);
@@ -176,7 +188,7 @@ public class ProxyListActivity extends BaseFragment implements NotificationCente
             textView.setGravity((LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT) | Gravity.CENTER_VERTICAL);
             addView(textView, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, (LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT) | Gravity.TOP, (LocaleController.isRTL ? 56 : 21), 10, (LocaleController.isRTL ? 21 : 56), 0));
 
-            valueTextView = new TextView(context);
+            valueTextView = new ProxyCheckStatusView(context);
             valueTextView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 13);
             valueTextView.setGravity(LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT);
             valueTextView.setLines(1);
@@ -185,7 +197,7 @@ public class ProxyListActivity extends BaseFragment implements NotificationCente
             valueTextView.setCompoundDrawablePadding(AndroidUtilities.dp(6));
             valueTextView.setEllipsize(TextUtils.TruncateAt.END);
             valueTextView.setPadding(0, 0, 0, 0);
-            addView(valueTextView, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, (LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT) | Gravity.TOP, (LocaleController.isRTL ? 56 : 21), 35, (LocaleController.isRTL ? 21 : 56), 0));
+            addView(valueTextView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, (LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT) | Gravity.TOP, (LocaleController.isRTL ? 56 : 21), 35, (LocaleController.isRTL ? 21 : 56), 0));
 
             checkImageView = new ImageView(context);
             checkImageView.setImageResource(R.drawable.msg_info);
@@ -210,6 +222,13 @@ public class ProxyListActivity extends BaseFragment implements NotificationCente
         }
 
         public void setProxy(SharedConfig.ProxyInfo proxyInfo) {
+            if (currentInfo != proxyInfo) {
+                cancelStatusAnimator();
+                cancelCheckAnimator();
+                statusInitialized = false;
+                checkInitialized = false;
+                valueTextView.resetTransition();
+            }
             String label;
             if (isOwnWsBypass(proxyInfo)) {
                 label = LocaleController.getString(R.string.NM_WSB_Title);
@@ -220,10 +239,15 @@ public class ProxyListActivity extends BaseFragment implements NotificationCente
             }
             textView.setText(label);
             currentInfo = proxyInfo;
+            updateStatus();
         }
 
         public void updateStatus() {
+            if (currentInfo == null) {
+                return;
+            }
             int colorKey;
+            CharSequence value;
             if (SharedConfig.currentProxy == currentInfo && useProxySettings) {
                 boolean transportConnected = currentConnectionState == ConnectionsManager.ConnectionStateConnected
                         || currentConnectionState == ConnectionsManager.ConnectionStateUpdating;
@@ -236,97 +260,107 @@ public class ProxyListActivity extends BaseFragment implements NotificationCente
                     long ping = isOwnWsBypass(currentInfo)
                             ? ConnectionsManager.native_getCurrentMainPingTime(currentAccount) : currentInfo.ping;
                     if (ping > 0) {
-                        valueTextView.setText(getString(R.string.Connected) + ", " + LocaleController.formatString("Ping", R.string.Ping, ping));
+                        value = getString(R.string.Connected) + ", " + LocaleController.formatString("Ping", R.string.Ping, ping);
                     } else {
-                        valueTextView.setText(getString(R.string.Connected));
+                        value = getString(R.string.Connected);
                     }
                     if (!currentInfo.checking && !currentInfo.available) {
                         currentInfo.availableCheckTime = 0;
                     }
                 } else {
                     colorKey = Theme.key_windowBackgroundWhiteGrayText2;
-                    valueTextView.setText(getString(R.string.Connecting));
+                    value = getString(R.string.Connecting);
                 }
             } else {
                 if (currentInfo.checking) {
-                    valueTextView.setText(getString(R.string.Checking));
+                    value = getString(R.string.Checking);
                     colorKey = Theme.key_windowBackgroundWhiteGrayText2;
                 } else if (currentInfo.available) {
                     if (!isOwnWsBypass(currentInfo) && currentInfo.ping != 0) {
-                        valueTextView.setText(getString(R.string.Available) + ", " + LocaleController.formatString("Ping", R.string.Ping, currentInfo.ping));
+                        value = getString(R.string.Available) + ", " + LocaleController.formatString("Ping", R.string.Ping, currentInfo.ping);
                     } else {
-                        valueTextView.setText(getString(R.string.Available));
+                        value = getString(R.string.Available);
                     }
                     colorKey = Theme.key_windowBackgroundWhiteGreenText;
                 } else {
-                    valueTextView.setText(getString(R.string.Unavailable));
+                    value = getString(R.string.Unavailable);
                     colorKey = Theme.key_text_RedRegular;
                 }
             }
-            color = Theme.getColor(colorKey);
+            if (!isAttachedToWindow() || !SharedConfig.animationsEnabled()) {
+                valueTextView.resetTransition();
+            }
+            valueTextView.setStatusText(value, statusInitialized);
             valueTextView.setTag(colorKey);
-            valueTextView.setTextColor(color);
+            final int targetColor = Theme.getColor(colorKey);
+            if (statusInitialized && isAttachedToWindow() && SharedConfig.animationsEnabled()
+                    && color == targetColor
+                    && (statusAnimator != null || valueTextView.getCurrentTextColor() == targetColor)) {
+                return;
+            }
+            cancelStatusAnimator();
+            color = targetColor;
+            if (!statusInitialized || !isAttachedToWindow() || !SharedConfig.animationsEnabled()) {
+                statusInitialized = true;
+                applyStatusColor(targetColor);
+                return;
+            }
+            final int fromColor = valueTextView.getCurrentTextColor();
+            statusAnimator = ValueAnimator.ofFloat(0f, 1f);
+            statusAnimator.setDuration(200);
+            statusAnimator.setInterpolator(CubicBezierInterpolator.DEFAULT);
+            statusAnimator.addUpdateListener(animation -> applyStatusColor(ColorUtils.blendARGB(fromColor, Theme.getColor(colorKey), (float) animation.getAnimatedValue())));
+            statusAnimator.addListener(new AnimatorListenerAdapter() {
+                @Override
+                public void onAnimationEnd(Animator animation) {
+                    if (statusAnimator == animation) {
+                        statusAnimator = null;
+                        color = Theme.getColor(colorKey);
+                        applyStatusColor(color);
+                    }
+                }
+            });
+            statusAnimator.start();
+        }
+        private void applyStatusColor(int value) {
+            valueTextView.setTextColor(value);
             if (checkDrawable != null) {
-                checkDrawable.setColorFilter(new PorterDuffColorFilter(color, PorterDuff.Mode.MULTIPLY));
+                checkDrawable.setColorFilter(new PorterDuffColorFilter(value, PorterDuff.Mode.MULTIPLY));
+            }
+        }
+        private void cancelStatusAnimator() {
+            if (statusAnimator != null) {
+                ValueAnimator animator = statusAnimator;
+                statusAnimator = null;
+                animator.cancel();
             }
         }
 
         public void setSelectionEnabled(boolean enabled, boolean animated) {
-            if (isSelectionEnabled == enabled && animated) {
+            if (isSelectionEnabled == enabled && isAttachedToWindow() && SharedConfig.animationsEnabled()
+                    && (animated || selectionAnimator != null)) {
                 return;
             }
             isSelectionEnabled = enabled;
-
-            float fromX = 0, toX = LocaleController.isRTL ? -AndroidUtilities.dp(32) : AndroidUtilities.dp(32);
-            if (!animated) {
-                float x = enabled ? toX : fromX;
-                textView.setTranslationX(x);
-                valueTextView.setTranslationX(x);
-                checkImageView.setTranslationX(x);
-                checkBox.setTranslationX((LocaleController.isRTL ? AndroidUtilities.dp(32) : -AndroidUtilities.dp(32)) + x);
+            cancelSelectionAnimator();
+            if (!animated || !isAttachedToWindow() || !SharedConfig.animationsEnabled()) {
+                applySelectionProgress(enabled ? 1f : 0f);
                 checkImageView.setVisibility(enabled ? GONE : VISIBLE);
-                checkImageView.setAlpha(1f);
-                checkImageView.setScaleX(1f);
-                checkImageView.setScaleY(1f);
                 checkBox.setVisibility(enabled ? VISIBLE : GONE);
-                checkBox.setAlpha(1f);
-                checkBox.setScaleX(1f);
-                checkBox.setScaleY(1f);
             } else {
-                ValueAnimator animator = ValueAnimator.ofFloat(enabled ? 0 : 1, enabled ? 1 : 0).setDuration(200);
+                checkBox.setVisibility(VISIBLE);
+                checkImageView.setVisibility(VISIBLE);
+                ValueAnimator animator = ValueAnimator.ofFloat(selectionProgress, enabled ? 1f : 0f).setDuration(200);
+                selectionAnimator = animator;
                 animator.setInterpolator(CubicBezierInterpolator.DEFAULT);
-                animator.addUpdateListener(animation -> {
-                    float val = (float) animation.getAnimatedValue();
-                    float x = AndroidUtilities.lerp(fromX, toX, val);
-                    textView.setTranslationX(x);
-                    valueTextView.setTranslationX(x);
-                    checkImageView.setTranslationX(x);
-                    checkBox.setTranslationX((LocaleController.isRTL ? AndroidUtilities.dp(32) : -AndroidUtilities.dp(32)) + x);
-
-                    float scale = 0.5f + val * 0.5f;
-                    checkBox.setScaleX(scale);
-                    checkBox.setScaleY(scale);
-                    checkBox.setAlpha(val);
-
-                    scale = 0.5f + (1f - val) * 0.5f;
-                    checkImageView.setScaleX(scale);
-                    checkImageView.setScaleY(scale);
-                    checkImageView.setAlpha(1f - val);
-                });
+                animator.addUpdateListener(animation -> applySelectionProgress((float) animation.getAnimatedValue()));
                 animator.addListener(new AnimatorListenerAdapter() {
                     @Override
-                    public void onAnimationStart(Animator animation) {
-                        if (enabled) {
-                            checkBox.setAlpha(0f);
-                            checkBox.setVisibility(VISIBLE);
-                        } else {
-                            checkImageView.setAlpha(0f);
-                            checkImageView.setVisibility(VISIBLE);
-                        }
-                    }
-
-                    @Override
                     public void onAnimationEnd(Animator animation) {
+                        if (selectionAnimator != animation) {
+                            return;
+                        }
+                        selectionAnimator = null;
                         if (enabled) {
                             checkImageView.setVisibility(GONE);
                         } else {
@@ -338,8 +372,29 @@ public class ProxyListActivity extends BaseFragment implements NotificationCente
             }
         }
 
+        private void cancelSelectionAnimator() {
+            if (selectionAnimator != null) {
+                ValueAnimator animator = selectionAnimator;
+                selectionAnimator = null;
+                animator.cancel();
+            }
+        }
+        private void applySelectionProgress(float progress) {
+            selectionProgress = progress;
+            float x = (LocaleController.isRTL ? -AndroidUtilities.dp(32) : AndroidUtilities.dp(32)) * progress;
+            textView.setTranslationX(x);
+            valueTextView.setTranslationX(x);
+            checkImageView.setTranslationX(x);
+            checkBox.setTranslationX((LocaleController.isRTL ? AndroidUtilities.dp(32) : -AndroidUtilities.dp(32)) + x);
+            checkBox.setScaleX(0.5f + progress * 0.5f);
+            checkBox.setScaleY(0.5f + progress * 0.5f);
+            checkBox.setAlpha(progress);
+            checkImageView.setScaleX(1f - progress * 0.5f);
+            checkImageView.setScaleY(1f - progress * 0.5f);
+            checkImageView.setAlpha(1f - progress);
+        }
         public void setItemSelected(boolean selected, boolean animated) {
-            if (selected == isSelected && animated) {
+            if (selected == isSelected) {
                 return;
             }
             isSelected = selected;
@@ -347,25 +402,93 @@ public class ProxyListActivity extends BaseFragment implements NotificationCente
         }
 
         public void setChecked(boolean checked) {
-            if (checked) {
-                if (checkDrawable == null) {
-                    checkDrawable = getResources().getDrawable(R.drawable.proxy_check).mutate();
+            if (checkInitialized && this.checked == checked
+                    && isAttachedToWindow() && SharedConfig.animationsEnabled()) {
+                return;
+            }
+            cancelCheckAnimator();
+            this.checked = checked;
+            if (!checkInitialized || !isAttachedToWindow() || !SharedConfig.animationsEnabled()) {
+                checkInitialized = true;
+                applyCheckProgress(checked ? 1f : 0f);
+                return;
+            }
+            checkAnimator = ValueAnimator.ofFloat(checkProgress, checked ? 1f : 0f);
+            checkAnimator.setDuration(200);
+            checkAnimator.setInterpolator(CubicBezierInterpolator.DEFAULT);
+            checkAnimator.addUpdateListener(animation -> applyCheckProgress((float) animation.getAnimatedValue()));
+            checkAnimator.addListener(new AnimatorListenerAdapter() {
+                @Override
+                public void onAnimationEnd(Animator animation) {
+                    if (checkAnimator == animation) {
+                        checkAnimator = null;
+                        applyCheckProgress(TextDetailProxyCell.this.checked ? 1f : 0f);
+                    }
                 }
-                if (checkDrawable != null) {
-                    checkDrawable.setColorFilter(new PorterDuffColorFilter(color, PorterDuff.Mode.MULTIPLY));
-                }
-                if (LocaleController.isRTL) {
-                    valueTextView.setCompoundDrawablesWithIntrinsicBounds(null, null, checkDrawable, null);
-                } else {
-                    valueTextView.setCompoundDrawablesWithIntrinsicBounds(checkDrawable, null, null, null);
-                }
-            } else {
+            });
+            checkAnimator.start();
+        }
+        private void cancelCheckAnimator() {
+            if (checkAnimator != null) {
+                ValueAnimator animator = checkAnimator;
+                checkAnimator = null;
+                animator.cancel();
+            }
+        }
+        private void applyCheckProgress(float progress) {
+            checkProgress = progress;
+            valueTextView.setCompoundDrawablePadding(Math.round(AndroidUtilities.dp(6) * progress));
+            if (progress <= 0f) {
                 valueTextView.setCompoundDrawablesWithIntrinsicBounds(null, null, null, null);
+                return;
+            }
+            if (checkDrawable == null) {
+                final Drawable icon = getResources().getDrawable(R.drawable.proxy_check).mutate();
+                icon.setBounds(0, 0, icon.getIntrinsicWidth(), icon.getIntrinsicHeight());
+                checkDrawable = new Drawable() {
+                    @Override
+                    public void draw(@NonNull Canvas canvas) {
+                        int save = canvas.save();
+                        canvas.translate(getBounds().left, getBounds().top);
+                        canvas.scale(checkProgress, checkProgress, 0f, getIntrinsicHeight() / 2f);
+                        icon.setAlpha(Math.round(255 * checkProgress));
+                        icon.draw(canvas);
+                        canvas.restoreToCount(save);
+                    }
+                    @Override
+                    public void setAlpha(int alpha) {
+                        icon.setAlpha(alpha);
+                    }
+                    @Override
+                    public void setColorFilter(ColorFilter colorFilter) {
+                        icon.setColorFilter(colorFilter);
+                        invalidateSelf();
+                    }
+                    @Override
+                    public int getOpacity() {
+                        return PixelFormat.TRANSLUCENT;
+                    }
+                    @Override
+                    public int getIntrinsicWidth() {
+                        return icon.getIntrinsicWidth();
+                    }
+                    @Override
+                    public int getIntrinsicHeight() {
+                        return icon.getIntrinsicHeight();
+                    }
+                };
+            }
+            checkDrawable.setColorFilter(new PorterDuffColorFilter(valueTextView.getCurrentTextColor(), PorterDuff.Mode.MULTIPLY));
+            checkDrawable.setBounds(0, 0, Math.round(checkDrawable.getIntrinsicWidth() * progress), checkDrawable.getIntrinsicHeight());
+            if (LocaleController.isRTL) {
+                valueTextView.setCompoundDrawables(null, null, checkDrawable, null);
+            } else {
+                valueTextView.setCompoundDrawables(checkDrawable, null, null, null);
             }
         }
 
         public void setValue(CharSequence value) {
-            valueTextView.setText(value);
+            valueTextView.setStatusText(value, statusInitialized);
         }
 
         @Override
@@ -374,6 +497,21 @@ public class ProxyListActivity extends BaseFragment implements NotificationCente
             updateStatus();
         }
 
+        @Override
+        protected void onDetachedFromWindow() {
+            cancelStatusAnimator();
+            cancelCheckAnimator();
+            cancelSelectionAnimator();
+            valueTextView.resetTransition();
+            if (statusInitialized) {
+                applyStatusColor(color);
+            }
+            applyCheckProgress(checked ? 1f : 0f);
+            applySelectionProgress(isSelectionEnabled ? 1f : 0f);
+            checkImageView.setVisibility(isSelectionEnabled ? GONE : VISIBLE);
+            checkBox.setVisibility(isSelectionEnabled ? VISIBLE : GONE);
+            super.onDetachedFromWindow();
+        }
         @Override
         protected void onDraw(Canvas canvas) {
             canvas.drawLine(LocaleController.isRTL ? 0 : AndroidUtilities.dp(20), getMeasuredHeight() - 1, getMeasuredWidth() - (LocaleController.isRTL ? AndroidUtilities.dp(20) : 0), getMeasuredHeight() - 1, Theme.dividerPaint);

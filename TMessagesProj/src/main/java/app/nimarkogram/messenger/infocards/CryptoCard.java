@@ -31,8 +31,8 @@ public class CryptoCard extends BaseInfoCard {
     };
 
     private static final class CurrencyInfo {
-        final String symbol; 
-        final boolean suffix; 
+        final String symbol; // custom symbol, or null to fall back to the JDK symbol
+        final boolean suffix; // sk9's "d" flag: true -> suffix+space, false -> prefix+no-space
         CurrencyInfo(String symbol, boolean suffix) {
             this.symbol = symbol;
             this.suffix = suffix;
@@ -44,7 +44,6 @@ public class CryptoCard extends BaseInfoCard {
 
     private static final HashMap<String, CurrencyInfo> CURRENCIES = new HashMap<>();
     static {
-        
         CURRENCIES.put("USD", new CurrencyInfo("$", false));
         CURRENCIES.put("EUR", new CurrencyInfo(null, false));
         CURRENCIES.put("RUB", new CurrencyInfo("₽", true));
@@ -61,7 +60,7 @@ public class CryptoCard extends BaseInfoCard {
     }
 
     private final int pillId;
-    private final String coinKey; 
+    private final String coinKey; // "ton" / "btc", or null for the USD/forex pill
     private final int iconRes;
 
     private boolean errorState;
@@ -69,6 +68,7 @@ public class CryptoCard extends BaseInfoCard {
     public CryptoCard(Context context, Theme.ResourcesProvider resourcesProvider,
                       int pillId, String coinKeyOrNull, int iconRes) {
         super(context, resourcesProvider);
+        setFitTextToChip(true);
         this.pillId = pillId;
         this.coinKey = coinKeyOrNull;
         this.iconRes = iconRes;
@@ -84,7 +84,7 @@ public class CryptoCard extends BaseInfoCard {
 
     @Override
     public long getRefreshInterval() {
-        return 90000; 
+        return 90000; // 1.5 minutes (above InfoCardRates' ~60s network floor, so each tick actually refetches)
     }
 
     private boolean firstPaint = true;
@@ -114,18 +114,15 @@ public class CryptoCard extends BaseInfoCard {
     @Override
     public void onUpdateData(boolean force) {
         if (!lifecycleAttached || !isAttachedToWindow()) return;
-        
         if (InfoCardRates.hasCached()) {
             render(!firstPaint);
             firstPaint = false;
             requestRates(force);
             return;
         }
-        
         startLoading();
         firstPaint = false;
         if (!warmupDone && !force) {
-            
             warmupDone = true;
             removeCallbacks(warmupRunnable);
             postDelayed(warmupRunnable, WARMUP_MS);
@@ -147,20 +144,18 @@ public class CryptoCard extends BaseInfoCard {
     }
 
     private void render(boolean animated) {
-        
         if (!InfoCardRates.hasCached()) {
             setErrorState();
             return;
         }
         errorState = false;
-        removeCallbacks(retryRunnable); 
-        retryAttempt = 0;              
+        removeCallbacks(retryRunnable); // data landed — stop the cold-start retry loop
+        retryAttempt = 0;              // next time an error happens, retry fast again
         setIcon(iconRes);
-        
         String ccy = resolveCardCurrency(getCardId(), InfoCardsConfig.getTargetCurrency(getCardId()));
         double value;
         if (coinKey == null) {
-            value = InfoCardRates.fiatRate(ccy);       
+            value = InfoCardRates.fiatRate(ccy);       // 1 USD in ccy
         } else {
             value = InfoCardRates.coinInFiat(coinKey, ccy);
         }
@@ -173,7 +168,6 @@ public class CryptoCard extends BaseInfoCard {
 
     private static final long RETRY_BASE_MS = 1500;
     private static final long RETRY_MAX_MS = 60_000;
-    
     private static final int RETRY_SHOW_AFTER = 3;
     private int retryAttempt = 0;
     private final Runnable retryRunnable = () -> {
@@ -183,7 +177,6 @@ public class CryptoCard extends BaseInfoCard {
     private void setErrorState() {
         errorState = true;
         if (retryAttempt < RETRY_SHOW_AFTER) {
-            
             startLoading();
         } else {
             setIcon(R.drawable.msg_retry);
@@ -191,7 +184,6 @@ public class CryptoCard extends BaseInfoCard {
             stopLoading();
         }
         removeCallbacks(retryRunnable);
-        
         long delay = Math.min(RETRY_MAX_MS, RETRY_BASE_MS << Math.min(retryAttempt, 16));
         postDelayed(retryRunnable, delay);
         retryAttempt++;
@@ -228,8 +220,8 @@ public class CryptoCard extends BaseInfoCard {
         String amount = nf.format(scaled);
 
         CurrencyInfo info = CURRENCIES.get(iso);
-        String symbol = info != null ? info.symbol : null; 
-        boolean custom = symbol != null;                   
+        String symbol = info != null ? info.symbol : null; // custom symbol (may be null)
+        boolean custom = symbol != null;                   // sk9's "z": we had a custom symbol
         if (!custom) {
             try {
                 symbol = Currency.getInstance(iso).getSymbol(Locale.US);
@@ -238,28 +230,24 @@ public class CryptoCard extends BaseInfoCard {
         }
 
         if (symbol != null && !symbol.isEmpty() && !symbol.equalsIgnoreCase(iso)) {
-            
             if (!custom && AMBIGUOUS_SYMBOLS.contains(symbol)) {
                 return amount + " " + iso;
             }
-            
             if (info == null || !info.suffix) {
                 return symbol + amount;
             }
             return amount + " " + symbol;
         }
-        
         return amount + " " + iso;
     }
 
     @Override
     protected boolean isBranded() {
-        return true; 
+        return true; // TON/BTC/USD render the colourful brand gradient (exteraGram's vw2); the rest are flat.
     }
 
     @Override
     public void onCardClicked() {
-        
         if (errorState) {
             onUpdateData(true);
         } else {
@@ -273,7 +261,6 @@ public class CryptoCard extends BaseInfoCard {
         if (fragment == null) {
             return false;
         }
-        
         final String stored = InfoCardsConfig.getTargetCurrency(getCardId());
         final ItemOptions options = ItemOptions.makeOptions(fragment, this).setDrawScrim(false);
         options.add(R.drawable.msg_language, menuCurrencyLabel(stored),
@@ -310,7 +297,7 @@ public class CryptoCard extends BaseInfoCard {
         final String coin;
         if (cardId == InfoCardType.TON.id) coin = "ton";
         else if (cardId == InfoCardType.BTC.id) coin = "btc";
-        else coin = null; 
+        else coin = null; // USD pill = fiat forex rate (1 USD in ccy)
         String ccy = resolveCardCurrency(cardId, InfoCardsConfig.getTargetCurrency(cardId));
         double value = coin != null ? InfoCardRates.coinInFiat(coin, ccy) : InfoCardRates.fiatRate(ccy);
         if (Double.isNaN(value) || value <= 0) return null;

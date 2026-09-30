@@ -11,6 +11,8 @@ package org.telegram.ui;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
 
+import android.animation.Animator;
+import android.animation.AnimatorListenerAdapter;
 import android.animation.ValueAnimator;
 import android.content.Context;
 import android.content.DialogInterface;
@@ -30,7 +32,14 @@ import android.text.TextUtils;
 import android.text.TextWatcher;
 import android.text.style.ClickableSpan;
 import android.text.style.ForegroundColorSpan;
+import android.transition.ChangeBounds;
+import android.transition.ChangeTransform;
+import android.transition.Fade;
+import android.transition.Transition;
+import android.transition.TransitionManager;
+import android.transition.TransitionSet;
 import android.util.TypedValue;
+import android.view.Gravity;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
@@ -51,6 +60,7 @@ import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.MessagesController;
 import org.telegram.messenger.NotificationCenter;
 import org.telegram.messenger.R;
+import org.telegram.messenger.SharedConfig;
 import org.telegram.messenger.browser.Browser;
 import org.telegram.tgnet.ConnectionsManager;
 import org.telegram.tgnet.TLRPC;
@@ -94,10 +104,14 @@ public class ChatEditTypeActivity extends BaseFragment implements NotificationCe
     private EditTextBoldCursor usernameTextView;
     private EditTextBoldCursor editText;
 
-    private TextInfoPrivacyCell typeInfoCell;
+    private LinkTypeInfoCell typeInfoCell;
     private HeaderCell headerCell;
     private HeaderCell headerCell2;
     private TextInfoPrivacyCell checkTextView;
+    private ValueAnimator checkTextTranslateAnimator;
+    private final ArrayList<View> checkTextTranslatedViews = new ArrayList<>();
+    private TransitionSet linkTypeTransition;
+    private boolean linkTypeTransitionPending;
     private LinearLayout linearLayout;
     private ActionBarMenuItem doneButton;
     private CrossfadeDrawable doneButtonDrawable;
@@ -106,7 +120,7 @@ public class ChatEditTypeActivity extends BaseFragment implements NotificationCe
     private RadioButtonCell radioButtonCell1;
     private RadioButtonCell radioButtonCell2;
     private LinearLayout adminnedChannelsLayout;
-    private LinearLayout linkContainer;
+    private LinkTypeLayout linkContainer;
     private LinearLayout publicContainer;
     private LinearLayout privateContainer;
     private LinkActionView permanentLinkView;
@@ -231,6 +245,7 @@ public class ChatEditTypeActivity extends BaseFragment implements NotificationCe
 
     @Override
     public void onFragmentDestroy() {
+        finishLinkTypeTransition();
         checkGeneration++;
         if (checkRunnable != null) {
             AndroidUtilities.cancelRunOnUIThread(checkRunnable);
@@ -303,7 +318,25 @@ public class ChatEditTypeActivity extends BaseFragment implements NotificationCe
         doneButtonDrawable = new CrossfadeDrawable(checkmark, new CircularProgressDrawable(Theme.getColor(Theme.key_actionBarDefaultIcon)));
         doneButton = menu.addItemWithWidth(done_button, doneButtonDrawable, AndroidUtilities.dp(56), LocaleController.getString(R.string.Done));
 
-        linearLayout = new SectionsScrollView.SectionsLinearLayout(context);
+        linearLayout = new SectionsScrollView.SectionsLinearLayout(context) {
+            private int previousCheckTextHeight = -1;
+            @Override
+            protected void onLayout(boolean changed, int left, int top, int right, int bottom) {
+                super.onLayout(changed, left, top, right, bottom);
+                int height = checkTextView != null && checkTextView.getVisibility() != View.GONE
+                        ? checkTextView.getHeight() : 0;
+                if (previousCheckTextHeight != -1) {
+                    animateCheckTextTranslation(previousCheckTextHeight - height);
+                }
+                previousCheckTextHeight = height;
+            }
+            @Override
+            protected void onDetachedFromWindow() {
+                finishLinkTypeTransition();
+                previousCheckTextHeight = -1;
+                super.onDetachedFromWindow();
+            }
+        };
         fragmentView = new SectionsScrollView(context, linearLayout, resourceProvider, false) {
             @Override
             public boolean requestChildRectangleOnScreen(View child, Rect rectangle, boolean immediate) {
@@ -366,6 +399,7 @@ public class ChatEditTypeActivity extends BaseFragment implements NotificationCe
             if (isPrivate) {
                 return;
             }
+            beginLinkTypeTransition();
             isPrivate = true;
             updatePrivatePublic();
         });
@@ -385,6 +419,7 @@ public class ChatEditTypeActivity extends BaseFragment implements NotificationCe
                 showPremiumIncreaseLimitDialog();
                 return;
             }
+            beginLinkTypeTransition();
             isPrivate = false;
             updatePrivatePublic();
         });
@@ -399,7 +434,7 @@ public class ChatEditTypeActivity extends BaseFragment implements NotificationCe
             headerCell2.setVisibility(View.GONE);
         }
 
-        linkContainer = new LinearLayout(context);
+        linkContainer = new LinkTypeLayout(context);
         linkContainer.setOrientation(LinearLayout.VERTICAL);
         linearLayout.addView(linkContainer, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
 
@@ -408,7 +443,9 @@ public class ChatEditTypeActivity extends BaseFragment implements NotificationCe
 
         publicContainer = new LinearLayout(context);
         publicContainer.setOrientation(LinearLayout.HORIZONTAL);
-        linkContainer.addView(publicContainer, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 36, 23, 7, 23, 0));
+        publicContainer.setGravity(Gravity.CENTER_VERTICAL);
+        publicContainer.setBaselineAligned(false);
+        linkContainer.addView(publicContainer, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 48, 23, 4, 23, 12));
 
         editText = new EditTextBoldCursor(context);
         editText.setText(getMessagesController().linkPrefix + "/");
@@ -420,10 +457,12 @@ public class ChatEditTypeActivity extends BaseFragment implements NotificationCe
         editText.setEnabled(false);
         editText.setBackground(null);
         editText.setPadding(0, 0, 0, 0);
+        editText.setGravity(Gravity.START | Gravity.CENTER_VERTICAL);
+        editText.setIncludeFontPadding(false);
         editText.setSingleLine(true);
         editText.setInputType(InputType.TYPE_TEXT_FLAG_MULTI_LINE | InputType.TYPE_TEXT_FLAG_AUTO_CORRECT);
         editText.setImeOptions(EditorInfo.IME_ACTION_DONE);
-        publicContainer.addView(editText, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, 36));
+        publicContainer.addView(editText, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, LayoutHelper.MATCH_PARENT));
 
         usernameTextView = new EditTextBoldCursor(context) {
             @Override
@@ -445,6 +484,8 @@ public class ChatEditTypeActivity extends BaseFragment implements NotificationCe
         usernameTextView.setLines(1);
         usernameTextView.setBackground(null);
         usernameTextView.setPadding(0, 0, 0, 0);
+        usernameTextView.setGravity(Gravity.START | Gravity.CENTER_VERTICAL);
+        usernameTextView.setIncludeFontPadding(false);
         usernameTextView.setSingleLine(true);
         usernameTextView.setInputType(InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS | InputType.TYPE_TEXT_FLAG_MULTI_LINE | InputType.TYPE_TEXT_FLAG_AUTO_CORRECT);
         usernameTextView.setImeOptions(EditorInfo.IME_ACTION_DONE);
@@ -452,7 +493,7 @@ public class ChatEditTypeActivity extends BaseFragment implements NotificationCe
         usernameTextView.setCursorColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText));
         usernameTextView.setCursorSize(AndroidUtilities.dp(20));
         usernameTextView.setCursorWidth(1.5f);
-        publicContainer.addView(usernameTextView, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 36));
+        publicContainer.addView(usernameTextView, LayoutHelper.createLinear(0, LayoutHelper.MATCH_PARENT, 1f));
         usernameTextView.addTextChangedListener(new TextWatcher() {
             @Override
             public void beforeTextChanged(CharSequence charSequence, int i, int i2, int i3) {
@@ -482,6 +523,7 @@ public class ChatEditTypeActivity extends BaseFragment implements NotificationCe
         linkContainer.addView(privateContainer, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
 
         permanentLinkView = new LinkActionView(context, this, null, chatId, true, ChatObject.isChannel(currentChat));
+        permanentLinkView.setButtonsBottomPadding(dp(12));
         permanentLinkView.setDelegate(new LinkActionView.Delegate() {
             @Override
             public void revokeLink() {
@@ -533,50 +575,11 @@ public class ChatEditTypeActivity extends BaseFragment implements NotificationCe
                 super.setText(text);
             }
 
-            ValueAnimator translateAnimator;
-            int prevHeight = -1;
-
-            @Override
-            protected void onLayout(boolean changed, int left, int top, int right, int bottom) {
-                super.onLayout(changed, left, top, right, bottom);
-
-                if (prevHeight != -1 && linearLayout != null) {
-                    ArrayList<View> viewsToTranslate = new ArrayList<>();
-                    boolean passedMe = false;
-                    for (int i = 0; i < linearLayout.getChildCount(); ++i) {
-                        View child = linearLayout.getChildAt(i);
-                        if (passedMe) {
-                            viewsToTranslate.add(child);
-                        } else if (child == this) {
-                            passedMe = true;
-                        }
-                    }
-
-                    float diff = prevHeight - getHeight();
-                    if (translateAnimator != null) {
-                        translateAnimator.cancel();
-                    }
-                    translateAnimator = ValueAnimator.ofFloat(0, 1);
-                    translateAnimator.addUpdateListener(anm -> {
-                        float t = 1f - (float) anm.getAnimatedValue();
-                        for (int i = 0; i < viewsToTranslate.size(); ++i) {
-                            View view = viewsToTranslate.get(i);
-                            if (view != null) {
-                                view.setTranslationY(diff * t);
-                            }
-                        }
-                    });
-                    translateAnimator.setInterpolator(CubicBezierInterpolator.EASE_OUT_QUINT);
-                    translateAnimator.setDuration(350);
-                    translateAnimator.start();
-                }
-                prevHeight = getHeight();
-            }
         };
         checkTextView.setBottomPadding(6);
         linearLayout.addView(checkTextView, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT));
 
-        typeInfoCell = new TextInfoPrivacyCell(context, 12, resourceProvider);
+        typeInfoCell = new LinkTypeInfoCell(context, resourceProvider);
         typeInfoCell.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_YES);
         linearLayout.addView(typeInfoCell, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
 
@@ -1366,13 +1369,16 @@ public class ChatEditTypeActivity extends BaseFragment implements NotificationCe
         updatePrivatePublic();
         TLRPC.TL_channels_getAdminedPublicChannels req = new TLRPC.TL_channels_getAdminedPublicChannels();
         getConnectionsManager().sendRequest(req, (response, error) -> AndroidUtilities.runOnUIThread(() -> {
+            if (isFinished) {
+                return;
+            }
             loadingAdminedChannels = false;
-            if (response != null) {
+            if (error == null && response instanceof TLRPC.TL_messages_chats) {
                 if (getParentActivity() == null) {
                     return;
                 }
                 for (int a = 0; a < adminedChannelCells.size(); a++) {
-                    linearLayout.removeView(adminedChannelCells.get(a));
+                    adminnedChannelsLayout.removeView(adminedChannelCells.get(a));
                 }
                 adminedChannelCells.clear();
                 TLRPC.TL_messages_chats res = (TLRPC.TL_messages_chats) response;
@@ -1411,8 +1417,8 @@ public class ChatEditTypeActivity extends BaseFragment implements NotificationCe
                     adminedChannelCells.add(adminedChannelCell);
                     adminnedChannelsLayout.addView(adminedChannelCell, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 72));
                 }
-                updatePrivatePublic();
             }
+            updatePrivatePublic();
         }));
     }
 
@@ -1428,7 +1434,7 @@ public class ChatEditTypeActivity extends BaseFragment implements NotificationCe
             checkTextView.setVisibility(View.GONE);
             sectionCell2.setVisibility(View.GONE);
             adminedInfoCell.setVisibility(View.VISIBLE);
-            if (loadingAdminedChannels) {
+            if (loadingAdminedChannels && adminedChannelCells.isEmpty()) {
                 loadingAdminedCell.setVisibility(View.VISIBLE);
                 adminnedChannelsLayout.setVisibility(View.GONE);
             } else {
@@ -1459,10 +1465,11 @@ public class ChatEditTypeActivity extends BaseFragment implements NotificationCe
             saveContainer.setVisibility(View.VISIBLE);
             manageLinksTextView.setVisibility(View.VISIBLE);
             manageLinksInfoCell.setVisibility(View.VISIBLE);
-            linkContainer.setPadding(0, 0, 0, isPrivate ? 0 : AndroidUtilities.dp(7));
+            linkContainer.setPadding(0, 0, 0, 0);
             permanentLinkView.setLink(invite != null ? invite.link : null);
             permanentLinkView.loadUsers(invite, chatId);
-            checkTextView.setVisibility(!isPrivate && checkTextView.length() != 0 ? View.VISIBLE : View.GONE);
+            checkTextView.setVisibility(!isPrivate && usernameTextView.length() != 0
+                    && checkTextView.length() != 0 ? View.VISIBLE : View.GONE);
             final TLRPC.ChatFull chatFull = getMessagesController().getChatFull(chatId);
             final TLRPC.Chat chat = getMessagesController().getChat(chatId);
             manageLinksInfoCell.setText(LocaleController.getString(chatFull != null && chatFull.paid_media_allowed && ChatObject.isChannelAndNotMegaGroup(chat) ? R.string.ManageLinksInfoHelpPaid : R.string.ManageLinksInfoHelp));
@@ -1480,6 +1487,143 @@ public class ChatEditTypeActivity extends BaseFragment implements NotificationCe
         checkDoneButton();
     }
 
+    private final class LinkTypeLayout extends LinearLayout {
+        private final org.telegram.ui.Components.MessagePreviewCrossfade crossfade =
+                new org.telegram.ui.Components.MessagePreviewCrossfade(this);
+        LinkTypeLayout(Context context) { super(context); }
+        private void drawContent(Canvas canvas) { super.dispatchDraw(canvas); }
+        @Override protected void dispatchDraw(Canvas canvas) {
+            if (!SharedConfig.animationsEnabled() && crossfade.isRunning()) crossfade.finish();
+            crossfade.draw(canvas, this::drawContent);
+        }
+        @Override protected void onDetachedFromWindow() {
+            crossfade.finish();
+            super.onDetachedFromWindow();
+        }
+    }
+    private final class LinkTypeInfoCell extends TextInfoPrivacyCell {
+        private final org.telegram.ui.Components.MessagePreviewCrossfade crossfade =
+                new org.telegram.ui.Components.MessagePreviewCrossfade(this);
+        LinkTypeInfoCell(Context context, Theme.ResourcesProvider provider) { super(context, 12, provider); }
+        private void drawContent(Canvas canvas) { super.dispatchDraw(canvas); }
+        @Override protected void dispatchDraw(Canvas canvas) {
+            if (!SharedConfig.animationsEnabled() && crossfade.isRunning()) crossfade.finish();
+            crossfade.draw(canvas, this::drawContent);
+        }
+        @Override protected void onDetachedFromWindow() {
+            crossfade.finish();
+            super.onDetachedFromWindow();
+        }
+    }
+    private void stopCheckTextTranslation(boolean reset) {
+        if (checkTextTranslateAnimator != null) {
+            checkTextTranslateAnimator.removeAllListeners();
+            checkTextTranslateAnimator.removeAllUpdateListeners();
+            checkTextTranslateAnimator.cancel();
+            checkTextTranslateAnimator = null;
+        }
+        if (reset) {
+            for (View view : checkTextTranslatedViews) view.setTranslationY(0f);
+            checkTextTranslatedViews.clear();
+        }
+    }
+    private void animateCheckTextTranslation(float diff) {
+        if (linkTypeTransition != null) return;
+        if (linearLayout == null || isPaused || !linearLayout.isAttachedToWindow()
+                || !SharedConfig.animationsEnabled()) {
+            stopCheckTextTranslation(true);
+            return;
+        }
+        if (diff == 0f) return;
+        stopCheckTextTranslation(false);
+        checkTextTranslatedViews.clear();
+        ArrayList<Float> starts = new ArrayList<>();
+        boolean passedMe = false;
+        for (int i = 0; i < linearLayout.getChildCount(); ++i) {
+            View child = linearLayout.getChildAt(i);
+            if (passedMe) {
+                float start = child.getTranslationY() + diff;
+                checkTextTranslatedViews.add(child);
+                starts.add(start);
+                child.setTranslationY(start);
+            } else if (child == checkTextView) {
+                passedMe = true;
+            }
+        }
+        ValueAnimator animator = ValueAnimator.ofFloat(0f, 1f);
+        checkTextTranslateAnimator = animator;
+        animator.addUpdateListener(value -> {
+            if (!SharedConfig.animationsEnabled()) {
+                stopCheckTextTranslation(true);
+                return;
+            }
+            float remaining = 1f - (float) value.getAnimatedValue();
+            for (int i = 0; i < checkTextTranslatedViews.size(); ++i) {
+                checkTextTranslatedViews.get(i).setTranslationY(starts.get(i) * remaining);
+            }
+        });
+        animator.addListener(new AnimatorListenerAdapter() {
+            @Override public void onAnimationEnd(Animator animation) {
+                if (checkTextTranslateAnimator == animation) stopCheckTextTranslation(true);
+            }
+        });
+        animator.setInterpolator(CubicBezierInterpolator.EASE_OUT_QUINT);
+        animator.setDuration(350);
+        animator.start();
+    }
+    private void beginLinkTypeTransition() {
+        if (!SharedConfig.animationsEnabled() || linearLayout == null || !linearLayout.isLaidOut()
+                || !linearLayout.isAttachedToWindow() || isPaused) {
+            finishLinkTypeTransition();
+            return;
+        }
+        linkContainer.crossfade.capture(linkContainer::drawContent);
+        typeInfoCell.crossfade.capture(typeInfoCell::drawContent);
+        if (linkTypeTransitionPending) return;
+        stopCheckTextTranslation(false);
+        TransitionSet transition = new TransitionSet().setOrdering(TransitionSet.ORDERING_TOGETHER);
+        transition.addTransition(new ChangeBounds());
+        ChangeTransform transform = new ChangeTransform();
+        transform.setReparent(false);
+        transition.addTransition(transform);
+        Fade fade = new Fade();
+        if (joinContainer != null) fade.addTarget(joinContainer);
+        if (usernamesListView != null) fade.addTarget(usernamesListView);
+        fade.addTarget(checkTextView);
+        transition.addTransition(fade);
+        transition.setDuration(300);
+        transition.setInterpolator(org.telegram.ui.Components.CubicBezierInterpolator.EASE_OUT);
+        linkTypeTransition = transition;
+        linkTypeTransitionPending = true;
+        transition.addListener(new Transition.TransitionListener() {
+            @Override public void onTransitionStart(Transition ignored) {
+                if (linkTypeTransition == transition) linkTypeTransitionPending = false;
+            }
+            @Override public void onTransitionEnd(Transition ignored) {
+                if (linkTypeTransition == transition) {
+                    linkTypeTransition = null;
+                    linkTypeTransitionPending = false;
+                }
+            }
+            @Override public void onTransitionCancel(Transition ignored) { onTransitionEnd(ignored); }
+            @Override public void onTransitionPause(Transition ignored) { }
+            @Override public void onTransitionResume(Transition ignored) { }
+        });
+        TransitionManager.beginDelayedTransition(linearLayout, transition);
+        stopCheckTextTranslation(true);
+    }
+    private void finishLinkTypeTransition() {
+        if (linearLayout != null) TransitionManager.endTransitions(linearLayout);
+        linkTypeTransition = null;
+        linkTypeTransitionPending = false;
+        stopCheckTextTranslation(true);
+        if (linkContainer != null) linkContainer.crossfade.finish();
+        if (typeInfoCell != null) typeInfoCell.crossfade.finish();
+    }
+    @Override public void onPause() {
+        finishLinkTypeTransition();
+        super.onPause();
+    }
     private void checkDoneButton() {
         if (isPrivate || usernameTextView.length() > 0 || hasActiveLink()) {
             doneButton.setEnabled(true);

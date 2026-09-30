@@ -47,8 +47,8 @@ import org.telegram.ui.ActionBar.MessageDrawable;
 import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.ActionBar.theme.ITheme;
 import org.telegram.ui.ChatBackgroundDrawable;
-import java.util.LinkedHashMap;
 
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.io.File;
 
@@ -229,12 +229,13 @@ public class ThemeSmallPreviewView extends FrameLayout implements NotificationCe
             if (chatThemeItem != null && (chatThemeItem.chatTheme == null || chatThemeItem.chatTheme.wallpaper == null)) {
                 ChatThemeBottomSheet.ChatThemeItem item = chatThemeItem;
                 chatThemeItem = null;
-                setItem(item, false);
+                setItem(item, parentDialogId, false);
             }
         }
     }
 
     private long themeUserByUserId;
+    private long parentDialogId;
 
     public int lastThemeIndex;
     private int previewGeneration;
@@ -284,7 +285,7 @@ public class ThemeSmallPreviewView extends FrameLayout implements NotificationCe
                 }
             }
         }
-        motion.setPatternBitmap(intensity, bitmap, true);
+        motion.setPatternBitmap(intensity, bitmap, true); // true = doNotScale, not animate
         motion.setPatternColorFilter(color);
         waitingForPattern = false;
         invalidate();
@@ -354,7 +355,7 @@ public class ThemeSmallPreviewView extends FrameLayout implements NotificationCe
         }
         void cancel() {
             finished = true;
-            stopObserving();
+            stopObserving(); // Do not cancel a shared FileLoader transfer.
         }
         void start() {
             if (started || finished || !attached) return;
@@ -432,6 +433,7 @@ public class ThemeSmallPreviewView extends FrameLayout implements NotificationCe
     }
 
     public void setItem(ChatThemeBottomSheet.ChatThemeItem item, long parentDialogId, boolean animated) {
+        this.parentDialogId = parentDialogId;
         boolean itemChanged = chatThemeItem != item;
         boolean darkModeChanged = lastThemeIndex != item.themeIndex;
         boolean hasPreviousPalette = !waitingForPattern || animateOutThemeDrawable != null || paletteFrom != null;
@@ -987,7 +989,7 @@ public class ThemeSmallPreviewView extends FrameLayout implements NotificationCe
         NotificationCenter.getGlobalInstance().addObserver(this, NotificationCenter.emojiLoaded);
         attached = true;
         if (chatThemeItem != null && lastThemeIndex != chatThemeItem.themeIndex) {
-            setItem(chatThemeItem, false);
+            setItem(chatThemeItem, parentDialogId, false);
         }
         resumePatternLoad();
         if (chatBackgroundDrawable != null) {

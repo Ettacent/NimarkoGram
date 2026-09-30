@@ -13,7 +13,6 @@ import org.telegram.messenger.ApplicationLoader;
 
 import java.util.Objects;
 
-
 final class MessageStatusIcons {
     private static final SparseArray<Bitmap> masks = new SparseArray<>();
     private static int cachedDensity;
@@ -24,7 +23,6 @@ final class MessageStatusIcons {
         Resources resources = ApplicationLoader.applicationContext.getResources();
         int density = resources.getDisplayMetrics().densityDpi;
         if (cachedDensity != density) {
-
             masks.clear();
             cachedDensity = density;
         }
@@ -40,11 +38,6 @@ final class MessageStatusIcons {
             vector.draw(new Canvas(mask));
             masks.put(resourceId, mask);
         }
-
-
-
-
-
         return new BitmapDrawable(resources, mask).mutate();
     }
 }

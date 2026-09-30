@@ -673,7 +673,6 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
     private ArrayList<ThemeDescription.ThemeDescriptionDelegate> themeAnimatorDelegate = new ArrayList<>();
     private final ArrayList<Theme.Colorable> themeColorableViews = new ArrayList<>();
     private AnimatorSet themeAnimatorSet;
-    AnimationNotificationsLocker notificationsLocker = new AnimationNotificationsLocker();
     private float themeAnimationValue;
     private boolean animateThemeAfterAnimation;
     private Theme.ThemeInfo animateSetThemeAfterAnimation;
@@ -1922,7 +1921,6 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
         float distToMove;
         boolean overrideTransition = currentFragment.shouldOverrideSlideTransition(false, backAnimation);
 
-        // NimarkoGram: CG Spring back-end animation (verbatim port, GPL-2.0).
         if (shouldUseSpringAnimationForStack()) {
             final float transitionWidth = Math.max(1, containerView.getMeasuredWidth());
             FloatValueHolder valueHolder = new FloatValueHolder(MathUtils.clamp(x / transitionWidth, 0f, 1f) * SPRING_MULTIPLIER);
@@ -2499,7 +2497,6 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
                 armPreviewTransitionTimeout(open);
             }
         }
-        // NimarkoGram: CG Spring layout animation (verbatim port, GPL-2.0).
         if (shouldUseSpringAnimationForTransition()) {
             if (!preview) {
                 final float travel = getWidth() - getPaddingLeft() - getPaddingRight();
@@ -2825,7 +2822,7 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
         containerViewBack.setScaleY(1f);
         configureMaterialComposition(containerViewBack, containerView, destination, source,
                 MaterialSharedAxisMotion.gestureMix(materialGestureProgress));
-        setInnerTranslationX(0f);
+        setInnerTranslationX(0f); // full surfaces crossfade; never use the stock reveal clip/scrim
         if (ownerEpoch != navigationEpoch || !materialGestureActive) return;
         if (source != null) source.onTransitionAnimationProgress(false, materialGestureProgress);
         if (ownerEpoch != navigationEpoch || !materialGestureActive) return;
@@ -3659,7 +3656,6 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
         layoutParams.height = LayoutHelper.MATCH_PARENT;
         fragment.fragmentView.setLayoutParams(layoutParams);
 
-        // NimarkoGram: CG Spring expandPreview animation (verbatim port, GPL-2.0).
         if (USE_SPRING_ANIMATION && !isCommunityDialogsFragment(fragment)) {
             final View view = fragment.fragmentView;
             previewExpandView = view;
@@ -4331,6 +4327,7 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
                 if (animationProgressListener != null) {
                     animationProgressListener.setProgress(0);
                 }
+                final AnimationNotificationsLocker notificationsLocker = new AnimationNotificationsLocker();
                 notificationsLocker.lock();
                 themeAnimatorSet = new AnimatorSet();
                 themeAnimatorSet.addListener(new AnimatorListenerAdapter() {
@@ -4518,7 +4515,6 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
         inActionMode = false;
     }
 
-
     private void checkNeedRebuild() {
         if (isFragmentRebuildUnsafe()) {
             return;
@@ -4545,7 +4541,6 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
             animateThemeAfterAnimation = false;
         }
     }
-
 
     @Override
     public void startActivityForResult(final Intent intent, final int requestCode) {

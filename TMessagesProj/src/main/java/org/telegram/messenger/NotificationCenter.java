@@ -10,7 +10,6 @@ package org.telegram.messenger;
 import android.app.Activity;
 import android.content.Context;
 import android.content.ContextWrapper;
-
 import android.os.SystemClock;
 import android.util.Log;
 import android.util.SparseArray;
@@ -22,8 +21,8 @@ import androidx.annotation.UiThread;
 import androidx.collection.MutableIntList;
 import org.telegram.ui.ActionBar.BaseFragment;
 import org.telegram.ui.ActionBar.BottomSheet;
-import java.lang.ref.WeakReference;
 
+import java.lang.ref.WeakReference;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -387,7 +386,7 @@ public class NotificationCenter {
     public static final int cgTabsUpdated = totalEvents++;
     public static final int pluginsUpdated = totalEvents++;
     public static final int pluginMenuItemsUpdated = totalEvents++;
-    public static final int customTitleUpdated = totalEvents++;
+    public static final int customTitleUpdated = totalEvents++;   // NimarkoGram: custom main-title changed in settings -> refresh live DialogsActivity
     public static final int pluginSettingsRegistered = totalEvents++;
     public static final int pluginSettingsUnregistered = totalEvents++;
     public static final int pluginIsNotResponding = totalEvents++;
@@ -792,8 +791,8 @@ public class NotificationCenter {
             globalGroup.add(id);
             return this;
         }
-        @Override
 
+        @Override
         public void removeAllObservers() {
             if (delegate == null) {
                 return;
@@ -847,9 +846,8 @@ public class NotificationCenter {
     public ObserversGroup createWeakObserversGroup(NotificationCenterDelegate delegate) {
         return new WeakObserversGroupImpl(this, delegate);
     }
+
     @Deprecated(since = "use createWeakObserversGroup or createObserversGroup")
-
-
     public void addObserver(NotificationCenterDelegate observer, int id) {
         addObserverInternal(observer, id);
     }
@@ -1124,7 +1122,6 @@ public class NotificationCenter {
         }
         return false;
     }
-
 
     public int getObserversSize() {
         int totalSize = 0;

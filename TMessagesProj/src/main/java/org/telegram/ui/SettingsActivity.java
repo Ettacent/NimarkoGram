@@ -61,7 +61,6 @@ import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
 import androidx.recyclerview.widget.RecyclerView;
 
-
 import org.telegram.PhoneFormat.PhoneFormat;
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.ApplicationLoader;
@@ -368,7 +367,6 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
         otherItem.addSubItem(2, R.drawable.msg_leave, getString(R.string.LogOut));
         otherItem.setOnClickListener(view -> showProfileMenuItemOptions(otherItem));
 
-
         listView = new UniversalRecyclerView(this, this::fillItems, this::onClick, this::onLongClick) {
             @Override
             public void capture(Canvas canvas, RectF position) {
@@ -601,7 +599,6 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
             sb.append(" • @").append(username);
         }
         subtitleView.setText(sb);
-
     }
 
 
@@ -1233,7 +1230,7 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
         private final ImageView iconView;
         private final LinearLayout textLayout;
         private final TextView titleView;
-        private final TextView subtitleView;
+        private final SubtitleView subtitleView;
         private final org.telegram.ui.Components.AnimatedTextView valueView;
         private final boolean mini;
         private int originalIconColorTop;
@@ -1266,7 +1263,7 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
             titleView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 16);
             textLayout.addView(titleView, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, 0, 0, 0, 0));
 
-            subtitleView = new TextView(context);
+            subtitleView = new SubtitleView(context);
             subtitleView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 13);
             textLayout.addView(subtitleView, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, 0, 4, 0, 0));
 
@@ -1313,6 +1310,57 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
         }
 
         private boolean twoLines;
+        private static final class SubtitleView extends TextView {
+            private final org.telegram.ui.Components.MessagePreviewCrossfade crossfade =
+                    new org.telegram.ui.Components.MessagePreviewCrossfade(this, this::onFadeFrame);
+            private int transitionStartHeight;
+            SubtitleView(Context context) {
+                super(context);
+            }
+            private void onFadeFrame() {
+                if (transitionStartHeight != 0) {
+                    if (!crossfade.isRunning()) transitionStartHeight = 0;
+                    requestLayout();
+                }
+            }
+            void setSubtitle(CharSequence text, boolean animated) {
+                if (TextUtils.equals(getText(), text)) return;
+                if (animated && SharedConfig.animationsEnabled() && isAttachedToWindow()
+                        && getVisibility() == View.VISIBLE && getWindowVisibility() == View.VISIBLE
+                        && getWidth() > 0 && !TextUtils.isEmpty(getText()) && !TextUtils.isEmpty(text)) {
+                    int height = getHeight();
+                    crossfade.capture(this::drawText);
+                    if (crossfade.isRunning()) transitionStartHeight = height;
+                } else {
+                    crossfade.finish();
+                }
+                setText(text);
+            }
+            void resetFade() {
+                crossfade.finish();
+            }
+            boolean isHeightTransitionRunning() {
+                return crossfade.isRunning() && transitionStartHeight > 0;
+            }
+            private void drawText(Canvas canvas) {
+                super.onDraw(canvas);
+            }
+            @Override
+            protected void onDraw(Canvas canvas) {
+                crossfade.draw(canvas, this::drawText);
+            }
+            @Override
+            protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
+                if (isHeightTransitionRunning()) {
+                    super.onMeasure(widthMeasureSpec, MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED));
+                    int height = Math.round(transitionStartHeight
+                            + (getMeasuredHeight() - transitionStartHeight) * crossfade.getProgress());
+                    setMeasuredDimension(getMeasuredWidth(), resolveSize(height, heightMeasureSpec));
+                } else {
+                    super.onMeasure(widthMeasureSpec, heightMeasureSpec);
+                }
+            }
+        }
         private UItem boundSettingItem;
         private boolean animateValueHeight;
         private ValueAnimator valueHeightAnimator;
@@ -1330,6 +1378,7 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
         protected void onDetachedFromWindow() {
             stopValueHeightAnimation();
             valueView.cancelAnimation();
+            subtitleView.resetFade();
             boundSettingItem = null;
             super.onDetachedFromWindow();
         }
@@ -1368,7 +1417,8 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
                     PorterDuff.Mode.SRC_IN));
             titleView.setText(title);
             subtitleView.setVisibility((twoLines = !TextUtils.isEmpty(subtitle)) ? View.VISIBLE : View.GONE);
-            subtitleView.setText(subtitle);
+            if (!animateValue) subtitleView.resetFade();
+            subtitleView.setSubtitle(subtitle, animateValue);
             if (!animateValue || !TextUtils.equals(valueView.getText(), value)) {
                 setValue(value, animateValue);
             }
@@ -1379,6 +1429,7 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
             setValue(value, isAttachedToWindow() && getWidth() > 0);
         }
         public void setValue(CharSequence value, boolean animated) {
+            animated = animated && isAttachedToWindow() && SharedConfig.animationsEnabled();
             if (!animated) {
                 stopValueHeightAnimation();
             } else {
@@ -1390,6 +1441,9 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
 
         @Override
         protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
+            if (subtitleView.isHeightTransitionRunning()) {
+                stopValueHeightAnimation();
+            }
             int width = MeasureSpec.makeMeasureSpec(
                     MeasureSpec.getSize(widthMeasureSpec), MeasureSpec.EXACTLY);
             valueView.setMaxWidth(Math.min(dp(144), MeasureSpec.getSize(widthMeasureSpec) * 2 / 5));
@@ -1397,8 +1451,8 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
                 super.onMeasure(width, MeasureSpec.makeMeasureSpec(dp(mini ? 44 : 50), MeasureSpec.EXACTLY));
                 return;
             }
-            final int previousHeight = getMeasuredHeight();
 
+            final int previousHeight = getMeasuredHeight();
             super.onMeasure(width, MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED));
             int height = Math.max(dp(60), textLayout.getMeasuredHeight() + dp(16));
             if (animateValueHeight && isAttachedToWindow() && previousHeight > 0) {
@@ -1679,17 +1733,17 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
         };
 
         builder.setItems(items, (dialog, which) -> {
-            if (which == 0) {
+            if (which == 0) { // Import Contacts
                 getUserConfig().syncContacts = true;
                 getUserConfig().saveConfig(false);
                 getContactsController().forceImportContacts();
-            } else if (which == 1) {
+            } else if (which == 1) { // Reload Contacts
                 getContactsController().loadContacts(false, 0);
-            } else if (which == 2) {
+            } else if (which == 2) { // Reset Imported Contacts
                 getContactsController().resetImportedContacts();
-            } else if (which == 3) {
+            } else if (which == 3) { // Reset Dialogs
                 getMessagesController().forceResetDialogs();
-            } else if (which == 4) {
+            } else if (which == 4) { // Logs
                 BuildVars.LOGS_ENABLED = !BuildVars.LOGS_ENABLED;
                 SharedPreferences sharedPreferences = ApplicationLoader.applicationContext.getSharedPreferences("systemConfig", Context.MODE_PRIVATE);
                 sharedPreferences.edit().putBoolean("logsEnabled", BuildVars.LOGS_ENABLED).commit();
@@ -1702,9 +1756,9 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
                         FileLog.e(e);
                     }
                 }
-            } else if (which == 5) {
+            } else if (which == 5) { // In-app camera
                 SharedConfig.toggleInappCamera();
-            } else if (which == 6) {
+            } else if (which == 6) { // Clear sent media cache
                 getMessagesStorage().clearSentMedia();
                 SharedConfig.setNoSoundHintShowed(false);
                 SharedPreferences.Editor editor = MessagesController.getGlobalMainSettings().edit();
@@ -1747,26 +1801,26 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
                     }
                 }
                 editor.apply();
-            } else if (which == 7) {
+            } else if (which == 7) { // Call settings
                 VoIPHelper.showCallDebugSettings(getParentActivity());
-            } else if (which == 8) {
+            } else if (which == 8) { // ?
                 SharedConfig.toggleRoundCamera16to9();
-            } else if (which == 9) {
+            } else if (which == 9) { // Check app update
                 ((LaunchActivity) getParentActivity()).checkAppUpdate(true, null);
-            } else if (which == 10) {
+            } else if (which == 10) { // Read all chats
                 getMessagesStorage().readAllDialogs(-1);
-            } else if (which == 11) {
+            } else if (which == 11) { // Voip audio effects
                 SharedConfig.toggleDisableVoiceAudioEffects();
-            } else if (which == 12) {
+            } else if (which == 12) { // Clean app update
                 SharedConfig.pendingAppUpdate = null;
                 SharedConfig.saveConfig();
                 NotificationCenter.getGlobalInstance().postNotificationName(NotificationCenter.appUpdateAvailable);
-            } else if (which == 13) {
+            } else if (which == 13) { // Reset suggestions
                 Set<String> suggestions = getMessagesController().pendingSuggestions;
                 suggestions.add("VALIDATE_PHONE_NUMBER");
                 suggestions.add("VALIDATE_PASSWORD");
                 getNotificationCenter().postNotificationName(NotificationCenter.newSuggestionsAvailable);
-            } else if (which == 14) {
+            } else if (which == 14) { // WebView Cache
                 ApplicationLoader.applicationContext.deleteDatabase("webview.db");
                 ApplicationLoader.applicationContext.deleteDatabase("webviewCache.db");
                 WebStorage.getInstance().deleteAllData();
@@ -1780,17 +1834,17 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
                 CookieManager cookieManager = CookieManager.getInstance();
                 cookieManager.removeAllCookies(null);
                 cookieManager.flush();
-            } else if (which == 16) {
+            } else if (which == 16) { // WebView debug
                 SharedConfig.toggleDebugWebView();
                 Toast.makeText(getParentActivity(), getString(SharedConfig.debugWebView ? R.string.DebugMenuWebViewDebugEnabled : R.string.DebugMenuWebViewDebugDisabled), Toast.LENGTH_SHORT).show();
-            } else if (which == 17) {
+            } else if (which == 17) { // Tablet mode
                 SharedConfig.toggleForceDisableTabletMode();
                 Activity activity = getParentActivity();
                 if (activity != null) {
                     final PackageManager pm = activity.getPackageManager();
                     final Intent intent = pm.getLaunchIntentForPackage(activity.getPackageName());
-                    activity.finishAffinity();
-                    activity.startActivity(intent);
+                    activity.finishAffinity(); // Finishes all activities.
+                    activity.startActivity(intent); // Start the launch activity
                 }
                 System.exit(0);
             } else if (which == 18) {
@@ -2035,13 +2089,13 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
                 info.append("{d} ").append(codec.getName()).append(" (");
                 if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
                     if (codec.isHardwareAccelerated()) {
-                        info.append("gpu");
+                        info.append("gpu"); // as Gpu
                     }
                     if (codec.isSoftwareOnly()) {
-                        info.append("cpu");
+                        info.append("cpu"); // as Cpu
                     }
                     if (codec.isVendor()) {
-                        info.append(", v");
+                        info.append(", v"); // as Vendor
                     }
                 }
                 MediaCodecInfo.CodecCapabilities capabilities = codec.getCapabilitiesForType(type);
@@ -2055,13 +2109,13 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
                 info.append("{e} ").append(codec.getName()).append(" (");
                 if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
                     if (codec.isHardwareAccelerated()) {
-                        info.append("gpu");
+                        info.append("gpu"); // as Gpu
                     }
                     if (codec.isSoftwareOnly()) {
-                        info.append("cpu");
+                        info.append("cpu"); // as Cpu
                     }
                     if (codec.isVendor()) {
-                        info.append(", v");
+                        info.append(", v"); // as Vendor
                     }
                 }
                 MediaCodecInfo.CodecCapabilities capabilities = codec.getCapabilitiesForType(type);

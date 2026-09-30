@@ -231,7 +231,6 @@ public class BitmapsCache {
             }
             cacheCreated = false;
             fileExist = false;
-
             RandomAccessFile randomAccessFile = new RandomAccessFile(file, "rw");
             generationFile = randomAccessFile;
 
@@ -259,7 +258,7 @@ public class BitmapsCache {
                         countDownLatch[index].await();
                     } catch (InterruptedException e) {
                         Thread.currentThread().interrupt();
-                        return;
+                        return; // finally drains workers before releasing buffers
                     }
                 }
 
@@ -293,7 +292,6 @@ public class BitmapsCache {
                     });
                 } catch (RuntimeException | OutOfMemoryError e) {
                     closed.set(true);
-
                     countDownLatch[finalIndex].countDown();
                     throw e;
                 }
@@ -317,9 +315,8 @@ public class BitmapsCache {
             }
             if (closed.get() || cancelled.get() || frameOffsets.isEmpty()) {
                 randomAccessFile.close();
-                return;
+                return; // Never publish a partial/empty cache as ready.
             }
-
             int arrayOffset = (int) randomAccessFile.length();
 
             Collections.sort(frameOffsets, Comparator.comparingInt(o -> o.index));
@@ -532,7 +529,13 @@ public class BitmapsCache {
             } else {
                 options.inBitmap = bitmap;
             }
-            BitmapFactory.decodeByteArray(bufferTmp, 0, selectedFrame.frameSize, options);
+            Bitmap decoded = BitmapFactory.decodeByteArray(bufferTmp, 0, selectedFrame.frameSize, options);
+            if (decoded == null) {
+                options.inBitmap = null;
+                error = true;
+                closeCachedFile();
+                return FRAME_RESULT_NO_FRAME;
+            }
             if (singleChannel) {
                 Utilities.extractAlpha(tmpRgbaBitmap, bitmap);
             }

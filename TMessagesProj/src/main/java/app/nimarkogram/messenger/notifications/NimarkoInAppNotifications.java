@@ -10,10 +10,17 @@ import android.content.Intent;
 import android.content.SharedPreferences;
 import android.graphics.Typeface;
 import android.graphics.Paint;
+import android.graphics.Canvas;
 import android.graphics.Rect;
 import android.os.Bundle;
 import android.os.SystemClock;
+import android.text.BidiFormatter;
+import android.text.SpannableStringBuilder;
+import android.text.Spanned;
+import android.text.TextDirectionHeuristic;
+import android.text.TextDirectionHeuristics;
 import android.text.TextUtils;
+import android.text.style.ReplacementSpan;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.MotionEvent;
@@ -46,6 +53,7 @@ import org.telegram.messenger.BuildVars;
 import org.telegram.messenger.FileLog;
 import org.telegram.messenger.DialogObject;
 import org.telegram.messenger.MessagesController;
+import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.NotificationsController;
 import org.telegram.messenger.NotificationsSettingsFacade;
 import org.telegram.messenger.R;
@@ -616,7 +624,8 @@ public final class NimarkoInAppNotifications {
         float expansion, downExpansion, downTranslation;
         int collapsedHeight, expandedHeight;
         int retainedCollapsedHeight, retainedExpandedHeight;
-        TextView title, body, expandedBody;
+        NotificationTitleView title;
+        TextView body, expandedBody;
         BackupImageView avatar;
         NotificationTextLayout text;
         FrameLayout bodies;
@@ -672,6 +681,7 @@ public final class NimarkoInAppNotifications {
                     hide();
                 } else {
                     refreshAvatar();
+                    refreshTitleBadge();
                     followScreen();
                     postDelayed(this, 250);
                 }
@@ -687,8 +697,8 @@ public final class NimarkoInAppNotifications {
             avatarHeading = heading;
             this.topicId = topicId; this.messageId = messageId; this.preview = preview; this.sample = sample;
             slop = ViewConfiguration.get(activity).getScaledTouchSlop();
-            setMinimumHeight(dp(64));
-            setPadding(0, dp(10), 0, dp(10));
+            setMinimumHeight(dp(68));
+            setPadding(0, dp(12), 0, dp(12));
             surface = new NotificationGlassSurface(this);
             animate().setUpdateListener(animation -> {
                 if (slot != null) slot.invalidate();
@@ -708,22 +718,24 @@ public final class NimarkoInAppNotifications {
             text = new NotificationTextLayout(activity);
             text.setOrientation(LinearLayout.VERTICAL);
             LayoutParams textParams = LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, Gravity.TOP);
-            textParams.setMarginStart(dp(56)); textParams.setMarginEnd(dp(12));
+            textParams.setMarginStart(dp(58)); textParams.setMarginEnd(dp(14));
             addView(text, textParams);
-            title = label(activity, 15, 1);
+            title = new NotificationTitleView(activity);
+            title.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
+            title.setIncludeFontPadding(false);
+            title.setMaxLines(1);
+            title.setEllipsize(TextUtils.TruncateAt.END);
+            title.setGravity(LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT);
+            title.setTextDirection(LocaleController.isRTL ? View.TEXT_DIRECTION_RTL : View.TEXT_DIRECTION_LTR);
             title.setTypeface(Typeface.DEFAULT_BOLD);
-            String name = preview ? heading : getString(R.string.AppName);
-            if (preview && !sample && account != UserConfig.selectedAccount) {
-                name += " · " + UserObject.getFirstName(UserConfig.getInstance(account).getCurrentUser());
-            }
-            title.setText(name);
             title.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText));
             text.addView(title);
+            refreshTitleBadge();
             body = label(activity, 14, 2);
             body.setText(preview ? message : getString(R.string.NotificationHiddenMessage));
             body.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteGrayText));
             LinearLayout.LayoutParams bodyParams = new LinearLayout.LayoutParams(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT);
-            bodyParams.topMargin = dp(3);
+            bodyParams.topMargin = dp(5);
             bodies = new FrameLayout(activity);
             bodies.addView(body, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
             expandedBody = label(activity, 14, 8);
@@ -799,28 +811,149 @@ public final class NimarkoInAppNotifications {
             this.messageId = messageId;
             avatarHeading = heading;
             String name = preview ? heading : getString(R.string.AppName);
-            if (preview && account != UserConfig.selectedAccount) {
-                name += " · " + UserObject.getFirstName(UserConfig.getInstance(account).getCurrentUser());
-            }
             replaceText(name, preview ? message : getString(R.string.NotificationHiddenMessage));
             refreshAvatar();
+            refreshTitleBadge();
             expiresAt = SystemClock.elapsedRealtime() + (expanded ? 8000 : 5000);
             return true;
         }
 
         void replaceText(String name, String message) {
-            if (TextUtils.equals(title.getText(), name) && TextUtils.equals(body.getText(), message)) return;
+            if (TextUtils.equals(title.senderName, name) && TextUtils.equals(body.getText(), message)) return;
             if (SharedConfig.animationsEnabled() && text.isShown() && text.isAttachedToWindow()) {
                 text.capture();
             } else {
                 text.crossfade.finish();
             }
             if (slot != null) slot.directResize = false;
-            if (!TextUtils.equals(title.getText(), name)) title.setText(name);
+            refreshTitleBadge();
             body.setText(message);
             expandedBody.setText(message);
         }
 
+        private void refreshTitleBadge() {
+            if (title == null) return;
+            TLObject peer = preview && !sample ? dialogId > 0
+                    ? MessagesController.getInstance(account).getUser(dialogId)
+                    : dialogId < 0 ? MessagesController.getInstance(account).getChat(-dialogId) : null : null;
+            TLRPC.User recipient = null;
+            if (preview && !sample && account != UserConfig.selectedAccount) {
+                recipient = MessagesController.getInstance(account).getUser(owner);
+                if (recipient == null) recipient = UserConfig.getInstance(account).getCurrentUser();
+                if (recipient != null && recipient.id != owner) recipient = null;
+            }
+            title.setNames(preview ? avatarHeading : getString(R.string.AppName), titleBadgeDocumentId(peer),
+                    recipient == null ? null : UserObject.getFirstName(recipient), titleBadgeDocumentId(recipient));
+        }
+        private long titleBadgeDocumentId(TLObject peer) {
+            if (peer == null) return 0;
+            app.nimarkogram.messenger.api.dto.BadgeDTO badge =
+                    app.nimarkogram.messenger.badges.BadgesController.getInstance().i(peer);
+            long documentId = badge != null ? badge.getDocumentId() : 0;
+            if (NimarkoConfig.disablePremiumStatuses) return documentId;
+            if (documentId == 0 && peer instanceof TLRPC.User) {
+                Long statusId = UserObject.getEmojiStatusDocumentId((TLRPC.User) peer);
+                documentId = statusId == null ? 0 : statusId;
+            } else if (documentId == 0 && peer instanceof TLRPC.Chat) {
+                Long statusId = UserObject.getEmojiStatusDocumentId(((TLRPC.Chat) peer).emoji_status);
+                documentId = statusId == null ? 0 : statusId;
+            }
+            return documentId;
+        }
+        private final class NotificationTitleView extends TextView {
+            private final org.telegram.ui.Components.AnimatedEmojiDrawable.SwapAnimatedEmojiDrawable senderBadge;
+            private final org.telegram.ui.Components.AnimatedEmojiDrawable.SwapAnimatedEmojiDrawable recipientBadge;
+            private String senderName, recipientName;
+            private long senderDocumentId, recipientDocumentId;
+            private boolean boundRtl;
+            NotificationTitleView(LaunchActivity activity) {
+                super(activity);
+                senderBadge = new org.telegram.ui.Components.AnimatedEmojiDrawable.SwapAnimatedEmojiDrawable(this, dp(18));
+                recipientBadge = new org.telegram.ui.Components.AnimatedEmojiDrawable.SwapAnimatedEmojiDrawable(this, dp(18));
+                senderBadge.setCurrentAccount(account);
+                recipientBadge.setCurrentAccount(account);
+            }
+            void setNames(String sender, long senderId, String recipient, long recipientId) {
+                if (TextUtils.isEmpty(sender)) sender = getString(R.string.AppName);
+                if (TextUtils.isEmpty(recipient)) {
+                    recipient = null;
+                    recipientId = 0;
+                }
+                boolean rtl = LocaleController.isRTL;
+                if (TextUtils.equals(senderName, sender) && TextUtils.equals(recipientName, recipient)
+                        && senderDocumentId == senderId && recipientDocumentId == recipientId && boundRtl == rtl) return;
+                boolean animate = SharedConfig.animationsEnabled() && isAttachedToWindow() && isShown();
+                if (animate) text.capture();
+                else text.crossfade.finish();
+                if (slot != null) slot.directResize = false;
+                senderName = sender;
+                recipientName = recipient;
+                senderDocumentId = senderId;
+                recipientDocumentId = recipientId;
+                boundRtl = rtl;
+                senderBadge.set(senderId, animate && senderId != 0);
+                recipientBadge.set(recipientId, animate && recipientId != 0);
+                SpannableStringBuilder value = new SpannableStringBuilder();
+                appendPerson(value, sender, senderId, senderBadge);
+                if (recipient != null) {
+                    value.append(" · ");
+                    appendPerson(value, recipient, recipientId, recipientBadge);
+                }
+                setGravity(rtl ? Gravity.RIGHT : Gravity.LEFT);
+                setTextDirection(rtl ? View.TEXT_DIRECTION_RTL : View.TEXT_DIRECTION_LTR);
+                setText(value);
+            }
+            private void appendPerson(SpannableStringBuilder value, String name, long id,
+                                      org.telegram.ui.Components.AnimatedEmojiDrawable.SwapAnimatedEmojiDrawable badge) {
+                TextDirectionHeuristic direction = boundRtl ? TextDirectionHeuristics.FIRSTSTRONG_RTL
+                        : TextDirectionHeuristics.FIRSTSTRONG_LTR;
+                SpannableStringBuilder person = new SpannableStringBuilder(name);
+                if (id != 0) {
+                    int start = person.length();
+                    person.append('\uFFFC');
+                    person.setSpan(new TitleBadgeSpan(badge, direction.isRtl(name, 0, name.length())),
+                            start, person.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+                }
+                value.append(BidiFormatter.getInstance(boundRtl).unicodeWrap(person, direction));
+            }
+            @Override protected void onAttachedToWindow() {
+                super.onAttachedToWindow();
+                senderBadge.attach();
+                recipientBadge.attach();
+            }
+            @Override protected void onDetachedFromWindow() {
+                senderBadge.detach();
+                recipientBadge.detach();
+                super.onDetachedFromWindow();
+            }
+            private final class TitleBadgeSpan extends ReplacementSpan {
+                private final org.telegram.ui.Components.AnimatedEmojiDrawable.SwapAnimatedEmojiDrawable badge;
+                private final boolean rtl;
+                TitleBadgeSpan(org.telegram.ui.Components.AnimatedEmojiDrawable.SwapAnimatedEmojiDrawable badge, boolean rtl) {
+                    this.badge = badge;
+                    this.rtl = rtl;
+                }
+                @Override public int getSize(Paint paint, CharSequence value, int start, int end, Paint.FontMetricsInt fm) {
+                    if (start >= end || value.charAt(start) != '\uFFFC') {
+                        return (int) Math.ceil(paint.measureText(value, start, end));
+                    }
+                    return dp(22);
+                }
+                @Override public void draw(Canvas canvas, CharSequence value, int start, int end, float x,
+                                           int top, int y, int bottom, Paint paint) {
+                    if (start >= end || value.charAt(start) != '\uFFFC') {
+                        canvas.drawText(value, start, end, x, y, paint);
+                        return;
+                    }
+                    int size = dp(18);
+                    int left = Math.round(x) + (rtl ? 0 : dp(4));
+                    int badgeTop = y + (paint.getFontMetricsInt().ascent + paint.getFontMetricsInt().descent - size) / 2;
+                    badge.setColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlueText));
+                    badge.setBounds(left, badgeTop, left + size, badgeTop + size);
+                    badge.draw(canvas);
+                }
+            }
+        }
         void cancelContentTransition() {
             text.crossfade.finish();
         }
@@ -907,14 +1040,14 @@ public final class NimarkoInAppNotifications {
             int width = Math.min(dp(560), MeasureSpec.getSize(w));
             measuredAvailableHeight = availableHeight();
             int bodyLimit = Math.max(dp(34), Math.min(dp(220), measuredAvailableHeight
-                    - getPaddingTop() - getPaddingBottom() - title.getLineHeight() - dp(3)));
+                    - getPaddingTop() - getPaddingBottom() - title.getLineHeight() - dp(5)));
             int lines = Math.max(2, Math.min(8, bodyLimit / Math.max(1, expandedBody.getLineHeight())));
             if (expandedBody.getMaxLines() != lines) expandedBody.setMaxLines(lines);
             super.onMeasure(MeasureSpec.makeMeasureSpec(width, MeasureSpec.EXACTLY),
                     MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED));
             expandedHeight = getMeasuredHeight();
             collapsedHeight = Math.min(expandedHeight, Math.max(dp(68), getPaddingTop() + getPaddingBottom()
-                    + title.getMeasuredHeight() + dp(3) + body.getMeasuredHeight()));
+                    + getCollapsedTextHeight()));
             if (text.crossfade.isRunning()) {
                 collapsedHeight = Math.max(collapsedHeight, retainedCollapsedHeight);
                 expandedHeight = Math.max(expandedHeight, retainedExpandedHeight);
@@ -926,10 +1059,16 @@ public final class NimarkoInAppNotifications {
             super.onLayout(changed, left, top, right, bottom);
             int contentHeight = collapsedHeight - getPaddingTop() - getPaddingBottom();
             centerCollapsedContent(avatar, contentHeight, avatar.getMeasuredHeight());
-            text.offsetTopAndBottom(getPaddingTop() - text.getTop());
+            int textOffset = Math.round(Math.max(0, (contentHeight - getCollapsedTextHeight()) / 2f) * (1f - expansion));
+            text.offsetTopAndBottom(getPaddingTop() + textOffset - text.getTop());
             if (availableHeight() != measuredAvailableHeight) requestLayout();
         }
 
+        private int getCollapsedTextHeight() {
+            LinearLayout.LayoutParams params = (LinearLayout.LayoutParams) bodies.getLayoutParams();
+            return text.getPaddingTop() + title.getMeasuredHeight() + params.topMargin
+                    + body.getMeasuredHeight() + params.bottomMargin + text.getPaddingBottom();
+        }
         private void centerCollapsedContent(View child, int contentHeight, int childHeight) {
             int childTop = getPaddingTop() + Math.max(0, (contentHeight - childHeight) / 2);
             child.offsetTopAndBottom(childTop - child.getTop());
@@ -1234,7 +1373,6 @@ public final class NimarkoInAppNotifications {
                             return true;
                         }
                     }
-
                 case MotionEvent.ACTION_CANCEL:
                     touching = false;
                     setPressed(false);

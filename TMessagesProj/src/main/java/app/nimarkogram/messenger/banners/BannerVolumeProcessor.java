@@ -5,7 +5,6 @@ import androidx.media3.common.audio.BaseAudioProcessor;
 
 import java.nio.ByteBuffer;
 
-
 public final class BannerVolumeProcessor extends BaseAudioProcessor {
     private static final int RAMP_MS = 10;
     private volatile float targetGain;
@@ -20,9 +19,6 @@ public final class BannerVolumeProcessor extends BaseAudioProcessor {
 
     @Override
     protected AudioFormat onConfigure(AudioFormat format) throws UnhandledAudioFormatException {
-
-
-
         if (format.encoding != C.ENCODING_PCM_16BIT || format.channelCount <= 0 || format.sampleRate <= 0) {
             throw new UnhandledAudioFormatException(format);
         }

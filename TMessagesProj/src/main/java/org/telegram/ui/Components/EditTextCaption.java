@@ -103,12 +103,10 @@ public class EditTextCaption extends EditTextBoldCursor implements FloatingToolb
         addTextChangedListener(new TextWatcher() {
             @Override
             public void beforeTextChanged(CharSequence s, int start, int count, int after) {
-
             }
 
             @Override
             public void onTextChanged(CharSequence s, int start, int before, int count) {
-
             }
 
             @Override
@@ -1115,12 +1113,6 @@ public class EditTextCaption extends EditTextBoldCursor implements FloatingToolb
         }
     }
 
-    /**
-     * Restores Telegram formatting from a clipboard item created by
-     * {@link CustomHtml}.  {@code expectedPlainText} is supplied by an IME
-     * commit: it prevents normal typing from accidentally consuming an older
-     * rich clipboard item which merely starts with the same characters.
-     */
     protected boolean pasteTelegramEntitiesFromClipboard(CharSequence expectedPlainText) {
         return pasteTelegramEntitiesHtml(getTelegramEntitiesClipboardHtml(expectedPlainText));
     }
@@ -1193,7 +1185,6 @@ public class EditTextCaption extends EditTextBoldCursor implements FloatingToolb
     private boolean pasteTelegramEntitiesHtml(String html) {
         try {
             SpannableStringBuilder pasted = parseClipboardHtml(html);
-
             Editable editable = getText();
             if (pasted == null || editable == null) {
                 return false;

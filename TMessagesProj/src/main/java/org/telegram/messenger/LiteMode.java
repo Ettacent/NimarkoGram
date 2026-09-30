@@ -177,8 +177,6 @@ public class LiteMode {
 
     public static void setAllFlags(int flags) {
         final int previousEffectiveFlags = getValue();
-        // in settings it is already handled. would you handle it? 🫵
-        // onFlagsUpdate(value, flags);
         value = restrictBlurFlags(flags);
         savePreference();
         onGlassFlagsUpdate(previousEffectiveFlags, getValue());
@@ -220,7 +218,6 @@ public class LiteMode {
             defaultValue = PRESET_MEDIUM;
             batteryDefaultValue = BATTERY_MEDIUM;
         }
-        defaultValue &= ~(FLAG_CHAT_BLUR | FLAG_LIQUID_GLASS);
 
         final SharedPreferences preferences = MessagesController.getGlobalMainSettings();
         if (!preferences.contains("lite_mode6")) {
@@ -292,13 +289,8 @@ public class LiteMode {
         int prevValue = value;
         final int savedValue = preferences.getInt("lite_mode6", defaultValue);
         value = restrictBlurFlags(savedValue);
-        final boolean migrateBlurDefaults = !preferences.getBoolean("nimarko_blur_opt_in_migrated_v1", false);
-        if (migrateBlurDefaults) {
-            value &= ~(FLAG_CHAT_BLUR | FLAG_LIQUID_GLASS);
-        }
-        if (migrateBlurDefaults || value != savedValue) {
-            preferences.edit().putInt("lite_mode6", value)
-                    .putBoolean("nimarko_blur_opt_in_migrated_v1", true).apply();
+        if (value != savedValue) {
+            preferences.edit().putInt("lite_mode6", value).apply();
         }
         if (loaded) {
             onFlagsUpdate(prevValue, value);

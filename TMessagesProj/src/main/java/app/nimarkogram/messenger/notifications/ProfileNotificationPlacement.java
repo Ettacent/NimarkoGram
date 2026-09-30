@@ -41,7 +41,6 @@ public final class ProfileNotificationPlacement extends RecyclerView.ItemDecorat
             list.postOnAnimation(this);
             return;
         }
-
         if (released) {
             list.removeItemDecoration(this);
             return;
@@ -84,7 +83,6 @@ public final class ProfileNotificationPlacement extends RecyclerView.ItemDecorat
             reservationLayoutPending = false;
             return;
         }
-
         list.measure(View.MeasureSpec.makeMeasureSpec(list.getMeasuredWidth(), View.MeasureSpec.EXACTLY),
                 View.MeasureSpec.makeMeasureSpec(list.getMeasuredHeight(), View.MeasureSpec.EXACTLY));
         list.layout(list.getLeft(), list.getTop(), list.getRight(), list.getBottom());

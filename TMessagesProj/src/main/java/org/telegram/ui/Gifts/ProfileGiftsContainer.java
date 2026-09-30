@@ -195,15 +195,41 @@ public class ProfileGiftsContainer extends FrameLayout implements NotificationCe
 
         private boolean reordering;
 
+        private boolean updatePosted;
+        private boolean pendingUpdateAnimated;
         public void update(boolean animated) {
             if (listView == null || listView.adapter == null) return;
+            if (updatePosted) {
+                animated &= pendingUpdateAnimated;
+            }
+            if (listView.isComputingLayout()) {
+                pendingUpdateAnimated = animated;
+                if (!updatePosted) {
+                    updatePosted = true;
+                    listView.postOnAnimation(updateAfterLayout);
+                }
+                return;
+            }
+            if (updatePosted) {
+                updatePosted = false;
+                listView.removeCallbacks(updateAfterLayout);
+            }
             final boolean atTop = !listView.canScrollVertically(-1);
-            listView.adapter.update(animated);
+            final int spanCount = Math.max(1, list == null || list.totalCount == 0 ? 3 : Math.min(3, list.totalCount));
+            final boolean columnsChanged = listView.getSpanCount() != spanCount;
+            if ((!animated || columnsChanged) && listView.getItemAnimator() != null) {
+                listView.getItemAnimator().endAnimations();
+            }
+            if (columnsChanged) {
+                listView.setSpanCount(spanCount);
+            }
+            listView.adapter.update(animated && !columnsChanged);
             if (atTop) {
                 listView.scrollToPosition(0);
             }
         }
 
+        private final Runnable updateAfterLayout = () -> update(pendingUpdateAnimated);
         public Page(ProfileGiftsContainer parent, int currentAccount, Theme.ResourcesProvider resourcesProvider) {
             super(parent.getContext());
 
@@ -371,12 +397,15 @@ public class ProfileGiftsContainer extends FrameLayout implements NotificationCe
                 }
             });
             reorder.attachToRecyclerView(listView);
-            updateEmptyView();
         }
 
         public void bind(boolean isCollection, StarsController.GiftsList list) {
             this.isCollection = isCollection;
             this.list = list;
+            hasTabs = !parent.collections.getCollections().isEmpty() || parent.canAdd();
+            if (parent.list == list ? emptyView1 == null : emptyView2 == null) {
+                updateEmptyView();
+            }
             listView.animate().cancel();
             listView.setAlpha(1f);
             if (list != null) {
@@ -427,6 +456,8 @@ public class ProfileGiftsContainer extends FrameLayout implements NotificationCe
         protected void onDetachedFromWindow() {
             super.onDetachedFromWindow();
             NotificationCenter.getInstance(currentAccount).removeObserver(this, NotificationCenter.starUserGiftsLoaded);
+            listView.removeCallbacks(updateAfterLayout);
+            updatePosted = false;
             listView.animate().cancel();
             listView.setAlpha(1f);
         }
@@ -586,11 +617,7 @@ public class ProfileGiftsContainer extends FrameLayout implements NotificationCe
         public void setHasTabs(boolean hasTabs) {
             if (this.hasTabs == hasTabs) return;
             this.hasTabs = hasTabs;
-            final boolean atTop = !listView.canScrollVertically(-1);
-            listView.adapter.update(true);
-            if (atTop) {
-                listView.scrollToPosition(0);
-            }
+            update(true);
             parent.updateTabsY();
         }
 
@@ -620,9 +647,9 @@ public class ProfileGiftsContainer extends FrameLayout implements NotificationCe
                 return;
             if (list.hasFilters() && list.gifts.size() <= 0 && list.endReached && !list.loading)
                 return;
-            final int spanCount = Math.max(1, list == null || list.totalCount == 0 ? 3 : Math.min(3, list.totalCount));
+            final int columns = Math.max(1, list.totalCount == 0 ? 3 : Math.min(3, list.totalCount));
             if (list != null) {
-                int spanCountLeft = 3;
+                int spanCountLeft = columns;
                 for (TL_stars.SavedStarGift userGift : list.gifts) {
                     items.add(
                         GiftSheet.GiftCell.Factory.asStarGift(0, userGift, true, false, isCollection)
@@ -630,11 +657,11 @@ public class ProfileGiftsContainer extends FrameLayout implements NotificationCe
                     );
                     spanCountLeft--;
                     if (spanCountLeft == 0) {
-                        spanCountLeft = 3;
+                        spanCountLeft = columns;
                     }
                 }
                 if (list.loading || !list.endReached) {
-                    for (int i = 0; i < (spanCountLeft <= 0 ? 3 : spanCountLeft); ++i) {
+                    for (int i = 0; i < spanCountLeft; ++i) {
                         items.add(UItem.asFlicker(1 + i, FlickerLoadingView.STAR_GIFT).setSpanCount(1));
                     }
                 }
@@ -651,14 +678,6 @@ public class ProfileGiftsContainer extends FrameLayout implements NotificationCe
 
             if (!items.isEmpty()) {
                 items.add(0, UItem.asSpace(dp(hasTabs ? 42 : 12)));
-            }
-
-            if (listView.getSpanCount() != spanCount) {
-                AndroidUtilities.runOnUIThread(() -> {
-                    if (listView != null) {
-                        listView.setSpanCount(spanCount);
-                    }
-                });
             }
 
             if (parent != null) {
@@ -1112,7 +1131,6 @@ public class ProfileGiftsContainer extends FrameLayout implements NotificationCe
                 }
                 page.bind(isCollection, thisList);
                 page.setVisibleHeight(visibleHeight);
-                page.setHasTabs(!collections.getCollections().isEmpty());
             }
 
             @Override
@@ -1419,8 +1437,8 @@ public class ProfileGiftsContainer extends FrameLayout implements NotificationCe
         if (viewPager.getViewPages() != null) {
             final View[] views = viewPager.getViewPages();
             for (View view : views) {
-                if (view instanceof Page) {
-                    h += (1.0f - (float) view.getTranslationX() / view.getWidth()) * ((Page) view).getTabsHeight();
+                if (view instanceof Page && view.getVisibility() == VISIBLE && view.getWidth() > 0) {
+                    h += clamp01(1.0f - Math.abs(view.getTranslationX()) / view.getWidth()) * ((Page) view).getTabsHeight();
                 }
             }
         }
@@ -2148,7 +2166,6 @@ public class ProfileGiftsContainer extends FrameLayout implements NotificationCe
             }
         }).show();
     }
-
 
     public static void setGiftFilterOptionsClickListeners(View view, StarsController.GiftsList list, Runnable update, int flag) {
         view.setOnClickListener(v -> {

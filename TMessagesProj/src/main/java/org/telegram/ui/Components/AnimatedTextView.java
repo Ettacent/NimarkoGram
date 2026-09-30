@@ -492,9 +492,7 @@ public class AnimatedTextView extends View {
 
                 oldText = currentText;
                 currentText = text;
-
                 rebuildLayouts(width);
-
                 this.moveDown = moveDown;
                 final ValueAnimator textAnimator = ValueAnimator.ofFloat(t = 0f, 1f);
                 animator = textAnimator;
@@ -998,15 +996,12 @@ public class AnimatedTextView extends View {
                         int alen = a - astart, blen = b - bstart;
                         if (alen > 0 || blen > 0) {
                             if (alen == blen && equal) {
-                                
                                 onEqualPart.run(newText.subSequence(astart, a), astart, a);
                             } else {
                                 if (alen > 0) {
-                                    
                                     part(onNewPart, newText.subSequence(astart, a), astart, a);
                                 }
                                 if (blen > 0) {
-                                    
                                     part(onOldPart, oldText.subSequence(bstart, b), bstart, b);
                                 }
                             }
@@ -1269,7 +1264,6 @@ public class AnimatedTextView extends View {
                 requestLayout();
             }
             if (toSetText != null) {
-                
                 final CharSequence nextText = toSetText;
                 final boolean nextMoveDown = toSetMoveDown;
                 toSetText = null;

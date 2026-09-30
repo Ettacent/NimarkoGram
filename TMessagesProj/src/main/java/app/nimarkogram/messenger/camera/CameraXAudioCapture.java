@@ -15,7 +15,6 @@ public final class CameraXAudioCapture {
                 recorder.setPreferredMicrophoneDirection(MicrophoneDirection.MIC_DIRECTION_UNSPECIFIED);
                 recorder.setPreferredMicrophoneFieldDimension(-1f);
             } catch (RuntimeException ignored) {
-
             }
         }
     }

@@ -822,7 +822,6 @@ public class FileLoader extends BaseController {
                 || "application/x-tgstoryboardmap".equalsIgnoreCase(document.mime_type));
     }
 
-
     private FileLoadOperation loadFileInternal(final TLRPC.Document document, final SecureDocument secureDocument, final WebFile webDocument, TLRPC.TL_fileLocationToBeDeprecated location, final ImageLocation imageLocation, Object parentObject, final String locationExt, final long locationSize, int priority, FileLoadOperationStream stream, final long streamOffset, boolean streamPriority, final int cacheType) {
         String fileName;
         if (location != null) {

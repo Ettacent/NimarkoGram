@@ -1819,9 +1819,6 @@ public class ViewPagerFixed extends FrameLayout {
             tabsAnimator.addUpdateListener(anm -> {
                 float progress = (float) anm.getAnimatedValue();
                 setAnimationIdicatorProgress(progress);
-                if (delegate != null) {
-                    delegate.onPageScrolled(progress);
-                }
             });
             tabsAnimator.setDuration(250);
             tabsAnimator.setInterpolator(CubicBezierInterpolator.DEFAULT);
@@ -1830,8 +1827,8 @@ public class ViewPagerFixed extends FrameLayout {
                 public void onAnimationEnd(Animator animation) {
                     animatingIndicator = false;
                     setEnabled(true);
-                    if (delegate != null) {
-                        delegate.onPageScrolled(1.0f);
+                    if (animatingIndicatorProgress < 1f) {
+                        setAnimationIdicatorProgress(1f);
                     }
                     invalidate();
                 }
@@ -2051,7 +2048,9 @@ public class ViewPagerFixed extends FrameLayout {
                 indicatorX += listView.getX();
                 if (indicatorWidth != 0) {
                     if (selectorType == 9 || selectorType == 10) {
-                        selectorPaint.setColor(Theme.multAlpha(textPaint.getColor(), .15f));
+                        selectorPaint.setColor(Theme.multAlpha(Theme.getColor(
+                                selectorType == 9 ? unactiveTextColorKey : activeTextColorKey,
+                                resourcesProvider), .15f));
                         final float cy = height / 2f, h = dp(26);
                         AndroidUtilities.rectTmp.set(indicatorX - dp(12), cy - h / 2f, indicatorX + indicatorWidth + dp(12), cy + h / 2f);
                         canvas.drawRoundRect(AndroidUtilities.rectTmp, AndroidUtilities.rectTmp.height() / 2f, AndroidUtilities.rectTmp.height() / 2f, selectorPaint);

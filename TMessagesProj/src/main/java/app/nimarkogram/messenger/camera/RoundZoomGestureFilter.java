@@ -1,6 +1,5 @@
 package app.nimarkogram.messenger.camera;
 
-
 public final class RoundZoomGestureFilter {
     private double filtered, previous, speed;
     private long time;
@@ -14,7 +13,6 @@ public final class RoundZoomGestureFilter {
     public float update(float value, long eventTime) {
         if (!Float.isFinite(value) || eventTime <= time) return (float) filtered;
         double dt = (eventTime - time) / 1000.0;
-
         double derivative = (value - previous) / Math.max(dt, 0.001);
         speed += alpha(dt, 8) * (derivative - speed);
         double cutoff = Math.min(30, 4 + Math.abs(speed) * 0.04);

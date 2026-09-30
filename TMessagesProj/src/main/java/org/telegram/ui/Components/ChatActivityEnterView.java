@@ -1226,10 +1226,7 @@ public class ChatActivityEnterView extends FrameLayout implements
                     app.nimarkogram.messenger.NimarkoConfig.pendingRoundFront = app.nimarkogram.messenger.NimarkoConfig.videoMessagesCamera == 0;
                 }
                 if (upstreamRoundCamera2 || app.nimarkogram.messenger.camera.CameraXUtils.isCurrentCameraCameraX()) {
-                    // CameraX owns its own provider/enumeration path. Waiting for
                     // legacy CameraController.initCamera() here delayed every
-                    // cold round-video start even though none of its Camera1
-                    // results are consumed by InstantCameraView's CameraX path.
                     onFinishInitCameraRunnable.run();
                 } else if (!CameraController.getInstance().isCameraInitied()) {
                     CameraController.getInstance().initCamera(onFinishInitCameraRunnable);
@@ -2646,8 +2643,8 @@ public class ChatActivityEnterView extends FrameLayout implements
                 }
                 invalidate();
             }
-            final float cancelProgress = smoothCancel ? getCancelProgress() : 0f;
 
+            final float cancelProgress = smoothCancel ? getCancelProgress() : 0f;
             float slideToCancelScale;
             if (smoothCancel && canceledByGesture) {
                 slideToCancelScale = 0.7f + cancelGestureStartProgress * 0.3f;
@@ -8561,9 +8558,6 @@ public class ChatActivityEnterView extends FrameLayout implements
             }
             // NimarkoMedia native: intercept when the entire message body is a
             // single supported URL and auto-mode is on. Controller takes over
-            // the API call + hyperlinked message send; we clear the editor and
-            // bail so the original send doesn't fire too. Mirrors plugin
-            // on_send_message_hook with HookStrategy.CANCEL.
             // BLOCKED case: a previous download is still in flight. Cancel the
             // send but KEEP the editor text so the user can retry without
             // retyping (and without the URL leaking into the chat next to a
@@ -10078,9 +10072,6 @@ public class ChatActivityEnterView extends FrameLayout implements
     }
 
     /**
-     * The prepared-recording panel and the glass use the same animated left
-     * edge. Moving the complete panel keeps delete, waveform, play/pause,
-     * duration and their touch bounds attached to the material surface.
      */
     private void applyRecordedAudioPanelTransitionGeometry() {
         if (recordedAudioPanel == null || recordedAudioPanel.getLayoutParams() == null) {
@@ -11241,7 +11232,6 @@ public class ChatActivityEnterView extends FrameLayout implements
         attachLayoutTranslationX = 0f;
         updateAttachLayoutParams();
         checkSendButton(false);
-
     }
 
     protected void onRecordDraftTransitionProgress(float progress) {
@@ -11993,7 +11983,6 @@ public class ChatActivityEnterView extends FrameLayout implements
             recordDeleteImageView.setLayerColor("Box Red", dotColor);
             recordDeleteImageView.setLayerColor("Cup Grey", greyColor);
             recordDeleteImageView.setLayerColor("Box Grey", greyColor);
-
             recordDeleteImageView.setLayerColor("Box_Grey 2", greyColor);
             recordDeleteImageView.setLayerColor("Line 1", greyColor);
             recordDeleteImageView.setLayerColor("Line 2", greyColor);
@@ -12714,7 +12703,7 @@ public class ChatActivityEnterView extends FrameLayout implements
             parent = parent.getParent();
         }
         if (!(parent instanceof ChatInputViewsContainer)) {
-            return;
+            return; // Embedded/story composers have their own background.
         }
         final ChatInputViewsContainer host = (ChatInputViewsContainer) parent;
         host.getInputBubbleContentBounds(senderComposerClipBounds);
@@ -16034,7 +16023,6 @@ public class ChatActivityEnterView extends FrameLayout implements
                     cancelLayout = new StaticLayout(label, bluePaint, layoutWidth, Layout.Alignment.ALIGN_NORMAL, 1f, 0f, false);
                 }
             }
-
             grayPaint.setColor(getThemedColor(Theme.key_chat_recordTime));
             grayPaint.setAlpha((int) (slideToAlpha * (1f - cancelToProgress) * slideProgress));
             bluePaint.setAlpha((int) (cancelAlpha * cancelToProgress));
@@ -16329,7 +16317,6 @@ public class ChatActivityEnterView extends FrameLayout implements
                     ? 16L
                     : Math.min(50L, drawRealtimeMs - lastDrawRealtimeMs);
             lastDrawRealtimeMs = drawRealtimeMs;
-
             if (replaceTransition != 0) {
                 replaceTransition -= drawDeltaMs / 116f;
                 if (replaceTransition < 0f) {

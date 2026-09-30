@@ -122,7 +122,6 @@ public class SizeNotifierFrameLayout extends FrameLayout implements Theme.Colora
     int count2;
     int times2;
     private float themeAnimationValue = 1f;
-    
     public void invalidateBlur() {
         if (!SharedConfig.chatBlurEnabled()) {
             return;
@@ -416,7 +415,6 @@ public class SizeNotifierFrameLayout extends FrameLayout implements Theme.Colora
     }
 
     private void checkLayerType() {
-
     }
 
     public Drawable getBackgroundImage() {
@@ -548,7 +546,6 @@ public class SizeNotifierFrameLayout extends FrameLayout implements Theme.Colora
     }
 
     private void checkSnowflake(Canvas canvas) {
-        
         boolean userForced = app.nimarkogram.messenger.NimarkoConfig.drawSnowInChat;
         boolean wantSnow = userForced
                 || (Theme.canStartHolidayAnimation() && LiteMode.isEnabled(LiteMode.FLAG_CHAT_BACKGROUND));
@@ -1141,61 +1138,48 @@ public class SizeNotifierFrameLayout extends FrameLayout implements Theme.Colora
 
         @Override
         public void drawText(@NonNull char[] text, int index, int count, float x, float y, @NonNull Paint paint) {
-            
         }
 
         @Override
         public void drawText(@NonNull String text, int start, int end, float x, float y, @NonNull Paint paint) {
-            
         }
 
         @Override
         public void drawText(@NonNull String text, float x, float y, @NonNull Paint paint) {
-            
         }
 
         @Override
         public void drawText(@NonNull CharSequence text, int start, int end, float x, float y, @NonNull Paint paint) {
-            
         }
 
         @Override
         public void drawTextRun(@NonNull CharSequence text, int start, int end, int contextStart, int contextEnd, float x, float y, boolean isRtl, @NonNull Paint paint) {
-            
         }
 
         @Override
         public void drawTextRun(@NonNull MeasuredText text, int start, int end, int contextStart, int contextEnd, float x, float y, boolean isRtl, @NonNull Paint paint) {
-            
         }
 
         @Override
         public void drawTextRun(@NonNull char[] text, int index, int count, int contextIndex, int contextCount, float x, float y, boolean isRtl, @NonNull Paint paint) {
-            
         }
 
         @Override
         public void drawTextOnPath(@NonNull char[] text, int index, int count, @NonNull Path path, float hOffset, float vOffset, @NonNull Paint paint) {
-            
         }
 
         @Override
         public void drawTextOnPath(@NonNull String text, @NonNull Path path, float hOffset, float vOffset, @NonNull Paint paint) {
-            
         }
 
         @Override
         public boolean clipPath(@NonNull Path path) {
-            
             return false;
-
         }
 
         @Override
         public boolean clipPath(@NonNull Path path, @NonNull Region.Op op) {
-            
             return false;
-
         }
     }
 

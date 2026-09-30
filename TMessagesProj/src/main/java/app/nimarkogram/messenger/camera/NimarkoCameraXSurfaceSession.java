@@ -120,7 +120,6 @@ public final class NimarkoCameraXSurfaceSession {
         controller.setUseConfiguredUltraWide(useConfiguredUltraWide);
         captureTargetRotation = getDisplayRotation();
         controller.setTargetOrientation(captureTargetRotation);
-        
         if (enableImageCapture) {
             orientationListener = new OrientationEventListener(this.context) {
                 @Override
@@ -146,7 +145,6 @@ public final class NimarkoCameraXSurfaceSession {
                 orientationListener.enable();
             }
         } else {
-            
             orientationListener = null;
         }
         controller.initCamera(this.context, frontFacing,
@@ -333,12 +331,10 @@ public final class NimarkoCameraXSurfaceSession {
     }
 
     public int getCameraId() {
-        
         return renderId;
     }
 
     public int getWorldAngle() {
-        
         int clockwise = hasCameraTransform ? getDisplayRotationDegrees() : rotationDegrees;
         return (360 - clockwise) % 360;
     }
@@ -352,7 +348,6 @@ public final class NimarkoCameraXSurfaceSession {
     }
 
     public boolean isMirrored() {
-        
         return hasTransformationInfo && mirrored;
     }
 
@@ -389,7 +384,6 @@ public final class NimarkoCameraXSurfaceSession {
             if (controller.isFrontface() == frontFacing && controller.isInitiated()) return;
             if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("CXSurface switch renderId=" + renderId
                     + " fromFront=" + controller.isFrontface() + " toFront=" + frontFacing);
-            
             surfaceRequestGeneration++;
             resetTransformationInfo();
             controller.setFrontFace(frontFacing);
@@ -451,7 +445,6 @@ public final class NimarkoCameraXSurfaceSession {
 
     public void focusToRect(@Nullable Rect focusRect) {
         if (closed || focusRect == null) return;
-        
         int x = Math.round((focusRect.centerX() + 1000f) * previewWidth / 2000f);
         int y = Math.round((focusRect.centerY() + 1000f) * previewHeight / 2000f);
         x = Math.max(0, Math.min(previewWidth - 1, x));
@@ -583,7 +576,6 @@ public final class NimarkoCameraXSurfaceSession {
     public boolean takePicture(java.io.File file,
                                @Nullable org.telegram.messenger.Utilities.Callback<Integer> callback) {
         if (closed) return false;
-        
         updateRotation();
         return controller.takePicture(file,
                 () -> {
@@ -639,7 +631,6 @@ public final class NimarkoCameraXSurfaceSession {
             try {
                 controller.closeCamera();
             } catch (Throwable error) {
-                
                 FileLog.e(error);
             }
         }

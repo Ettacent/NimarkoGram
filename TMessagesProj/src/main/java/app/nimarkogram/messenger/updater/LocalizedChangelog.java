@@ -5,7 +5,6 @@ import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
 
-
 public final class LocalizedChangelog {
     private final Map<String, String> translations;
     private final String legacy;
@@ -34,7 +33,6 @@ public final class LocalizedChangelog {
             String key = normalize(code);
             String text = translations.get(key);
             if (text != null) return text;
-
             if (key.startsWith("zh-")) {
                 String script = key.contains("-hant") || key.equals("zh-tw") || key.equals("zh-hk") || key.equals("zh-mo")
                         ? "zh-hant" : key.contains("-hans") || key.equals("zh-cn") || key.equals("zh-sg") ? "zh-hans" : null;

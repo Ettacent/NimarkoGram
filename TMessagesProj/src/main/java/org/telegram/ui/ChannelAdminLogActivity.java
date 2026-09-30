@@ -76,7 +76,6 @@ import androidx.recyclerview.widget.LinearLayoutManager;
 import org.telegram.ui.recyclerview.LinearSmoothScrollerCustom;
 import androidx.recyclerview.widget.RecyclerView;
 
-
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.AnimationNotificationsLocker;
 import org.telegram.messenger.ApplicationLoader;
@@ -193,6 +192,40 @@ public class ChannelAdminLogActivity extends BaseFragment implements Notificatio
 
     private ArrayList<ChatMessageCell> chatMessageCellsCache = new ArrayList<>();
 
+    private void updateLogLoadingState(boolean show, boolean animated) {
+        if (progressView == null || chatListView == null) return;
+        animated &= SharedConfig.animationsEnabled() && chatListView.isLaidOut() && !isPaused;
+        boolean empty = !show && filteredMessages.isEmpty();
+        if (searchItem != null) {
+            searchItem.setVisibility(empty && !logLoadFailed && TextUtils.isEmpty(searchQuery) ? View.GONE : View.VISIBLE);
+        }
+        animateLogContent(progressView, show, animated);
+        animateLogContent(chatListView, !show && !empty, animated);
+        animateLogContent(emptyViewContainer, empty, animated);
+    }
+    private void animateLogContent(View view, boolean visible, boolean animated) {
+        view.animate().setListener(null).cancel();
+        if (view.getAlpha() == (visible ? 1f : 0f)
+                && (visible ? view.getVisibility() == View.VISIBLE : view.getVisibility() != View.VISIBLE)) {
+            return;
+        }
+        if (!animated) {
+            view.setVisibility(visible ? View.VISIBLE : View.INVISIBLE);
+            view.setAlpha(visible ? 1f : 0f);
+            return;
+        }
+        if (visible && view.getVisibility() != View.VISIBLE) {
+            view.setAlpha(0f);
+            view.setVisibility(View.VISIBLE);
+        }
+        view.animate().alpha(visible ? 1f : 0f).setDuration(220)
+                .setInterpolator(org.telegram.ui.Components.CubicBezierInterpolator.DEFAULT)
+                .setListener(new AnimatorListenerAdapter() {
+                    @Override public void onAnimationEnd(Animator animation) {
+                        if (!visible) view.setVisibility(View.INVISIBLE);
+                    }
+                }).start();
+    }
     private FrameLayout progressView;
     private View progressView2;
     private RadialProgressView progressBar;
@@ -262,6 +295,7 @@ public class ChannelAdminLogActivity extends BaseFragment implements Notificatio
     private int minDate;
     private boolean endReached;
     private boolean loading;
+    private boolean logLoadFailed;
     private boolean reloadingLastMessages;
     private int messagesLoadGeneration;
     private int messagesRequestId;
@@ -419,7 +453,11 @@ public class ChannelAdminLogActivity extends BaseFragment implements Notificatio
         if (emptyView == null) {
             return;
         }
-        if (!TextUtils.isEmpty(searchQuery)) {
+        if (logLoadFailed && filteredMessages.isEmpty()) {
+            emptyImageView.setVisibility(View.GONE);
+            emptyView.setPadding(dp(16), dp(16), dp(16), dp(16));
+            emptyView.setText(getString(R.string.ErrorOccurred) + "\n\n" + getString(R.string.Retry));
+        } else if (!TextUtils.isEmpty(searchQuery)) {
             emptyImageView.setVisibility(View.GONE);
             emptyView.setPadding(dp(8), dp(3), dp(8), dp(3));
             emptyView.setText(AndroidUtilities.replaceTags(LocaleController.getString(R.string.NoLogFound)));
@@ -533,6 +571,7 @@ public class ChannelAdminLogActivity extends BaseFragment implements Notificatio
             return;
         }
         if (reset) {
+            logLoadFailed = false;
             messagesLoadGeneration++;
             if (messagesRequestId != 0) {
                 getConnectionsManager().cancelRequest(messagesRequestId, true);
@@ -546,9 +585,7 @@ public class ChannelAdminLogActivity extends BaseFragment implements Notificatio
             endReached = false;
             minEventId = Long.MAX_VALUE;
             if (progressView != null) {
-                AndroidUtilities.updateViewVisibilityAnimated(progressView, true, 0.3f, true);
-                emptyViewContainer.setVisibility(View.INVISIBLE);
-                chatListView.setEmptyView(null);
+                updateLogLoadingState(true, true);
             }
             messagesDict.clear();
             realMessagesDict.clear();
@@ -579,7 +616,6 @@ public class ChannelAdminLogActivity extends BaseFragment implements Notificatio
             }
         }
         loadsCount++;
-        updateEmptyPlaceholder();
         final int generation = messagesLoadGeneration;
         messagesRequestId = ConnectionsManager.getInstance(currentAccount).sendRequest(req, (response, error) -> {
             if (response instanceof TLRPC.TL_channels_adminLogResults) {
@@ -657,23 +693,16 @@ public class ChannelAdminLogActivity extends BaseFragment implements Notificatio
                     filterDeletedMessages();
 
                     loading = false;
+                    logLoadFailed = false;
+                    updateEmptyPlaceholder();
                     if (!added) {
                         endReached = true;
                     }
-                    if (progressView != null) {
-                        AndroidUtilities.updateViewVisibilityAnimated(progressView, false, 0.3f, true);
-                    }
-                    if (chatListView != null) {
-                        chatListView.setEmptyView(emptyViewContainer);
-                    }
-
                     if (chatAdapter != null) {
                         chatAdapter.notifyDataSetChanged();
                     }
+                    updateLogLoadingState(false, true);
 
-                    if (searchItem != null) {
-                        searchItem.setVisibility(filteredMessages.isEmpty() && TextUtils.isEmpty(searchQuery) ? View.GONE : View.VISIBLE);
-                    }
                 });
             } else {
                 AndroidUtilities.runOnUIThread(() -> {
@@ -683,15 +712,12 @@ public class ChannelAdminLogActivity extends BaseFragment implements Notificatio
                     messagesRequestId = 0;
                     loadsCount--;
                     loading = false;
-                    if (progressView != null) {
-                        AndroidUtilities.updateViewVisibilityAnimated(progressView, false, 0.3f, true);
-                    }
-                    if (chatListView != null) {
-                        chatListView.setEmptyView(emptyViewContainer);
-                    }
+                    logLoadFailed = filteredMessages.isEmpty();
+                    updateEmptyPlaceholder();
                     if (chatAdapter != null) {
                         chatAdapter.notifyDataSetChanged();
                     }
+                    updateLogLoadingState(false, true);
                     if (error != null) {
                         AlertsCreator.processError(currentAccount, error, this, req);
                     }
@@ -1066,7 +1092,6 @@ public class ChannelAdminLogActivity extends BaseFragment implements Notificatio
 
             @Override
             protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
-
                 int allHeight;
                 int widthSize = MeasureSpec.getSize(widthMeasureSpec);
                 int heightSize = MeasureSpec.getSize(heightMeasureSpec);
@@ -1210,14 +1235,16 @@ public class ChannelAdminLogActivity extends BaseFragment implements Notificatio
 
         contentView = (ChatActivityFragmentView) fragmentView;
 
-
         contentView.setOccupyStatusBar(!AndroidUtilities.isTablet());
         contentView.setBackgroundImage(Theme.getCachedWallpaper(), Theme.isWallpaperMotion());
         actionBar.setupGlass(glassBackgroundDrawableFactory, BlurredBackgroundProviderImpl.topPanelChatActivity(resourceProvider));
         emptyViewContainer = new FrameLayout(context);
         emptyViewContainer.setVisibility(View.INVISIBLE);
         contentView.addView(emptyViewContainer, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, Gravity.CENTER));
-        emptyViewContainer.setOnTouchListener((v, event) -> true);
+        emptyViewContainer.setOnTouchListener((v, event) -> !logLoadFailed);
+        emptyViewContainer.setOnClickListener(v -> {
+            if (logLoadFailed && !loading) loadMessages(true);
+        });
 
         emptyLayoutView = new LinearLayout(context);
         emptyLayoutView.setBackground(Theme.createServiceDrawable(dp(12), emptyView, contentView));
@@ -1647,14 +1674,7 @@ public class ChannelAdminLogActivity extends BaseFragment implements Notificatio
         searchContainer.addView(searchCountText, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, Gravity.LEFT | Gravity.CENTER_VERTICAL, 108, 0, 0, 0));
 
         chatAdapter.updateRows();
-        if (loading && messages.isEmpty()) {
-            AndroidUtilities.updateViewVisibilityAnimated(progressView, true, 0.3f, true);
-            chatListView.setEmptyView(null);
-        } else {
-            AndroidUtilities.updateViewVisibilityAnimated(progressView, false, 0.3f, true);
-            chatListView.setEmptyView(emptyViewContainer);
-        }
-        chatListView.setAnimateEmptyView(true, RecyclerListView.EMPTY_VIEW_ANIMATION_TYPE_ALPHA_SCALE);
+        updateLogLoadingState(loading && messages.isEmpty(), false);
 
         undoView = new UndoView(context);
         undoView.setAdditionalTranslationY(dp(51));
@@ -2819,6 +2839,7 @@ public class ChannelAdminLogActivity extends BaseFragment implements Notificatio
 
     @Override
     public void onPause() {
+        updateLogLoadingState(loading && messages.isEmpty(), false);
         super.onPause();
         if (contentView != null) {
             contentView.onPause();
@@ -2956,6 +2977,7 @@ public class ChannelAdminLogActivity extends BaseFragment implements Notificatio
                 messagesStartRow = -1;
                 messagesEndRow = -1;
             }
+            updateLogLoadingState(loading && messages.isEmpty(), animated);
         }
 
         @Override
@@ -4443,7 +4465,6 @@ public class ChannelAdminLogActivity extends BaseFragment implements Notificatio
         return false;
     }
 
-
     private final ArrayList<RectF> glassCapturePositions = new ArrayList<>();
 
     private void invalidateMergedVisibleBlurredPositionsAndSourcesImpl(int flags) {
@@ -4465,7 +4486,6 @@ public class ChannelAdminLogActivity extends BaseFragment implements Notificatio
             scrollableViewNoiseSuppressor.setupRenderNodes(glassCapturePositions, glassPositionsArray.size());
         }
 
-        //if (BitwiseUtils.hasFlag(flags, BLUR_INVALIDATE_FLAG_POSITIONS | BLUR_INVALIDATE_FLAG_SCROLL)) {
         if (scrollableViewNoiseSuppressor.invalidateResultRenderNodes(contentView::drawList, contentView.getWidth(), contentView.getHeight())) {
             if (glassBackgroundSourceRenderNode != null) {
                 glassBackgroundSourceRenderNode.invalidateDisplayListForDrawables();
@@ -4479,9 +4499,6 @@ public class ChannelAdminLogActivity extends BaseFragment implements Notificatio
             contentView.invalidate();
         }
     }
-
-
-
 
     private final RectF tmpViewRectF = new RectF();
     private boolean quickRejectChild(View child, @Nullable RectF position) {

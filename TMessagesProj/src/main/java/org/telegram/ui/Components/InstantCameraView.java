@@ -243,10 +243,10 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
             boolean currentSession = session == videoMessagesHelper.getCurrentSession();
             if (currentSession && cameraXSingleSwitchAwaitingBind
                     && session.isFrontFacing() == isFrontface) {
-                pendingCameraXSingleSessionGeneration = session.getSurfaceRequestGeneration();
                 // Do not apply the new lens mirror/rotation while the OES
                 // texture still contains the final frame of the old lens.
                 // Consume both atomically on the first replacement frame.
+                pendingCameraXSingleSessionGeneration = session.getSurfaceRequestGeneration();
                 pendingCameraXSingleSession = session;
                 if (app.nimarkogram.messenger.NimarkoCameraLog.DEBUG) {
                     app.nimarkogram.messenger.NimarkoCameraLog.log(
@@ -2470,9 +2470,6 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
                                 + " waitMs=" + (SystemClock.elapsedRealtime()
                                 - cameraXSingleSwitchWaitStartedMs));
             }
-            // Do not blend back to the stale OES frame if CameraX failed to
-            // produce a replacement frame.  Release the UI lock and let the
-            // normal session recovery path redraw whichever camera recovers.
             clearCameraXVideoTransition();
             flipAnimationInProgress = false;
             CameraGLThread thread = cameraThread;
@@ -3119,10 +3116,6 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
         private int snapshotAlphaHandle;
         private int snapshotTexelSizeHandle;
         private int snapshotSwitchBlurHandle;
-        // Keep one retired shared texture alive for a full transition. An
-        // encoder message may still reference it after the UI accepted the
-        // next switch; deleting only the generation before that avoids a
-        // cross-context name race while bounding memory to two snapshots.
         private volatile boolean snapshotContextClosed;
         private final class CameraSnapshot {
             final int texture;
@@ -3579,11 +3572,6 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
                     GLES20.glDeleteTextures(1, cameraTexture, 1);
                     cameraTexture[1] = Integer.MIN_VALUE;
                 }
-                // Do not glDelete the shared snapshot here: encoder frame
-                // messages can still be queued and bind this name from their
-                // shared EGL context. The share group releases it when the
-                // encoder context is destroyed; a later switch explicitly
-                // replaces an already-retired snapshot.
                 if (snapshotProgram != 0) {
                     GLES20.glDeleteProgram(snapshotProgram);
                     snapshotProgram = 0;
@@ -3911,7 +3899,6 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
                     GLES20.glDeleteTextures(1, texture, 0);
                 }
                 if (!success) {
-                    // Never animate a stale snapshot from an older switch.
                     clearCameraXSnapshot();
                 }
             }
@@ -4170,8 +4157,8 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
                 // missing from the actual recorded round video.
                 videoEncoder.transitionFrameAvailable(this.cameraId, this);
             }
-            GLES20.glViewport(0, 0, Math.max(1, surfaceWidth), Math.max(1, surfaceHeight));
 
+            GLES20.glViewport(0, 0, Math.max(1, surfaceWidth), Math.max(1, surfaceHeight));
             GLES20.glUseProgram(drawProgram);
             GLES20.glActiveTexture(GLES20.GL_TEXTURE0);
 
@@ -4632,7 +4619,6 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
         final int snapshotHeight;
         final float progress;
         final float blur;
-
         final CameraGLThread.CameraSnapshot snapshot;
         final FloatBuffer snapshotTextureBuffer;
         final int activeSurfaceIndex;
@@ -5114,7 +5100,6 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
         long prevTimestamp;
         private Integer lastFrameSubmissionCameraId;
         private volatile long lastFrameSubmissionRealtimeNanos;
-
         private final ArrayList<CameraVideoFrameState> pendingVideoFrames = new ArrayList<>();
         private CameraVideoFrameState captureFrameState(Integer cameraId, CameraGLThread source) {
             CameraGLThread.CameraSnapshot snapshot = cameraXSingleSwitchSnapshotHandle;
@@ -5610,7 +5595,6 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
             if (useCameraX) {
                 GLES20.glBlendFunc(GLES20.GL_SRC_ALPHA, GLES20.GL_ONE_MINUS_SRC_ALPHA);
             }
-
             if (overlayHelper != null) {
                 overlayHelper.render();
                 if (blendEnabled) {
@@ -7071,8 +7055,8 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
             super(context);
             InstantCameraView.this.setWillNotDraw(false);
         }
-        @Override
 
+        @Override
         public void setImageReceiver(ImageReceiver imageReceiver) {
             if (this.imageReceiver == null) {
                 imageProgress = 0;

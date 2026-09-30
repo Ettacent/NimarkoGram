@@ -83,7 +83,6 @@ public class RLottieDrawable extends BitmapDrawable implements Animatable, Bitma
     protected WeakReference<Runnable> onFinishCallback;
     private int finishFrame;
 
-
     protected int isDice;
 
     protected int autoRepeat = 1;
@@ -182,7 +181,7 @@ public class RLottieDrawable extends BitmapDrawable implements Animatable, Bitma
     }
 
     private final class CacheGenerationTask implements Runnable {
-        final AtomicInteger state = new AtomicInteger();
+        final AtomicInteger state = new AtomicInteger(); // queued, running, cancelled
         @Override
         public void run() {
             if (!state.compareAndSet(0, 1)) return;
@@ -213,6 +212,7 @@ public class RLottieDrawable extends BitmapDrawable implements Animatable, Bitma
         generatingCache = false;
         if (!isRecycled && !destroyWhenDone && bitmapsCache != null && bitmapsCache.needGenCache()) {
             allowDrawFramesWhileCacheGenerating = true;
+            cacheGenerationFailed = true;
         }
         decodeFrameFinishedInternal();
         if (whenCacheDone != null) {
@@ -300,6 +300,8 @@ public class RLottieDrawable extends BitmapDrawable implements Animatable, Bitma
 
     private volatile boolean genCacheSend;
     private volatile boolean allowDrawFramesWhileCacheGenerating;
+    private volatile boolean cacheGenerationFailed;
+    private boolean cacheReadFailed;
 
     protected final Runnable loadFrameRunnable = this::loadFrameRunnableInternal;
 
@@ -384,25 +386,30 @@ public class RLottieDrawable extends BitmapDrawable implements Animatable, Bitma
         final RLottieNative ptrToUse = nativePtr;
         int result = -1;
         int framesPerUpdates = shouldLimitFps ? 2 : 1;
-        if (precache && bitmapsCache != null) {
+        if (precache && bitmapsCache != null && !cacheReadFailed) {
             try {
                 result = bitmapsCache.getFrame(currentFrame / framesPerUpdates, bitmap);
-                if (!bitmapsCache.needGenCache() && allowDrawFramesWhileCacheGenerating && nativePtr != null) {
+                if (result >= 0 && !bitmapsCache.needGenCache()
+                        && (allowDrawFramesWhileCacheGenerating || cacheGenerationFailed) && nativePtr != null) {
                     nativePtr.recycle();
                     nativePtr = null;
                 }
             } catch (Exception e) {
                 FileLog.e(e);
             }
-        } else {
+            if (result < 0 && !bitmapsCache.needGenCache()) {
+                cacheReadFailed = true;
+                allowDrawFramesWhileCacheGenerating = true;
+            }
+        } else if (bitmapsCache == null) {
             result = ptrToUse.getFrame(currentFrame, bitmap, needClearBitmap);
         }
-        if (bitmapsCache != null && bitmapsCache.needGenCache()) {
-            if (!genCacheSend) {
+        if (bitmapsCache != null && (cacheReadFailed || bitmapsCache.needGenCache())) {
+            if (!cacheReadFailed && !genCacheSend) {
                 genCacheSend = true;
                 AndroidUtilities.runOnUIThread(uiRunnableGenerateCache);
             }
-            if (allowDrawFramesWhileCacheGenerating) {
+            if (cacheReadFailed || cacheGenerationFailed || allowDrawFramesWhileCacheGenerating) {
                 if (nativePtr == null) {
                     nativePtr = RLottieNative.createFromFile(
                         args.file.toString(),
@@ -421,7 +428,6 @@ public class RLottieDrawable extends BitmapDrawable implements Animatable, Bitma
         if (result < 0) {
             return LOAD_FRAME_RESULT_ERROR;
         }
-
         return LOAD_FRAME_RESULT_OK;
     }
     @WorkerThread
@@ -444,8 +450,6 @@ public class RLottieDrawable extends BitmapDrawable implements Animatable, Bitma
                     nextFrameIsLast = true;
                     checkDispatchOnAnimationEnd();
                 }
-
-
             }
         } else {
             if (currentFrame + framesPerUpdates < (customEndFrame >= 0 ? customEndFrame : metaData[0])) {
@@ -641,13 +645,13 @@ public class RLottieDrawable extends BitmapDrawable implements Animatable, Bitma
     public final void setOnAnimationEndListener(Runnable onAnimationEndListener) {
         this.onAnimationEndListener = onAnimationEndListener;
     }
-    @Deprecated
 
+    @Deprecated
     public RLottieDrawable(@RawRes int rawRes, String name, int w, int h) {
         this(rawRes, w, h);
     }
-    @Deprecated
 
+    @Deprecated
     public RLottieDrawable(@RawRes int rawRes, String name, int w, int h, boolean startDecode, int[] colorReplacement) {
         this(rawRes, w, h, startDecode, colorReplacement);
     }
@@ -1059,7 +1063,6 @@ public class RLottieDrawable extends BitmapDrawable implements Animatable, Bitma
         applyTransformation = true;
     }
 
-
     @UiThread
     protected boolean bothRenderingBitmapsAreNull() {
         return renderingBitmap == null && nextRenderingBitmap == null;
@@ -1193,8 +1196,6 @@ public class RLottieDrawable extends BitmapDrawable implements Animatable, Bitma
 
     @UiThread
     private void updateCurrentFrameInternal() {
-        //final boolean canSwapBuffers = timeDiff >= timeCheck;
-
         final boolean canSwapBuffers = swapBuffersAllowedByChoreographer
             || !isRunning && decodeSingleFrame;
 
@@ -1253,6 +1254,9 @@ public class RLottieDrawable extends BitmapDrawable implements Animatable, Bitma
 
     public final boolean hasBitmap() {
         return !isRecycled && (renderingBitmap != null || nextRenderingBitmap != null) && !isInvalid;
+    }
+    public final boolean isRecycled() {
+        return isRecycled || destroyWhenDone;
     }
     public final boolean hasRenderingBitmap() {
         return !isRecycled && !destroyWhenDone && canLoadFrames() && renderingBitmap != null && !isInvalid;

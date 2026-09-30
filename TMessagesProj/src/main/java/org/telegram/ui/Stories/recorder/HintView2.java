@@ -52,7 +52,6 @@ import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.R;
 import org.telegram.messenger.Utilities;
 import org.telegram.ui.ActionBar.Theme;
-import org.telegram.ui.Cells.BaseCell;
 import org.telegram.ui.Components.AnimatedEmojiDrawable;
 import org.telegram.ui.Components.AnimatedEmojiSpan;
 import org.telegram.ui.Components.AnimatedFloat;
@@ -61,6 +60,7 @@ import org.telegram.ui.Components.ButtonBounce;
 import org.telegram.ui.Components.CubicBezierInterpolator;
 import org.telegram.ui.Components.LinkPath;
 import org.telegram.ui.Components.LinkSpanDrawable;
+import org.telegram.ui.Components.SmoothRippleDrawable;
 import org.telegram.ui.Components.RLottieDrawable;
 import org.telegram.ui.Components.TypefaceSpan;
 
@@ -540,7 +540,7 @@ public class HintView2 extends View {
                 new int[][]{ StateSet.WILD_CARD },
                 new int[]{ selectorColor }
         );
-        selectorDrawable = new BaseCell.RippleDrawableSafe(colorStateList, null, new Drawable() {
+        selectorDrawable = new SmoothRippleDrawable(colorStateList, null, new Drawable() {
             @Override
             public void draw(@NonNull Canvas canvas) {
                 canvas.save();
@@ -755,6 +755,10 @@ public class HintView2 extends View {
     @Override
     protected void onDetachedFromWindow() {
         super.onDetachedFromWindow();
+        if (selectorDrawable != null) {
+            selectorDrawable.setState(new int[]{});
+            selectorDrawable.jumpToCurrentState();
+        }
         AnimatedEmojiSpan.release(this, emojiGroupedSpans);
     }
 

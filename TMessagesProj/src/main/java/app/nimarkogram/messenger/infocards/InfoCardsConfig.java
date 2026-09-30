@@ -32,14 +32,12 @@ public final class InfoCardsConfig {
     }
 
     public static boolean isEnabled() {
-        
         return prefs().getBoolean("enabled", false);
     }
 
     public static void setEnabled(boolean v) {
         prefs().edit().putBoolean("enabled", v).apply();
         if (v) {
-            
             InfoCardRates.prefetch();
         }
         notifyLayoutChanged();
@@ -69,7 +67,6 @@ public final class InfoCardsConfig {
                                                                   List<Integer> requestedHidden,
                                                                   boolean forcePersist) {
         List<Integer> known = defaultActive();
-        
         boolean configured = requestedActive != null
                 || prefs().getBoolean("layoutCustomized", false)
                 || prefs().contains("activePills");
@@ -93,6 +90,10 @@ public final class InfoCardsConfig {
         }
         ArrayList<Integer> outActive = new ArrayList<>(active);
         ArrayList<Integer> outHidden = new ArrayList<>(hidden);
+        int selected = prefs().getInt("lastActivePillId", -1);
+        if (selected >= 0 && !known.contains(selected)) {
+            prefs().edit().putInt("lastActivePillId", outActive.isEmpty() ? -1 : outActive.get(0)).apply();
+        }
         String activeString = serializeList(outActive);
         String hiddenString = serializeList(outHidden);
         if (configured && (forcePersist || !activeString.equals(prefs().getString("activePills", null))
@@ -141,7 +142,6 @@ public final class InfoCardsConfig {
     }
 
     public static final int COLOR_MODE_CUSTOM = 0;
-     
     public static final int COLOR_MODE_THEME = 1;
 
     public static int getColorMode() {
@@ -151,7 +151,6 @@ public final class InfoCardsConfig {
 
     public static void setColorMode(int mode) {
         prefs().edit().putInt("colorMode", mode == COLOR_MODE_THEME ? COLOR_MODE_THEME : COLOR_MODE_CUSTOM).apply();
-        
         notifyColorModeChanged();
     }
 

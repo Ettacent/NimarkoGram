@@ -58,7 +58,6 @@ public class BannerPreferencesActivity extends BasePreferencesActivity {
         }
     };
 
-
     @Override
     public String getTitle() {
         return LocaleController.getString(R.string.NM_BAN_Title);
@@ -151,7 +150,7 @@ public class BannerPreferencesActivity extends BasePreferencesActivity {
             case "blocked":
                 moderationHint = LocaleController.getString(R.string.NM_BAN_BlockedWarning);
                 break;
-            default:
+            default: // none, rejected, unknown
                 items.add(asSettingsLink(ID_SUBMIT, IconBackgroundColors.GREEN,
                         R.drawable.msg_gallery, LocaleController.getString(R.string.NM_BAN_Attach),
                         LocaleController.getString(R.string.NM_BAN_SelectHint)).setEnabled(!sending && !picking));

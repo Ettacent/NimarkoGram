@@ -223,6 +223,11 @@ final class NimarkoSettingsSearchIndex {
                 16, R.string.NM_MediaGlow,
                 3, R.string.NM_SnowInHeader,
                 28, R.string.NM_CP_SnowflakesInChat);
+        if (android.os.Build.VERSION.SDK_INT >= 31) {
+            row(entries, guid, SCREEN_APPEARANCE, 31, R.string.NM_EnhancedGlassBlur,
+                    R.string.NM_EnhancedGlassBlur_Desc, R.drawable.msg_theme_solar,
+                    R.string.NM_Cat_Appearance, R.string.NM_SettingsSectionInterfaceEffects);
+        }
         row(entries, guid, SCREEN_APPEARANCE, 12, R.string.NM_ForumAvatarsLikeChats,
                 R.string.NM_ForumAvatarsLikeChats_Desc, R.drawable.msg_theme_solar,
                 R.string.NM_Cat_Appearance, R.string.NM_SettingsSectionAvatarsStickers);

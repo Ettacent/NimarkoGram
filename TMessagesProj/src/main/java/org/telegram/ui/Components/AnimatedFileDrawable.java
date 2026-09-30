@@ -61,7 +61,7 @@ public final class AnimatedFileDrawable extends BitmapDrawable implements Animat
     public boolean skipFrameUpdate;
     public long currentTime;
 
-    private static final boolean USE_BITMAP_SHADER = true;
+    private static final boolean USE_BITMAP_SHADER = true; // Build.VERSION.SDK_INT < 29;
     private boolean PRERENDER_FRAME;
 
     private long lastFrameTime;
@@ -400,12 +400,14 @@ public final class AnimatedFileDrawable extends BitmapDrawable implements Animat
                     isRestarted = true;
                 }
                 metaData[3] = backgroundBuffer.time = cacheMetadata.frame * Math.max(16, metaData[4] / Math.max(1, bitmapsCache.getFrameCount()));
-                backgroundBuffer.opaque = false;
+                backgroundBuffer.opaque = false; // unknown
                 backgroundBuffer.startsGifLoop = false;
                 backgroundBuffer.gifPlaybackGeneration = frameGeneration;
 
                 if (bitmapsCache.needGenCache()) {
                     AndroidUtilities.runOnUIThread(uiRunnableGenerateCache);
+                } else if (result == -1) {
+                    cacheGenerationFailed = true;
                 }
                 if (result == -1) {
                     AndroidUtilities.runOnUIThread(uiRunnableNoFrame);
@@ -761,7 +763,7 @@ public final class AnimatedFileDrawable extends BitmapDrawable implements Animat
 
     @UiThread
     private void releaseResources() {
-        if (cacheGenRunnable != null) return;
+        if (cacheGenRunnable != null) return; // worker still owns cache/native buffers
         synchronized (frameLock) {
             releaseResourcesLocked();
         }
@@ -890,7 +892,7 @@ public final class AnimatedFileDrawable extends BitmapDrawable implements Animat
     }
     private boolean scheduledForSeek;
 
-    @AnyThread
+    @AnyThread  // maybe ui thread only
     private void scheduleNextGetFrame(boolean wait, boolean cancel) {
         final boolean ignoreScheduleNext = loadFrameTask != null && !cancel
             || (!PRERENDER_FRAME || nextRenderingBuffer2 != null && !(!scheduledForSeek && pendingSeekToUI >= 0)) && nextRenderingBuffer != null
@@ -1078,7 +1080,6 @@ public final class AnimatedFileDrawable extends BitmapDrawable implements Animat
     }
     private void drawBuffer(Canvas canvas, AnimatedFileBuffer buffer, RectF rect, Paint paint, float scaleX, float scaleY,
                             boolean drawInBackground, int threadIndex, boolean hasRoundRadius) {
-
         if (hasRoundRadius) {
             int index = drawInBackground ? threadIndex + 1 : 0;
             if (USE_BITMAP_SHADER) {
@@ -1330,7 +1331,6 @@ public final class AnimatedFileDrawable extends BitmapDrawable implements Animat
         }
         mDecoder.getVideoFrame(null, false, startTime, endTime, loop);
     }
-
 
     public boolean hasParents() {
         return !parents.isEmpty();

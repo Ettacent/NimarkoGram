@@ -14,13 +14,21 @@ import org.telegram.messenger.R;
 public class LiquidGlassEffect {
 
     private final RenderNode node;
-    private final RuntimeShader shader;
+    private RuntimeShader shader;
+    private boolean enhanced;
     private RenderEffect effect;
 
     public LiquidGlassEffect(RenderNode node) {
         this.node = node;
-        final String code = AndroidUtilities.readRes(R.raw.liquid_glass_shader);
-        shader = new RuntimeShader(code);
+        updateShader();
+    }
+    private void updateShader() {
+        final boolean requested = app.nimarkogram.messenger.NimarkoConfig.enhancedGlassBlur;
+        if (shader != null && enhanced == requested) return;
+        enhanced = requested;
+        shader = new RuntimeShader(AndroidUtilities.readRes(enhanced
+                ? R.raw.liquid_glass_shader : R.raw.liquid_glass_shader_standard));
+        uniformsInitialized = false;
     }
     public void setEnabled(boolean enabled) {
         node.setRenderEffect(enabled ? effect : null);
@@ -52,6 +60,7 @@ public class LiquidGlassEffect {
         float index,
         int foregroundColor
     ) {
+        updateShader();
         final boolean reflectionEnabled = app.nimarkogram.messenger.NimarkoConfig.glareOnElements;
         float resolutionX = node.getWidth();
         float resolutionY = node.getHeight();
@@ -67,7 +76,6 @@ public class LiquidGlassEffect {
         if (radiusLeftBottom + radiusRightBottom > width) {
             radiusScale = Math.min(radiusScale, width / (radiusLeftBottom + radiusRightBottom));
         }
-
         if (radiusLeftTop + radiusLeftBottom > height) {
             radiusScale = Math.min(radiusScale, height / (radiusLeftTop + radiusLeftBottom));
         }
@@ -102,7 +110,7 @@ public class LiquidGlassEffect {
             uniformsInitialized = true;
             this.foregroundColor = foregroundColor;
             this.reflectionEnabled = reflectionEnabled;
-            shader.setFloatUniform("reflection_enabled", reflectionEnabled ? 1f : 0f);
+            if (enhanced) shader.setFloatUniform("reflection_enabled", reflectionEnabled ? 1f : 0f);
 
             final float a = Color.alpha(foregroundColor) / 255f;
             final float r = Color.red(foregroundColor) / 255f * a;
@@ -114,7 +122,8 @@ public class LiquidGlassEffect {
             shader.setFloatUniform("size", this.sizeX = sizeX, this.sizeY = sizeY);
             shader.setFloatUniform("radius", this.radiusRightBottom = radiusRightBottom, this.radiusRightTop = radiusRightTop, this.radiusLeftBottom = radiusLeftBottom, this.radiusLeftTop = radiusLeftTop);
             shader.setFloatUniform("thickness", this.thickness = thickness);
-            shader.setFloatUniform("refract_intensity", this.intensity = intensity);
+            this.intensity = intensity;
+            shader.setFloatUniform("refract_intensity", enhanced ? intensity : intensity * (0.75f / 0.9f));
             shader.setFloatUniform("refract_index", this.index = index);
             shader.setFloatUniform("foreground_color_premultiplied", r, g, b, a);
             node.setRenderEffect(effect = RenderEffect.createRuntimeShaderEffect(shader, "img"));

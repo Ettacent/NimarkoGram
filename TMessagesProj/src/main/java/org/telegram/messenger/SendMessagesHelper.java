@@ -313,7 +313,6 @@ public class SendMessagesHelper extends BaseController implements NotificationCe
                 uploadSet.remove(path);
             }
         }
-        
         private void addUploadProgress(String path, long sz, float progress) {
             uploadProgresses.put(path, progress);
             uploadSize.put(path, sz);
@@ -828,7 +827,6 @@ public class SendMessagesHelper extends BaseController implements NotificationCe
                 retriedToSendArray[index] = value;
             }
         }
-        
         public int topMessageId;
 
         public TLRPC.InputMedia inputUploadMedia;

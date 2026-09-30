@@ -12,7 +12,6 @@ import androidx.media3.exoplayer.audio.DefaultAudioSink;
 import androidx.media3.exoplayer.audio.DefaultAudioTrackBufferSizeProvider;
 import androidx.media3.exoplayer.audio.ForwardingAudioSink;
 
-
 public final class BannerAudioRenderersFactory extends DefaultRenderersFactory
         implements org.telegram.ui.Components.VideoPlayer.SourceVolumeController {
     private volatile float sourceVolume;
@@ -45,9 +44,6 @@ public final class BannerAudioRenderersFactory extends DefaultRenderersFactory
                 .setEnableFloatOutput(false)
                 .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
                 .setAudioProcessors(new AudioProcessor[]{volume})
-
-
-
                 .setAudioTrackBufferSizeProvider(new DefaultAudioTrackBufferSizeProvider.Builder()
                         .setMinPcmBufferDurationUs(80_000)
                         .setMaxPcmBufferDurationUs(120_000)
@@ -62,7 +58,6 @@ public final class BannerAudioRenderersFactory extends DefaultRenderersFactory
 
             @Override
             public int getFormatSupport(Format format) {
-
                 return MimeTypes.AUDIO_RAW.equals(format.sampleMimeType)
                         ? super.getFormatSupport(format) : SINK_FORMAT_UNSUPPORTED;
             }
@@ -79,9 +74,6 @@ public final class BannerAudioRenderersFactory extends DefaultRenderersFactory
 
             @Override
             public void setVolume(float gain) {
-
-
-
                 super.setVolume(gain);
             }
         };

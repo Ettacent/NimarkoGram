@@ -65,6 +65,7 @@ public class ProfileActionsView extends View {
 
     public boolean isAnimatingCallAction = false;
     public boolean isOpeningLayout = true;
+    private boolean snapPositionsPending;
     public float clipHeight = -1;
     private final Path clipAvatarPath = new Path();
     private final Path clipPath = new Path();
@@ -207,7 +208,6 @@ public class ProfileActionsView extends View {
         if (color == 0) return;
         if (!hasColorById) {
             paint.setColor(color);
-
             return;
         }
         int w = getMeasuredWidth();
@@ -241,6 +241,10 @@ public class ProfileActionsView extends View {
         invalidate();
     }
 
+    public void snapPositionsOnNextDraw() {
+        snapPositionsPending = true;
+        invalidate();
+    }
     private float getItemWidth() {
         int w = getMeasuredWidth();
         float betweenPadding = xpadding / 2f;
@@ -280,6 +284,10 @@ public class ProfileActionsView extends View {
         int c = actions.size();
         for (int i = 0; i < c; i++) {
             Action action = actions.get(i);
+            if (snapPositionsPending && action.isDeleting) {
+                action.positionFraction.set(1f, true);
+                action.isDeleted = true;
+            }
             if (action.isDeleted) continue;
 
             if (!action.isDeleting) {
@@ -363,6 +371,7 @@ public class ProfileActionsView extends View {
                 drawAction(canvas, actions.get(i), fraction, alphaFraction2);
             }
         }
+        snapPositionsPending = false;
     }
 
     private void drawRenderNode(Canvas canvas) {
@@ -578,7 +587,6 @@ public class ProfileActionsView extends View {
                     downY = y;
                     downTime = System.currentTimeMillis();
                     hit.bounce.setPressed(true);
-
                     break;
                 }
             }
@@ -1155,7 +1163,7 @@ public class ProfileActionsView extends View {
                 return;
             }
 
-            if (isOpeningLayout) {
+            if (isOpeningLayout || snapPositionsPending) {
                 isOpening = false;
                 prevRect.set(rect);
                 from.set(rect);

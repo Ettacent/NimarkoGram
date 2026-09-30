@@ -1,6 +1,6 @@
 package org.telegram.ui;
-import android.app.Activity;
 
+import android.app.Activity;
 import android.content.ClipData;
 import android.content.Context;
 import android.content.DialogInterface;
@@ -460,7 +460,6 @@ public class NotificationsSoundActivity extends BaseFragment implements ChatAtta
         getMediaDataController().ringtoneDataStore.loadUserRingtones(false);
         serverTones.clear();
         systemTones.clear();
-        
         for (int i = 0; i < getMediaDataController().ringtoneDataStore.userRingtones.size(); i++) {
             RingtoneDataStore.CachedTone cachedTone = getMediaDataController().ringtoneDataStore.userRingtones.get(i);
             Tone tone = new Tone();
@@ -928,7 +927,6 @@ public class NotificationsSoundActivity extends BaseFragment implements ChatAtta
             if (dialogId != 0) {
                 editor.putBoolean("custom_" + NotificationsController.getSharedPrefKey(dialogId, topicId), true);
             }
-
             editor.apply();
             if (dialogId != 0) {
                 getNotificationsController().deleteNotificationChannel(dialogId, topicId);

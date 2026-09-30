@@ -47,7 +47,7 @@ import java.util.Arrays;
 public class DefaultThemesPreviewCell extends LinearLayout {
 
     public final static int TYPE_CUSTOM_LIST = -1;
-    public final static int TYPE_CUSTOM_GRID = -2;
+    public final static int TYPE_CUSTOM_GRID = -2; // not implemented
 
     private final RecyclerListView recyclerView;
     private LinearLayoutManager layoutManager = null;
@@ -324,7 +324,6 @@ public class DefaultThemesPreviewCell extends LinearLayout {
     }
     public void refreshThemes() {
         if (themeIndex < 0) updateDayNightMode();
-
         if (!MediaDataController.getInstance(parentFragment.getCurrentAccount()).defaultEmojiThemes.isEmpty()) {
             ArrayList<ChatThemeBottomSheet.ChatThemeItem> themes = new ArrayList<>();
             for (ChatThemeBottomSheet.ChatThemeItem template : MediaDataController.getInstance(parentFragment.getCurrentAccount()).defaultEmojiThemes) {

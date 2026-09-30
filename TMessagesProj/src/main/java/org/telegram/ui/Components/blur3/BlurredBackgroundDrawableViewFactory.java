@@ -7,7 +7,6 @@ import android.view.ViewGroup;
 import androidx.annotation.Nullable;
 import org.telegram.messenger.LiteMode;
 import org.telegram.messenger.SharedConfig;
-
 import org.telegram.ui.Components.blur3.drawable.BlurredBackgroundDrawable;
 import org.telegram.ui.Components.blur3.drawable.BlurredBackgroundDrawableRenderNode;
 import org.telegram.ui.Components.blur3.drawable.color.BlurredBackgroundColorProvider;
@@ -23,7 +22,6 @@ public class BlurredBackgroundDrawableViewFactory {
     private static final ReferenceList<BlurredBackgroundDrawableViewFactory> factories = new ReferenceList<>();
     private final ReferenceList<BlurredBackgroundDrawable> createdDrawables = new ReferenceList<>();
     private final WeakHashMap<BlurredBackgroundDrawable, WeakReference<View>> drawableViews = new WeakHashMap<>();
-
     private final BlurredBackgroundSource source;
     private int outsetX, outsetY;
 
@@ -35,6 +33,10 @@ public class BlurredBackgroundDrawableViewFactory {
         for (BlurredBackgroundDrawableViewFactory factory : factories) {
             for (BlurredBackgroundDrawable drawable : factory.createdDrawables) {
                 drawable.updateColors();
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q
+                        && drawable instanceof BlurredBackgroundDrawableRenderNode) {
+                    ((BlurredBackgroundDrawableRenderNode) drawable).invalidateDisplayList();
+                }
                 drawable.invalidateSelf();
                 final WeakReference<View> viewRef = factory.drawableViews.get(drawable);
                 final View view = viewRef != null ? viewRef.get() : null;
@@ -164,7 +166,6 @@ public class BlurredBackgroundDrawableViewFactory {
             engine.registerDrawable(view, drawable);
         }
         if (trackPosition && (engine == null || multiwindow) && viewPositionWatcher != null && parent != null && view != null) {
-            
             viewPositionWatcher.subscribe(view, parent, (v, pos) -> {
                 drawable.setSourceOffset(pos.left, pos.top);
                 v.invalidate();
