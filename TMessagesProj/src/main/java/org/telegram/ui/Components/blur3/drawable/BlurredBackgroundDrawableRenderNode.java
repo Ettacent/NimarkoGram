@@ -76,6 +76,7 @@ public class BlurredBackgroundDrawableRenderNode extends BlurredBackgroundDrawab
     private boolean liquidGlassEffectEnabled;
     private boolean lastLiquidGlassEnabled = BlurredBackgroundDrawableViewFactory.isLiquidGlassEnabled();
     private boolean lastGlareOnElements = NimarkoConfig.glareOnElements;
+    private boolean lastEnhancedGlassBlur = NimarkoConfig.enhancedGlassBlur;
 
     @RequiresApi(api = Build.VERSION_CODES.TIRAMISU)
     public void setLiquidGlassEffectAllowed() {
@@ -83,6 +84,11 @@ public class BlurredBackgroundDrawableRenderNode extends BlurredBackgroundDrawab
         renderNodeInvalidated = true;
     }
     private void updateGlassSettings(boolean hardwareAccelerated) {
+        if (lastEnhancedGlassBlur != NimarkoConfig.enhancedGlassBlur) {
+            lastEnhancedGlassBlur = NimarkoConfig.enhancedGlassBlur;
+            renderNodeInvalidated = true;
+            updateColors();
+        }
         final boolean enabled = BlurredBackgroundDrawableViewFactory.isLiquidGlassEnabled();
         if (lastLiquidGlassEnabled != enabled || lastGlareOnElements != NimarkoConfig.glareOnElements) {
             lastLiquidGlassEnabled = enabled;
@@ -137,8 +143,8 @@ public class BlurredBackgroundDrawableRenderNode extends BlurredBackgroundDrawab
         super.onSourceOffsetChange(sourceOffsetX, sourceOffsetY);
         renderNodeInvalidated = true;
     }
-    @Override
 
+    @Override
     public boolean hasDisplayList() {
         return renderNode.hasDisplayList();
     }
@@ -160,7 +166,7 @@ public class BlurredBackgroundDrawableRenderNode extends BlurredBackgroundDrawab
         c.translate(-sL, -sT);
         if (liquidGlassEffectEnabled && Build.VERSION.SDK_INT >= 33) {
             final int thickness = Math.max(Math.min(
-                boundProps.liquidThickness <= 0 ? dp(14) : boundProps.liquidThickness,
+                boundProps.liquidThickness <= 0 ? dp(NimarkoConfig.enhancedGlassBlur ? 14 : 11) : boundProps.liquidThickness,
                 Math.min(boundProps.boundsWithPadding.width(), boundProps.boundsWithPadding.height()) / 5), 1);
 
             liquidGlassEffect.update(
@@ -197,7 +203,6 @@ public class BlurredBackgroundDrawableRenderNode extends BlurredBackgroundDrawab
                     boundProps.boundsWithPadding.height(), boundProps.radii,
                     boundProps.strokeWidthBottom, false, paintStrokeBottom);
         }
-        
         if (strokeColorFull != 0) {
             c.save();
             c.translate(-boundProps.boundsWithPadding.left, -boundProps.boundsWithPadding.top);
@@ -224,8 +229,8 @@ public class BlurredBackgroundDrawableRenderNode extends BlurredBackgroundDrawab
         if (boundProps.boundsWithPadding.isEmpty()) {
             return;
         }
-        updateGlassSettings(canvas.isHardwareAccelerated());
 
+        updateGlassSettings(canvas.isHardwareAccelerated());
         if (!canvas.isHardwareAccelerated()) {
             drawSource(canvas, source);
             return;
@@ -256,7 +261,6 @@ public class BlurredBackgroundDrawableRenderNode extends BlurredBackgroundDrawab
     public void setAlpha(int alpha) {
         final int oldAlpha = getAlpha();
         if (alpha == oldAlpha) {
-            
             return;
         }
 

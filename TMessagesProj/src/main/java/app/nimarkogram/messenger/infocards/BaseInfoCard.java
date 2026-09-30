@@ -50,9 +50,9 @@ public abstract class BaseInfoCard extends FrameLayout {
     private static final int CHIP_HEIGHT_DP = 28;
     private static final int CORNER_RADIUS_DP = 14;
     private static final int CONTENT_PADDING_DP = 8;
-
+    private static final int STANDALONE_CONTENT_PADDING_DP = 6;
     private static final long RESIZE_DURATION_MS = 300;
-    private static final float RESIZE_TEXT_SCALE_POP = 0.12f; 
+    private static final float RESIZE_TEXT_SCALE_POP = 0.12f; // changed glyphs scale in ~12% (centered) for life
     private static final TimeInterpolator RESIZE_INTERPOLATOR = CubicBezierInterpolator.EASE_OUT_QUINT;
 
     private final LinearLayout content;
@@ -65,9 +65,7 @@ public abstract class BaseInfoCard extends FrameLayout {
 
     private int brandTop = 0xff2b2b2b, brandBottom = 0xff202020;
     private int colorMode = InfoCardsConfig.COLOR_MODE_CUSTOM;
-    
     private boolean opaqueFlat;
-    
     private boolean inlineFolderStyle;
     private boolean renderingInstantly;
     private boolean hasRenderedValue;
@@ -75,7 +73,6 @@ public abstract class BaseInfoCard extends FrameLayout {
     private boolean deferredCarouselText;
     private int deferredCarouselIconRes = -1;
     private Boolean deferredCarouselIconVisibility;
-    
     private int maxChipWidth;
     private int appliedTextMaxWidth;
     private CharSequence accessibilityLabel;
@@ -98,7 +95,6 @@ public abstract class BaseInfoCard extends FrameLayout {
     public BaseInfoCard(Context context, Theme.ResourcesProvider resourcesProvider) {
         super(context);
         this.resourcesProvider = resourcesProvider;
-        
         setClipChildren(false);
         setClipToPadding(false);
 
@@ -106,15 +102,12 @@ public abstract class BaseInfoCard extends FrameLayout {
 
         content = new LinearLayout(context);
         content.setOrientation(LinearLayout.HORIZONTAL);
-        content.setGravity(Gravity.CENTER); 
-        
+        content.setGravity(Gravity.CENTER); // exteraGram bqa: linearLayout.setGravity(17)
         content.setClipChildren(true);
         content.setClipToPadding(false);
         content.setBackground(background);
-        
-        content.setPadding(AndroidUtilities.dp(CONTENT_PADDING_DP), 0, AndroidUtilities.dp(CONTENT_PADDING_DP), 0);
+        content.setPadding(AndroidUtilities.dp(STANDALONE_CONTENT_PADDING_DP), 0, AndroidUtilities.dp(STANDALONE_CONTENT_PADDING_DP), 0);
         content.setMinimumWidth(AndroidUtilities.dp(48));
-        
         content.setOutlineProvider(new ViewOutlineProvider() {
             @Override
             public void getOutline(View view, Outline outline) {
@@ -122,11 +115,9 @@ public abstract class BaseInfoCard extends FrameLayout {
             }
         });
         content.setClipToOutline(true);
-        
         content.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> {
             if (r - l != or - ol || b - t != ob - ot) v.invalidateOutline();
         });
-        
         int chipGravity = Gravity.CENTER_VERTICAL
                 | (LocaleController.isRTL ? Gravity.LEFT : Gravity.RIGHT);
         addView(content, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, CHIP_HEIGHT_DP, chipGravity));
@@ -136,6 +127,7 @@ public abstract class BaseInfoCard extends FrameLayout {
         content.addView(iconView, LayoutHelper.createLinear(16, 16, Gravity.CENTER_VERTICAL, 0, 0, 4, 0));
 
         textView = new ChipTextView(context, true, true, true);
+        setFitTextToChip(true);
         textView.getDrawable().setFadeOverflow(true);
         textView.getDrawable().setStableBaseline(true);
         textView.adaptWidth = true;
@@ -144,10 +136,8 @@ public abstract class BaseInfoCard extends FrameLayout {
         textView.setIncludeFontPadding(false);
         textView.setTextColor(0xffffffff);
         textView.setGravity(Gravity.CENTER_VERTICAL);
-        
         textView.setAnimationProperties(0f, 0, RESIZE_DURATION_MS, RESIZE_INTERPOLATOR);
         textView.setScaleProperty(RESIZE_TEXT_SCALE_POP);
-        
         textView.setOnWidthUpdatedListener(this::onAnimatedTextWidthUpdated);
         textView.setText("", false, false);
         content.addView(textView, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, CHIP_HEIGHT_DP, Gravity.CENTER_VERTICAL));
@@ -160,10 +150,8 @@ public abstract class BaseInfoCard extends FrameLayout {
 
     @Override
     public void setPressed(boolean pressed) {
-        
         if (loading) pressed = false;
         super.setPressed(pressed);
-        
         if (content != null) content.setPressed(pressed);
     }
 
@@ -261,7 +249,6 @@ public abstract class BaseInfoCard extends FrameLayout {
         applyMaxChipWidth();
         iconView.setImageResource(resId);
         iconView.setColorFilter(currentContentColor());
-        
         if (iconChanged && getVisibility() == VISIBLE && getTranslationX() == 0f && getTranslationY() == 0f) {
             content.requestLayout();
         }
@@ -289,9 +276,7 @@ public abstract class BaseInfoCard extends FrameLayout {
                         Theme.key_windowBackgroundWhite, resourcesProvider)) < .721f);
         boolean flat = isFlat();
         if (flat) {
-            
             int text = Theme.getColor(Theme.key_windowBackgroundWhiteBlackText, resourcesProvider);
-            
             int fill = opaqueFlat
                     ? Theme.blendOver(Theme.getColor(Theme.key_windowBackgroundWhite, resourcesProvider), Theme.multAlpha(text, 0.09f))
                     : Theme.multAlpha(text, 0.09f);
@@ -303,7 +288,6 @@ public abstract class BaseInfoCard extends FrameLayout {
             background.setThemeMode(false);
             background.setColors(brandTop, brandBottom);
         }
-        
         content.setElevation(0f);
         background.setShellColor(Theme.multAlpha(
                 Theme.getColor(Theme.key_windowBackgroundWhiteBlackText, resourcesProvider), .12f));
@@ -328,18 +312,21 @@ public abstract class BaseInfoCard extends FrameLayout {
         FrameLayout.LayoutParams params = (FrameLayout.LayoutParams) content.getLayoutParams();
         params.height = getChipHeight(inline);
         content.setLayoutParams(params);
-        int padding = AndroidUtilities.dp(CONTENT_PADDING_DP)
+        int padding = AndroidUtilities.dp(inline ? CONTENT_PADDING_DP : STANDALONE_CONTENT_PADDING_DP)
                 + (inline ? (int) Math.ceil(getInlineSurfaceInset(params.height)) : 0);
         content.setPadding(padding, 0, padding, 0);
+        LinearLayout.LayoutParams iconParams = (LinearLayout.LayoutParams) iconView.getLayoutParams();
+        iconParams.width = iconParams.height = AndroidUtilities.dp(inline ? 14 : 16);
+        iconParams.rightMargin = AndroidUtilities.dp(inline ? 3 : 4);
+        iconView.setLayoutParams(iconParams);
         applyMaxChipWidth();
         background.inlineFolderStyle = inline;
         background.setCornerRadius(getChipCornerRadius());
         content.invalidateOutline();
         if (loadingDrawable != null) loadingDrawable.setRadii(AndroidUtilities.dp(CORNER_RADIUS_DP));
         textView.setTextSize(AndroidUtilities.dp(13));
-        float iconScale = inline ? 14f / 16f : 1f;
-        iconView.setScaleX(iconScale);
-        iconView.setScaleY(iconScale);
+        iconView.setScaleX(1f);
+        iconView.setScaleY(1f);
         applyColorMode();
         requestLayout();
     }
@@ -400,14 +387,12 @@ public abstract class BaseInfoCard extends FrameLayout {
                     && ((InfoCardStripView) getParent()).canAnimateCardResize();
             animated = laidOutColdLoad;
         }
-        
         animated &= !renderingInstantly;
         boolean changed = !android.text.TextUtils.equals(textView.getText(), text);
         if (!changed) {
             if (renderingInstantly) finishResizeAnimation();
             return;
         }
-        
         boolean canAnimate = animated
                 && isAttachedToWindow()
                 && getWindowVisibility() == View.VISIBLE;
@@ -475,7 +460,6 @@ public abstract class BaseInfoCard extends FrameLayout {
             textView.cancelAnimation();
         }
         if (accessibilityValue != null) {
-            
             textView.setText(accessibilityValue, false, false);
         }
         content.requestLayout();
@@ -520,10 +504,26 @@ public abstract class BaseInfoCard extends FrameLayout {
         applyMaxChipWidth();
     }
 
+    public void setFixedChipWidth(int width) {
+        width = Math.max(1, width);
+        android.view.ViewGroup.LayoutParams cardParams = getLayoutParams();
+        if (cardParams != null && cardParams.width != width) {
+            cardParams.width = width;
+            setLayoutParams(cardParams);
+        }
+        android.view.ViewGroup.LayoutParams contentParams = content.getLayoutParams();
+        if (contentParams.width != LayoutHelper.MATCH_PARENT) {
+            contentParams.width = LayoutHelper.MATCH_PARENT;
+            content.setLayoutParams(contentParams);
+        }
+        setMaxChipWidth(width);
+    }
     private void applyMaxChipWidth() {
-        
         int chrome = content.getPaddingLeft() + content.getPaddingRight();
-        if (iconVisible) chrome += AndroidUtilities.dp(16 + 4); 
+        if (iconVisible) {
+            LinearLayout.LayoutParams params = (LinearLayout.LayoutParams) iconView.getLayoutParams();
+            chrome += params.width + params.leftMargin + params.rightMargin;
+        }
         int textMax = maxChipWidth > 0 ? Math.max(1, maxChipWidth - chrome) : 0;
         if (appliedTextMaxWidth == textMax) return;
         appliedTextMaxWidth = textMax;
@@ -532,11 +532,14 @@ public abstract class BaseInfoCard extends FrameLayout {
     }
 
     protected void setTextColor(int color) {
-        
         if (colorMode == InfoCardsConfig.COLOR_MODE_THEME) return;
         textView.setTextColor(color);
     }
 
+    protected void setFitTextToChip(boolean enabled) {
+        ((ChipTextView) textView).fitTextToChip = enabled;
+        textView.invalidate();
+    }
     public abstract int getCardId();
 
     public abstract long getRefreshInterval();
@@ -588,7 +591,6 @@ public abstract class BaseInfoCard extends FrameLayout {
         restoreRenderedValue();
         updateColors();
         applyColorMode();
-        
         if (isRefreshDue()) {
             onUpdateData(false);
         }
@@ -639,7 +641,6 @@ public abstract class BaseInfoCard extends FrameLayout {
     public void stopLoading() {
         loading = false;
         if (loadingDrawable != null) {
-            
             loadingDrawable.disappear();
             invalidate();
         }
@@ -661,7 +662,6 @@ public abstract class BaseInfoCard extends FrameLayout {
     @Override
     protected void dispatchDraw(@NonNull Canvas canvas) {
         super.dispatchDraw(canvas);
-        
         LoadingDrawable ld = loadingDrawable;
         if (ld != null && (loading || ld.isDisappearing()) && !ld.isDisappeared()) {
             setSurfaceBounds(loadingRect, inlineFolderStyle,
@@ -680,6 +680,7 @@ public abstract class BaseInfoCard extends FrameLayout {
     private static final class ChipTextView extends AnimatedTextView {
         private int textWidthLimit;
         private int lastAvailableWidth = -1;
+        private boolean fitTextToChip;
         ChipTextView(android.content.Context c, boolean splitByWords, boolean preserveIndex, boolean startFromEnd) {
             super(c, splitByWords, preserveIndex, startFromEnd);
         }
@@ -695,7 +696,6 @@ public abstract class BaseInfoCard extends FrameLayout {
         }
         @Override
         public void requestLayout() {
-            
             if (getVisibility() == GONE || !isShown()) {
                 forceLayout();
                 android.view.ViewParent parent = getParent();
@@ -713,7 +713,6 @@ public abstract class BaseInfoCard extends FrameLayout {
             super.onMeasure(widthMeasureSpec, heightMeasureSpec);
             lastAvailableWidth = -1;
             if (adaptWidth && View.MeasureSpec.getMode(widthMeasureSpec) == View.MeasureSpec.AT_MOST) {
-                
                 int avail = View.MeasureSpec.getSize(widthMeasureSpec);
                 if (textWidthLimit > 0) avail = Math.min(avail, textWidthLimit);
                 lastAvailableWidth = avail;
@@ -724,6 +723,21 @@ public abstract class BaseInfoCard extends FrameLayout {
             int padding = getPaddingLeft() + getPaddingRight();
             int want = padding + (int) Math.ceil(getDrawable().getCurrentWidth(Math.max(0, available - padding)));
             return Math.min(want, available);
+        }
+        @Override
+        protected void onDraw(Canvas canvas) {
+            float naturalWidth = getDrawable().getCurrentWidth();
+            float scale = fitTextToChip && naturalWidth > getMeasuredWidth()
+                    ? Math.max(10f / 13f, getMeasuredWidth() / naturalWidth) : 1f;
+            if (scale >= 1f) {
+                super.onDraw(canvas);
+                return;
+            }
+            int save = canvas.save();
+            canvas.scale(scale, scale, 0f, getMeasuredHeight() / 2f);
+            getDrawable().setBounds(0, 0, (int) Math.ceil(getMeasuredWidth() / scale), getMeasuredHeight());
+            getDrawable().draw(canvas);
+            canvas.restoreToCount(save);
         }
         void requestAnimatedWidthLayout() {
             if (lastAvailableWidth < 0 || animatedWidth(lastAvailableWidth) != getMeasuredWidth()) {
@@ -747,7 +761,6 @@ public abstract class BaseInfoCard extends FrameLayout {
         private int shellColorAlpha;
         private int drawableAlpha = 255;
         private int topColor, bottomColor;
-        
         private boolean themeMode;
 
         CardBackground(int top, int bottom) {
@@ -781,7 +794,6 @@ public abstract class BaseInfoCard extends FrameLayout {
             float h = AndroidUtilities.dp(CHIP_HEIGHT_DP);
             fillPaint.setShader(new LinearGradient(0, 0, 0, h,
                     new int[]{top, bottom}, new float[]{0f, 1f}, Shader.TileMode.CLAMP));
-            
             strokePaint.setShader(new LinearGradient(0, 0, 0, h,
                     new int[]{0x4DFFFFFF, 0x00000000, 0x1AFFFFFF}, new float[]{0f, 0.5f, 1f},
                     Shader.TileMode.CLAMP));
@@ -811,9 +823,7 @@ public abstract class BaseInfoCard extends FrameLayout {
             RectF rf = AndroidUtilities.rectTmp;
             rf.set(bounds);
             canvas.drawRoundRect(rf, r, r, fillPaint);
-            
             if (themeMode) return;
-            
             Theme.ThemeInfo active = Theme.getActiveTheme();
             if (!Theme.isCurrentThemeDark() || (active != null && active.isMonet())) return;
             float sw = AndroidUtilities.dp(1);

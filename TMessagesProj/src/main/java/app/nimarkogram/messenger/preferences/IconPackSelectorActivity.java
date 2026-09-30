@@ -134,7 +134,7 @@ public class IconPackSelectorActivity extends BaseFragment {
         if (generation == nmApplyGeneration
                 && selection == NimarkoConfig.iconReplacement
                 && getParentActivity() instanceof LaunchActivity) {
-            ((LaunchActivity) getParentActivity()).reloadResources();
+            ((LaunchActivity) getParentActivity()).reloadResources();   // off-thread pack load + re-skin
         }
     };
 
@@ -148,7 +148,7 @@ public class IconPackSelectorActivity extends BaseFragment {
     private static boolean isRowSelected(int rowValue) {
         int stored = NimarkoConfig.iconReplacement;
         if (!isKnownValue(stored)) {
-            stored = NimarkoConfig.ICON_REPLACE_NONE;
+            stored = NimarkoConfig.ICON_REPLACE_NONE;   // fall back to NONE for unknown/dead values
         }
         return rowValue == stored;
     }
@@ -156,7 +156,7 @@ public class IconPackSelectorActivity extends BaseFragment {
     private void select(int value) {
         if (NimarkoConfig.iconReplacement != value) {
             NimarkoConfig.setIconReplacement(value);
-            for (PreviewCell c : cells) c.refreshSelected();
+            for (PreviewCell c : cells) c.refreshSelected();   // instant radio feedback
             AndroidUtilities.cancelRunOnUIThread(nmApplyPackRunnable);
             nmPendingApplyGeneration = ++nmApplyGeneration;
             nmPendingSelection = value;
@@ -200,7 +200,7 @@ public class IconPackSelectorActivity extends BaseFragment {
             case NimarkoConfig.ICON_REPLACE_SOLAR:        return new SolarIconReplace();
             case NimarkoConfig.ICON_REPLACE_LIQUID_GLASS: return new LiquidGlassFullReplace();
             case NimarkoConfig.ICON_REPLACE_PLUMPY:       return new PlumpyFullReplace();
-            default:                                       return null;
+            default:                                       return null;   // "По умолчанию" — stock icons
         }
     }
 
@@ -221,9 +221,9 @@ public class IconPackSelectorActivity extends BaseFragment {
             mask.setShape(GradientDrawable.RECTANGLE);
             mask.setCornerRadius(rad);
             mask.setColor(0xffffffff);
-            setBackground(new android.graphics.drawable.RippleDrawable(
+            setBackground(new org.telegram.ui.Components.SmoothRippleDrawable(
                     android.content.res.ColorStateList.valueOf(Theme.getColor(Theme.key_listSelector)), content, mask));
-            org.telegram.ui.Components.ScaleStateListAnimator.apply(this, 0.02f, 1.5f);
+            org.telegram.ui.Components.ScaleStateListAnimator.apply(this, 0.02f, 1.5f);   // smooth press-scale
 
             LinearLayout col = new LinearLayout(context);
             col.setOrientation(LinearLayout.VERTICAL);

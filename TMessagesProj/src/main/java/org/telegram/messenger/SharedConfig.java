@@ -54,7 +54,6 @@ import java.util.Locale;
 import java.util.Objects;
 
 public class SharedConfig {
-     
     private final static int PROXY_SCHEMA_V2 = 2;
     private final static int PROXY_SCHEMA_V3 = 3;
     private final static int PROXY_CURRENT_SCHEMA_VERSION = PROXY_SCHEMA_V3;
@@ -241,7 +240,7 @@ public class SharedConfig {
     public static boolean useFaceLock = true;
     public static int suggestStickers;
     public static boolean suggestAnimatedEmoji;
-    public static int keepMedia = CacheByChatsController.KEEP_MEDIA_ONE_MONTH; 
+    public static int keepMedia = CacheByChatsController.KEEP_MEDIA_ONE_MONTH; //deprecated
     public static int lastKeepMediaCheckTime;
     public static int lastLogsCheckTime;
     public static int textSelectionHintShows;
@@ -356,17 +355,17 @@ public class SharedConfig {
     public static LiteMode liteMode;
 
     private static final int[] LOW_SOC = {
-            -1775228513, 
-            802464304,  
-            802464333,  
-            802464302,  
-            2067362118, 
-            2067362060, 
-            2067362084, 
-            2067362241, 
-            2067362117, 
-            2067361998, 
-            -1853602818 
+            -1775228513, // EXYNOS 850
+            802464304,  // EXYNOS 7872
+            802464333,  // EXYNOS 7880
+            802464302,  // EXYNOS 7870
+            2067362118, // MSM8953
+            2067362060, // MSM8937
+            2067362084, // MSM8940
+            2067362241, // MSM8992
+            2067362117, // MSM8952
+            2067361998, // MSM8917
+            -1853602818 // SDM439
     };
 
     static {
@@ -374,7 +373,6 @@ public class SharedConfig {
     }
 
     public static class ProxyInfo {
-
         public @NonNull ProxySettings settings;
         @Deprecated public String address;
         @Deprecated public int port;
@@ -466,7 +464,6 @@ public class SharedConfig {
     public static ArrayList<ProxyInfo> proxyList = new ArrayList<>();
     private static boolean proxyListLoaded;
     public static volatile ProxyInfo currentProxy;
-     
     private static final Object proxyListSync = new Object();
     private static long proxyListRevision;
 
@@ -667,7 +664,6 @@ public class SharedConfig {
             bubbleRadius = preferences.getInt("bubbleRadius", 17);
             ivFontSize = preferences.getInt("iv_font_size", fontSize);
             allowBigEmoji = preferences.getBoolean("allowBigEmoji", true);
-            
             useSystemEmoji = preferences.getBoolean("useSystemEmoji", false)
                     || app.nimarkogram.messenger.NimarkoConfig.systemEmoji;
             useSystemBoldFont = preferences.getBoolean("useSystemBoldFont", false);
@@ -1485,7 +1481,7 @@ public class SharedConfig {
                 byte[] bytes = Base64.decode(list, Base64.DEFAULT);
                 SerializedData data = new SerializedData(bytes);
                 int count = data.readInt32(false);
-                if (count == -1) { 
+                if (count == -1) { // V2 or newer
                     int version = data.readByte(false);
 
                     if (version == PROXY_SCHEMA_V2 || version == PROXY_SCHEMA_V3) {
@@ -1493,7 +1489,6 @@ public class SharedConfig {
 
                         for (int i = 0; i < count; i++) {
                             final ProxyInfo info = ProxyInfo.fromSerializedData(version, data);
-
                             proxyList.add(0, info);
                             if (currentProxy == null && proxySettings.isValid()) {
                                 if (Objects.equals(proxySettings, info.getSettings())) {
@@ -1812,7 +1807,7 @@ public class SharedConfig {
     }
 
     public static boolean canBlurChat() {
-        return getDevicePerformanceClass() == PERFORMANCE_CLASS_HIGH;
+        return Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP;
     }
     public static boolean canUseLiquidGlass() {
         return Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && canBlurChat();

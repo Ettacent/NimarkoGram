@@ -54,7 +54,6 @@ public final class NimarkoLocalEmoji {
         if ((!canUse(account) && !force) || entities == null || entities.isEmpty()) {
             return;
         }
-        
         try {
             if (!force && dialogId > 0 && dialogId == UserConfig.getInstance(account).getClientUserId()) {
                 return;

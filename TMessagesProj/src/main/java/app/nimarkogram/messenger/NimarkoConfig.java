@@ -423,7 +423,6 @@ public final class NimarkoConfig {
         getEditor().putBoolean("localPremiumEmojis", localPremiumEmojis).apply();
     }
 
-
     public static boolean showDetails = getPreferences().getBoolean("showDetails", false);
     public static void toggleShowDetails() {
         showDetails = !showDetails;
@@ -475,12 +474,11 @@ public final class NimarkoConfig {
 
     public static final int ICON_REPLACE_NONE = 0;
     public static final int ICON_REPLACE_SOLAR = 1;
-    public static final int ICON_REPLACE_MD3 = 2;
-    public static final int ICON_REPLACE_LIQUID_GLASS = 3;
-    public static final int ICON_REPLACE_PLUMPY = 4;
+    public static final int ICON_REPLACE_MD3 = 2;           // Material Design 3 (mono SVG) — unused
+    public static final int ICON_REPLACE_LIQUID_GLASS = 3;  // Liquid Glass (mono SVG)
+    public static final int ICON_REPLACE_PLUMPY = 4;        // Plumpy (colourful PNG)
     public static volatile int iconReplacement = getIntSafe("iconReplacement", ICON_REPLACE_SOLAR);
     public static void setIconReplacement(int v) { iconReplacement = v; getEditor().putInt("iconReplacement", v).apply(); }
-
 
     public static boolean tabsHideAllChats = getPreferences().getBoolean("tabsHideAllChats", false);
     public static void toggleTabsHideAllChats() { tabsHideAllChats = !tabsHideAllChats; getEditor().putBoolean("tabsHideAllChats", tabsHideAllChats).apply(); }
@@ -502,7 +500,6 @@ public final class NimarkoConfig {
 
     public static boolean foldersAtBottom = getPreferences().getBoolean("foldersAtBottom", false);
     public static void toggleFoldersAtBottom() { foldersAtBottom = !foldersAtBottom; getEditor().putBoolean("foldersAtBottom", foldersAtBottom).apply(); }
-
 
     public static final int FOLDER_BADGE_NUMBER = 0;
     public static final int FOLDER_BADGE_DOT    = 1;
@@ -1037,7 +1034,7 @@ public final class NimarkoConfig {
     public static final int DTAP_SAVE = 3;
     public static final int DTAP_EDIT = 4;
     public static final int DTAP_TRANSLATE = 5;
-    public static final int DTAP_EDIT_OR_REACTION = 6;
+    public static final int DTAP_EDIT_OR_REACTION = 6; // own message → edit, other's → reaction
     public static final int DOUBLE_TAP_ACTION_NONE = DTAP_NONE;
     public static final int DOUBLE_TAP_ACTION_REACTION = DTAP_REACTION;
     public static final int DOUBLE_TAP_ACTION_REPLY = DTAP_REPLY;
@@ -1363,7 +1360,6 @@ public final class NimarkoConfig {
     public static boolean showGetCustomReactions = getPreferences().getBoolean("showGetCustomReactions", false);
     public static void toggleShowGetCustomReactions() { showGetCustomReactions = !showGetCustomReactions; getEditor().putBoolean("showGetCustomReactions", showGetCustomReactions).apply(); }
 
-
     public static boolean forwardAuthorship = getPreferences().getBoolean("forwardAuthorship", true);
     public static void toggleForwardAuthorship() { forwardAuthorship = !forwardAuthorship; getEditor().putBoolean("forwardAuthorship", forwardAuthorship).apply(); }
     public static void setForwardAuthorship(boolean v) { forwardAuthorship = v; getEditor().putBoolean("forwardAuthorship", v).apply(); }
@@ -1385,11 +1381,9 @@ public final class NimarkoConfig {
     public static void setNoCaptions(boolean v) { noCaptions = v; getEditor().putBoolean("noCaptions", v).apply(); }
 
     public static boolean allowSafeStars = getPreferences().getBoolean("allowSafeStars", false);
-
     public static boolean sleepTimer = getPreferences().getBoolean("sleepTimer", false);
     public static void toggleSleepTimer() { sleepTimer = !sleepTimer; getEditor().putBoolean("sleepTimer", sleepTimer).apply(); }
     public static void setSleepTimer(boolean v) { sleepTimer = v; getEditor().putBoolean("sleepTimer", v).apply(); }
-
 
     public static boolean nimarkoTextAnim = getPreferences().getBoolean("nimarkoTextAnim", true);
     public static void toggleNimarkoTextAnim() {
@@ -1507,7 +1501,6 @@ public final class NimarkoConfig {
     public static boolean discussInsteadOfMute = getPreferences().getBoolean("discussInsteadOfMute", true);
     public static void toggleDiscussInsteadOfMute() { discussInsteadOfMute = !discussInsteadOfMute; getEditor().putBoolean("discussInsteadOfMute", discussInsteadOfMute).apply(); }
 
-
     public static boolean showSearchInTabs = getPreferences().getBoolean("showSearchInTabs", false);
     public static void toggleShowSearchInTabs() { showSearchInTabs = !showSearchInTabs; getEditor().putBoolean("showSearchInTabs", showSearchInTabs).apply(); }
 
@@ -1515,7 +1508,7 @@ public final class NimarkoConfig {
     public static final int ROUND_SD = 1;
     public static final int ROUND_HD = 2;
     public static final int ROUND_FHD = 3;
-    public static final int ROUND_STD = 4;
+    public static final int ROUND_STD = 4; // 384 px, Telegram's recommended baseline.
     public static int videoMessagesResolution = getIntSafe("videoMessagesResolution", ROUND_HD);
     public static void setVideoMessagesResolution(int v) { videoMessagesResolution = v; getEditor().putInt("videoMessagesResolution", v).apply(); }
     public static int getVideoMessagesResolutionPx(int defaultPx) {
@@ -1523,7 +1516,7 @@ public final class NimarkoConfig {
             case ROUND_AUTO: return 384;
             case ROUND_SD: return 240;
             case ROUND_STD: return 384;
-            case ROUND_FHD: return 720;
+            case ROUND_FHD: return 720; // Preserve legacy explicit selections.
             case ROUND_HD:
             default: return 512;
         }
@@ -1927,6 +1920,12 @@ public final class NimarkoConfig {
 
 
     public static boolean forceBlur = getPreferences().getBoolean("forceBlur", false);
+    public static boolean enhancedGlassBlur = getPreferences().getBoolean("enhancedGlassBlur", false);
+    public static void toggleEnhancedGlassBlur() {
+        enhancedGlassBlur = !enhancedGlassBlur;
+        getEditor().putBoolean("enhancedGlassBlur", enhancedGlassBlur).apply();
+        org.telegram.ui.Components.blur3.BlurredBackgroundDrawableViewFactory.invalidateGlassSettings();
+    }
     public static void toggleForceBlur() {
         forceBlur = !forceBlur;
         getEditor().putBoolean("forceBlur", forceBlur).apply();

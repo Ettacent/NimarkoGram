@@ -59,7 +59,6 @@ public final class InfoCardRegistry {
     }
 
     public static synchronized CardInfo get(int id) {
-        
         ensureRegistered();
         return registry.get(id);
     }
@@ -97,11 +96,6 @@ public final class InfoCardRegistry {
                 org.telegram.messenger.R.drawable.menu_gram_24, -14965523, -15431455,
                 (ctx, rp) -> new CryptoCard(ctx, rp, InfoCardType.TON.id, "ton",
                         org.telegram.messenger.R.drawable.menu_gram_24)));
-
-        register(new CardInfo(InfoCardType.BTC.id, org.telegram.messenger.R.string.NM_CARDS_NameBitcoin,
-                org.telegram.messenger.R.drawable.pill_btc, -1071598, -1608430,
-                (ctx, rp) -> new CryptoCard(ctx, rp, InfoCardType.BTC.id, "btc",
-                        org.telegram.messenger.R.drawable.pill_btc)));
 
         register(new CardInfo(InfoCardType.USD.id, org.telegram.messenger.R.string.NM_CARDS_NameUsd,
                 org.telegram.messenger.R.drawable.pill_usd, -14840995, -15172775,

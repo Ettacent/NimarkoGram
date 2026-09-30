@@ -910,7 +910,7 @@ public class ChatEditActivity extends BaseFragment implements ImageUpdater.Image
                 typeEditContainer.addView(typeCell, LayoutHelper.createLinear(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
                 typeCell.setOnClickListener(v -> {
                     ChatEditTypeActivity fragment = new ChatEditTypeActivity(chatId, locationCell != null && locationCell.getVisibility() == View.VISIBLE);
-                    fragment.setInfo(info);
+                    fragment.setInfo(info != null ? info : getMessagesController().getChatFull(chatId));
                     presentFragment(fragment);
                 });
             }
@@ -1271,7 +1271,7 @@ public class ChatEditActivity extends BaseFragment implements ImageUpdater.Image
                 args.putLong("chat_id", chatId);
                 args.putInt("type", ChatUsersActivity.TYPE_ADMIN);
                 ChatUsersActivity fragment = new ChatUsersActivity(args);
-                fragment.setInfo(info);
+                fragment.setInfo(info != null ? info : getMessagesController().getChatFull(chatId));
                 presentFragment(fragment);
             });
 
@@ -1282,7 +1282,7 @@ public class ChatEditActivity extends BaseFragment implements ImageUpdater.Image
                 args.putLong("chat_id", chatId);
                 args.putInt("type", ChatUsersActivity.TYPE_USERS);
                 ChatUsersActivity fragment = new ChatUsersActivity(args);
-                fragment.setInfo(info);
+                fragment.setInfo(info != null ? info : getMessagesController().getChatFull(chatId));
                 presentFragment(fragment);
             });
 
@@ -2138,7 +2138,6 @@ public class ChatEditActivity extends BaseFragment implements ImageUpdater.Image
                 if (isFinished || generation != botSaveGeneration || botSaveDialog != dialog) {
                     return;
                 }
-
                 botSaveDialog = null;
                 dialog.dismiss();
                 if (error != null || !(response instanceof TLRPC.TL_boolTrue)) {

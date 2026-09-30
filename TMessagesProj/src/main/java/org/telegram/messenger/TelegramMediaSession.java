@@ -288,7 +288,6 @@ public class TelegramMediaSession {
     private void loadChats() {
         if (loadingChats) {
             return;
-            
         }
         loadingChats = true;
         final int account = currentAccount;
@@ -505,7 +504,6 @@ public class TelegramMediaSession {
         ArrayList<MessageObject> arrayList = musicObjects.get(did);
         ArrayList<MediaSessionCompat.QueueItem> queueList = musicQueues.get(did);
         if (arrayList == null || arrayList.isEmpty() || queueList == null) return;
-        
         session.setQueue(new ArrayList<>(queueList));
         if (DialogObject.isUserDialog(did)) {
             TLRPC.User user = users.get(did);
@@ -699,7 +697,6 @@ public class TelegramMediaSession {
 
         @Override
         public void onPrepare() {
-            
         }
 
         @Override
@@ -774,7 +771,6 @@ public class TelegramMediaSession {
 
         @Override
         public void onStop() {
-            
         }
 
         @Override

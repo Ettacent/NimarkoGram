@@ -2830,7 +2830,7 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
                         req.min_date = (int) (playlistGlobalSearchParams.minDate / 1000);
                     }
                     if (playlistGlobalSearchParams.maxDate > 0) {
-                        req.min_date = (int) (playlistGlobalSearchParams.maxDate / 1000);
+                        req.max_date = (int) (playlistGlobalSearchParams.maxDate / 1000);
                     }
                     request = req;
                 } else {
@@ -2856,7 +2856,7 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
                         req.min_date = (int) (playlistGlobalSearchParams.minDate / 1000);
                     }
                     if (playlistGlobalSearchParams.maxDate > 0) {
-                        req.min_date = (int) (playlistGlobalSearchParams.maxDate / 1000);
+                        req.max_date = (int) (playlistGlobalSearchParams.maxDate / 1000);
                     }
                     request = req;
                 }
@@ -2865,10 +2865,10 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
                     if (playlistClassGuid != finalPlaylistGuid || playlistGlobalSearchParams == null || playingMessageObject == null) {
                         return;
                     }
-                    if (error != null) {
+                    loadingPlaylist = false;
+                    if (error != null || !(response instanceof TLRPC.messages_Messages)) {
                         return;
                     }
-                    loadingPlaylist = false;
 
                     TLRPC.messages_Messages res = (TLRPC.messages_Messages) response;
                     playlistGlobalSearchParams.nextSearchRate = res.next_rate;
@@ -3008,7 +3008,7 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
     }
 
     public void playMessageAtIndex(int index) {
-        if (currentPlaylistNum < 0 || currentPlaylistNum >= playlist.size()) {
+        if (index < 0 || index >= playlist.size()) {
             return;
         }
         currentPlaylistNum = index;
@@ -3103,7 +3103,6 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
         playMusicAgain = true;
         playMessage(currentPlayList.get(currentPlaylistNum));
     }
-    
     private boolean traversePlaylist(ArrayList<MessageObject> playlist, int direction) {
         boolean last = false;
         final int wasCurrentPlaylistNum = currentPlaylistNum;
@@ -3299,7 +3298,6 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
                     currentTextureView.animate().cancel();
                     currentTextureView.setAlpha(0f);
                 }
-
                 videoPlayer.setTextureView(currentTextureView);
                 closingPip.close(true, () -> {
                     if (pipRoundVideoView != closingPip) {
@@ -3320,8 +3318,6 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
             }
         } else {
             if (pipClosingToInline) {
-                // Do not create a second PiP while the old TextureView is still
-                // handing its SurfaceTexture back to the inline player.
                 showPipAfterInlineClose = true;
                 return;
             }
@@ -4545,7 +4541,6 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
     private boolean canStartMusicPlayerService() {
         return playingMessageObject != null && (playingMessageObject.isMusic() || playingMessageObject.isVoice() || playingMessageObject.isRoundVideo()) && !playingMessageObject.isVoiceOnce() && !playingMessageObject.isRoundOnce();
     }
-    
     public void updateSilent(boolean value) {
         isSilent = value;
         if (videoPlayer != null) {

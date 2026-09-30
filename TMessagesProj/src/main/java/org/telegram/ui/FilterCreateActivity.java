@@ -582,7 +582,6 @@ public class FilterCreateActivity extends BaseFragment {
             } else if (item.viewType == VIEW_TYPE_CREATE_LINK || item.viewType == VIEW_TYPE_BUTTON && item.iconResId == R.drawable.msg2_link2) {
                 onClickCreateLink(view);
             } else if (item.viewType == VIEW_TYPE_EDIT) {
-
             }
         });
         listView.setOnItemLongClickListener((view, position) -> {
@@ -934,7 +933,6 @@ public class FilterCreateActivity extends BaseFragment {
         if (!creatingNew || !TextUtils.isEmpty(newFilterName) && nameChangedManually) {
             return;
         }
-        
         int flags = newFilterFlags & MessagesController.DIALOG_FILTER_FLAG_ALL_CHATS;
         String[] result = FolderIconHelper.getEmoticonData(flags);
         String newName = result[0];
@@ -1121,7 +1119,6 @@ public class FilterCreateActivity extends BaseFragment {
         req.filter.title.entities = newFilterNameEntities;
         if (newFilterEmoticon != null) {
             req.filter.emoticon = newFilterEmoticon;
-            
             req.filter.flags |= ConnectionsManager.FileTypeVideo;
         }
         req.filter.title_noanimate = newFilterNoanimate;
@@ -1254,7 +1251,6 @@ public class FilterCreateActivity extends BaseFragment {
         if (filter.flags != newFilterFlags) {
             return true;
         }
-        
         if (!TextUtils.equals(filter.emoticon, newFilterEmoticon)) {
             return true;
         }
@@ -1303,7 +1299,7 @@ public class FilterCreateActivity extends BaseFragment {
         private CharSequence subtext;
         private boolean newSpan;
 
-        private boolean include; 
+        private boolean include; // or exclude
         private long did;
         private String chatType;
         private int flags;
@@ -2170,7 +2166,7 @@ public class FilterCreateActivity extends BaseFragment {
 
         SpannableStringBuilder text = new SpannableStringBuilder(string);
         text.append("  ");
-        SpannableString newText = new SpannableString("NEW"); 
+        SpannableString newText = new SpannableString("NEW"); // new SpannableString(LocaleController.getString(R.string.New));
         if (outline) {
             Drawable drawable = context.getResources().getDrawable(R.drawable.msg_other_new_outline).mutate();
             drawable.setBounds(0, -dp(8), drawable.getIntrinsicWidth(), drawable.getIntrinsicHeight() - dp(8));
@@ -2184,7 +2180,6 @@ public class FilterCreateActivity extends BaseFragment {
             drawable.setBounds(0, 0, drawable.getIntrinsicWidth(), drawable.getIntrinsicHeight());
             newText.setSpan(new ImageSpan(drawable, DynamicDrawableSpan.ALIGN_BOTTOM), 0, newText.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
         }
-
         text.append(newText);
         return text;
     }
@@ -2362,7 +2357,6 @@ public class FilterCreateActivity extends BaseFragment {
         if (showedUpdateBulletin) {
             return;
         }
-        
         if (filter != null && filter.isChatlist() && filter.isMyChatlist()) {
             showedUpdateBulletin = true;
             showBulletinOnResume = () -> {
@@ -2606,7 +2600,6 @@ public class FilterCreateActivity extends BaseFragment {
                         view.setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundGray));
                     } else {
                         view = new HeaderView(getContext());
-
                     }
                     return new RecyclerListView.Holder(view);
                 }
@@ -2634,7 +2627,6 @@ public class FilterCreateActivity extends BaseFragment {
                             cell.setText("");
                         }
                     } else if (viewType == VIEW_TYPE_HEADER) {
-
                     } else if (viewType == VIEW_TYPE_CREATE_LINK) {
                         CreateLinkCell createLinkCell = (CreateLinkCell) holder.itemView;
                         createLinkCell.setText(LocaleController.getString(R.string.CreateNewInviteLink));

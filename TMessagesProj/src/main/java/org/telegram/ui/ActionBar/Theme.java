@@ -102,7 +102,6 @@ import org.telegram.tgnet.Vector;
 import org.telegram.tgnet.tl.TL_account;
 import org.telegram.tgnet.tl.TL_keyboard;
 import org.telegram.ui.BlurSettingsBottomSheet;
-import org.telegram.ui.Cells.BaseCell;
 import org.telegram.ui.ChatActivity;
 import org.telegram.ui.Components.AudioVisualizerDrawable;
 import org.telegram.ui.Components.BackgroundGradientDrawable;
@@ -113,6 +112,7 @@ import org.telegram.ui.Components.CombinedDrawable;
 import org.telegram.ui.Components.FragmentContextViewWavesDrawable;
 import org.telegram.ui.Components.LinkPath;
 import org.telegram.ui.Components.MotionBackgroundDrawable;
+import org.telegram.ui.Components.SmoothRippleDrawable;
 import org.telegram.ui.Components.MsgClockDrawable;
 import org.telegram.ui.Components.PathAnimator;
 import org.telegram.ui.Components.PlayingGameDrawable;
@@ -4622,6 +4622,8 @@ public class Theme extends com.exteragram.messenger.utils.ui.LegacyThemeFields {
         stateListDrawable.addState(new int[]{android.R.attr.state_pressed}, pressedDrawable);
         stateListDrawable.addState(new int[]{android.R.attr.state_selected}, pressedDrawable);
         stateListDrawable.addState(StateSet.WILD_CARD, defaultDrawable);
+        stateListDrawable.setEnterFadeDuration(SmoothRippleDrawable.ENTER_DURATION);
+        stateListDrawable.setExitFadeDuration(SmoothRippleDrawable.EXIT_DURATION);
         return stateListDrawable;
     }
 
@@ -4755,17 +4757,20 @@ public class Theme extends com.exteragram.messenger.utils.ui.LegacyThemeFields {
     }
 
     public static Drawable createSimpleSelectorCircleDrawable(int size, int defaultColor, int pressedColor) {
+        return createSimpleSelectorCircleDrawable(size, defaultColor, pressedColor, 0xffffffff);
+    }
+    public static Drawable createSimpleSelectorCircleDrawable(int size, int defaultColor, int pressedColor, int maskColor) {
         OvalShape ovalShape = new OvalShape();
         ovalShape.resize(size, size);
         ShapeDrawable defaultDrawable = new ShapeDrawable(ovalShape);
         defaultDrawable.getPaint().setColor(defaultColor);
         ShapeDrawable pressedDrawable = new ShapeDrawable(ovalShape);
-        pressedDrawable.getPaint().setColor(0xffffffff);
+        pressedDrawable.getPaint().setColor(maskColor);
         ColorStateList colorStateList = new ColorStateList(
                 new int[][]{StateSet.WILD_CARD},
                 new int[]{pressedColor}
         );
-        return new BaseCell.RippleDrawableSafe(colorStateList, defaultDrawable, pressedDrawable);
+        return new SmoothRippleDrawable(colorStateList, defaultDrawable, pressedDrawable);
     }
 
     public static ShapeDrawable createRoundRectDrawable(int rad, int defaultColor) {
@@ -4878,7 +4883,7 @@ public class Theme extends com.exteragram.messenger.utils.ui.LegacyThemeFields {
                 new int[][]{StateSet.WILD_CARD},
                 new int[]{pressedColor}
         );
-        return new BaseCell.RippleDrawableSafe(colorStateList, defaultDrawable, pressedDrawable);
+        return new SmoothRippleDrawable(colorStateList, defaultDrawable, pressedDrawable);
     }
 
     public static Drawable createSelectorDrawableFromDrawables(Drawable normal, Drawable pressed) {
@@ -4886,6 +4891,8 @@ public class Theme extends com.exteragram.messenger.utils.ui.LegacyThemeFields {
         stateListDrawable.addState(new int[]{android.R.attr.state_pressed}, pressed);
         stateListDrawable.addState(new int[]{android.R.attr.state_selected}, pressed);
         stateListDrawable.addState(StateSet.WILD_CARD, normal);
+        stateListDrawable.setEnterFadeDuration(SmoothRippleDrawable.ENTER_DURATION);
+        stateListDrawable.setExitFadeDuration(SmoothRippleDrawable.EXIT_DURATION);
         return stateListDrawable;
     }
 
@@ -4899,7 +4906,7 @@ public class Theme extends com.exteragram.messenger.utils.ui.LegacyThemeFields {
                 new int[][]{StateSet.WILD_CARD},
                 new int[]{(color & 0x00ffffff) | 0x19000000}
         );
-        return new BaseCell.RippleDrawableSafe(colorStateList, null, maskDrawable);
+        return new SmoothRippleDrawable(colorStateList, null, maskDrawable);
     }
 
     public static Drawable createSelectorWithBackgroundDrawable(int backgroundColor, int color) {
@@ -4908,7 +4915,7 @@ public class Theme extends com.exteragram.messenger.utils.ui.LegacyThemeFields {
                 new int[][]{StateSet.WILD_CARD},
                 new int[]{color}
         );
-        return new BaseCell.RippleDrawableSafe(colorStateList, new ColorDrawable(backgroundColor), maskDrawable);
+        return new SmoothRippleDrawable(colorStateList, new ColorDrawable(backgroundColor), maskDrawable);
     }
 
     public static Drawable getSelectorDrawable(boolean whiteBackground) {
@@ -4941,7 +4948,7 @@ public class Theme extends com.exteragram.messenger.utils.ui.LegacyThemeFields {
                     new int[][]{StateSet.WILD_CARD},
                     new int[]{color}
             );
-            return new BaseCell.RippleDrawableSafe(colorStateList, new ColorDrawable(getColor(backgroundColor, resourcesProvider)), maskDrawable);
+            return new SmoothRippleDrawable(colorStateList, new ColorDrawable(getColor(backgroundColor, resourcesProvider)), maskDrawable);
         } else {
             return createSelectorDrawable(color, 2);
         }
@@ -5026,7 +5033,7 @@ public class Theme extends com.exteragram.messenger.utils.ui.LegacyThemeFields {
             new int[][]{ StateSet.WILD_CARD },
             new int[]{ color }
         );
-        RippleDrawable rippleDrawable = new BaseCell.RippleDrawableSafe(colorStateList, null, maskDrawable);
+        RippleDrawable rippleDrawable = new SmoothRippleDrawable(colorStateList, null, maskDrawable);
         if (Build.VERSION.SDK_INT >= 23) {
             if (maskType == RIPPLE_MASK_CIRCLE_20DP) {
                 rippleDrawable.setRadius(radius <= 0 ? dp(20) : radius);
@@ -5077,7 +5084,7 @@ public class Theme extends com.exteragram.messenger.utils.ui.LegacyThemeFields {
                 new int[][]{StateSet.WILD_CARD},
                 new int[]{color}
         );
-        return new BaseCell.RippleDrawableSafe(colorStateList, null, maskDrawable);
+        return new SmoothRippleDrawable(colorStateList, null, maskDrawable);
     }
 
     public static Drawable createCircleSelectorDrawable(int color, int leftInset, int rightInset) {
@@ -5108,7 +5115,7 @@ public class Theme extends com.exteragram.messenger.utils.ui.LegacyThemeFields {
                 new int[][]{StateSet.WILD_CARD},
                 new int[]{color}
         );
-        return new BaseCell.RippleDrawableSafe(colorStateList, null, maskDrawable);
+        return new SmoothRippleDrawable(colorStateList, null, maskDrawable);
     }
 
     /**
@@ -5266,7 +5273,7 @@ public class Theme extends com.exteragram.messenger.utils.ui.LegacyThemeFields {
                 maskDrawable = new ShapeDrawable(new RectShape());
                 ((ShapeDrawable) maskDrawable).getPaint().setColor(0xffffffff);
             }
-            return new BaseCell.RippleDrawableSafe(
+            return new SmoothRippleDrawable(
                 new ColorStateList(
                     new int[][]{ StateSet.WILD_CARD },
                     new int[]{ rippleColor }
@@ -5290,7 +5297,7 @@ public class Theme extends com.exteragram.messenger.utils.ui.LegacyThemeFields {
             );
         }
         private static Drawable createCircle(Drawable background, int rippleColor, float radius) {
-            return new BaseCell.RippleDrawableSafe(
+            return new SmoothRippleDrawable(
                 new ColorStateList(
                         new int[][]{StateSet.WILD_CARD},
                         new int[]{rippleColor}
@@ -5485,7 +5492,7 @@ public class Theme extends com.exteragram.messenger.utils.ui.LegacyThemeFields {
             new int[][] { StateSet.WILD_CARD },
             new int[] { color }
         );
-        return new BaseCell.RippleDrawableSafe(colorStateList, null, maskDrawable);
+        return new SmoothRippleDrawable(colorStateList, null, maskDrawable);
     }
 
     public static Drawable createRadSelectorDrawable(int color, int rippleColor, int topRad, int bottomRad) {
@@ -5495,7 +5502,7 @@ public class Theme extends com.exteragram.messenger.utils.ui.LegacyThemeFields {
             new int[][] { StateSet.WILD_CARD },
             new int[] { rippleColor }
         );
-        return new BaseCell.RippleDrawableSafe(colorStateList, createRoundRectDrawable(dp(topRad), dp(bottomRad), color), maskDrawable);
+        return new SmoothRippleDrawable(colorStateList, createRoundRectDrawable(dp(topRad), dp(bottomRad), color), maskDrawable);
     }
 
     public static Drawable createRadSelectorDrawable(int color, int topLeftRad, int topRightRad, int bottomRightRad, int bottomLeftRad) {
@@ -5505,7 +5512,7 @@ public class Theme extends com.exteragram.messenger.utils.ui.LegacyThemeFields {
                 new int[][]{StateSet.WILD_CARD},
                 new int[]{color}
         );
-        return new BaseCell.RippleDrawableSafe(colorStateList, null, maskDrawable);
+        return new SmoothRippleDrawable(colorStateList, null, maskDrawable);
     }
 
     public static void applyPreviousTheme() {

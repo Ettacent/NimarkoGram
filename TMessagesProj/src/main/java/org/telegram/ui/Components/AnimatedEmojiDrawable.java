@@ -356,7 +356,6 @@ public class AnimatedEmojiDrawable extends Drawable {
                             }
                         }
                     }
-
                     putToStorage(objects);
                 }
                 deliverDocuments(objects, 0, () -> {
@@ -557,7 +556,7 @@ public class AnimatedEmojiDrawable extends Drawable {
         documentRequestPending = true;
         getDocumentFetcher(currentAccount).fetchDocumentInternal(documentId, document -> {
             documentRequestPending = false;
-            if (document == null) return;
+            if (document == null) return; // A later host attachment can retry; never loop from draw().
             this.document = document;
             this.initDocument(false);
         });
@@ -1437,7 +1436,7 @@ public class AnimatedEmojiDrawable extends Drawable {
                 return depth < 8 && isDrawableReady(((SwapAnimatedEmojiDrawable) drawable).drawable, depth + 1);
             }
             if (!(drawable instanceof AnimatedEmojiDrawable)) {
-                return true;
+                return true; // Includes null: clearing a status needs no load.
             }
             ImageReceiver receiver = ((AnimatedEmojiDrawable) drawable).getImageReceiver();
             return receiver != null && receiver.hasReadyImage();
@@ -1547,7 +1546,7 @@ public class AnimatedEmojiDrawable extends Drawable {
             try {
                 if (drawable instanceof AnimatedEmojiDrawable) {
                     ((AnimatedEmojiDrawable) drawable).draw(canvas, crossfading);
-                } else { // left
+                } else {
                     drawable.draw(canvas);
                 }
             } finally {

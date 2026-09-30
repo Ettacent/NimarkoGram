@@ -1,6 +1,4 @@
-/*
  * Copyright github.com/arsLan4k1390, 2022-2026.
- * Licensed under GNU GPL v2 or later. See LICENSE.
  */
 
 package app.nimarkogram.messenger.utils.chats;
@@ -98,7 +96,6 @@ public class NimarkoChatHelper extends BaseController {
         if (!BuildVars.DEBUG_PRIVATE_VERSION) {
             return false;
         }
-        
         if (userID != 0 && getUserConfig().clientUserId == userID) {
             return false;
         }
@@ -124,7 +121,6 @@ public class NimarkoChatHelper extends BaseController {
         }
         if (forwardsSpan == null) {
             forwardsSpan = new SpannableStringBuilder("​");
-            
             forwardsSpan.setSpan(new ColoredImageSpan(forwardsDrawable, 0), 0, 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
         }
         spannableStringBuilder
@@ -139,12 +135,10 @@ public class NimarkoChatHelper extends BaseController {
 
     public static SpannableStringBuilder getEditedSpan() {
         if (editedDrawable == null) {
-            
             editedDrawable = MessageStatusIcons.create(R.drawable.msg_edited);
         }
         if (editedSpan == null) {
             editedSpan = new SpannableStringBuilder("​");
-            
             editedSpan.setSpan(new ColoredImageSpan(editedDrawable, 0), 0, 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
         }
         return editedSpan;
@@ -156,7 +150,6 @@ public class NimarkoChatHelper extends BaseController {
         boolean isMusic = messageObject.isMusic();
 
         if (editedDrawable == null) {
-            
             editedDrawable = MessageStatusIcons.create(R.drawable.msg_edited);
         }
         if (editedSpan == null) {

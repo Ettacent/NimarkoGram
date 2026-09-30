@@ -95,7 +95,6 @@ public class SharedLinkCell extends FrameLayout {
         public void run() {
             if (checkingForLongPress && getParent() != null && currentPressCount == pressCount) {
                 checkingForLongPress = false;
-                
                 if (!app.nimarkogram.messenger.NimarkoConfig.disableVibration) {
                     try {
                         performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);

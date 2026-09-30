@@ -280,10 +280,12 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
     private long fragmentPresentationGeneration;
     private Bundle pendingProfileRestore;
     private java.util.function.BooleanSupplier pendingProfileRestoreCurrent;
+    private Runnable pendingInAppNotificationNavigation;
     public void invalidateFragmentPresentationRequests() {
         fragmentPresentationGeneration++;
         pendingProfileRestore = null;
         pendingProfileRestoreCurrent = null;
+        pendingInAppNotificationNavigation = null;
     }
     public java.util.function.BooleanSupplier captureFragmentPresentationRequest() {
         invalidateFragmentPresentationRequests();
@@ -6570,12 +6572,6 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
         final long owner = intent.getLongExtra("nm_banner_owner", 0);
         final long session = intent.getLongExtra("nm_banner_session", -1);
         if (!app.nimarkogram.messenger.notifications.NimarkoInAppNotifications.isCurrent(account, owner, session)) return;
-        if (account == UserConfig.selectedAccount || frameLayout == null || !frameLayout.isAttachedToWindow()
-                || !SharedConfig.animationsEnabled()
-                || !app.nimarkogram.messenger.notifications.NimarkoInAppNotifications.isAvailable()) {
-            handleIntent(intent, true, false, false, null, false, false);
-            return;
-        }
         final int source = UserConfig.selectedAccount;
         final long sourceOwner = UserConfig.getInstance(source).getClientUserId();
         final long sourceSession = app.nimarkogram.messenger.notifications.NimarkoInAppNotifications.session(source);
@@ -6584,15 +6580,103 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
         final java.util.function.BooleanSupplier sourceCurrent = sourceFragment == null
                 ? captureFragmentPresentationRequest() : sourceFragment.captureNavigationRequest();
         final Intent destination = new Intent(intent);
-        AndroidUtilities.hideKeyboard(getCurrentFocus());
-        accountSwitchTransition.start(frameLayout, getWindow(),
-                () -> !isFinishing() && !isDestroyed() && hasWindowFocus()
+        final java.util.function.BooleanSupplier valid =
+                () -> !isFinishing() && !isDestroyed() && !ApplicationLoader.mainInterfacePaused
+                        && ApplicationLoader.isScreenOn && !SharedConfig.appLocked && !SharedConfig.isWaitingForPasscodeEnter
                         && request == navigationRequestGeneration.get() && sourceCurrent.getAsBoolean()
                         && UserConfig.selectedAccount == source
-                        && app.nimarkogram.messenger.notifications.NimarkoInAppNotifications.isAvailable()
                         && app.nimarkogram.messenger.notifications.NimarkoInAppNotifications.isCurrent(source, sourceOwner, sourceSession)
-                        && app.nimarkogram.messenger.notifications.NimarkoInAppNotifications.isCurrent(account, owner, session),
-                () -> handleIntent(destination, true, false, false, null, false, false));
+                        && app.nimarkogram.messenger.notifications.NimarkoInAppNotifications.isCurrent(account, owner, session);
+        if (!valid.getAsBoolean()) return;
+        final long chatId = destination.getLongExtra("chatId", 0);
+        final long topicId = destination.getLongExtra("topicId", 0);
+        Bundle args = new Bundle();
+        args.putLong("chat_id", chatId);
+        args.putLong("user_id", destination.getLongExtra("userId", 0));
+        if (!MessagesController.getInstance(account).checkCanOpenChat(args, sourceFragment)) return;
+        if (chatId != 0 && topicId > 0
+                && MessagesController.getInstance(account).getTopicsController().findTopic(chatId, topicId) == null) {
+            final AtomicBoolean completed = new AtomicBoolean();
+            final Runnable timeout = () -> {
+                if (completed.getAndSet(true) || !valid.getAsBoolean() || !hasWindowFocus() || sourceFragment == null) return;
+                BulletinFactory.of(sourceFragment).createErrorBulletin(LocaleController.getString(R.string.UnknownError)).show();
+            };
+            AndroidUtilities.runOnUIThread(timeout, 15_000);
+            MessagesController.getInstance(account).getTopicsController().loadTopic(chatId, topicId, () -> {
+                AndroidUtilities.cancelRunOnUIThread(timeout);
+                if (completed.getAndSet(true)) return;
+                if (!valid.getAsBoolean()) return;
+                if (MessagesController.getInstance(account).getTopicsController().findTopic(chatId, topicId) == null) {
+                    if (hasWindowFocus() && sourceFragment != null) {
+                        BulletinFactory.of(sourceFragment).createErrorBulletin(LocaleController.getString(R.string.UnknownError)).show();
+                    }
+                    return;
+                }
+                authorizeInAppNotification(destination, valid);
+            });
+        } else {
+            authorizeInAppNotification(destination, valid);
+        }
+    }
+    private void authorizeInAppNotification(Intent intent, java.util.function.BooleanSupplier valid) {
+        if (!valid.getAsBoolean() || !hasWindowFocus()
+                || !app.nimarkogram.messenger.notifications.NimarkoInAppNotifications.isAvailable()) return;
+        final int account = intent.getIntExtra("currentAccount", -1);
+        final long userId = intent.getLongExtra("userId", 0);
+        final long chatId = intent.getLongExtra("chatId", 0);
+        final int encId = intent.getIntExtra("encId", 0);
+        if (app.nimarkogram.messenger.utils.chats.NimarkoChatsPasswordHelper
+                .shouldRequireBiometrics(userId, chatId, encId, account)
+                && !app.nimarkogram.messenger.security.NimarkoBiometricPrompt.isRecentlyVerified(account, userId, chatId, encId)) {
+            app.nimarkogram.messenger.security.NimarkoBiometricPrompt.prompt(this, account, () -> {
+                if (!valid.getAsBoolean()) return;
+                app.nimarkogram.messenger.security.NimarkoBiometricPrompt.markVerified(account, userId, chatId, encId);
+                pendingInAppNotificationNavigation = () -> authorizeInAppNotification(intent, valid);
+                resumeInAppNotificationNavigation();
+            }, null);
+            return;
+        }
+        presentInAppNotification(intent, valid);
+    }
+    private void resumeInAppNotificationNavigation() {
+        if (!hasWindowFocus() || pendingInAppNotificationNavigation == null) return;
+        Runnable navigation = pendingInAppNotificationNavigation;
+        pendingInAppNotificationNavigation = null;
+        AndroidUtilities.runOnUIThread(navigation);
+    }
+    private void presentInAppNotification(Intent intent, java.util.function.BooleanSupplier valid) {
+        if (!valid.getAsBoolean() || !hasWindowFocus()
+                || !app.nimarkogram.messenger.notifications.NimarkoInAppNotifications.isAvailable()) return;
+        final int account = intent.getIntExtra("currentAccount", -1);
+        AndroidUtilities.hideKeyboard(getCurrentFocus());
+        if (account == UserConfig.selectedAccount || frameLayout == null || !frameLayout.isAttachedToWindow()
+                || !SharedConfig.animationsEnabled()) {
+            handleIntent(intent, true, false, false, null, false, false);
+            return;
+        }
+        accountSwitchTransition.start(frameLayout, getWindow(),
+                () -> valid.getAsBoolean() && hasWindowFocus()
+                        && app.nimarkogram.messenger.notifications.NimarkoInAppNotifications.isAvailable(),
+                () -> handleIntent(intent, true, false, false, null, false, false),
+                null, () -> isInAppNotificationContentReady(intent));
+    }
+    private boolean isInAppNotificationContentReady(Intent intent) {
+        BaseFragment fragment = getLastFragmentIncludeMainTabs();
+        if (AndroidUtilities.isTablet() && rightActionBarLayout != null
+                && rightActionBarLayout.getView().getVisibility() == View.VISIBLE
+                && rightActionBarLayout.getLastFragment() != null) {
+            fragment = rightActionBarLayout.getLastFragment();
+        }
+        if (!(fragment instanceof ChatActivity)
+                || fragment.getCurrentAccount() != intent.getIntExtra("currentAccount", -1)
+                || fragment.getFragmentView() == null || fragment.getFragmentView().isLayoutRequested()) return false;
+        ChatActivity chat = (ChatActivity) fragment;
+        long userId = intent.getLongExtra("userId", 0);
+        long chatId = intent.getLongExtra("chatId", 0);
+        int encId = intent.getIntExtra("encId", 0);
+        long dialogId = userId != 0 ? userId : chatId != 0 ? -chatId : DialogObject.makeEncryptedDialogId(encId);
+        return chat.getDialogId() == dialogId
+                && (chatId == 0 || chat.getTopicId() == intent.getLongExtra("topicId", 0));
     }
 
     public void onNewIntent(Intent intent, Browser.Progress progress) {
@@ -7200,6 +7284,7 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
     public void onWindowFocusChanged(boolean hasFocus) {
         super.onWindowFocusChanged(hasFocus);
         app.nimarkogram.messenger.notifications.NimarkoInAppNotifications.onWindowFocusChanged(this, hasFocus);
+        if (hasFocus) resumeInAppNotificationNavigation();
     }
     @Override
     public boolean dispatchTouchEvent(android.view.MotionEvent event) {
@@ -7372,6 +7457,7 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
 
     @Override
     protected void onDestroy() {
+        pendingInAppNotificationNavigation = null;
         accountSwitchTransition.cancel();
         app.nimarkogram.messenger.notifications.NimarkoInAppNotifications.onPause(this);
         // Invalidate any posted icon-pack cache/rebuild callback before fragment

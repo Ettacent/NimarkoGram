@@ -20,7 +20,6 @@ import android.view.ViewConfiguration;
 
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.ui.ActionBar.Theme;
-import org.telegram.ui.Cells.BaseCell;
 
 import java.util.ArrayList;
 
@@ -96,7 +95,7 @@ public class CanvasButton {
                     new int[][]{StateSet.WILD_CARD},
                     new int[]{Theme.getColor(Theme.key_listSelector) & 0x19ffffff}
             );
-            selectorDrawable = new BaseCell.RippleDrawableSafe(colorStateList, null, maskDrawable);
+            selectorDrawable = new SmoothRippleDrawable(colorStateList, null, maskDrawable);
             selectorDrawable.setCallback(parent);
         }
     }
@@ -190,7 +189,11 @@ public class CanvasButton {
                 }
                 parent.playSoundEffect(SoundEffectConstants.CLICK);
                 if (Build.VERSION.SDK_INT >= 21 && selectorDrawable != null) {
-                    selectorDrawable.setState(StateSet.NOTHING);
+                    if (event.getAction() == MotionEvent.ACTION_CANCEL && selectorDrawable instanceof SmoothRippleDrawable) {
+                        ((SmoothRippleDrawable) selectorDrawable).cancelPress();
+                    } else {
+                        selectorDrawable.setState(StateSet.NOTHING);
+                    }
                 }
                 buttonPressed = false;
                 parent.invalidate();

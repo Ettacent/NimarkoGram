@@ -148,8 +148,8 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
         final float tappedCenter = tabs[tappedTabIndex].getX() + tabs[tappedTabIndex].getWidth() / 2f;
         final float currentCenter = currentTab.getX() + currentTab.getWidth() / 2f;
         if (tappedCenter == currentCenter) return false;
-        final boolean visualForward = tappedCenter > currentCenter;
-        final boolean pagerForward = targetPagerPosition > currentPagerPosition;
+        final boolean visualForward = tappedCenter > currentCenter; // physical right, including RTL layouts
+        final boolean pagerForward = targetPagerPosition > currentPagerPosition; // pager natural right
         return visualForward != pagerForward;
     }
 
@@ -814,13 +814,13 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
             private final Paint selectedPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
             @Override
             protected void dispatchDraw(@NonNull Canvas canvas) {
+                super.dispatchDraw(canvas);
                 if (selected) {
                     selectedPaint.setStyle(Paint.Style.STROKE);
                     selectedPaint.setStrokeWidth(dp(1.33f));
                     selectedPaint.setColor(getThemedColor(Theme.key_featuredStickers_addButton));
                     canvas.drawCircle(getWidth() / 2.0f, getHeight() / 2.0f, dp(16), selectedPaint);
                 }
-                super.dispatchDraw(canvas);
             }
         };
         btn.addView(avatarContainer, LayoutHelper.createLinear(34, 34, Gravity.CENTER_VERTICAL, 12, 0, 0, 0));
@@ -833,7 +833,7 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
         avatarView.setRoundRadius(dp(16));
         avatarView.getImageReceiver().setCurrentAccount(account);
         avatarView.setForUserOrChat(user, avatarDrawable);
-        avatarContainer.addView(avatarView, LayoutHelper.createLinear(32, 32, Gravity.CENTER, 1, 1, 1, 1));
+        avatarContainer.addView(avatarView, LayoutHelper.createFrame(32, 32, Gravity.CENTER));
 
         final TextView textView = new TextView(getContext());
         textView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 16);

@@ -29,11 +29,13 @@ half4 main(in float2 fragCoord) {
   float2 uv = fragCoord;
   float rim = 0.0;
   if (sd < 0.0 && thickness > 0.0) {
+    float depth = min(thickness, min(size.x, size.y));
+    float activeDepth = max(depth, max(1.0, thickness * 0.65));
+    if (-sd < activeDepth) {
     float2 gradient = float2(
         sdfRect(p + float2(0.5, 0.0), radius) - sdfRect(p - float2(0.5, 0.0), radius),
         sdfRect(p + float2(0.0, 0.5), radius) - sdfRect(p - float2(0.0, 0.5), radius));
     float2 normal = gradient / max(length(gradient), 0.001);
-    float depth = min(thickness, min(size.x, size.y));
     float t = clamp(-sd / max(depth, 0.001), 0.0, 1.0);
     // Bounded lens with zero slope at both ends. The previous grazing-angle
     // refraction jumped tens of pixels at the silhouette. Full precision is
@@ -42,7 +44,6 @@ half4 main(in float2 fragCoord) {
     float strength = clamp((refract_index - 1.0) * 2.0, 0.0, 1.5)
         * clamp(refract_intensity, 0.0, 1.0);
     uv -= normal * depth * 0.85 * lens * strength;
-    uv = clamp(uv, float2(0.5), max(resolution - float2(0.5), float2(0.5)));
 
     // Directional inner reflection, reusing the SDF gradient without another
     // backdrop sample. Its width scales with the existing glass thickness.
@@ -52,6 +53,8 @@ half4 main(in float2 fragCoord) {
     rim = (edge * (0.04 + 0.12 * light) + shoulder * 0.065 * light)
         * clamp(refract_intensity, 0.0, 1.0) * reflection_enabled
         * smoothstep(0.0, 1.0, -sd);
+    }
+    uv = clamp(uv, float2(0.5), max(resolution - float2(0.5), float2(0.5)));
   }
 
   half4 color = srcOver(half4(foreground_color_premultiplied), img.eval(uv));

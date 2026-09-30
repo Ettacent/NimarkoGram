@@ -10,6 +10,7 @@ import static org.telegram.ui.Components.Reactions.ReactionsUtils.createAnimated
 import android.animation.Animator;
 import android.animation.AnimatorListenerAdapter;
 import android.animation.LayoutTransition;
+import android.animation.ValueAnimator;
 import android.annotation.SuppressLint;
 import android.content.Context;
 import android.graphics.Bitmap;
@@ -41,6 +42,7 @@ import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.MessagesStorage;
 import org.telegram.messenger.NotificationCenter;
 import org.telegram.messenger.R;
+import org.telegram.messenger.SharedConfig;
 import org.telegram.messenger.browser.Browser;
 import org.telegram.tgnet.TLRPC;
 import org.telegram.tgnet.tl.TL_stars;
@@ -88,7 +90,8 @@ public class ChatCustomReactionsEditActivity extends BaseFragment implements Not
     private UpdateReactionsButton actionButton;
     private FrameLayout actionButtonContainer;
     private ImageView actionButtonContainerGradient;
-    private int keyboardHeight;
+    private float emojiKeyboardProgress;
+    private ValueAnimator emojiKeyboardAnimator;
     private SectionsScrollView scrollView;
 
     private final HashMap<Long, AnimatedEmojiSpan> selectedEmojisMap = new LinkedHashMap<>();
@@ -108,6 +111,11 @@ public class ChatCustomReactionsEditActivity extends BaseFragment implements Not
     private int selectedType = -1;
     private boolean isPaused;
     private final Runnable checkAfterFastDeleteRunnable = () -> checkMaxCustomReactions(false);
+    private final Runnable restoreEmojiKeyboardFocus = () -> {
+        if (!isPaused && emojiKeyboardVisible && editText != null && editText.isAttachedToWindow() && !isFinishing()) {
+            editText.requestFocus();
+        }
+    };
 
     public ChatCustomReactionsEditActivity(long chatId, TLRPC.ChatFull info) {
         super();
@@ -147,6 +155,7 @@ public class ChatCustomReactionsEditActivity extends BaseFragment implements Not
     @SuppressLint("ClickableViewAccessibility")
     @Override
     public View createView(Context context) {
+        AndroidUtilities.cancelRunOnUIThread(restoreEmojiKeyboardFocus);
         actionBar.setTitle(LocaleController.getString(R.string.Reactions));
         actionBar.setBackButtonImage(R.drawable.ic_ab_back);
         actionBar.setAllowOverlayTitle(true);
@@ -163,7 +172,16 @@ public class ChatCustomReactionsEditActivity extends BaseFragment implements Not
         });
 
         contentLayout = new SectionsScrollView.SectionsLinearLayout(context);
-        scrollView = new SectionsScrollView(context, contentLayout, resourceProvider);
+        scrollView = new SectionsScrollView(context, contentLayout, resourceProvider) {
+            @Override
+            protected void dispatchDraw(Canvas canvas) {
+                super.dispatchDraw(canvas);
+                LayoutTransition transition = switchLayout == null ? null : switchLayout.getLayoutTransition();
+                if (transition != null && transition.isRunning()) {
+                    postInvalidateOnAnimation();
+                }
+            }
+        };
         scrollView.setFillViewport(true);
         actionBar.setAdaptiveBackground(scrollView);
 
@@ -220,6 +238,9 @@ public class ChatCustomReactionsEditActivity extends BaseFragment implements Not
             }
         };
 
+        rootLayout.setFocusableInTouchMode(true);
+        rootLayout.setDescendantFocusability(ViewGroup.FOCUS_BEFORE_DESCENDANTS);
+        rootLayout.requestFocus();
         contentLayout.setOrientation(LinearLayout.VERTICAL);
 
         scrollView.addView(contentLayout);
@@ -259,7 +280,7 @@ public class ChatCustomReactionsEditActivity extends BaseFragment implements Not
         editText = new CustomReactionEditText(context, getResourceProvider(), maxReactionsCount) {
             @Override
             protected void onLineCountChanged(int oldLineCount, int newLineCount) {
-                if (newLineCount > oldLineCount) {
+                if (emojiKeyboardVisible && hasFocus() && oldLineCount > 0 && newLineCount > oldLineCount) {
                     scrollView.smoothScrollBy(0, dp(30));
                 }
             }
@@ -281,6 +302,16 @@ public class ChatCustomReactionsEditActivity extends BaseFragment implements Not
         LayoutTransition layoutTransition = new LayoutTransition();
         layoutTransition.setDuration(200);
         layoutTransition.enableTransitionType(LayoutTransition.CHANGING);
+        layoutTransition.addTransitionListener(new LayoutTransition.TransitionListener() {
+            @Override
+            public void startTransition(LayoutTransition transition, ViewGroup container, View view, int transitionType) {
+                scrollView.invalidate();
+            }
+            @Override
+            public void endTransition(LayoutTransition transition, ViewGroup container, View view, int transitionType) {
+                scrollView.invalidate();
+            }
+        });
         switchLayout.setLayoutTransition(layoutTransition);
 
         TextInfoPrivacyCell infoCell2 = new TextInfoPrivacyCell(context, 12, resourceProvider);
@@ -392,11 +423,8 @@ public class ChatCustomReactionsEditActivity extends BaseFragment implements Not
             @Override
             protected void onLayout(boolean changed, int left, int top, int right, int bottom) {
                 super.onLayout(changed, left, top, right, bottom);
-                if (emojiKeyboardVisible && changed) {
-                    //support screen rotation
-                    actionButtonContainer.setTranslationY(-bottomDialogLayout.getMeasuredHeight());
-                    updateScrollViewMarginBottom(bottomDialogLayout.getMeasuredHeight());
-//                    scrollView.fullScroll(ScrollView.FOCUS_DOWN);
+                if (changed) {
+                    updateEmojiKeyboardPosition();
                 }
             }
         };
@@ -718,6 +746,8 @@ public class ChatCustomReactionsEditActivity extends BaseFragment implements Not
 
     @Override
     public void onFragmentDestroy() {
+        AndroidUtilities.cancelRunOnUIThread(restoreEmojiKeyboardFocus);
+        finishEmojiKeyboardAnimation();
         super.onFragmentDestroy();
         AndroidUtilities.cancelRunOnUIThread(checkAfterFastDeleteRunnable);
         if (selectedType == SELECT_TYPE_NONE && reactionsCount != currentReactionsCount) {
@@ -729,13 +759,13 @@ public class ChatCustomReactionsEditActivity extends BaseFragment implements Not
     @Override
     public void onResume() {
         super.onResume();
+        AndroidUtilities.cancelRunOnUIThread(restoreEmojiKeyboardFocus);
         if (isPaused) {
             isPaused = false;
             editText.setFocusable(true);
             editText.setFocusableInTouchMode(true);
             if (emojiKeyboardVisible) {
-                editText.removeReactionsSpan(false);
-                AndroidUtilities.runOnUIThread(() -> editText.requestFocus(), 250);
+                AndroidUtilities.runOnUIThread(restoreEmojiKeyboardFocus, 250);
             }
         }
     }
@@ -743,7 +773,9 @@ public class ChatCustomReactionsEditActivity extends BaseFragment implements Not
     @Override
     public void onPause() {
         isPaused = true;
+        AndroidUtilities.cancelRunOnUIThread(restoreEmojiKeyboardFocus);
         editText.setFocusable(false);
+        finishEmojiKeyboardAnimation();
         super.onPause();
     }
 
@@ -835,61 +867,106 @@ public class ChatCustomReactionsEditActivity extends BaseFragment implements Not
     private void showKeyboard() {
         if (!emojiKeyboardVisible) {
             emojiKeyboardVisible = true;
-            NotificationCenter.getGlobalInstance().postNotificationName(NotificationCenter.stopAllHeavyOperations, 512);
-            updateScrollViewMarginBottom(bottomDialogLayout.getMeasuredHeight());
-            bottomDialogLayout.setVisibility(View.VISIBLE);
-            bottomDialogLayout.setTranslationY(bottomDialogLayout.getMeasuredHeight());
-            bottomDialogLayout.animate().setListener(null).cancel();
-            bottomDialogLayout.animate().translationY(0).withLayer().setDuration(350).setInterpolator(CubicBezierInterpolator.DEFAULT).setUpdateListener(animation -> {
-                actionButtonContainer.setTranslationY(-(float) animation.getAnimatedValue() * bottomDialogLayout.getMeasuredHeight());
-            }).setListener(new AnimatorListenerAdapter() {
-                @Override
-                public void onAnimationEnd(Animator animation) {
-                    NotificationCenter.getGlobalInstance().postNotificationName(NotificationCenter.startAllHeavyOperations, 512);
-//                    scrollView.fullScroll(ScrollView.FOCUS_DOWN);
-//                    scrollView.smoothScrollTo();
-                }
-            }).start();
+            initSelectAnimatedEmojiDialog();
+            animateEmojiKeyboard(1f);
         }
     }
 
     private boolean closeKeyboard() {
         if (emojiKeyboardVisible) {
+            AndroidUtilities.cancelRunOnUIThread(restoreEmojiKeyboardFocus);
             emojiKeyboardVisible = false;
-            if (isClearFocusNotWorking()) {
-                switchLayout.setFocusableInTouchMode(true);
-                switchLayout.requestFocus();
-            } else {
-                editText.clearFocus();
-            }
-            updateScrollViewMarginBottom(0);
-            NotificationCenter.getGlobalInstance().postNotificationName(NotificationCenter.stopAllHeavyOperations, 512);
-            bottomDialogLayout.animate().setListener(null).cancel();
-            bottomDialogLayout.animate().translationY(bottomDialogLayout.getMeasuredHeight()).setDuration(350).withLayer().setInterpolator(CubicBezierInterpolator.DEFAULT).setUpdateListener(animation -> {
-                actionButtonContainer.setTranslationY(-(1f - (float) animation.getAnimatedValue()) * bottomDialogLayout.getMeasuredHeight());
-            }).setListener(new AnimatorListenerAdapter() {
-                @Override
-                public void onAnimationEnd(Animator animation) {
-                    NotificationCenter.getGlobalInstance().postNotificationName(NotificationCenter.startAllHeavyOperations, 512);
-                    bottomDialogLayout.setVisibility(View.INVISIBLE);
-                    if (isClearFocusNotWorking()) {
-                        switchLayout.setFocusableInTouchMode(false);
-                    }
+            if (fragmentView == null || !fragmentView.requestFocus()) {
+                if (isClearFocusNotWorking()) {
+                    switchLayout.setFocusableInTouchMode(true);
+                    switchLayout.requestFocus();
+                } else {
+                    editText.clearFocus();
                 }
-            }).start();
+            }
+            animateEmojiKeyboard(0f);
             return true;
         }
         return false;
     }
 
+    private void updateEmojiKeyboardPosition() {
+        final int height = bottomDialogLayout.getMeasuredHeight();
+        final float visibleHeight = height * emojiKeyboardProgress;
+        bottomDialogLayout.setTranslationY(height - visibleHeight);
+        actionButtonContainer.setTranslationY(-visibleHeight);
+        updateScrollViewMarginBottom(Math.round(visibleHeight));
+    }
+    private void animateEmojiKeyboard(float target) {
+        if (emojiKeyboardAnimator != null) {
+            emojiKeyboardAnimator.removeAllListeners();
+            emojiKeyboardAnimator.cancel();
+        }
+        bottomDialogLayout.setVisibility(View.VISIBLE);
+        updateEmojiKeyboardPosition();
+        NotificationCenter.getGlobalInstance().postNotificationName(NotificationCenter.stopAllHeavyOperations, 512);
+        ValueAnimator animator = ValueAnimator.ofFloat(emojiKeyboardProgress, target);
+        emojiKeyboardAnimator = animator;
+        animator.setDuration(SharedConfig.animationsEnabled() ? Math.round(350 * Math.abs(target - emojiKeyboardProgress)) : 0);
+        animator.setInterpolator(CubicBezierInterpolator.DEFAULT);
+        animator.addUpdateListener(animation -> {
+            emojiKeyboardProgress = (float) animation.getAnimatedValue();
+            updateEmojiKeyboardPosition();
+        });
+        animator.addListener(new AnimatorListenerAdapter() {
+            @Override
+            public void onAnimationEnd(Animator animation) {
+                if (emojiKeyboardAnimator != animation) return;
+                emojiKeyboardAnimator = null;
+                emojiKeyboardProgress = target;
+                updateEmojiKeyboardPosition();
+                if (target == 0f) {
+                    bottomDialogLayout.setVisibility(View.INVISIBLE);
+                    if (isClearFocusNotWorking()) switchLayout.setFocusableInTouchMode(false);
+                }
+                NotificationCenter.getGlobalInstance().postNotificationName(NotificationCenter.startAllHeavyOperations, 512);
+            }
+        });
+        animator.start();
+    }
+    private void finishEmojiKeyboardAnimation() {
+        if (emojiKeyboardAnimator == null) return;
+        emojiKeyboardAnimator.removeAllListeners();
+        emojiKeyboardAnimator.cancel();
+        emojiKeyboardAnimator = null;
+        emojiKeyboardProgress = emojiKeyboardVisible ? 1f : 0f;
+        updateEmojiKeyboardPosition();
+        if (!emojiKeyboardVisible) {
+            bottomDialogLayout.setVisibility(View.INVISIBLE);
+            if (isClearFocusNotWorking()) switchLayout.setFocusableInTouchMode(false);
+        }
+        NotificationCenter.getGlobalInstance().postNotificationName(NotificationCenter.startAllHeavyOperations, 512);
+    }
     private boolean isClearFocusNotWorking() {
         return Build.MODEL.toLowerCase().startsWith("zte") && Build.VERSION.SDK_INT <= Build.VERSION_CODES.P;
     }
 
     private void updateScrollViewMarginBottom(int margin) {
         ViewGroup.MarginLayoutParams marginLayoutParams = ((ViewGroup.MarginLayoutParams) scrollView.getLayoutParams());
-        marginLayoutParams.bottomMargin = margin;
-        scrollView.setLayoutParams(marginLayoutParams);
+        if (marginLayoutParams.bottomMargin != margin) {
+            marginLayoutParams.bottomMargin = margin;
+            scrollView.setLayoutParams(marginLayoutParams);
+        }
+        scrollView.requestLayout();
+        scrollView.invalidate();
+        contentLayout.requestLayout();
+        contentLayout.invalidate();
+        if (margin == 0) {
+            scrollView.postOnAnimation(() -> {
+                if (scrollView == null || scrollView.getParent() == null) {
+                    return;
+                }
+                scrollView.requestLayout();
+                scrollView.invalidate();
+                contentLayout.requestLayout();
+                contentLayout.invalidate();
+            });
+        }
     }
 
     @Override

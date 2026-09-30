@@ -1,4 +1,3 @@
- 
 package app.nimarkogram.messenger.textanim;
 
 import android.content.Context;
@@ -47,7 +46,7 @@ public final class NimarkoTextAnim {
     private static final int BLUR_RADIUS = 10;
     private static final int BLUR_TEXT_DELAY_PCT = 20;
     private static final int SLIDE_DIST_PX = 20;
-    private static final int REPLACE_DURATION = 200; 
+    private static final int REPLACE_DURATION = 200;
     private static final int CURSOR_SPEED = 25;
     private static final int CURSOR_WIDTH_PX = 5;
     private static final int PARTICLE_COUNT = 5;
@@ -56,9 +55,7 @@ public final class NimarkoTextAnim {
     private static final int MASS_DELETE_THRESHOLD = 24;
     private static final int MAX_DELETE_GLYPHS = 3;
     private static final int MAX_DELETE_PARTICLES = 60;
-    
     private static final int MASS_INSERT_THRESHOLD = 24;
-    
     private static final int SPOILER_DURATION = 110;
     private static final float SPOILER_PARTICLE_SPEED = 3.1f;
     private static final int SPOILER_FADE_IN = 18;
@@ -70,7 +67,6 @@ public final class NimarkoTextAnim {
     private static final Object installLock = new Object();
     private static final List<XC_MethodHook.Unhook> hooks = new ArrayList<>();
     private static final WeakHashMap<View, State> states = new WeakHashMap<>();
-    
     private static final int BLUR_CACHE_MAX = 96;
     private static final int BLUR_BITMAP_MAX_DIMENSION = 512;
     private static final long BLUR_BITMAP_MAX_BYTES = 1024L * 1024L;
@@ -91,10 +87,8 @@ public final class NimarkoTextAnim {
                     return false;
                 }
             };
-    
     private static volatile Field fieldCursorWidth;
     private static volatile Field fieldResourcesProvider;
-    
     private static final boolean DIRECT_INTEGRATION = true;
 
     private static volatile boolean masterEnabled;
@@ -118,7 +112,6 @@ public final class NimarkoTextAnim {
             deleteEnabled = NimarkoConfig.nimarkoTextAnimDelete;
             spoilerEnabled = NimarkoConfig.nimarkoTextAnimSpoiler;
             if (DIRECT_INTEGRATION) {
-                
                 if (installed) {
                     uninstall();
                 }
@@ -268,7 +261,6 @@ public final class NimarkoTextAnim {
                 blurCache.clear();
                 blurCacheBytes = 0L;
             }
-            
             synchronized (states) {
                 if (fieldCursorWidth != null) {
                     for (Map.Entry<View, State> e : states.entrySet()) {
@@ -276,7 +268,6 @@ public final class NimarkoTextAnim {
                         View v = e.getKey();
                         if (st != null && v != null && st.systemCursorHidden) {
                             try {
-                                
                                 fieldCursorWidth.setFloat(v, st.savedCursorWidth);
                                 if (v instanceof EditText) {
                                     ((EditText) v).setCursorVisible(st.savedCursorVisible);
@@ -289,7 +280,6 @@ public final class NimarkoTextAnim {
                 }
                 states.clear();
             }
-            
             fieldCursorWidth = null;
             fieldResourcesProvider = null;
             installed = false;
@@ -297,7 +287,6 @@ public final class NimarkoTextAnim {
     }
 
     private static Class<?> findEditorClass() {
-        
         for (String name : new String[] {
                 "org.telegram.ui.Components.EditTextCaption",
                 "org.telegram.ui.Components.EditTextBoldCursor",
@@ -417,7 +406,6 @@ public final class NimarkoTextAnim {
         final State st = getState(view);
         if (st.heartbeatRunning) return;
         st.heartbeatRunning = true;
-        
         final Runnable beat = new Runnable() {
             @Override public void run() {
                 if (!st.focused) { st.heartbeatRunning = false; return; }
@@ -501,7 +489,6 @@ public final class NimarkoTextAnim {
 
         if (hadEdit && !st.charStartTimes.isEmpty()) {
             int delta = insCount - delCount;
-            
             Map<Integer, CharData> shifted = new HashMap<>();
             for (Map.Entry<Integer, CharData> e : st.charStartTimes.entrySet()) {
                 int idx = e.getKey();
@@ -511,7 +498,6 @@ public final class NimarkoTextAnim {
                     int n = idx + delta;
                     if (n >= 0 && n < newLen) shifted.put(n, e.getValue());
                 }
-                
             }
             st.charStartTimes.clear();
             st.charStartTimes.putAll(shifted);
@@ -519,7 +505,6 @@ public final class NimarkoTextAnim {
 
         if ((appearEnabled || spoilerEnabled) && insCount > 0 && insCount <= MASS_INSERT_THRESHOLD) {
             long nowMs = System.currentTimeMillis();
-            
             boolean isReplace = (delCount > 0 && insCount > 0);
             String inserted = now.substring(prefix, newEnd);
             Spannable spannable = (text instanceof Spannable) ? text : null;
@@ -529,7 +514,6 @@ public final class NimarkoTextAnim {
                 int step = Character.charCount(inserted.codePointAt(i));
                 int next = i + step;
                 String ch = inserted.substring(i, next);
-                
                 if (!ch.trim().isEmpty()) {
                     boolean isEmojiOrReplacement = step > 1
                             || isCjkOrSymbol(ch)
@@ -559,7 +543,6 @@ public final class NimarkoTextAnim {
     private static boolean isCjkOrSymbol(String s) {
         if (s.isEmpty()) return false;
         char c = s.charAt(0);
-        
         return c >= 0x2032 && c <= 0x3299;
     }
 
@@ -577,7 +560,6 @@ public final class NimarkoTextAnim {
         State st = getState(edit);
         st.drawingDepth = Math.max(0, st.drawingDepth - 1);
         if (st.drawingDepth > 0) return;
-        
         long nowMs = System.currentTimeMillis();
         float dtNorm = (st.lastFrameMs == 0L) ? 1f
                 : Math.max(0.1f, Math.min(3f, (nowMs - st.lastFrameMs) / 16.6667f));
@@ -600,7 +582,6 @@ public final class NimarkoTextAnim {
         if (paint == null) return;
         Layout layout = edit.getLayout();
         if (layout == null) return;
-        
         long now = System.currentTimeMillis();
         int dtMs = (st.lastSpoilerDrawMs == 0) ? 16
                 : (int) Math.min(now - st.lastSpoilerDrawMs, 50L);
@@ -642,7 +623,6 @@ public final class NimarkoTextAnim {
             if (appearEnabled) {
                 drawCharBlurred(canvas, data.text, x, yDraw, paint, pBlur, paintAlpha, st);
             } else {
-                
                 int a = (int) (pBlur * paintAlpha);
                 if (a > 0) {
                     paint.setAlpha(a);
@@ -698,7 +678,6 @@ public final class NimarkoTextAnim {
         synchronized (blurCache) {
             Bitmap cached = blurCache.get(cacheKey);
             if (cached != null && !cached.isRecycled()) {
-                
                 drawCachedBlur(canvas, cached, x, y, paint, alpha, st);
                 return;
             }
@@ -707,7 +686,6 @@ public final class NimarkoTextAnim {
             if (blurCacheBytes + requestedBytes > BLUR_CACHE_MAX_BYTES) {
                 throw new IllegalArgumentException("blur cache budget exceeded");
             }
-            
             Bitmap bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
             Canvas c2 = new Canvas(bmp);
             c2.scale(0.5f, 0.5f);
@@ -857,7 +835,6 @@ public final class NimarkoTextAnim {
                     (int) ((a / 255f) * (srcA / 255f) * 255f),
                     (p.color >> 16) & 0xff, (p.color >> 8) & 0xff, p.color & 0xff);
             canvas.drawCircle(p.x, p.y, p.size / 2f, st.cursorPaint);
-            
             p.life -= p.decay * dtNorm;
             p.x += p.vx * dtNorm; p.y += p.vy * dtNorm;
         }
@@ -882,7 +859,6 @@ public final class NimarkoTextAnim {
         if (fieldCursorWidth == null) return;
         try {
             if (st.focused && !st.systemCursorHidden) {
-                
                 st.savedCursorWidth = fieldCursorWidth.getFloat(view);
                 if (view instanceof EditText) {
                     st.savedCursorVisible = ((EditText) view).isCursorVisible();
@@ -970,7 +946,6 @@ public final class NimarkoTextAnim {
             }
             if (st.cursorX < 0f) st.cursorX = targetX;
             if (st.cursorY < 0f) st.cursorY = targetY;
-            
             float ease = Math.min(1f, Math.max(0.05f, CURSOR_SPEED / 100f) * dtNorm);
             boolean moving = false;
             float maxX = 60f * dtNorm, maxY = 90f * dtNorm;
@@ -1089,7 +1064,6 @@ public final class NimarkoTextAnim {
                         cleanupSpoilerParticles(st);
                         return;
                     }
-                    
                     edit.postOnAnimation(this);
                 } catch (Throwable t) {
                     st.animationRunning = false;
@@ -1125,7 +1099,6 @@ public final class NimarkoTextAnim {
         boolean animationRunning = false;
         boolean focused = false;
         boolean systemCursorHidden = false;
-        
         float savedCursorWidth = 2f;
         boolean savedCursorVisible = true;
         boolean heartbeatRunning = false;
@@ -1148,7 +1121,7 @@ public final class NimarkoTextAnim {
         final long startTime;
         final String text;
         final int length;
-        final boolean replace; 
+        final boolean replace;
         CharData(long t, String s, int l) { this(t, s, l, false); }
         CharData(long t, String s, int l, boolean r) { startTime = t; text = s; length = l; replace = r; }
     }

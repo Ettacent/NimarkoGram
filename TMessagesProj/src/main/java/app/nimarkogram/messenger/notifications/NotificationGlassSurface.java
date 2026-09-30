@@ -48,6 +48,8 @@ final class NotificationGlassSurface implements ViewTreeObserver.OnPreDrawListen
     private BlurredBackgroundProvider panelColors = BlurredBackgroundProviderImpl.topPanelChatActivity(null);
     private final Paint shadowPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private float progress;
+    private boolean hasVisibleMaterial;
+    private final Rect visibleMaterialBounds = new Rect();
     private long lastFrameTime;
     private final int[] overlayPosition = new int[2];
 
@@ -92,6 +94,7 @@ final class NotificationGlassSurface implements ViewTreeObserver.OnPreDrawListen
         if (observer != null && observer.isAlive()) observer.removeOnPreDrawListener(this);
         observer = null;
         releaseLayers();
+        hasVisibleMaterial = false;
     }
 
     private void releaseLayers() {
@@ -122,6 +125,17 @@ final class NotificationGlassSurface implements ViewTreeObserver.OnPreDrawListen
                 || root.getParentLayout().isSwipeInProgress()));
     }
 
+    private boolean isMaterialVisible(Canvas canvas, Rect bounds) {
+        if (observer == null || !view.isAttachedToWindow() || !view.isShown()
+                || view.getWindowVisibility() != View.VISIBLE) return false;
+        for (View parent = view; parent != null;
+             parent = parent.getParent() instanceof View ? (View) parent.getParent() : null) {
+            if (parent.getAlpha() <= 0f) return false;
+        }
+        return view.getGlobalVisibleRect(visibleMaterialBounds)
+                && canvas.getClipBounds(visibleMaterialBounds)
+                && visibleMaterialBounds.intersect(bounds);
+    }
     private void update(float elapsed) {
         BaseFragment active = LaunchActivity.getLastFragmentIncludeMainTabs();
         boolean navigating = isNavigationRunning();
@@ -188,7 +202,6 @@ final class NotificationGlassSurface implements ViewTreeObserver.OnPreDrawListen
             }
             view.postInvalidateOnAnimation();
         }
-
         if (navigating || incoming != null) return;
         BaseFragment fragment = active;
         if (fragment == null) {
@@ -301,6 +314,13 @@ final class NotificationGlassSurface implements ViewTreeObserver.OnPreDrawListen
         @Override public void draw(Canvas canvas) {
             if (alpha == 0) return;
             Rect bounds = getBounds();
+            if (bounds.isEmpty()) return;
+            if (!hasVisibleMaterial && incoming != null && incoming.isReady()) {
+                if (current != null) current.release();
+                current = incoming;
+                incoming = null;
+                progress = 1f;
+            }
             int outer = alpha == 255 ? -1 : canvas.saveLayerAlpha(bounds.left, bounds.top, bounds.right, bounds.bottom, alpha);
             if (incoming != null && incoming.isReady()) {
                 float eased = progress * progress * (3f - 2f * progress);
@@ -320,6 +340,7 @@ final class NotificationGlassSurface implements ViewTreeObserver.OnPreDrawListen
             }
             sheen.draw(canvas);
             if (outer != -1) canvas.restoreToCount(outer);
+            hasVisibleMaterial = hasVisibleMaterial || isMaterialVisible(canvas, bounds);
         }
         private void drawCurrent(Canvas canvas) {
             if (current != null) current.glass.draw(canvas);

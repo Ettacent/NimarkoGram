@@ -30,13 +30,13 @@ import androidx.core.graphics.ColorUtils;
 import androidx.recyclerview.widget.RecyclerView;
 
 import org.telegram.ui.ActionBar.Theme;
-import org.telegram.ui.Cells.BaseCell;
 import org.telegram.ui.Cells.HeaderCell;
 import org.telegram.ui.Cells.ShadowSectionCell;
 import org.telegram.ui.Cells.TextInfoPrivacyCell;
 import org.telegram.ui.ChatActivity;
 import org.telegram.ui.Components.ProfileMusicView;
 import org.telegram.ui.Components.RecyclerListView;
+import org.telegram.ui.Components.SmoothRippleDrawable;
 import org.telegram.ui.FiltersSetupActivity;
 import org.telegram.ui.LaunchActivity;
 import org.telegram.ui.ProfileActivity;
@@ -62,7 +62,6 @@ public abstract class MD3ListAdapter extends RecyclerListView.SelectionAdapter {
     private RecyclerView attachedRecyclerView;
 
     private static final ArrayList<WeakReference<MD3ListAdapter>> attachedAdapters = new ArrayList<>();
-    
     private final RecyclerView.AdapterDataObserver md3DataObserver = new RecyclerView.AdapterDataObserver() {
         @Override
         public void onChanged() {
@@ -228,7 +227,7 @@ public abstract class MD3ListAdapter extends RecyclerListView.SelectionAdapter {
             Drawable rippleMaskDrawable = Theme.createRoundRectDrawable(topLeft, topRight, bottomRight, bottomLeft, Color.WHITE);
             int rippleColor = Theme.getColor(Theme.key_listSelector, config.resourcesProvider);
             ColorStateList rippleColorStateList = new ColorStateList(new int[][]{StateSet.WILD_CARD}, new int[]{rippleColor});
-            Drawable rippleDrawable = new BaseCell.RippleDrawableSafe(rippleColorStateList, backgroundDrawable, rippleMaskDrawable);
+            Drawable rippleDrawable = new SmoothRippleDrawable(rippleColorStateList, backgroundDrawable, rippleMaskDrawable);
             holder.itemView.setBackground(rippleDrawable);
         } else {
             holder.itemView.setBackground(backgroundDrawable);
@@ -271,7 +270,7 @@ public abstract class MD3ListAdapter extends RecyclerListView.SelectionAdapter {
         });
 
         int selectorColor = Theme.getColor(Theme.key_listSelector, config.resourcesProvider);
-        Drawable md3Selector = Theme.createRadSelectorDrawable(selectorColor,   0, 0);
+        Drawable md3Selector = Theme.createRadSelectorDrawable(selectorColor, /*cornerRadius*/ 0, 0);
 
         holder.itemView.setForeground(md3Selector);
         md3Selector.setCallback(holder.itemView);
@@ -367,7 +366,7 @@ public abstract class MD3ListAdapter extends RecyclerListView.SelectionAdapter {
     }
 
     public void forceLearnRole(int viewType, int role) {
-        roles.put(viewType, ROLE_CONTENT); 
+        roles.put(viewType, ROLE_CONTENT); // ROLE_DIVIDER
         switch (role) {
             case ROLE_DIVIDER -> dividerViewTypes.put(viewType, true);
             case ROLE_HEADER -> headerViewTypes.put(viewType, true);
@@ -393,7 +392,7 @@ public abstract class MD3ListAdapter extends RecyclerListView.SelectionAdapter {
     }
 
     protected static boolean isHeaderView(@NonNull View view) {
-        return view instanceof HeaderCell  ;
+        return view instanceof HeaderCell /*c1 && ObjectUtils.notEqual(ListAdapter.HEADER_WITHOUT_STYLING_TAG, c1.getTag())*/;
     }
 
     protected boolean isHeaderView(int viewType) {
@@ -442,10 +441,10 @@ public abstract class MD3ListAdapter extends RecyclerListView.SelectionAdapter {
     }
 
     public static class Md3Config {
-        public int sidePaddingDp = 12; 
-        public int firstTopPaddingDp = 12; 
-        public int innerGapDp = 0; 
-        public int cornerRadiusDp = 16; 
+        public int sidePaddingDp = 12; // 16
+        public int firstTopPaddingDp = 12; // Use when actionBar background == listView's background
+        public int innerGapDp = 0; // 2
+        public int cornerRadiusDp = 16; // 14
 
         public boolean useRipple = false;
         public boolean headerBackgroundEnabled = true;
@@ -467,7 +466,6 @@ public abstract class MD3ListAdapter extends RecyclerListView.SelectionAdapter {
     }
 
     public static boolean shouldUseCustomColors() {
-        
         return false;
     }
 
@@ -581,7 +579,7 @@ public abstract class MD3ListAdapter extends RecyclerListView.SelectionAdapter {
             if (config.useRipple) {
                 int rippleColor = Theme.getColor(Theme.key_listSelector, config.resourcesProvider);
                 ColorStateList rippleColorStateList = new ColorStateList(new int[][]{StateSet.WILD_CARD}, new int[]{rippleColor});
-                Drawable rippleDrawable = new BaseCell.RippleDrawableSafe(rippleColorStateList, backgroundDrawable, rippleMaskDrawable);
+                Drawable rippleDrawable = new SmoothRippleDrawable(rippleColorStateList, backgroundDrawable, rippleMaskDrawable);
                 child.setBackground(rippleDrawable);
             } else {
                 child.setBackground(backgroundDrawable);

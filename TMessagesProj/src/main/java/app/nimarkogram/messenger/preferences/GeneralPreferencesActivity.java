@@ -1,7 +1,3 @@
-/*
- * This file is part of NimarkoGram for Android.
- * Licensed under GNU GPL v2 or later. See LICENSE.
- * Copyright Ettacent, 2026.
  */
 
 package app.nimarkogram.messenger.preferences;

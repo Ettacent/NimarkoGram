@@ -1710,6 +1710,8 @@ public class RecyclerListView extends RecyclerView implements IBlur3Capture {
 
     public void setSelectorDrawableColor(int color) {
         if (selectorDrawable != null) {
+            selectorDrawable.setState(StateSet.NOTHING);
+            selectorDrawable.jumpToCurrentState();
             selectorDrawable.setCallback(null);
         }
         if (selectorType == 8) {
@@ -2132,7 +2134,7 @@ public class RecyclerListView extends RecyclerView implements IBlur3Capture {
                         ((TransitionDrawable) d).resetTransition();
                     }
                 }
-                selectorDrawable.setHotspot(holder.itemView.getMeasuredWidth() / 2, holder.itemView.getMeasuredHeight() / 2);
+                selectorDrawable.setHotspot(selectorRect.exactCenterX(), selectorRect.exactCenterY());
             }
             if (selectorDrawable != null && selectorDrawable.isStateful()) {
                 if (selectorDrawable.setState(getDrawableStateForSelector())) {
@@ -2172,6 +2174,12 @@ public class RecyclerListView extends RecyclerView implements IBlur3Capture {
     }
 
     private int activeTouches;
+    private Runnable onTouchEndListener;
+    public boolean isTouchInteractionActive() { return activeTouches > 0; }
+    public void setOnTouchEndListener(Runnable listener) {
+        if (onTouchEndListener != null) removeCallbacks(onTouchEndListener);
+        onTouchEndListener = listener;
+    }
     private boolean adaptiveOverScroll;
 
     public void setAdaptiveOverScroll() {
@@ -2181,14 +2189,15 @@ public class RecyclerListView extends RecyclerView implements IBlur3Capture {
 
     @Override
     public boolean dispatchTouchEvent(MotionEvent ev) {
-        final int action = ev.getAction();
+        final int action = ev.getActionMasked();
         if (action == MotionEvent.ACTION_DOWN) {
             if (activeTouches == 0 && adaptiveOverScroll) {
                 setOverScrollMode(OVER_SCROLL_ALWAYS);
             }
-            activeTouches++;
+            activeTouches = 1;
         } else if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) {
-            activeTouches--;
+            activeTouches = 0;
+            if (onTouchEndListener != null) postOnAnimation(onTouchEndListener);
             if (activeTouches == 0 && adaptiveOverScroll) {
                 setOverScrollMode(OVER_SCROLL_NEVER);
             }
@@ -2419,6 +2428,7 @@ public class RecyclerListView extends RecyclerView implements IBlur3Capture {
         if (positionChanged) {
             selectorDrawable.setVisible(false, false);
             selectorDrawable.setState(StateSet.NOTHING);
+            selectorDrawable.jumpToCurrentState();
         }
         setListSelectorColor(getSelectorColor(position));
         selectorDrawable.setBounds(selectorRect);
@@ -2446,7 +2456,10 @@ public class RecyclerListView extends RecyclerView implements IBlur3Capture {
             }
         }
         if (!animated) {
-            selectorDrawable.setState(StateSet.NOTHING);
+            if (selectorDrawable != null) {
+                selectorDrawable.setState(StateSet.NOTHING);
+                selectorDrawable.jumpToCurrentState();
+            }
             selectorRect.setEmpty();
         }
     }
@@ -2465,7 +2478,7 @@ public class RecyclerListView extends RecyclerView implements IBlur3Capture {
 
     private int[] getDrawableStateForSelector() {
         final int[] state = onCreateDrawableState(1);
-        state[state.length - 1] = android.R.attr.state_pressed;
+        mergeDrawableStates(state, new int[]{android.R.attr.state_pressed});
         return state;
     }
 
@@ -2532,6 +2545,10 @@ public class RecyclerListView extends RecyclerView implements IBlur3Capture {
         selectorPosition = NO_POSITION;
         selectorView = null;
         selectorRect.setEmpty();
+        if (selectorDrawable != null) {
+            selectorDrawable.setState(StateSet.NOTHING);
+            selectorDrawable.jumpToCurrentState();
+        }
         pinnedHeader = null;
         if (adapter instanceof SectionsAdapter) {
             sectionsAdapter = (SectionsAdapter) adapter;
@@ -2665,23 +2682,15 @@ public class RecyclerListView extends RecyclerView implements IBlur3Capture {
         if ((translateSelector == -2 || translateSelector == selectorPosition) && selectorTransformer != null) {
             selectorTransformer.accept(canvas);
         }
+        if (hasSections()) {
+            clipChild(canvas, selectorView);
+        }
         if ((translateSelector == -2 || translateSelector == selectorPosition) && selectorView != null) {
-            canvas.translate(selectorView.getX() - selectorRect.left, selectorView.getY() - selectorRect.top);
+            canvas.translate(selectorView.getTranslationX(), selectorView.getTranslationY());
             selectorDrawable.setAlpha((int) (0xFF * selectorView.getAlpha()));
         }
-        drawSelector(canvas);
+        selectorDrawable.draw(canvas);
         canvas.restore();
-    }
-
-    private void drawSelector(Canvas canvas) {
-        if (hasSections()) {
-            canvas.save();
-            clipChild(canvas, selectorView);
-            selectorDrawable.draw(canvas);
-            canvas.restore();
-        } else {
-            selectorDrawable.draw(canvas);
-        }
     }
 
     private boolean ignoreClipChild;
@@ -2779,10 +2788,17 @@ public class RecyclerListView extends RecyclerView implements IBlur3Capture {
     @Override
     protected void onDetachedFromWindow() {
         super.onDetachedFromWindow();
+        activeTouches = 0;
+        if (onTouchEndListener != null) removeCallbacks(onTouchEndListener);
+        if (adaptiveOverScroll) setOverScrollMode(OVER_SCROLL_NEVER);
         longPressCalled = false;
         selectorPosition = NO_POSITION;
         selectorView = null;
         selectorRect.setEmpty();
+        if (selectorDrawable != null) {
+            selectorDrawable.setState(StateSet.NOTHING);
+            selectorDrawable.jumpToCurrentState();
+        }
         if (itemsEnterAnimator != null) {
             itemsEnterAnimator.onDetached();
         }
@@ -3197,7 +3213,6 @@ public class RecyclerListView extends RecyclerView implements IBlur3Capture {
                 if (itemDecoration == sectionsItemDecoration && !canCaptureSectionsDecorator) {
                     continue;
                 }
-
                 final IBlur3Capture capture = (IBlur3Capture) itemDecoration;
                 capture.capture(canvas, position);
             }
@@ -3535,7 +3550,6 @@ public class RecyclerListView extends RecyclerView implements IBlur3Capture {
     }
     public void drawSectionsBackgrounds(Canvas canvas) {
         if (drawSectionBackground == null) return;
-
         reorderingSections = hasSectionReorderGesture() || reorderingSections && isAnimating();
         if (isAnimating() && !reorderingSections) {
             if (sections == null) {

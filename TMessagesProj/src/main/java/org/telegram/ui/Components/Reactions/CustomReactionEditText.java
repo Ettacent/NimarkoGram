@@ -29,6 +29,9 @@ public class CustomReactionEditText extends EditTextCaption {
     private final Theme.ResourcesProvider resourcesProvider;
     private final GestureDetectorCompat gestureDetector;
     private Runnable onFocused;
+    private int restingMinimumHeight;
+    private boolean focusHeightRetained;
+    private int hintGeneration;
 
     private int maxLength;
 
@@ -60,7 +63,7 @@ public class CustomReactionEditText extends EditTextCaption {
         inputFilters[0] = new InputFilter.LengthFilter(this.maxLength = maxLength);
         setFilters(inputFilters);
         setTextSize(TypedValue.COMPLEX_UNIT_DIP, 22);
-        setGravity(Gravity.BOTTOM);
+        setGravity(Gravity.TOP);
         setPadding(AndroidUtilities.dp(18), AndroidUtilities.dp(4), AndroidUtilities.dp(18), AndroidUtilities.dp(12));
         setTextColor(getThemedColor(Theme.key_chat_messagePanelText));
         setLinkTextColor(getThemedColor(Theme.key_chat_messageLinkOut));
@@ -74,12 +77,19 @@ public class CustomReactionEditText extends EditTextCaption {
         }
         setOnFocusChangeListener((v, hasFocus) -> {
             if (hasFocus) {
+                restingMinimumHeight = getMinimumHeight();
+                focusHeightRetained = true;
+                setMinimumHeight(Math.max(restingMinimumHeight, getHeight()));
                 removeReactionsSpan(true);
                 if (onFocused != null) {
                     onFocused.run();
                 }
             } else {
                 addReactionsSpan();
+                if (focusHeightRetained) {
+                    focusHeightRetained = false;
+                    setMinimumHeight(restingMinimumHeight);
+                }
             }
         });
         setTextIsSelectable(true);
@@ -119,6 +129,7 @@ public class CustomReactionEditText extends EditTextCaption {
     }
 
     public void addReactionsSpan() {
+        hintGeneration++;
         setLongClickable(false);
         SpannableStringBuilder spannableText = new SpannableStringBuilder(getText());
         AddReactionsSpan[] spans = spannableText.getSpans(0, spannableText.length(), AddReactionsSpan.class);
@@ -128,15 +139,22 @@ public class CustomReactionEditText extends EditTextCaption {
             span.show(this);
             builder.setSpan(span, 0, builder.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
             setText(getText().append(builder));
+        } else {
+            for (AddReactionsSpan span : spans) span.show(this);
         }
     }
 
     public void removeReactionsSpan(boolean animate) {
+        final int generation = ++hintGeneration;
         SpannableStringBuilder spannableText = new SpannableStringBuilder(getText());
         AddReactionsSpan[] spans = spannableText.getSpans(0, spannableText.length(), AddReactionsSpan.class);
         for (AddReactionsSpan span : spans) {
             Runnable action = () -> {
-                getText().delete(getText().getSpanStart(span), getText().getSpanEnd(span));
+                if (generation != hintGeneration) return;
+                int start = getText().getSpanStart(span);
+                int end = getText().getSpanEnd(span);
+                if (start < 0 || end <= start) return;
+                getText().delete(start, end);
                 setCursorVisible(true);
                 setLongClickable(true);
             };

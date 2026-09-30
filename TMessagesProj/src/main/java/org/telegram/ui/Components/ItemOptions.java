@@ -1209,20 +1209,25 @@ public class ItemOptions {
                 final View last = popupLayout.getItemAt(popupLayout.getItemsCount() - 1);
                 if (first instanceof ActionBarMenuSubItem) {
                     ((ActionBarMenuSubItem) first).updateSelectorBackground(true, first == last, 12);
-                } else if (first instanceof MessagePreviewView.ToggleButton || first instanceof FrameLayout) {
-                    first.setBackground(Theme.createRadSelectorDrawable(Theme.getColor(Theme.key_dialogButtonSelector, resourcesProvider), 12, first == last ? 12 : 0));
-                } else if (first != null && first.getBackground() instanceof RippleDrawable) {
+                } else if ((first instanceof MessagePreviewView.ToggleButton || first instanceof FrameLayout || first != null && first.getBackground() instanceof RippleDrawable)
+                        && !roundSmoothSelector(first, 12, first == last ? 12 : 0)) {
                     first.setBackground(Theme.createRadSelectorDrawable(Theme.getColor(Theme.key_dialogButtonSelector, resourcesProvider), 12, first == last ? 12 : 0));
                 }
                 if (last instanceof ActionBarMenuSubItem) {
                     ((ActionBarMenuSubItem) last).updateSelectorBackground(last == first, true, 12);
-                } else if (last instanceof MessagePreviewView.ToggleButton || last instanceof FrameLayout) {
-                    last.setBackground(Theme.createRadSelectorDrawable(Theme.getColor(Theme.key_dialogButtonSelector, resourcesProvider), first == last ? 12 : 0, 12));
-                } else if (last != null && last.getBackground() instanceof RippleDrawable) {
+                } else if ((last instanceof MessagePreviewView.ToggleButton || last instanceof FrameLayout || last != null && last.getBackground() instanceof RippleDrawable)
+                        && !roundSmoothSelector(last, first == last ? 12 : 0, 12)) {
                     last.setBackground(Theme.createRadSelectorDrawable(Theme.getColor(Theme.key_dialogButtonSelector, resourcesProvider), first == last ? 12 : 0, 12));
                 }
             }
         }
+    }
+    private static boolean roundSmoothSelector(View view, int top, int bottom) {
+        if (view == null || !(view.getBackground() instanceof SmoothRippleDrawable)) return false;
+        SmoothRippleDrawable selector = (SmoothRippleDrawable) view.getBackground();
+        if (!(selector.findDrawableByLayerId(android.R.id.mask) instanceof Theme.RippleRadMaskDrawable)) return false;
+        Theme.setMaskDrawableRad(selector, top, bottom);
+        return true;
     }
     private boolean offsetByContainer;
     public ItemOptions offsetByContainer() {
@@ -1358,14 +1363,15 @@ public class ItemOptions {
             @Override
             public void dismiss() {
                 if (accountSwitchPopup != null) return;
+                clearHoverListener();
                 super.dismiss();
                 ItemOptions.this.dismissDim(container);
-
                 notifyDismissListener();
             }
             @Override
             public void dismiss(boolean animated) {
                 if (accountSwitchPopup != null && !accountSwitchPopup.finished) return;
+                clearHoverListener();
                 super.dismiss(animated);
             }
         };
@@ -1941,35 +1947,62 @@ public class ItemOptions {
     }
 
     private View.OnTouchListener hoverReleaseListener;
+    private View.OnAttachStateChangeListener hoverAttachListener;
     private View hoveredItem;
     private final int[] hoverLoc = new int[2];
+    private final java.util.IdentityHashMap<SmoothRippleDrawable, Boolean> hoverBlendFeedback = new java.util.IdentityHashMap<>();
 
     private void installHoverReleaseListener() {
+        clearHoverListener();
         if (scrimView == null) return;
         if (scrimView.getParent() != null) {
             scrimView.getParent().requestDisallowInterceptTouchEvent(true);
         }
         final WeakReference<ItemOptions> weakSelf = new WeakReference<>(this);
+        hoverAttachListener = new View.OnAttachStateChangeListener() {
+            @Override
+            public void onViewAttachedToWindow(View v) {}
+            @Override
+            public void onViewDetachedFromWindow(View v) {
+                final ItemOptions self = weakSelf.get();
+                if (self != null && self.hoverAttachListener == this) {
+                    self.clearHoverListener();
+                }
+            }
+        };
+        scrimView.addOnAttachStateChangeListener(hoverAttachListener);
+        layout.addOnAttachStateChangeListener(hoverAttachListener);
+        final int[] hoverPointerId = { -1 };
         scrimView.setOnTouchListener(hoverReleaseListener = (v, event) -> {
             final ItemOptions self = weakSelf.get();
             if (self == null || self.actionBarPopupWindow == null || !self.actionBarPopupWindow.isShowing()) {
-                v.setOnTouchListener(null);
+                if (self != null) self.clearHoverListener();
+                else v.setOnTouchListener(null);
                 return false;
+            }
+            final int action = event.getActionMasked();
+            if (action == MotionEvent.ACTION_DOWN) {
+                self.clearHoverListener();
+                return false;
+            }
+            if (hoverPointerId[0] == -1) {
+                hoverPointerId[0] = event.getPointerId(0);
+            }
+            if (event.getPointerId(0) != hoverPointerId[0]
+                    || action == MotionEvent.ACTION_POINTER_UP
+                    && event.getPointerId(event.getActionIndex()) == hoverPointerId[0]) {
+                self.clearHoverListener();
+                return true;
             }
             if (v.getParent() != null) {
                 v.getParent().requestDisallowInterceptTouchEvent(true);
             }
-            final int action = event.getActionMasked();
             if (action == MotionEvent.ACTION_MOVE) {
                 self.updateHover((int) event.getRawX(), (int) event.getRawY());
             } else if (action == MotionEvent.ACTION_UP) {
                 self.releaseHover((int) event.getRawX(), (int) event.getRawY());
-                v.setOnTouchListener(null);
-                self.hoverReleaseListener = null;
             } else if (action == MotionEvent.ACTION_CANCEL) {
-                self.cancelHover();
-                v.setOnTouchListener(null);
-                self.hoverReleaseListener = null;
+                self.clearHoverListener();
             }
             return true;
         });
@@ -1979,35 +2012,80 @@ public class ItemOptions {
         cancelHover();
         if (hoverReleaseListener != null && scrimView != null) {
             scrimView.setOnTouchListener(null);
+            if (scrimView.getParent() != null) {
+                scrimView.getParent().requestDisallowInterceptTouchEvent(false);
+            }
         }
         hoverReleaseListener = null;
+        if (hoverAttachListener != null) {
+            if (scrimView != null) scrimView.removeOnAttachStateChangeListener(hoverAttachListener);
+            if (layout != null) layout.removeOnAttachStateChangeListener(hoverAttachListener);
+            hoverAttachListener = null;
+        }
     }
 
     private void updateHover(int rawX, int rawY) {
         View hit = findItemAt(layout, rawX, rawY);
+        if (hit != null) {
+            hit.getLocationOnScreen(hoverLoc);
+            hit.drawableHotspotChanged(rawX - hoverLoc[0], rawY - hoverLoc[1]);
+        }
         if (hit != hoveredItem) {
-            if (hoveredItem != null) {
-                hoveredItem.setPressed(false);
-            }
+            if (hoveredItem != null) hoveredItem.setPressed(false);
             hoveredItem = hit;
             if (hoveredItem != null) {
+                registerHoverFeedback(hit);
                 hoveredItem.setPressed(true);
             }
         }
-        if (hoveredItem != null) {
-            hoveredItem.getLocationOnScreen(hoverLoc);
-            hoveredItem.drawableHotspotChanged(rawX - hoverLoc[0], rawY - hoverLoc[1]);
+        blendHoverFeedback(hit, rawY);
+    }
+    private void blendHoverFeedback(View hit, int rawY) {
+        View neighbor = null;
+        float share = 0f;
+        if (hit != null && hit.getBackground() instanceof SmoothRippleDrawable
+                && hit.getParent() instanceof ViewGroup) {
+            hit.getLocationOnScreen(hoverLoc);
+            final float center = hoverLoc[1] + hit.getHeight() * .5f;
+            final boolean below = rawY >= center;
+            final ViewGroup parent = (ViewGroup) hit.getParent();
+            final int index = parent.indexOfChild(hit) + (below ? 1 : -1);
+            if (index >= 0 && index < parent.getChildCount()) {
+                View candidate = parent.getChildAt(index);
+                if (candidate.getVisibility() == View.VISIBLE && candidate.isEnabled() && candidate.isClickable()
+                        && candidate.getBackground() instanceof SmoothRippleDrawable
+                        && !(candidate instanceof ActionBarPopupWindow.GapView)) {
+                    candidate.getLocationOnScreen(hoverLoc);
+                    float otherCenter = hoverLoc[1] + candidate.getHeight() * .5f;
+                    float distance = Math.abs(otherCenter - center);
+                    if (distance > 0 && distance <= (hit.getHeight() + candidate.getHeight()) * .5f + dp(2)) {
+                        neighbor = candidate;
+                        share = Math.max(0f, Math.min(1f, Math.abs(rawY - center) / distance));
+                    }
+                }
+            }
         }
+        SmoothRippleDrawable main = registerHoverFeedback(hit);
+        SmoothRippleDrawable adjacent = registerHoverFeedback(neighbor);
+        for (SmoothRippleDrawable feedback : hoverBlendFeedback.keySet()) {
+            feedback.setContinuousFeedbackTarget(feedback == main ? 1f - share : feedback == adjacent ? share : 0f);
+        }
+    }
+    private SmoothRippleDrawable registerHoverFeedback(View view) {
+        if (view == null || !(view.getBackground() instanceof SmoothRippleDrawable)) return null;
+        SmoothRippleDrawable feedback = (SmoothRippleDrawable) view.getBackground();
+        if (!hoverBlendFeedback.containsKey(feedback)) {
+            boolean previous = feedback.setContinuousFeedback(true);
+            hoverBlendFeedback.put(feedback, previous);
+        }
+        return feedback;
     }
 
     private void releaseHover(int rawX, int rawY) {
         updateHover(rawX, rawY);
-        if (hoveredItem != null) {
-            View target = hoveredItem;
-            hoveredItem = null;
-            target.setPressed(false);
-            target.performClick();
-        }
+        View target = hoveredItem;
+        clearHoverListener();
+        if (target != null) target.performClick();
     }
 
     private void cancelHover() {
@@ -2015,6 +2093,11 @@ public class ItemOptions {
             hoveredItem.setPressed(false);
             hoveredItem = null;
         }
+        for (java.util.Map.Entry<SmoothRippleDrawable, Boolean> entry : hoverBlendFeedback.entrySet()) {
+            entry.getKey().clearContinuousFeedbackTarget();
+            entry.getKey().setContinuousFeedback(entry.getValue());
+        }
+        hoverBlendFeedback.clear();
     }
 
     private static View findItemAt(View root, int rawX, int rawY) {

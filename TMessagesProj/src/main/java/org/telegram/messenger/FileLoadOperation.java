@@ -32,7 +32,6 @@ import java.util.zip.GZIPInputStream;
 import java.util.zip.ZipException;
 
 public class FileLoadOperation {
-
     private final boolean FULL_LOGS = false;
     private final static int FINISH_CODE_DEFAULT = 0;
     private final static int FINISH_CODE_FILE_ALREADY_EXIST = 1;
@@ -50,7 +49,6 @@ public class FileLoadOperation {
 
     public volatile boolean caughtPremiumFloodWait;
     public void setStream(FileLoadOperationStream stream, boolean streamPriority, long streamOffset) {
-
         this.stream = stream;
         this.streamOffset = streamOffset;
         this.streamPriority = streamPriority;
@@ -794,7 +792,6 @@ public class FileLoadOperation {
             }
             FileLog.e("FileLoadOperation " + getFileName() + " removing stream listener " + operation);
             streamListeners.remove(operation);
-
         });
     }
 
@@ -2102,7 +2099,6 @@ public class FileLoadOperation {
                     + transportRecoveryAttempts + " dc=" + failedDatacenterId
                     + " connection=" + failedConnectionType);
         }
-        
         ConnectionsManager.getInstance(currentAccount).discardConnection(
                 failedDatacenterId, failedConnectionType, () -> startDownloadRequest(-1));
         return true;
@@ -2461,7 +2457,6 @@ public class FileLoadOperation {
             int connectionType;
             if (useConnectionType == -1) {
                 connectionType = requestsCount % 2 == 0 ? ConnectionsManager.ConnectionTypeDownload : ConnectionsManager.ConnectionTypeDownload2;
-                
             } else {
                 connectionType = useConnectionType;
             }
@@ -2756,7 +2751,6 @@ public class FileLoadOperation {
                     + " bypass=" + wsBypassDownloadProfile);
         }
         if (deferRestart) {
-            
             Utilities.stageQueue.postRunnable(() -> startDownloadRequest(-1));
             return true;
         }
@@ -2769,7 +2763,6 @@ public class FileLoadOperation {
 
     public static long floorDiv(long x, long y) {
         long r = x / y;
-        
         if ((x ^ y) < 0 && (r * y != x)) {
             r--;
         }

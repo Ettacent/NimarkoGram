@@ -23,7 +23,8 @@ public class BlurredBackgroundProviderImpl {
         if (!LiteMode.isEnabled(LiteMode.FLAG_LIQUID_GLASS)) {
             return 0.76f;
         }
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU
+        if (!app.nimarkogram.messenger.NimarkoConfig.enhancedGlassBlur
+                || Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU
                 || !SharedConfig.chatBlurEnabled()) {
             return 0.85f;
         }

@@ -1799,7 +1799,7 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
 
     @Override
     public boolean canOpenInExternalApp() {
-        return true;
+        return true; // я так не понял что это за хуйня и для чего она, но в декомпиле это так..
     }
 
     private PluginsController getPluginsController() {
@@ -2993,10 +2993,8 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
     }
 
     private void reportPluginLoadFailure(String pluginId, String phase, Throwable failure) {
-
         try {
             if (pluginId == null || failure == null) return;
-
             Throwable cause = failure;
             for (int depth = 0; cause != null && depth < 16; depth++) {
                 if (cause instanceof OutOfMemoryError) return;
@@ -3024,7 +3022,6 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
                     .remove("crashed_plugin_started_at")
                     .remove("crashed_plugin_pid")
                     .remove("crashed_plugin_load_token");
-
             if (succeeded) {
                 editor.remove("plugin_crashed_" + pluginId)
                         .remove("plugin_enabled_before_quarantine_" + pluginId);
@@ -3303,7 +3300,6 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
                         + " generation=" + enableGeneration
                         + " runtime=" + runtimeToken);
                 synchronized (activationPreferences) {
-
                     if (activationPreferences.getString("crashed_plugin_id", null) == null) {
                         activationStartedAt = System.currentTimeMillis();
                         activationToken = java.util.UUID.randomUUID().toString();
@@ -3378,7 +3374,6 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
             if (z && loadCallbackAttempted
                     && !(th2 instanceof EnableCancelledException)
                     && !(th2 instanceof LifecyclePendingException)) {
-
                 reportPluginLoadFailure(str, "on_plugin_load", th2);
             }
             getPluginsController().endPluginInitialization(str);
@@ -6665,7 +6660,7 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
 
     public static final class Updater {
         private static final Updater INSTANCE = new Updater();
-        private int status = 0;
+        private int status = 0; // 0 = idle/disabled
         private boolean notifyWhenChangeStatus = false;
         private boolean sdkFromApk = true;
 

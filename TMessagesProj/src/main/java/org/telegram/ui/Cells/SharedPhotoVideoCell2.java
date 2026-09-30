@@ -128,6 +128,7 @@ public class SharedPhotoVideoCell2 extends FrameLayout {
     private Path path = new Path();
     private SpoilerEffect mediaSpoilerEffect;
     private float spoilerRevealProgress;
+    private ValueAnimator spoilerRevealAnimator;
     private float spoilerRevealX;
     private float spoilerRevealY;
     private float spoilerMaxRadius;
@@ -177,7 +178,6 @@ public class SharedPhotoVideoCell2 extends FrameLayout {
                 }
             }
         });
-
         viewsText.setCallback(this);
         viewsText.setTextSize(dp(12));
         viewsText.setTextColor(Color.WHITE);
@@ -281,6 +281,9 @@ public class SharedPhotoVideoCell2 extends FrameLayout {
             !fullSize
         ) {
             return;
+        }
+        if (currentMessageObject != messageObject) {
+            resetSpoilerReveal();
         }
         currentMessageObject = messageObject;
         isStory = currentMessageObject != null && currentMessageObject.isStory();
@@ -569,6 +572,9 @@ public class SharedPhotoVideoCell2 extends FrameLayout {
     }
 
     private final RectF bounds = new RectF();
+    private final Path imageOutline = new Path();
+    private final float[] imageRadii = new float[8];
+    private boolean loadingPlaceholderDrawn;
 
     @Override
     protected void onDraw(@NonNull Canvas canvas) {
@@ -593,20 +599,6 @@ public class SharedPhotoVideoCell2 extends FrameLayout {
         if (crossfadeProgress > 0.5f && crossfadeToColumnsCount != 9 && currentParentColumnsCount != 9) {
             imageWidth -= 2 * (sizeProgress);
             imageHeight -= 2 * (sizeProgress);
-        }
-
-        if ((currentMessageObject == null && style != STYLE_CACHE) || !imageReceiver.hasBitmapImage()) {
-            if (SharedPhotoVideoCell2.this.getParent() != null && globalGradientView != null) {
-                globalGradientView.setParentSize(((View) SharedPhotoVideoCell2.this.getParent()).getMeasuredWidth(), SharedPhotoVideoCell2.this.getMeasuredHeight(), -getX());
-                globalGradientView.updateColors();
-                globalGradientView.updateGradient();
-                float padPlus = 0;
-                if (crossfadeProgress > 0.5f && crossfadeToColumnsCount != 9 && currentParentColumnsCount != 9) {
-                    padPlus += 1;
-                }
-                canvas.drawRect(leftpadding + padPlus, padding + padPlus, leftpadding + padPlus + imageWidth, padding + padPlus + imageHeight, globalGradientView.getPaint());
-            }
-            invalidate();
         }
 
         if (imageAlpha != 1f) {
@@ -650,12 +642,21 @@ public class SharedPhotoVideoCell2 extends FrameLayout {
             imageReceiver.setImageCoords(leftpadding + padPlus, padding + padPlus, imageWidth, imageHeight);
             blurImageReceiver.setImageCoords(leftpadding + padPlus, padding + padPlus, imageWidth, imageHeight);
         }
-        imageReceiver.setRoundRadius(
-            lerp(isFirst && isTop ? dp(18) : dp(1), dp(8), checkBoxProgress),
-            lerp(isLast  && isTop ? dp(18) : dp(1), dp(8), checkBoxProgress),
-            lerp(dp(1), dp(8), checkBoxProgress),
-            lerp(dp(1), dp(8), checkBoxProgress)
-        );
+        imageRadii[0] = imageRadii[1] = lerp(isFirst && isTop ? dp(18) : dp(1), dp(8), checkBoxProgress);
+        imageRadii[2] = imageRadii[3] = lerp(isLast && isTop ? dp(18) : dp(1), dp(8), checkBoxProgress);
+        imageRadii[4] = imageRadii[5] = imageRadii[6] = imageRadii[7] = lerp(dp(1), dp(8), checkBoxProgress);
+        imageReceiver.setRoundRadius((int) imageRadii[0], (int) imageRadii[2], (int) imageRadii[4], (int) imageRadii[6]);
+        bounds.set(imageReceiver.getImageX(), imageReceiver.getImageY(), imageReceiver.getImageX2(), imageReceiver.getImageY2());
+        imageOutline.rewind();
+        imageOutline.addRoundRect(bounds, imageRadii, Path.Direction.CW);
+        final boolean waitingForImage = (currentMessageObject == null && style != STYLE_CACHE) || !imageReceiver.hasBitmapImage();
+        if (waitingForImage || loadingPlaceholderDrawn && imageReceiver.getCurrentAlpha() < 1f) {
+            canvas.drawPath(imageOutline, sharedResources.backgroundPaint);
+            loadingPlaceholderDrawn = true;
+            if (!waitingForImage) invalidate();
+        } else {
+            loadingPlaceholderDrawn = false;
+        }
         if (check2) {
             canvas.save();
             if (reorder || reordering) {
@@ -670,6 +671,7 @@ public class SharedPhotoVideoCell2 extends FrameLayout {
             imageReceiver.draw(canvas);
             if (currentMessageObject != null && currentMessageObject.hasMediaSpoilers() && !currentMessageObject.isMediaSpoilersRevealedInSharedMedia) {
                 canvas.save();
+                canvas.clipPath(imageOutline);
                 canvas.clipRect(leftpadding, toppadding, leftpadding + imageWidth - rightpadding, toppadding + imageHeight - bottompadding);
 
                 if (spoilerRevealProgress != 0f) {
@@ -1013,11 +1015,16 @@ public class SharedPhotoVideoCell2 extends FrameLayout {
     }
 
     public void startRevealMedia(float x, float y) {
+        if (!canRevealSpoiler() || spoilerRevealAnimator != null) {
+            return;
+        }
+        final MessageObject messageObject = currentMessageObject;
         spoilerRevealX = x;
         spoilerRevealY = y;
 
         spoilerMaxRadius = (float) Math.sqrt(Math.pow(getWidth(), 2) + Math.pow(getHeight(), 2));
         ValueAnimator animator = ValueAnimator.ofFloat(0, 1).setDuration((long) MathUtils.clamp(spoilerMaxRadius * 0.3f, 250, 550));
+        spoilerRevealAnimator = animator;
         animator.setInterpolator(CubicBezierInterpolator.EASE_BOTH);
         animator.addUpdateListener(animation -> {
             spoilerRevealProgress = (float) animation.getAnimatedValue();
@@ -1026,13 +1033,26 @@ public class SharedPhotoVideoCell2 extends FrameLayout {
         animator.addListener(new AnimatorListenerAdapter() {
             @Override
             public void onAnimationEnd(Animator animation) {
-                currentMessageObject.isMediaSpoilersRevealedInSharedMedia = true;
+                if (spoilerRevealAnimator != animation || currentMessageObject != messageObject) {
+                    return;
+                }
+                spoilerRevealAnimator = null;
+                messageObject.isMediaSpoilersRevealedInSharedMedia = true;
                 invalidate();
             }
         });
         animator.start();
     }
 
+    private void resetSpoilerReveal() {
+        if (spoilerRevealAnimator != null) {
+            spoilerRevealAnimator.removeAllUpdateListeners();
+            spoilerRevealAnimator.removeAllListeners();
+            spoilerRevealAnimator.cancel();
+            spoilerRevealAnimator = null;
+        }
+        spoilerRevealProgress = 0f;
+    }
     @Override
     protected void onAttachedToWindow() {
         super.onAttachedToWindow();
@@ -1052,6 +1072,7 @@ public class SharedPhotoVideoCell2 extends FrameLayout {
     protected void onDetachedFromWindow() {
         super.onDetachedFromWindow();
         attached = false;
+        resetSpoilerReveal();
         if (checkBoxBase != null) {
             checkBoxBase.onDetachedFromWindow();
         }

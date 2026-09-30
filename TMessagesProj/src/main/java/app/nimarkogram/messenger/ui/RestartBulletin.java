@@ -11,7 +11,6 @@ import org.telegram.ui.Components.BulletinFactory;
 
 import app.nimarkogram.messenger.utils.AppRestartHelper;
 
-
 public final class RestartBulletin {
     private RestartBulletin() { }
 
@@ -22,9 +21,6 @@ public final class RestartBulletin {
                 LocaleController.getString(R.string.NM_Restart),
                 () -> AppRestartHelper.triggerRebirth(fragment.getParentActivity() != null
                         ? fragment.getParentActivity() : fragment.getContext()));
-
-
-
         ViewGroup wrapper = (ViewGroup) bulletin.getLayout().getParent();
         wrapper.setPadding(wrapper.getPaddingLeft(), wrapper.getPaddingTop(),
                 wrapper.getPaddingRight(), wrapper.getPaddingBottom() + AndroidUtilities.dp(12));

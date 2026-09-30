@@ -654,8 +654,6 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
     private boolean drawPremium;
     private final View emojiStatusView;
     private final AnimatedEmojiDrawable.SwapAnimatedEmojiDrawable emojiStatus;
-    // Per-cell guard for plugin badge: dedupe the SwapAnimatedEmojiDrawable
-    // rebind when the same badge fires again on UPDATE_MASK_EMOJI_STATUS.
     private int badgeBoundAccount = -1;
     private long badgeBoundDialogId, badgeBoundPeerId;
     private boolean badgeOwnerDrawn, badgeParticles, badgeLayoutDirty;
@@ -3566,8 +3564,6 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
                         continueUpdate = true;
                     }
                     invalidate = true;
-                    // (Badge handling now inline above as the first branch in
-                    // both the user and chat blocks — no double-set.)
                 }
                 if (isDialogCell || isTopic) {
                     if ((mask & MessagesController.UPDATE_MASK_USER_PRINT) != 0) {

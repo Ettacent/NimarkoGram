@@ -161,7 +161,6 @@ public class PasscodeView extends FrameLayout implements NotificationCenter.Noti
             if (stringBuilder.length() == 4) {
                 return;
             }
-            
             if (!app.nimarkogram.messenger.NimarkoConfig.disableVibration) {
                 try {
                     performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);
@@ -286,7 +285,6 @@ public class PasscodeView extends FrameLayout implements NotificationCenter.Noti
             if (stringBuilder.length() == 0) {
                 return false;
             }
-            
             if (!app.nimarkogram.messenger.NimarkoConfig.disableVibration) {
                 try {
                     performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);
@@ -691,7 +689,7 @@ public class PasscodeView extends FrameLayout implements NotificationCenter.Noti
         checkImage = new ImageView(context);
         checkImage.setImageResource(R.drawable.passcode_check);
         checkImage.setScaleType(ImageView.ScaleType.CENTER);
-        checkImage.setBackgroundResource(R.drawable.bar_selector_lock);
+        checkImage.setBackground(Theme.createSimpleSelectorCircleDrawable(dp(BUTTON_SIZE), 0, 0x78ffffff, 0x78ffffff));
         passwordFrameLayout.addView(checkImage, LayoutHelper.createFrame(BUTTON_SIZE, BUTTON_SIZE, Gravity.BOTTOM | Gravity.RIGHT, 0, 0, 10, 4));
         checkImage.setContentDescription(LocaleController.getString(R.string.Done));
         checkImage.setOnClickListener(v -> processDone(false));
@@ -699,7 +697,7 @@ public class PasscodeView extends FrameLayout implements NotificationCenter.Noti
         fingerprintImage = new ImageView(context);
         fingerprintImage.setImageResource(R.drawable.fingerprint);
         fingerprintImage.setScaleType(ImageView.ScaleType.CENTER);
-        fingerprintImage.setBackgroundResource(R.drawable.bar_selector_lock);
+        fingerprintImage.setBackground(Theme.createSimpleSelectorCircleDrawable(dp(BUTTON_SIZE), 0, 0x78ffffff, 0x78ffffff));
         passwordFrameLayout.addView(fingerprintImage, LayoutHelper.createFrame(BUTTON_SIZE, BUTTON_SIZE, Gravity.BOTTOM | Gravity.LEFT, 10, 0, 0, 4));
         fingerprintImage.setContentDescription(LocaleController.getString(R.string.AccDescrFingerprint));
         fingerprintImage.setOnClickListener(v -> checkFingerprint());
@@ -1379,7 +1377,6 @@ public class PasscodeView extends FrameLayout implements NotificationCenter.Noti
                     imageView.playAnimation();
                     showPin(true);
                     AndroidUtilities.runOnUIThread(() -> {
-                        
                         if (app.nimarkogram.messenger.NimarkoConfig.disableVibration) return;
                         try {
                             imageView.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP, HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING);
@@ -1400,7 +1397,6 @@ public class PasscodeView extends FrameLayout implements NotificationCenter.Noti
 
                         for (int a = 0, N = numbersFrameLayout.getChildCount(); a < N; a++) {
                             View child = numbersFrameLayout.getChildAt(a);
-
                             child.setScaleX(0.7f);
                             child.setScaleY(0.7f);
                             child.setAlpha(0.0f);

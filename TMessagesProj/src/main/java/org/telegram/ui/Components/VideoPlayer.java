@@ -281,11 +281,6 @@ public class VideoPlayer implements Player.Listener, VideoListener, AnalyticsLis
                 factory = new DefaultRenderersFactory(ApplicationLoader.applicationContext);
             }
             factory.setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON);
-            // NG: when the primary (hardware) decoder can't init a format — e.g. H.264 4K@60 High L5.2,
-            // which many mobile AVC decoders top out below (they support 4K only via HEVC) — ExoPlayer
-            // would otherwise fail with a decoder-init error and the video just wouldn't play. Enabling
-            // fallback lets it drop to the next decoder in the list (the platform software AVC decoder),
-            // so such clips still play instead of showing a black/dead frame.
             factory.setEnableDecoderFallback(true);
             ExoPlayer.Builder builder = new ExoPlayer.Builder(ApplicationLoader.applicationContext).setRenderersFactory(factory)
                     .setTrackSelector(trackSelector)
@@ -1620,7 +1615,6 @@ public class VideoPlayer implements Player.Listener, VideoListener, AnalyticsLis
         customInitialVolume = Math.max(0f, Math.min(1f, envelope));
         if (player != null) player.setVolume(customInitialVolume);
     }
-
 
     public void setVolume(float volume) {
         if (customRenderersFactory instanceof SourceVolumeController) {

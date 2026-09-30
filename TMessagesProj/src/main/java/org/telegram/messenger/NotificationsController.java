@@ -4688,8 +4688,8 @@ public class NotificationsController extends BaseController implements Notificat
                     FileLog.e(e);
                 }
             }
-            notifyDisabled |= Boolean.TRUE.equals(inAppHandled) && NimarkoInAppNotifications.isAvailable();
 
+            notifyDisabled |= Boolean.TRUE.equals(inAppHandled) && NimarkoInAppNotifications.isAvailable();
             if (notifyDisabled) {
                 vibrate = 0;
                 importance = 0;

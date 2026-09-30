@@ -381,8 +381,8 @@ public class AndroidUtilities {
                             + "\\,\\;\\?\\&\\=]|(?:\\%[a-fA-F0-9]{2})){1,64}(?:\\:(?:[a-zA-Z0-9\\$\\-\\_"
                             + "\\.\\+\\!\\*\\'\\(\\)\\,\\;\\?\\&\\=]|(?:\\%[a-fA-F0-9]{2})){1,25})?\\@)?)?"
                             + "(?:" + DOMAIN_NAME + ")"
-                            + "(?:\\:\\d{1,5})?)"
-                            + "(\\/(?:(?:[" + GOOD_IRI_CHAR + "\\;\\/\\?\\:\\@\\&\\=\\#\\~"
+                            + "(?:\\:\\d{1,5})?)" // plus option port number
+                            + "(\\/(?:(?:[" + GOOD_IRI_CHAR + "\\;\\/\\?\\:\\@\\&\\=\\#\\~"  // plus option query params
                             + "\\-\\.\\+\\!\\*\\'\\(\\)\\,\\_])|(?:\\%[a-fA-F0-9]{2}))*)?"
                             + "(?:\\b|$)");
         } catch (Exception e) {
@@ -587,7 +587,7 @@ public class AndroidUtilities {
             index = startIndex;
         }
         SpannableStringBuilder spannableStringBuilder = new SpannableStringBuilder(str);
-        if (                        index >= 0) {
+        if (/*runnable != null &&*/ index >= 0) {
             if (type == REPLACING_TAG_TYPE_LINK_NBSP) {
                 spannableStringBuilder.replace(index, index + len, AndroidUtilities.replaceMultipleCharSequence(" ", spannableStringBuilder.subSequence(index, index + len), " "));
             }
@@ -829,7 +829,6 @@ public class AndroidUtilities {
 
     public static void recycleBitmaps(List<Bitmap> bitmapToRecycle) {
         if (Build.VERSION.SDK_INT <= 23) {
-
             return;
         }
         if (bitmapToRecycle != null && !bitmapToRecycle.isEmpty()) {
@@ -962,7 +961,6 @@ public class AndroidUtilities {
                     parent.removeView(child);
                 }
                 if (afterRemoval != null && child.getParent() != parent) {
-
                     child.setVisibility(previousVisibility);
                     afterRemoval.run();
                 }
@@ -971,7 +969,6 @@ public class AndroidUtilities {
                 Choreographer.getInstance().postFrameCallback(
                         frameTimeNanos -> parent.post(removeIfStillOwned));
             } catch (Throwable t) {
-
                 parent.postOnAnimation(() -> parent.post(removeIfStillOwned));
             }
         } else {
@@ -1076,7 +1073,6 @@ public class AndroidUtilities {
         }
         View currentView = view;
         while (currentView != parent) {
-
             if (!(currentView.getParent() instanceof ViewPager)) {
                 pointPosition[0] += currentView.getX();
                 pointPosition[1] += currentView.getY();
@@ -1119,7 +1115,6 @@ public class AndroidUtilities {
                 countDownLatch.await();
                 break;
             } catch (InterruptedException e) {
-
                 interrupted = true;
             }
         }
@@ -1356,7 +1351,6 @@ public class AndroidUtilities {
             s = new SpannableStringBuilder(s.toString().replace('─', ' '));
         }
         if (!TextUtils.isEmpty(s) && TextUtils.lastIndexOf(s, '_') == s.length() - 1) {
-
             SpannableStringBuilder spannableStringBuilder = new SpannableStringBuilder(s.toString());
             s = spannableStringBuilder.replace(s.length() - 1, s.length(), "a");
         }
@@ -1391,12 +1385,12 @@ public class AndroidUtilities {
         return true;
     };
 
-    @Deprecated
+    @Deprecated // use addLinksSafe
     public static boolean addLinks(Spannable text, int mask) {
         return addLinks(text, mask, false);
     }
 
-    @Deprecated
+    @Deprecated // use addLinksSafe
     public static boolean addLinks(Spannable text, int mask, boolean internalOnly) {
         return addLinks(text, mask, internalOnly, true);
     }
@@ -1450,7 +1444,7 @@ public class AndroidUtilities {
         return success;
     }
 
-    @Deprecated
+    @Deprecated // use addLinksSafe
     public static boolean addLinks(Spannable text, int mask, boolean internalOnly, boolean removeOldReplacements) {
         if (text == null || containsUnsupportedCharacters(text.toString()) || mask == 0) {
             return false;
@@ -1954,7 +1948,6 @@ public class AndroidUtilities {
             if (pathString == null) {
                 return false;
             }
-
             if (pathString.matches(Pattern.quote(new File(ApplicationLoader.applicationContext.getCacheDir(), "voip_logs").getAbsolutePath()) + "/\\d+\\.log")) {
                 return false;
             }
@@ -2009,7 +2002,6 @@ public class AndroidUtilities {
                 }
             } catch (Exception e) {
                 pathString.replace("/./", "/");
-
             }
         }
         if (pathString.endsWith(".attheme")) {
@@ -2497,7 +2489,6 @@ public class AndroidUtilities {
     }
 
     public static Typeface getTypeface(String assetPath) {
-
         synchronized (typefaceCache) {
             Typeface cached = typefaceCache.get(assetPath);
             if (cached != null) return cached;
@@ -2759,7 +2750,6 @@ public class AndroidUtilities {
 
                 FileLog.d("check dir " + (file == null ? null : file.getPath()) + " ");
                 if (file != null && (file.exists() || file.mkdirs()) && file.canWrite()) {
-
                     return file;
                 } else if (file != null) {
                     FileLog.d("check dir file exist " + file.exists() + " can write " + file.canWrite());
@@ -2850,7 +2840,6 @@ public class AndroidUtilities {
             if (configuration == null) {
                 configuration = context.getResources().getConfiguration();
             }
-
             usingHardwareInput = configuration.keyboard != Configuration.KEYBOARD_NOKEYS && configuration.hardKeyboardHidden == Configuration.HARDKEYBOARDHIDDEN_NO;
             WindowManager manager = (WindowManager) context.getSystemService(Context.WINDOW_SERVICE);
             if (manager != null) {
@@ -3104,7 +3093,6 @@ public class AndroidUtilities {
     }
 
     public static boolean isTabletForce() {
-
         int mode = app.nimarkogram.messenger.NimarkoConfig.tabletMode;
         if (mode != app.nimarkogram.messenger.NimarkoConfig.TABLET_AUTO) {
             return mode == app.nimarkogram.messenger.NimarkoConfig.TABLET_ENABLE;
@@ -3136,7 +3124,7 @@ public class AndroidUtilities {
     }
 
     public static boolean isTablet() {
-        return isTabletInternal()                                            ;
+        return isTabletInternal() /*&& !SharedConfig.forceDisableTabletMode*/;
     }
 
     public static boolean isFold() {
@@ -3193,6 +3181,17 @@ public class AndroidUtilities {
         }
     }
 
+        if (editText == null) {
+            return;
+        }
+        try {
+            Field mCursorDrawableRes = TextView.class.getDeclaredField("mCursorDrawableRes");
+            mCursorDrawableRes.setAccessible(true);
+            mCursorDrawableRes.setInt(editText, 0);
+        } catch (Exception e) {
+            FileLog.e(e);
+        }
+    }*/
     private static Runnable unregisterRunnable;
     private static boolean hasCallPermissions = Build.VERSION.SDK_INT >= 23;
 
@@ -3668,7 +3667,6 @@ public class AndroidUtilities {
         if (view == null) {
             return;
         }
-
         if (!app.nimarkogram.messenger.NimarkoConfig.isSpringAnimationEnabled()) {
             if (endCallback != null) endCallback.run();
             return;
@@ -3698,6 +3696,51 @@ public class AndroidUtilities {
         springAnimation.start();
     }
 
+        if (text == null || paint == null) {
+            return null;
+        }
+        int count;
+        int offset = 0;
+        StringBuilder result = null;
+        TextView
+        for (int a = 0; a < maxLines; a++) {
+            count = paint.breakText(text, true, maxWidth, null);
+            if (a != maxLines - 1) {
+                if (result == null) {
+                    result = new StringBuilder(count * maxLines + 1);
+                }
+                boolean foundSpace = false;
+                for (int c = count - 1; c >= offset; c--) {
+                    if (text.charAt(c) == ' ') {
+                        foundSpace = true;
+                        result.append(text.substring(offset, c - 1));
+                        offset = c - 1;
+                    }
+                }
+                if (!foundSpace) {
+                    offset = count;
+                }
+                text = text.substring(0, offset);
+            } else if (maxLines == 1) {
+                return text.substring(0, count);
+            } else {
+                result.append(text.substring(0, count));
+            }
+        }
+        return result.toString();
+    }*/
+        if (window == null || Build.MODEL == null) {
+            return;
+        }
+        if (Build.MODEL.contains("GT-S5301") ||
+                Build.MODEL.contains("GT-S5303") ||
+                Build.MODEL.contains("GT-B5330") ||
+                Build.MODEL.contains("GT-S5302") ||
+                Build.MODEL.contains("GT-S6012B") ||
+                Build.MODEL.contains("MegaFon_SP-AI")) {
+            window.clearFlags(WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED);
+        }
+    }*/
     public static void appCenterLog(Throwable e) {
         ApplicationLoader.appCenterLog(e);
     }
@@ -3991,7 +4034,6 @@ public class AndroidUtilities {
             File storageDir = getAlbumDir(secretChat);
             Date date = new Date();
             date.setTime(nextGeneratedMediaPathTime());
-
             String timeStamp = new SimpleDateFormat("yyyyMMdd_HHmmss_SSS", Locale.US).format(date);
             return new File(storageDir, "VID_" + timeStamp + ".mp4");
         } catch (Exception e) {
@@ -4452,7 +4494,6 @@ public class AndroidUtilities {
             f = FileLoader.getInstance(message.currentAccount).getPathToMessage(message.messageOwner);
         }
         String mimeType = message.type == MessageObject.TYPE_FILE || message.type == MessageObject.TYPE_TEXT ? message.getMimeType() : null;
-
         try {
             if (com.chaquo.python.Python.isStarted() && f != null) {
                 com.chaquo.python.PyObject consumed = com.chaquo.python.Python.getInstance()
@@ -4814,36 +4855,35 @@ public class AndroidUtilities {
         if (!TextUtils.isEmpty(password)) {
             tableView.addRow(getString(R.string.UseProxyPassword), password);
         }
-        final ButtonSpan.TextViewButtons[] statusTextView = new ButtonSpan.TextViewButtons[1];
-        tableView.addRow(getString(R.string.ProxyStatus), "", statusTextView);
-        ((View) statusTextView[0].getParent()).setPadding(0, 0, 0, 0);
-        statusTextView[0].setDisablePaddingsOffsetY(true);
-        statusTextView[0].setPadding(dp(12.66f), dp(9.33f), dp(12.66f), dp(9.33f));
+        final org.telegram.ui.Components.ProxyCheckStatusView statusTextView = new org.telegram.ui.Components.ProxyCheckStatusView(activity);
+        statusTextView.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText));
+        statusTextView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 14);
+        tableView.addRow(getString(R.string.ProxyStatus), statusTextView);
+        ((View) statusTextView.getParent()).setPadding(0, 0, 0, 0);
+        statusTextView.setDisablePaddingsOffsetY(true);
+        statusTextView.setPadding(dp(12.66f), dp(9.33f), dp(12.66f), dp(9.33f));
         final boolean[] checking = new boolean[1];
-        statusTextView[0].setText(replaceSingleLink(getString(R.string.ProxyBottomSheetCheckStatus), Theme.getColor(Theme.key_chat_messageLinkIn), () -> {
+        statusTextView.setText(replaceSingleLink(getString(R.string.ProxyBottomSheetCheckStatus), Theme.getColor(Theme.key_chat_messageLinkIn), () -> {
             if (checking[0]) return;
 
             final Runnable check = () -> {
                 if (checking[0]) return;
 
                 checking[0] = true;
-                statusTextView[0].setText(getString(R.string.ProxyBottomSheetChecking) + "...");
-                statusTextView[0].clear();
+                statusTextView.setStatus(getString(R.string.ProxyBottomSheetChecking) + "...", Theme.getColor(Theme.key_windowBackgroundWhiteBlackText));
                 try {
                     ConnectionsManager.getInstance(UserConfig.selectedAccount).checkProxy(settings, time -> AndroidUtilities.runOnUIThread(() -> {
                         checking[0] = false;
+                        if (!statusTextView.isAttachedToWindow()) return;
                         if (time == -1) {
-                            statusTextView[0].setText(getString(R.string.Unavailable));
-                            statusTextView[0].setTextColor(Theme.getColor(Theme.key_text_RedRegular));
+                            statusTextView.setStatus(getString(R.string.Unavailable), Theme.getColor(Theme.key_text_RedRegular));
                         } else {
-                            statusTextView[0].setText(LocaleController.formatString(R.string.Ping2, time));
-                            statusTextView[0].setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteGreenText));
+                            statusTextView.setStatus(LocaleController.formatString(R.string.Ping2, time), Theme.getColor(Theme.key_windowBackgroundWhiteGreenText));
                         }
                     }));
                 } catch (NumberFormatException ignored) {
                     checking[0] = false;
-                    statusTextView[0].setText(getString(R.string.Unavailable));
-                    statusTextView[0].setTextColor(Theme.getColor(Theme.key_text_RedRegular));
+                    statusTextView.setStatus(getString(R.string.Unavailable), Theme.getColor(Theme.key_text_RedRegular));
                 }
             };
 
@@ -4877,8 +4917,8 @@ public class AndroidUtilities {
             editor.putBoolean("proxy_enabled", true);
             settings.toSharedPreferences(editor);
             editor.commit();
-            final SharedConfig.ProxyInfo info = new SharedConfig.ProxyInfo(settings);
 
+            final SharedConfig.ProxyInfo info = new SharedConfig.ProxyInfo(settings);
             SharedConfig.currentProxy = SharedConfig.addProxy(info);
 
             ConnectionsManager.setProxySettings(true, settings);
@@ -4917,7 +4957,7 @@ public class AndroidUtilities {
         return null;
     }
 
-    public static void fixGoogleMapsBug() {
+    public static void fixGoogleMapsBug() { //https://issuetracker.google.com/issues/154855417#comment301
         SharedPreferences googleBug = ApplicationLoader.applicationContext.getSharedPreferences("google_bug_154855417", Context.MODE_PRIVATE);
         if (!googleBug.contains("fixed")) {
             File corruptedZoomTables = new File(ApplicationLoader.getFilesDirFixed(), "ZoomTables.data");
@@ -4946,7 +4986,6 @@ public class AndroidUtilities {
         if (spanned) {
             final SpannableStringBuilder ssb = new SpannableStringBuilder();
             for (CharSequence piece : text) {
-
                 ssb.append(piece == null ? "null" : piece);
             }
             return new SpannedString(ssb);
@@ -5358,7 +5397,7 @@ public class AndroidUtilities {
         return ColorUtils.setAlphaComponent(color, (int) (Color.alpha(color) * k));
     }
 
-    public static float computeDampingRatio(float tension                , float friction              , float mass) {
+    public static float computeDampingRatio(float tension /* stiffness */, float friction /* damping */, float mass) {
         return friction / (2f * (float) Math.sqrt(mass * tension));
     }
 
@@ -5412,7 +5451,6 @@ public class AndroidUtilities {
     }
 
     private static char[] characters = new char[]{' ', ' ', '!', '"', '#', '%', '&', '\'', '(', ')', '*', ',', '-', '.', '/', ':', ';', '?', '@', '[', '\\', ']', '_', '{', '}', '¡', '§', '«', '¶', '·', '»', '¿', ';', '·', '՚', '՛', '՜', '՝', '՞', '՟', '։', '֊', '־', '׀', '׃', '׆', '׳', '״', '؉', '؊', '،', '؍', '؛', '؞', '؟', '٪', '٫', '٬', '٭', '۔', '܀', '܁', '܂', '܃', '܄', '܅', '܆', '܇', '܈', '܉', '܊', '܋', '܌', '܍', '߷', '߸', '߹', '࠰', '࠱', '࠲', '࠳', '࠴', '࠵', '࠶', '࠷', '࠸', '࠹', '࠺', '࠻', '࠼', '࠽', '࠾', '࡞', '।', '॥', '॰', '৽', '੶', '૰', '౷', '಄', '෴', '๏', '๚', '๛', '༄', '༅', '༆', '༇', '༈', '༉', '༊', '་', '༌', '།', '༎', '༏', '༐', '༑', '༒', '༔', '༺', '༻', '༼', '༽', '྅', '࿐', '࿑', '࿒', '࿓', '࿔', '࿙', '࿚', '၊', '။', '၌', '၍', '၎', '၏', '჻', '፠', '፡', '።', '፣', '፤', '፥', '፦', '፧', '፨', '᐀', '᙮', '᚛', '᚜', '᛫', '᛬', '᛭', '᜵', '᜶', '។', '៕', '៖', '៘', '៙', '៚', '᠀', '᠁', '᠂', '᠃', '᠄', '᠅', '᠆', '᠇', '᠈', '᠉', '᠊', '᥄', '᥅', '᨞', '᨟', '᪠', '᪡', '᪢', '᪣', '᪤', '᪥', '᪦', '᪨', '᪩', '᪪', '᪫', '᪬', '᪭', '᭚', '᭛', '᭜', '᭝', '᭞', '᭟', '᭠', '᯼', '᯽', '᯾', '᯿', '᰻', '᰼', '᰽', '᰾', '᰿', '᱾', '᱿', '᳀', '᳁', '᳂', '᳃', '᳄', '᳅', '᳆', '᳇', '᳓', '‐', '‑', '‒', '–', '—', '―', '‖', '‗', '‘', '’', '‚', '‛', '“', '”', '„', '‟', '†', '‡', '•', '‣', '․', '‥', '…', '‧', '‰', '‱', '′', '″', '‴', '‵', '‶', '‷', '‸', '‹', '›', '※', '‼', '‽', '‾', '‿', '⁀', '⁁', '⁂', '⁃', '⁅', '⁆', '⁇', '⁈', '⁉', '⁊', '⁋', '⁌', '⁍', '⁎', '⁏', '⁐', '⁑', '⁓', '⁔', '⁕', '⁖', '⁗', '⁘', '⁙', '⁚', '⁛', '⁜', '⁝', '⁞', '⁽', '⁾', '₍', '₎', '⌈', '⌉', '⌊', '⌋', '〈', '〉', '❨', '❩', '❪', '❫', '❬', '❭', '❮', '❯', '❰', '❱', '❲', '❳', '❴', '❵', '⟅', '⟆', '⟦', '⟧', '⟨', '⟩', '⟪', '⟫', '⟬', '⟭', '⟮', '⟯', '⦃', '⦄', '⦅', '⦆', '⦇', '⦈', '⦉', '⦊', '⦋', '⦌', '⦍', '⦎', '⦏', '⦐', '⦑', '⦒', '⦓', '⦔', '⦕', '⦖', '⦗', '⦘', '⧘', '⧙', '⧚', '⧛', '⧼', '⧽', '⳹', '⳺', '⳻', '⳼', '⳾', '⳿', '⵰', '⸀', '⸁', '⸂', '⸃', '⸄', '⸅', '⸆', '⸇', '⸈', '⸉', '⸊', '⸋', '⸌', '⸍', '⸎', '⸏', '⸐', '⸑', '⸒', '⸓', '⸔', '⸕', '⸖', '⸗', '⸘', '⸙', '⸚', '⸛', '⸜', '⸝', '⸞', '⸟', '⸠', '⸡', '⸢', '⸣', '⸤', '⸥', '⸦', '⸧', '⸨', '⸩', '⸪', '⸫', '⸬', '⸭', '⸮', '⸰', '⸱', '⸲', '⸳', '⸴', '⸵', '⸶', '⸷', '⸸', '⸹', '⸺', '⸻', '⸼', '⸽', '⸾', '⸿', '⹀', '⹁', '⹂', '⹃', '⹄', '⹅', '⹆', '⹇', '⹈', '⹉', '⹊', '⹋', '⹌', '⹍', '⹎', '⹏', '、', '。', '〃', '〈', '〉', '《', '》', '「', '」', '『', '』', '【', '】', '〔', '〕', '〖', '〗', '〘', '〙', '〚', '〛', '〜', '〝', '〞', '〟', '〰', '〽', '゠', '・', '꓾', '꓿', '꘍', '꘎', '꘏', '꙳', '꙾', '꛲', '꛳', '꛴', '꛵', '꛶', '꛷', '꡴', '꡵', '꡶', '꡷', '꣎', '꣏', '꣸', '꣹', '꣺', '꣼', '꤮', '꤯', '꥟', '꧁', '꧂', '꧃', '꧄', '꧅', '꧆', '꧇', '꧈', '꧉', '꧊', '꧋', '꧌', '꧍', '꧞', '꧟', '꩜', '꩝', '꩞', '꩟', '꫞', '꫟', '꫰', '꫱', '꯫', '﴾', '﴿', '︐', '︑', '︒', '︓', '︔', '︕', '︖', '︗', '︘', '︙', '︰', '︱', '︲', '︳', '︴', '︵', '︶', '︷', '︸', '︹', '︺', '︻', '︼', '︽', '︾', '︿', '﹀', '﹁', '﹂', '﹃', '﹄', '﹅', '﹆', '﹇', '﹈', '﹉', '﹊', '﹋', '﹌', '﹍', '﹎', '﹏', '﹐', '﹑', '﹒', '﹔', '﹕', '﹖', '﹗', '﹘', '﹙', '﹚', '﹛', '﹜', '﹝', '﹞', '﹟', '﹠', '﹡', '﹣', '﹨', '﹪', '﹫', '！', '＂', '＃', '％', '＆', '＇', '（', '）', '＊', '，', '－', '．', '／', '：', '；', '？', '＠', '［', '＼', '］', '＿', '｛', '｝', '｟', '｠', '｡', '｢', '｣', '､', '･'};
-
     private static HashSet<Character> charactersMap;
 
     public static boolean isPunctuationCharacter(char ch) {
@@ -5422,7 +5460,6 @@ public class AndroidUtilities {
                 charactersMap.add(characters[a]);
             }
         }
-
         return charactersMap.contains(ch);
     }
 
@@ -5720,7 +5757,6 @@ public class AndroidUtilities {
             builder.setSourceRectHint(null);
             builder.setAspectRatio(null);
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-
                 builder.setAutoEnterEnabled(false);
             }
 
@@ -6166,7 +6202,6 @@ public class AndroidUtilities {
         makingGlobalBlurBitmap = true;
 
         final List<View> finalViews = views;
-
         try {
             int w;
             int h;
@@ -6211,23 +6246,16 @@ public class AndroidUtilities {
                 canvas.restore();
             }
             Utilities.stackBlurBitmap(bitmap, Math.max(amount, Math.max(w, h) / 180));
-
                 onBitmapDone.run(bitmap);
-
         } catch (OutOfMemoryError e) {
             FileLog.e(e);
-
                 onBitmapDone.run(null);
-
         } catch (Exception e) {
             FileLog.e(e);
-
                 onBitmapDone.run(null);
-
         } finally {
             makingGlobalBlurBitmap = false;
         }
-
     }
 
     public static int[] roundPercents(float[] percents, int[] output) {
@@ -6289,7 +6317,7 @@ public class AndroidUtilities {
 
     public static Pattern getURIParsePattern() {
         if (uriParse == null) {
-            uriParse = Pattern.compile("^(([^:/?#]+):)?(//([^/?#]*))?([^?#]*)(\\?([^#]*))?(#(.*))?");
+            uriParse = Pattern.compile("^(([^:/?#]+):)?(//([^/?#]*))?([^?#]*)(\\?([^#]*))?(#(.*))?"); // RFC 3986 B
         }
         return uriParse;
     }
@@ -6302,7 +6330,6 @@ public class AndroidUtilities {
         if (uri == null) {
             return null;
         }
-
         Matcher matcher = getURIParsePattern().matcher(uri);
         if (matcher.matches()) {
             String authority = matcher.group(4);
@@ -6556,7 +6583,6 @@ public class AndroidUtilities {
     }
 
     public static void checkAndroidTheme(Context context, boolean open) {
-
         if (context == null) {
             return;
         }
@@ -6639,7 +6665,6 @@ public class AndroidUtilities {
     }
 
     public static void vibrateCursor(View view) {
-
         if (app.nimarkogram.messenger.NimarkoConfig.disableVibration) return;
         try {
             if (view == null || view.getContext() == null) return;
@@ -6650,17 +6675,15 @@ public class AndroidUtilities {
     }
 
     public static void vibrate(View view) {
-
         if (app.nimarkogram.messenger.NimarkoConfig.disableVibration) return;
         try {
             if (view == null || view.getContext() == null) return;
             if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return;
             if (!((Vibrator) view.getContext().getSystemService(Context.VIBRATOR_SERVICE)).hasAmplitudeControl()) return;
-
             int hapticType;
             switch (app.nimarkogram.messenger.NimarkoConfig.vibrateInChats) {
                 case app.nimarkogram.messenger.NimarkoConfig.VIBRATE_DISABLE:
-                    return;
+                    return; // user opted-out at this granularity
                 case app.nimarkogram.messenger.NimarkoConfig.VIBRATE_CLICK:
                     hapticType = HapticFeedbackConstants.VIRTUAL_KEY;
                     break;
@@ -6930,7 +6953,6 @@ public class AndroidUtilities {
 
     public static void drawNavigationBarProtection(Canvas canvas, View view, int color, int navigationBarHeight, float alpha) {
         navbarProtactionPaint.setColor(Theme.multAlpha(color, alpha * AndroidUtilities.getNavigationBarThirdButtonsFactor(0, 0.75f, navigationBarHeight)));
-
         canvas.drawRect(
                 0, view.getY() + view.getMeasuredHeight() - navigationBarHeight,
                 view.getMeasuredWidth(), view.getY() + view.getMeasuredHeight(), navbarProtactionPaint);

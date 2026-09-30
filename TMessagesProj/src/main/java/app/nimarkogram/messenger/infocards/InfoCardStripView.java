@@ -32,9 +32,9 @@ import java.util.Map;
 public class InfoCardStripView extends FrameLayout implements NotificationCenter.NotificationCenterDelegate {
 
     private static final int DRAG_DISTANCE_DP = 28;
-    private static final float COMMIT_FRACTION = 0.25f;   
-    private static final int FLING_DP_PER_S = 700;        
-    public static final long AUTO_SCROLL_MS = 15000;      
+    private static final float COMMIT_FRACTION = 0.25f;   // distance threshold to commit
+    private static final int FLING_DP_PER_S = 700;        // |v| above this commits regardless of distance
+    public static final long AUTO_SCROLL_MS = 15000;      // auto-advance cadence when InfoCardsConfig.isAutoScroll()
 
     private final Theme.ResourcesProvider resourcesProvider;
     private final ArrayList<BaseInfoCard> pills = new ArrayList<>();
@@ -46,18 +46,16 @@ public class InfoCardStripView extends FrameLayout implements NotificationCenter
     private boolean dragging;
     private boolean touchActive;
     private float downX, downY;
-    private float dragProgress;   
-    private boolean dragUp;       
+    private float dragProgress;   // 0..1
+    private boolean dragUp;       // swiping up => move to the next pill
     private int incomingIndex = -1;
     private ValueAnimator animator;
     private boolean settlingToNext;
     private float releaseVelocity;
     private boolean dragCrossedCard;
-    
     private int pendingActiveCardId = -1;
     private ViewTreeObserver pendingActiveCardObserver;
     private final ViewTreeObserver.OnPreDrawListener pendingActiveCardListener = this::resumePendingActiveCard;
-    
     private int measuredCardWidthLimit;
 
     private boolean potentialTap;
@@ -84,7 +82,6 @@ public class InfoCardStripView extends FrameLayout implements NotificationCenter
             followSharedActiveCard();
         }
     };
-    
     private boolean opaqueCards;
     private boolean inlineFolderStyle;
     private BlurredBackgroundDrawableViewFactory glassBackgroundFactory;
@@ -117,7 +114,6 @@ public class InfoCardStripView extends FrameLayout implements NotificationCenter
     public void rebuildIfChanged() {
         if (!InfoCardsConfig.isEnabled()) {
             setPendingActiveCard(-1);
-            
             if (!pills.isEmpty()) {
                 resetForWindowLifecycle();
                 removeAllViews();
@@ -138,7 +134,6 @@ public class InfoCardStripView extends FrameLayout implements NotificationCenter
                 if (pills.get(i).getCardId() != active.get(i)) { same = false; break; }
             }
             if (same) {
-                
                 updateColors();
                 return;
             }
@@ -160,7 +155,6 @@ public class InfoCardStripView extends FrameLayout implements NotificationCenter
         releaseTracker();
         if (getParent() != null) getParent().requestDisallowInterceptTouchEvent(false);
         setPendingActiveCard(-1);
-        
         int prevId = -1;
         BaseInfoCard prev = current();
         if (prev != null) prevId = prev.getCardId();
@@ -177,7 +171,7 @@ public class InfoCardStripView extends FrameLayout implements NotificationCenter
                 pill = InfoCardRegistry.create(id, getContext(), resourcesProvider);
             }
             if (pill != null) {
-                pill.setOpaqueFlat(opaqueCards); 
+                pill.setOpaqueFlat(opaqueCards); // opaque flat fill when this strip floats over the chat list
                 pill.setGlassBackgroundFactory(glassBackgroundFactory);
                 pill.setInlineFolderStyle(inlineFolderStyle);
                 pill.setAccessibilityDelegate(new View.AccessibilityDelegate() {
@@ -189,7 +183,6 @@ public class InfoCardStripView extends FrameLayout implements NotificationCenter
                             info.setCollectionItemInfo(AccessibilityNodeInfo.CollectionItemInfo.obtain(
                                     0, 1, index, 1, false, index == currentIndex));
                         }
-                        
                         boolean canForward = pills.size() > 1 && neighbor(true) >= 0;
                         boolean canBack = pills.size() > 1 && neighbor(false) >= 0;
                         info.setScrollable(canForward || canBack);
@@ -224,18 +217,21 @@ public class InfoCardStripView extends FrameLayout implements NotificationCenter
         for (BaseInfoCard pill : pills) {
             bringChildToFront(pill);
         }
-        
         int target = prevId >= 0 ? prevId : InfoCardsConfig.getLastActiveCardId();
         if (target >= 0) {
             for (int i = 0; i < pills.size(); i++) {
                 if (pills.get(i).getCardId() == target) { currentIndex = i; break; }
             }
         }
-        
         applyResting(false);
         requestLayout();
     }
 
+    private static final int CARD_WIDTH_DP = 88;
+    private static final int STANDALONE_CARD_WIDTH_DP = 80;
+    private int commonCardWidth() {
+        return Math.min(usableCardWidth(), AndroidUtilities.dp(inlineFolderStyle ? CARD_WIDTH_DP : STANDALONE_CARD_WIDTH_DP));
+    }
     public boolean isLayoutSuppressed() {
         return dragging || animator != null;
     }
@@ -246,12 +242,7 @@ public class InfoCardStripView extends FrameLayout implements NotificationCenter
     private int carouselWidth() {
         BaseInfoCard cur = current();
         if (cur == null) return 0;
-        int width = cur.getMeasuredWidth();
-        if (incomingIndex >= 0 && incomingIndex < pills.size()) {
-            float progress = Math.max(0f, Math.min(1f, dragProgress));
-            width = Math.round(width + (pills.get(incomingIndex).getMeasuredWidth() - width) * progress);
-        }
-        return width;
+        return commonCardWidth();
     }
 
     private int usableCardWidth() {
@@ -263,10 +254,9 @@ public class InfoCardStripView extends FrameLayout implements NotificationCenter
         if (parentW <= 0) parentW = getWidth();
         if (parentW <= 0) parentW = AndroidUtilities.displaySize.x;
         if (parentW <= 0) parentW = AndroidUtilities.dp(400);
-        
         int leadingReserve = opaqueCards ? 0 : AndroidUtilities.dp(56);
         int usable = parentW - leadingReserve;
-        int floor = AndroidUtilities.dp(48); 
+        int floor = AndroidUtilities.dp(48); // never below the chip min width
         return Math.max(1, Math.min(parentW, Math.max(Math.min(floor, parentW), usable)));
     }
 
@@ -276,6 +266,9 @@ public class InfoCardStripView extends FrameLayout implements NotificationCenter
         if (mode == View.MeasureSpec.UNSPECIFIED || available <= 0) {
             return usableCardWidth();
         }
+        if (mode == View.MeasureSpec.EXACTLY) {
+            return available;
+        }
         int floor = AndroidUtilities.dp(48);
         int leadingReserve = opaqueCards ? 0 : AndroidUtilities.dp(56);
         return Math.max(1, Math.min(available,
@@ -284,13 +277,12 @@ public class InfoCardStripView extends FrameLayout implements NotificationCenter
 
     @Override
     protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
-        
         measuredCardWidthLimit = usableCardWidth(widthMeasureSpec);
         for (BaseInfoCard pill : pills) {
-            pill.setMaxChipWidth(measuredCardWidthLimit);
+            pill.setFixedChipWidth(commonCardWidth());
         }
         super.onMeasure(widthMeasureSpec, heightMeasureSpec);
-        if (inlineFolderStyle && MeasureSpec.getMode(widthMeasureSpec) == MeasureSpec.AT_MOST) {
+        if (MeasureSpec.getMode(widthMeasureSpec) == MeasureSpec.AT_MOST) {
             setMeasuredDimension(Math.min(MeasureSpec.getSize(widthMeasureSpec), carouselWidth()), getMeasuredHeight());
         }
     }
@@ -300,13 +292,11 @@ public class InfoCardStripView extends FrameLayout implements NotificationCenter
     }
 
     private void applyResting(boolean notifySelected) {
-        
-        int usable = usableCardWidth();
+        int usable = commonCardWidth();
         for (int i = 0; i < pills.size(); i++) {
             BaseInfoCard p = pills.get(i);
-            p.setMaxChipWidth(usable);
+            p.setFixedChipWidth(usable);
             boolean cur = i == currentIndex;
-            
             p.setVisibility(cur ? VISIBLE : GONE);
             p.setAlpha(cur ? 1f : 0f);
             p.setScaleX(cur ? 1f : 0.8f);
@@ -349,7 +339,6 @@ public class InfoCardStripView extends FrameLayout implements NotificationCenter
 
     @Override
     protected void dispatchDraw(Canvas canvas) {
-        
         if (current() != null && isHostVisible(.01f)) hasPresentedCard = true;
         canvas.save();
         canvas.clipRect(0, 0, getWidth(), getHeight());
@@ -414,7 +403,6 @@ public class InfoCardStripView extends FrameLayout implements NotificationCenter
     }
 
     private float dragHeight() {
-        
         return AndroidUtilities.dp(DRAG_DISTANCE_DP);
     }
 
@@ -423,7 +411,6 @@ public class InfoCardStripView extends FrameLayout implements NotificationCenter
         if (pills.isEmpty()) return false;
         switch (ev.getActionMasked()) {
             case MotionEvent.ACTION_DOWN:
-                
                 return true;
             case MotionEvent.ACTION_MOVE:
                 float dy = ev.getY() - downY, dx = ev.getX() - downX;
@@ -457,7 +444,6 @@ public class InfoCardStripView extends FrameLayout implements NotificationCenter
                 cancelAnimResume();
                 setPendingActiveCard(-1);
                 if (!dragging) dragCrossedCard = false;
-                
                 if (dragging) {
                     if (incomingIndex < 0) {
                         float raw = dragProgress / (0.18f * Math.max(0.0001f, 1f - dragProgress));
@@ -474,12 +460,10 @@ public class InfoCardStripView extends FrameLayout implements NotificationCenter
                 if (potentialTap) postDelayed(longPressRunnable, ViewConfiguration.getLongPressTimeout());
                 return true;
             case MotionEvent.ACTION_MOVE: {
-                
                 if (longPressFired) break;
                 if (!dragging) {
                     float dy = ev.getY() - downY, dx = ev.getX() - downX;
                     if (Math.abs(dy) > touchSlop || Math.abs(dx) > touchSlop) {
-                        
                         if (potentialTap) {
                             potentialTap = false;
                             removeCallbacks(longPressRunnable);
@@ -492,7 +476,6 @@ public class InfoCardStripView extends FrameLayout implements NotificationCenter
                         break;
                     }
                 }
-                
                 float dy = ev.getY() - downY;
                 boolean up = dy < 0;
                 int nb = up == dragUp && incomingIndex >= 0 ? incomingIndex : neighbor(up);
@@ -520,7 +503,6 @@ public class InfoCardStripView extends FrameLayout implements NotificationCenter
                 ensureIncomingPrepared(nb);
                 float prog;
                 if (nb < 0) {
-                    
                     float raw = Math.abs(dy) / h;
                     prog = (float) (1.0 - 1.0 / (raw * 0.18f + 1.0));
                 } else {
@@ -534,7 +516,6 @@ public class InfoCardStripView extends FrameLayout implements NotificationCenter
             case MotionEvent.ACTION_CANCEL: {
                 setTouchActive(false);
                 removeCallbacks(longPressRunnable);
-                
                 if (ev.getActionMasked() == MotionEvent.ACTION_UP
                         && potentialTap && !dragging && !longPressFired) {
                     BaseInfoCard cur = current();
@@ -584,14 +565,12 @@ public class InfoCardStripView extends FrameLayout implements NotificationCenter
         removeCallbacks(longPressRunnable);
         setCardsPressed(false);
         if (getParent() != null) getParent().requestDisallowInterceptTouchEvent(true);
-        
     }
 
     private void ensureIncomingPrepared(int nb) {
         if (nb == incomingIndex) return;
         BaseInfoCard cur = current();
         if (cur != null && !preparedCards.contains(cur)) preparedCards.add(cur);
-        
         if (incomingIndex >= 0 && incomingIndex < pills.size() && incomingIndex != currentIndex) {
             BaseInfoCard old = pills.get(incomingIndex);
             old.setVisibility(GONE);
@@ -604,25 +583,21 @@ public class InfoCardStripView extends FrameLayout implements NotificationCenter
                 try { in.updateDataInstantly(); } catch (Throwable ignore) {}
                 preparedCards.add(in);
             }
-            
             in.setVisibility(VISIBLE);
-            
             int sw = getWidth(), sh = getHeight();
             if (sw > 0 && sh > 0) {
-                
-                int cap = usableCardWidth();
-                in.setMaxChipWidth(cap); 
+                int cap = commonCardWidth();
+                in.setFixedChipWidth(cap);
                 in.measure(
-                        android.view.View.MeasureSpec.makeMeasureSpec(cap, android.view.View.MeasureSpec.AT_MOST),
+                        android.view.View.MeasureSpec.makeMeasureSpec(cap, android.view.View.MeasureSpec.EXACTLY),
                         android.view.View.MeasureSpec.makeMeasureSpec(sh, android.view.View.MeasureSpec.AT_MOST));
                 int mw = in.getMeasuredWidth(), mh = in.getMeasuredHeight();
-                
                 mw = Math.min(mw, cap);
                 int top = Math.max(0, (sh - mh) / 2);
                 if (LocaleController.isRTL) {
                     in.layout(0, top, mw, top + mh);
                 } else {
-                    in.layout(sw - mw, top, sw, top + mh); 
+                    in.layout(sw - mw, top, sw, top + mh); // right-anchored, may overhang left (clipChildren=false)
                 }
             }
         }
@@ -641,14 +616,14 @@ public class InfoCardStripView extends FrameLayout implements NotificationCenter
         }
     }
     private void applyCarouselTransforms(int incomingIdx, float progress, boolean up, float h) {
-        
         BaseInfoCard cur = current();
         if (cur == null || getWidth() <= 0 || getHeight() <= 0 || cur.getHeight() <= 0) return;
         float p = Math.max(0f, Math.min(1f, progress));
         float dir = up ? -1f : 1f;
         float curCenter = cur.getTop() + cur.getHeight() / 2f;
         if (incomingIdx < 0 || incomingIdx >= pills.size() || incomingIdx == currentIndex) {
-            float scale = Math.min(1f - 0.28f * p, getWidth() / (float) Math.max(1, cur.getWidth()));
+            float scale = Math.min(inlineFolderStyle ? 1f - 0.16f * p : 1f,
+                    getWidth() / (float) Math.max(1, cur.getWidth()));
             scale = Math.min(scale, getHeight() / (float) cur.getHeight());
             float half = cur.getHeight() * scale / 2f;
             float room = Math.max(0f, up ? curCenter - half : getHeight() - curCenter - half);
@@ -660,8 +635,8 @@ public class InfoCardStripView extends FrameLayout implements NotificationCenter
         }
         BaseInfoCard in = pills.get(incomingIdx);
         if (in.getHeight() <= 0) return;
-        float outScale = 1f - 0.16f * p;
-        float inScale = 0.84f + 0.16f * p;
+        float outScale = inlineFolderStyle ? 1f - 0.10f * p : 1f;
+        float inScale = inlineFolderStyle ? 0.90f + 0.10f * p : 1f;
         outScale = Math.min(outScale, getWidth() / (float) Math.max(1, cur.getWidth()));
         inScale = Math.min(inScale, getWidth() / (float) Math.max(1, in.getWidth()));
         float center = curCenter + (in.getTop() + in.getHeight() / 2f - curCenter) * p;
@@ -688,10 +663,9 @@ public class InfoCardStripView extends FrameLayout implements NotificationCenter
         final float distance = Math.abs(target - dragProgress);
         final float velocity = Math.max(0f, (target >= dragProgress ? 1f : -1f) * releaseVelocity);
         releaseVelocity = 0f;
-        final boolean commit = target == 1f;
-        long duration = distance == 0f ? 0 : commit ? Math.round(120 + 140 * distance) : 200;
+        long duration = distance == 0f ? 0 : Math.round(160 + 120 * distance);
         if (velocity > 0f) {
-            duration = Math.min(duration, Math.max(commit ? 100 : 160,
+            duration = Math.min(duration, Math.max(160,
                     Math.round(2000f * distance / velocity)));
         }
         final float slope = distance > 0f
@@ -723,15 +697,12 @@ public class InfoCardStripView extends FrameLayout implements NotificationCenter
                 currentIndex = pills.indexOf(in);
                 dragProgress = 0;
                 dragCrossedCard = false;
-                
                 applyResting(false);
                 if (reconcilePendingActiveCard()) {
                     return;
                 }
-                
                 applyResting();
                 InfoCardsConfig.setLastActiveCardId(in.getCardId());
-                
                 NotificationCenter.getGlobalInstance().postNotificationName(NotificationCenter.infoCardsActiveCardChanged);
             }
         });
@@ -827,7 +798,6 @@ public class InfoCardStripView extends FrameLayout implements NotificationCenter
     public void setHostVisibility(float f, float scaleX, float scaleY, int visibility) {
         float previousFactor = visibilityFactor;
         visibilityFactor = f;
-        
         final boolean hidden = visibility != VISIBLE || f <= 0f;
         if (hidden) {
             setTouchActive(false);
@@ -837,8 +807,8 @@ public class InfoCardStripView extends FrameLayout implements NotificationCenter
             setCardsPressed(false);
         }
         if (hidden && (dragging || animator != null)) {
-            cancelAnimResume();     
-            if (dragging) {         
+            cancelAnimResume();     // finish an in-flight settle cleanly so a committed swipe sticks
+            if (dragging) {         // abandon an active finger-drag -> snap to the current pill
                 dragging = false;
                 dragProgress = 0;
                 applyResting(false);
@@ -851,7 +821,6 @@ public class InfoCardStripView extends FrameLayout implements NotificationCenter
             BaseInfoCard cur = current();
             if (cur != null) cur.finishResizeAnimation();
         }
-        
         setAlpha(f);
         setScaleX(scaleX);
         setScaleY(scaleY);
@@ -869,7 +838,6 @@ public class InfoCardStripView extends FrameLayout implements NotificationCenter
     public void updateColors() {
         for (BaseInfoCard p : pills) {
             p.updateColors();
-            
             p.applyColorMode();
         }
     }
@@ -887,7 +855,7 @@ public class InfoCardStripView extends FrameLayout implements NotificationCenter
             InfoCardsConfig.setLastActiveCardId(next);
             NotificationCenter.getGlobalInstance().postNotificationName(NotificationCenter.infoCardsActiveCardChanged);
         }
-        armGlobalTicker(); 
+        armGlobalTicker(); // schedule the next tick
     };
 
     static void armGlobalTicker() {
@@ -911,17 +879,16 @@ public class InfoCardStripView extends FrameLayout implements NotificationCenter
     private static boolean rateTickerArmed = false;
     private static final Runnable GLOBAL_RATE_REFRESH = () -> {
         rateTickerArmed = false;
-        if (!InfoCardsConfig.isEnabled()) return; 
+        if (!InfoCardsConfig.isEnabled()) return; // off — break the chain
         if (hasActiveCryptoCard()) {
-            InfoCardRates.fetch(false, null); 
+            InfoCardRates.fetch(false, null); // keep the shared snapshot warm; network floor enforced inside
         }
-        armRateTicker(); 
+        armRateTicker(); // schedule the next tick
     };
 
     private static boolean hasActiveCryptoCard() {
         List<Integer> active = InfoCardsConfig.getActiveCards();
         return active.contains(InfoCardType.TON.id)
-                || active.contains(InfoCardType.BTC.id)
                 || active.contains(InfoCardType.USD.id);
     }
 
@@ -939,7 +906,6 @@ public class InfoCardStripView extends FrameLayout implements NotificationCenter
     @Override
     protected void onConfigurationChanged(Configuration newConfig) {
         super.onConfigurationChanged(newConfig);
-        
         for (BaseInfoCard pill : pills) {
             pill.updateLayoutDirection();
             android.widget.FrameLayout.LayoutParams lp =
@@ -963,26 +929,22 @@ public class InfoCardStripView extends FrameLayout implements NotificationCenter
         NotificationCenter.getGlobalInstance().addObserver(this, NotificationCenter.infoCardsColorModeChanged);
         NotificationCenter.getGlobalInstance().addObserver(this, NotificationCenter.infoCardsActiveCardChanged);
         NotificationCenter.getGlobalInstance().addObserver(this, NotificationCenter.didSetNewTheme);
-        
         rebuildIfChanged();
-        
         if (hasPresentedCard) {
             removeCallbacks(resumeActiveCard);
             postOnAnimation(resumeActiveCard);
         } else {
             syncToActiveCard();
         }
-        armGlobalTicker(); 
-        armRateTicker();   
+        armGlobalTicker(); // ensure the app-wide auto-scroll ticker is running (idempotent if already armed)
+        armRateTicker();   // ensure the app-wide background rate-refresh ticker is running too (keeps the rate fresh in the background)
     }
 
     @Override
     protected void onWindowVisibilityChanged(int visibility) {
         super.onWindowVisibilityChanged(visibility);
-        
         removeCallbacks(resumeActiveCard);
         if (visibility == View.VISIBLE) {
-            
             postOnAnimation(resumeActiveCard);
         } else {
             resetForWindowLifecycle();
@@ -1005,21 +967,17 @@ public class InfoCardStripView extends FrameLayout implements NotificationCenter
         NotificationCenter.getGlobalInstance().removeObserver(this, NotificationCenter.infoCardsActiveCardChanged);
         NotificationCenter.getGlobalInstance().removeObserver(this, NotificationCenter.didSetNewTheme);
         resetForWindowLifecycle();
-        
         potentialTap = false;
     }
 
     @Override
     public void didReceivedNotification(int id, int account, Object... args) {
         if (id == NotificationCenter.infoCardsLayoutChanged) {
-            
             rebuildIfChanged();
         } else if (id == NotificationCenter.infoCardsColorModeChanged
                 || id == NotificationCenter.didSetNewTheme) {
-            
             updateColors();
         } else if (id == NotificationCenter.infoCardsSettingsChanged) {
-            
             boolean refreshAll = args == null || args.length == 0;
             for (BaseInfoCard p : pills) {
                 boolean affected = refreshAll;
@@ -1035,10 +993,8 @@ public class InfoCardStripView extends FrameLayout implements NotificationCenter
                     try { p.onUpdateData(false); } catch (Throwable ignore) {}
                 }
             }
-            
             if (InfoCardsConfig.isAutoScroll()) armGlobalTicker(); else disarmGlobalTicker();
         } else if (id == NotificationCenter.infoCardsActiveCardChanged) {
-            
             followSharedActiveCard();
         }
     }

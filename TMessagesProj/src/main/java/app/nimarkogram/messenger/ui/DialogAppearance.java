@@ -9,28 +9,38 @@ import android.view.animation.LinearInterpolator;
 
 import androidx.recyclerview.widget.RecyclerView;
 
+import org.telegram.tgnet.TLRPC;
+import org.telegram.ui.Adapters.DialogsAdapter;
 import org.telegram.ui.Cells.DialogCell;
 import org.telegram.ui.Components.RecyclerListView;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.function.BooleanSupplier;
 
 public final class DialogAppearance {
     private final RecyclerListView list;
+    private final DialogsAdapter adapter;
     private final BooleanSupplier allowed;
     private final HashMap<DialogCell, Fade> fades = new HashMap<>();
     private ViewTreeObserver observer;
     private ViewTreeObserver.OnPreDrawListener pending;
 
-    public DialogAppearance(RecyclerListView list, BooleanSupplier allowed) {
+    public DialogAppearance(RecyclerListView list, DialogsAdapter adapter, BooleanSupplier allowed) {
         this.list = list;
+        this.adapter = adapter;
         this.allowed = allowed;
+        adapter.registerAdapterDataObserver(new RecyclerView.AdapterDataObserver() {
+            @Override
+            public void onChanged() {
+                cancel();
+            }
+        });
         list.addOnAttachStateChangeListener(new View.OnAttachStateChangeListener() {
             public void onViewAttachedToWindow(View view) { }
             public void onViewDetachedFromWindow(View view) {
-                clearPending();
-                for (Fade fade : new ArrayList<>(fades.values())) fade.animator.cancel();
+                cancel();
             }
         });
         list.addOnChildAttachStateChangeListener(new RecyclerView.OnChildAttachStateChangeListener() {
@@ -43,21 +53,31 @@ public final class DialogAppearance {
     }
 
     public void beforeUpdate() {
-        if (pending != null || !allowed.getAsBoolean()) return;
-        HashMap<Long, Position> visible = new HashMap<>();
+        if (list.getAdapter() != adapter || !allowed.getAsBoolean()) {
+            cancel();
+            return;
+        }
+        if (pending != null) return;
+        boolean hasVisibleDialog = false;
         for (int i = 0; i < list.getChildCount(); i++) {
             View child = list.getChildAt(i);
-            if (child instanceof DialogCell) {
-                int position = list.getChildAdapterPosition(child);
-                if (position != RecyclerView.NO_POSITION) {
-                    visible.put(((DialogCell) child).getDialogId(), new Position(position, child.getTop()));
-                }
+            if (child instanceof DialogCell && list.getChildAdapterPosition(child) != RecyclerView.NO_POSITION) {
+                hasVisibleDialog = true;
+                break;
             }
         }
-        if (visible.isEmpty()) return;
+        if (!hasVisibleDialog) return;
+        HashSet<Long> existing = new HashSet<>();
+        for (int i = 0, count = adapter.getItemCount(); i < count; i++) {
+            Object item = adapter.getItem(i);
+            if (item instanceof TLRPC.Dialog) existing.add(((TLRPC.Dialog) item).id);
+        }
         pending = () -> {
             clearPending();
-            if (!allowed.getAsBoolean()) return true;
+            if (list.getAdapter() != adapter || !allowed.getAsBoolean()) {
+                cancel();
+                return true;
+            }
             final int visibleTop = list.getClipToPadding() ? list.getPaddingTop() : 0;
             final int visibleBottom = list.getHeight() - (list.getClipToPadding() ? list.getPaddingBottom() : 0);
             for (int i = 0; i < list.getChildCount(); i++) {
@@ -67,14 +87,13 @@ public final class DialogAppearance {
                 Fade current = fades.get(cell);
                 if (current != null && current.dialogId != cell.getDialogId()) current.animator.cancel();
                 int position = list.getChildAdapterPosition(cell);
-                Position previous = visible.get(cell.getDialogId());
-                if (previous != null && cell.isMessagePreviewTransitionRunning()) continue;
-                boolean arriving = previous == null || position < previous.index && cell.getTop() < previous.top;
+                if (cell.isMessagePreviewTransitionRunning()) continue;
+                boolean arriving = !existing.contains(cell.getDialogId());
                 if (arriving && position != RecyclerView.NO_POSITION && cell.getDialogId() != 0
                         && cell.getBottom() > visibleTop
                         && cell.getTop() < visibleBottom
                         && cell.getAlpha() == 1f && !fades.containsKey(cell)) {
-                    Fade fade = new Fade(cell, previous != null);
+                    Fade fade = new Fade(cell);
                     fades.put(cell, fade);
                     cell.setAlpha(0f);
                     fade.animator.start();
@@ -86,14 +105,9 @@ public final class DialogAppearance {
         observer.addOnPreDrawListener(pending);
     }
 
-    private static final class Position {
-        final int index;
-        final int top;
-
-        Position(int index, int top) {
-            this.index = index;
-            this.top = top;
-        }
+    private void cancel() {
+        clearPending();
+        for (Fade fade : new ArrayList<>(fades.values())) fade.animator.cancel();
     }
 
     private void clearPending() {
@@ -109,14 +123,14 @@ public final class DialogAppearance {
         final long dialogId;
         float appliedAlpha;
 
-        Fade(DialogCell cell, boolean promoted) {
+        Fade(DialogCell cell) {
             dialogId = cell.getDialogId();
             final Runnable handoff = animator::cancel;
-            if (promoted) cell.onPreviewCrossfadeStarted = handoff;
+            cell.onPreviewCrossfadeStarted = handoff;
             animator.setDuration(250);
             animator.setInterpolator(new LinearInterpolator());
             animator.addUpdateListener(value -> {
-                if (cell.getParent() != list || cell.getDialogId() != dialogId
+                if (list.getAdapter() != adapter || cell.getParent() != list || cell.getDialogId() != dialogId
                         || cell.getAlpha() != appliedAlpha || !allowed.getAsBoolean()) {
                     animator.cancel();
                     return;

@@ -466,7 +466,7 @@ public class Weather {
         private void finish(Location location) {
             if (!isActive()) return;
             Utilities.Callback<Location> whenGot = callback;
-            run();
+            run(); // Retire both providers and the timeout before delivering the single result.
             whenGot.run(location);
         }
         @Override
@@ -553,7 +553,6 @@ public class Weather {
         }
 
         final int[] currentReqId = new int[1];
-
         final boolean[] cancelled = new boolean[1];
         final int account = UserConfig.selectedAccount;
         final MessagesController messagesController = MessagesController.getInstance(account);
@@ -728,5 +727,4 @@ public class Weather {
             request.run();
         }
     }
-
 }

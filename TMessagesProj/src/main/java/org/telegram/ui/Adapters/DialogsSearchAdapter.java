@@ -1822,7 +1822,7 @@ public class DialogsSearchAdapter extends RecyclerListView.SelectionAdapter {
                     }
                 }
                 if (username == null) {
-                    String foundUserName = isRecent ? filteredRecentQuery : searchAdapterHelper.getLastFoundUsername();
+                    String foundUserName = isRecent ? (searchWas ? filteredRecentQuery : null) : searchAdapterHelper.getLastFoundUsername();
                     if (!TextUtils.isEmpty(foundUserName)) {
                         String nameSearch = null;
                         int index;

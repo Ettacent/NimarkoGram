@@ -75,6 +75,7 @@ public class AppearancePreferencesActivity extends NimarkoUniversalPreferencesAc
     private static final int chatSnowflakesRow = 28;
     private static final int hideMuteButtonRow = 29;
     private static final int weekdayNearDateRow = 30;
+    private static final int enhancedGlassBlurRow = 31;
 
     private static final int foldersRow = 7;
     private static final int bottomTabsRow = 8;
@@ -96,7 +97,8 @@ public class AppearancePreferencesActivity extends NimarkoUniversalPreferencesAc
             case centerTitleRow, hideSearchBar, hideStatusRow, customTitleRow,
                     foldersRow, bottomTabsRow -> PAGE_NAVIGATION;
             case snowflakesRow, iconPackRow, oneUISwitchesRow, disableDividersRow,
-                    glareOnElementsRow, forceBlurRow, mediaGlowRow, chatSnowflakesRow -> PAGE_INTERFACE;
+                    glareOnElementsRow, forceBlurRow, mediaGlowRow, chatSnowflakesRow,
+                    enhancedGlassBlurRow -> PAGE_INTERFACE;
             case messagesAndProfilesRow, messageSizeRow, iosStyleComposerRow, hideBubbleTailRow,
                     centerChatTitleRow, unreadBadgeRow, customWallpapersRow, hideMuteButtonRow,
                     weekdayNearDateRow -> PAGE_CHAT;
@@ -243,6 +245,12 @@ public class AppearancePreferencesActivity extends NimarkoUniversalPreferencesAc
     }
 
     private void fillEffects(ArrayList<UItem> items) {
+        if (android.os.Build.VERSION.SDK_INT >= 31) {
+            items.add(SettingsHelper.asSwitchCG(enhancedGlassBlurRow,
+                            getString(R.string.NM_EnhancedGlassBlur),
+                            getString(R.string.NM_EnhancedGlassBlur_Desc))
+                    .setChecked(NimarkoConfig.enhancedGlassBlur));
+        }
         items.add(SettingsHelper.asSwitchCG(forceBlurRow, getString(R.string.NM_ForceBlur))
                 .setChecked(NimarkoConfig.forceBlur));
         items.add(SettingsHelper.asSwitchCG(glareOnElementsRow,
@@ -358,7 +366,7 @@ public class AppearancePreferencesActivity extends NimarkoUniversalPreferencesAc
             NimarkoConfig.toggleMediaGlow();
             item.checked = NimarkoConfig.mediaGlow;
             updateCheckState(view, NimarkoConfig.mediaGlow);
-            updateItemsAfterToggle();
+            updateItemsAfterToggle();   // show/hide strength/blur/transition rows
         } else if (item.id == forumAvatarsRow) {
             NimarkoConfig.toggleForumAvatarsLikeChats();
             updateCheckState(view, NimarkoConfig.forumAvatarsLikeChats);
@@ -366,6 +374,9 @@ public class AppearancePreferencesActivity extends NimarkoUniversalPreferencesAc
         } else if (item.id == forceBlurRow) {
             NimarkoConfig.toggleForceBlur();
             updateCheckState(view, NimarkoConfig.forceBlur);
+        } else if (item.id == enhancedGlassBlurRow) {
+            NimarkoConfig.toggleEnhancedGlassBlur();
+            updateCheckState(view, NimarkoConfig.enhancedGlassBlur);
             Theme.applyCommonTheme();
             if (getParentLayout() != null) getParentLayout().rebuildAllFragmentViews(false, false);
         } else if (item.id == hideStatusRow) {

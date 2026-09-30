@@ -33,6 +33,7 @@ public class DownscaleScrollableNoiseSuppressor {
     private int k;
     private boolean modeGraphChanged;
     private boolean drawableGraphChanged;
+    private boolean enhanced = app.nimarkogram.messenger.NimarkoConfig.enhancedGlassBlur;
     public boolean didDrawableGraphChange() {
         return drawableGraphChanged;
     }
@@ -58,17 +59,17 @@ public class DownscaleScrollableNoiseSuppressor {
     public static final int DRAW_FROSTED_GLASS_NO_SATURATION = -4;
     private void updateGlassMode() {
         final boolean enabled = BlurredBackgroundDrawableViewFactory.isLiquidGlassEnabled();
-        if (isLiquidGlassEnabled == enabled || recordingPos != null) {
+        final boolean nextEnhanced = app.nimarkogram.messenger.NimarkoConfig.enhancedGlassBlur;
+        if ((isLiquidGlassEnabled == enabled && enhanced == nextEnhanced) || recordingPos != null) {
             return;
         }
         isLiquidGlassEnabled = enabled;
+        enhanced = nextEnhanced;
         modeGraphChanged = true;
         final int nextScale = enabled || allowNoiseSuppress ? 1 : 8;
         final boolean captureScaleChanged = k != nextScale;
         k = nextScale;
-        if (captureScaleChanged) {
-            invalidateCapturePositions();
-        }
+        invalidateCapturePositions();
         for (SourcePart part : rectRenderNodes) {
             if (captureScaleChanged) {
                 part.renderNode.discardDisplayList();
@@ -92,7 +93,6 @@ public class DownscaleScrollableNoiseSuppressor {
         if (!canvas.isHardwareAccelerated()) {
             throw new IllegalStateException();
         }
-
         final int a = resolveInlineIndex(index);
         if (isDisplayListReadyAt(a)) {
             canvas.drawRenderNode(resultRenderNodes[a]);
@@ -193,13 +193,28 @@ public class DownscaleScrollableNoiseSuppressor {
         }
 
         public void setPrimaryEffectBlur(float radius) {
-            setStableBlur(radius, null);
+            setPrimaryEffectBlur(radius, null);
         }
 
         public void setPrimaryEffectBlur(float radius, RenderEffect secondEffect) {
-            setStableBlur(radius, secondEffect);
+            if (enhanced) {
+                setStableBlur(radius, secondEffect);
+            } else {
+                RenderEffect blur = RenderEffect.createBlurEffect(
+                        downscaleRadius(radius, scaleX), downscaleRadius(radius, scaleY), Shader.TileMode.CLAMP);
+                setPrimaryEffect(secondEffect == null ? blur : RenderEffect.createChainEffect(blur, secondEffect));
+            }
         }
         private void setStableBlur(float radius, @Nullable RenderEffect input) {
+            int optimizedScaleX = scaleX;
+            int optimizedScaleY = scaleY;
+            while (optimizedScaleX < 16 && Math.pow(convertRadiusToSigma(downscaleRadius(radius, optimizedScaleX)), 2) > 32) {
+                optimizedScaleX *= 2;
+            }
+            while (optimizedScaleY < 16 && Math.pow(convertRadiusToSigma(downscaleRadius(radius, optimizedScaleY)), 2) > 32) {
+                optimizedScaleY *= 2;
+            }
+            setScale(optimizedScaleX, optimizedScaleY);
             final float sigmaX = convertRadiusToSigma(downscaleRadius(radius, scaleX));
             final float sigmaY = convertRadiusToSigma(downscaleRadius(radius, scaleY));
             final float maxSigma = Math.max(sigmaX, sigmaY);
@@ -207,17 +222,7 @@ public class DownscaleScrollableNoiseSuppressor {
             final float divisor = (float) Math.sqrt(passes);
             final float passRadiusX = convertSigmaToRadius(sigmaX / divisor);
             final float passRadiusY = convertSigmaToRadius(sigmaY / divisor);
-            if (!isLiquidGlassEnabled) {
-                setPrimaryEffect(OrdinaryBlurEffectCache.get(passRadiusX, passRadiusY, input, passes));
-                return;
-            }
-            RenderEffect effect = input;
-            for (int i = 0; i < passes; i++) {
-                effect = effect == null
-                        ? RenderEffect.createBlurEffect(passRadiusX, passRadiusY, Shader.TileMode.CLAMP)
-                        : RenderEffect.createBlurEffect(passRadiusX, passRadiusY, effect, Shader.TileMode.CLAMP);
-            }
-            setPrimaryEffect(effect);
+            setPrimaryEffect(OrdinaryBlurEffectCache.get(passRadiusX, passRadiusY, input, passes));
         }
 
         public void setSecondaryEffect(int index, RenderEffect renderEffect) {
@@ -267,7 +272,6 @@ public class DownscaleScrollableNoiseSuppressor {
             canvas.drawRenderNode(renderNode);
             renderNodeOriginalWithOffset.endRecording();
 
-
             for (int a = 0; a < renderNodeDownsampled.length; a++) {
                 renderNodeDownsampled[a].setPosition(0, 0, downsampledWidth, downsampledHeight);
                 canvas = renderNodeDownsampled[a].beginRecording(downsampledWidth, downsampledHeight);
@@ -300,10 +304,13 @@ public class DownscaleScrollableNoiseSuppressor {
         }
 
         private void setScrollPhase(float x, float y) {
-            scrollX = scaleX >= 2 ? (x % scaleX) : 0;
-            scrollY = scaleY >= 2 ? (y % scaleY) : 0;
-            renderNodeOriginalWithOffset.setTranslationX(k == 1 ? scrollX : 0);
-            renderNodeOriginalWithOffset.setTranslationY(k == 1 ? scrollY : 0);
+            final boolean stabilize = enhanced || allowNoiseSuppress;
+            scrollX = stabilize && scaleX >= 2 ? (x % scaleX) : 0;
+            scrollY = stabilize && scaleY >= 2 ? (y % scaleY) : 0;
+            final float capturePhaseX = stabilize && k > 1 ? x % k : 0;
+            final float capturePhaseY = stabilize && k > 1 ? y % k : 0;
+            renderNodeOriginalWithOffset.setTranslationX((scrollX - capturePhaseX) / k);
+            renderNodeOriginalWithOffset.setTranslationY((scrollY - capturePhaseY) / k);
             for (RenderNode renderNode : renderNodeRestored) {
                 renderNode.setTranslationX(-scrollX);
                 renderNode.setTranslationY(-scrollY);
@@ -362,8 +369,8 @@ public class DownscaleScrollableNoiseSuppressor {
         boolean ignoreHashCheck = false;
         long hash = 0;
         final int resultCount = !isLiquidGlassEnabled && simpleMode ? 1 : resultRenderNodes.length;
-        hash = MediaDataController.calcHash(hash, resultCount);
 
+        hash = MediaDataController.calcHash(hash, resultCount);
         hash = MediaDataController.calcHash(hash, width);
         hash = MediaDataController.calcHash(hash, height);
 
@@ -429,6 +436,10 @@ public class DownscaleScrollableNoiseSuppressor {
     private final Blur3HashImpl builder = new Blur3HashImpl();
 
     public boolean invalidateResultRenderNodes(IBlur3Capture capture, int width, int height) {
+        return invalidateResultRenderNodes(capture, width, height, null);
+    }
+    public boolean invalidateResultRenderNodes(IBlur3Capture capture, int width, int height,
+                                               @Nullable RectF damage) {
         updateGlassMode();
         final long captureGeneration = capturePositionsGeneration;
         final boolean positionsChanged = capturedPositionsGeneration != captureGeneration;
@@ -439,6 +450,10 @@ public class DownscaleScrollableNoiseSuppressor {
             final Rect position = sourcePart.position;
             tmpRectF.set(position);
 
+            if (damage != null && !positionsChanged && !materialChanged && sourcePart.isReady()
+                    && !RectF.intersects(tmpRectF, damage)) {
+                continue;
+            }
             builder.start();
             builder.add(position.left);
             builder.add(position.top);
@@ -461,7 +476,6 @@ public class DownscaleScrollableNoiseSuppressor {
             capture.capture(c, tmpRectF);
             c.restore();
             endRecordingRect();
-
             captureChanged = true;
         }
         final boolean compositionChanged = invalidateResultRenderNodes(width, height);
@@ -488,20 +502,20 @@ public class DownscaleScrollableNoiseSuppressor {
         private void setupEffects() {
             if (isLiquidGlassEnabled) {
                 renderNodesForGlass = new DownscaledRenderNode("glass", 0, true);
-                renderNodesForGlass.setScale(2, 2);
-                renderNodesForGlass.setPrimaryEffectBlur(dpf2(12f), RenderNodeEffects.getSaturationX3RenderEffect());
+                renderNodesForGlass.setScale(enhanced ? 2 : 4, enhanced ? 2 : 4);
+                renderNodesForGlass.setPrimaryEffectBlur(dpf2(enhanced ? 12f : 6f), RenderNodeEffects.getSaturationX3RenderEffect());
                 renderNodesForBlur = new DownscaledRenderNode("blur", 0);
                 renderNodesForBlur.setScale(8, 8);
                 renderNodesForBlur.setPrimaryEffectBlur(dpf2(40 - 1.66f));
             } else if (simpleMode) {
                 renderNodesForBlur = new DownscaledRenderNode("blur", 0);
                 renderNodesForBlur.setScale(allowNoiseSuppress ? 16 : 8, allowNoiseSuppress ? 16 : 8);
-                renderNodesForBlur.setStableBlur(dpf2(40), RenderNodeEffects.getSaturationX3RenderEffect());
+                renderNodesForBlur.setPrimaryEffectBlur(dpf2(40), RenderNodeEffects.getSaturationX3RenderEffect());
                 renderNodesForGlass = null;
             } else {
                 renderNodesForBlur = new DownscaledRenderNode("blur", 1);
                 renderNodesForBlur.setScale(8, 8);
-                renderNodesForBlur.setStableBlur(dpf2(40), null);
+                renderNodesForBlur.setPrimaryEffectBlur(dpf2(40));
                 renderNodesForBlur.setSecondaryEffect(0, RenderNodeEffects.getSaturationX3RenderEffect());
                 renderNodesForGlass = null;
             }
@@ -513,7 +527,6 @@ public class DownscaleScrollableNoiseSuppressor {
                 renderNodesForGlass.setScrollPhase(scrollPhaseX, scrollPhaseY);
             }
         }
-
 
         private void setPosition(RectF position) {
             final int left = roundDown(position.left, 16);
@@ -614,8 +627,8 @@ public class DownscaleScrollableNoiseSuppressor {
         sourcePart.renderNode.setPosition(0, 0, width, height);
         RecordingCanvas c = sourcePart.renderNode.beginRecording(width, height);
         c.scale(1f / k, 1f / k);
-        if (k > 1) {
-            c.translate(scrollPhaseX % 8, scrollPhaseY % 8);
+        if (k > 1 && (enhanced || allowNoiseSuppress)) {
+            c.translate(scrollPhaseX % k, scrollPhaseY % k);
         }
         return c;
     }

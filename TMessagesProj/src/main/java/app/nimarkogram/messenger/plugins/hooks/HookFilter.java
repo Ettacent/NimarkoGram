@@ -6,7 +6,7 @@ import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.Objects; 
+import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 
 import de.robv.android.xposed.XC_MethodHook;
@@ -44,7 +44,6 @@ public class HookFilter {
 
                 case "condition":
                     HashMap<String, Object> vars = VARS_TL.get();
-                    
                     VARS_TL.remove();
                     try {
                         vars.clear();

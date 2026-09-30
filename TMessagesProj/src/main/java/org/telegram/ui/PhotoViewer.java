@@ -2265,6 +2265,33 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
     private float clippingImageProgress;
     private ImageReceiver closingBackdropReceiver;
     private final Matrix closingBackdropMatrix = new Matrix();
+    private final RectF closingBackdropBounds = new RectF();
+    public boolean closingBackdropIntersects(View sourceRoot, PhotoViewerProvider provider,
+                                             List<RectF> positions, int count) {
+        if (!getClosingBackdropBounds(sourceRoot, provider, closingBackdropBounds)) return false;
+        for (int i = 0; i < count; i++) {
+            RectF position = positions.get(i);
+            if (closingBackdropBounds.left < position.right + 16
+                    && closingBackdropBounds.right > position.left - 16
+                    && closingBackdropBounds.top < position.bottom + 16
+                    && closingBackdropBounds.bottom > position.top - 16) {
+                return true;
+            }
+        }
+        return false;
+    }
+    public boolean getClosingBackdropBounds(View sourceRoot, PhotoViewerProvider provider, RectF bounds) {
+        bounds.setEmpty();
+        if (!hasClosingBackdrop(provider) || sourceRoot == null || !sourceRoot.isAttachedToWindow()) {
+            return false;
+        }
+        closingBackdropMatrix.reset();
+        animatingImageView.transformMatrixToGlobal(closingBackdropMatrix);
+        sourceRoot.transformMatrixToLocal(closingBackdropMatrix);
+        if (!animatingImageView.getBackdropBounds(bounds)) return false;
+        closingBackdropMatrix.mapRect(bounds);
+        return !bounds.isEmpty();
+    }
     public boolean hasClosingBackdrop(ImageReceiver receiver) {
         return Build.VERSION.SDK_INT >= 31 && hasClosingImage(receiver);
     }
@@ -2275,6 +2302,10 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
     }
     public boolean hasClosingBackdrop(PhotoViewerProvider provider) {
         return provider == placeProvider && hasClosingBackdrop(closingBackdropReceiver);
+    }
+    public boolean hasClosingImageOutsideViewport(PhotoViewerProvider provider) {
+        return provider == placeProvider && hasClosingImage(closingBackdropReceiver)
+                && animatingImageView.hasBackdropOutsideViewport();
     }
     public void drawClosingBackdrop(Canvas canvas, View sourceRoot, PhotoViewerProvider provider) {
         if (!hasClosingBackdrop(provider)
@@ -5048,6 +5079,11 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
         rightImage.setCurrentAccount(currentAccount);
         if (captionEdit != null) {
             captionEdit.setAccount(currentAccount);
+            captionEdit.editText.hidePopup(false);
+        }
+        if (topCaptionEdit != null) {
+            topCaptionEdit.setAccount(currentAccount);
+            topCaptionEdit.editText.hidePopup(false);
         }
         if (stickerMakerView != null) {
             stickerMakerView.setCurrentAccount(currentAccount);
@@ -17802,7 +17838,7 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
                 if (size[0] == 0) {
                     imageReceiver.setImageBitmap((Bitmap) null);
                 } else {
-                    imageReceiver.setImageBitmap(parentActivity.getResources().getDrawable(R.drawable.photoview_placeholder));
+                    imageReceiver.setImageBitmap(parentActivity.getResources().getDrawable(R.drawable.transparent));
                 }
             }
         } else {
@@ -19456,14 +19492,25 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
 
                     ArrayList<Animator> animators = new ArrayList<>((sendPhotoType == SELECT_TYPE_AVATAR ? 3 : 2) + animatingImageViews.length + (animatingImageViews.length > 1 ? 1 : 0));
                     for (int i = 0; i < animatingImageViews.length; i++) {
-                        ObjectAnimator animator = ObjectAnimator.ofFloat(animatingImageViews[i], AnimationProperties.CLIPPING_IMAGE_VIEW_PROGRESS, 0.0f, 1.0f);
+                        Property<ClippingImageView, Float> progressProperty = i == 0
+                                ? new FloatProperty<ClippingImageView>("closingImageProgress") {
+                                    @Override
+                                    public void setValue(ClippingImageView view, float progress) {
+                                        view.setAnimationProgress(progress);
+                                        if (placeProvider != null) {
+                                            placeProvider.onCloseAnimationFrame();
+                                        }
+                                    }
+                                    @Override
+                                    public Float get(ClippingImageView view) {
+                                        return view.getAnimationProgress();
+                                    }
+                                } : AnimationProperties.CLIPPING_IMAGE_VIEW_PROGRESS;
+                        ObjectAnimator animator = ObjectAnimator.ofFloat(animatingImageViews[i], progressProperty, 0.0f, 1.0f);
                         if (i == 0) {
                             animator.addUpdateListener(animation -> {
                                 clippingImageProgress = (float) animation.getAnimatedValue();
                                 invalidateBlur();
-                                if (placeProvider != null) {
-                                    placeProvider.onCloseAnimationFrame();
-                                }
                             });
                         }
                         animators.add(animator);
@@ -24974,12 +25021,6 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
             animatingImageView.measure(MeasureSpec.makeMeasureSpec(layoutParams.width, MeasureSpec.AT_MOST), MeasureSpec.makeMeasureSpec(layoutParams.height, MeasureSpec.AT_MOST));
             containerView.measure(MeasureSpec.makeMeasureSpec(widthSize, MeasureSpec.EXACTLY), MeasureSpec.makeMeasureSpec(heightSize, MeasureSpec.EXACTLY));
             navigationBar.measure(MeasureSpec.makeMeasureSpec(widthSize, MeasureSpec.EXACTLY), MeasureSpec.makeMeasureSpec(navigationBarHeight, MeasureSpec.EXACTLY));
-        }
-
-        @Override
-        public void requestLayout() {
-            super.requestLayout();
-            AndroidUtilities.printStackTrace("requestLayout");
         }
 
         @Override

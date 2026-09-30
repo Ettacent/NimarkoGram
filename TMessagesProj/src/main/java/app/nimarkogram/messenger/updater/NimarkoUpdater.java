@@ -47,8 +47,8 @@ public class NimarkoUpdater {
     public static String downloadURL = null;
     public static String version, changelog, size, uploadDate;
     public static int versionCode;
-    public static long expectedSizeBytes = 0;
-    public static String expectedSha256 = null;
+    public static long expectedSizeBytes = 0;   // full APK size from the server, in bytes
+    public static String expectedSha256 = null; // hex SHA-256 from the server, may be null on old APIs
     private static final long MAX_APK_BYTES = 512L * 1024L * 1024L;
     private static final java.util.regex.Pattern SHA256_PATTERN =
             java.util.regex.Pattern.compile("^[0-9a-fA-F]{64}$");
@@ -213,7 +213,7 @@ public class NimarkoUpdater {
     public static File otaPath, versionPath, apkFile;
 
     public static long id = 1L;
-    private static final long updateCheckInterval = 3600000L;
+    private static final long updateCheckInterval = 3600000L; // 1 hour
     private static volatile boolean updateDownloaded = false;
     private static volatile boolean checkingForUpdates = false;
 
@@ -326,9 +326,10 @@ public class NimarkoUpdater {
         }
         if (!startCheck) return;
         otaQueue.postRunnable(() -> {
-            NimarkoUpdateConfig.setLastUpdateCheckTime(System.currentTimeMillis());
+            HttpURLConnection connection = null;
             try {
-                HttpURLConnection connection = (HttpURLConnection) new URI(ENDPOINT).toURL().openConnection();
+                NimarkoUpdateConfig.setLastUpdateCheckTime(System.currentTimeMillis());
+                connection = (HttpURLConnection) new URI(ENDPOINT).toURL().openConnection();
                 connection.setRequestMethod("GET");
                 connection.setRequestProperty("User-Agent", "NimarkoGram-OTA");
                 connection.setRequestProperty("Content-Type", "application/json");
@@ -337,7 +338,6 @@ public class NimarkoUpdater {
 
                 if (connection.getResponseCode() != 200) {
                     if (onCheckFailed != null) AndroidUtilities.runOnUIThread(onCheckFailed::run);
-                    checkingForUpdates = false;
                     return;
                 }
 
@@ -362,7 +362,6 @@ public class NimarkoUpdater {
                     FileLog.e("NimarkoUpdater: rejecting unsafe version from server: " + version);
                     version = "";
                     if (onUpdateNotFound != null) AndroidUtilities.runOnUIThread(onUpdateNotFound::run);
-                    checkingForUpdates = false;
                     return;
                 }
                 versionCode = obj.optInt("versionCode", 0);
@@ -372,7 +371,6 @@ public class NimarkoUpdater {
                     version = "";
                     downloadURL = "";
                     if (onUpdateNotFound != null) AndroidUtilities.runOnUIThread(onUpdateNotFound::run);
-                    checkingForUpdates = false;
                     return;
                 }
                 changelog = obj.optString("changelog", "");
@@ -397,7 +395,7 @@ public class NimarkoUpdater {
                 JSONObject translations = obj.optJSONObject("changelogs");
                 Update update = new Update(version, versionCode, changelog, size, downloadURL, uploadDate,
                         translations == null ? "" : translations.toString());
-                lastUpdate = update;
+                lastUpdate = update;   // kept so the download notification can re-open the update sheet in-app
                 NimarkoUpdateConfig.setLastUpdate(version, versionCode, downloadURL, changelog, size, uploadDate,
                         update.getChangelogsJson());
                 boolean newer = update.isNew();
@@ -423,19 +421,26 @@ public class NimarkoUpdater {
             } catch (Exception e) {
                 FileLog.e(e);
                 if (onCheckFailed != null) AndroidUtilities.runOnUIThread(onCheckFailed::run);
+            } finally {
+                try {
+                    if (connection != null) connection.disconnect();
+                } catch (Exception e) {
+                    FileLog.e(e);
+                } finally {
+                    checkingForUpdates = false;
+                }
             }
-            checkingForUpdates = false;
         }, 200);
     }
 
     private static volatile boolean downloadCanceled = false;
-    public static volatile Update lastUpdate;
+    public static volatile Update lastUpdate;   // most recent update found, for the notification deep-link
     private static volatile boolean downloading = false;
-    private static volatile boolean downloadPaused = false;
-    private static volatile long pausedBytes = 0;
-    private static volatile String downloadLink;
-    private static volatile int dlRealProgress = 0;
-    private static int dlShownProgress = 0;
+    private static volatile boolean downloadPaused = false;   // paused from the notification; resume continues via Range
+    private static volatile long pausedBytes = 0;             // bytes already on disk when paused
+    private static volatile String downloadLink;              // current download URL, kept so resume can re-open it
+    private static volatile int dlRealProgress = 0;   // % from the network thread
+    private static int dlShownProgress = 0;           // % currently displayed (UI thread)
     private static volatile HttpURLConnection activeConnection;
     private static volatile int downloadGeneration = 0;
     private static volatile int activeDownloadGeneration = -1;
@@ -589,11 +594,11 @@ public class NimarkoUpdater {
                 }
                 connection = openApkConnection(link, offset);
                 if (myGeneration != downloadGeneration) return;
-                activeConnection = connection;
+                activeConnection = connection;   // cancel/pause disconnect() this to break a blocking in.read()
                 final boolean append = offset > 0 && connection.getResponseCode() == 206;
-                if (!append) offset = 0;
+                if (!append) offset = 0;   // fresh download (or server ignored Range) -> truncate and start over
                 long total = connection.getContentLengthLong();
-                if (append && total > 0) total += offset;
+                if (append && total > 0) total += offset;   // a Range body's length is the REMAINDER, not the whole file
                 long expectedTotal = expectedSizeBytes > 0 ? expectedSizeBytes : total;
                 if (expectedTotal > MAX_APK_BYTES) {
                     throw new java.io.IOException("invalid download length: " + expectedTotal);
@@ -613,10 +618,10 @@ public class NimarkoUpdater {
                         if (downloadPaused) {
                             pausedBytes = downloaded;
                             out.flush();
-                            out.getFD().sync();
+                            out.getFD().sync();   // make the partial durable so resume can append to it
                             NimarkoUpdateConfig.setPausedDownloadOffset(downloaded);
                             showPausedNotification(context, expectedTotal > 0 ? (int) (downloaded * 100L / expectedTotal) : 0);
-                            return;
+                            return;   // finally clears `downloading`; downloadPaused stays true until resume/cancel
                         }
                         out.write(buf, 0, read);
                         downloaded += read;
@@ -656,7 +661,7 @@ public class NimarkoUpdater {
                 }
 
                 boolean sizeVerified = (expectedSizeBytes > 0 && outFile.length() == expectedSizeBytes)
-                        || (expectedTotal > 0 && downloaded == expectedTotal);
+                        || (expectedTotal > 0 && downloaded == expectedTotal);   // completeness already enforced downloaded==expectedTotal above
                 if (!hashVerified && !sizeVerified) {
                     outFile.delete();
                     throw new java.io.IOException("unverifiable download: no sha256 and size unknown/mismatch");
@@ -685,7 +690,7 @@ public class NimarkoUpdater {
                     NimarkoUpdateConfig.setUpdateIsDownloading(false);
                     NimarkoUpdateConfig.clearPausedDownload();
                 }
-                showReadyNotification(context, outFile);
+                showReadyNotification(context, outFile);   // offer install even if the sheet was closed
                 AndroidUtilities.runOnUIThread(() -> {
                     if (myGeneration != downloadGeneration || !updateDownloaded) return;
                     stopProgressSmoother();
@@ -760,7 +765,7 @@ public class NimarkoUpdater {
             HttpURLConnection c = (HttpURLConnection) new URI(current).toURL().openConnection();
             c.setRequestProperty("User-Agent", "NimarkoGram-OTA");
             c.setRequestProperty("Accept-Encoding", "identity");
-            if (rangeStart > 0) c.setRequestProperty("Range", "bytes=" + rangeStart + "-");
+            if (rangeStart > 0) c.setRequestProperty("Range", "bytes=" + rangeStart + "-");   // resume a paused download
             c.setConnectTimeout(15000);
             c.setReadTimeout(30000);
             c.setInstanceFollowRedirects(false);
@@ -774,7 +779,7 @@ public class NimarkoUpdater {
                 if (!isHttps(current)) throw new java.io.IOException("refusing non-https redirect target: " + current);
                 continue;
             }
-            if (code != 200 && code != 206) {
+            if (code != 200 && code != 206) {   // 206 = Partial Content (server honoured Range)
                 c.disconnect();
                 throw new java.io.IOException("HTTP " + code);
             }
@@ -849,7 +854,7 @@ public class NimarkoUpdater {
     }
 
 
-    private static final int UPDATE_NOTIF_ID = 0x4E47;
+    private static final int UPDATE_NOTIF_ID = 0x4E47;          // "NG"
     private static final String UPDATE_CHANNEL = "nimarko_updates";
     private static int lastNotifProgress = -1;
 
@@ -1032,8 +1037,11 @@ public class NimarkoUpdater {
     }
 
     public static String getOtaDirSize() {
-        if (!checkDirs()) return "0 B";
-        return AndroidUtilities.formatFileSize(Utilities.getDirSize(otaPath.getAbsolutePath(), 5, true), true, false);
+        File external = ApplicationLoader.applicationContext.getExternalFilesDir(null);
+        if (external == null) return "0 B";
+        File directory = new File(external, "ota");
+        if (!directory.isDirectory()) return "0 B";
+        return AndroidUtilities.formatFileSize(Utilities.getDirSize(directory.getAbsolutePath(), 5, true), true, false);
     }
 
     public static void cleanOtaDir() {
@@ -1093,7 +1101,7 @@ public class NimarkoUpdater {
         final HttpURLConnection c;
         synchronized (downloadBindingLock) {
             if (!downloading || downloadPaused) return;
-            downloadPaused = true;
+            downloadPaused = true; // the streaming loop notices, flushes the partial, shows the paused notification
             c = activeConnection;
         }
         if (c != null) {
@@ -1116,7 +1124,7 @@ public class NimarkoUpdater {
                     if ((version == null || version.isEmpty()) && savedVersion != null && !savedVersion.isEmpty()) {
                         version = savedVersion;
                     }
-                    downloadPaused = true;
+                    downloadPaused = true;   // surviving notification implies a paused download to continue
                 }
             }
             if (expectedSizeBytes <= 0) {

@@ -592,7 +592,6 @@ public class FragmentContextView extends FrameLayout implements NotificationCent
                 isMuted = false;
 
                 AndroidUtilities.runOnUIThread(toggleMicRunnable, 90);
-                
                 if (!app.nimarkogram.messenger.NimarkoConfig.disableVibration) {
                     try {
                         muteButton.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP, HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING);
@@ -690,7 +689,6 @@ public class FragmentContextView extends FrameLayout implements NotificationCent
             muteButton.playAnimation();
             Theme.getFragmentContextViewWavesDrawable().updateState(true);
             capsuleBlobDrawable.updateState(true);
-            
             if (!app.nimarkogram.messenger.NimarkoConfig.disableVibration) {
                 try {
                     muteButton.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP, HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING);
@@ -935,33 +933,32 @@ public class FragmentContextView extends FrameLayout implements NotificationCent
     }
 
     private HintView speedHintView;
+    private ViewGroup speedHintViewParent;
     private long lastPlaybackClick;
 
     private void checkSpeedHint() {
         final long now = System.currentTimeMillis();
-        if (now - lastPlaybackClick > 300) {
-            int hintValue = MessagesController.getGlobalNotificationsSettings().getInt("speedhint", 0);
-            hintValue++;
-            if (hintValue > 2) {
-                hintValue = -10;
-            }
-            MessagesController.getGlobalNotificationsSettings().edit().putInt("speedhint", hintValue).apply();
-            if (hintValue >= 0) {
+        if (speedHintView == null && now - lastPlaybackClick > 300) {
+            if (HintsController.Hint.PlaybackSpeedHint.show()) {
+                HintsController.Hint.PlaybackSpeedHint.increment();
                 showSpeedHint();
             }
         }
         lastPlaybackClick = now;
     }
 
+    public void setSpeedHintViewParent(ViewGroup viewParent) {
+        speedHintViewParent = viewParent;
+    }
     private void showSpeedHint() {
-        if (fragment != null && getParent() instanceof ViewGroup) {
+        if (fragment != null && speedHintViewParent != null) {
             speedHintView = new HintView(getContext(), 6, true) {
                 @Override
                 public void setVisibility(int visibility) {
                     super.setVisibility(visibility);
                     if (visibility != View.VISIBLE) {
                         try {
-                            ((ViewGroup) getParent()).removeView(this);
+                            speedHintViewParent.removeView(this);
                         } catch (Exception e) {}
                     }
                 }
@@ -970,7 +967,7 @@ public class FragmentContextView extends FrameLayout implements NotificationCent
             speedHintView.setText(getString(R.string.SpeedHint));
             MarginLayoutParams params = new MarginLayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
             params.rightMargin = dp(3);
-            ((ViewGroup) getParent()).addView(speedHintView, params);
+            speedHintViewParent.addView(speedHintView, params);
             speedHintView.showForView(playbackSpeedButton, true);
         }
     }
@@ -1422,7 +1419,6 @@ public class FragmentContextView extends FrameLayout implements NotificationCent
             AndroidUtilities.cancelRunOnUIThread(updateScheduleTimeRunnable);
             scheduleRunnableScheduled = false;
         }
-        
         AndroidUtilities.cancelRunOnUIThread(checkLocationRunnable);
         visible = false;
         topPadding = 0;
@@ -2678,7 +2674,6 @@ public class FragmentContextView extends FrameLayout implements NotificationCent
             return;
         }
         if ((currentStyle == STYLE_ACTIVE_GROUP_CALL || currentStyle == STYLE_CONNECTING_GROUP_CALL)) {
-
             Theme.getFragmentContextViewWavesDrawable().updateState(wasDraw);
             capsuleBlobDrawable.updateState(wasDraw);
 

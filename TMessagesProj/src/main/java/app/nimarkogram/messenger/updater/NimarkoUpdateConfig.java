@@ -1,4 +1,3 @@
- 
 package app.nimarkogram.messenger.updater;
 
 import android.content.SharedPreferences;

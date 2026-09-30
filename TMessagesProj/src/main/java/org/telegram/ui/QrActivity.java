@@ -118,7 +118,6 @@ import org.telegram.ui.Components.RLottieImageView;
 import org.telegram.ui.Components.RecyclerListView;
 import org.telegram.ui.Components.StaticLayoutEx;
 import org.telegram.ui.Components.ThemeSmallPreviewView;
-
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -216,7 +215,6 @@ public class QrActivity extends BaseFragment {
     private boolean initialBackgroundReady;
     private List<EmojiThemes> pendingLoadedThemes;
     private int pendingThemesGeneration;
-
     private Runnable pendingShare;
     private boolean shareInProgress;
     private QrThemeSubscription themeSubscription;
@@ -331,14 +329,12 @@ public class QrActivity extends BaseFragment {
                 final int height = getMeasuredHeight();
                 final boolean isPortrait = width < height;
 
-
                 backgroundView.layout(0, 0, width, height);
 
                 int themeLayoutHeight = 0;
                 if (themeLayout.getVisibility() == View.VISIBLE) {
                     themeLayoutHeight = themeLayout.getMeasuredHeight();
                 }
-
 
                 if (themeLayout.getVisibility() == View.VISIBLE) {
                     if (isPortrait) {
@@ -349,7 +345,6 @@ public class QrActivity extends BaseFragment {
                         themeLayout.layout(getMeasuredWidth() - themeLayout.getMeasuredWidth(), themeLayoutTop, getMeasuredWidth(), themeLayoutTop + themeLayout.getMeasuredHeight());
                     }
                 }
-
 
                 int closeLeft = insets.left + dp(11);
                 int closeTop = insets.top + dp(11);
@@ -515,7 +510,6 @@ public class QrActivity extends BaseFragment {
         closeImageView.setScaleType(ImageView.ScaleType.CENTER);
         closeImageView.setOnClickListener(v -> finishFragment());
         rootLayout.addView(closeImageView, LayoutHelper.createFrame(34, 34));
-
 
         themesViewController = new ThemeListViewController(this, getParentActivity().getWindow());
         themeLayout = themesViewController.rootLayout;
@@ -988,7 +982,7 @@ public class QrActivity extends BaseFragment {
         for (TLRPC.TL_theme existing : result.themes) {
             if (existing.id == theme.id || TextUtils.equals(existing.emoticon, theme.emoticon)) return false;
         }
-        result.themes.add(theme);
+        result.themes.add(theme); // Preserve server order; home is added only at publication.
         return true;
     }
     private static QrThemes readQrThemes(String preferencesName) {
@@ -1246,7 +1240,6 @@ public class QrActivity extends BaseFragment {
 
         float duration = 1f;
         if (patternAlphaAnimator != null) {
-
             duration *= Math.max(.5f, 1f - (float) patternAlphaAnimator.getAnimatedValue());
             patternAlphaAnimator.cancel();
         }
@@ -1311,7 +1304,6 @@ public class QrActivity extends BaseFragment {
             patternAlphaAnimator.addUpdateListener(animation -> {
                 float progress = (float) animation.getAnimatedValue();
                 backgroundTransitionProgress = progress;
-
                 if (newQrColors != null) {
                     int color1 = ColorUtils.blendARGB(prevQrColors[0], newQrColors[0], progress);
                     int color2 = ColorUtils.blendARGB(prevQrColors[1], newQrColors[1], progress);
@@ -1402,7 +1394,6 @@ public class QrActivity extends BaseFragment {
         final int sharedExpires = qrView.hasTimer ? qrView.linkExpires : 0;
         final long sharingUser = UserConfig.getInstance(currentAccount).getClientUserId();
         shareInProgress = true;
-
         themeLayout.setVisibility(View.GONE);
         closeImageView.setVisibility(View.GONE);
         logoImageView.setVisibility(View.GONE);
@@ -1607,7 +1598,6 @@ public class QrActivity extends BaseFragment {
         private boolean setData;
         private float[] radii = new float[8];
         private boolean logoCenterSet;
-
         private final int currentAccount;
         private volatile int renderGeneration;
         private int renderedGeneration = -1;
@@ -1998,7 +1988,6 @@ public class QrActivity extends BaseFragment {
                     qrBitmap = writer.encode(link, qrBitmapSize, qrBitmapSize, hints, null, 0.75f, backgroundColor, qrColor);
                     imageSize = writer.getImageSize();
                 } catch (Exception e) {
-
                 }
                 if (qrBitmap != null) {
                     break;
@@ -2038,7 +2027,6 @@ public class QrActivity extends BaseFragment {
                 staticLayout.draw(canvas);
                 canvas.restore();
             }
-
             qrBitmap.recycle();
             canvas.setBitmap(null);
 

@@ -1,11 +1,7 @@
 package org.telegram.ui.ActionBar;
 
-
 public final class MaterialSharedAxisMotion {
     static final long DURATION_MS = 360;
-
-
-
     private static final float[] TIMES = {0, 8, 17, 25, 34, 43, 50, 58, 67, 83, 101, 126, 151, 175, 200, 225, 250, 275, 300, 325, 360};
     private static final float[] POSITION = {0, .048f, .119f, .263f, .407f, .556f, .652f, .715f, .759f, .818f, .856f, .896f, .926f, .948f, .963f, .974f, .9815f, .989f, .9926f, .9963f, 1};
     private static final float[] POSITION_SLOPES = slopes(TIMES, POSITION);
@@ -32,10 +28,8 @@ public final class MaterialSharedAxisMotion {
         return (forward ? -1f : 1f) * p;
     }
 
-
     static float enteringAlpha(float phase) { return sample(phase, FADE_TIMES, ENTER_ALPHA, ENTER_SLOPES); }
     static float leavingAlpha(float phase) { return 1f - enteringAlpha(phase); }
-
     static float topAlpha(boolean enteringOnTop, float mix) { return enteringOnTop ? clamp(mix) : 1f - clamp(mix); }
     static float gestureScale(float progress) { return 1f - .08f * clamp(progress); }
     static float gestureCornerProgress(float progress) {
@@ -73,7 +67,6 @@ public final class MaterialSharedAxisMotion {
 
     private static float[] slopes(float[] times, float[] values) {
         float[] result = new float[times.length];
-
         for (int i = 1; i < times.length - 1; i++) {
             float a = times[i] - times[i-1], b = times[i+1] - times[i];
             float left = (values[i] - values[i-1]) / a, right = (values[i+1] - values[i]) / b;
@@ -106,8 +99,6 @@ public final class MaterialSharedAxisMotion {
         float t = clamp(fraction);
         float delta = (cancel ? 0f : 1f) - start;
         if (Math.abs(delta) < .00001f) return cancel ? 0f : 1f;
-
-
         float tangent = Math.max(0f, Math.min(3f, velocity / Math.max(1f, width) * (duration / 1000f) / delta));
         float t2 = t * t;
         float t3 = t2 * t;

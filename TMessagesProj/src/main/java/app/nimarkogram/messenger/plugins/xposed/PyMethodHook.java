@@ -20,7 +20,6 @@ public class PyMethodHook extends XC_MethodHook {
     private final String pluginId;
     private final PyObject pythonCallback;
     private final PluginsController.PluginRuntimeToken runtimeToken;
-    
     private final PyObject boundBefore;
     private final PyObject boundAfter;
 
@@ -120,7 +119,7 @@ public class PyMethodHook extends XC_MethodHook {
         return this.afterHookedFilters;
     }
 
-    @Override 
+    @Override // de.robv.android.xposed.XC_MethodHook
     protected void beforeHookedMethod(XC_MethodHook.MethodHookParam methodHookParam) throws Throwable {
         if (this.hasBeforeHook) {
             PluginsController controller = PluginsController.getInstance();
@@ -143,9 +142,7 @@ public class PyMethodHook extends XC_MethodHook {
                         }
                     }
                 }
-                
                 try {
-                    
                     if (this.boundBefore != null) {
                         this.boundBefore.call(methodHookParam);
                     } else {
@@ -161,7 +158,6 @@ public class PyMethodHook extends XC_MethodHook {
                 }
             } catch (Throwable th) {
                 handleHookError("beforeHookedMethod", th);
-                
                 throw th;
             } finally {
                 if (watchdogStarted) {
@@ -172,7 +168,7 @@ public class PyMethodHook extends XC_MethodHook {
         }
     }
 
-    @Override 
+    @Override // de.robv.android.xposed.XC_MethodHook
     protected void afterHookedMethod(XC_MethodHook.MethodHookParam methodHookParam) throws Throwable {
         if (this.hasAfterHook) {
             PluginsController controller = PluginsController.getInstance();
@@ -196,7 +192,6 @@ public class PyMethodHook extends XC_MethodHook {
                     }
                 }
                 try {
-                    
                     if (this.boundAfter != null) {
                         this.boundAfter.call(methodHookParam);
                     } else {

@@ -1134,6 +1134,12 @@ public class ChatActionCell extends BaseCell implements DownloadController.FileD
         viewTranslationX = 0;
     }
 
+    private int dateBackgroundWidth;
+    public void setDateBackgroundPosition(int width, int height, float x, float y) {
+        dateBackgroundWidth = width;
+        setVisiblePart(y, height);
+        viewTranslationX = x;
+    }
     private float dimAmount;
     private final Paint dimPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     public void setVisiblePart(float visibleTop, float tx, int parentH, float dimAmount) {
@@ -1172,7 +1178,6 @@ public class ChatActionCell extends BaseCell implements DownloadController.FileD
         if (giftPremiumText != null) {
             giftPremiumText.detach();
         }
-
         if (observersGroup != null) {
             observersGroup.removeAllObservers();
             observersGroup = null;
@@ -3503,24 +3508,20 @@ public class ChatActionCell extends BaseCell implements DownloadController.FileD
             ViewGroup parent = (ViewGroup) getParent();
             backgroundHeight = parent.getMeasuredHeight();
         }
+        final int shaderWidth = isFloating() && dateBackgroundWidth > 0 ? dateBackgroundWidth : getMeasuredWidth();
         if (themeDelegate != null) {
-            themeDelegate.applyServiceShaderMatrix(getMeasuredWidth(), backgroundHeight, viewTranslationX, viewTop + dp(4));
+            themeDelegate.applyServiceShaderMatrix(shaderWidth, backgroundHeight, viewTranslationX, viewTop + dp(4));
         } else {
-            Theme.applyServiceShaderMatrix(getMeasuredWidth(), backgroundHeight, viewTranslationX, viewTop + dp(4));
+            Theme.applyServiceShaderMatrix(shaderWidth, backgroundHeight, viewTranslationX, viewTop + dp(4));
         }
 
         int oldAlpha = -1;
         int oldAlpha2 = -1;
-        if (fromParent && (getAlpha() != 1f || isFloating())) {
+        if (fromParent && getAlpha() != 1f) {
             oldAlpha = backgroundPaint.getAlpha();
             oldAlpha2 = darkenBackgroundPaint.getAlpha();
-            backgroundPaint.setAlpha((int) (oldAlpha * getAlpha() * (isFloating() ? .75f : 1f)));
-            darkenBackgroundPaint.setAlpha((int) (oldAlpha2 * getAlpha() * (isFloating() ? .75f : 1f)));
-        } else if (isFloating()) {
-            oldAlpha = backgroundPaint.getAlpha();
-            oldAlpha2 = darkenBackgroundPaint.getAlpha();
-            backgroundPaint.setAlpha((int) (oldAlpha * (isFloating() ? .75f : 1f)));
-            darkenBackgroundPaint.setAlpha((int) (oldAlpha2 * (isFloating() ? .75f : 1f)));
+            backgroundPaint.setAlpha((int) (oldAlpha * getAlpha()));
+            darkenBackgroundPaint.setAlpha((int) (oldAlpha2 * getAlpha()));
         }
         if (currentMessageObject == null || !currentMessageObject.isRepostPreview) {
             canvas.drawPath(backgroundPath, backgroundPaint);

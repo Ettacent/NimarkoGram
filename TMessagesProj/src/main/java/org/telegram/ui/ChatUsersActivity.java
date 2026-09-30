@@ -12,13 +12,11 @@ import static org.telegram.messenger.AndroidUtilities.dp;
 import static org.telegram.messenger.LocaleController.getString;
 import static org.telegram.ui.bots.AffiliateProgramFragment.percents;
 
-import android.animation.Animator;
-import android.animation.AnimatorListenerAdapter;
-import android.animation.AnimatorSet;
-import android.animation.ObjectAnimator;
 import android.content.Context;
+import android.graphics.Canvas;
 import android.graphics.drawable.Drawable;
 import android.os.Bundle;
+import android.os.SystemClock;
 import android.text.SpannableStringBuilder;
 import android.text.Spanned;
 import android.text.TextUtils;
@@ -27,7 +25,6 @@ import android.util.SparseIntArray;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
-import android.view.ViewTreeObserver;
 import android.widget.EditText;
 import android.widget.FrameLayout;
 
@@ -49,6 +46,7 @@ import org.telegram.messenger.MessageObject;
 import org.telegram.messenger.MessagesController;
 import org.telegram.messenger.NotificationCenter;
 import org.telegram.messenger.R;
+import org.telegram.messenger.SharedConfig;
 import org.telegram.messenger.UserObject;
 import org.telegram.messenger.Utilities;
 import org.telegram.tgnet.TLObject;
@@ -130,8 +128,89 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
     private int type;
     private boolean transfer;
     private boolean loadingUsers;
+    private boolean participantsRefreshPending;
     private boolean firstLoaded;
     private boolean participantsLoadFailed;
+    private boolean participantsEndReached;
+    private int participantsOffset;
+    private int lastParticipantsPageOffset = -1;
+    private Runnable participantsViewportCheck;
+    private boolean participantsDestroyed;
+    private Runnable pendingParticipantsResponse;
+    private final LongSparseArray<TLRPC.User> pendingParticipantAdditions = new LongSparseArray<>();
+    private boolean applyingParticipantsUpdates;
+    private boolean batchingParticipantsUpdates;
+    private final Runnable applyPendingParticipantsResponse = () -> {
+        if (participantsDestroyed || isFinished || applyingParticipantsUpdates
+                || pendingParticipantsResponse == null && pendingParticipantAdditions.size() == 0) return;
+        if (listView != null && (listView.isTouchInteractionActive() || listView.getScrollState() != RecyclerView.SCROLL_STATE_IDLE)) return;
+        if (listView != null && (listView.isComputingLayout()
+                || listView.isAttachedToWindow() && listView.hasPendingAdapterUpdates())) {
+            listView.postOnAnimation(this.applyPendingParticipantsResponse);
+            return;
+        }
+        Runnable response = pendingParticipantsResponse;
+        pendingParticipantsResponse = null;
+        DiffCallback savedState = response != null && pendingParticipantAdditions.size() > 0
+                && firstLoaded && listViewAdapter != null ? saveState() : null;
+        applyingParticipantsUpdates = true;
+        batchingParticipantsUpdates = savedState != null;
+        try {
+            if (response != null) response.run();
+            applyPendingParticipantAdditions();
+        } finally {
+            batchingParticipantsUpdates = false;
+            applyingParticipantsUpdates = false;
+            if (savedState != null) updateListAnimated(savedState);
+        }
+        if (participantsRefreshPending && !loadingUsers) {
+            participantsRefreshPending = false;
+            loadChatParticipants(0, 200);
+        }
+    };
+    private void queueParticipantAddition(TLRPC.User user) {
+        if (participantsDestroyed || isFinished || user == null) return;
+        pendingParticipantAdditions.put(user.id, user);
+        applyPendingParticipantsResponse.run();
+    }
+    private void applyPendingParticipantAdditions() {
+        if (participantsDestroyed || isFinished || pendingParticipantAdditions.size() == 0) return;
+        DiffCallback savedState = saveState();
+        ArrayList<TLObject> array = contactsMap.size() != 0 ? contacts : participants;
+        LongSparseArray<TLObject> map = contactsMap.size() != 0 ? contactsMap : participantsMap;
+        boolean changed = false;
+        for (int i = 0; i < pendingParticipantAdditions.size(); i++) {
+            TLRPC.User user = pendingParticipantAdditions.valueAt(i);
+            if (participantsMap.get(user.id) != null || contactsMap.get(user.id) != null || botsMap.get(user.id) != null) continue;
+            TLObject participant;
+            if (ChatObject.isChannel(currentChat)) {
+                TLRPC.TL_channelParticipant channelParticipant = new TLRPC.TL_channelParticipant();
+                channelParticipant.inviter_id = getUserConfig().getClientUserId();
+                channelParticipant.peer = new TLRPC.TL_peerUser();
+                channelParticipant.peer.user_id = user.id;
+                channelParticipant.date = getConnectionsManager().getCurrentTime();
+                participant = channelParticipant;
+            } else {
+                TLRPC.ChatParticipant chatParticipant = new TLRPC.TL_chatParticipant();
+                chatParticipant.user_id = user.id;
+                chatParticipant.inviter_id = getUserConfig().getClientUserId();
+                participant = chatParticipant;
+            }
+            array.add(0, participant);
+            map.put(user.id, participant);
+            changed = true;
+        }
+        pendingParticipantAdditions.clear();
+        if (changed) {
+            if (array == participants) sortAdmins(participants);
+            updateListAnimated(savedState);
+        }
+    }
+    private boolean firstParticipantsPresented;
+    private long participantsFadeStart = -1;
+    private boolean searchFadePending;
+    private long searchFadeStart = -1;
+    private int searchFadeFrom;
 
     private LongSparseArray<TLRPC.GroupCallParticipant> ignoredUsers;
 
@@ -213,7 +292,6 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
     private int signMessagesRow;
     private int signMessagesProfilesRow;
     private int signMessagesInfoRow;
-
 
     private boolean sendMediaExpanded;
 
@@ -629,6 +707,11 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
 
     @Override
     public void onFragmentDestroy() {
+        participantsDestroyed = true;
+        pendingParticipantsResponse = null;
+        pendingParticipantAdditions.clear();
+        if (listView != null) listView.removeCallbacks(applyPendingParticipantsResponse);
+        cancelParticipantsViewportCheck();
         super.onFragmentDestroy();
         if (searchListViewAdapter != null) {
             searchListViewAdapter.cancelSearch();
@@ -639,6 +722,7 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
 
     @Override
     public View createView(Context context) {
+        cancelParticipantsViewportCheck();
         searching = false;
 
         actionBar.setBackButtonImage(R.drawable.ic_ab_back);
@@ -687,6 +771,7 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
                 @Override
                 public void onSearchExpand() {
                     searching = true;
+                    cancelParticipantsViewportCheck();
                     updateParticipantsLoadState();
                     if (doneItem != null) {
                         doneItem.setVisibility(View.GONE);
@@ -706,6 +791,7 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
                         doneItem.setVisibility(View.VISIBLE);
                     }
                     updateParticipantsLoadState();
+                    scheduleParticipantsViewportCheck();
                 }
 
                 @Override
@@ -780,6 +866,26 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
         emptyView.addView(progressLayout, 0);
 
         listView = new RecyclerListView(context) {
+            @Override
+            protected void onLayout(boolean changed, int left, int top, int right, int bottom) {
+                super.onLayout(changed, left, top, right, bottom);
+                scheduleParticipantsViewportCheck();
+            }
+            @Override
+            public boolean drawChild(Canvas canvas, View child, long drawingTime) {
+                boolean main = getAdapter() == listViewAdapter;
+                if (child instanceof ManageChatUserCell && (main || getChildAdapterPosition(child) >= searchFadeFrom)) {
+                    float alpha = getListContentAlpha(main);
+                    if (alpha < 1f) {
+                        int save = canvas.saveLayerAlpha(child.getLeft(), child.getTop(), child.getRight(), child.getBottom(), Math.round(alpha * 255));
+                        boolean drawn = super.drawChild(canvas, child, drawingTime);
+                        canvas.restoreToCount(save);
+                        invalidate();
+                        return drawn;
+                    }
+                }
+                return super.drawChild(canvas, child, drawingTime);
+            }
             @Override
             public void invalidate() {
                 super.invalidate();
@@ -1058,32 +1164,8 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
                                 if (fragment.getParentActivity() == null) {
                                     return;
                                 }
-                                getMessagesController().addUsersToChat(currentChat, ChatUsersActivity.this, users, fwdCount, user -> {
-                                    ChatUsersActivity.DiffCallback savedState = saveState();
-                                    ArrayList<TLObject> array = contactsMap != null && contactsMap.size() != 0 ? contacts : participants;
-                                    LongSparseArray<TLObject> map = contactsMap != null && contactsMap.size() != 0 ? contactsMap : participantsMap;
-                                    if (map.get(user.id) == null) {
-                                        if (ChatObject.isChannel(currentChat)) {
-                                            TLRPC.TL_channelParticipant channelParticipant1 = new TLRPC.TL_channelParticipant();
-                                            channelParticipant1.inviter_id = getUserConfig().getClientUserId();
-                                            channelParticipant1.peer = new TLRPC.TL_peerUser();
-                                            channelParticipant1.peer.user_id = user.id;
-                                            channelParticipant1.date = getConnectionsManager().getCurrentTime();
-                                            array.add(0, channelParticipant1);
-                                            map.put(user.id, channelParticipant1);
-                                        } else {
-                                            TLRPC.ChatParticipant participant = new TLRPC.TL_chatParticipant();
-                                            participant.user_id = user.id;
-                                            participant.inviter_id = getUserConfig().getClientUserId();
-                                            array.add(0, participant);
-                                            map.put(user.id, participant);
-                                        }
-                                    }
-                                    if (array == participants) {
-                                        sortAdmins(participants);
-                                    }
-                                    updateListAnimated(savedState);
-                                }, user -> {
+                                getMessagesController().addUsersToChat(currentChat, ChatUsersActivity.this, users, fwdCount,
+                                        ChatUsersActivity.this::queueParticipantAddition, user -> {
 
                                 }, null);
                             }
@@ -1463,21 +1545,25 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
             }
             return false;
         });
-        if (searchItem != null) {
-            listView.setOnScrollListener(new RecyclerView.OnScrollListener() {
-                @Override
-                public void onScrollStateChanged(RecyclerView recyclerView, int newState) {
-                    if (newState == RecyclerView.SCROLL_STATE_DRAGGING) {
-                        AndroidUtilities.hideKeyboard(getParentActivity().getCurrentFocus());
-                    }
+        listView.setOnTouchEndListener(applyPendingParticipantsResponse);
+        listView.setOnScrollListener(new RecyclerView.OnScrollListener() {
+            @Override
+            public void onScrollStateChanged(RecyclerView recyclerView, int newState) {
+                if (newState == RecyclerView.SCROLL_STATE_IDLE) {
+                    recyclerView.postOnAnimation(applyPendingParticipantsResponse);
                 }
-
-                @Override
-                public void onScrolled(RecyclerView recyclerView, int dx, int dy) {
-
+                if (newState == RecyclerView.SCROLL_STATE_DRAGGING && getParentActivity() != null) {
+                    AndroidUtilities.hideKeyboard(getParentActivity().getCurrentFocus());
                 }
-            });
-        }
+            }
+
+            @Override
+            public void onScrolled(RecyclerView recyclerView, int dx, int dy) {
+                if (dy > 0) {
+                    loadNextParticipantsPage(false);
+                }
+            }
+        });
 
         undoView = new UndoView(context);
         frameLayout.addView(undoView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, Gravity.BOTTOM | Gravity.LEFT, 8, 0, 8, 8));
@@ -1531,65 +1617,45 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
     }
 
     private void showItemsAnimated(int from) {
-        if (isPaused || !openTransitionStarted || (listView.getAdapter() == listViewAdapter && firstLoaded)) {
+        if (listView == null || listView.getAdapter() != searchListViewAdapter) {
             return;
         }
-        View progressView = null;
-        for (int i = 0; i < listView.getChildCount(); i++) {
-            View child = listView.getChildAt(i);
-            if (child instanceof FlickerLoadingView) {
-                progressView = child;
+        searchFadeFrom = Math.max(0, from);
+        searchFadeStart = -1;
+        searchFadePending = true;
+        listView.invalidate();
+    }
+    private float getListContentAlpha(boolean main) {
+        if (main ? !firstLoaded || firstParticipantsPresented : !searchFadePending) {
+            return 1f;
+        }
+        if (isPaused) {
+            if (main) {
+                firstParticipantsPresented = true;
+            } else {
+                searchFadePending = false;
+            }
+            return 1f;
+        }
+        long now = SystemClock.uptimeMillis();
+        long start = main ? participantsFadeStart : searchFadeStart;
+        if (start < 0) {
+            start = now;
+            if (main) {
+                participantsFadeStart = start;
+            } else {
+                searchFadeStart = start;
             }
         }
-        final View finalProgressView = progressView;
-        if (progressView != null) {
-            listView.removeView(progressView);
-            from--;
-        }
-        int finalFrom = from;
-
-        listView.getViewTreeObserver().addOnPreDrawListener(new ViewTreeObserver.OnPreDrawListener() {
-            @Override
-            public boolean onPreDraw() {
-                listView.getViewTreeObserver().removeOnPreDrawListener(this);
-                int n = listView.getChildCount();
-                AnimatorSet animatorSet = new AnimatorSet();
-                for (int i = 0; i < n; i++) {
-                    View child = listView.getChildAt(i);
-                    if (child == finalProgressView || listView.getChildAdapterPosition(child) < finalFrom) {
-                        continue;
-                    }
-                    child.setAlpha(0);
-                    int s = Math.min(listView.getMeasuredHeight(), Math.max(0, child.getTop()));
-                    int delay = (int) ((s / (float) listView.getMeasuredHeight()) * 100);
-                    ObjectAnimator a = ObjectAnimator.ofFloat(child, View.ALPHA, 0, 1f);
-                    a.setStartDelay(delay);
-                    a.setDuration(200);
-                    animatorSet.playTogether(a);
-                }
-
-                if (finalProgressView != null && finalProgressView.getParent() == null) {
-                    listView.addView(finalProgressView);
-                    RecyclerView.LayoutManager layoutManager = listView.getLayoutManager();
-                    if (layoutManager != null) {
-                        layoutManager.ignoreView(finalProgressView);
-                        Animator animator = ObjectAnimator.ofFloat(finalProgressView, View.ALPHA, finalProgressView.getAlpha(), 0);
-                        animator.addListener(new AnimatorListenerAdapter() {
-                            @Override
-                            public void onAnimationEnd(Animator animation) {
-                                finalProgressView.setAlpha(1f);
-                                layoutManager.stopIgnoringView(finalProgressView);
-                                listView.removeView(finalProgressView);
-                            }
-                        });
-                        animator.start();
-                    }
-                }
-
-                animatorSet.start();
-                return true;
+        float progress = SharedConfig.animationsEnabled() ? Math.min(1f, (now - start) / 200f) : 1f;
+        if (progress >= 1f) {
+            if (main) {
+                firstParticipantsPresented = true;
+            } else {
+                searchFadePending = false;
             }
-        });
+        }
+        return CubicBezierInterpolator.EASE_OUT.getInterpolation(progress);
     }
 
     public void setIgnoresUsers(LongSparseArray<TLRPC.GroupCallParticipant> participants) {
@@ -2472,12 +2538,59 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
     }
 
     private void loadChatParticipants(int offset, int count) {
-        if (isFinished || loadingUsers) {
+        if (isFinished || participantsDestroyed) {
             return;
         }
-        contactsEndReached = false;
-        botsEndReached = false;
-        loadChatParticipants(offset, count, true);
+        if (loadingUsers) {
+            if (offset == 0) participantsRefreshPending = true;
+            return;
+        }
+        if (offset == 0) {
+            lastParticipantsPageOffset = -1;
+            contactsEndReached = false;
+            botsEndReached = false;
+        }
+        loadChatParticipants(offset, count, offset == 0);
+    }
+    private void cancelParticipantsViewportCheck() {
+        if (participantsViewportCheck != null) {
+            if (listView != null) {
+                listView.removeCallbacks(participantsViewportCheck);
+            }
+            participantsViewportCheck = null;
+        }
+    }
+    private void scheduleParticipantsViewportCheck() {
+        if (participantsViewportCheck != null || isFinished || participantsDestroyed || isPaused || searching || listView == null) {
+            return;
+        }
+        RecyclerListView target = listView;
+        participantsViewportCheck = () -> {
+            participantsViewportCheck = null;
+            if (listView == target) {
+                loadNextParticipantsPage(true);
+            }
+        };
+        target.post(participantsViewportCheck);
+    }
+    private void loadNextParticipantsPage(boolean underfilledOnly) {
+        if (isFinished || participantsDestroyed || isPaused || searching || listView == null || layoutManager == null ||
+                !ChatObject.isChannel(currentChat) || isCommunity || listView.getAdapter() != listViewAdapter ||
+                !firstLoaded || loadingUsers || participantsLoadFailed || participantsEndReached ||
+                participantsOffset <= 0 || participantsOffset <= lastParticipantsPageOffset ||
+                !listView.isAttachedToWindow() || listView.getHeight() <= listView.getPaddingTop() + listView.getPaddingBottom() ||
+                listView.isComputingLayout() || listView.hasPendingAdapterUpdates()) {
+            return;
+        }
+        if (underfilledOnly) {
+            if (listView.canScrollVertically(1) || listView.canScrollVertically(-1)) {
+                return;
+            }
+        } else if (layoutManager.findLastVisibleItemPosition() < rowCount - 10) {
+            return;
+        }
+        lastParticipantsPageOffset = participantsOffset;
+        loadChatParticipants(participantsOffset, 200);
     }
     private void updateParticipantsLoadState() {
         if (retryItem != null) {
@@ -2537,9 +2650,43 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
         return requests;
     }
 
+    private void appendParticipantRefreshRequests(ArrayList<TLRPC.TL_channels_getParticipants> requests, int count, boolean reset) {
+        if (!reset || participantsOffset <= count || count <= 0) {
+            return;
+        }
+        TLRPC.TL_channels_getParticipants first = null;
+        for (TLRPC.TL_channels_getParticipants request : requests) {
+            if (!(request.filter instanceof TLRPC.TL_channelParticipantsContacts) &&
+                    !(request.filter instanceof TLRPC.TL_channelParticipantsBots)) {
+                first = request;
+                break;
+            }
+        }
+        if (first == null) {
+            return;
+        }
+        for (int offset = count; offset < participantsOffset; offset += count) {
+            TLRPC.TL_channels_getParticipants request = new TLRPC.TL_channels_getParticipants();
+            request.channel = first.channel;
+            request.filter = first.filter;
+            request.offset = offset;
+            request.limit = count;
+            requests.add(request);
+        }
+    }
     private void loadChatParticipants(int offset, int count, boolean reset) {
+        final boolean localParticipants = isCommunity && type == TYPE_USERS || !ChatObject.isChannel(currentChat);
+        if (localParticipants && listView != null && (listView.isTouchInteractionActive()
+                || listView.getScrollState() != RecyclerView.SCROLL_STATE_IDLE || listView.isComputingLayout())) {
+            pendingParticipantsResponse = () -> loadChatParticipants(offset, count, reset);
+            applyPendingParticipantsResponse.run();
+            return;
+        }
+        final DiffCallback localSavedState = localParticipants && firstLoaded && listViewAdapter != null ? saveState() : null;
         if (isCommunity && type == TYPE_USERS) {
             loadingUsers = false;
+            firstLoaded = true;
+            firstParticipantsPresented = true;
             participants.clear();
             bots.clear();
             contacts.clear();
@@ -2558,12 +2705,25 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
                 }
             }
 
-            updateRows();
-            if (listViewAdapter != null) {
-                listViewAdapter.notifyDataSetChanged();
+            if (localSavedState != null) {
+                updateListAnimated(localSavedState);
+            } else {
+                updateRows();
+                if (listViewAdapter != null) listViewAdapter.notifyDataSetChanged();
             }
         } else if (!ChatObject.isChannel(currentChat)) {
+            if (info == null || info.participants == null) {
+                loadingUsers = false;
+                updateRows();
+                if (listViewAdapter != null) {
+                    listViewAdapter.notifyDataSetChanged();
+                }
+                updateParticipantsLoadState();
+                return;
+            }
             loadingUsers = false;
+            firstLoaded = true;
+            firstParticipantsPresented = true;
             participants.clear();
             bots.clear();
             contacts.clear();
@@ -2617,20 +2777,27 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
                     }
                 }
             }
-            updateRows();
-            if (listViewAdapter != null) {
-                listViewAdapter.notifyDataSetChanged();
+            if (localSavedState != null) {
+                updateListAnimated(localSavedState);
+            } else {
+                updateRows();
+                if (listViewAdapter != null) listViewAdapter.notifyDataSetChanged();
             }
         } else {
             loadingUsers = true;
             updateParticipantsLoadState();
-            updateRows();
-            if (listViewAdapter != null) {
-                listViewAdapter.notifyDataSetChanged();
+            if (!firstLoaded) {
+                updateRows();
+                if (listViewAdapter != null) {
+                    listViewAdapter.notifyDataSetChanged();
+                }
             }
             final ArrayList<TLRPC.TL_channels_getParticipants> requests = loadChatParticipantsRequests(offset, count, reset);
+            appendParticipantRefreshRequests(requests, count, reset);
             final ArrayList<TLRPC.TL_channels_channelParticipants> responses = new ArrayList<>();
             final Runnable onRequestsEnd = () -> {
+                final DiffCallback savedState = saveState();
+                final boolean wasLoaded = firstLoaded;
                 boolean hadSuccessfulResponse = false;
                 boolean hadFailedResponse = false;
                 for (int i = 0; i < requests.size(); ++i) {
@@ -2645,10 +2812,18 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
                         }
                         continue;
                     }
-                    hadSuccessfulResponse = true;
-                    if (type == TYPE_ADMIN) {
-                        getMessagesController().processLoadedAdminsResponse(chatId, res);
+                    boolean sectionFailed = false;
+                    for (int j = 0; j < requests.size(); j++) {
+                        if (requests.get(j).filter == req.filter && responses.get(j) == null) {
+                            sectionFailed = true;
+                            break;
+                        }
                     }
+                    if (sectionFailed) {
+                        hadFailedResponse = true;
+                        continue;
+                    }
+                    hadSuccessfulResponse = true;
                     getMessagesController().putUsers(res.users, false);
                     getMessagesController().putChats(res.chats, false);
                     long selfId = getUserConfig().getClientUserId();
@@ -2669,8 +2844,20 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
                         objects = participants;
                         map = participantsMap;
                     }
-                    objects.clear();
-                    map.clear();
+                    if (req.offset == 0) {
+                        if (type == TYPE_USERS && req == requests.get(0) && objects == participants) {
+                            contacts.clear();
+                            contactsMap.clear();
+                            bots.clear();
+                            botsMap.clear();
+                        }
+                        objects.clear();
+                        map.clear();
+                    }
+                    if (objects == participants) {
+                        participantsOffset = req.offset + res.participants.size();
+                        participantsEndReached = res.participants.size() < req.limit || res.count > 0 && participantsOffset >= res.count;
+                    }
                     for (int a = 0, size = res.participants.size(); a < size; a++) {
                         TLRPC.ChannelParticipant participant = res.participants.get(a);
                         long peerId = getParticipantPeerId(participant);
@@ -2714,12 +2901,18 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
                         FileLog.e(e);
                     }
                 }
+                if (type == TYPE_ADMIN && hadSuccessfulResponse && !hadFailedResponse) {
+                    LongSparseArray<TLRPC.ChannelParticipant> admins = new LongSparseArray<>();
+                    for (TLObject object : participants) {
+                        if (object instanceof TLRPC.ChannelParticipant) {
+                            admins.put(getParticipantPeerId(object), (TLRPC.ChannelParticipant) object);
+                        }
+                    }
+                    getMessagesController().processLoadedChannelAdmins(admins, chatId, false);
+                }
                 loadingUsers = false;
                 participantsLoadFailed = hadFailedResponse;
                 if (hadSuccessfulResponse) {
-                    if (listViewAdapter != null) {
-                        showItemsAnimated(listViewAdapter.getItemCount());
-                    }
                     firstLoaded = true;
                 }
                 if (searchItem != null) {
@@ -2727,28 +2920,37 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
                     boolean canSearch = ChatObject.isChannel(currentChat) || currentChat != null && currentChat.creator;
                     searchItem.setVisibility(canSearch && (type != TYPE_BANNED || firstLoaded && objectsCount > 5) ? View.VISIBLE : View.GONE);
                 }
-                updateRows();
                 if (listViewAdapter != null) {
-                    listView.setAnimateEmptyView(openTransitionStarted, RecyclerListView.EMPTY_VIEW_ANIMATION_TYPE_ALPHA);
-                    listViewAdapter.notifyDataSetChanged();
-
+                    if (!searching) {
+                        listView.setAnimateEmptyView(openTransitionStarted, RecyclerListView.EMPTY_VIEW_ANIMATION_TYPE_ALPHA);
+                    }
+                    if (wasLoaded) {
+                        updateListAnimated(savedState);
+                    } else {
+                        updateRows();
+                        listViewAdapter.notifyDataSetChanged();
+                    }
+                } else {
+                    updateRows();
                 }
                 updateParticipantsLoadState();
                 resumeDelayedFragmentAnimation();
+                scheduleParticipantsViewportCheck();
             };
             AtomicInteger responsesReceived = new AtomicInteger(0);
             for (int i = 0; i < requests.size(); ++i) {
                 responses.add(null);
                 final int index = i;
                 int reqId = getConnectionsManager().sendRequest(requests.get(index), (response, error) -> AndroidUtilities.runOnUIThread(() -> {
-                    if (isFinished) {
+                    if (isFinished || participantsDestroyed) {
                         return;
                     }
                     if (error == null && response instanceof TLRPC.TL_channels_channelParticipants)
                         responses.set(index, (TLRPC.TL_channels_channelParticipants) response);
                     responsesReceived.getAndIncrement();
                     if (responsesReceived.get() == requests.size()) {
-                        onRequestsEnd.run();
+                        pendingParticipantsResponse = onRequestsEnd;
+                        applyPendingParticipantsResponse.run();
                     }
                 }));
                 getConnectionsManager().bindRequestToGuid(reqId, classGuid);
@@ -2761,6 +2963,8 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
             return channelParticipant.peer != null ? MessageObject.getPeerId(channelParticipant.peer) : channelParticipant.user_id;
         } else if (participant instanceof TLRPC.ChatParticipant) {
             return ((TLRPC.ChatParticipant) participant).user_id;
+        } else if (participant instanceof TLRPC.User) {
+            return ((TLRPC.User) participant).id;
         }
         return 0;
     }
@@ -2825,6 +3029,7 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
     @Override
     public void onResume() {
         super.onResume();
+        applyPendingParticipantsResponse.run();
         AndroidUtilities.requestAdjustResize(getParentActivity(), classGuid);
         if (listViewAdapter != null) {
             listViewAdapter.notifyDataSetChanged();
@@ -2832,11 +3037,17 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
         if (emptyView != null) {
             emptyView.requestLayout();
         }
+        scheduleParticipantsViewportCheck();
     }
 
     @Override
     public void onPause() {
         super.onPause();
+        cancelParticipantsViewportCheck();
+        if (participantsFadeStart >= 0) {
+            firstParticipantsPresented = true;
+        }
+        searchFadePending = false;
         if (undoView != null) {
             undoView.hide(true, 0);
         }
@@ -2912,6 +3123,7 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
         }
 
         private void cancelSearch() {
+            searchFadePending = false;
             searchGeneration++;
             searchInProgress = false;
             if (searchRunnable != null) {
@@ -4050,25 +4262,41 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
     }
 
     public void updateListAnimated(DiffCallback savedState) {
+        if (batchingParticipantsUpdates) {
+            updateRows();
+            return;
+        }
         if (listViewAdapter == null) {
             updateRows();
             return;
         }
+        int position = RecyclerView.NO_POSITION;
+        int top = 0;
+        if (listView != null && listView.getAdapter() == listViewAdapter && layoutManager != null) {
+            position = layoutManager.findFirstVisibleItemPosition();
+            View view = layoutManager.findViewByPosition(position);
+            if (view != null) {
+                top = view.getTop() - listView.getPaddingTop();
+            } else {
+                position = RecyclerView.NO_POSITION;
+            }
+        }
         updateRows();
         savedState.fillPositions(savedState.newPositionToItem);
-        DiffUtil.calculateDiff(savedState).dispatchUpdatesTo(listViewAdapter);
-        if (listView != null && layoutManager != null && listView.getChildCount() > 0) {
-            View view = null;
-            int position = -1;
-            for (int i = 0; i < listView.getChildCount(); i++) {
-                position = listView.getChildAdapterPosition(listView.getChildAt(i));
-                if (position != RecyclerListView.NO_POSITION) {
-                    view = listView.getChildAt(i);
-                    break;
+        DiffUtil.DiffResult result = DiffUtil.calculateDiff(savedState);
+        result.dispatchUpdatesTo(listViewAdapter);
+        if (position >= 0 && position < savedState.oldRowCount) {
+            int nextPosition = result.convertOldPositionToNew(position);
+            for (int distance = 1; nextPosition == RecyclerView.NO_POSITION && distance < savedState.oldRowCount; distance++) {
+                if (position + distance < savedState.oldRowCount) {
+                    nextPosition = result.convertOldPositionToNew(position + distance);
+                }
+                if (nextPosition == RecyclerView.NO_POSITION && position - distance >= 0) {
+                    nextPosition = result.convertOldPositionToNew(position - distance);
                 }
             }
-            if (view != null) {
-                layoutManager.scrollToPositionWithOffset(position, view.getTop() - listView.getPaddingTop());
+            if (nextPosition != RecyclerView.NO_POSITION) {
+                layoutManager.scrollToPositionWithOffset(nextPosition, top);
             }
         }
     }
@@ -4102,12 +4330,10 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
 
         @Override
         public boolean areItemsTheSame(int oldItemPosition, int newItemPosition) {
-            if (oldItemPosition >= oldBotStartRow && oldItemPosition < oldBotEndRow && newItemPosition >= botStartRow && newItemPosition < botEndRow) {
-                return sameParticipant(oldBots.get(oldItemPosition - oldBotStartRow), bots.get(newItemPosition - botStartRow));
-            } else if (oldItemPosition >= oldContactsStartRow && oldItemPosition < oldContactsEndRow && newItemPosition >= contactsStartRow && newItemPosition < contactsEndRow) {
-                return sameParticipant(oldContacts.get(oldItemPosition - oldContactsStartRow), contacts.get(newItemPosition - contactsStartRow));
-            } else if (oldItemPosition >= oldParticipantsStartRow && oldItemPosition < oldParticipantsEndRow && newItemPosition >= participantsStartRow && newItemPosition < participantsEndRow) {
-                return sameParticipant(oldParticipants.get(oldItemPosition - oldParticipantsStartRow), participants.get(newItemPosition - participantsStartRow));
+            TLObject oldParticipant = participantAt(oldItemPosition, true);
+            TLObject newParticipant = participantAt(newItemPosition, false);
+            if (oldParticipant != null || newParticipant != null) {
+                return oldParticipant != null && newParticipant != null && sameParticipant(oldParticipant, newParticipant);
             }
             int oldItem = oldPositionToItem.get(oldItemPosition, -1);
             return oldItem != -1 && oldItem == newPositionToItem.get(newItemPosition, -1);
@@ -4117,11 +4343,14 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
         public boolean areContentsTheSame(int oldItemPosition, int newItemPosition) {
             if (areItemsTheSame(oldItemPosition, newItemPosition)) {
                 if (newItemPosition >= botStartRow && newItemPosition < botEndRow) {
-                    return oldBots.get(oldItemPosition - oldBotStartRow) == bots.get(newItemPosition - botStartRow);
+                    return oldItemPosition >= oldBotStartRow && oldItemPosition < oldBotEndRow
+                            && participantAt(oldItemPosition, true) == participantAt(newItemPosition, false);
                 } else if (newItemPosition >= contactsStartRow && newItemPosition < contactsEndRow) {
-                    return oldContacts.get(oldItemPosition - oldContactsStartRow) == contacts.get(newItemPosition - contactsStartRow);
+                    return oldItemPosition >= oldContactsStartRow && oldItemPosition < oldContactsEndRow
+                            && participantAt(oldItemPosition, true) == participantAt(newItemPosition, false);
                 } else if (newItemPosition >= participantsStartRow && newItemPosition < participantsEndRow) {
-                    return oldParticipants.get(oldItemPosition - oldParticipantsStartRow) == participants.get(newItemPosition - participantsStartRow);
+                    return oldItemPosition >= oldParticipantsStartRow && oldItemPosition < oldParticipantsEndRow
+                            && participantAt(oldItemPosition, true) == participantAt(newItemPosition, false);
                 }
                 if (restricted1SectionRow == newItemPosition) {
                     return false;
@@ -4129,6 +4358,20 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
                 return true;
             }
             return false;
+        }
+        private TLObject participantAt(int position, boolean old) {
+            int start = old ? oldBotStartRow : botStartRow;
+            int end = old ? oldBotEndRow : botEndRow;
+            ArrayList<TLObject> source = old ? oldBots : bots;
+            if (position >= start && position < end) return source.get(position - start);
+            start = old ? oldContactsStartRow : contactsStartRow;
+            end = old ? oldContactsEndRow : contactsEndRow;
+            source = old ? oldContacts : contacts;
+            if (position >= start && position < end) return source.get(position - start);
+            start = old ? oldParticipantsStartRow : participantsStartRow;
+            end = old ? oldParticipantsEndRow : participantsEndRow;
+            source = old ? oldParticipants : participants;
+            return position >= start && position < end ? source.get(position - start) : null;
         }
         private boolean sameParticipant(TLObject oldParticipant, TLObject newParticipant) {
             long peerId = getParticipantPeerId(oldParticipant);

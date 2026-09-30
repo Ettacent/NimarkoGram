@@ -62,6 +62,11 @@ public class LinkActionView extends LinearLayout {
     private final TextView shareView;
     private final TextView removeView;
     private final FrameLayout frameLayout;
+    private final LinearLayout buttonsLayout;
+    public void setButtonsBottomPadding(int padding) {
+        buttonsLayout.setPadding(buttonsLayout.getPaddingLeft(), buttonsLayout.getPaddingTop(),
+                buttonsLayout.getPaddingRight(), Math.max(0, padding));
+    }
 
     private Delegate delegate;
 
@@ -80,10 +85,22 @@ public class LinkActionView extends LinearLayout {
     private String displayedLinkText;
     private int linkTextAnimationGeneration;
     private boolean linkTextInitialized;
+    private final int initialAccount;
+    private int usersAccount = -1;
+    private long usersChatId;
+    private String usersLink;
+    private int usersUsage;
+    private TLRPC.TL_chatInviteExported usersInvite;
+    private ArrayList<TLRPC.User> loadedImporters;
+    private ArrayList<TLRPC.User> displayedImporters;
+    private int importersGeneration;
+    private int importersRequestId;
+    private boolean usersDetached;
 
     public LinkActionView(Context context, BaseFragment fragment, BottomSheet bottomSheet, long chatId, boolean permanent, boolean isChannel) {
         super(context);
         this.fragment = fragment;
+        initialAccount = fragment != null ? fragment.getCurrentAccount() : UserConfig.selectedAccount;
         this.permanent = permanent;
         this.isChannel = isChannel;
 
@@ -107,6 +124,7 @@ public class LinkActionView extends LinearLayout {
         addView(frameLayout, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, 0, containerPadding, 0, containerPadding, 0));
 
         LinearLayout linearLayout = new LinearLayout(context);
+        buttonsLayout = linearLayout;
         linearLayout.setOrientation(HORIZONTAL);
 
         copyView = new TextView(context);
@@ -441,6 +459,9 @@ public class LinkActionView extends LinearLayout {
 
 
     public void setLink(String link) {
+        if (!TextUtils.equals(this.link, link)) {
+            clearUsersBinding();
+        }
         this.link = link;
         final String text;
         if (link == null) {
@@ -538,6 +559,8 @@ public class LinkActionView extends LinearLayout {
 
     @Override
     protected void onDetachedFromWindow() {
+        usersDetached = true;
+        cancelImportersRequest();
         ++linkTextAnimationGeneration;
         linkView.animate().cancel();
         incomingLinkView.animate().cancel();
@@ -550,6 +573,12 @@ public class LinkActionView extends LinearLayout {
         super.onDetachedFromWindow();
     }
 
+    @Override
+    protected void onAttachedToWindow() {
+        super.onAttachedToWindow();
+        usersDetached = false;
+        if (usersInvite != null) loadUsers(usersInvite, usersChatId);
+    }
     private class AvatarsContainer extends FrameLayout {
 
         TextView countTextView;
@@ -614,6 +643,7 @@ public class LinkActionView extends LinearLayout {
 
     public void setUsers(int usersCount, ArrayList<TLRPC.User> importers, boolean animated) {
         this.usersCount = usersCount;
+        displayedImporters = importers;
         if (usersCount == 0) {
             avatarsContainer.setVisibility(View.GONE);
             setPadding(AndroidUtilities.dp(19), AndroidUtilities.dp(18), AndroidUtilities.dp(19), AndroidUtilities.dp(18));
@@ -625,13 +655,13 @@ public class LinkActionView extends LinearLayout {
         }
         if (importers != null) {
             for (int i = 0; i < importers.size(); ++i) {
-                MessagesController.getInstance(UserConfig.selectedAccount).putUser(importers.get(i), false);
+                MessagesController.getInstance(getUsersAccount()).putUser(importers.get(i), false);
             }
 
             final int count = Math.min(3, Math.min(usersCount, importers.size()));
             avatarsContainer.avatarsImageView.setCount(count);
             for (int i = 0; i < count; ++i) {
-                avatarsContainer.avatarsImageView.setObject(i, UserConfig.selectedAccount, importers.get(i));
+                avatarsContainer.avatarsImageView.setObject(i, getUsersAccount(), importers.get(i));
             }
         } else {
             avatarsContainer.avatarsImageView.setCount(0);
@@ -639,45 +669,76 @@ public class LinkActionView extends LinearLayout {
         avatarsContainer.avatarsImageView.commitTransition(animated);
     }
 
-    private String loadedInviteLink;
+    private int getUsersAccount() {
+        return fragment != null ? fragment.getCurrentAccount() : initialAccount;
+    }
+    private void cancelImportersRequest() {
+        ++importersGeneration;
+        if (importersRequestId != 0) {
+            ConnectionsManager.getInstance(usersAccount).cancelRequest(importersRequestId, true);
+            importersRequestId = 0;
+        }
+        loadingImporters = false;
+    }
+    private void clearUsersBinding() {
+        cancelImportersRequest();
+        usersInvite = null;
+        usersLink = null;
+        usersAccount = -1;
+        usersChatId = 0;
+        loadedImporters = null;
+        if (usersCount != 0 || displayedImporters != null) setUsers(0, null, false);
+    }
+    private void showBoundUsers(ArrayList<TLRPC.User> importers, boolean animated) {
+        if (usersCount != usersUsage || displayedImporters != importers) {
+            setUsers(usersUsage, importers, animated);
+        }
+    }
 
     public void loadUsers(TLRPC.TL_chatInviteExported invite, long chatId) {
-        if (invite == null) {
-            setUsers(0, null, false);
+        if (invite == null || TextUtils.isEmpty(invite.link) || fragment != null && fragment.isFinished) {
+            clearUsersBinding();
             return;
         }
-        if (!TextUtils.equals(loadedInviteLink, invite.link)) {
-            setUsers(invite.usage, invite.importers, false);
-            if (invite.usage > 0 && invite.importers == null && !loadingImporters) {
-                TLRPC.TL_messages_getChatInviteImporters req = new TLRPC.TL_messages_getChatInviteImporters();
-                if (invite.link != null) {
-                    req.flags |= 2;
-                    req.link = invite.link;
-                }
-                req.peer = MessagesController.getInstance(UserConfig.selectedAccount).getInputPeer(-chatId);
-                req.offset_user = new TLRPC.TL_inputUserEmpty();
-                req.limit = Math.min(invite.usage, 3);
-
-                loadingImporters = true;
-                ConnectionsManager.getInstance(UserConfig.selectedAccount).sendRequest(req, (response, error) -> {
-                    AndroidUtilities.runOnUIThread(() -> {
-                        loadingImporters = false;
-                        loadedInviteLink = invite.link;
-                        if (error == null) {
-                            TLRPC.TL_messages_chatInviteImporters inviteImporters = (TLRPC.TL_messages_chatInviteImporters) response;
-                            if (invite.importers == null) {
-                                invite.importers = new ArrayList<>(3);
-                            }
-                            invite.importers.clear();
-                            for (int i = 0; i < inviteImporters.users.size(); i++) {
-                                invite.importers.addAll(inviteImporters.users);
-                            }
-                            setUsers(invite.usage, invite.importers, true);
-                        }
-                    });
-                });
-            }
+        if (!TextUtils.equals(link, invite.link)) return;
+        final int account = getUsersAccount();
+        if (usersAccount != account || usersChatId != chatId || !TextUtils.equals(usersLink, invite.link)
+                || usersUsage != invite.usage) {
+            clearUsersBinding();
         }
+        usersAccount = account;
+        usersChatId = chatId;
+        usersLink = invite.link;
+        usersUsage = invite.usage;
+        usersInvite = invite; // latest model, even when the request is deduplicated
+        if (invite.importers != null) {
+            if (loadingImporters) cancelImportersRequest();
+            loadedImporters = invite.importers;
+        }
+        showBoundUsers(loadedImporters, false);
+        if (usersUsage <= 0 || loadedImporters != null || loadingImporters || usersDetached) return;
+        final String requestLink = usersLink;
+        final int generation = ++importersGeneration;
+        TLRPC.TL_messages_getChatInviteImporters req = new TLRPC.TL_messages_getChatInviteImporters();
+        req.flags |= 2;
+        req.link = requestLink;
+        req.peer = MessagesController.getInstance(account).getInputPeer(-chatId);
+        req.offset_user = new TLRPC.TL_inputUserEmpty();
+        req.limit = Math.min(usersUsage, 3);
+        loadingImporters = true;
+        importersRequestId = ConnectionsManager.getInstance(account).sendRequest(req, (response, error) -> AndroidUtilities.runOnUIThread(() -> {
+            if (generation != importersGeneration || usersDetached || usersInvite == null
+                    || account != getUsersAccount() || account != usersAccount || chatId != usersChatId
+                    || !TextUtils.equals(requestLink, usersLink) || !TextUtils.equals(requestLink, link)
+                    || fragment != null && fragment.isFinished) return;
+            importersRequestId = 0;
+            loadingImporters = false;
+            if (error == null && response instanceof TLRPC.TL_messages_chatInviteImporters) {
+                loadedImporters = new ArrayList<>(((TLRPC.TL_messages_chatInviteImporters) response).users);
+                usersInvite.importers = loadedImporters;
+                showBoundUsers(loadedImporters, true);
+            }
+        }));
     }
 
     public interface Delegate {

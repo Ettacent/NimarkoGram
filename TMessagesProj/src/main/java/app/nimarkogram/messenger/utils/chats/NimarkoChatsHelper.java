@@ -1,4 +1,3 @@
- 
 package app.nimarkogram.messenger.utils.chats;
 
 import static org.telegram.messenger.LocaleController.getString;
@@ -122,7 +121,6 @@ public class NimarkoChatsHelper extends BaseController {
         }
         if (forwardsSpan == null) {
             forwardsSpan = new SpannableStringBuilder("​");
-            
             forwardsSpan.setSpan(new ColoredImageSpan(forwardsDrawable), 0, 1, 0);
         }
         spannableStringBuilder
@@ -145,7 +143,6 @@ public class NimarkoChatsHelper extends BaseController {
         }
         if (editedSpan == null) {
             editedSpan = new SpannableStringBuilder("​");
-            
             editedSpan.setSpan(new ColoredImageSpan(editedDrawable), 0, 1, 0);
         }
         if (forwardsDrawable == null) {
@@ -153,7 +150,6 @@ public class NimarkoChatsHelper extends BaseController {
         }
         if (forwardsSpan == null) {
             forwardsSpan = new SpannableStringBuilder("​");
-            
             forwardsSpan.setSpan(new ColoredImageSpan(forwardsDrawable), 0, 1, 0);
         }
         spannableStringBuilder
@@ -368,7 +364,6 @@ public class NimarkoChatsHelper extends BaseController {
     }
 
     public int getCustomReactionsCount(MessageObject selectedObject) {
-        
         if (selectedObject == null
                 || selectedObject.messageOwner == null
                 || selectedObject.messageOwner.reactions == null

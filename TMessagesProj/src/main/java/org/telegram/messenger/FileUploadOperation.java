@@ -38,7 +38,6 @@ public class FileUploadOperation {
     private boolean nextPartFirst;
     private int operationGuid;
     private static final int minUploadChunkSize = 128;
-    
     private static final int minUploadChunkSizeBoost = 512;
     private static final int minUploadChunkSlowNetworkSize = 32;
     private static final int initialRequestsCount = 8;
@@ -119,7 +118,6 @@ public class FileUploadOperation {
         AutoDeleteMediaTask.lockFile(uploadingFilePath);
         Utilities.stageQueue.postRunnable(() -> {
             preferences = ApplicationLoader.applicationContext.getSharedPreferences("uploadinfo", Activity.MODE_PRIVATE);
-            
             slowNetwork = ApplicationLoader.isConnectionSlow()
                     && !app.nimarkogram.messenger.NimarkoConfig.uploadSpeedBoost
                     || app.nimarkogram.messenger.NimarkoConfig.slowNetworkMode;
@@ -284,7 +282,6 @@ public class FileUploadOperation {
             started = true;
             if (stream == null) {
                 File cacheFile = new File(uploadingFilePath);
-
                 stream = new RandomAccessFile(cacheFile, "r");
                 boolean isInternalFile = false;
                 try {
