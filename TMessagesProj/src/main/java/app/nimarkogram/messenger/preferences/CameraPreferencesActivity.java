@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /**
  * This is the source code of Nimarko for Android.
  * It is licensed under GNU GPL v. 2 or later.
@@ -21,6 +23,7 @@ import android.view.View;
 
 import org.telegram.messenger.R;
 import org.telegram.ui.RoundVideoSettingsActivity;
+import org.telegram.ui.SettingsActivity;
 import org.telegram.ui.Components.InstantCameraViewBase;
 import org.telegram.ui.Components.UItem;
 import org.telegram.ui.Components.UniversalAdapter;
@@ -61,17 +64,21 @@ public class CameraPreferencesActivity extends NimarkoUniversalPreferencesActivi
     private final int roundVideoBitrateRow = 18;
     private final int roundVideoSettingsRow = 19;
     private final int smoothCameraModuleTransitionsRow = 20;
-    private final int multiMicrophoneRow = 21;
+    private final int roundZoomScaleRow = 22;
+    private final int cameraControlButtonsSideRow = 23;
 
     private boolean cameraImprovementsExpanded = false;
+    private CameraTypeSelector cameraTypeSelector;
 
     @Override
     protected CharSequence getTitle() {
-        return getString(R.string.CP_Category_Camera);
+
+        return getString(R.string.NM_Category_Camera);
     }
 
     @Override
     public View createView(Context context) {
+        cameraTypeSelector = null;
         setMD3(true);
         return super.createView(context);
     }
@@ -81,6 +88,7 @@ public class CameraPreferencesActivity extends NimarkoUniversalPreferencesActivi
         super.onResume();
         if (listView != null && listView.adapter != null) listView.adapter.update(false);
     }
+
     @Override
     public void fillItems(ArrayList<UItem> items, UniversalAdapter adapter) {
         final boolean cameraX = CameraXUtils.isCurrentCameraCameraX();
@@ -89,68 +97,80 @@ public class CameraPreferencesActivity extends NimarkoUniversalPreferencesActivi
         final boolean upstreamRoundCamera2 = InstantCameraViewBase.isUsingCamera2Implementation();
 
         if (CameraXUtils.isCameraXSupported()) {
-            items.add(UItem.asHeader(getString(R.string.CP_CameraType)));
-            items.add(SettingsHelper.asCustomWithBackground(cameraTypeSelectorRow, new CameraTypeSelector(getContext()) {
-                @Override
-                protected void onSelectedCamera(int cameraSelected) {
-                    super.onSelectedCamera(cameraSelected);
-                    NimarkoConfig.setCameraType(cameraSelected);
-                    listView.adapter.update(true);
-                }
-            }));
-            items.add(UItem.asShadow(getCameraAdvise()));
+            items.add(UItem.asHeader(-1, getString(R.string.NM_CameraType)));
+            if (cameraTypeSelector == null) {
+                cameraTypeSelector = new CameraTypeSelector(getContext()) {
+                    @Override
+                    protected void onSelectedCamera(int cameraSelected) {
+                        super.onSelectedCamera(cameraSelected);
+                        NimarkoConfig.setCameraType(cameraSelected);
+                        updateItemsAfterToggle();
+                    }
+                };
+            }
+            items.add(SettingsHelper.asCustomWithBackground(cameraTypeSelectorRow, cameraTypeSelector));
+            items.add(UItem.asShadow(-2, getCameraAdvise()));
         }
 
-        items.add(UItem.asHeader(getString(R.string.CP_Category_Camera)));
-        items.add(SettingsHelper.asSwitchCG(cameraControlButtonsRow, getString(R.string.CP_CenterCameraControlButtons), getString(R.string.CP_CenterCameraControlButtons_Desc))
+        items.add(UItem.asHeader(-3, getString(R.string.NM_Category_Camera)));
+        items.add(SettingsHelper.asSwitchCG(cameraControlButtonsRow, getString(R.string.NM_CenterCameraControlButtons), getString(R.string.NM_CenterCameraControlButtons_Desc))
                 .setChecked(app.nimarkogram.messenger.NimarkoConfig.centerCameraControlButtons)
         );
+        if (!NimarkoConfig.centerCameraControlButtons && !upstreamRoundCamera2) {
+            items.add(UItem.asButton(cameraControlButtonsSideRow, getString(R.string.NM_CAM_ControlsSide),
+                    getString(NimarkoConfig.cameraControlButtonsRight
+                            ? R.string.NM_ZoomSliderPosition_Right : R.string.NM_ZoomSliderPosition_Left)));
+        }
         if (BuildVars.DEBUG_VERSION) {
-            items.add(SettingsHelper.asSwitchCG(disableAttachCameraRow, getString(R.string.CP_DisableCam), getString(R.string.CP_DisableCam_Desc))
+            items.add(SettingsHelper.asSwitchCG(disableAttachCameraRow, getString(R.string.NM_DisableCam), getString(R.string.NM_DisableCam_Desc))
                     .setChecked(app.nimarkogram.messenger.NimarkoConfig.disableAttachCamera)
             );
         }
-        items.add(UItem.asShadow(null));
+        items.add(UItem.asShadow(-4, null));
 
-        items.add(UItem.asHeader(getString(R.string.CP_Header_Videomessages)));
+        items.add(UItem.asHeader(-5, getString(R.string.NM_Header_Videomessages)));
         if (upstreamRoundCamera2) {
+
             items.add(UItem.asButton(roundVideoSettingsRow, getString(R.string.RoundVideoSettings), "Camera2"));
         } else {
-            items.add(UItem.asButton(rearCamRow, getString(R.string.NM_CAM_RoundCamera), getRoundCameraText()));
+            items.add(SettingsActivity.SettingCell.Factory.of(rearCamRow, 0, 0, 0,
+                    getString(R.string.NM_CAM_RoundCamera), getString(R.string.NM_CAM_RoundCameraDesc),
+                    getRoundCameraText()));
         }
         if (advanced && !upstreamRoundCamera2) {
-            items.add(SettingsHelper.asSwitchCG(cameraUseDualCameraRow, getString(R.string.CP_CameraDualCamera), getString(R.string.CP_CameraDualCamera_Desc))
+            items.add(SettingsHelper.asSwitchCG(cameraUseDualCameraRow, getString(R.string.NM_CameraDualCamera), getString(R.string.NM_CameraDualCamera_Desc))
                     .setChecked(app.nimarkogram.messenger.NimarkoConfig.useDualCamera)
             );
         }
         if (cameraX) {
+            if (!upstreamRoundCamera2) {
+                items.add(SettingsHelper.asSwitchCG(roundZoomScaleRow,
+                        getString(R.string.NM_CAM_RoundZoomScale), getString(R.string.NM_CAM_RoundZoomScaleDesc))
+                        .setChecked(NimarkoConfig.roundZoomScale));
+            }
             items.add(SettingsHelper.asSwitchCG(smoothCameraModuleTransitionsRow,
                     getString(R.string.NM_CAM_SmoothModules), getString(R.string.NM_CAM_SmoothModulesDesc))
                     .setChecked(NimarkoConfig.smoothCameraModuleTransitions));
-            items.add(SettingsHelper.asSwitchCG(startFromUltraWideRow, getString(R.string.CP_CameraUW), getString(R.string.CP_CameraUW_Desc))
+            items.add(SettingsHelper.asSwitchCG(startFromUltraWideRow, getString(R.string.NM_CameraUW), getString(R.string.NM_CameraUW_Desc))
                     .setChecked(app.nimarkogram.messenger.NimarkoConfig.startFromUltraWideCam)
             );
         }
-        items.add(UItem.asShadow(null));
-        if (cameraX && !upstreamRoundCamera2) {
-            items.add(UItem.asHeader(getString(R.string.NM_CAM_RoundAudio)));
-            items.add(SettingsHelper.asSwitchCG(multiMicrophoneRow,
-                    getString(R.string.NM_CAM_MultiMicrophone), getString(R.string.NM_CAM_MultiMicrophoneDesc))
-                    .setChecked(NimarkoConfig.cameraXMultiMicrophone));
-            items.add(UItem.asShadow(getString(R.string.NM_CAM_RoundAudioInfo)));
-        }
+        items.add(UItem.asShadow(-6, null));
+
         if (!upstreamRoundCamera2) {
-            items.add(UItem.asHeader(getString(R.string.NM_CAM_VideoQuality)));
+            items.add(UItem.asHeader(-9, getString(R.string.NM_CAM_VideoQuality)));
             items.add(UItem.asButton(roundVideoSizeRow, getString(R.string.NM_CAM_RoundVideoSize), getRoundVideoSizeText()));
             items.add(UItem.asButton(roundVideoBitrateRow, getString(R.string.NM_CAM_RoundVideoBitrate), getRoundVideoBitrateText()));
         } else if (advanced) {
-            items.add(UItem.asHeader(getString(R.string.CP_Category_Camera)));
+
+            items.add(UItem.asHeader(-10, getString(R.string.NM_Category_Camera)));
         }
+
         if (advanced) {
-            items.add(UItem.asButton(cameraXQualityRow, getString(R.string.CP_CameraQuality),
+            items.add(UItem.asButton(cameraXQualityRow, getString(R.string.NM_CameraQuality),
                     getCameraQualityText(app.nimarkogram.messenger.NimarkoConfig.cameraResolution)));
             items.add(UItem.asButton(cameraXFpsRangeRow, getString(R.string.NM_CAM_FpsRange), getCameraXFpsRange()));
-            items.add(SettingsHelper.asSwitchCG(cameraStabilisationRow, getString(R.string.CP_CameraStabilisation))
+            items.add(SettingsHelper.asSwitchCG(cameraStabilisationRow, getString(R.string.NM_CameraStabilisation))
                     .setChecked(app.nimarkogram.messenger.NimarkoConfig.cameraStabilisation)
             );
         }
@@ -176,7 +196,7 @@ public class CameraPreferencesActivity extends NimarkoUniversalPreferencesActivi
                 );
             }
         }
-        items.add(UItem.asShadow(null));
+        items.add(UItem.asShadow(-11, null));
     }
 
     @Override
@@ -208,14 +228,13 @@ public class CameraPreferencesActivity extends NimarkoUniversalPreferencesActivi
             opts.add(getString(R.string.NM_CAM_FrontCamera));
             opts.add(getString(R.string.NM_CAM_RearCamera));
             opts.add(getString(R.string.NM_CAM_AskCamera));
-            PopupHelper.showLegacy(opts, getString(R.string.NM_CAM_RoundCamera), NimarkoConfig.videoMessagesCamera, getContext(), i -> {
+            PopupHelper.show(opts, getString(R.string.NM_CAM_RoundCamera), NimarkoConfig.videoMessagesCamera, getContext(), i -> {
                 NimarkoConfig.setVideoMessagesCamera(i);
                 SettingsHelper.updateButtonValue(view, getRoundCameraText());
             });
-        } else if (item.id == multiMicrophoneRow) {
-            NimarkoConfig.toggleCameraXMultiMicrophone();
-            item.checked = NimarkoConfig.cameraXMultiMicrophone;
-            updateCheckState(view, item.checked);
+        } else if (item.id == roundZoomScaleRow) {
+            NimarkoConfig.toggleRoundZoomScale();
+            updateCheckState(view, NimarkoConfig.roundZoomScale);
         } else if (item.id == smoothCameraModuleTransitionsRow) {
             NimarkoConfig.toggleSmoothCameraModuleTransitions();
             updateCheckState(view, NimarkoConfig.smoothCameraModuleTransitions);
@@ -252,13 +271,14 @@ public class CameraPreferencesActivity extends NimarkoUniversalPreferencesActivi
             ArrayList<Integer> finalTypes = types;
             ArrayList<String> labels = finalTypes.stream().map(this::getCameraQualityText)
                     .collect(Collectors.toCollection(ArrayList::new));
-            PopupHelper.showLegacy(labels, getString(R.string.CP_CameraQuality),
+            PopupHelper.showLegacy(labels, getString(R.string.NM_CameraQuality),
                     finalTypes.indexOf(app.nimarkogram.messenger.NimarkoConfig.cameraResolution), getContext(), i -> {
                 NimarkoConfig.setCameraResolution(finalTypes.get(i));
                 SettingsHelper.updateButtonValue(view,
                         getCameraQualityText(app.nimarkogram.messenger.NimarkoConfig.cameraResolution));
             });
         } else if (item.id == roundVideoSizeRow) {
+
             ArrayList<CharSequence> labels = new ArrayList<>();
             ArrayList<Integer> values = new ArrayList<>();
             labels.add(getString(R.string.NM_CAM_RoundVideoSize_Auto)); values.add(NimarkoConfig.ROUND_AUTO);
@@ -291,9 +311,19 @@ public class CameraPreferencesActivity extends NimarkoUniversalPreferencesActivi
         } else if (item.id == cameraControlButtonsRow) {
             NimarkoConfig.toggleCenterCameraControlButtons();
             updateCheckState(view, app.nimarkogram.messenger.NimarkoConfig.centerCameraControlButtons);
+            updateItemsAfterToggle();
+        } else if (item.id == cameraControlButtonsSideRow) {
+            ArrayList<CharSequence> positions = new ArrayList<>();
+            positions.add(getString(R.string.NM_ZoomSliderPosition_Left));
+            positions.add(getString(R.string.NM_ZoomSliderPosition_Right));
+            PopupHelper.show(positions, getString(R.string.NM_CAM_ControlsSide),
+                    NimarkoConfig.cameraControlButtonsRight ? 1 : 0, getContext(), i -> {
+                        NimarkoConfig.setCameraControlButtonsRight(i == 1);
+                        SettingsHelper.updateButtonValue(view, positions.get(i).toString());
+                    });
         } else if (item.id == cameraImprovementsRow) {
             cameraImprovementsExpanded = !cameraImprovementsExpanded;
-            listView.adapter.update(true);
+            updateItemsAfterToggle();
         } else if (item.id == opticalStabilizationRow) {
             NimarkoConfig.toggleCameraOpticalStabilization();
             updateCheckState(view, app.nimarkogram.messenger.NimarkoConfig.cameraOpticalStabilization);
@@ -309,6 +339,7 @@ public class CameraPreferencesActivity extends NimarkoUniversalPreferencesActivi
         } else if (item.id == useHighRangeRow) {
             NimarkoConfig.toggleCameraXUseHighRange();
             updateCheckState(view, app.nimarkogram.messenger.NimarkoConfig.cameraXUseHighRange);
+
             if (!app.nimarkogram.messenger.NimarkoConfig.cameraXUseHighRange
                     && app.nimarkogram.messenger.NimarkoConfig.cameraXFpsRange
                     == NimarkoConfig.CameraXFpsRange30to60) {
@@ -324,6 +355,7 @@ public class CameraPreferencesActivity extends NimarkoUniversalPreferencesActivi
     }
 
     private boolean isExtendedFpsAvailable() {
+
         return app.nimarkogram.messenger.NimarkoConfig.cameraXUseHighRange;
     }
 
@@ -347,16 +379,16 @@ public class CameraPreferencesActivity extends NimarkoUniversalPreferencesActivi
             case NimarkoConfig.TELEGRAM_CAMERA -> "Telegram";
             case NimarkoConfig.CAMERA_X -> "CameraX";
             case NimarkoConfig.CAMERA_2 -> "Camera 2 (Telegram)";
-            default -> getString(R.string.CP_CameraTypeSystem);
+            default -> getString(R.string.NM_CameraTypeSystem);
         };
     }
 
     private CharSequence getCameraAdvise() {
         String advise = switch (app.nimarkogram.messenger.NimarkoConfig.cameraType) {
-            case NimarkoConfig.TELEGRAM_CAMERA -> getString(R.string.CP_DefaultCameraDesc);
-            case NimarkoConfig.CAMERA_X -> getString(R.string.CP_CameraXDesc);
-            case NimarkoConfig.CAMERA_2 -> getString(R.string.CP_Camera2Desc);
-            default -> getString(R.string.CP_SystemCameraDesc);
+            case NimarkoConfig.TELEGRAM_CAMERA -> getString(R.string.NM_DefaultCameraDesc);
+            case NimarkoConfig.CAMERA_X -> getString(R.string.NM_CameraXDesc);
+            case NimarkoConfig.CAMERA_2 -> getString(R.string.NM_Camera2Desc);
+            default -> getString(R.string.NM_SystemCameraDesc);
         };
 
         Spannable htmlParsed;
@@ -374,6 +406,7 @@ public class CameraPreferencesActivity extends NimarkoUniversalPreferencesActivi
             case NimarkoConfig.CameraXFpsRange25to30 -> "25-30";
             case NimarkoConfig.CameraXFpsRange30to30 -> "30-30";
             case NimarkoConfig.CameraXFpsRange30to60 -> "30-60";
+
             case NimarkoConfig.CameraXFpsRange60to60 -> "30-60";
             default -> getString(R.string.Default);
         };

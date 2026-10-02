@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package app.nimarkogram.messenger.camera;
 
 import android.annotation.SuppressLint;
@@ -48,7 +50,6 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import app.nimarkogram.messenger.NimarkoConfig;
-import app.nimarkogram.messenger.NimarkoCameraLog;
 
 public final class CameraXUtils {
 
@@ -64,6 +65,99 @@ public final class CameraXUtils {
             new ConcurrentHashMap<>();
     private static volatile int suggestedCameraResolution = -1;
     private static final AtomicBoolean QUALITY_LOAD_STARTED = new AtomicBoolean();
+    private static final AtomicBoolean ZOOM_LOAD_STARTED = new AtomicBoolean();
+    private static volatile ZoomPreview[] zoomPreviews;
+    private static final Map<String, float[]> ZOOM_SHORTCUTS = new ConcurrentHashMap<>();
+
+    public static final class ZoomPreview {
+        public final float minimum, maximum;
+        private final float[] shortcuts;
+
+        private ZoomPreview(float minimum, float maximum, float[] shortcuts) {
+            this.minimum = minimum;
+            this.maximum = maximum;
+            this.shortcuts = shortcuts.clone();
+        }
+
+        public float[] getShortcuts() { return shortcuts.clone(); }
+    }
+
+    @Nullable
+    public static ZoomPreview getZoomPreview(boolean frontFacing, boolean ultraWide) {
+        ZoomPreview[] previews = zoomPreviews;
+        return previews == null ? null : previews[frontFacing ? 0 : ultraWide ? 2 : 1];
+    }
+
+    @SuppressLint("UnsafeOptInUsageError")
+    @Nullable
+    static float[] getCachedZoomShortcuts(CameraInfo info, @Nullable CameraSelector selector) {
+        if (info == null || selector == null) return null;
+        try {
+            return ZOOM_SHORTCUTS.get(Camera2CameraInfo.from(info).getCameraId()
+                    + ":" + selector.getPhysicalCameraId());
+        } catch (Throwable ignored) {
+            return null;
+        }
+    }
+
+    @SuppressLint("UnsafeOptInUsageError")
+    @Nullable
+    private static ZoomPreview loadZoomPreview(ProcessCameraProvider provider, CameraSelector selector) {
+        try {
+            CameraInfo info = resolveSelectedCameraInfo(provider, selector);
+            ZoomState state = info == null ? null : info.getZoomState().getValue();
+            if (state == null) return null;
+            float min = state.getMinZoomRatio(), max = state.getMaxZoomRatio();
+            if (!Float.isFinite(min) || !Float.isFinite(max) || min <= 0f || max < min) return null;
+            float[] candidates = findZoomShortcutCandidates(info, selector);
+            if (candidates.length > 0) {
+                ZOOM_SHORTCUTS.put(Camera2CameraInfo.from(info).getCameraId()
+                        + ":" + selector.getPhysicalCameraId(), candidates);
+            }
+            return new ZoomPreview(min, max, CameraXZoomShortcuts.select(min, max, candidates));
+        } catch (Throwable ignored) {
+            return null;
+        }
+    }
+
+    private static void warmUpZoomAsync(Context context) {
+        ZoomPreview[] previews = zoomPreviews;
+        if (previews != null && previews[0] != null && previews[1] != null) return;
+        if (!ZOOM_LOAD_STARTED.compareAndSet(false, true)) return;
+        final ExecutorService executor;
+        try {
+            executor = newQualityExecutor();
+        } catch (Throwable ignored) {
+            ZOOM_LOAD_STARTED.set(false);
+            return;
+        }
+        try {
+            ListenableFuture<ProcessCameraProvider> future = getProviderFuture(context);
+            future.addListener(() -> {
+                try {
+                    ProcessCameraProvider provider = future.get();
+                    ZoomPreview front = loadZoomPreview(provider, buildIntendedCameraSelector(provider, true, false));
+                    ZoomPreview back = loadZoomPreview(provider, buildIntendedCameraSelector(provider, false, false));
+                    CameraSelector wide = hasLogicalUltraWide(provider) ? null : buildUltraWideSelector(provider);
+                    ZoomPreview ultraWide = wide == null ? back : loadZoomPreview(provider, wide);
+                    ZoomPreview[] previous = zoomPreviews;
+                    if (previous != null) {
+                        if (front == null) front = previous[0];
+                        if (back == null) back = previous[1];
+                        if (ultraWide == null) ultraWide = previous[2];
+                    }
+                    if (front != null || back != null) zoomPreviews = new ZoomPreview[]{front, back, ultraWide};
+                } catch (Throwable ignored) {
+                } finally {
+                    ZOOM_LOAD_STARTED.set(false);
+                    executor.shutdown();
+                }
+            }, executor);
+        } catch (Throwable ignored) {
+            ZOOM_LOAD_STARTED.set(false);
+            executor.shutdown();
+        }
+    }
     private static ExecutorService newQualityExecutor() {
         return Executors.newSingleThreadExecutor(command ->
             new Thread(() -> {
@@ -114,7 +208,6 @@ public final class CameraXUtils {
     public static ListenableFuture<ProcessCameraProvider> getProviderFuture(Context context) {
         ListenableFuture<ProcessCameraProvider> future = sharedProviderFuture;
         if (future != null) {
-            if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("CXUtils provider future reused done=" + future.isDone());
             return future;
         }
         synchronized (PROVIDER_LOCK) {
@@ -123,17 +216,12 @@ public final class CameraXUtils {
                 Context appContext = context.getApplicationContext();
                 future = ProcessCameraProvider.getInstance(appContext != null ? appContext : context);
                 sharedProviderFuture = future;
-                if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("CXUtils provider future created");
                 final ListenableFuture<ProcessCameraProvider> createdFuture = future;
                 createdFuture.addListener(() -> {
                     try {
-                        ProcessCameraProvider created = createdFuture.get();
-                        if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("CXUtils provider initialized cameras="
-                                + created.getAvailableCameraInfos().size()
-                                + " concurrentPairs="
-                                + created.getAvailableConcurrentCameraInfos().size());
+                        createdFuture.get();
                     } catch (Throwable error) {
-                        if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("CXUtils provider initialization FAILED", error);
+
                         synchronized (PROVIDER_LOCK) {
                             if (sharedProviderFuture == createdFuture) {
                                 sharedProviderFuture = null;
@@ -271,6 +359,7 @@ public final class CameraXUtils {
 
     private static Quality qualityForConfiguredHeight(int configuredHeight) {
         if (configuredHeight >= 2160) return Quality.UHD;
+
         if (configuredHeight >= 1440) return Quality.FHD;
         if (configuredHeight >= 1080) return Quality.FHD;
         if (configuredHeight >= 720) return Quality.HD;
@@ -281,6 +370,7 @@ public final class CameraXUtils {
     private static int getSuggestedResolution(boolean isPreview) {
         int perfClass = SharedConfig.getDevicePerformanceClass();
         if (perfClass == SharedConfig.PERFORMANCE_CLASS_LOW) return 720;
+
         return 1080;
     }
 
@@ -327,6 +417,7 @@ public final class CameraXUtils {
                 backCount++;
 
                 String cameraId = c2.getCameraId();
+
                 if (cameraId == null || cameraId.equals(defaultBackId)) continue;
 
                 int[] capabilities = c2.getCameraCharacteristic(
@@ -341,6 +432,7 @@ public final class CameraXUtils {
                         }
                     }
                 }
+
                 if (logicalMultiCamera) continue;
 
                 float intrinsicRatio = safeIntrinsicZoomRatio(info);
@@ -414,6 +506,53 @@ public final class CameraXUtils {
         } catch (Throwable ignored) {
             return null;
         }
+    }
+
+    @SuppressLint("UnsafeOptInUsageError")
+    static float[] findZoomShortcutCandidates(CameraInfo info, @Nullable CameraSelector selector) {
+        try {
+            if (info == null || selector == null || selector.getPhysicalCameraId() != null
+                    || !info.isLogicalMultiCameraSupported()) return new float[0];
+            float reference = zoomShortcutOpticalScale(info);
+            if (!Float.isFinite(reference) || reference <= 0f) return new float[0];
+            Set<CameraInfo> children = info.getPhysicalCameraInfos();
+            if (children == null || children.size() < 2) return new float[0];
+            ArrayList<Float> scales = new ArrayList<>();
+            for (CameraInfo child : children) {
+                try {
+                    if (child.getLensFacing() != info.getLensFacing()) continue;
+                    float scale = zoomShortcutOpticalScale(child);
+                    if (!Float.isFinite(scale) || scale <= 0f) continue;
+                    scales.add(scale);
+                } catch (Throwable ignored) {}
+            }
+            float[] result = new float[scales.size()];
+            for (int i = 0; i < result.length; i++) result[i] = scales.get(i);
+            return CameraXZoomShortcuts.fromOpticalScales(reference, result);
+        } catch (Throwable ignored) {
+            return new float[0];
+        }
+    }
+
+    @SuppressLint("UnsafeOptInUsageError")
+    private static float zoomShortcutOpticalScale(CameraInfo info) {
+        Camera2CameraInfo camera2 = Camera2CameraInfo.from(info);
+        android.util.SizeF sensor = camera2.getCameraCharacteristic(
+                CameraCharacteristics.SENSOR_INFO_PHYSICAL_SIZE);
+        android.util.Size pixels = camera2.getCameraCharacteristic(
+                CameraCharacteristics.SENSOR_INFO_PIXEL_ARRAY_SIZE);
+        android.graphics.Rect active = camera2.getCameraCharacteristic(
+                CameraCharacteristics.SENSOR_INFO_ACTIVE_ARRAY_SIZE);
+        if (sensor == null || pixels == null || active == null
+                || pixels.getWidth() <= 0 || pixels.getHeight() <= 0
+                || active.left < 0 || active.top < 0 || active.width() <= 0 || active.height() <= 0
+                || active.right > pixels.getWidth() || active.bottom > pixels.getHeight()) {
+            return Float.NaN;
+        }
+        return CameraXZoomShortcuts.opticalScale(camera2.getCameraCharacteristic(
+                        CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS),
+                sensor.getWidth() * ((float) active.width() / pixels.getWidth()),
+                sensor.getHeight() * ((float) active.height() / pixels.getHeight()));
     }
 
     private static float safeIntrinsicZoomRatio(@Nullable CameraInfo info) {
@@ -493,6 +632,7 @@ public final class CameraXUtils {
             if (logicalBack != null && physicalId != null) {
                 String logicalId = Camera2CameraInfo.from(logicalBack).getCameraId();
                 CameraSelector logicalSelector = buildCameraIdSelector(logicalId, false);
+
                 return CameraSelector.Builder.fromSelector(logicalSelector)
                         .setPhysicalCameraId(physicalId)
                         .build();
@@ -542,6 +682,7 @@ public final class CameraXUtils {
     @SuppressLint("UnsafeOptInUsageError")
     static CameraSelector buildCameraIdSelector(String cameraId, boolean frontFacing) {
         return new CameraSelector.Builder()
+
                 .requireLensFacing(frontFacing
                         ? CameraSelector.LENS_FACING_FRONT
                         : CameraSelector.LENS_FACING_BACK)
@@ -571,9 +712,6 @@ public final class CameraXUtils {
                                                             boolean secondFront,
                                                             boolean preferUltraWide) {
         if (provider == null || firstFront == secondFront) {
-            if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("CXUtils concurrent selector rejected provider="
-                    + (provider != null) + " firstFront=" + firstFront
-                    + " secondFront=" + secondFront);
             return null;
         }
         try {
@@ -605,24 +743,14 @@ public final class CameraXUtils {
                 if (independentWide != null && exactFront != null
                         && independentWideId != null
                         && !independentWideId.equals(preferredBackId)) {
-                    if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("CXUtils concurrent OPPO physical override back="
-                            + independentWideId + " front=" + preferredFrontId
-                            + " advertisedBack=" + preferredBackId);
                     return firstFront
                             ? new CameraSelector[] { exactFront, independentWide }
                             : new CameraSelector[] { independentWide, exactFront };
                 }
-                if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("CXUtils concurrent OPPO physical override unavailable"
-                        + " wide=" + independentWideId + " front=" + preferredFrontId
-                        + " advertisedBack=" + preferredBackId);
             }
 
             CameraSelector[] best = null;
             int bestScore = Integer.MIN_VALUE;
-            if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("CXUtils concurrent advertisedPairs="
-                    + provider.getAvailableConcurrentCameraInfos().size()
-                    + " preferredFront=" + preferredFrontId
-                    + " preferredBack=" + preferredBackId);
             for (List<CameraInfo> pair : provider.getAvailableConcurrentCameraInfos()) {
                 ArrayList<CameraInfo> firstCandidates = new ArrayList<>();
                 ArrayList<CameraInfo> secondCandidates = new ArrayList<>();
@@ -647,8 +775,10 @@ public final class CameraXUtils {
                                 Camera2CameraInfo.from(first).getCameraId();
                         String secondId =
                                 Camera2CameraInfo.from(second).getCameraId();
+
                         CameraSelector firstSelector = first.getCameraSelector();
                         CameraSelector secondSelector = second.getCameraSelector();
+
                         int score = 0;
                         if (preferredFirstId != null
                                 && preferredFirstId.equals(firstId)) score += 4;
@@ -657,6 +787,7 @@ public final class CameraXUtils {
                         if (preferUltraWide) {
                             CameraInfo backInfo = firstFront ? second : first;
                             String backId = firstFront ? secondId : firstId;
+
                             if (preferredUltraWideId != null
                                     && preferredUltraWideId.equals(backId)) {
                                 score += 12;
@@ -674,21 +805,12 @@ public final class CameraXUtils {
                                     firstSelector, secondSelector
                             };
                             bestScore = score;
-                            if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("CXUtils concurrent candidate first="
-                                    + firstId + " second=" + secondId + " score=" + score
-                                    + " pairSize=" + pair.size()
-                                    + " advertisedOrder=" + describeCameraInfoOrder(pair));
                         }
                     }
                 }
             }
-            if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("CXUtils concurrent selection result="
-                    + (best == null ? "none" : "score=" + bestScore)
-                    + " preferWide=" + preferUltraWide
-                    + " wideId=" + preferredUltraWideId);
             return best;
         } catch (Throwable error) {
-            if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("CXUtils concurrent selection FAILED", error);
         }
         return null;
     }
@@ -714,8 +836,10 @@ public final class CameraXUtils {
                             != frontFacing) {
                         continue;
                     }
+
                     CameraSelector selector = buildCameraIdSelector(
                             cameraId, frontFacing);
+
                     CameraInfo resolved = provider.getCameraInfo(selector);
                     if (resolved != null && cameraId.equals(
                             Camera2CameraInfo.from(resolved).getCameraId())) {
@@ -724,23 +848,8 @@ public final class CameraXUtils {
                 }
             }
         } catch (Throwable error) {
-            if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("CXUtils exact selector unavailable id=" + cameraId,
-                    error);
         }
         return null;
-    }
-
-    @SuppressLint("UnsafeOptInUsageError")
-    private static String describeCameraInfoOrder(List<CameraInfo> cameras) {
-        ArrayList<String> ids = new ArrayList<>(cameras.size());
-        for (CameraInfo camera : cameras) {
-            try {
-                ids.add(Camera2CameraInfo.from(camera).getCameraId());
-            } catch (Throwable error) {
-                ids.add("?");
-            }
-        }
-        return ids.toString();
     }
 
     private static int compareCameraIds(String left, String right) {
@@ -905,6 +1014,7 @@ public final class CameraXUtils {
                     sorted.sort(Comparator
                             .comparingDouble((Size size) ->
                                     Math.abs(normalizedRatio(size) - preferredRatio))
+
                             .thenComparingInt(size -> {
                                 long area = (long) size.getWidth() * size.getHeight();
                                 return preferCaptureRate
@@ -951,13 +1061,6 @@ public final class CameraXUtils {
                             left, right, rotationDegrees,
                             requestedWidth, requestedHeight, requestedArea,
                             requestedRatio));
-                    if (!result.isEmpty()) {
-                        if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("CXUtils concurrent resolutions requested="
-                                + preferred + " rotation=" + rotationDegrees
-                                + " supported=" + supportedSizes.size()
-                                + " capped=" + !compatible.isEmpty()
-                                + " first=" + result.subList(0, Math.min(4, result.size())));
-                    }
                     return result;
                 });
         return builder.build();
@@ -1029,6 +1132,7 @@ public final class CameraXUtils {
                     }
                 }
             }
+
             return null;
         } catch (Throwable ignored) {
             return null;
@@ -1118,6 +1222,7 @@ public final class CameraXUtils {
                     useOis ? CaptureRequest.LENS_OPTICAL_STABILIZATION_MODE_ON
                             : CaptureRequest.LENS_OPTICAL_STABILIZATION_MODE_OFF);
         }
+
         if ((useOis || !NimarkoConfig.cameraStabilisation)
                 && containsMode(capabilities.videoStabilizationModes,
                         CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE_OFF)) {
@@ -1187,6 +1292,7 @@ public final class CameraXUtils {
             case NimarkoConfig.CameraXFpsRange25to30: return new Range<>(25, 30);
             case NimarkoConfig.CameraXFpsRange30to30: return new Range<>(30, 30);
             case NimarkoConfig.CameraXFpsRange30to60: return new Range<>(30, 60);
+
             case NimarkoConfig.CameraXFpsRange60to60: return new Range<>(30, 60);
             case NimarkoConfig.CameraXFpsRangeDefault:
             default:                                  return null;
@@ -1268,6 +1374,7 @@ public final class CameraXUtils {
                 }
             }
         } catch (Throwable ignored) {
+
         }
         return null;
     }
@@ -1305,7 +1412,8 @@ public final class CameraXUtils {
         if (ctx == null || !isCameraXSupported()) return;
         try {
             final ListenableFuture<ProcessCameraProvider> f = getProviderFuture(ctx);
-            f.addListener(() -> {  }, ContextCompat.getMainExecutor(ctx));
+            f.addListener(() -> {                         }, ContextCompat.getMainExecutor(ctx));
+            warmUpZoomAsync(ctx);
         } catch (Throwable ignored) {}
     }
 }

@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package app.nimarkogram.messenger.utils.text;
 
 import android.text.TextUtils;

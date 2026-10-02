@@ -1,7 +1,8 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package app.nimarkogram.messenger.camera;
 
 import java.util.Arrays;
-
 
 final class CameraXLensFrameTracker {
     private static final int CAPACITY = 32;
@@ -29,6 +30,18 @@ final class CameraXLensFrameTracker {
 
     synchronized boolean hasActiveGraph() {
         return graphToken != null;
+    }
+
+    synchronized void recordPartial(Object token, String physicalId, float zoomRatio,
+                                    long timestampNanos) {
+        if (!isCurrent(token) || timestampNanos <= 0
+                || physicalId == null || physicalId.isEmpty()) return;
+        for (CameraXLensFrame frame : frames) {
+            if (frame != null && frame.timestampNanos == timestampNanos) return;
+        }
+        frames[next] = new CameraXLensFrame(physicalId,
+                isValidRatio(zoomRatio) ? zoomRatio : Float.NaN, timestampNanos);
+        next = (next + 1) % frames.length;
     }
 
     synchronized void record(Object token, String physicalId, float zoomRatio,

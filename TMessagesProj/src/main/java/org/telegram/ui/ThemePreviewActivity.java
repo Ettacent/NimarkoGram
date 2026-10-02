@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 5.x.x.
  * It is licensed under GNU GPL v. 2 or later.
@@ -560,6 +562,7 @@ public class ThemePreviewActivity extends BaseFragment implements DownloadContro
 
         if (screenType == SCREEN_TYPE_ACCENT_COLOR) {
             accent = applyingTheme.getAccent(!edit);
+            if (accent == null) return;
             if (accent != null) {
                 useDefaultThemeForButtons = false;
                 backupAccentColor = accent.accentColor;
@@ -646,7 +649,6 @@ public class ThemePreviewActivity extends BaseFragment implements DownloadContro
                 hintView.setExtraTranslationY(-dp(14));
             }, 2000);
         }
-
 
         ActionBarMenu menu = actionBar.createMenu();
         final ActionBarMenuItem item = menu.addItem(0, R.drawable.outline_header_search).setIsSearchField(true).setActionBarMenuItemSearchListener(new ActionBarMenuItem.ActionBarMenuItemSearchListener() {
@@ -1025,7 +1027,6 @@ public class ThemePreviewActivity extends BaseFragment implements DownloadContro
 //                        }, 200);
                     }
 
-
                 }
             }
         });
@@ -1388,7 +1389,7 @@ public class ThemePreviewActivity extends BaseFragment implements DownloadContro
             if (screenType == SCREEN_TYPE_CHANGE_BACKGROUND) {
                 final boolean drawShadow = insideBottomSheet();
                 bottomOverlayChat = new FrameLayout(context) {
-                    
+
                     private LinearGradient gradient;
                     private int gradientHeight;
                     private final Paint gradientPaint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
@@ -1401,7 +1402,7 @@ public class ThemePreviewActivity extends BaseFragment implements DownloadContro
                         AndroidUtilities.multiplyBrightnessColorMatrix(colorMatrix, 0.65f);
                         colorFilter = new ColorMatrixColorFilter(colorMatrix);
                     }
-                    
+
                     @Override
                     protected void dispatchDraw(Canvas canvas) {
                         if (drawShadow) {
@@ -3204,7 +3205,7 @@ public class ThemePreviewActivity extends BaseFragment implements DownloadContro
     }
 
     private boolean checkDiscard(boolean invoked) {
-        if (screenType == SCREEN_TYPE_ACCENT_COLOR && (
+        if (screenType == SCREEN_TYPE_ACCENT_COLOR && accent != null && (
                 accent.accentColor != backupAccentColor ||
                         accent.accentColor2 != backupAccentColor2 ||
                         accent.myMessagesAccentColor != backupMyMessagesAccentColor ||
@@ -3237,6 +3238,7 @@ public class ThemePreviewActivity extends BaseFragment implements DownloadContro
 
     @Override
     public boolean onFragmentCreate() {
+        if (screenType == SCREEN_TYPE_ACCENT_COLOR && accent == null) return false;
         NotificationCenter.getInstance(currentAccount).addObserver(this, NotificationCenter.chatWasBoostedByUser);
         NotificationCenter.getGlobalInstance().addObserver(this, NotificationCenter.emojiLoaded);
         NotificationCenter.getGlobalInstance().addObserver(this, NotificationCenter.invalidateMotionBackground);
@@ -4262,7 +4264,7 @@ public class ThemePreviewActivity extends BaseFragment implements DownloadContro
                 } else {
                     color2 = getThemedColor(Theme.key_chat_wallpaper_gradient_to2);
                 }
-            } else if (screenType == SCREEN_TYPE_ACCENT_COLOR) {
+            } else if (screenType == SCREEN_TYPE_ACCENT_COLOR && accent != null) {
                 int defaultBackgroundGradient2 = Theme.getDefaultAccentColor(Theme.key_chat_wallpaper_gradient_to2);
                 int backgroundGradientOverrideColor2 = (int) accent.backgroundGradientOverrideColor2;
                 if (backgroundGradientOverrideColor2 == 0 && accent.backgroundGradientOverrideColor2 != 0) {
@@ -4285,7 +4287,7 @@ public class ThemePreviewActivity extends BaseFragment implements DownloadContro
             boolean visible;
             if (screenType == SCREEN_TYPE_CHANGE_BACKGROUND) {
                 visible = backgroundGradientColor1 != 0;
-            } else if (screenType == SCREEN_TYPE_ACCENT_COLOR) {
+            } else if (screenType == SCREEN_TYPE_ACCENT_COLOR && accent != null) {
                 int defaultBackgroundGradient1 = Theme.getDefaultAccentColor(Theme.key_chat_wallpaper_gradient_to1);
                 int backgroundGradientOverrideColor1 = (int) accent.backgroundGradientOverrideColor1;
                 int color1;
@@ -5030,7 +5032,6 @@ public class ThemePreviewActivity extends BaseFragment implements DownloadContro
                 message.peer_id = new TLRPC.TL_peerUser();
                 message.peer_id.user_id = 0;
 
-
                 MessageObject message1 = new MessageObject(UserConfig.selectedAccount, message, true, false);
                 message1.resetLayout();
                 message1.eventId = 1;
@@ -5591,7 +5592,6 @@ public class ThemePreviewActivity extends BaseFragment implements DownloadContro
         }
     }
 
-
     public ArrayList<ThemeDescription> getThemeDescriptionsInternal() {
         ThemeDescription.ThemeDescriptionDelegate descriptionDelegate = () -> {
             if (dropDownContainer != null) {
@@ -5732,7 +5732,6 @@ public class ThemePreviewActivity extends BaseFragment implements DownloadContro
         items.add(new ThemeDescription(null, 0, null, null, null, null, descriptionDelegate, Theme.key_windowBackgroundWhiteBlackText));
         items.add(new ThemeDescription(null, 0, null, null, null, null, descriptionDelegate, Theme.key_dialogBackgroundGray));
 
-
         for (int i = 0; i < items.size(); i++) {
             items.get(i).resourcesProvider = getResourceProvider();
         }
@@ -5800,7 +5799,6 @@ public class ThemePreviewActivity extends BaseFragment implements DownloadContro
         public BackgroundView(Context context) {
             super(context);
         }
-
 
         @Override
         protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
@@ -6028,7 +6026,6 @@ public class ThemePreviewActivity extends BaseFragment implements DownloadContro
             rippleDrawable.setBounds(0, 0, getWidth(), getHeight());
             rippleDrawable.draw(canvas);
         }
-
 
         private float loadingT = 0;
         private boolean loading;

@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package app.nimarkogram.messenger.utils;
 
 import static android.content.Intent.FLAG_ACTIVITY_CLEAR_TASK;

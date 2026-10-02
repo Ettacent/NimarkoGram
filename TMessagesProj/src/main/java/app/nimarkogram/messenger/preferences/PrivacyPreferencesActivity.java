@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package app.nimarkogram.messenger.preferences;
 
 import android.content.Context;
@@ -61,9 +63,9 @@ public class PrivacyPreferencesActivity extends BasePreferencesActivity {
                 R.drawable.msg_pin_code,
                 LocaleController.getString(R.string.NM_PR_TestFingerprint),
                 LocaleController.getString(R.string.NM_PR_TestFingerprint_Desc)));
-        items.add(UItem.asShadow(null));
+        items.add(UItem.asShadow(-1, null));
 
-        items.add(UItem.asHeader(LocaleController.getString(R.string.NM_PR_Header_ChatProtection)));
+        items.add(UItem.asHeader(-2, LocaleController.getString(R.string.NM_PR_Header_ChatProtection)));
         items.add(SettingsHelper.asSwitchCG(ID_PROTECT_SELECTED_CHATS,
                         LocaleController.getString(R.string.NM_PR_AskBioOpenChats),
                         LocaleController.getString(R.string.NM_PR_AskBioOpenChats_Desc))
@@ -93,9 +95,9 @@ public class PrivacyPreferencesActivity extends BasePreferencesActivity {
                         LocaleController.getString(R.string.NM_PR_RequireBiometricsToDelete),
                         LocaleController.getString(R.string.NM_PR_RequireBiometricsToDelete_Desc))
                 .setChecked(NimarkoConfig.askPasscodeBeforeDelete));
-        items.add(UItem.asShadow(null));
+        items.add(UItem.asShadow(-3, null));
 
-        items.add(UItem.asHeader(LocaleController.getString(R.string.NM_SettingsSectionHiddenItems)));
+        items.add(UItem.asHeader(-4, LocaleController.getString(R.string.NM_SettingsSectionHiddenItems)));
         items.add(UItem.asCheck(ID_HIDE_PROXY, LocaleController.getString(R.string.NM_PR_HideProxy))
                 .setChecked(NimarkoConfig.hideProxySponsor));
         items.add(SettingsHelper.asSwitchCG(ID_HIDE_ARCHIVED_STORIES,
@@ -111,13 +113,13 @@ public class PrivacyPreferencesActivity extends BasePreferencesActivity {
                     R.drawable.msg_archive,
                     LocaleController.getString(R.string.NM_PR_OpenArchive)));
         }
-        items.add(UItem.asShadow(null));
+        items.add(UItem.asShadow(-5, null));
 
-        items.add(UItem.asHeader(LocaleController.getString(R.string.NM_SettingsSectionAccount)));
+        items.add(UItem.asHeader(-6, LocaleController.getString(R.string.NM_SettingsSectionAccount)));
         items.add(asSettingsLink(ID_DELETE_ACCOUNT, IconBackgroundColors.RED,
                 R.drawable.msg_user_remove,
                 LocaleController.getString(R.string.NM_PR_DeleteAccount)).red());
-        items.add(UItem.asShadow(null));
+        items.add(UItem.asShadow(-7, null));
     }
 
     @Override
@@ -268,6 +270,7 @@ public class PrivacyPreferencesActivity extends BasePreferencesActivity {
 
             @Override
             public void onFailed() {
+
             }
 
             @Override
@@ -309,6 +312,7 @@ public class PrivacyPreferencesActivity extends BasePreferencesActivity {
 
     private void applyCheck(UItem item, View view, boolean value) {
         item.checked = value;
+
         updateCheckState(view, value);
     }
 
@@ -350,6 +354,7 @@ public class PrivacyPreferencesActivity extends BasePreferencesActivity {
                 getContext(),
                 i -> {
                     NimarkoConfig.setLockedChatsBiometricTtl(values.get(i));
+
                     if (listView != null && listView.adapter != null) {
                         listView.adapter.update(true);
                     }

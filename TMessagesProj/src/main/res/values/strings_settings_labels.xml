@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Copyright (C) 2026 Ettacent -->
+<resources>
+    <string name="NM_Settings_WorldwidePreview">%1$s, worldwide</string>
+    <string name="NM_Settings_DCMiami">United States (Miami)</string>
+    <string name="NM_Settings_DCAmsterdam">Netherlands (Amsterdam)</string>
+    <string name="NM_Settings_DCSingapore">Singapore</string>
+    <string name="NM_Settings_BlurOpacityValue">Blur opacity: %1$s</string>
+    <string name="NM_Settings_BlurRadius">Blur radius</string>
+    <string name="NM_Settings_IconHighlightTop">Upper highlight</string>
+    <string name="NM_Settings_IconHighlightBottom">Lower highlight</string>
+    <string name="NM_Settings_IconHighlightColor">Highlight color</string>
+    <string name="NM_Settings_IconDiffuseLighting">Diffuse lighting</string>
+    <string name="NM_Settings_IconNormalHighlights">Normal map highlights</string>
+    <string name="NM_Settings_IconNormalHighlightColor">Normal map highlight color</string>
+    <string name="NM_Settings_IconSmallStarSize">Small star size</string>
+    <string name="NM_Settings_ShowMKVAsVideoBeta">Show MKV files as videos (beta only)</string>
+    <string name="NM_Settings_StreamAllVideosBeta">Stream all videos (beta only)</string>
+    <string name="NM_Settings_BrowserAdaptiveColors">Adaptive colors</string>
+    <string name="NM_Settings_BrowserLocalInstantViewOnly">Local Instant View only</string>
+</resources>

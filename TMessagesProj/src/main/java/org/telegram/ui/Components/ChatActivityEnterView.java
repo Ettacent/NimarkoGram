@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 5.x.x.
  * It is licensed under GNU GPL v. 2 or later.
@@ -186,6 +188,8 @@ import org.telegram.ui.Components.Premium.boosts.BoostRepository;
 import org.telegram.ui.Components.blur3.BlurredBackgroundDrawableViewFactory;
 import org.telegram.ui.Components.blur3.drawable.BlurredBackgroundDrawable;
 import org.telegram.ui.Components.blur3.drawable.color.BlurredBackgroundColorProviderThemed;
+import org.telegram.ui.Components.blur3.drawable.color.BlurredBackgroundColorProvider;
+import app.nimarkogram.messenger.camera.RoundZoomControl;
 import org.telegram.ui.Components.chat.ChatInputViewsContainer;
 import org.telegram.ui.Components.chat.SendButtonBlockedByTypingView;
 import org.telegram.ui.Components.chat.layouts.ChatActivitySideControlsButtonsLayout;
@@ -492,7 +496,6 @@ public class ChatActivityEnterView extends FrameLayout implements
     private boolean sendVoiceEnabled = true;
     public boolean sendPlainEnabled = true;
     private boolean emojiButtonRestricted;
-
 
     private HashMap<View, Float> animationParamsX = new HashMap<>();
 
@@ -1218,6 +1221,7 @@ public class ChatActivityEnterView extends FrameLayout implements
                 // pressed finger can drag onto an option and release to pick — recording (and the
                 // "slide to cancel" UI) starts only after the pick. Other modes record immediately.
                 final boolean upstreamRoundCamera2 = InstantCameraViewBase.isUsingCamera2Implementation();
+
                 if (!upstreamRoundCamera2 && app.nimarkogram.messenger.NimarkoConfig.videoMessagesCamera == 2) {
                     nmShowRoundCameraChooser();
                     return;
@@ -1226,7 +1230,9 @@ public class ChatActivityEnterView extends FrameLayout implements
                     app.nimarkogram.messenger.NimarkoConfig.pendingRoundFront = app.nimarkogram.messenger.NimarkoConfig.videoMessagesCamera == 0;
                 }
                 if (upstreamRoundCamera2 || app.nimarkogram.messenger.camera.CameraXUtils.isCurrentCameraCameraX()) {
+
                     // legacy CameraController.initCamera() here delayed every
+
                     onFinishInitCameraRunnable.run();
                 } else if (!CameraController.getInstance().isCameraInitied()) {
                     CameraController.getInstance().initCamera(onFinishInitCameraRunnable);
@@ -1270,11 +1276,14 @@ public class ChatActivityEnterView extends FrameLayout implements
     };
 
     private AnimationNotificationsLocker notificationsLocker = new AnimationNotificationsLocker();
+
     private static float getRecordDeleteBlend(long elapsedMs) {
         float t = Math.max(0f, Math.min(1f, elapsedMs / 160f));
         return t * t * (3f - 2f * t);
     }
+
     private static float getRecordDotPulseAlpha(float phase) {
+
         return .35f + .65f * (.5f + .5f * (float) Math.cos(phase * Math.PI * 2));
     }
 
@@ -1292,23 +1301,27 @@ public class ChatActivityEnterView extends FrameLayout implements
         private AnimatorSet pendingDeleteExit;
         private final Runnable deleteExitFallback = () -> {
             if (pendingDeleteExit != null && deleteBlendStartMs < 0) {
+
                 deleteAnimationAbandoned = true;
                 drawable.stop();
             }
             startPendingDeleteExit();
         };
+
         private void startPendingDeleteExit() {
             AndroidUtilities.cancelRunOnUIThread(deleteExitFallback);
             AnimatorSet exit = pendingDeleteExit;
             pendingDeleteExit = null;
             if (playing && exit != null && exit == runningAnimationAudio) exit.start();
         }
+
         public void startDeleteExit(AnimatorSet exit) {
             AndroidUtilities.cancelRunOnUIThread(deleteExitFallback);
             pendingDeleteExit = exit;
             if (deleteBlendStartMs >= 0) {
                 startPendingDeleteExit();
             } else {
+
                 AndroidUtilities.runOnUIThread(deleteExitFallback, 300);
                 invalidate();
             }
@@ -1331,6 +1344,7 @@ public class ChatActivityEnterView extends FrameLayout implements
         protected void onDetachedFromWindow() {
             super.onDetachedFromWindow();
             if (playing) {
+
                 deleteAnimationAbandoned = true;
                 setAlpha(0f);
             }
@@ -1342,7 +1356,9 @@ public class ChatActivityEnterView extends FrameLayout implements
 
         public RecordDot(Context context) {
             super(context);
+
             int resId = R.raw.chat_audio_record_delete_3;
+
             drawable = new RLottieDrawable(resId, dp(28), dp(28), true, null);
             drawable.setInvalidateOnProgressSet(true);
             updateColors();
@@ -1373,12 +1389,14 @@ public class ChatActivityEnterView extends FrameLayout implements
             drawable.setProgress(0);
             invalidate();
         }
+
         void setExternalFrameClock(boolean enabled) {
             externalFrameClock = enabled;
             lastUpdateTime = SystemClock.uptimeMillis();
             externalBlinkStartMs = -1L;
             invalidate();
         }
+
         void onExternalFrame(long durationMs) {
             if (!externalFrameClock || playing) return;
             if (enterAnimation || externalBlinkStartMs < 0L) {
@@ -1406,6 +1424,7 @@ public class ChatActivityEnterView extends FrameLayout implements
                     canvas.drawCircle(getMeasuredWidth() / 2f, getMeasuredHeight() / 2f, dp(5), redDotPaint);
                     return;
                 }
+
                 drawable.updateCurrentFrame(now, false);
                 if (deleteBlendStartMs < 0 && drawable.hasBitmap()) {
                     deleteBlendStartMs = now;
@@ -1426,6 +1445,7 @@ public class ChatActivityEnterView extends FrameLayout implements
                 invalidate();
                 return;
             }
+
             drawable.updateCurrentFrame(now, false);
             long dt = Math.min(32, Math.max(0, now - lastUpdateTime));
             if (enterAnimation) {
@@ -1443,6 +1463,7 @@ public class ChatActivityEnterView extends FrameLayout implements
         public void playDeleteAnimation() {
             if (playing) return;
             playing = true;
+
             deleteBlendStartMs = -1;
             drawable.setProgress(0);
             if (attachedToWindow) {
@@ -1549,6 +1570,8 @@ public class ChatActivityEnterView extends FrameLayout implements
 
         private HintView2 pauseHint;
         private HintView2 onceHint;
+        private final float[] cameraControlsAnchor = new float[2];
+        private final AnimatedFloat sideCameraControlsT = new AnimatedFloat(0f, this, 0, 180, CubicBezierInterpolator.DEFAULT);
 
         private Drawable tooltipBackground;
         private Drawable tooltipBackgroundArrow;
@@ -1559,6 +1582,7 @@ public class ChatActivityEnterView extends FrameLayout implements
         Paint lockBackgroundPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         Paint lockPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         Paint lockOutlinePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private boolean roundControlStyle;
 
         Path path = new Path();
         private Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -1630,12 +1654,14 @@ public class ChatActivityEnterView extends FrameLayout implements
                 return;
             }
             hideHintView();
-            pauseHint = new HintView2(getContext(), HintView2.DIRECTION_RIGHT);
+            boolean left = isSideRecordingPauseOnLeft();
+            pauseHint = new HintView2(getContext(), left ? HintView2.DIRECTION_LEFT : HintView2.DIRECTION_RIGHT);
             pauseHint.setJoint(1, 0);
             pauseHint.setMultilineText(true);
             pauseHint.setText(getString(R.string.VoicePauseHint));
             MessagesController.getGlobalMainSettings().edit().putInt("voicepausehint", MessagesController.getGlobalMainSettings().getInt("voicepausehint", 0) + 1).apply();
-            addView(pauseHint, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT, Gravity.FILL, 0, 0, 54, 58));
+            addView(pauseHint, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT, Gravity.FILL,
+                    left ? 58 : 0, 0, left ? 0 : 54, 58));
             final HintView2 thisHintView = pauseHint;
             pauseHint.setOnHiddenListener(() -> {
                 removeView(thisHintView);
@@ -1648,7 +1674,12 @@ public class ChatActivityEnterView extends FrameLayout implements
 
         public void showOnceHint() {
             hideHintView();
-            onceHint = new HintView2(getContext(), HintView2.DIRECTION_RIGHT);
+            boolean left = isSideRecordingPauseOnLeft();
+            boolean inline = isInVideoMode && !NimarkoConfig.centerCameraControlButtons
+                    && parentFragment != null && parentFragment.instantCameraView instanceof InstantCameraView
+                    && getMeasuredWidth() >= dp(240);
+            int hintMargin = inline ? 106 : 54;
+            onceHint = new HintView2(getContext(), left ? HintView2.DIRECTION_LEFT : HintView2.DIRECTION_RIGHT);
             onceHint.setJoint(1, 0);
             onceHint.setMultilineText(true);
             int text;
@@ -1664,7 +1695,8 @@ public class ChatActivityEnterView extends FrameLayout implements
             } else {
                 MessagesController.getGlobalMainSettings().edit().putInt("voiceoncehint", MessagesController.getGlobalMainSettings().getInt("voiceoncehint", 0) + 1).apply();
             }
-            addView(onceHint, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT, Gravity.FILL, 0, 0, 54, 58));
+            addView(onceHint, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT, Gravity.FILL,
+                    left ? hintMargin : 0, 0, left ? 0 : hintMargin, 58));
             final HintView2 thisHintView = onceHint;
             onceHint.setOnHiddenListener(() -> {
                 removeView(thisHintView);
@@ -1730,6 +1762,12 @@ public class ChatActivityEnterView extends FrameLayout implements
         @Override
         protected void onDraw(Canvas canvas) {
             float sc;
+            boolean roundStyle = isInVideoMode && NimarkoConfig.cameraType == NimarkoConfig.CAMERA_X
+                    && NimarkoConfig.roundZoomScale;
+            if (roundControlStyle != roundStyle) {
+                roundControlStyle = roundStyle;
+                updateColors();
+            }
             if (scale <= 0.5f) {
                 sc = scale / 0.5f;
             } else if (scale <= 0.75f) {
@@ -1749,7 +1787,7 @@ public class ChatActivityEnterView extends FrameLayout implements
                 }
             }
 
-            final int cx = getRecordingButtonCenter(this, recordingButtonCenter)
+            int cx = getRecordingButtonCenter(this, recordingButtonCenter)
                     ? Math.round(recordingButtonCenter[0])
                     : getMeasuredWidth() - AndroidUtilities.dp2(26);
             float moveProgress = 1.0f - yAdd / dp(57);
@@ -1782,6 +1820,19 @@ public class ChatActivityEnterView extends FrameLayout implements
                 snapAnimationProgress = 0;
             }
 
+            boolean sideCameraControls = isInVideoMode && getRoundRecordingControlsAnchor(this, cameraControlsAnchor);
+            float sideControlsReveal = sideCameraControlsT.set(sideCameraControls && sendButtonVisible,
+                    !SharedConfig.animationsEnabled());
+            float sideControlsProgress = sideCameraControls
+                    ? sideControlsReveal * transformToPauseProgress * slideToCancelLockProgress * (1f - transformToSeekbar) : 0f;
+            if (sideControlsProgress > 0f) {
+                float offset = (cameraControlsAnchor[1] - lockSize / 2f - lockY) * sideControlsProgress;
+                cx = Math.round(lerp(cx, cameraControlsAnchor[0], sideControlsProgress));
+                lockY += offset;
+                lockMiddleY += offset;
+                lockTopY += offset;
+            }
+
             if ((showTooltip && System.currentTimeMillis() - showTooltipStartTime > 200) || tooltipAlpha != 0f) {
                 if (moveProgress < 0.8f || sendButtonVisible || exitTransition != 0 || transformToSeekbar != 0) {
                     showTooltip = false;
@@ -1800,7 +1851,6 @@ public class ChatActivityEnterView extends FrameLayout implements
                         tooltipAlpha = 0f;
                     }
                 }
-
 
                 int alphaInt = (int) (tooltipAlpha * 255);
 
@@ -1912,12 +1962,14 @@ public class ChatActivityEnterView extends FrameLayout implements
 
             rectF.set(cx - dpf2(18), lockY + dy, cx + dpf2(18), lockY + dy + lockSize);
 
-            if (lockBackgroundDrawable != null){
-                lockBackgroundDrawable.setBounds(
+            BlurredBackgroundDrawable pauseBackground = roundControlStyle
+                    ? roundControlBackgroundDrawable : lockBackgroundDrawable;
+            if (pauseBackground != null) {
+                pauseBackground.setBounds(
                         (int) (rectF.left - dpf2(3)), (int) (rectF.top - dpf2(3)),
                         (int) (rectF.right + dpf2(3)), (int) (rectF.bottom + dpf2(3))
                 );
-                lockBackgroundDrawable.draw(canvas);
+                pauseBackground.draw(canvas);
             } else {
                 lockShadowDrawable.setBounds(
                         (int) (rectF.left - dpf2(3)), (int) (rectF.top - dpf2(3)),
@@ -1927,9 +1979,9 @@ public class ChatActivityEnterView extends FrameLayout implements
                 canvas.drawRoundRect(rectF, dpf2(18), dpf2(18), lockBackgroundPaint);
             }
 
-
             pauseRect.set(rectF);
             scale(pauseRect, s);
+            pauseRect.offset(0f, (lockMiddleY + dy - rectF.centerY()) * (1f - s));
             if (pauseHint != null) {
                 pauseHint.setJointPx(0, rectF.centerY());
                 pauseHint.invalidate();
@@ -2033,6 +2085,10 @@ public class ChatActivityEnterView extends FrameLayout implements
                 rectF.set(
                     rectF.left, rectF.top - dpf2(36) - onceOffset, rectF.right, rectF.top - onceOffset
                 );
+                if (sideControlsProgress > 0f && getMeasuredWidth() >= dp(240)) {
+                    rectF.offset(dpf2(NimarkoConfig.cameraControlButtonsRight ? 48 : -48) * sideControlsProgress,
+                            (lockY + dy - rectF.top) * sideControlsProgress);
+                }
                 if (onceHint != null) {
                     onceHint.setJointPx(0, rectF.centerY());
                     onceHint.invalidate();
@@ -2040,6 +2096,7 @@ public class ChatActivityEnterView extends FrameLayout implements
                 onceRect.set(rectF);
                 canvas.save();
                 final float s2 = controlsScale * (1f - exitTransition) * slideToCancelLockProgress * snapAnimationProgress;
+                scale(onceRect, s2);
                 canvas.scale(s2, s2, rectF.centerX(), rectF.centerY());
 
                 if (periodBackgroundDrawable != null) {
@@ -2071,8 +2128,15 @@ public class ChatActivityEnterView extends FrameLayout implements
         private boolean useGlassDesign;
         private BlurredBackgroundDrawable lockBackgroundDrawable;
         private BlurredBackgroundDrawable periodBackgroundDrawable;
+        private BlurredBackgroundDrawable roundControlBackgroundDrawable;
 
         public void setBlurredBackgroundFactory(BlurredBackgroundDrawableViewFactory factory) {
+            setBlurredBackgroundFactory(factory,
+                    new BlurredBackgroundColorProviderThemed(resourcesProvider, Theme.key_chat_messagePanelBackground));
+        }
+
+        public void setBlurredBackgroundFactory(BlurredBackgroundDrawableViewFactory factory,
+                                               BlurredBackgroundColorProvider roundColorProvider) {
             useGlassDesign = true;
 
             if (colorProvider == null) {
@@ -2087,6 +2151,11 @@ public class ChatActivityEnterView extends FrameLayout implements
             periodBackgroundDrawable.setRadius(dp(18));
             periodBackgroundDrawable.setPadding(dp(3));
 
+            roundControlBackgroundDrawable = factory.create(this,
+                    RoundZoomControl.createControlColorProvider(resourcesProvider, roundColorProvider));
+            roundControlBackgroundDrawable.setRadius(dp(18));
+            roundControlBackgroundDrawable.setPadding(dp(3));
+
             updateColors();
         }
 
@@ -2100,6 +2169,9 @@ public class ChatActivityEnterView extends FrameLayout implements
             if (periodBackgroundDrawable != null) {
                 periodBackgroundDrawable.updateColors();
             }
+            if (roundControlBackgroundDrawable != null) {
+                roundControlBackgroundDrawable.updateColors();
+            }
 
             periodDrawable.updateColors(
                 getThemedColor(useGlassDesign ? Theme.key_glass_defaultIcon : Theme.key_chat_messagePanelVoiceLock),
@@ -2111,12 +2183,16 @@ public class ChatActivityEnterView extends FrameLayout implements
             tooltipBackground = Theme.createRoundRectDrawable(dp(5), getThemedColor(Theme.key_chat_gifSaveHintBackground));
             tooltipBackgroundArrow.setColorFilter(new PorterDuffColorFilter(getThemedColor(Theme.key_chat_gifSaveHintBackground), PorterDuff.Mode.SRC_IN));
 
-            lockBackgroundPaint.setColor(getThemedColor(Theme.key_chat_messagePanelVoiceLockBackground));
-            lockPaint.setColor(getThemedColor(useGlassDesign ? Theme.key_glass_defaultIcon : Theme.key_chat_messagePanelVoiceLock));
-            lockOutlinePaint.setColor(getThemedColor(useGlassDesign ? Theme.key_glass_defaultIcon : Theme.key_chat_messagePanelVoiceLock));
+            lockBackgroundPaint.setColor(roundControlStyle
+                    ? RoundZoomControl.getControlBackgroundColor(resourcesProvider, false)
+                    : getThemedColor(Theme.key_chat_messagePanelVoiceLockBackground));
+            int foreground = roundControlStyle ? RoundZoomControl.getControlForegroundColor(resourcesProvider)
+                    : getThemedColor(useGlassDesign ? Theme.key_glass_defaultIcon : Theme.key_chat_messagePanelVoiceLock);
+            lockPaint.setColor(foreground);
+            lockOutlinePaint.setColor(foreground);
 
             micDrawable.setColorFilter(new PorterDuffColorFilter(getThemedColor(useGlassDesign ? Theme.key_glass_defaultIcon : Theme.key_chat_messagePanelVoiceLock), PorterDuff.Mode.SRC_IN));
-            vidDrawable.setColorFilter(new PorterDuffColorFilter(getThemedColor(useGlassDesign ? Theme.key_glass_defaultIcon : Theme.key_chat_messagePanelVoiceLock), PorterDuff.Mode.SRC_IN));
+            vidDrawable.setColorFilter(new PorterDuffColorFilter(foreground, PorterDuff.Mode.SRC_IN));
         }
 
         private void scale(RectF rect, float s) {
@@ -2221,7 +2297,6 @@ public class ChatActivityEnterView extends FrameLayout implements
         protected boolean verifyDrawable(@NonNull Drawable who) {
             return who == periodDrawable || super.verifyDrawable(who);
         }
-
 
         private class VirtualViewHelper extends ExploreByTouchHelper {
 
@@ -2337,17 +2412,41 @@ public class ChatActivityEnterView extends FrameLayout implements
     public boolean seekbarVisible() {
         return !recordIsCanceled && transformToSeekbar > 0;
     }
+
     private final float[] recordingButtonCenter = new float[2];
     private final Matrix recordingButtonInverseMatrix = new Matrix();
+
     private boolean getRecordingButtonCenter(View overlay, float[] point) {
         if (!separatedComposerLayout || audioVideoButtonContainer == null
                 || audioVideoButtonContainer.getWidth() == 0
                 || overlay.getParent() != sizeNotifierLayout) {
             return false;
         }
+
         point[0] = audioVideoButtonContainer.getWidth() / 2f;
         point[1] = audioVideoButtonContainer.getHeight() / 2f;
-        View view = audioVideoButtonContainer;
+        return mapRecordingPointToOverlay(audioVideoButtonContainer, overlay, point);
+    }
+
+    private boolean getRoundRecordingControlsAnchor(View overlay, float[] point) {
+        if (NimarkoConfig.centerCameraControlButtons || parentFragment == null
+                || !(parentFragment.instantCameraView instanceof InstantCameraView)
+                || overlay.getParent() != sizeNotifierLayout) return false;
+        InstantCameraViewBase camera = parentFragment.instantCameraView;
+        View buttons = camera.getButtonsLayout();
+        if (buttons == null || buttons.getWidth() == 0 || camera.getWidth() < dp(160)) return false;
+        point[0] = NimarkoConfig.cameraControlButtonsRight ? dp(40) : camera.getWidth() - dp(40);
+        point[1] = buttons.getTop() + buttons.getHeight() / 2f;
+        return mapRecordingPointToOverlay(camera, overlay, point);
+    }
+
+    private boolean isSideRecordingPauseOnLeft() {
+        return isInVideoMode && !NimarkoConfig.centerCameraControlButtons && NimarkoConfig.cameraControlButtonsRight
+                && parentFragment != null && parentFragment.instantCameraView instanceof InstantCameraView;
+    }
+
+    private boolean mapRecordingPointToOverlay(View source, View overlay, float[] point) {
+        View view = source;
         while (view != sizeNotifierLayout) {
             if (!(view.getParent() instanceof View)) {
                 return false;
@@ -2452,7 +2551,9 @@ public class ChatActivityEnterView extends FrameLayout implements
 
             invalidate();
         }
+
         private void updateWaveGeometry() {
+
             final float smallMin = dp(47);
             final float smallMax = smallMin + dp(15) * BlobDrawable.FORM_SMALL_MAX;
             final float bigMin = dp(50);
@@ -2468,7 +2569,9 @@ public class ChatActivityEnterView extends FrameLayout implements
                 bigWaveDrawable.generateBlob();
             }
         }
+
         private float getWaveScale(BlobDrawable wave, boolean big) {
+
             return RECORDING_VISUAL_SCALE * ((big ? BlobDrawable.SCALE_BIG_MIN : BlobDrawable.SCALE_SMALL_MIN)
                     + (1.4f * 0.7f) * wave.amplitude);
         }
@@ -2625,6 +2728,7 @@ public class ChatActivityEnterView extends FrameLayout implements
             } else {
                 sc = 0.9f + (scale - 0.75f) / 0.25f * 0.1f;
             }
+
             final boolean smoothCancel = separatedComposerLayout && recordIsCanceled
                     && transformToSeekbar == 0 && !messageTransitionIsRunning;
             long now = SystemClock.uptimeMillis();
@@ -2653,6 +2757,7 @@ public class ChatActivityEnterView extends FrameLayout implements
             } else {
                 slideToCancelScale = (0.7f + slideToCancelProgress * 0.3f);
             }
+
             float radius = RECORDING_VISUAL_SCALE * (circleRadius + circleRadiusAmplitude * amplitude) * sc * slideToCancelScale;
 
             progressToSeekbarStep3 = 0f;
@@ -2677,6 +2782,7 @@ public class ChatActivityEnterView extends FrameLayout implements
                 float toRadius = dp(8);
                 radius = toRadius + (radius - toRadius) * (1f - progressToSeekbarStep2);
             } else if (smoothCancel) {
+
                 exitProgress2 = cancelProgress;
                 radius *= 1f - cancelProgress;
                 circleAlpha = 1f - cancelProgress;
@@ -2746,6 +2852,7 @@ public class ChatActivityEnterView extends FrameLayout implements
 
             if (LiteMode.isEnabled(LiteMode.FLAGS_CHAT)) {
                 updateWaveGeometry();
+
                 if (!smoothCancel) {
                     bigWaveDrawable.updateAmplitude(dt);
                     tinyWaveDrawable.updateAmplitude(dt);
@@ -2776,6 +2883,7 @@ public class ChatActivityEnterView extends FrameLayout implements
                 }
                 if (separatedComposerLayout && !voiceEnterTransitionInProgress
                         && ((recordingAudioVideo && showWaves) || (smoothCancel && cancelProgress < 1f))) {
+
                     postInvalidateOnAnimation();
                 }
             }
@@ -2930,6 +3038,7 @@ public class ChatActivityEnterView extends FrameLayout implements
             cancelGestureStartProgress = slideToCancelProgress;
             canceledByGesture = true;
         }
+
         private float getCancelProgress() {
             if (canceledByGesture) {
                 final float remaining = 1f - cancelGestureStartProgress;
@@ -2956,11 +3065,14 @@ public class ChatActivityEnterView extends FrameLayout implements
         }
 
         public void drawWaves(Canvas canvas, float cx, float cy, float additionalScale) {
+
             drawWaves(canvas, cx, cy, additionalScale, 1f);
         }
+
         private void drawWaves(Canvas canvas, float cx, float cy, float additionalScale, float alpha) {
             updateWaveGeometry();
             float enter = CubicBezierInterpolator.EASE_OUT.getInterpolation(wavesEnterAnimation);
+
             float slideProgress = separatedComposerLayout && recordIsCanceled && canceledByGesture
                     ? cancelGestureStartProgress : slideToCancelProgress;
             float slideToCancelProgress1 = slideProgress > 0.7f ? 1f : slideProgress / 0.7f;
@@ -2978,6 +3090,7 @@ public class ChatActivityEnterView extends FrameLayout implements
             canvas.scale(s, s, cx, cy);
             tinyWaveDrawable.draw(cx, cy, canvas, tinyWaveDrawable.paint);
             canvas.restore();
+
             bigWaveDrawable.paint.setAlpha(bigAlpha);
             tinyWaveDrawable.paint.setAlpha(tinyAlpha);
         }
@@ -3344,6 +3457,7 @@ public class ChatActivityEnterView extends FrameLayout implements
             attachButton = new ImageView(context) {
                 @Override
                 public boolean dispatchTouchEvent(MotionEvent event) {
+
                     if (isSeparatedRecordingUiVisible()) return true;
                     if (getAlpha() < 0.5f) return false;
                     return super.dispatchTouchEvent(event);
@@ -3519,6 +3633,7 @@ public class ChatActivityEnterView extends FrameLayout implements
             @Override
             public boolean onTouchEvent(MotionEvent motionEvent) {
                 if (isLiveComment) return false;
+
                 if (motionEvent.getActionMasked() == MotionEvent.ACTION_DOWN) {
                     recordingExitGestureBlocked = isSeparatedRecordingExitInProgress();
                 }
@@ -5349,7 +5464,6 @@ public class ChatActivityEnterView extends FrameLayout implements
         return getMeasuredHeight() - top;
     }
 
-
     private boolean dismissSendPreviewSent;
     private final Runnable dismissSendPreview = () -> {
         if (messageSendPreview != null) {
@@ -6054,6 +6168,7 @@ public class ChatActivityEnterView extends FrameLayout implements
             }
             return restored;
         }
+
         @Override
         public boolean onTouchEvent(MotionEvent event) {
             if (stickersDragging || stickersExpansionAnim != null) {
@@ -8558,6 +8673,7 @@ public class ChatActivityEnterView extends FrameLayout implements
             }
             // NimarkoMedia native: intercept when the entire message body is a
             // single supported URL and auto-mode is on. Controller takes over
+
             // BLOCKED case: a previous download is still in flight. Cancel the
             // send but KEEP the editor text so the user can retry without
             // retyping (and without the URL leaking into the chat next to a
@@ -8619,6 +8735,7 @@ public class ChatActivityEnterView extends FrameLayout implements
                             || !TextUtils.equals(draftText, draftEditor.getTextToUse())) {
                         return;
                     }
+
                     ++nimarkoMediaDraftGeneration;
                     sendButton.setEffect(effectId = 0);
                     draftEditor.setText("");
@@ -8630,6 +8747,7 @@ public class ChatActivityEnterView extends FrameLayout implements
                 int interceptResult = app.nimarkogram.messenger.media.NimarkoMediaController.getInstance()
                         .interceptOutgoingMessage(message, draftHost, sendOptions, onAccepted);
                 if (interceptResult != app.nimarkogram.messenger.media.NimarkoMediaController.INTERCEPT_NONE) {
+
                     return;
                 }
             }
@@ -8974,7 +9092,6 @@ public class ChatActivityEnterView extends FrameLayout implements
                     editingMessageObject.messageOwner.media = new TLRPC.TL_messageMediaEmpty();
                 }
             }
-
 
             if (editingMessageObject.needResendWhenEdit()) {
                 SendMessagesHelper.SendMessageParams sendMessageParams = SendMessagesHelper.SendMessageParams.of(
@@ -10060,19 +10177,21 @@ public class ChatActivityEnterView extends FrameLayout implements
     }
 
     private int lastAttachVisible;
+
     private long getRecordTextRestoreDelay(Animator disappearingIcon, long standardDelay) {
         return Math.max(standardDelay, disappearingIcon.getStartDelay() + disappearingIcon.getDuration());
     }
+
     private long getRecordDeleteFadeDelay(RLottieDrawable drawable, long standardDelay, long fadeDuration) {
+
         return drawable != null ? Math.max(standardDelay, drawable.getDuration()) : standardDelay;
     }
+
     private boolean useFastRecordExit(boolean entryRunning, int recordState) {
         return (entryRunning && (!separatedComposerLayout || recordState != RECORD_STATE_PREPARING))
                 || recordState == RECORD_STATE_CANCEL_BY_TIME;
     }
 
-    /**
-     */
     private void applyRecordedAudioPanelTransitionGeometry() {
         if (recordedAudioPanel == null || recordedAudioPanel.getLayoutParams() == null) {
             return;
@@ -10092,6 +10211,7 @@ public class ChatActivityEnterView extends FrameLayout implements
             recordedAudioPanel.setLayoutParams(params);
         }
     }
+
     private int getSeparatedComposerTextRightMargin(int attachVisible) {
         int margin = dp(50);
         if (attachLayout == null || (attachVisible != 1 && attachVisible != 2)) {
@@ -10244,6 +10364,7 @@ public class ChatActivityEnterView extends FrameLayout implements
             }
 
             if (runningAnimationAudio != null) {
+
                 AnimatorSet previousAudioAnimation = runningAnimationAudio;
                 runningAnimationAudio = null;
                 previousAudioAnimation.cancel();
@@ -10252,7 +10373,9 @@ public class ChatActivityEnterView extends FrameLayout implements
             if (recordPannelAnimation != null) {
                 recordPannelAnimation.cancel();
             }
+
             if (separatedComposerLayout && runningAnimation2 != null) {
+
                 runningAnimation2.cancel();
                 runningAnimation2 = null;
             }
@@ -11182,17 +11305,22 @@ public class ChatActivityEnterView extends FrameLayout implements
     protected void isRecordingStateChanged() {
         updateRecordingAttachButton();
     }
+
     private boolean isSeparatedRecordingUiVisible() {
+
         return separatedComposerLayout && (recordingAudioVideo || recordInterfaceState == 1
                 || (recordPanel != null && recordPanel.getVisibility() == VISIBLE)
                 || (recordedAudioPanel != null && recordedAudioPanel.getVisibility() == VISIBLE));
     }
+
     private boolean isSeparatedRecordingExitInProgress() {
         return separatedComposerLayout && !recordingAudioVideo
                 && ((recordIsCanceled && recordPanel != null && recordPanel.getVisibility() == VISIBLE)
                 || (recordPannelAnimation != null && recordPannelAnimation.isRunning()));
     }
+
     private boolean recordingAttachButtonDisabled;
+
     private void updateRecordingAttachButton() {
         if (attachButton == null) {
             return;
@@ -11209,12 +11337,15 @@ public class ChatActivityEnterView extends FrameLayout implements
         }
         if (recordingAttachButtonDisabled != disabled) {
             recordingAttachButtonDisabled = disabled;
+
             attachButton.setEnabled(!disabled);
             attachButton.setClickable(!disabled);
         }
     }
+
     private void restoreSeparatedRecordingControls() {
         if (!separatedComposerLayout) return;
+
         emojiButtonAlpha = emojiButtonRestricted ? 0.5f : 1f;
         emojiButtonScale = 1f;
         updateEmojiButtonParams();
@@ -11263,12 +11394,14 @@ public class ChatActivityEnterView extends FrameLayout implements
 
         recordTimeContainer.addView(recordDot = new RecordDot(getContext()), LayoutHelper.createLinear(28, 28, Gravity.CENTER_VERTICAL, 0, 0, 0, 0));
         recordTimeContainer.addView(recordTimerView = new TimerView(getContext()), LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT, Gravity.CENTER_VERTICAL, 6, 0, 0, 0));
+
         recordDot.setExternalFrameClock(roundVideoUiFrameClockActive);
         recordTimerView.setExternalFrameClock(roundVideoUiFrameClockActive);
         slideText.setExternalFrameClock(roundVideoUiFrameClockActive);
 
         recordPanel.addView(recordTimeContainer, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT, Gravity.CENTER_VERTICAL));
     }
+
     protected void onRecordPanelCreated(View panel) {
     }
 
@@ -11284,6 +11417,7 @@ public class ChatActivityEnterView extends FrameLayout implements
         final FrameLayout.LayoutParams params = LayoutHelper.createFrame(
                 LayoutHelper.MATCH_PARENT, DEFAULT_HEIGHT, Gravity.BOTTOM);
         if (separatedComposerLayout) {
+
             params.leftMargin = params.rightMargin = dp(ChatInputViewsContainer.SEPARATED_COMPOSER_SIDE_SIZE
                     + ChatInputViewsContainer.SEPARATED_COMPOSER_GAP);
         }
@@ -11294,6 +11428,7 @@ public class ChatActivityEnterView extends FrameLayout implements
             slideText.setLayoutParams(hintParams);
         }
         if (recordTimeContainer != null) {
+
             recordTimeContainer.setPadding(dp(separatedComposerLayout ? 8 : 13), 0, 0, 0);
         }
     }
@@ -12031,11 +12166,13 @@ public class ChatActivityEnterView extends FrameLayout implements
         }
         messageEditText.setSelection(start, messageEditText.length());
     }
+
     public void setVideoTimelineTrim(float start, float end) {
         if (videoTimelineView != null) {
             videoTimelineView.setTrimProgress(start, end);
         }
     }
+
     public void setRoundVideoUiFrameClockActive(boolean active) {
         if (roundVideoUiFrameClockActive == active) return;
         roundVideoUiFrameClockActive = active;
@@ -12043,6 +12180,7 @@ public class ChatActivityEnterView extends FrameLayout implements
         if (recordDot != null) recordDot.setExternalFrameClock(active);
         if (slideText != null) slideText.setExternalFrameClock(active);
     }
+
     public void onRoundVideoUiFrame(long durationMs) {
         if (!roundVideoUiFrameClockActive) return;
         millisecondsRecorded = durationMs;
@@ -12693,11 +12831,14 @@ public class ChatActivityEnterView extends FrameLayout implements
             scheduledButtonAnimation.start();
         }
     }
+
     private boolean recordingSenderSlotReserved;
     private final RectF senderComposerClipBounds = new RectF();
     private final Path senderComposerClipPath = new Path();
     private final Matrix senderComposerClipMatrix = new Matrix();
+
     private void clipSenderToComposer(Canvas canvas) {
+
         ViewParent parent = messageEditTextContainer.getParent();
         while (parent instanceof View && !(parent instanceof ChatInputViewsContainer)) {
             parent = parent.getParent();
@@ -12710,12 +12851,14 @@ public class ChatActivityEnterView extends FrameLayout implements
         senderComposerClipPath.rewind();
         final float radius = dp(ChatInputViewsContainer.INPUT_BUBBLE_RADIUS);
         senderComposerClipPath.addRoundRect(senderComposerClipBounds, radius, radius, Path.Direction.CW);
+
         senderComposerClipMatrix.reset();
         host.transformMatrixToGlobal(senderComposerClipMatrix);
         messageEditTextContainer.transformMatrixToLocal(senderComposerClipMatrix);
         senderComposerClipPath.transform(senderComposerClipMatrix);
         canvas.clipPath(senderComposerClipPath);
     }
+
     private ValueAnimator recordingSenderAnimator;
     private boolean recordingSenderTargetVisible;
     private ViewTreeObserver recordingSenderRestoreObserver;
@@ -12728,6 +12871,7 @@ public class ChatActivityEnterView extends FrameLayout implements
         }
         return true;
     };
+
     private void stopRecordingSenderRestoreWatch() {
         if (recordingSenderRestoreObserver != null) {
             if (recordingSenderRestoreObserver.isAlive()) {
@@ -12736,7 +12880,9 @@ public class ChatActivityEnterView extends FrameLayout implements
             recordingSenderRestoreObserver = null;
         }
     }
+
     private void updateRecordingSenderRestoreWatch() {
+
         final boolean waiting = !destroyed && recordingSenderSlotReserved && recordIsCanceled
                 && !isRecordingAudioVideo() && recordPanel != null && recordPanel.getVisibility() == VISIBLE
                 && (recordedAudioPanel == null || recordedAudioPanel.getVisibility() != VISIBLE)
@@ -12748,6 +12894,7 @@ public class ChatActivityEnterView extends FrameLayout implements
             recordingSenderRestoreObserver.addOnPreDrawListener(recordingSenderRestoreListener);
         }
     }
+
     private boolean isRecordingSenderBlocked() {
         return isRecordingAudioVideo()
                 || (recordedAudioPanel != null && recordedAudioPanel.getVisibility() == VISIBLE)
@@ -12755,12 +12902,15 @@ public class ChatActivityEnterView extends FrameLayout implements
                     && !(recordIsCanceled && runningAnimationAudio != null && runningAnimationAudio.isRunning()
                         && recordDot != null && recordDot.getAlpha() == 0f));
     }
+
     private float getSenderHiddenTranslationX() {
         MarginLayoutParams params = (MarginLayoutParams) senderSelectView.getLayoutParams();
         return -params.width - params.leftMargin - dp(2);
     }
+
     private void cancelRecordingSenderAnimator() {
         if (recordingSenderAnimator != null) {
+
             ValueAnimator previous = recordingSenderAnimator;
             recordingSenderAnimator = null;
             previous.removeAllListeners();
@@ -12768,12 +12918,15 @@ public class ChatActivityEnterView extends FrameLayout implements
             previous.cancel();
         }
     }
+
     private boolean hasRecordingSurface() {
         return isRecordingAudioVideo()
                 || (recordPanel != null && recordPanel.getVisibility() == VISIBLE)
                 || (recordedAudioPanel != null && recordedAudioPanel.getVisibility() == VISIBLE);
     }
+
     private void updateRecordingSenderVisibility(boolean visible, boolean animated) {
+
         visible = visible && !isRecordingSenderBlocked();
         updateRecordingSenderRestoreWatch();
         if (recordingSenderAnimator != null && recordingSenderTargetVisible == visible) return;
@@ -12785,6 +12938,7 @@ public class ChatActivityEnterView extends FrameLayout implements
         final float endAlpha = visible ? 1f : 0f;
         final float endX = visible ? 0f : getSenderHiddenTranslationX();
         final float startEmojiX = separatedComposerLayout ? 0f : emojiButton.getTranslationX();
+
         senderSelectView.setVisibility(VISIBLE);
         if (!animated || (Math.abs(startAlpha - endAlpha) < .001f
                 && Math.abs(startX - endX) < .001f && Math.abs(startEmojiX) < .001f)) {
@@ -12803,6 +12957,7 @@ public class ChatActivityEnterView extends FrameLayout implements
             final float progress = (float) a.getAnimatedValue();
             senderSelectView.setAlpha(startAlpha + (endAlpha - startAlpha) * progress);
             senderSelectView.setTranslationX(startX + (endX - startX) * progress);
+
             setEmojiSenderTransitionX(startEmojiX * (1f - progress));
         });
         animation.addListener(new AnimatorListenerAdapter() {
@@ -12815,6 +12970,7 @@ public class ChatActivityEnterView extends FrameLayout implements
         });
         animation.start();
     }
+
     private void finishRecordingSenderVisibility(boolean visible) {
         if (!visible) senderSelectView.setVisibility(INVISIBLE);
         if (!hasRecordingSurface()) {
@@ -12861,6 +13017,7 @@ public class ChatActivityEnterView extends FrameLayout implements
         final boolean isVisible = !forceHide && defPeer != null
             && (delegate.getSendAsPeers() == null || delegate.getSendAsPeers().peers.size() > 1)
             && !isEditingMessage() && !isRecordingSenderBlocked()
+
             && (isLiveComment || (!ChatObject.isChannelAndNotMegaGroup(chat) || ChatObject.canSendAsPeers(chat)) && !ChatObject.isMonoForum(chat))
             && (parentFragment == null || parentFragment.getChatMode() != ChatActivity.MODE_WELCOME_MESSAGES);
         if (isVisible) {
@@ -13821,8 +13978,6 @@ public class ChatActivityEnterView extends FrameLayout implements
                         return true;
                     }
 
-
-
                     @Override
                     public boolean scaleToFill() {
                         return false;
@@ -13922,8 +14077,6 @@ public class ChatActivityEnterView extends FrameLayout implements
                     public void onClose() {
 
                     }
-
-
 
                     private boolean isCaptionAbove;
 
@@ -15727,14 +15880,18 @@ public class ChatActivityEnterView extends FrameLayout implements
             return PixelFormat.TRANSPARENT;
         }
     }
+
     private static float getRecordingCancelLeft(float panelWidth, float contentLeft,
             float contentRight, float labelWidth) {
+
         float padding = Math.min(dp(12), Math.max(0, (contentRight - contentLeft - labelWidth) / 2f));
         return Math.max(contentLeft + padding, Math.min((panelWidth - labelWidth) / 2f,
                 contentRight - padding - labelWidth));
     }
+
     private static void getRecordingCancelFeedbackBounds(Rect bounds, float textLeft,
             float textWidth, float safeLeft, float safeRight, int height) {
+
         float padding = Math.max(0, Math.min(dp(12),
                 Math.min(textLeft - safeLeft, safeRight - textLeft - textWidth)));
         int left = (int) Math.ceil(textLeft - padding);
@@ -15742,6 +15899,7 @@ public class ChatActivityEnterView extends FrameLayout implements
         int insetY = Math.min(dp(6), height / 2);
         bounds.set(left, insetY, right, height - insetY);
     }
+
     private static class RecordingCancelFeedbackDrawable extends Drawable {
         private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final int color;
@@ -15749,14 +15907,17 @@ public class ChatActivityEnterView extends FrameLayout implements
                 0, 160, CubicBezierInterpolator.EASE_OUT);
         private boolean pressed;
         private int alpha = 255;
+
         RecordingCancelFeedbackDrawable(int color) {
             this.color = color;
             paint.setColor(color);
         }
+
         @Override
         public boolean isStateful() {
             return true;
         }
+
         @Override
         protected boolean onStateChange(int[] states) {
             boolean enabled = false, down = false;
@@ -15770,33 +15931,40 @@ public class ChatActivityEnterView extends FrameLayout implements
             invalidateSelf();
             return true;
         }
+
         @Override
         public void draw(Canvas canvas) {
             float value = progress.set(pressed);
             Rect bounds = getBounds();
             paint.setAlpha(Math.round(Color.alpha(color) * (alpha / 255f) * value));
+
             float radius = Math.min(bounds.width(), bounds.height()) * .5f;
             canvas.drawRoundRect(bounds.left, bounds.top, bounds.right, bounds.bottom,
                     radius, radius, paint);
         }
+
         @Override
         public void setAlpha(int alpha) {
             this.alpha = alpha;
             invalidateSelf();
         }
+
         @Override
         public int getAlpha() {
             return alpha;
         }
+
         @Override
         public void setColorFilter(ColorFilter filter) {
             paint.setColorFilter(filter);
             invalidateSelf();
         }
+
         @Override
         public int getOpacity() {
             return PixelFormat.TRANSLUCENT;
         }
+
         @Override
         public void jumpToCurrentState() {
             progress.set(pressed, true);
@@ -15839,11 +16007,13 @@ public class ChatActivityEnterView extends FrameLayout implements
         private boolean pressed;
         private boolean externalFrameClock;
         public Rect cancelRect = new Rect();
+
         void setExternalFrameClock(boolean enabled) {
             externalFrameClock = enabled;
             lastUpdateTime = SystemClock.uptimeMillis();
             invalidate();
         }
+
         void onExternalFrame() {
             if (externalFrameClock && cancelToProgress != 1f) invalidate();
         }
@@ -15911,7 +16081,6 @@ public class ChatActivityEnterView extends FrameLayout implements
             updateRecordInterface(RECORD_STATE_CANCEL, true);
             checkSendButton(true);
         }
-
 
         boolean smallSize;
 
@@ -16010,6 +16179,7 @@ public class ChatActivityEnterView extends FrameLayout implements
             }
             float timerRight = recordTimerView == null ? 0 : recordTimerView.getLeftProperty();
             if (separatedComposerLayout && recordTimerView != null && recordTimeContainer != null) {
+
                 timerRight += recordTimeContainer.getX() + recordTimerView.getX() - getX();
             }
             final float actionLeft = Math.max(0, timerRight + dp(8));
@@ -16103,6 +16273,7 @@ public class ChatActivityEnterView extends FrameLayout implements
             if (cancelToProgress > 0) {
                 canvas.save();
                 if (separatedComposerLayout) {
+
                     cancelPillBounds.set(-getX(), -getY(),
                             recordPanel.getWidth() - getX(), recordPanel.getHeight() - getY());
                     cancelPillClip.rewind();
@@ -16118,6 +16289,7 @@ public class ChatActivityEnterView extends FrameLayout implements
 
                 canvas.save();
                 if (separatedComposerLayout) {
+
                     canvas.clipRect(actionLeft, 0, actionRight, getMeasuredHeight());
                 }
                 canvas.translate(xi, yi);
@@ -16183,12 +16355,14 @@ public class ChatActivityEnterView extends FrameLayout implements
             lastSendTypingTime = startTime;
             invalidate();
         }
+
         void setExternalFrameClock(boolean enabled) {
             if (externalFrameClock != enabled && isRunning) {
                 long now = System.currentTimeMillis();
                 if (enabled) {
                     externalElapsedMs = Math.max(0L, now - startTime);
                 } else {
+
                     startTime = now - externalElapsedMs;
                 }
             }
@@ -16196,6 +16370,7 @@ public class ChatActivityEnterView extends FrameLayout implements
             lastDrawRealtimeMs = SystemClock.elapsedRealtime();
             invalidate();
         }
+
         void onExternalFrame(long durationMs) {
             if (!externalFrameClock) return;
             externalElapsedMs = durationMs;
@@ -16259,7 +16434,6 @@ public class ChatActivityEnterView extends FrameLayout implements
                 int outLast = -1;
                 int outCount = 0;
 
-
                 for (int i = 0; i < n - 1; i++) {
                     if (oldString.charAt(i) != newString.charAt(i)) {
                         if (outCount == 0) {
@@ -16312,6 +16486,7 @@ public class ChatActivityEnterView extends FrameLayout implements
                     replaceStable.replace(replaceStable.length() - 1, replaceStable.length(), newString, newString.length() - 1 - (newString.length() - replaceStable.length()), newString.length());
                 }
             }
+
             long drawRealtimeMs = SystemClock.elapsedRealtime();
             long drawDeltaMs = lastDrawRealtimeMs == 0L
                     ? 16L
@@ -16895,6 +17070,7 @@ public class ChatActivityEnterView extends FrameLayout implements
 
     public void reset() {
         if (separatedComposerLayout) {
+
             if (runningAnimationAudio != null) {
                 runningAnimationAudio.removeAllListeners();
                 runningAnimationAudio.cancel();
@@ -17898,8 +18074,6 @@ public class ChatActivityEnterView extends FrameLayout implements
         resizeForTopView(visibility);
     }
 
-
-
     private float calculateIslandTotalHeight(boolean target) {
         final float fieldHeight = target ?
             animatorInputFieldHeight.getToFactor():
@@ -17911,7 +18085,6 @@ public class ChatActivityEnterView extends FrameLayout implements
 
         return fieldHeight + (topView != null ? topView.getMeasuredHeight() : 0) * topViewVisibility;
     }
-
 
     private float currentIslandTotalHeight;
     private float currentIslandTotalHeightTarget;

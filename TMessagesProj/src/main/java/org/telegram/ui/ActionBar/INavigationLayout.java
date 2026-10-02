@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.ActionBar;
 
 import android.app.Activity;
@@ -277,7 +279,7 @@ public interface INavigationLayout {
             if (requiresBiometrics
                     && !app.nimarkogram.messenger.security.NimarkoBiometricPrompt.isRecentlyVerified(fragment.getCurrentAccount(), userID, chatID, encID)) {
                 final int acc = fragment.getCurrentAccount();
-                app.nimarkogram.messenger.security.NimarkoBiometricPrompt.prompt(getParentActivity(), acc,
+                app.nimarkogram.messenger.security.NimarkoBiometricPrompt.promptForChat(getParentActivity(), acc, userID, chatID, encID,
                         () -> {
                             app.nimarkogram.messenger.security.NimarkoBiometricPrompt.markVerified(acc, userID, chatID, encID);
                             presentFragment(new NavigationParams(fragment));
@@ -351,7 +353,7 @@ public interface INavigationLayout {
         if (requiresBiometrics
                 && !app.nimarkogram.messenger.security.NimarkoBiometricPrompt.isRecentlyVerified(fragment.getCurrentAccount(), userID, chatID, encID)) {
             final int acc = fragment.getCurrentAccount();
-            app.nimarkogram.messenger.security.NimarkoBiometricPrompt.prompt(getParentActivity(), acc,
+            app.nimarkogram.messenger.security.NimarkoBiometricPrompt.promptForChat(getParentActivity(), acc, userID, chatID, encID,
                     () -> {
                         app.nimarkogram.messenger.security.NimarkoBiometricPrompt.markVerified(acc, userID, chatID, encID);
                         presentFragment(new NavigationParams(fragment).setRemoveLast(removeLast).setNoAnimation(forceWithoutAnimation).setCheckPresentFromDelegate(check).setPreview(preview));
@@ -388,7 +390,7 @@ public interface INavigationLayout {
         if (requiresBiometrics
                 && !app.nimarkogram.messenger.security.NimarkoBiometricPrompt.isRecentlyVerified(fragment.getCurrentAccount(), userID, chatID, encID)) {
             final int acc = fragment.getCurrentAccount();
-            app.nimarkogram.messenger.security.NimarkoBiometricPrompt.prompt(getParentActivity(), acc,
+            app.nimarkogram.messenger.security.NimarkoBiometricPrompt.promptForChat(getParentActivity(), acc, userID, chatID, encID,
                     () -> {
                         app.nimarkogram.messenger.security.NimarkoBiometricPrompt.markVerified(acc, userID, chatID, encID);
                         presentFragment(new NavigationParams(fragment).setRemoveLast(removeLast).setNoAnimation(forceWithoutAnimation).setCheckPresentFromDelegate(check).setPreview(preview).setMenuView(menuView));

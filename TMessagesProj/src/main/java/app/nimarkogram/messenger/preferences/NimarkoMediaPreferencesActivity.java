@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /**
  * NimarkoMedia native settings screen. Mirrors the Python plugin's
  * create_settings: auto-download switch, YouTube default-format selector, ask

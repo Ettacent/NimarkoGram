@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package app.nimarkogram.messenger.infocards.preferences;
 
 import android.util.SparseArray;
@@ -60,6 +62,7 @@ public class InfoCardsPreferencesActivity extends BasePreferencesActivity implem
             row.setListener(this);
             rows.put(info.id, row);
         }
+
         row.bind(info, active, active && hasOptions(info.id));
         return row;
     }
@@ -72,7 +75,7 @@ public class InfoCardsPreferencesActivity extends BasePreferencesActivity implem
     public void fillItems(ArrayList<UItem> items, UniversalAdapter adapter) {
         final boolean enabled = InfoCardsConfig.isEnabled();
 
-        items.add(UItem.asHeader(LocaleController.getString(R.string.NM_CARDS_GeneralHeader)));
+        items.add(UItem.asHeader(-1, LocaleController.getString(R.string.NM_CARDS_GeneralHeader)));
         items.add(UItem.asCheck(ID_ENABLED, LocaleController.getString(R.string.NM_CARDS_Enable))
                 .setChecked(enabled));
 
@@ -88,8 +91,8 @@ public class InfoCardsPreferencesActivity extends BasePreferencesActivity implem
             final List<Integer> active = InfoCardsConfig.getActiveCards();
             final List<Integer> hidden = InfoCardsConfig.getHiddenCards();
 
-            items.add(UItem.asShadow(null));
-            items.add(UItem.asHeader(LocaleController.getString(R.string.NM_CARDS_ActiveHeader)));
+            items.add(UItem.asShadow(-2, null));
+            items.add(UItem.asHeader(-3, LocaleController.getString(R.string.NM_CARDS_ActiveHeader)));
 
             activeReorderSectionId = adapter.reorderSectionStart();
             for (int pillId : active) {
@@ -100,8 +103,8 @@ public class InfoCardsPreferencesActivity extends BasePreferencesActivity implem
             adapter.reorderSectionEnd();
 
             if (!hidden.isEmpty()) {
-                items.add(UItem.asShadow(null));
-                items.add(UItem.asHeader(LocaleController.getString(R.string.NM_CARDS_HiddenHeader)));
+                items.add(UItem.asShadow(-4, null));
+                items.add(UItem.asHeader(-5, LocaleController.getString(R.string.NM_CARDS_HiddenHeader)));
                 for (int pillId : hidden) {
                     InfoCardRegistry.CardInfo info = InfoCardRegistry.get(pillId);
                     if (info == null) continue;
@@ -110,7 +113,7 @@ public class InfoCardsPreferencesActivity extends BasePreferencesActivity implem
             }
         }
 
-        items.add(UItem.asShadow(LocaleController.getString(R.string.NM_CARDS_Footer)));
+        items.add(UItem.asShadow(-6, LocaleController.getString(R.string.NM_CARDS_Footer)));
     }
 
     @Override
@@ -134,7 +137,6 @@ public class InfoCardsPreferencesActivity extends BasePreferencesActivity implem
         }
     }
 
-
     @Override
     public void onToggle(int pillId, boolean active) {
         if (active) {
@@ -142,15 +144,16 @@ public class InfoCardsPreferencesActivity extends BasePreferencesActivity implem
         } else {
             moveToHidden(pillId);
         }
+
         reload();
     }
 
     @Override
     public void onBodyTap(int pillId) {
+
         if (!InfoCardsConfig.isCardActive(pillId) || !hasOptions(pillId)) return;
         showCurrencyPicker(pillId);
     }
-
 
     private void showCurrencyPicker(int pillId) {
         ArrayList<String> currencies = new ArrayList<>();
@@ -165,7 +168,6 @@ public class InfoCardsPreferencesActivity extends BasePreferencesActivity implem
             reload();
         });
     }
-
 
     private void moveToHidden(int pillId) {
         List<Integer> active = InfoCardsConfig.getActiveCards();
@@ -197,9 +199,7 @@ public class InfoCardsPreferencesActivity extends BasePreferencesActivity implem
     }
 
     private void reload() {
-        if (listView != null && listView.adapter != null) {
-            listView.adapter.update(true);
-        }
+        updateItemsAfterToggle();
     }
 
 }

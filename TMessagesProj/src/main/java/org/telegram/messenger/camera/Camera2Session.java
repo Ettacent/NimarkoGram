@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.messenger.camera;
 
 import android.annotation.TargetApi;
@@ -98,6 +100,7 @@ public class Camera2Session {
     private float maxZoom = 1f;
     private float minZoom = 1f;
     private float currentZoom = 1f;
+
     private boolean zoomRatioSupported = false;
 
     private final Size previewSize;
@@ -111,10 +114,12 @@ public class Camera2Session {
     }
 
     public static Camera2Session create(boolean front, int viewWidth, int viewHeight, boolean preferLogical) {
+
         return create(front, viewWidth, viewHeight, preferLogical, app.nimarkogram.messenger.NimarkoConfig.cameraResolution);
     }
 
     public static Camera2Session create(boolean front, int viewWidth, int viewHeight, boolean preferLogical, int requestedHeight) {
+
         return create(front, viewWidth, viewHeight, preferLogical, requestedHeight, false);
     }
 
@@ -191,6 +196,7 @@ public class Camera2Session {
             }
             for (int i = 0; i < cameraIds.length; ++i) {
                 final String id = cameraIds[i];
+
                 if (logicalId != null && !logicalId.equals(id)) continue;
                 CameraCharacteristics characteristics = cameraManager.getCameraCharacteristics(id);
                 if (characteristics == null) continue;
@@ -198,6 +204,7 @@ public class Camera2Session {
                         || characteristics.get(CameraCharacteristics.LENS_FACING) != wantFacing) {
                     continue;
                 }
+
                 if (!preferLogical) {
                     int[] mcaps = characteristics.get(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES);
                     boolean mLogical = false;
@@ -242,6 +249,7 @@ public class Camera2Session {
     }
 
     private boolean nmIsLogical;
+
     public boolean isLogical() { return nmIsLogical; }
 
     private Camera2Session(Context context, boolean isFront, String cameraId, Size size, boolean logicalCamera, boolean noStillSurface) {
@@ -312,6 +320,7 @@ public class Camera2Session {
         this.nmIsLogical = logicalCamera;
         this.previewSize = size;
         this.lastTime = System.currentTimeMillis();
+
         this.imageReader = noStillSurface ? null : ImageReader.newInstance(size.getWidth(), size.getHeight(), ImageFormat.JPEG, 1);
         cameraManager = (CameraManager) context.getSystemService(Context.CAMERA_SERVICE);
         try {
@@ -379,6 +388,7 @@ public class Camera2Session {
     private void checkOpen() {
         if (opened || destroyed || isClosed) return;
         if (surfaceTexture == null || cameraDevice == null) return;
+
         if (isError || deviceErrored) {
             nmFireError(lastErrorCode); return;
         }
@@ -594,6 +604,7 @@ public class Camera2Session {
     }
 
     private boolean flashing;
+
     private int flashIntensityPercent = 100;
     public void setFlash(boolean flash) {
         if (flashing != flash) {
@@ -684,6 +695,7 @@ public class Camera2Session {
     }
 
     public float getMinZoom() {
+
         return minZoom;
     }
 
@@ -718,6 +730,7 @@ public class Camera2Session {
             errorCallback = null;
             doneCallback = null;
         }
+
         if (Looper.myLooper() == thread.getLooper()) {
             closeResourcesForDestroy();
         } else {
@@ -760,6 +773,7 @@ public class Camera2Session {
             closingCameraDevice = device;
             try { device.close(); } catch (Throwable ignored) {}
         } else if (openPending) {
+
         } else {
             completeDestroyOnHandler();
         }
@@ -837,11 +851,13 @@ public class Camera2Session {
             if (cc == null) return null; // unknown lens -> play safe, let HAL choose
             Range<Integer>[] ranges = cc.get(CameraCharacteristics.CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES);
             if (ranges == null || ranges.length == 0) return null; // unknown -> play safe
+
             for (Range<Integer> r : ranges) {
                 if (r != null && r.getLower().equals(requested.getLower()) && r.getUpper().equals(requested.getUpper())) {
                     return requested;
                 }
             }
+
             Range<Integer> best = null;
             for (Range<Integer> r : ranges) {
                 if (r == null) continue;
@@ -856,6 +872,7 @@ public class Camera2Session {
             return null;
         }
     }
+
     private static Integer choosePreviewDistortionMode(int[] supportedModes) {
         if (supportedModes != null) {
             for (int mode : supportedModes) {
@@ -866,6 +883,7 @@ public class Camera2Session {
         }
         return null;
     }
+
     private static Integer chooseStabilizationMode(int[] supportedModes, boolean enabled, int on, int off) {
         Integer fallback = null;
         if (supportedModes != null) {
@@ -876,6 +894,7 @@ public class Camera2Session {
         }
         return fallback;
     }
+
     private static Integer[] chooseStabilizationModes(int[] opticalModes, int[] videoModes,
             Integer templateOptical, Integer templateVideo, boolean opticalEnabled, boolean videoEnabled) {
         final int opticalOn = CaptureRequest.LENS_OPTICAL_STABILIZATION_MODE_ON;
@@ -884,6 +903,7 @@ public class Camera2Session {
         final int videoOff = CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE_OFF;
         Integer optical = chooseStabilizationMode(opticalModes, opticalEnabled, opticalOn, opticalOff);
         Integer disableVideo = chooseStabilizationMode(videoModes, false, videoOn, videoOff);
+
         if (Integer.valueOf(opticalOn).equals(optical) && disableVideo == null
                 && !Integer.valueOf(videoOff).equals(templateVideo)) {
             optical = chooseStabilizationMode(opticalModes, false, opticalOn, opticalOff);
@@ -891,8 +911,10 @@ public class Camera2Session {
         Integer effectiveOptical = optical != null ? optical : templateOptical;
         Integer video = chooseStabilizationMode(videoModes,
                 videoEnabled && Integer.valueOf(opticalOff).equals(effectiveOptical), videoOn, videoOff);
+
         return new Integer[] { optical, video };
     }
+
     private void applyStabilizationModes(boolean opticalEnabled, boolean videoEnabled) {
         if (cameraCharacteristics == null) return;
         List<CaptureRequest.Key<?>> requestKeys = cameraCharacteristics.getAvailableCaptureRequestKeys();
@@ -905,6 +927,7 @@ public class Camera2Session {
                 captureRequestBuilder.get(CaptureRequest.LENS_OPTICAL_STABILIZATION_MODE),
                 captureRequestBuilder.get(CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE),
                 opticalEnabled, videoEnabled);
+
         if (Integer.valueOf(CaptureRequest.LENS_OPTICAL_STABILIZATION_MODE_OFF).equals(modes[0])) {
             captureRequestBuilder.set(CaptureRequest.LENS_OPTICAL_STABILIZATION_MODE, modes[0]);
         }
@@ -938,21 +961,25 @@ public class Camera2Session {
             captureRequestBuilder.set(CaptureRequest.FLASH_MODE, flashing ? (recordingVideo ? CaptureRequest.FLASH_MODE_TORCH : CaptureRequest.FLASH_MODE_SINGLE) : CaptureRequest.FLASH_MODE_OFF);
 
             if (recordingVideo) {
+
                 Range<Integer> aeFps;
                 switch (app.nimarkogram.messenger.NimarkoConfig.cameraXFpsRange) {
                     case app.nimarkogram.messenger.NimarkoConfig.CameraXFpsRange25to30: aeFps = new Range<>(25, 30); break;
                     case app.nimarkogram.messenger.NimarkoConfig.CameraXFpsRange30to30: aeFps = new Range<>(30, 30); break;
                     case app.nimarkogram.messenger.NimarkoConfig.CameraXFpsRange30to60: aeFps = new Range<>(30, 60); break;
+
                     case app.nimarkogram.messenger.NimarkoConfig.CameraXFpsRange60to60: aeFps = new Range<>(30, 60); break;
                     case app.nimarkogram.messenger.NimarkoConfig.CameraXFpsRangeDefault:
                     default:                                                            aeFps = new Range<>(30, 60); break;
                 }
+
                 Range<Integer> supportedFps = nmValidateFpsRange(aeFps);
                 if (supportedFps != null) {
                     captureRequestBuilder.set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, supportedFps);
                 }
                 captureRequestBuilder.set(CaptureRequest.CONTROL_CAPTURE_INTENT, CaptureRequest.CONTROL_CAPTURE_INTENT_VIDEO_RECORD);
             }
+
             try {
                 applyStabilizationModes(app.nimarkogram.messenger.NimarkoConfig.cameraOpticalStabilization,
                         app.nimarkogram.messenger.NimarkoConfig.cameraStabilisation);
@@ -1002,6 +1029,7 @@ public class Camera2Session {
             }
 
             if (zoomRatioSupported && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+
                 try {
                     captureRequestBuilder.set(CaptureRequest.CONTROL_ZOOM_RATIO, currentZoom);
                 } catch (Throwable ignored) {}
@@ -1085,6 +1113,7 @@ public class Camera2Session {
         if (requestedHeight <= 0) {
             return chooseOptimalSize(choices, viewWidth, viewHeight, false);
         }
+
         final int w = Math.max(viewWidth, viewHeight);
         final int h = Math.min(viewWidth, viewHeight);
         final float targetRatio = h == 0 ? 0f : (float) w / h;
@@ -1111,6 +1140,7 @@ public class Camera2Session {
             if (targetRatio > 0 && s.getHeight() > 0) {
                 float ratio = (float) s.getWidth() / s.getHeight();
                 if (Math.abs(ratio - targetRatio) < 0.05f) {
+
                     if (dHeight < bestAspectDelta && s.getHeight() <= heightCap) {
                         bestAspectDelta = dHeight;
                         bestAspect = s;
@@ -1122,6 +1152,7 @@ public class Camera2Session {
         if (bestAnyCapped != null) return bestAnyCapped;
         return bestAnyUncapped;
     }
+
     static Size chooseRoundVideoCompatibilitySize(String manufacturer, String model,
             boolean front, boolean logical, boolean noStillSurface, Size selected, Size[] outputs) {
         if (!"OPPO".equalsIgnoreCase(manufacturer) || !"CPH2791".equalsIgnoreCase(model)
@@ -1134,6 +1165,7 @@ public class Camera2Session {
                 return size;
             }
         }
+
         return selected;
     }
 

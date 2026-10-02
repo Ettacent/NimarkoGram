@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 5.x.x.
  * It is licensed under GNU GPL v. 2 or later.
@@ -7,6 +9,7 @@
  */
 
 package org.telegram.messenger;
+
 import android.app.Activity;
 import android.content.Context;
 import android.content.ContextWrapper;
@@ -19,6 +22,7 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.annotation.UiThread;
 import androidx.collection.MutableIntList;
+
 import org.telegram.ui.ActionBar.BaseFragment;
 import org.telegram.ui.ActionBar.BottomSheet;
 
@@ -390,14 +394,21 @@ public class NotificationCenter {
     public static final int pluginSettingsRegistered = totalEvents++;
     public static final int pluginSettingsUnregistered = totalEvents++;
     public static final int pluginIsNotResponding = totalEvents++;
+
     public static final int nmUpdateBubbleShape = totalEvents++;
+
     public static final int nmUpdateOnlineIndicator = totalEvents++;
+
     public static final int infoCardsLayoutChanged = totalEvents++;
+
     public static final int infoCardsSettingsChanged = totalEvents++;
+
     public static final int infoCardsColorModeChanged = totalEvents++;
+
     public static final int infoCardsActiveCardChanged = totalEvents++;
     public static final int messagePlayingMetadataChanged = totalEvents++;
     public static final int nimarkoBannerDisplayChanged = totalEvents++;
+    public static final int nimarkoChatProtectionChanged = totalEvents++;
 
     public static boolean alreadyLogged;
 
@@ -672,6 +683,7 @@ public class NotificationCenter {
     private void postNotificationDebounced(int id, Object[] args) {
         int hash = id + (Arrays.hashCode(args) << 16);
         if (alreadyPostedRunnubles.indexOfKey(hash) >= 0) {
+
             return;
         }
         final Runnable runnable = () -> {
@@ -760,11 +772,13 @@ public class NotificationCenter {
         ObserversGroup addGlobal(int id);
         void removeAllObservers();
     }
+
     private static final class ObserversGroupImpl implements ObserversGroup {
         private NotificationCenter notificationCenter;
         private NotificationCenterDelegate delegate;
         private final MutableIntList ids = new MutableIntList();
         private ObserversGroupImpl globalGroup;
+
         private ObserversGroupImpl(NotificationCenter center, NotificationCenterDelegate delegate) {
             this.notificationCenter = center;
             this.delegate = delegate;
@@ -775,6 +789,7 @@ public class NotificationCenter {
             if (delegate == null) {
                 return this;
             }
+
             ids.add(id);
             notificationCenter.addObserverInternal(delegate, id);
             return this;
@@ -785,9 +800,11 @@ public class NotificationCenter {
             if (delegate == null) {
                 return this;
             }
+
             if (globalGroup == null) {
                 globalGroup = new ObserversGroupImpl(getGlobalInstance(), delegate);
             }
+
             globalGroup.add(id);
             return this;
         }
@@ -797,10 +814,12 @@ public class NotificationCenter {
             if (delegate == null) {
                 return;
             }
+
             if (globalGroup != null) {
                 globalGroup.removeAllObservers();
                 globalGroup = null;
             }
+
             for (int a = 0, N = ids.getSize(); a < N; a++) {
                 notificationCenter.removeObserver(delegate, ids.get(a));
             }
@@ -809,13 +828,16 @@ public class NotificationCenter {
             delegate = null;
         }
     }
+
     private static final class WeakObserversGroupImpl implements ObserversGroup, NotificationCenterDelegate {
         private final ObserversGroupImpl observersGroup;
         private final WeakReference<NotificationCenterDelegate> reference;
+
         private WeakObserversGroupImpl(NotificationCenter center, NotificationCenterDelegate delegate) {
             observersGroup = new ObserversGroupImpl(center, this);
             reference = new WeakReference<>(delegate);
         }
+
         @Override
         public void didReceivedNotification(int id, int account, Object... args) {
             final NotificationCenterDelegate delegate = reference.get();
@@ -826,14 +848,17 @@ public class NotificationCenter {
                 removeAllObservers();
             }
         }
+
         @Override
         public ObserversGroup add(int id) {
             return observersGroup.add(id);
         }
+
         @Override
         public ObserversGroup addGlobal(int id) {
             return observersGroup.addGlobal(id);
         }
+
         @Override
         public void removeAllObservers() {
             observersGroup.removeAllObservers();
@@ -843,6 +868,7 @@ public class NotificationCenter {
     public ObserversGroup createObserversGroup(NotificationCenterDelegate delegate) {
         return new ObserversGroupImpl(this, delegate);
     }
+
     public ObserversGroup createWeakObserversGroup(NotificationCenterDelegate delegate) {
         return new WeakObserversGroupImpl(this, delegate);
     }
@@ -851,6 +877,7 @@ public class NotificationCenter {
     public void addObserver(NotificationCenterDelegate observer, int id) {
         addObserverInternal(observer, id);
     }
+
     private void addObserverInternal(NotificationCenterDelegate observer, int id) {
         if (BuildVars.DEBUG_VERSION) {
             if (Thread.currentThread() != ApplicationLoader.applicationHandler.getLooper().getThread()) {
@@ -883,6 +910,7 @@ public class NotificationCenter {
     }
 
     private ArrayList<NotificationCenterDelegate> createArrayForId(int id) {
+
         if (id == didReplacedPhotoInMemCache || id == stopAllHeavyOperations || id == startAllHeavyOperations) {
             return new UniqArrayList<>();
         }
@@ -1060,20 +1088,24 @@ public class NotificationCenter {
             super.clear();
         }
     }
+
     public static void sanitize() {
         sanitizeInternal(globalInstance);
         for (NotificationCenter notificationCenter : Instance) {
             sanitizeInternal(notificationCenter);
         }
     }
+
     private static void sanitizeInternal(NotificationCenter notificationCenter) {
         if (notificationCenter == null) {
             return;
         }
+
         int unknownObservers = 0;
         for (int i = 0; i < notificationCenter.observers.size(); i++) {
             final int observerId = notificationCenter.observers.keyAt(i);
             final ArrayList<NotificationCenterDelegate> list = notificationCenter.observers.valueAt(i);
+
             for (int N = list.size(), a = N - 1; a >= 0; a--) {
                 final NotificationCenterDelegate delegate = list.get(a);
                 if (delegate instanceof WeakObserversGroupImpl) {
@@ -1082,6 +1114,7 @@ public class NotificationCenter {
                 if (delegate instanceof BaseController) {
                     continue;
                 }
+
                 if (delegate instanceof Context) {
                     if (isContextDestroyed((Context) delegate)) {
                         FileLog.e("MEMORY_LEAK observer " + observerId + " with destroyed Context");
@@ -1108,8 +1141,10 @@ public class NotificationCenter {
             }
         }
         if (unknownObservers > 0) {
+
         }
     }
+
     private static boolean isContextDestroyed(Context context) {
         if (context == null) return false;
         if (context instanceof Activity) {
@@ -1145,6 +1180,7 @@ public class NotificationCenter {
     }
 
     public static void diffObserverDumps(SparseArray<Integer> before, SparseArray<Integer> after) {
+
         for (int i = 0; i < before.size(); i++) {
             int key = before.keyAt(i);
             int sizeBefore = before.valueAt(i);
@@ -1155,6 +1191,7 @@ public class NotificationCenter {
                 Log.i("ObserverDiff", "key=" + key + " CHANGED: " + sizeBefore + " -> " + sizeAfter);
             }
         }
+
         for (int i = 0; i < after.size(); i++) {
             int key = after.keyAt(i);
             if (before.get(key, -1) == -1) {

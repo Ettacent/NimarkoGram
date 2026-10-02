@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * Originally Copyright github.com/arsLan4k1390, 2022-2026. GPL v2+.
  * Licensed under GNU GPL v2 or later. See LICENSE.

@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package com.exteragram.messenger.preferences.chats.components;
 
 import android.annotation.SuppressLint;
@@ -12,6 +14,7 @@ import android.view.MotionEvent;
 import android.widget.LinearLayout;
 
 import org.telegram.messenger.AndroidUtilities;
+import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.MessageObject;
 import org.telegram.messenger.R;
 import org.telegram.messenger.UserConfig;
@@ -70,8 +73,8 @@ public class MessagesPreviewCell extends LinearLayout {
         message.dialog_id = incoming ? -1L : 1L;
         message.flags = 33027;
         message.message = incoming
-                ? "Message preview"
-                : "NimarkoGram";
+                ? LocaleController.getString(R.string.MessagePreview)
+                : LocaleController.getString(R.string.AppName);
         message.media = new TLRPC.TL_messageMediaEmpty();
         message.out = !incoming;
         message.from_id = new TLRPC.TL_peerUser();
@@ -83,7 +86,7 @@ public class MessagesPreviewCell extends LinearLayout {
 
         MessageObject object = new MessageObject(account, message, true, false);
         object.forceAvatar = incoming;
-        object.customReplyName = incoming ? "Telegram" : "NimarkoGram";
+        object.customReplyName = incoming ? "Telegram" : LocaleController.getString(R.string.AppName);
         object.eventId = index + 1L;
         object.resetLayout();
         return object;

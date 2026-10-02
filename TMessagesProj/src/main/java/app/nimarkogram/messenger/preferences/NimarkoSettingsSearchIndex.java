@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package app.nimarkogram.messenger.preferences;
 
 import android.os.Build;
@@ -172,7 +174,7 @@ final class NimarkoSettingsSearchIndex {
                 9, R.string.AP_SystemEmoji,
                 10, R.string.AP_SystemFonts,
                 11, R.string.AP_Tablet_Mode);
-        row(entries, guid, SCREEN_GENERAL, 4, R.string.CP_SilenceNonContacts, R.string.CP_SilenceNonContacts_Desc,
+        row(entries, guid, SCREEN_GENERAL, 4, R.string.NM_SilenceNonContacts, R.string.NM_SilenceNonContacts_Desc,
                 R.drawable.msg_settings_solar, R.string.NM_Cat_General, R.string.NM_SettingsSectionNotificationsStories);
         row(entries, guid, SCREEN_GENERAL, 21, R.string.NM_InAppNotifications, R.string.NM_InAppNotificationsDesc,
                 R.drawable.msg_notifications, R.string.NM_Cat_General, R.string.NM_SettingsSectionNotificationsStories);
@@ -184,8 +186,8 @@ final class NimarkoSettingsSearchIndex {
                 R.drawable.msg_settings_solar, R.string.NM_Cat_General, R.string.NM_SettingsSectionNotificationsStories);
         rows(entries, guid, SCREEN_GENERAL, R.drawable.msg_settings_solar,
                 R.string.NM_Cat_General, R.string.NM_SettingsSectionNotificationsStories,
-                7, R.string.CP_HideStories,
-                8, R.string.CP_ArchiveStories);
+                7, R.string.NM_HideStories,
+                8, R.string.NM_ArchiveStories);
         rows(entries, guid, SCREEN_GENERAL, R.drawable.msg_settings_solar,
                 R.string.NM_Cat_General, R.string.NM_SettingsSectionConnection,
                 12, R.string.EP_DownloadSpeedBoost,
@@ -222,7 +224,7 @@ final class NimarkoSettingsSearchIndex {
                 10, R.string.AP_GlareOnElements,
                 16, R.string.NM_MediaGlow,
                 3, R.string.NM_SnowInHeader,
-                28, R.string.NM_CP_SnowflakesInChat);
+                28, R.string.NM_SnowflakesInChat);
         if (android.os.Build.VERSION.SDK_INT >= 31) {
             row(entries, guid, SCREEN_APPEARANCE, 31, R.string.NM_EnhancedGlassBlur,
                     R.string.NM_EnhancedGlassBlur_Desc, R.drawable.msg_theme_solar,
@@ -235,93 +237,95 @@ final class NimarkoSettingsSearchIndex {
                 R.drawable.msg_theme_solar, R.string.NM_Cat_Appearance, R.string.NM_SettingsSectionAvatarsStickers);
         row(entries, guid, SCREEN_APPEARANCE, 23, R.string.NM_StickerSize, 0,
                 R.drawable.msg_theme_solar, R.string.NM_Cat_Appearance, R.string.NM_SettingsSectionAvatarsStickers);
-        row(entries, guid, SCREEN_APPEARANCE, 20, R.string.CP_TimeOnStick, 0,
+        row(entries, guid, SCREEN_APPEARANCE, 20, R.string.NM_TimeOnStick, 0,
                 R.drawable.msg_theme_solar, R.string.NM_Cat_Appearance, R.string.NM_SettingsSectionAvatarsStickers);
         rows(entries, guid, SCREEN_APPEARANCE, R.drawable.msg_theme_solar,
                 R.string.NM_Cat_Appearance, R.string.NM_SettingsSectionChatAppearance,
-                24, R.string.CP_Messages_Size,
-                25, R.string.NM_CP_CenterTitleInChat,
-                26, R.string.CP_UnreadBadgeOnBackButton,
-                27, R.string.CP_CustomWallpapers,
-                29, R.string.CP_HideMuteUnmuteButton,
-                30, R.string.NM_CP_WeekdayNearDate);
-        pageRow(entries, guid, SCREEN_FOLDERS, R.string.CP_Filters_Header, R.drawable.msg_folders,
+                24, R.string.NM_Messages_Size,
+                25, R.string.NM_CenterTitleInChat,
+                26, R.string.NM_UnreadBadgeOnBackButton,
+                27, R.string.NM_CustomWallpapers,
+                29, R.string.NM_HideMuteUnmuteButton,
+                30, R.string.NM_WeekdayNearDate);
+        pageRow(entries, guid, SCREEN_FOLDERS, R.string.NM_Filters_Header, R.drawable.msg_folders,
                 R.string.NM_Cat_Appearance, R.string.NM_SettingsSectionNavigationHeader);
-        pageRow(entries, guid, SCREEN_BOTTOM_TABS, R.string.CP_MainTabs_Header, R.drawable.tabs_reorder,
+        pageRow(entries, guid, SCREEN_BOTTOM_TABS, R.string.NM_MainTabs_Header, R.drawable.tabs_reorder,
                 R.string.NM_Cat_Appearance, R.string.NM_SettingsSectionNavigationHeader);
-        pageRow(entries, guid, SCREEN_MESSAGES_PROFILES, R.string.CP_ProfileReplyBackground, R.drawable.msg_customize,
+        pageRow(entries, guid, SCREEN_MESSAGES_PROFILES, R.string.NM_ProfileReplyBackground, R.drawable.msg_customize,
                 R.string.NM_Cat_Appearance, R.string.NM_SettingsSectionChatAppearance);
 
         rows(entries, guid, SCREEN_CHATS, R.drawable.msg_msgbubble3_solar,
                 R.string.NM_Cat_Chats, R.string.NM_SettingsSectionChatList,
-                1, R.string.CP_SortByUnread,
-                2, R.string.CP_UnarchiveOnSwipe,
+                1, R.string.NM_SortByUnread,
+                2, R.string.NM_UnarchiveOnSwipe,
                 4, R.string.EP_CustomChat);
         rows(entries, guid, SCREEN_CHATS, R.drawable.msg_msgbubble3_solar,
                 R.string.NM_Cat_Chats, R.string.NM_SettingsSectionInputText,
-                5, R.string.CP_Slider_RecentEmojisAndStickers,
+                5, R.string.NM_Slider_RecentEmojisAndStickers,
                 14, R.string.AP_ShowPencilIcon,
-                15, R.string.CP_ForwardMsgDate,
-                17, R.string.CP_HideSendAsChannel,
-                33, R.string.CP_AutoQuoteReplies,
-                39, R.string.NM_CP_PreReformRussian,
-                40, R.string.NM_CP_LatexRendering,
+                15, R.string.NM_ForwardMsgDate,
+                17, R.string.NM_HideSendAsChannel,
+                33, R.string.NM_AutoQuoteReplies,
+                39, R.string.NM_PreReformRussian,
+                40, R.string.NM_LatexRendering,
                 41, R.string.NM_DisableSendHints);
         rows(entries, guid, SCREEN_CHATS, R.drawable.msg_msgbubble3_solar,
                 R.string.NM_Cat_Chats, R.string.NM_SettingsSectionGesturesActions,
-                30, R.string.CP_DoubleTapAction,
+                30, R.string.NM_DoubleTapAction,
                 31, R.string.NM_MsgSlideAction,
-                32, R.string.CP_LeftBottomButtonAction,
+                32, R.string.NM_LeftBottomButtonAction,
                 3, R.string.ForwardWithoutAuthor,
-                34, R.string.CP_DisableSwipeToNext,
-                35, R.string.CP_DeleteForAll,
-                37, R.string.CP_DisableVibration);
+                34, R.string.NM_DisableSwipeToNext,
+                35, R.string.NM_DeleteForAll,
+                37, R.string.NM_DisableVibration);
         rows(entries, guid, SCREEN_CHATS, R.drawable.msg_msgbubble3_solar,
                 R.string.NM_Cat_Chats, R.string.NM_SettingsSectionMediaPlayback,
                 50, R.string.EP_PhotosSize,
-                51, R.string.CP_PlayVideo,
-                52, R.string.CP_AutoPauseVideo,
+                51, R.string.NM_PlayVideo,
+                52, R.string.NM_AutoPauseVideo,
                 53, R.string.NM_MSG_GifSpoilers,
-                54, R.string.CP_VideoSeekDuration);
+                54, R.string.NM_VideoSeekDuration);
         rows(entries, guid, SCREEN_CHATS, R.drawable.msg_msgbubble3_solar,
                 R.string.NM_Cat_Chats, R.string.NM_SettingsSectionReactionsEffects,
-                60, R.string.CP_DisableReactionsOverlay,
-                61, R.string.CP_DisableReactionAnim,
-                62, R.string.CP_DisablePremStickAnim,
-                63, R.string.CP_DisablePremStickAutoPlay);
+                60, R.string.NM_DisableReactionsOverlay,
+                61, R.string.NM_DisableReactionAnim,
+                62, R.string.NM_DisablePremStickAnim,
+                63, R.string.NM_DisablePremStickAutoPlay);
         rows(entries, guid, SCREEN_CHATS, R.drawable.msg_msgbubble3_solar,
                 R.string.NM_Cat_Chats, R.string.Notifications,
                 70, R.string.NotificationsSound,
-                71, R.string.CP_VibrateInChats);
+                71, R.string.NM_VibrateInChats);
         row(entries, guid, SCREEN_CHATS, 36, R.string.DirectShare, R.string.DirectShareInfo,
                 R.drawable.msg_msgbubble3_solar, R.string.NM_Cat_Chats, R.string.NM_SettingsSectionTools);
-        row(entries, guid, SCREEN_CHATS, 19, R.string.CP_ChatMenuShortcuts, 0,
+        row(entries, guid, SCREEN_CHATS, 19, R.string.NM_ChatMenuShortcuts, 0,
                 R.drawable.msg_msgbubble3_solar, R.string.NM_Cat_Chats, R.string.NM_SettingsSectionTools);
-        row(entries, guid, SCREEN_CHATS, 38, R.string.CP_HideKbdOnScroll, 0,
+        row(entries, guid, SCREEN_CHATS, 38, R.string.NM_HideKbdOnScroll, 0,
                 R.drawable.msg_msgbubble3_solar, R.string.NM_Cat_Chats, R.string.NM_SettingsSectionInputText);
-        pageRow(entries, guid, SCREEN_MESSAGE_MENU, R.string.CP_MessageMenu, R.drawable.msg_list,
+        pageRow(entries, guid, SCREEN_MESSAGE_MENU, R.string.NM_MessageMenu, R.drawable.msg_list,
                 R.string.NM_Cat_Chats, R.string.NM_SettingsSectionTools);
-        pageRow(entries, guid, SCREEN_MESSAGE_FILTERS, R.string.CP_Message_Filtering, R.drawable.msg_notspam,
+        pageRow(entries, guid, SCREEN_MESSAGE_FILTERS, R.string.NM_Message_Filtering, R.drawable.msg_notspam,
                 R.string.NM_Cat_Chats, R.string.NM_SettingsSectionTools);
 
-        row(entries, guid, SCREEN_CAMERA, 2, R.string.CP_CameraType, 0,
-                R.drawable.camera_solar, R.string.NM_Cat_Camera, R.string.CP_CameraType);
-        row(entries, guid, SCREEN_CAMERA, 10, R.string.CP_CenterCameraControlButtons,
-                R.string.CP_CenterCameraControlButtons_Desc, R.drawable.camera_solar,
-                R.string.NM_Cat_Camera, R.string.CP_Category_Camera);
-        row(entries, guid, SCREEN_CAMERA, 4, R.string.NM_CAM_RoundCamera, 0,
-                R.drawable.camera_solar, R.string.NM_Cat_Camera, R.string.CP_Header_Videomessages);
-        row(entries, guid, SCREEN_CAMERA, 3, R.string.CP_CameraDualCamera, R.string.CP_CameraDualCamera_Desc,
-                R.drawable.camera_solar, R.string.NM_Cat_Camera, R.string.CP_Header_Videomessages);
-        row(entries, guid, SCREEN_CAMERA, 5, R.string.CP_CameraUW, R.string.CP_CameraUW_Desc,
-                R.drawable.camera_solar, R.string.NM_Cat_Camera, R.string.CP_Header_Videomessages);
+        row(entries, guid, SCREEN_CAMERA, 2, R.string.NM_CameraType, 0,
+                R.drawable.camera_solar, R.string.NM_Cat_Camera, R.string.NM_CameraType);
+        row(entries, guid, SCREEN_CAMERA, 10, R.string.NM_CenterCameraControlButtons,
+                R.string.NM_CenterCameraControlButtons_Desc, R.drawable.camera_solar,
+                R.string.NM_Cat_Camera, R.string.NM_Category_Camera);
+        row(entries, guid, SCREEN_CHATS, 55, R.string.NM_CAM_MultiMicrophone, R.string.NM_CAM_MultiMicrophoneDesc,
+                R.drawable.msg_msgbubble3_solar, R.string.NM_Cat_Chats, R.string.NM_SettingsSectionMediaPlayback);
+        row(entries, guid, SCREEN_CAMERA, 4, R.string.NM_CAM_RoundCamera, R.string.NM_CAM_RoundCameraDesc,
+                R.drawable.camera_solar, R.string.NM_Cat_Camera, R.string.NM_Header_Videomessages);
+        row(entries, guid, SCREEN_CAMERA, 3, R.string.NM_CameraDualCamera, R.string.NM_CameraDualCamera_Desc,
+                R.drawable.camera_solar, R.string.NM_Cat_Camera, R.string.NM_Header_Videomessages);
+        row(entries, guid, SCREEN_CAMERA, 5, R.string.NM_CameraUW, R.string.NM_CameraUW_Desc,
+                R.drawable.camera_solar, R.string.NM_Cat_Camera, R.string.NM_Header_Videomessages);
         rows(entries, guid, SCREEN_CAMERA, R.drawable.camera_solar,
                 R.string.NM_Cat_Camera, R.string.NM_CAM_VideoQuality,
                 17, R.string.NM_CAM_RoundVideoSize,
                 18, R.string.NM_CAM_RoundVideoBitrate,
-                7, R.string.CP_CameraQuality,
+                7, R.string.NM_CameraQuality,
                 8, R.string.NM_CAM_FpsRange,
-                6, R.string.CP_CameraStabilisation);
+                6, R.string.NM_CameraStabilisation);
         row(entries, guid, SCREEN_CAMERA, 11, R.string.NM_CAM_Improvements, 0,
                 R.drawable.camera_solar, R.string.NM_Cat_Camera, R.string.NM_CAM_VideoQuality);
         row(entries, guid, SCREEN_CAMERA, 12, R.string.NM_CAM_OpticalStabilization,
@@ -364,7 +368,7 @@ final class NimarkoSettingsSearchIndex {
                 9, R.string.NM_PR_TestFingerprint);
 
         rows(entries, guid, SCREEN_FOLDERS, R.drawable.msg_folders,
-                R.string.NM_Cat_Appearance, R.string.CP_Filters_Header,
+                R.string.NM_Cat_Appearance, R.string.NM_Filters_Header,
                 1, R.string.NM_FO_TabsHideAllChats,
                 2, R.string.NM_FO_TabsNoCounter,
                 3, R.string.NM_FO_TabStyle,
@@ -372,14 +376,14 @@ final class NimarkoSettingsSearchIndex {
                 5, R.string.NM_FO_FolderNameInHeader,
                 6, R.string.NM_FO_FoldersAtBottom);
         rows(entries, guid, SCREEN_BOTTOM_TABS, R.drawable.tabs_reorder,
-                R.string.NM_Cat_Appearance, R.string.CP_MainTabs_Header,
+                R.string.NM_Cat_Appearance, R.string.NM_MainTabs_Header,
                 1, R.string.NM_BT_ShowTabs,
                 2, R.string.NM_BT_ShowTabsTitle,
                 4, R.string.NM_BT_ForceOpenChats,
                 5, R.string.NM_BT_ShowSearchInTabs,
                 6, R.string.Reset);
         rows(entries, guid, SCREEN_RECENT, R.drawable.msg_reactions2,
-                R.string.NM_Cat_Chats, R.string.CP_Slider_RecentEmojisAndStickers,
+                R.string.NM_Cat_Chats, R.string.NM_Slider_RecentEmojisAndStickers,
                 1, R.string.Emoji,
                 2, R.string.AccDescrStickers);
 
@@ -387,14 +391,14 @@ final class NimarkoSettingsSearchIndex {
                 R.drawable.msg_plugins, R.string.Plugins, 0);
 
         rows(entries, guid, SCREEN_MESSAGES_PROFILES, R.drawable.msg_customize,
-                R.string.CP_ProfileReplyBackground, R.string.NM_MP_CustomizeMessage,
+                R.string.NM_ProfileReplyBackground, R.string.NM_MP_CustomizeMessage,
                 MessagesAndProfilesPreferencesActivity.SETTING_SHOW_SECONDS, R.string.NM_MP_ShowSeconds,
                 MessagesAndProfilesPreferencesActivity.SETTING_PREMIUM_STATUSES, R.string.NM_MP_DisablePremiumStatuses,
                 MessagesAndProfilesPreferencesActivity.SETTING_REPLY_BACKGROUND, R.string.NM_MP_ReplyBackground,
                 MessagesAndProfilesPreferencesActivity.SETTING_REPLY_COLORS, R.string.NM_MP_ReplyCustomColors,
                 MessagesAndProfilesPreferencesActivity.SETTING_REPLY_EMOJI, R.string.NM_MP_ReplyBackgroundEmoji);
         rows(entries, guid, SCREEN_MESSAGES_PROFILES, R.drawable.msg_customize,
-                R.string.CP_ProfileReplyBackground, R.string.NM_MP_CustomizeProfile,
+                R.string.NM_ProfileReplyBackground, R.string.NM_MP_CustomizeProfile,
                 MessagesAndProfilesPreferencesActivity.SETTING_PROFILE_CHANNEL, R.string.NM_MP_ProfileChannelPreview,
                 MessagesAndProfilesPreferencesActivity.SETTING_PROFILE_ID_DC, R.string.NM_MP_ShowIdDc,
                 MessagesAndProfilesPreferencesActivity.SETTING_PROFILE_BIRTHDAY, R.string.NM_MP_ProfileBirthDatePreview,
@@ -470,21 +474,21 @@ final class NimarkoSettingsSearchIndex {
                 1, R.string.NM_DBG_ShowRPCErrors,
                 3, R.string.NM_DBG_JacksonJSONProvider);
 
-        pageRow(entries, guid, SCREEN_MESSAGE_MENU_ITEMS, R.string.CP_MessageMenuItems, R.drawable.msg_settings,
-                R.string.NM_Cat_Chats, R.string.CP_MessageMenu);
+        pageRow(entries, guid, SCREEN_MESSAGE_MENU_ITEMS, R.string.NM_MessageMenuItems, R.drawable.msg_settings,
+                R.string.NM_Cat_Chats, R.string.NM_MessageMenu);
         pageRow(entries, guid, SCREEN_MESSAGE_MENU_ORDER, R.string.NM_Menu_Reorder, R.drawable.msg_reorder,
-                R.string.NM_Cat_Chats, R.string.CP_MessageMenu);
+                R.string.NM_Cat_Chats, R.string.NM_MessageMenu);
         row(entries, guid, SCREEN_MESSAGE_MENU, MessageMenuPreferencesActivity.SETTING_MODERN_MENU,
                 R.string.NM_Menu_TelegramPlus, R.string.NM_Menu_TelegramPlus_Desc,
-                R.drawable.msg_list, R.string.NM_Cat_Chats, R.string.CP_MessageMenu);
+                R.drawable.msg_list, R.string.NM_Cat_Chats, R.string.NM_MessageMenu);
         row(entries, guid, SCREEN_MESSAGE_MENU, MessageMenuPreferencesActivity.SETTING_COMPACT_LAYOUT,
-                R.string.CP_MessageMenuCompactLayout, R.string.CP_MessageMenuCompactLayout_Desc,
-                R.drawable.msg_list, R.string.NM_Cat_Chats, R.string.CP_MessageMenu);
+                R.string.NM_MessageMenuCompactLayout, R.string.NM_MessageMenuCompactLayout_Desc,
+                R.drawable.msg_list, R.string.NM_Cat_Chats, R.string.NM_MessageMenu);
         row(entries, guid, SCREEN_MESSAGE_MENU, MessageMenuPreferencesActivity.SETTING_HAPTIC,
                 R.string.NM_Menu_Haptic, R.string.NM_Menu_Haptic_Desc,
-                R.drawable.msg_list, R.string.NM_Cat_Chats, R.string.CP_MessageMenu);
+                R.drawable.msg_list, R.string.NM_Cat_Chats, R.string.NM_MessageMenu);
         rows(entries, guid, SCREEN_MESSAGE_FILTERS, R.drawable.msg_notspam,
-                R.string.NM_Cat_Chats, R.string.CP_Message_Filtering,
+                R.string.NM_Cat_Chats, R.string.NM_Message_Filtering,
                 0, R.string.NM_MF_Filter,
                 0, R.string.NM_MF_Field,
                 0, R.string.NM_MF_Translit,
@@ -500,7 +504,7 @@ final class NimarkoSettingsSearchIndex {
                 0, R.string.NM_MF_ChatWhitelist,
                 0, R.string.NM_MF_ChatBlacklist);
         rows(entries, guid, SCREEN_MESSAGE_MENU_ITEMS, R.drawable.msg_list,
-                R.string.CP_MessageMenu, R.string.CP_MessageMenuItems,
+                R.string.NM_MessageMenu, R.string.NM_MessageMenuItems,
                 1, R.string.SaveForNotifications,
                 2, R.string.Reply,
                 3, R.string.SaveToGallery,
@@ -622,8 +626,8 @@ final class NimarkoSettingsSearchIndex {
         if (titleRes == R.string.AP_Tablet_Mode) return R.string.NM_SettingsDesc_TabletMode;
         if (titleRes == R.string.NM_ResidentNotification) return R.string.NM_SettingsDesc_ResidentNotification;
         if (titleRes == R.string.NM_NotificationReactionEmoji) return R.string.NM_SettingsDesc_ReactionEmoji;
-        if (titleRes == R.string.CP_HideStories) return R.string.CP_HideStories_Desc;
-        if (titleRes == R.string.CP_ArchiveStories) return R.string.CP_ArchiveStories_Desc;
+        if (titleRes == R.string.NM_HideStories) return R.string.NM_HideStories_Desc;
+        if (titleRes == R.string.NM_ArchiveStories) return R.string.NM_ArchiveStories_Desc;
         if (titleRes == R.string.EP_DownloadSpeedBoost) return R.string.NM_SettingsDesc_DownloadBoost;
         if (titleRes == R.string.NM_GE_UploadSpeedBoost) return R.string.NM_SettingsDesc_UploadBoost;
         if (titleRes == R.string.EP_SlowNetworkMode) return R.string.NM_SettingsDesc_SlowNetwork;
@@ -641,49 +645,49 @@ final class NimarkoSettingsSearchIndex {
         if (titleRes == R.string.AP_GlareOnElements) return R.string.AP_GlareOnElementsInfo;
         if (titleRes == R.string.NM_MediaGlow) return R.string.NM_MediaGlow_Desc;
         if (titleRes == R.string.NM_SnowInHeader) return R.string.NM_SnowInHeader_Desc;
-        if (titleRes == R.string.NM_CP_SnowflakesInChat) return R.string.NM_CP_SnowflakesInChat_Desc;
-        if (titleRes == R.string.CP_TimeOnStick) return R.string.NM_SettingsDesc_StickerTime;
-        if (titleRes == R.string.CP_Messages_Size) return R.string.NM_SettingsDesc_MessageSize;
-        if (titleRes == R.string.NM_CP_CenterTitleInChat) return R.string.NM_SettingsDesc_CenterChatTitle;
+        if (titleRes == R.string.NM_SnowflakesInChat) return R.string.NM_SnowflakesInChat_Desc;
+        if (titleRes == R.string.NM_TimeOnStick) return R.string.NM_SettingsDesc_StickerTime;
+        if (titleRes == R.string.NM_Messages_Size) return R.string.NM_SettingsDesc_MessageSize;
+        if (titleRes == R.string.NM_CenterTitleInChat) return R.string.NM_SettingsDesc_CenterChatTitle;
         if (titleRes == R.string.NM_IOSStyleComposer) return R.string.NM_IOSStyleComposer_Desc;
         if (titleRes == R.string.NM_HideBubbleTail) return R.string.NM_HideBubbleTail_Desc;
         if (titleRes == R.string.NM_ForumAvatarsLikeChats) return R.string.NM_ForumAvatarsLikeChats_Desc;
         if (titleRes == R.string.NM_OnlineIndicatorInGroups) return R.string.NM_OnlineIndicatorInGroups_Desc;
-        if (titleRes == R.string.CP_UnreadBadgeOnBackButton) return R.string.CP_UnreadBadgeOnBackButton_Desc;
-        if (titleRes == R.string.CP_CustomWallpapers) return R.string.CP_CustomWallpapers_Desc;
-        if (titleRes == R.string.NM_CP_WeekdayNearDate) return R.string.NM_CP_WeekdayNearDate_Desc;
-        if (titleRes == R.string.CP_HideMuteUnmuteButton) return R.string.NM_SettingsDesc_HideMuteButton;
-        if (titleRes == R.string.CP_SortByUnread) return R.string.NM_SettingsDesc_SortUnread;
-        if (titleRes == R.string.CP_UnarchiveOnSwipe) return R.string.NM_SettingsDesc_UnarchiveSwipe;
+        if (titleRes == R.string.NM_UnreadBadgeOnBackButton) return R.string.NM_UnreadBadgeOnBackButton_Desc;
+        if (titleRes == R.string.NM_CustomWallpapers) return R.string.NM_CustomWallpapers_Desc;
+        if (titleRes == R.string.NM_WeekdayNearDate) return R.string.NM_WeekdayNearDate_Desc;
+        if (titleRes == R.string.NM_HideMuteUnmuteButton) return R.string.NM_SettingsDesc_HideMuteButton;
+        if (titleRes == R.string.NM_SortByUnread) return R.string.NM_SettingsDesc_SortUnread;
+        if (titleRes == R.string.NM_UnarchiveOnSwipe) return R.string.NM_SettingsDesc_UnarchiveSwipe;
         if (titleRes == R.string.EP_CustomChat) return R.string.EP_CustomChat_Desc;
-        if (titleRes == R.string.CP_Slider_RecentEmojisAndStickers) return R.string.NM_CH_RecentEmojisStickers_Desc;
+        if (titleRes == R.string.NM_Slider_RecentEmojisAndStickers) return R.string.NM_CH_RecentEmojisStickers_Desc;
         if (titleRes == R.string.AP_ShowPencilIcon) return R.string.NM_SettingsDesc_PencilIcon;
-        if (titleRes == R.string.CP_ForwardMsgDate) return R.string.NM_SettingsDesc_ForwardDate;
-        if (titleRes == R.string.CP_HideSendAsChannel) return R.string.CP_HideSendAsChannelDesc;
-        if (titleRes == R.string.CP_AutoQuoteReplies) return R.string.CP_AutoQuoteReplies_Desc;
-        if (titleRes == R.string.NM_CP_PreReformRussian) return R.string.NM_CP_PreReformRussian_Desc;
-        if (titleRes == R.string.NM_CP_LatexRendering) return R.string.NM_CP_LatexRendering_Desc;
+        if (titleRes == R.string.NM_ForwardMsgDate) return R.string.NM_SettingsDesc_ForwardDate;
+        if (titleRes == R.string.NM_HideSendAsChannel) return R.string.NM_HideSendAsChannelDesc;
+        if (titleRes == R.string.NM_AutoQuoteReplies) return R.string.NM_AutoQuoteReplies_Desc;
+        if (titleRes == R.string.NM_PreReformRussian) return R.string.NM_PreReformRussian_Desc;
+        if (titleRes == R.string.NM_LatexRendering) return R.string.NM_LatexRendering_Desc;
         if (titleRes == R.string.NM_DisableSendHints) return R.string.NM_DisableSendHints_Desc;
-        if (titleRes == R.string.CP_DoubleTapAction) return R.string.NM_SettingsDesc_DoubleTap;
+        if (titleRes == R.string.NM_DoubleTapAction) return R.string.NM_SettingsDesc_DoubleTap;
         if (titleRes == R.string.NM_MsgSlideAction) return R.string.NM_SettingsDesc_MessageSwipe;
-        if (titleRes == R.string.CP_LeftBottomButtonAction) return R.string.NM_SettingsDesc_LeftButton;
+        if (titleRes == R.string.NM_LeftBottomButtonAction) return R.string.NM_SettingsDesc_LeftButton;
         if (titleRes == R.string.ForwardWithoutAuthor) return R.string.NM_SettingsDesc_ForwardWithoutAuthor;
-        if (titleRes == R.string.CP_DisableSwipeToNext) return R.string.CP_DisableSwipeToNext_Desc;
-        if (titleRes == R.string.CP_DeleteForAll) return R.string.CP_DeleteForAll_Desc;
-        if (titleRes == R.string.CP_DisableVibration) return R.string.NM_SettingsDesc_MenuVibration;
+        if (titleRes == R.string.NM_DisableSwipeToNext) return R.string.NM_DisableSwipeToNext_Desc;
+        if (titleRes == R.string.NM_DeleteForAll) return R.string.NM_DeleteForAll_Desc;
+        if (titleRes == R.string.NM_DisableVibration) return R.string.NM_SettingsDesc_MenuVibration;
         if (titleRes == R.string.EP_PhotosSize) return R.string.NM_SettingsDesc_LargePhotos;
-        if (titleRes == R.string.CP_PlayVideo) return R.string.CP_PlayVideo_Desc;
-        if (titleRes == R.string.CP_AutoPauseVideo) return R.string.CP_AutoPauseVideo_Desc;
+        if (titleRes == R.string.NM_PlayVideo) return R.string.NM_PlayVideo_Desc;
+        if (titleRes == R.string.NM_AutoPauseVideo) return R.string.NM_AutoPauseVideo_Desc;
         if (titleRes == R.string.NM_MSG_GifSpoilers) return R.string.NM_SettingsDesc_GifSpoilers;
-        if (titleRes == R.string.CP_HideKbdOnScroll) return R.string.NM_SettingsDesc_HideKeyboardOnScroll;
-        if (titleRes == R.string.CP_VideoSeekDuration) return R.string.NM_SettingsDesc_VideoSeek;
-        if (titleRes == R.string.CP_DisableReactionsOverlay) return R.string.CP_DisableReactionsOverlay_Desc;
-        if (titleRes == R.string.CP_DisableReactionAnim) return R.string.CP_DisableReactionAnim_Desc;
-        if (titleRes == R.string.CP_DisablePremStickAnim) return R.string.CP_DisablePremStickAnim_Desc;
-        if (titleRes == R.string.CP_DisablePremStickAutoPlay) return R.string.CP_DisablePremStickAutoPlay_Desc;
+        if (titleRes == R.string.NM_HideKbdOnScroll) return R.string.NM_SettingsDesc_HideKeyboardOnScroll;
+        if (titleRes == R.string.NM_VideoSeekDuration) return R.string.NM_SettingsDesc_VideoSeek;
+        if (titleRes == R.string.NM_DisableReactionsOverlay) return R.string.NM_DisableReactionsOverlay_Desc;
+        if (titleRes == R.string.NM_DisableReactionAnim) return R.string.NM_DisableReactionAnim_Desc;
+        if (titleRes == R.string.NM_DisablePremStickAnim) return R.string.NM_DisablePremStickAnim_Desc;
+        if (titleRes == R.string.NM_DisablePremStickAutoPlay) return R.string.NM_DisablePremStickAutoPlay_Desc;
         if (titleRes == R.string.NotificationsSound) return R.string.NM_SettingsDesc_NotificationSound;
-        if (titleRes == R.string.CP_VibrateInChats) return R.string.NM_SettingsDesc_ChatVibration;
-        if (titleRes == R.string.CP_ChatMenuShortcuts) return R.string.NM_SettingsDesc_ChatShortcuts;
+        if (titleRes == R.string.NM_VibrateInChats) return R.string.NM_SettingsDesc_ChatVibration;
+        if (titleRes == R.string.NM_ChatMenuShortcuts) return R.string.NM_SettingsDesc_ChatShortcuts;
         if (titleRes == R.string.NM_PR_HideProxy) return R.string.NM_SettingsDesc_HideProxy;
         if (titleRes == R.string.NM_PR_DeleteAccount) return R.string.NM_SettingsDesc_DeleteAccount;
         if (titleRes == R.string.NM_PR_OpenArchive) return R.string.NM_SettingsDesc_OpenArchive;
@@ -706,7 +710,7 @@ final class NimarkoSettingsSearchIndex {
         if (titleRes == R.string.NM_FO_FoldersAtBottom) return R.string.NM_FO_FoldersAtBottom_Desc;
         if (titleRes == R.string.NM_BT_ShowTabs) return R.string.NM_SettingsDesc_BottomTabs;
         if (titleRes == R.string.NM_BT_ShowTabsTitle) return R.string.NM_SettingsDesc_BottomTabsTitle;
-        if (titleRes == R.string.NM_BT_ForceOpenChats) return R.string.CP_MainTabs_ForceOpenChats_Desc;
+        if (titleRes == R.string.NM_BT_ForceOpenChats) return R.string.NM_MainTabs_ForceOpenChats_Desc;
         if (titleRes == R.string.NM_BT_ShowSearchInTabs) return R.string.NM_BT_ShowSearchInTabs_Desc;
         if (titleRes == R.string.Reset) return R.string.NM_SettingsDesc_ResetTabs;
         if (titleRes == R.string.Emoji) return R.string.NM_SettingsDesc_RecentEmoji;
@@ -750,10 +754,10 @@ final class NimarkoSettingsSearchIndex {
         if (titleRes == R.string.NM_DBG_SendMaxQuality) return R.string.NM_SettingsDesc_MaxVideoQuality;
         if (titleRes == R.string.NM_DBG_ShowRPCErrors) return R.string.NM_SettingsDesc_RpcErrors;
         if (titleRes == R.string.NM_DBG_JacksonJSONProvider) return R.string.NM_SettingsDesc_JsonProvider;
-        if (titleRes == R.string.CP_MessageMenuItems) return R.string.NM_SettingsDesc_MenuItems;
+        if (titleRes == R.string.NM_MessageMenuItems) return R.string.NM_SettingsDesc_MenuItems;
         if (titleRes == R.string.NM_Menu_Reorder) return R.string.NM_SettingsDesc_MenuOrder;
-        if (titleRes == R.string.CP_MessageMenu) return R.string.NM_SettingsSummaryMessageMenu;
-        if (titleRes == R.string.CP_Message_Filtering) return R.string.NM_SettingsSummaryMessageFilters;
+        if (titleRes == R.string.NM_MessageMenu) return R.string.NM_SettingsSummaryMessageMenu;
+        if (titleRes == R.string.NM_Message_Filtering) return R.string.NM_SettingsSummaryMessageFilters;
         if (titleRes == R.string.SaveForNotifications || titleRes == R.string.Reply
                 || titleRes == R.string.SaveToGallery || titleRes == R.string.NM_MI_CopyPhoto
                 || titleRes == R.string.NM_MI_CopyPhotoAsSticker || titleRes == R.string.SaveToDownloads

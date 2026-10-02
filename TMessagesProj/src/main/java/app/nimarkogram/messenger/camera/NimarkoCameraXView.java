@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package app.nimarkogram.messenger.camera;
 
 import android.Manifest;
@@ -80,7 +82,6 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 
 import app.nimarkogram.messenger.NimarkoConfig;
-import app.nimarkogram.messenger.NimarkoCameraLog;
 
 public class NimarkoCameraXView extends BaseCameraView {
 
@@ -88,13 +89,16 @@ public class NimarkoCameraXView extends BaseCameraView {
 
     private final PreviewView previewView;
     private final ImageView blurredStubView;
+
     private final ImageView placeholderView;
     private final InternalLifecycle lifecycle;
 
     private boolean isStreaming;
+
     @Nullable private ValueAnimator textureViewAnimator;
 
     private int displayOrientation = 0;
+
     private int worldOrientation = 0;
 
     @Nullable private ProcessCameraProvider provider;
@@ -202,6 +206,7 @@ public class NimarkoCameraXView extends BaseCameraView {
         super(context);
         this.frontFacing = frontFacing;
         this.lifecycle = new InternalLifecycle();
+
         setBackgroundColor(Color.BLACK);
         this.previewView = new PreviewView(context);
         this.previewView.setScaleType(PreviewView.ScaleType.FIT_CENTER);
@@ -213,6 +218,7 @@ public class NimarkoCameraXView extends BaseCameraView {
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 android.view.Gravity.CENTER));
+
         this.placeholderView = new ImageView(context);
         this.placeholderView.setVisibility(View.GONE);
         this.placeholderView.setScaleType(ImageView.ScaleType.FIT_CENTER);
@@ -285,9 +291,6 @@ public class NimarkoCameraXView extends BaseCameraView {
         if (destroyed) return;
         final int generation = ++initializationGeneration;
         final Context ctx = getContext().getApplicationContext();
-        if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.dumpCameraInventory(ctx, "CameraX view init");
-        if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("CXView init front=" + frontFacing
-                + " streaming=" + streamingEnabled);
         Executor exec = ContextCompat.getMainExecutor(ctx);
         try {
             ListenableFuture<ProcessCameraProvider> future = CameraXUtils.getProviderFuture(ctx);
@@ -295,8 +298,6 @@ public class NimarkoCameraXView extends BaseCameraView {
                 if (destroyed || generation != initializationGeneration) return;
                 try {
                     provider = future.get();
-                    if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("CXView provider ready cameras="
-                            + provider.getAvailableCameraInfos().size());
                     lifecycle.markState(Lifecycle.State.RESUMED);
                     if (streamingEnabled && bindUseCases()) {
                         initied = true;
@@ -307,12 +308,10 @@ public class NimarkoCameraXView extends BaseCameraView {
                         initied = false;
                     }
                 } catch (Throwable t) {
-                    if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("CXView provider/init FAILED", t);
                     notifyCameraFailure(t);
                 }
             }, exec);
         } catch (Throwable t) {
-            if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("CXView init dispatch FAILED", t);
             notifyCameraFailure(t);
         }
     }
@@ -323,6 +322,7 @@ public class NimarkoCameraXView extends BaseCameraView {
         ++initializationGeneration;
         RecordingSession session = recordingSession;
         if (session != null && !session.finalizing) {
+
             destroyAfterRecordingFinalizes = true;
             if (session != null) {
                 session.stopRequested = true;
@@ -336,11 +336,10 @@ public class NimarkoCameraXView extends BaseCameraView {
     }
 
     private void teardownCamera() {
-        if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("CXView teardown recording=" + (recordingSession != null)
-                + " streaming=" + isStreaming);
         try {
             unbindOwnedUseCases();
         } catch (Throwable ignored) {}
+
         removeStreamStateObserver();
         camera = null;
         imageCapture = null;
@@ -413,6 +412,7 @@ public class NimarkoCameraXView extends BaseCameraView {
     public boolean isRecordingOrFinalizing() {
         return recordingSession != null;
     }
+
     private boolean isRecordingCaptureActive() {
         return recordingSession != null && !recordingSession.finalizing;
     }
@@ -457,14 +457,12 @@ public class NimarkoCameraXView extends BaseCameraView {
     @SuppressLint({"RestrictedApi", "UnsafeOptInUsageError"})
     private boolean bindUseCases() {
         if (provider == null || !streamingEnabled || isRecordingCaptureActive()) {
-            if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("CXView bind skipped provider=" + (provider != null)
-                    + " streamingEnabled=" + streamingEnabled
-                    + " recording=" + isRecordingOrFinalizing());
             return false;
         }
         unbindOwnedUseCases();
         camera = null;
         isStreaming = false;
+
         removeStreamStateObserver();
 
         CameraSelector selector =
@@ -474,13 +472,10 @@ public class NimarkoCameraXView extends BaseCameraView {
 
         final Size previewTargetSize = CameraXUtils.getAttachPreviewResolutionSize();
         final Size captureTargetSize = CameraXUtils.getTargetResolutionSize();
+
         final Range<Integer> targetFps = CameraXUtils.getTargetFpsRange();
 
         int effectiveRotation = targetRotation >= 0 ? targetRotation : worldOrientation;
-        if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("CXView bind begin front=" + frontFacing
-                + " previewTarget=" + previewTargetSize
-                + " captureTarget=" + captureTargetSize
-                + " targetFps=" + targetFps + " rotation=" + effectiveRotation);
         imageCapture = buildImageCapture(
                 selector, captureTargetSize, aspectRatio, effectiveRotation,
                 true, false);
@@ -495,9 +490,8 @@ public class NimarkoCameraXView extends BaseCameraView {
                 selector, previewTargetSize, captureTargetSize, aspectRatio,
                 effectiveRotation, targetFps);
         if (camera == null) {
+
             FileLog.e("NimarkoCameraXView.bindUseCases: all use-case binds failed");
-            if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("CXView bind FAILED all fallback profiles front="
-                    + frontFacing);
             imageCapture = null;
             preview = null;
             videoCapture = null;
@@ -507,11 +501,11 @@ public class NimarkoCameraXView extends BaseCameraView {
         final Camera boundCamera = camera;
         final int generation = cameraGeneration;
         zoomCoordinator.attach(boundCamera, generation);
+
         try {
+
             streamStateObserver = state -> {
                 if (boundCamera != camera || generation != cameraGeneration) return;
-                if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("CXView stream state=" + state
-                        + " front=" + frontFacing + " generation=" + generation);
                 if (state == PreviewView.StreamState.STREAMING) {
                     if (!cameraControlsReady && pendingPreviewReady == null) {
                         schedulePreviewReady(boundCamera, generation, applyInitialZoom(boundCamera, generation));
@@ -521,6 +515,7 @@ public class NimarkoCameraXView extends BaseCameraView {
                     cameraControlsReady = false;
                     zoomCoordinator.setReady(boundCamera, generation, false);
                 }
+
                 AndroidUtilities.runOnUIThread(() ->
                         NotificationCenter.getGlobalInstance().postNotificationName(NotificationCenter.cameraInitied));
             };
@@ -528,10 +523,7 @@ public class NimarkoCameraXView extends BaseCameraView {
             streamStateLD.observe(lifecycle, streamStateObserver);
         } catch (Throwable t) {
             FileLog.e(t);
-            if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("CXView stream observer FAILED", t);
         }
-        if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("CXView bind success front=" + frontFacing
-                + " generation=" + generation + " fps=" + appliedSessionFpsRange);
         return true;
     }
 
@@ -557,6 +549,7 @@ public class NimarkoCameraXView extends BaseCameraView {
                     && NimarkoConfig.startFromUltraWideCam
                     && CameraXUtils.isWideAngleAvailable(provider);
             baseZoomRatio = CameraXUtils.getBaseZoomRatio(zoomState, ultraWide);
+
             ListenableFuture<Void> future = boundCamera.getCameraControl().setZoomRatio(
                     zoomCoordinator.getRequestedOr(baseZoomRatio));
             trackControlFuture(future, boundCamera, generation, "CameraX initial zoom");
@@ -596,6 +589,7 @@ public class NimarkoCameraXView extends BaseCameraView {
         };
         pendingPreviewReady = ready;
         boolean waitingForZoom = initialZoom != null && !initialZoom.isDone();
+
         AndroidUtilities.runOnUIThread(ready, waitingForZoom ? 1500L : 120L);
         if (waitingForZoom) {
             initialZoom.addListener(() -> {
@@ -676,6 +670,7 @@ public class NimarkoCameraXView extends BaseCameraView {
     @Nullable
     private Bitmap captureTransitionFrame(int maxDimension) {
         try {
+
             Bitmap full = previewView.getBitmap();
             if (full == null || full.getWidth() <= 0 || full.getHeight() <= 0) {
                 return full;
@@ -732,8 +727,7 @@ public class NimarkoCameraXView extends BaseCameraView {
     @Override
     public void switchCamera() {
         if (isRecordingOrFinalizing() || cameraSwitchInProgress) return;
-        if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("CXView switch requested fromFront=" + frontFacing
-                + " streaming=" + isStreaming);
+
         if (isStreaming) {
             try {
                 Bitmap previewBitmap = captureTransitionFrame(320);
@@ -748,7 +742,6 @@ public class NimarkoCameraXView extends BaseCameraView {
         frontFacing = !frontFacing;
         if (!bindUseCases()) {
             cameraSwitchInProgress = false;
-            if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("CXView switch FAILED toFront=" + frontFacing);
             notifyCameraFailure(new IllegalStateException("CameraX lens switch failed"));
         }
     }
@@ -814,24 +807,19 @@ public class NimarkoCameraXView extends BaseCameraView {
     @Override
     public void takePicture(File output, @Nullable SavedCallback cb) {
         if (imageCapture == null) {
-            if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("CXView photo rejected imageCapture=null file=" + output);
             if (cb != null) cb.onSaved(false);
             return;
         }
-        if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("CXView photo start front=" + frontFacing + " file=" + output);
         lastShutterClickMs = SystemClock.elapsedRealtime();
         runHaptic();
         Executor exec = ContextCompat.getMainExecutor(getContext().getApplicationContext());
         ImageCapture.OutputFileOptions opts = new ImageCapture.OutputFileOptions.Builder(output).build();
         imageCapture.takePicture(opts, exec, new ImageCapture.OnImageSavedCallback() {
             @Override public void onImageSaved(ImageCapture.OutputFileResults outputFileResults) {
-                if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("CXView photo saved file=" + output
-                        + " uri=" + outputFileResults.getSavedUri());
                 if (cb != null) cb.onSaved(true);
             }
             @Override public void onError(ImageCaptureException exception) {
                 FileLog.e(exception);
-                if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("CXView photo FAILED file=" + output, exception);
                 if (cb != null) cb.onSaved(false);
             }
         });
@@ -917,6 +905,7 @@ public class NimarkoCameraXView extends BaseCameraView {
                 FileLog.e(t);
             }
         }
+
         focusProgress = 0.0f;
         innerAlpha = 1.0f;
         outerAlpha = 1.0f;
@@ -1110,6 +1099,7 @@ public class NimarkoCameraXView extends BaseCameraView {
             }
         }
         currentEffect = effect;
+
         if (!bindUseCases()) notifyCameraFailure(new IllegalStateException("CameraX effect bind failed"));
     }
 
@@ -1243,6 +1233,7 @@ public class NimarkoCameraXView extends BaseCameraView {
 
     @Override public void rebind() {
         if (isRecordingOrFinalizing()) return;
+
         if (isStreaming) {
             try {
                 Bitmap previewBitmap = captureTransitionFrame(320);
@@ -1302,6 +1293,7 @@ public class NimarkoCameraXView extends BaseCameraView {
                 FileLog.e(e2);
             }
         }
+
         try {
             unbindOwnedUseCases();
             imageCapture = buildImageCapture(
@@ -1316,6 +1308,7 @@ public class NimarkoCameraXView extends BaseCameraView {
         } catch (Throwable e3) {
             FileLog.e(e3);
         }
+
         try {
             unbindOwnedUseCases();
             videoCapture = null;
@@ -1379,6 +1372,7 @@ public class NimarkoCameraXView extends BaseCameraView {
                 }
             });
             session.recording = started;
+
             if (session.stopRequested) {
                 started.stop();
             }
@@ -1411,6 +1405,7 @@ public class NimarkoCameraXView extends BaseCameraView {
         if (recordingSession != session || session.finalizing) return;
         session.finalizing = true;
         session.recording = null;
+
         finishDeferredDestroy();
         final File file = session.file;
         final VideoSavedCallback cb = session.callback;
@@ -1423,6 +1418,7 @@ public class NimarkoCameraXView extends BaseCameraView {
 
         boolean finalizeReportedError = false;
         try {
+
             finalizeReportedError = event.hasError();
         } catch (Throwable ignored) {}
 
@@ -1433,6 +1429,7 @@ public class NimarkoCameraXView extends BaseCameraView {
         }
         if (abandoned || !validFile || cb == null) {
             if (file != null) { try { file.delete(); } catch (Throwable ignored) {} }
+
             try {
                 if (cb != null && !abandoned) cb.onFinishVideoRecording(null, 0L);
             } finally {
@@ -1528,10 +1525,12 @@ public class NimarkoCameraXView extends BaseCameraView {
      */
     @Override
     public void setRecordFile(java.io.File generateVideoPath) {
+
     }
 
     @Override
     public void setFpsLimit(int fpsLimit) {
+
     }
 
     @Override

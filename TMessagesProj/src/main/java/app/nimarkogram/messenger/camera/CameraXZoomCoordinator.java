@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package app.nimarkogram.messenger.camera;
 
 import android.os.Looper;
@@ -12,8 +14,6 @@ import com.google.common.util.concurrent.ListenableFuture;
 
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.FileLog;
-
-import app.nimarkogram.messenger.NimarkoCameraLog;
 
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.ExecutionException;
@@ -79,6 +79,7 @@ final class CameraXZoomCoordinator {
     void requestZoomRatio(float ratio) {
         requestZoomRatio(ratio, false);
     }
+
     void requestAnimatedZoomRatio(float ratio) {
         if (Looper.myLooper() != Looper.getMainLooper()) {
             requestZoomRatio(ratio);
@@ -86,28 +87,22 @@ final class CameraXZoomCoordinator {
         }
         requestZoomRatio(ratio, true);
     }
+
     private void requestZoomRatio(float ratio, boolean animationFrame) {
         Camera targetCamera = camera;
         if (targetCamera == null || !isFinite(ratio)) {
-            if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("CXZoom request ignored camera="
-                    + (targetCamera != null) + " ratio=" + ratio);
             return;
         }
         try {
             ZoomState state = targetCamera.getCameraInfo().getZoomState().getValue();
             if (state == null) {
-                if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("CXZoom request ignored: state unavailable ratio="
-                        + ratio);
                 return;
             }
             requestedRatio = clamp(ratio,
                     state.getMinZoomRatio(), state.getMaxZoomRatio());
-            if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("CXZoom request ratio=" + ratio
-                    + " clamped=" + requestedRatio
-                    + " range=" + state.getMinZoomRatio() + ".."
-                    + state.getMaxZoomRatio() + " ready=" + ready);
             if (ready) {
                 if (animationFrame) {
+
                     if (frameCallbackPosted) {
                         Choreographer.getInstance().removeFrameCallback(frameCallback);
                         frameCallbackPosted = false;
@@ -156,8 +151,6 @@ final class CameraXZoomCoordinator {
         final ListenableFuture<Void> future;
         try {
             submittedRatio = targetRatio;
-            if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("CXZoom submit ratio=" + targetRatio
-                    + " generation=" + generation);
             future = targetCamera.getCameraControl().setZoomRatio(targetRatio);
             inFlight = future;
         } catch (Throwable error) {
@@ -173,8 +166,6 @@ final class CameraXZoomCoordinator {
             inFlight = null;
             try {
                 future.get();
-                if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("CXZoom applied ratio=" + submittedRatio
-                        + " generation=" + generation);
             } catch (Throwable error) {
                 Throwable cause = error instanceof ExecutionException
                         && error.getCause() != null ? error.getCause() : error;

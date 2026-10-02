@@ -1,3 +1,12 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
+/**
+ * This is the source code of Nimarko for Android.
+ * It is licensed under GNU GPL v. 2 or later.
+ * You should have received a copy of the license in this archive (see LICENSE).
+ * Please, be respectful and credit the original author if you use this code.
+ *
+ * Copyright github.com/arsLan4k1390, 2022-2026.
  */
 
 package app.nimarkogram.messenger.preferences;
@@ -49,6 +58,7 @@ import app.nimarkogram.messenger.preferences.helpers.PopupHelper;
 import app.nimarkogram.messenger.preferences.helpers.SettingsHelper;
 
 public class GeneralPreferencesActivity extends NimarkoUniversalPreferencesActivity {
+
     @Override
     public org.telegram.ui.Components.AnimatedLinearLayout getInAppNotificationPanel() {
         org.telegram.ui.Components.AnimatedLinearLayout panel = super.getInAppNotificationPanel();
@@ -252,11 +262,11 @@ public class GeneralPreferencesActivity extends NimarkoUniversalPreferencesActiv
             items.add(asSettingsValue(inAppNotificationsPreviewRow, IconBackgroundColors.BLUE,
                     R.drawable.msg_played, getString(R.string.NM_InAppNotificationsPreview), ""));
         }
-        items.add(UItem.asShadow(null));
-        items.add(UItem.asHeader(getString(R.string.Notifications)));
+        items.add(UItem.asShadow(-101, null));
+        items.add(UItem.asHeader(-102, getString(R.string.Notifications)));
         items.add(SettingsHelper.asSwitchCG(silenceNonContactsRow,
-                        getString(R.string.CP_SilenceNonContacts),
-                        getString(R.string.CP_SilenceNonContacts_Desc))
+                        getString(R.string.NM_SilenceNonContacts),
+                        getString(R.string.NM_SilenceNonContacts_Desc))
                 .setChecked(NimarkoConfig.silenceNonContacts)
         );
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && Build.VERSION.SDK_INT < Build.VERSION_CODES.VANILLA_ICE_CREAM) {
@@ -276,16 +286,16 @@ public class GeneralPreferencesActivity extends NimarkoUniversalPreferencesActiv
             notificationReactionCell.update(false);
             items.add(UItem.asCustom(notificationReactionEmojiRow, notificationReactionCell));
         }
-        items.add(UItem.asShadow(null));
-        items.add(UItem.asHeader(getString(R.string.NotificationsStories)));
+        items.add(UItem.asShadow(-103, null));
+        items.add(UItem.asHeader(-104, getString(R.string.NotificationsStories)));
         items.add(SettingsHelper.asSwitchCG(hideStoriesRow,
-                        getString(R.string.CP_HideStories),
-                        getString(R.string.CP_HideStories_Desc))
+                        getString(R.string.NM_HideStories),
+                        getString(R.string.NM_HideStories_Desc))
                 .setChecked(NimarkoConfig.hideStories)
         );
         items.add(asSettingsLink(archiveStoriesRow, IconBackgroundColors.ORANGE,
-                R.drawable.msg_archive_stories, getString(R.string.CP_ArchiveStories),
-                getString(R.string.CP_ArchiveStories_Desc)));
+                R.drawable.msg_archive_stories, getString(R.string.NM_ArchiveStories),
+                getString(R.string.NM_ArchiveStories_Desc)));
     }
 
     private void fillConnection(ArrayList<UItem> items) {
@@ -339,6 +349,7 @@ public class GeneralPreferencesActivity extends NimarkoUniversalPreferencesActiv
 
             configStringKeys.add(getString(R.string.EP_NavigationAnimationBezier));
             configValues.add(NimarkoConfig.SPRING_CLASSIC);
+
             configStringKeys.add(getString(R.string.NimarkoNavigationAnimationMaterial));
             configValues.add(NimarkoConfig.SPRING_MATERIAL);
 
@@ -377,6 +388,7 @@ public class GeneralPreferencesActivity extends NimarkoUniversalPreferencesActiv
             NimarkoConfig.toggleNotificationReactions();
             item.checked = NimarkoConfig.notificationReactions;
             SettingsHelper.updateCheckState(view, NimarkoConfig.notificationReactions);
+
             updateItemsAfterToggle();
         } else if (item.id == notificationReactionEmojiRow) {
             showNotificationReactionDialog(view);
@@ -512,7 +524,7 @@ public class GeneralPreferencesActivity extends NimarkoUniversalPreferencesActiv
         clickListener.add(NimarkoConfig::toggleArchiveStoriesFromChannels);
 
         PopupHelper.showSwitchAlert(
-                getString(R.string.CP_ArchiveStories),
+                getString(R.string.NM_ArchiveStories),
                 GeneralPreferencesActivity.this,
                 prefTitle,
                 prefIcon,
@@ -540,6 +552,7 @@ public class GeneralPreferencesActivity extends NimarkoUniversalPreferencesActiv
                     return;
                 }
                 if (!org.telegram.messenger.UserConfig.getInstance(currentAccount).isPremium()) {
+
                     if (popup[0] != null) {
                         selectReactionDialog = null;
                         popup[0].dismiss();

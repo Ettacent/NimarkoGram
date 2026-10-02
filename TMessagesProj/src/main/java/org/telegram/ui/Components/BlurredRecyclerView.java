@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components;
 
 import android.content.Context;
@@ -73,9 +75,13 @@ public class BlurredRecyclerView extends RecyclerListView {
 
     @Override
     public void capture(Canvas canvas, RectF position) {
+        boolean previousAlwaysDrawChild = alwaysDrawChild;
         alwaysDrawChild = true;
-        super.capture(canvas, position);
-        alwaysDrawChild = false;
+        try {
+            super.capture(canvas, position);
+        } finally {
+            alwaysDrawChild = previousAlwaysDrawChild;
+        }
     }
 
     @Override

@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * Copyright 2023, original contributor
  * Licensed under GNU GPL v2 or later. See LICENSE.

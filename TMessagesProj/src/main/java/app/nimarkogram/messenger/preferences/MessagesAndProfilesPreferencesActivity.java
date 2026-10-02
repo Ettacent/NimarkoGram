@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /**
  * This is the source code of Cherrygram for Android.
  * It is licensed under GNU GPL v. 2 or later.
@@ -9,7 +11,6 @@
  * Ported into NimarkoGram (GPL-2.0):
  *   - package renamed to app.nimarkogram.messenger.preferences
  *   - CherrygramAppearanceConfig.INSTANCE.getX/setX → NimarkoConfig.* + toggle*
- *   - R.string.CP_* / R.string.AP_ShowID → R.string.NM_MP_* + NM_AP_ShowID
  *   - Constants.* inlined (CHERRY_EMOJI_ID -> 0 since NG ships no Cherry asset;
  *     PROFILE_BACKGROUND_COLOR_ID_RED / REPLY_BACKGROUND_COLOR_ID kept as
  *     literal palette indices)
@@ -420,7 +421,7 @@ public class MessagesAndProfilesPreferencesActivity extends BaseFragment {
                                 detailCell.setTextAndValue(getString(R.string.BusinessHoursProfileNowOpen), getString(R.string.BusinessHoursProfile), false);
                             } else if (position == businessLocationPreviewRow) {
                                 detailCell.textView.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText, getResourceProvider()));
-                                detailCell.setTextAndValue("NimarkoGram, Worldwide", getString(R.string.BusinessProfileLocation), false);
+                                detailCell.setTextAndValue(LocaleController.formatString(R.string.NM_Settings_WorldwidePreview, getString(R.string.AppName)), getString(R.string.BusinessProfileLocation), false);
                             }
                             break;
                         }
@@ -501,7 +502,7 @@ public class MessagesAndProfilesPreferencesActivity extends BaseFragment {
                         profilePage.profilePreview.subtitleView.setText(getString(R.string.Online));
                     } else {
                         profilePage.profilePreview.titleView.setRightDrawable((Drawable) null);
-                        String tgPremium = NimarkoConfig.disablePremiumStatuses ? " | TG Premium" : "";
+                        String tgPremium = NimarkoConfig.disablePremiumStatuses ? " | " + getString(R.string.TelegramPremium) : "";
                         profilePage.profilePreview.subtitleView.setText(getString(R.string.Online) + tgPremium);
                     }
                     // NG nick-truncation fix: setRightDrawable re-lays out the title against its STALE
@@ -948,6 +949,7 @@ public class MessagesAndProfilesPreferencesActivity extends BaseFragment {
     private FilledTabsView tabsView;
     private View initialSettingScrollHost;
     private Runnable initialSettingScroll;
+
     private void cancelInitialSettingScroll() {
         if (initialSettingScrollHost != null && initialSettingScroll != null) {
             initialSettingScrollHost.removeCallbacks(initialSettingScroll);
@@ -1341,7 +1343,7 @@ public class MessagesAndProfilesPreferencesActivity extends BaseFragment {
             }
 
             titleView.setText(title);
-            String tgPremium = NimarkoConfig.disablePremiumStatuses ? " | TG Premium" : "";
+            String tgPremium = NimarkoConfig.disablePremiumStatuses ? " | " + getString(R.string.TelegramPremium) : "";
             subtitleView.setText(getString(R.string.Online) + tgPremium);
 
             setWillNotDraw(false);
@@ -1555,11 +1557,11 @@ public class MessagesAndProfilesPreferencesActivity extends BaseFragment {
     private static String getDCGeo(int dcId) {
         switch (dcId) {
             case 1:
-            case 3: return "USA (Miami)";
+            case 3: return getString(R.string.NM_Settings_DCMiami);
             case 2:
-            case 4: return "NLD (Amsterdam)";
-            case 5: return "SGP (Singapore)";
-            default: return "UNK (Unknown)";
+            case 4: return getString(R.string.NM_Settings_DCAmsterdam);
+            case 5: return getString(R.string.NM_Settings_DCSingapore);
+            default: return getString(R.string.NumberUnknown);
         }
     }
 }

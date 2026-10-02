@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 5.x.x.
  * It is licensed under GNU GPL v. 2 or later.
@@ -528,6 +530,7 @@ public class ThemeActivity extends BaseFragment implements NotificationCenter.No
     private void updateRows(boolean notify) {
         updateRows(notify, false);
     }
+
     private void updateRows(boolean notify, boolean contentSettingsOnly) {
         int oldRowCount = rowCount;
         int previousSensitiveContentRow = sensitiveContentRow;
@@ -861,6 +864,7 @@ public class ThemeActivity extends BaseFragment implements NotificationCenter.No
         getNotificationCenter().addObserver(this, NotificationCenter.themeUploadError);
         getNotificationCenter().addObserver(this, NotificationCenter.webBrowserSettingsUpdate);
         if (currentType == THEME_TYPE_BASIC) {
+
             Theme.loadRemoteThemes(currentAccount, false);
             Theme.checkCurrentRemoteTheme(false);
         }
@@ -1363,6 +1367,7 @@ public class ThemeActivity extends BaseFragment implements NotificationCenter.No
                     }
                 }
             } else if (position == contactsReimportRow) {
+
             } else if (position == contactsSortRow) {
                 if (getParentActivity() == null) {
                     return;
@@ -1537,8 +1542,10 @@ public class ThemeActivity extends BaseFragment implements NotificationCenter.No
     }
 
     private void editTheme() {
-        Theme.ThemeInfo currentTheme = Theme.getCurrentTheme();
+        Theme.ThemeInfo currentTheme = currentType == THEME_TYPE_NIGHT ? Theme.getCurrentNightTheme() : Theme.getCurrentTheme();
+        if (currentTheme == null) return;
         Theme.ThemeAccent accent = currentTheme.getAccent(false);
+        if (accent == null) return;
         presentFragment(new ThemePreviewActivity(currentTheme, false, ThemePreviewActivity.SCREEN_TYPE_ACCENT_COLOR, accent.id >= 100, currentType == THEME_TYPE_NIGHT));
     }
 
@@ -1557,6 +1564,7 @@ public class ThemeActivity extends BaseFragment implements NotificationCenter.No
     @Override
     public void onResume() {
         super.onResume();
+
         if (firstResume) {
             firstResume = false;
         } else if (listAdapter != null) {
@@ -2006,7 +2014,8 @@ public class ThemeActivity extends BaseFragment implements NotificationCenter.No
         @Override
         public void notifyDataSetChanged() {
             currentTheme = currentType == THEME_TYPE_NIGHT ? Theme.getCurrentNightTheme() : Theme.getCurrentTheme();
-            themeAccents = new ArrayList<>(currentTheme.themeAccents);
+            themeAccents = currentTheme == null || currentTheme.themeAccents == null
+                    ? new ArrayList<>() : new ArrayList<>(currentTheme.themeAccents);
             super.notifyDataSetChanged();
         }
 
@@ -2055,7 +2064,7 @@ public class ThemeActivity extends BaseFragment implements NotificationCenter.No
         }
 
         private int findCurrentAccent() {
-            return themeAccents.indexOf(currentTheme.getAccent(false));
+            return currentTheme == null ? -1 : themeAccents.indexOf(currentTheme.getAccent(false));
         }
     }
 
@@ -2335,10 +2344,20 @@ public class ThemeActivity extends BaseFragment implements NotificationCenter.No
                     accentsListView.setAdapter(accentsAdapter);
                     accentsListView.setOnItemClickListener((view1, position) -> {
                         Theme.ThemeInfo currentTheme = currentType == THEME_TYPE_NIGHT ? Theme.getCurrentNightTheme() : Theme.getCurrentTheme();
+                        if (currentTheme == null || currentTheme != accentsAdapter.currentTheme
+                                || currentTheme.getAccent(false) == null) {
+                            accentsAdapter.notifyDataSetChanged();
+                            return;
+                        }
+                        if (position < 0 || position >= accentsAdapter.getItemCount()) return;
                         if (position == accentsAdapter.getItemCount() - 1) {
                             presentFragment(new ThemePreviewActivity(currentTheme, false, ThemePreviewActivity.SCREEN_TYPE_ACCENT_COLOR, false, currentType == THEME_TYPE_NIGHT));
                         } else {
                             Theme.ThemeAccent accent = accentsAdapter.themeAccents.get(position);
+                            if (currentTheme.themeAccentsMap.get(accent.id) != accent) {
+                                accentsAdapter.notifyDataSetChanged();
+                                return;
+                            }
 
                             if (!TextUtils.isEmpty(accent.patternSlug) && accent.id != Theme.DEFALT_THEME_ACCENT_ID) {
                                 Theme.PatternsLoader.createLoader(false);
@@ -2371,10 +2390,19 @@ public class ThemeActivity extends BaseFragment implements NotificationCenter.No
                         }
                     });
                     accentsListView.setOnItemLongClickListener((view12, position) -> {
+                        Theme.ThemeInfo currentTheme = currentType == THEME_TYPE_NIGHT ? Theme.getCurrentNightTheme() : Theme.getCurrentTheme();
+                        if (currentTheme == null || currentTheme != accentsAdapter.currentTheme) {
+                            accentsAdapter.notifyDataSetChanged();
+                            return false;
+                        }
                         if (position < 0 || position >= accentsAdapter.themeAccents.size()) {
                             return false;
                         }
                         Theme.ThemeAccent accent = accentsAdapter.themeAccents.get(position);
+                        if (currentTheme.themeAccentsMap.get(accent.id) != accent) {
+                            accentsAdapter.notifyDataSetChanged();
+                            return false;
+                        }
                         if (accent.id >= 100 && !accent.isDefault) {
                             AlertDialog.Builder builder = new AlertDialog.Builder(getParentActivity());
                             CharSequence[] items = new CharSequence[]{

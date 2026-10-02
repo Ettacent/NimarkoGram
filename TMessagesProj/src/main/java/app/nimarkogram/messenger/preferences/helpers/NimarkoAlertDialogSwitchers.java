@@ -1,12 +1,11 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /**
- * This file is part of NimarkoGram for Android.
+ * This is the source code of Nimarko for Android.
  * It is licensed under GNU GPL v. 2 or later.
  * You should have received a copy of the license in this archive (see LICENSE).
+ * Please, be respectful and credit the original author if you use this code.
  *
- * NimarkoGram modifications:
- * Copyright Ettacent, 2026.
- *
- * Portions derived from Cherrygram:
  * Copyright github.com/arsLan4k1390, 2022-2026.
  */
 
@@ -158,7 +157,7 @@ public class NimarkoAlertDialogSwitchers {
                 Gravity.TOP));
 
         BottomSheet.Builder builder = new BottomSheet.Builder(context, false, resourcesProvider)
-                .setTitle(getString(R.string.CP_Messages_Size), true)
+                .setTitle(getString(R.string.NM_Messages_Size), true)
                 .setTitleMultipleLines(true)
                 .setApplyTopPadding(false)
                 .setApplyBottomPadding(false)

@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.web;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -308,8 +310,8 @@ public class WebBrowserSettings extends UniversalFragment implements Notificatio
             items.add(UItem.asShadow(LocaleController.getString(R.string.BrowserSettingsSearchEngineInfo)));
 
             if (BuildVars.DEBUG_PRIVATE_VERSION) {
-                items.add(UItem.asCheck(12, "adaptable colors").setChecked(SharedConfig.adaptableColorInBrowser));
-                items.add(UItem.asCheck(13, "only local IV").setChecked(SharedConfig.onlyLocalInstantView));
+                items.add(UItem.asCheck(12, LocaleController.getString(R.string.NM_Settings_BrowserAdaptiveColors)).setChecked(SharedConfig.adaptableColorInBrowser));
+                items.add(UItem.asCheck(13, LocaleController.getString(R.string.NM_Settings_BrowserLocalInstantViewOnly)).setChecked(SharedConfig.onlyLocalInstantView));
             }
         }
     }

@@ -1,3 +1,7 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
+
+
 package app.nimarkogram.messenger.security;
 
 import static org.telegram.messenger.LocaleController.getString;
@@ -102,6 +106,7 @@ public class NimarkoBiometricPrompt {
 
     public static void prompt(Activity activity, int account, boolean allowSystem,
                               Runnable successCallback, Runnable failCallback) {
+
         callBiometricPrompt(activity, account, allowSystem, new NimarkoBiometricListener() {
             @Override
             public void onSuccess(BiometricPrompt.AuthenticationResult result) {
@@ -110,6 +115,7 @@ public class NimarkoBiometricPrompt {
 
             @Override
             public void onFailed() {
+
             }
 
             @Override
@@ -123,6 +129,70 @@ public class NimarkoBiometricPrompt {
         void onSuccess(BiometricPrompt.AuthenticationResult result);
         void onFailed();
         void onError(int error, CharSequence msg);
+    }
+
+    public static void promptForChat(Activity activity, int account, long userId, long chatId, int encId,
+                                     Runnable successCallback) {
+        promptForChat(activity, account, userId, chatId, encId, successCallback, null);
+    }
+
+    public static void promptForChat(Activity activity, int account, long userId, long chatId, int encId,
+                                     Runnable successCallback, Runnable failCallback) {
+        if (captureOwnerUid(account) <= 0 || !isOwnerLive(activity)) {
+            if (failCallback != null) failCallback.run();
+            return;
+        }
+        java.util.function.BooleanSupplier required = () -> app.nimarkogram.messenger.utils.chats.NimarkoChatsPasswordHelper
+                .shouldRequireBiometrics(userId, chatId, encId, account);
+        if (!required.getAsBoolean()) {
+            if (successCallback != null) successCallback.run();
+            return;
+        }
+        boolean allowSystem = app.nimarkogram.messenger.NimarkoConfig.allowSystemPasscode;
+        if (!(activity instanceof FragmentActivity) || !canAuthenticate(allowSystem)) {
+            if (failCallback != null) failCallback.run();
+            return;
+        }
+        startPrompt((FragmentActivity) activity, account, allowSystem, new NimarkoBiometricListener() {
+            @Override public void onSuccess(BiometricPrompt.AuthenticationResult result) {
+                if (successCallback != null) successCallback.run();
+            }
+            @Override public void onFailed() {}
+            @Override public void onError(int error, CharSequence message) {
+                if (failCallback != null) failCallback.run();
+            }
+        }, required);
+    }
+
+    public static void onChatProtectionChanged(int account) {
+        synchronized (recentlyVerified) {
+            if (account < 0) {
+                recentlyVerified.clear();
+                verifiedAccountUids.clear();
+            } else {
+                removeAccountTokensLocked(account);
+            }
+        }
+        List<BiometricPrompt> obsolete = new ArrayList<>();
+        synchronized (AUTH_LOCK) {
+            Iterator<PendingAuth> iterator = pendingAuths.iterator();
+            while (iterator.hasNext()) {
+                PendingAuth auth = iterator.next();
+                if ((account < 0 || auth.account == account) && auth.required != null
+                        && (!isIdentityLive(auth) || !auth.required.getAsBoolean())) {
+                    auth.terminal = true;
+                    iterator.remove();
+                    obsolete.add(auth.prompt);
+                }
+            }
+        }
+        for (BiometricPrompt prompt : obsolete) {
+            try {
+                prompt.cancelAuthentication();
+            } catch (Throwable error) {
+                FileLog.e(error);
+            }
+        }
     }
 
     public static boolean hasBiometricEnrolled() {
@@ -179,7 +249,6 @@ public class NimarkoBiometricPrompt {
         }
     }
 
-
     private static final Object AUTH_LOCK = new Object();
     private static final ArrayList<PendingAuth> pendingAuths = new ArrayList<>();
     private static final java.util.HashSet<Integer> loggingOutAccounts = new java.util.HashSet<>();
@@ -189,13 +258,16 @@ public class NimarkoBiometricPrompt {
         final Activity owner;
         final int account;
         final long ownerUid;
+        final java.util.function.BooleanSupplier required;
         boolean terminal;
 
-        PendingAuth(BiometricPrompt prompt, Activity owner, int account, long ownerUid) {
+        PendingAuth(BiometricPrompt prompt, Activity owner, int account, long ownerUid,
+                    java.util.function.BooleanSupplier required) {
             this.prompt = prompt;
             this.owner = owner;
             this.account = account;
             this.ownerUid = ownerUid;
+            this.required = required;
         }
     }
 
@@ -220,6 +292,11 @@ public class NimarkoBiometricPrompt {
 
     private static void startPrompt(FragmentActivity activity, int account, boolean allowSystem,
                                     NimarkoBiometricListener callback) {
+        startPrompt(activity, account, allowSystem, callback, null);
+    }
+
+    private static void startPrompt(FragmentActivity activity, int account, boolean allowSystem,
+                                    NimarkoBiometricListener callback, java.util.function.BooleanSupplier required) {
         final long ownerUid = captureOwnerUid(account);
         if (ownerUid <= 0 || !isOwnerLive(activity)) {
             if (callback != null) {
@@ -251,6 +328,7 @@ public class NimarkoBiometricPrompt {
                             synchronized (AUTH_LOCK) {
                                 PendingAuth auth = authRef[0];
                                 if (auth == null || auth.terminal || !isIdentityLive(auth)) return;
+
                                 if (callback != null) callback.onFailed();
                             }
                         },
@@ -265,7 +343,7 @@ public class NimarkoBiometricPrompt {
                         }
                 )
         );
-        PendingAuth auth = new PendingAuth(prompt, activity, account, ownerUid);
+        PendingAuth auth = new PendingAuth(prompt, activity, account, ownerUid, required);
         authRef[0] = auth;
         synchronized (AUTH_LOCK) {
             if (!isIdentityLive(auth)) {
@@ -349,7 +427,6 @@ public class NimarkoBiometricPrompt {
         }
     }
 
-
     private static final java.util.HashMap<String, Long> recentlyVerified = new java.util.HashMap<>();
     private static final java.util.HashMap<Integer, Long> verifiedAccountUids = new java.util.HashMap<>();
 
@@ -373,6 +450,7 @@ public class NimarkoBiometricPrompt {
     }
 
     public static boolean isRecentlyVerified(int account, long userId, long chatId, int encId) {
+
         int ttlSec = app.nimarkogram.messenger.NimarkoConfig.lockedChatsBiometricTtlSec;
         long effectiveTtlMs;
         if (ttlSec == 0) {

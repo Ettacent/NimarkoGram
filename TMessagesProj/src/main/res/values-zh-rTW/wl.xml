@@ -1,32 +1,33 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Modifications Copyright (C) 2026 Ettacent -->
 <resources>
     <string name="NM_WL_Route">線路</string>
-    <string name="NM_WL_Ordinary">一般線路</string>
-    <string name="NM_WL_Title">移动网络访问</string>
+    <string name="NM_WL_Ordinary">一般繞過封鎖</string>
+    <string name="NM_WL_Title">行動網路存取</string>
     <string name="NM_WL_Network">MegaFon 和 Yota</string>
-    <string name="NM_WL_About">用于 MegaFon 和 Yota 移动网络受限时，经莫斯科连接欧洲。可用性取决于运营商网络。</string>
+    <string name="NM_WL_About">適用於 MegaFon 和 Yota 行動網路受限時，透過莫斯科連線至歐洲。能否使用取決於電信業者的網路。</string>
     <string name="NM_WL_Request">存取權限</string>
-    <string name="NM_WL_Status">访问状态</string>
+    <string name="NM_WL_Status">存取狀態</string>
     <string name="NM_WL_OtherAccount">可透過此裝置上已登入的其他帳號使用。</string>
-    <string name="NM_WL_Choose">添加截图</string>
-    <string name="NM_WL_FileHint">請附上 MegaFon 或 Yota 個人帳戶頁面的截圖或照片。</string>
-    <string name="NM_WL_SharedAccess">只要此裝置上至少有一個已獲批准的帳號保持登入，所有帳號均可使用，無需重複申請。</string>
-    <string name="NM_WL_Privacy">截图及文件中存在的日期信息将发送给审核员。元数据不能证明截图真实。审核后或申请在 24 小时后过期时会删除截图；删除失败会重试。首次验证账号需要连接 Telegram。此设备上登录一个已获批准的账号即可；退出后将停止访问，除非仍有其他已获批准的账号登录。</string>
+    <string name="NM_WL_Choose">附上螢幕截圖</string>
+    <string name="NM_WL_FileHint">請附上 MegaFon 或 Yota 個人帳戶頁面的螢幕截圖或照片。</string>
+    <string name="NM_WL_SharedAccess">只要此裝置上至少有一個已獲核准的帳號保持登入，所有帳號均可使用，無需重複申請。</string>
+    <string name="NM_WL_Privacy">螢幕截圖及檔案中的日期資訊（若有）會傳送給審核人員。中繼資料無法證明截圖的真實性。截圖會在審核後或申請於 24 小時後到期時刪除；刪除失敗會重試。首次驗證帳號需要連線至 Telegram。此裝置上只要有一個已獲核准的帳號保持登入即可使用；登出後將無法存取，除非仍有其他已獲核准的帳號保持登入。</string>
     <string name="NM_WL_Sending">正在提交…</string>
-    <string name="NM_WL_Checking">正在检查…</string>
-    <string name="NM_WL_Approved">已批准</string>
-    <string name="NM_WL_Pending">审核中</string>
-    <string name="NM_WL_Blocked">访问已被封禁</string>
-    <string name="NM_WL_Rejected">申请已拒绝</string>
-    <string name="NM_WL_Expired">申请已过期，请重新提交。</string>
-    <string name="NM_WL_Revoked">访问权限已撤销</string>
-    <string name="NM_WL_Busy">请稍后重试</string>
-    <string name="NM_WL_None">請附上電信業者個人帳戶頁面的截圖或照片以供審核。</string>
-    <string name="NM_WL_FileLarge">截图不能超过 8 MB</string>
-    <string name="NM_WL_FileInvalid">无法读取此图片</string>
-    <string name="NM_WL_AuthRequired">请连接 Telegram 以验证账号</string>
-    <string name="NM_WL_AccountChanged">账号已更改，请重试。</string>
-    <string name="NM_WL_Error">无法检查访问权限，请稍后重试。</string>
+    <string name="NM_WL_Checking">正在檢查…</string>
+    <string name="NM_WL_Approved">已核准</string>
+    <string name="NM_WL_Pending">審核中</string>
+    <string name="NM_WL_Blocked">存取已遭封鎖</string>
+    <string name="NM_WL_Rejected">申請已遭拒絕</string>
+    <string name="NM_WL_Expired">申請已到期，請重新提交。</string>
+    <string name="NM_WL_Revoked">存取權限已撤銷</string>
+    <string name="NM_WL_Busy">請稍後重試</string>
+    <string name="NM_WL_None">請附上電信業者個人帳戶頁面的螢幕截圖或照片以供審核。</string>
+    <string name="NM_WL_FileLarge">螢幕截圖不得超過 8 MB</string>
+    <string name="NM_WL_FileInvalid">無法讀取此圖片</string>
+    <string name="NM_WL_AuthRequired">請連線至 Telegram 以驗證帳號</string>
+    <string name="NM_WL_AccountChanged">帳號已變更，請重試。</string>
+    <string name="NM_WL_Error">無法檢查存取權限，請稍後重試。</string>
     <string name="NM_WL_Details">存取條件與隱私</string>
-    <string name="NM_WL_AutoSubmit">所選圖片及檔案日期將自動傳送給審核員。審核狀態會在此處自動更新。</string>
+    <string name="NM_WL_AutoSubmit">所選圖片及檔案日期將自動傳送給審核人員。審核狀態會在此處自動更新。</string>
 </resources>

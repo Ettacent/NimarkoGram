@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package app.nimarkogram.messenger.api.network;
 
 import app.nimarkogram.messenger.api.dto.BadgeDTO;

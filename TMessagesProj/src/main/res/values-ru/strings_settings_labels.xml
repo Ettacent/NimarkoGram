@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Copyright (C) 2026 Ettacent -->
+<resources>
+    <string name="NM_Settings_WorldwidePreview">%1$s, весь мир</string>
+    <string name="NM_Settings_DCMiami">США (Майами)</string>
+    <string name="NM_Settings_DCAmsterdam">Нидерланды (Амстердам)</string>
+    <string name="NM_Settings_DCSingapore">Сингапур</string>
+    <string name="NM_Settings_BlurOpacityValue">Непрозрачность размытия: %1$s</string>
+    <string name="NM_Settings_BlurRadius">Радиус размытия</string>
+    <string name="NM_Settings_IconHighlightTop">Верхний блик</string>
+    <string name="NM_Settings_IconHighlightBottom">Нижний блик</string>
+    <string name="NM_Settings_IconHighlightColor">Цвет блика</string>
+    <string name="NM_Settings_IconDiffuseLighting">Рассеянное освещение</string>
+    <string name="NM_Settings_IconNormalHighlights">Блики карты нормалей</string>
+    <string name="NM_Settings_IconNormalHighlightColor">Цвет бликов карты нормалей</string>
+    <string name="NM_Settings_IconSmallStarSize">Размер маленьких звёзд</string>
+    <string name="NM_Settings_ShowMKVAsVideoBeta">Показывать файлы MKV как видео (только в бета-версии)</string>
+    <string name="NM_Settings_StreamAllVideosBeta">Потоковое воспроизведение всех видео (только в бета-версии)</string>
+    <string name="NM_Settings_BrowserAdaptiveColors">Адаптивные цвета</string>
+    <string name="NM_Settings_BrowserLocalInstantViewOnly">Только локальный быстрый просмотр</string>
+</resources>

@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * Ported from Cherrygram (uz.unnarsx.cherrygram.core.ui.MD3AdapterWithDiffUtils)
  * for NimarkoGram. Verbatim port; package renamed only. Uses

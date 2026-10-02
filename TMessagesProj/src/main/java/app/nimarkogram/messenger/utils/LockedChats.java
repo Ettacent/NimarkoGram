@@ -1,3 +1,7 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
+
+
 package app.nimarkogram.messenger.utils;
 
 import android.content.SharedPreferences;
@@ -42,6 +46,7 @@ public final class LockedChats {
         if (preferences.getBoolean(MIGRATION_CLEANED_KEY, false)) return;
         SharedPreferences.Editor editor = preferences.edit().remove(LEGACY_PREF_KEY);
         for (int account = 0; account < UserConfig.MAX_ACCOUNT_COUNT; account++) {
+
             editor.remove(LEGACY_ACCOUNT_KEY_PREFIX + account);
         }
         editor.putBoolean(MIGRATION_CLEANED_KEY, true).commit();
@@ -116,6 +121,7 @@ public final class LockedChats {
                 if (wasLocked) c.add(key); else c.remove(key);
                 return false;
             }
+            if (wasLocked != locked) notifyProtectionChanged(account);
             return true;
         }
     }
@@ -146,8 +152,19 @@ public final class LockedChats {
                 cache.addAll(previous);
                 return false;
             }
+            if (!previous.equals(cache)) notifyProtectionChanged(account);
             return true;
         }
+    }
+
+    public static void notifyProtectionChanged(int account) {
+        final long uid = account >= 0 ? currentUid(account) : 0;
+        org.telegram.messenger.AndroidUtilities.runOnUIThread(() -> {
+            if (account >= 0 && currentUid(account) != uid) return;
+            app.nimarkogram.messenger.security.NimarkoBiometricPrompt.onChatProtectionChanged(account);
+            org.telegram.messenger.NotificationCenter.getGlobalInstance().postNotificationNameInternal(
+                    org.telegram.messenger.NotificationCenter.nimarkoChatProtectionChanged, true, account);
+        });
     }
 
     public static ArrayList<String> getAll(int account) {

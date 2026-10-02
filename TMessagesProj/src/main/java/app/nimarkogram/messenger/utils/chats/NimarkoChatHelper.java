@@ -1,3 +1,6 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
+/*
  * Copyright github.com/arsLan4k1390, 2022-2026.
  */
 

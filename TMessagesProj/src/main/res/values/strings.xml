@@ -1,15 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Modifications Copyright (C) 2026 Ettacent -->
 <resources>
     <string name="AppName">NimarkoGram</string>
-    <string name="NM_CP_Header_ChatView">Chat view</string>
-    <string name="NM_CP_Header_Interaction">Interaction</string>
-    <string name="NM_CP_Header_Media">Media</string>
-    <string name="NM_CP_CenterTitleInChat">Centered chat title</string>
-    <string name="NM_CP_SnowflakesInChat">Snow in chat</string>
-    <string name="NM_CP_WeekdayNearDate">Show weekday by date</string>
-    <string name="NM_CP_WeekdayNearDate_Desc">Adds the day of the week next to the date in chat.</string>
-    <string name="NM_CP_PreReformRussian">Pre-reform Russian spelling</string>
-    <string name="NM_CP_PreReformRussian_Desc">Outgoing messages in pre-1918 spelling (ѣ, і, ѳ, ъ).</string>
+    <string name="NM_Header_ChatView">Chat view</string>
+    <string name="NM_Header_Interaction">Interaction</string>
+    <string name="NM_Header_Media">Media</string>
+    <string name="NM_CenterTitleInChat">Centered chat title</string>
+    <string name="NM_SnowflakesInChat">Snow in chat</string>
+    <string name="NM_WeekdayNearDate">Show weekday by date</string>
+    <string name="NM_WeekdayNearDate_Desc">Adds the day of the week next to the date in chat.</string>
+    <string name="NM_PreReformRussian">Pre-reform Russian spelling</string>
+    <string name="NM_PreReformRussian_Desc">Outgoing messages in pre-1918 spelling (ѣ, і, ѳ, ъ).</string>
     <string name="AppNameBeta">NimarkoGram Beta</string>
     <string name="LanguageName">English</string>
     <string name="English">English</string>
@@ -8359,7 +8360,6 @@
     <string name="StarsCountX">%s Stars</string>
     <string name="TonCountX">%s TON</string>
 
-
     <string name="StarsTOS">By proceeding and purchasing Stars, you agree with the **Terms and Conditions**.</string>
     <string name="StarsTOSLink">https://telegram.org/tos</string>
     <string name="StarsBalance">Balance</string>
@@ -11139,7 +11139,7 @@
     <string name="NM_GE_DownloadSpeedBoost">Download speed boost</string>
     <string name="NM_GE_UploadSpeedBoost">Faster uploads</string>
     <string name="EP_Network">Network</string>
-    <string name="CP_Header_Record">Media</string>
+    <string name="NM_Header_Record">Media</string>
 
     <!-- Privacy (extra) -->
     <string name="NM_PR_AllowSystemPasscode">Allow device screen lock</string>
@@ -11614,7 +11614,6 @@
     <string name="NM_MP_ProfileBusinessPreview">Business hours and location</string>
     <string name="NM_MP_ProfileBackgroundColor">Background in profile</string>
     <string name="NM_MP_ProfileBackgroundEmoji">Emoji in profile background</string>
-    <!-- Descriptions ported from CherryGram CP_*_Desc strings -->
     <string name="NM_MP_ShowSeconds_Desc" translatable="false">12:34 -> 12:34:56</string>
     <string name="NM_MP_DisablePremiumStatuses_Desc">Hide Premium emoji statuses outside the side menu</string>
     <!-- Mock content used by the ported ProfileChannelCell.setNimarko() preview -->
@@ -11666,12 +11665,12 @@
     <string name="NM_StickerSavedHint">Sticker saved to downloads</string>
     <string name="ConvertGroupAlert">This action is irreversible. It is not possible to downgrade a supergroup to a regular group.</string>
     <string name="NM_ChooseFolderIcon">Choose an Icon</string>
-    <string name="CP_AdminActions">Admin shortcuts</string>
-    <string name="CP_ChatMenuShortcuts">Chat menu shortcuts</string>
+    <string name="NM_AdminActions">Admin shortcuts</string>
+    <string name="NM_ChatMenuShortcuts">Chat menu shortcuts</string>
     <!-- Wave-27 restored: Dialog list + sending islands -->
-    <string name="CP_Header_DialogList">Dialog list</string>
-    <string name="CP_SortByUnread">Sort by unread</string>
-    <string name="CP_UnarchiveOnSwipe">Unarchive on swipe</string>
+    <string name="NM_Header_DialogList">Dialog list</string>
+    <string name="NM_SortByUnread">Sort by unread</string>
+    <string name="NM_UnarchiveOnSwipe">Unarchive on swipe</string>
     <string name="NM_MSG_Header_Sending">Sending</string>
     <string name="NM_MSG_GifSpoilers">Send GIFs with spoiler</string>
     <!-- NG: CG-parity additions (auto-injected; matches cg_strings.xml verbatim) -->
@@ -11679,40 +11678,40 @@
     <string name="AP_Header_Appearance">Appearance</string>
     <string name="AP_Header">Header</string>
     <string name="AP_HideSearchBar">Hide chat search bar</string>
-    <string name="CP_Snowflakes_Header">Snowflakes</string>
+    <string name="NM_Snowflakes_Header">Snowflakes</string>
     <string name="AP_IconReplacements">Icon pack</string>
     <string name="AP_DisableDividers">Hide dividers</string>
     <string name="AP_GlareOnElements">Glare on elements</string>
     <string name="AP_GlareOnElementsInfo">Show top and bottom highlights on liquid glass elements.</string>
-    <string name="CP_Filters_Header">Folders</string>
-    <string name="CP_MainTabs_Header">Bottom tabs</string>
-    <string name="CP_ProfileReplyBackground">Messages and profiles</string>
+    <string name="NM_Filters_Header">Folders</string>
+    <string name="NM_MainTabs_Header">Bottom tabs</string>
+    <string name="NM_ProfileReplyBackground">Messages and profiles</string>
     <string name="AP_IconReplacement_Solar">Solar Icons by @Design480</string>
     <!-- Chats -->
-    <string name="CP_UnreadBadgeOnBackButton">Unread chats counter</string>
-    <string name="CP_UnreadBadgeOnBackButton_Desc">Show the unread count on the chat back button.</string>
-    <string name="CP_CustomWallpapers">Per-chat wallpapers</string>
-    <string name="CP_CustomWallpapers_Desc">Show wallpapers set for individual chats.</string>
-    <string name="CP_HideMuteUnmuteButton">Hide channel sound bar</string>
-    <string name="CP_HideSendAsChannel">Hide “Send as channel”</string>
-    <string name="CP_HideSendAsChannelDesc">The menu remains available by holding the emoji button.</string>
-    <string name="CP_Slider_RecentEmojisAndStickers">Recent emoji and stickers</string>
+    <string name="NM_UnreadBadgeOnBackButton">Unread chats counter</string>
+    <string name="NM_UnreadBadgeOnBackButton_Desc">Show the unread count on the chat back button.</string>
+    <string name="NM_CustomWallpapers">Per-chat wallpapers</string>
+    <string name="NM_CustomWallpapers_Desc">Show wallpapers set for individual chats.</string>
+    <string name="NM_HideMuteUnmuteButton">Hide channel sound bar</string>
+    <string name="NM_HideSendAsChannel">Hide “Send as channel”</string>
+    <string name="NM_HideSendAsChannelDesc">The menu remains available by holding the emoji button.</string>
+    <string name="NM_Slider_RecentEmojisAndStickers">Recent emoji and stickers</string>
     <string name="EP_CustomChat">Replace Saved Messages</string>
     <string name="EP_CustomChat_Desc">Choose the chat used instead of Saved Messages.</string>
-    <string name="CP_AutoQuoteReplies">Quote replies</string>
-    <string name="CP_AutoQuoteReplies_Desc">Use a quote instead of a standard reply.</string>
-    <string name="CP_DisableSwipeToNext">Disable channel swiping</string>
-    <string name="CP_DisableSwipeToNext_Desc">Keep scrolling inside the current channel.</string>
-    <string name="CP_DisableVibration">Disable vibration</string>
-    <string name="CP_HideKbdOnScroll">Hide keyboard on scroll</string>
+    <string name="NM_AutoQuoteReplies">Quote replies</string>
+    <string name="NM_AutoQuoteReplies_Desc">Use a quote instead of a standard reply.</string>
+    <string name="NM_DisableSwipeToNext">Disable channel swiping</string>
+    <string name="NM_DisableSwipeToNext_Desc">Keep scrolling inside the current channel.</string>
+    <string name="NM_DisableVibration">Disable vibration</string>
+    <string name="NM_HideKbdOnScroll">Hide keyboard on scroll</string>
     <string name="EP_PhotosSize">Large photos up to 2560 px</string>
-    <string name="CP_PlayVideo">Play video with volume buttons</string>
-    <string name="CP_PlayVideo_Desc">Start the visible video with a volume button.</string>
-    <string name="CP_AutoPauseVideo">Auto pause media</string>
-    <string name="CP_AutoPauseVideo_Desc">Pause when the app goes to the background.</string>
-    <string name="CP_VideoSeekDuration">Video seek step</string>
-    <string name="CP_VibrateInChats">In-chat vibration</string>
-    <string name="CP_VibrateInChats_Desc">Vibrate when a message arrives in an open chat.</string>
+    <string name="NM_PlayVideo">Play video with volume buttons</string>
+    <string name="NM_PlayVideo_Desc">Start the visible video with a volume button.</string>
+    <string name="NM_AutoPauseVideo">Auto pause media</string>
+    <string name="NM_AutoPauseVideo_Desc">Pause when the app goes to the background.</string>
+    <string name="NM_VideoSeekDuration">Video seek step</string>
+    <string name="NM_VibrateInChats">In-chat vibration</string>
+    <string name="NM_VibrateInChats_Desc">Vibrate when a message arrives in an open chat.</string>
     <string name="NM_Vibrate_Off">Off</string>
     <string name="NM_Vibrate_Click">Click</string>
     <string name="NM_Vibrate_Wave">Wave</string>
@@ -11722,13 +11721,13 @@
     <string name="AP_Header_General">General</string>
     <string name="EP_NavigationAnimation">Navigation animation</string>
     <string name="NM_PredictiveBackAnimation">Predictive back gesture</string>
-    <string name="CP_SilenceNonContacts">Silence non-contacts</string>
-    <string name="CP_SilenceNonContacts_Desc">Play notification sounds only for contacts.</string>
+    <string name="NM_SilenceNonContacts">Silence non-contacts</string>
+    <string name="NM_SilenceNonContacts_Desc">Play notification sounds only for contacts.</string>
     <string name="NM_ResidentNotification">Persistent notification</string>
-    <string name="CP_HideStories">Hide stories</string>
-    <string name="CP_HideStories_Desc">Remove stories from chats and profiles.</string>
-    <string name="CP_ArchiveStories">Archive stories</string>
-    <string name="CP_ArchiveStories_Desc">Move new stories to the archive automatically.</string>
+    <string name="NM_HideStories">Hide stories</string>
+    <string name="NM_HideStories_Desc">Remove stories from chats and profiles.</string>
+    <string name="NM_ArchiveStories">Archive stories</string>
+    <string name="NM_ArchiveStories_Desc">Move new stories to the archive automatically.</string>
     <string name="AP_SystemEmoji">System emoji</string>
     <string name="AP_SystemFonts">System fonts</string>
     <string name="AP_Tablet_Mode">Tablet mode</string>
@@ -11739,55 +11738,56 @@
     <string name="NimarkoNavigationAnimationMaterial">Material</string>
     <string name="EP_DownloadSpeedBoostExtreme">Extreme</string>
     <!-- Messages -->
-    <string name="CP_MessageMenu">Message menu</string>
-    <string name="CP_Messages_Size">Bubble size</string>
-    <string name="CP_TimeOnStick">Hide sticker timestamps</string>
-    <string name="CP_ForwardMsgDate">Show forwarded message date</string>
+    <string name="NM_MessageMenu">Message menu</string>
+    <string name="NM_Messages_Size">Bubble size</string>
+    <string name="NM_TimeOnStick">Hide sticker timestamps</string>
+    <string name="NM_ForwardMsgDate">Show forwarded message date</string>
     <string name="AP_ShowPencilIcon">Mark edited messages</string>
-    <string name="CP_Message_Filtering">Message filtering</string>
-    <string name="CP_LeftBottomButtonAction">Left button action</string>
-    <string name="CP_DoubleTapAction">Double tap action</string>
+    <string name="NM_Message_Filtering">Message filtering</string>
+    <string name="NM_LeftBottomButtonAction">Left button action</string>
+    <string name="NM_DoubleTapAction">Double tap action</string>
     <string name="NM_MsgSlideAction">Action on message swipe</string>
-    <string name="CP_DeleteForAll">Delete for everyone by default</string>
-    <string name="CP_DeleteForAll_Desc">Preselect this option in the delete dialog.</string>
-    <string name="CP_DisableReactionsOverlay">Hide reaction panel</string>
-    <string name="CP_DisableReactionsOverlay_Desc">Do not show reactions above messages.</string>
-    <string name="CP_DisableReactionAnim">Disable reaction animation</string>
-    <string name="CP_DisableReactionAnim_Desc">Apply reactions without the large animation.</string>
-    <string name="CP_DisablePremStickAnim">Disable premium sticker effects</string>
-    <string name="CP_DisablePremStickAnim_Desc">Do not play effects when a sticker is tapped.</string>
-    <string name="CP_DisablePremStickAutoPlay">Disable premium stickers auto-play</string>
-    <string name="CP_DisablePremStickAutoPlay_Desc">Do not autoplay Premium sticker animations.</string>
+    <string name="NM_DeleteForAll">Delete for everyone by default</string>
+    <string name="NM_DeleteForAll_Desc">Preselect this option in the delete dialog.</string>
+    <string name="NM_DisableReactionsOverlay">Hide reaction panel</string>
+    <string name="NM_DisableReactionsOverlay_Desc">Do not show reactions above messages.</string>
+    <string name="NM_DisableReactionAnim">Disable reaction animation</string>
+    <string name="NM_DisableReactionAnim_Desc">Apply reactions without the large animation.</string>
+    <string name="NM_DisablePremStickAnim">Disable premium sticker effects</string>
+    <string name="NM_DisablePremStickAnim_Desc">Do not play effects when a sticker is tapped.</string>
+    <string name="NM_DisablePremStickAutoPlay">Disable premium stickers auto-play</string>
+    <string name="NM_DisablePremStickAutoPlay_Desc">Do not autoplay Premium sticker animations.</string>
     <string name="NM_ToSaved">Save</string>
     <string name="NM_Without_Authorship">without authorship</string>
     <string name="NM_Without_Caption">without caption</string>
     <!-- MessageMenu -->
-    <string name="CP_MessageMenuItems">Message menu items</string>
+    <string name="NM_MessageMenuItems">Message menu items</string>
     <string name="NM_Menu_TelegramPlus">Modern message menu</string>
     <string name="NM_Menu_TelegramPlus_Desc">Liquid Glass menu with grouped actions and spring feedback.</string>
-    <string name="CP_MessageMenuCompactLayout">Compact menu layout</string>
-    <string name="CP_MessageMenuCompactLayout_Desc">Show up to four main actions as large buttons.</string>
-    <string name="CP_MessageMenuCompactLayout_Dot">A dot marks long-press actions.</string>
+    <string name="NM_MessageMenuCompactLayout">Compact menu layout</string>
+    <string name="NM_MessageMenuCompactLayout_Desc">Show up to four main actions as large buttons.</string>
+    <string name="NM_MessageMenuCompactLayout_Dot">A dot marks long-press actions.</string>
     <!-- Camera -->
-    <string name="CP_Category_Camera">Camera</string>
-    <string name="CP_CameraType">Camera Type</string>
-    <string name="CP_DisableCam">Camera button at bottom</string>
-    <string name="CP_DisableCam_Desc">The camera button will appear next to the gallery button. \nTap to open Telegram Camera, hold to launch the system camera.</string>
-    <string name="CP_Header_Videomessages">Video messages</string>
-    <string name="CP_CameraDualCamera">Dual camera</string>
-    <string name="CP_CameraDualCamera_Desc">Captures video message on both cameras for faster switching between cameras while recording. Uses more battery.</string>
-    <string name="CP_RearCam">Use rear camera</string>
-    <string name="CP_RearCam_Desc">Instead of front camera for video messages</string>
-    <string name="CP_CameraUW">Start from UW</string>
-    <string name="CP_CameraUW_Desc">Recording of video messages will start from Ultra Wide camera (if your device\'s API supports it)</string>
-    <string name="CP_CameraStabilisation">Camera stabilisation</string>
+    <string name="NM_Category_Camera">Camera</string>
+    <string name="NM_CameraType">Camera Type</string>
+    <string name="NM_DisableCam">Camera button at bottom</string>
+    <string name="NM_DisableCam_Desc">The camera button will appear next to the gallery button. \nTap to open Telegram Camera, hold to launch the system camera.</string>
+    <string name="NM_Header_Videomessages">Video messages</string>
+    <string name="NM_CameraDualCamera">Dual camera</string>
+    <string name="NM_CameraDualCamera_Desc">Captures video message on both cameras for faster switching between cameras while recording. Uses more battery.</string>
+    <string name="NM_RearCam">Use rear camera</string>
+    <string name="NM_RearCam_Desc">Instead of front camera for video messages</string>
+    <string name="NM_CameraUW">Start from UW</string>
+    <string name="NM_CameraUW_Desc">Recording of video messages will start from Ultra Wide camera (if your device\'s API supports it)</string>
+    <string name="NM_CameraStabilisation">Camera stabilisation</string>
     <string name="NM_CAM_Improvements">Improvements</string>
     <string name="NM_CAM_VideoQuality">Video quality</string>
     <string name="NM_CAM_OpticalStabilization">Optical stabilization</string>
     <string name="NM_CAM_RoundVideoSize">Round video size</string>
     <string name="NM_CAM_RoundCamera">Camera for video messages</string>
-    <string name="NM_CAM_FrontCamera">Front camera</string>
-    <string name="NM_CAM_RearCamera">Rear camera</string>
+    <string name="NM_CAM_RoundCameraDesc">Camera used when starting a video message.</string>
+    <string name="NM_CAM_FrontCamera">Front</string>
+    <string name="NM_CAM_RearCamera">Rear</string>
     <string name="NM_CAM_AskCamera">Ask</string>
     <string name="NM_CAM_DualUnavailable">Dual camera isn\'t supported on this device</string>
     <string name="NM_CAM_RoundVideoSize_Auto">Auto</string>
@@ -11805,17 +11805,18 @@
     <string name="NM_Camera_FaceDetection_Desc">Hint the camera to detect faces so auto-exposure and auto-focus prioritise them while recording.</string>
     <string name="NM_Camera_UseHighRange">High FPS Range</string>
     <string name="NM_Camera_UseHighRange_Desc">Expose 30-60 and 60-60 FPS ranges in the FPS selector. Requires a device whose camera advertises those ranges.</string>
-    <string name="CP_CameraQuality">Camera Quality</string>
-    <string name="CP_CenterCameraControlButtons">Center control buttons</string>
-    <string name="CP_CenterCameraControlButtons_Desc">Center switch camera and flashlight buttons.</string>
-    <string name="CP_ZoomSliderPosition_Bottom">Bottom</string>
-    <string name="CP_ZoomSliderPosition_Right">Right</string>
-    <string name="CP_ZoomSliderPosition_Left">Left</string>
-    <string name="CP_CameraTypeSystem">System</string>
-    <string name="CP_DefaultCameraDesc">Use the Telegram\'s built-in camera.</string>
-    <string name="CP_CameraXDesc">CameraX is only supported on <![CDATA[<a href="https://developer.android.com/training/camerax/devices">selected devices</a>]]>, effects and lenses support depends on your manufacturer.</string>
-    <string name="CP_Camera2Desc">All features that are hidden when Camera2 is turned on will not work with Camera2 enabled.</string>
-    <string name="CP_SystemCameraDesc">Access directly the system camera (not applicable for video messages).</string>
+    <string name="NM_CameraQuality">Camera Quality</string>
+    <string name="NM_CenterCameraControlButtons">Center control buttons</string>
+    <string name="NM_CAM_ControlsSide">Position</string>
+    <string name="NM_CenterCameraControlButtons_Desc">Center switch camera and flashlight buttons.</string>
+    <string name="NM_ZoomSliderPosition_Bottom">Bottom</string>
+    <string name="NM_ZoomSliderPosition_Right">Right</string>
+    <string name="NM_ZoomSliderPosition_Left">Left</string>
+    <string name="NM_CameraTypeSystem">System</string>
+    <string name="NM_DefaultCameraDesc">Use the Telegram\'s built-in camera.</string>
+    <string name="NM_CameraXDesc">CameraX is only supported on <![CDATA[<a href="https://developer.android.com/training/camerax/devices">selected devices</a>]]>, effects and lenses support depends on your manufacturer.</string>
+    <string name="NM_Camera2Desc">All features that are hidden when Camera2 is turned on will not work with Camera2 enabled.</string>
+    <string name="NM_SystemCameraDesc">Access directly the system camera (not applicable for video messages).</string>
     <!-- NimarkoGram PhotoViewer helper strings (ported from CG PhotoViewerHelper) -->
     <string name="NG_OpenEmojiPack">Open emoji pack</string>
     <string name="NG_OpenStickerPack">Open sticker pack</string>
@@ -11907,72 +11908,72 @@
     <string name="CG_TranslationLanguage">Translation Language</string>
     <string name="CG_Without_Authorship">without authorship</string>
     <string name="CG_Without_Caption">without caption</string>
-    <string name="CP_Brightness">Brightness</string>
-    <string name="CP_CustomizeMessage">Customize a message</string>
-    <string name="CP_CustomizeProfile">Customize profile</string>
-    <string name="CP_DisablePremiumStatuses">Disable premium statuses</string>
-    <string name="CP_DisablePremiumStatuses_Desc">This will disable premium statuses everywhere, except drawer</string>
-    <string name="CP_Exposure">Exposure</string>
-    <string name="CP_Flash_Hint">Hold the flash button to adjust the color and brightness of the flash.</string>
-    <string name="CP_Flash_Hint_Rear">Hold the flash button to adjust the brightness of the flash.</string>
-    <string name="CP_FormatterDay12HSec" translatable="false">h:mm:ss a</string>
-    <string name="CP_FormatterDay24HSec" translatable="false">HH:mm:ss</string>
-    <string name="CP_LargeVoiceMessages">Adaptive audio message length</string>
-    <string name="CP_LargeVoiceMessages_Desc">The audio message bubble length will depend on the recording duration and automatically adjust to the screen width.</string>
-    <string name="CP_MainTabs_DoubleTap_Desc">Double-tap a chat tab to open "Saved Messages". Double-tap the profile tab (or Settings if the profile tab is hidden) to switch accounts.</string>
-    <string name="CP_MainTabs_ForceOpenChats">Always search in chats</string>
-    <string name="CP_MainTabs_ForceOpenChats_Desc">When enabled, the search button always opens chat search. When disabled, it opens context search for the current screen (e.g., Settings or Contacts).</string>
-    <string name="CP_MainTabs_Layout">Tabs</string>
-    <string name="CP_MainTabs_Layout_Desc">Tap to enable/disable, hold and drag to reorder.</string>
-    <string name="CP_MainTabs_OpenSettings">Open settings by swipe</string>
-    <string name="CP_MainTabs_OpenSettings_Desc">Swipe from left to right on the tabs to open the settings, similar to a drawer when tabs are disabled.</string>
-    <string name="CP_MainTabs_ShowTabs">Show tabs</string>
-    <string name="CP_MainTabs_ShowTabsTitle">Show tabs titles</string>
-    <string name="CP_Message_Filtering_Collapse">Collapse messages</string>
-    <string name="CP_Message_Filtering_Collapse_Desc">Collapse filtered messages automatically.</string>
+    <string name="NM_Brightness">Brightness</string>
+    <string name="NM_CustomizeMessage">Customize a message</string>
+    <string name="NM_CustomizeProfile">Customize profile</string>
+    <string name="NM_DisablePremiumStatuses">Disable premium statuses</string>
+    <string name="NM_DisablePremiumStatuses_Desc">This will disable premium statuses everywhere, except drawer</string>
+    <string name="NM_Exposure">Exposure</string>
+    <string name="NM_Flash_Hint">Hold the flash button to adjust the color and brightness of the flash.</string>
+    <string name="NM_Flash_Hint_Rear">Hold the flash button to adjust the brightness of the flash.</string>
+    <string name="NM_FormatterDay12HSec" translatable="false">h:mm:ss a</string>
+    <string name="NM_FormatterDay24HSec" translatable="false">HH:mm:ss</string>
+    <string name="NM_LargeVoiceMessages">Adaptive audio message length</string>
+    <string name="NM_LargeVoiceMessages_Desc">The audio message bubble length will depend on the recording duration and automatically adjust to the screen width.</string>
+    <string name="NM_MainTabs_DoubleTap_Desc">Double-tap a chat tab to open "Saved Messages". Double-tap the profile tab (or Settings if the profile tab is hidden) to switch accounts.</string>
+    <string name="NM_MainTabs_ForceOpenChats">Always search in chats</string>
+    <string name="NM_MainTabs_ForceOpenChats_Desc">When enabled, the search button always opens chat search. When disabled, it opens context search for the current screen (e.g., Settings or Contacts).</string>
+    <string name="NM_MainTabs_Layout">Tabs</string>
+    <string name="NM_MainTabs_Layout_Desc">Tap to enable/disable, hold and drag to reorder.</string>
+    <string name="NM_MainTabs_OpenSettings">Open settings by swipe</string>
+    <string name="NM_MainTabs_OpenSettings_Desc">Swipe from left to right on the tabs to open the settings, similar to a drawer when tabs are disabled.</string>
+    <string name="NM_MainTabs_ShowTabs">Show tabs</string>
+    <string name="NM_MainTabs_ShowTabsTitle">Show tabs titles</string>
+    <string name="NM_Message_Filtering_Collapse">Collapse messages</string>
+    <string name="NM_Message_Filtering_Collapse_Desc">Collapse filtered messages automatically.</string>
     <string name="NM_MF_FilteredCollapsed">Filtered message. Tap to reveal.</string>
     <string name="NM_MF_RevealFiltered">Reveal filtered message</string>
     <string name="NM_MF_FilteredRevealed">Filtered message revealed</string>
-    <string name="CP_Message_Filtering_Entities">Link Entity Filter</string>
-    <string name="CP_Message_Filtering_EntitiesDesc">When enabled, this option extends filtering to links (entities) contained in messages. The system will scan the URLs for any of your configured filter keywords.
+    <string name="NM_Message_Filtering_Entities">Link Entity Filter</string>
+    <string name="NM_Message_Filtering_EntitiesDesc">When enabled, this option extends filtering to links (entities) contained in messages. The system will scan the URLs for any of your configured filter keywords.
         If a match is found inside the link, the entire message will be automatically hidden under a spoiler, regardless of whether the keyword appears in the visible text or not.
         \n\nThis helps protect against disguised spam, hidden advertising, or phishing domains that could otherwise bypass regular text-based filtering.
     </string>
-    <string name="CP_Message_Filtering_Exact_Words">Exact word match</string>
-    <string name="CP_Message_Filtering_Exact_Words_Desc">When enabled, only words that fully match those in the filter list will be hidden.
+    <string name="NM_Message_Filtering_Exact_Words">Exact word match</string>
+    <string name="NM_Message_Filtering_Exact_Words_Desc">When enabled, only words that fully match those in the filter list will be hidden.
         If a word appears in a different form (with prefixes, endings, or inside other words), it will not be hidden.
     </string>
-    <string name="CP_Message_Filtering_Exclude_Destination">to update exclusions</string>
-    <string name="CP_Message_Filtering_Exclude_Sure">will be excluded</string>
-    <string name="CP_Message_Filtering_Exclusions">Exclusions</string>
-    <string name="CP_Message_Filtering_Field">Enter words to filter</string>
-    <string name="CP_Message_Filtering_Field_Desc">Separate words with a comma, space, or line break. Use parentheses to group multiple words into a phrase. Case insensitive.
+    <string name="NM_Message_Filtering_Exclude_Destination">to update exclusions</string>
+    <string name="NM_Message_Filtering_Exclude_Sure">will be excluded</string>
+    <string name="NM_Message_Filtering_Exclusions">Exclusions</string>
+    <string name="NM_Message_Filtering_Field">Enter words to filter</string>
+    <string name="NM_Message_Filtering_Field_Desc">Separate words with a comma, space, or line break. Use parentheses to group multiple words into a phrase. Case insensitive.
         \nExample: word, another, (multiple words here).
     </string>
-    <string name="CP_Message_Filtering_Filter">Enable filter</string>
-    <string name="CP_Message_Filtering_Filter_Desc">When the filter is enabled, selected words in incoming messages will automatically be hidden under a spoiler effect, making them unreadable until revealed.</string>
-    <string name="CP_Message_Filtering_HideAll">Entire message spoiler</string>
-    <string name="CP_Message_Filtering_HideAllDesc">Hides the entire message text and media under a spoiler if it contains a filtered word.</string>
-    <string name="CP_Message_Filtering_Translit">Translit detection</string>
-    <string name="CP_Message_Filtering_Translit_Desc">When enabled, the filter will also detect words written in transliteration (for example, \"test\" will be recognized as \"тест\").
+    <string name="NM_Message_Filtering_Filter">Enable filter</string>
+    <string name="NM_Message_Filtering_Filter_Desc">When the filter is enabled, selected words in incoming messages will automatically be hidden under a spoiler effect, making them unreadable until revealed.</string>
+    <string name="NM_Message_Filtering_HideAll">Entire message spoiler</string>
+    <string name="NM_Message_Filtering_HideAllDesc">Hides the entire message text and media under a spoiler if it contains a filtered word.</string>
+    <string name="NM_Message_Filtering_Translit">Translit detection</string>
+    <string name="NM_Message_Filtering_Translit_Desc">When enabled, the filter will also detect words written in transliteration (for example, \"test\" will be recognized as \"тест\").
         This helps to catch and hide messages under a spoiler even if Cyrillic letters are replaced with Latin ones. May slightly increase device CPU load.
     </string>
-    <string name="CP_Message_Filtering_Transparent">Message Transparency</string>
-    <string name="CP_Message_Filtering_Transparent_Desc">Filtered messages become transparent so you can easily tell them apart.</string>
-    <string name="CP_NewTabs_NoCounter">Hide counter in tabs</string>
-    <string name="CP_NewTabs_RemoveAllChats">Hide \"All chats\" tab</string>
-    <string name="CP_ProfileBackgroundColor">Background in profile</string>
-    <string name="CP_ProfileBackgroundEmoji">Emoji in profile background</string>
-    <string name="CP_ProfileBirthDatePreview">Date of Birth</string>
-    <string name="CP_ProfileBusinessPreview">Business hours and location</string>
-    <string name="CP_ProfileChannelPreview">Personal channel</string>
-    <string name="CP_ReplyBackground">Background in replies</string>
-    <string name="CP_ReplyBackgroundEmoji">Emoji in replies and links preview</string>
-    <string name="CP_ReplyCustomColors">Custom colors in replies and links preview</string>
-    <string name="CP_ShowSeconds">Format time with seconds</string>
-    <string name="CP_ShowSeconds_Desc" translatable="false">12:34 -> 12:34:56</string>
-    <string name="CP_Slider_MediaAmplifier">Photos and videos</string>
-    <string name="CP_Slider_MediaAmplifier_Hint">Does not work with albums (grouped media)</string>
+    <string name="NM_Message_Filtering_Transparent">Message Transparency</string>
+    <string name="NM_Message_Filtering_Transparent_Desc">Filtered messages become transparent so you can easily tell them apart.</string>
+    <string name="NM_NewTabs_NoCounter">Hide counter in tabs</string>
+    <string name="NM_NewTabs_RemoveAllChats">Hide \"All chats\" tab</string>
+    <string name="NM_ProfileBackgroundColor">Background in profile</string>
+    <string name="NM_ProfileBackgroundEmoji">Emoji in profile background</string>
+    <string name="NM_ProfileBirthDatePreview">Date of Birth</string>
+    <string name="NM_ProfileBusinessPreview">Business hours and location</string>
+    <string name="NM_ProfileChannelPreview">Personal channel</string>
+    <string name="NM_ReplyBackground">Background in replies</string>
+    <string name="NM_ReplyBackgroundEmoji">Emoji in replies and links preview</string>
+    <string name="NM_ReplyCustomColors">Custom colors in replies and links preview</string>
+    <string name="NM_ShowSeconds">Format time with seconds</string>
+    <string name="NM_ShowSeconds_Desc" translatable="false">12:34 -> 12:34:56</string>
+    <string name="NM_Slider_MediaAmplifier">Photos and videos</string>
+    <string name="NM_Slider_MediaAmplifier_Hint">Does not work with albums (grouped media)</string>
 
     <!-- ========================================================= -->
     <!-- DrKLO upstream 12.7.3 merge — new strings added 2026-05-21 -->
@@ -12454,8 +12455,8 @@
     <string name="ArticleAIPrompt">Write a prompt...</string>
     <string name="ArticleAIGenerate">Generate</string>
     <string name="ArticleAIAddToPage">Add to Page</string>
-    <string name="NM_CP_LatexRendering">Render LaTeX formulas</string>
-    <string name="NM_CP_LatexRendering_Desc">Recognize formulas inside $…$ and $$…$$ in messages.</string>
+    <string name="NM_LatexRendering">Render LaTeX formulas</string>
+    <string name="NM_LatexRendering_Desc">Recognize formulas inside $…$ and $$…$$ in messages.</string>
 
     <string name="WelcomeMessage">Welcome Message</string>
     <string name="WelcomeMessageOff">Off</string>
@@ -12498,10 +12499,12 @@
     <string name="RoundVideoComposition">Composition</string>
     <string name="RoundVideoCompositionEnabled">Round video styling</string>
     <string name="RoundVideoCompositionInfo">Disable styling to record a plain square without outside-circle blur, dimming or Telegram overlays.</string>
+    <string name="NM_CAM_RoundZoomScale">Video message zoom scale</string>
+    <string name="NM_CAM_RoundZoomScaleDesc">Choose zoom levels or swipe the scale while recording.</string>
     <string name="NM_CAM_SmoothModules">Smooth camera module transitions</string>
-    <string name="NM_CAM_SmoothModulesDesc">Blend between ultrawide and main cameras when zooming while recording video messages.</string>
+    <string name="NM_CAM_SmoothModulesDesc">Smooth transitions between available camera modules when zooming in video messages.</string>
     <string name="NM_CAM_RoundAudio">Video message audio</string>
     <string name="NM_CAM_MultiMicrophone">Multi-microphone recording</string>
-    <string name="NM_CAM_MultiMicrophoneDesc">Request wider capture with built-in microphones.</string>
+    <string name="NM_CAM_MultiMicrophoneDesc">Wider sound capture for voice and CameraX video messages. Device-dependent.</string>
     <string name="NM_CAM_RoundAudioInfo">For new video messages. Microphone support depends on the device; mono fallback is automatic.</string>
 </resources>
