@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /**
  * This is the source code of Nimarko for Android.
  * It is licensed under GNU GPL v. 2 or later.
@@ -33,14 +35,14 @@ public class MessageMenuPreferencesActivity extends NimarkoUniversalPreferencesA
 
     @Override
     protected CharSequence getTitle() {
-        return getString(R.string.CP_MessageMenu);
+        return getString(R.string.NM_MessageMenu);
     }
 
     @Override
     public void fillItems(ArrayList<UItem> items, UniversalAdapter adapter) {
         items.add(UItem.asHeader(getString(R.string.NM_SettingsSectionActions)));
         items.add(asSettingsLink(SETTING_ITEMS, IconBackgroundColors.BLUE,
-                R.drawable.msg_settings, getString(R.string.CP_MessageMenuItems)));
+                R.drawable.msg_settings, getString(R.string.NM_MessageMenuItems)));
         items.add(asSettingsLink(SETTING_ORDER, IconBackgroundColors.PURPLE,
                 R.drawable.msg_reorder, getString(R.string.NM_Menu_Reorder)));
         items.add(UItem.asShadow(null));
@@ -57,9 +59,9 @@ public class MessageMenuPreferencesActivity extends NimarkoUniversalPreferencesA
                         getString(R.string.NM_Menu_TelegramPlus_Desc))
                 .setChecked(NimarkoConfig.telegramPlusMessageMenu));
         items.add(SettingsHelper.asSwitchCG(SETTING_COMPACT_LAYOUT,
-                        getString(R.string.CP_MessageMenuCompactLayout),
-                        getString(R.string.CP_MessageMenuCompactLayout_Desc) + " "
-                                + getString(R.string.CP_MessageMenuCompactLayout_Dot))
+                        getString(R.string.NM_MessageMenuCompactLayout),
+                        getString(R.string.NM_MessageMenuCompactLayout_Desc) + " "
+                                + getString(R.string.NM_MessageMenuCompactLayout_Dot))
                 .setChecked(NimarkoConfig.msgMenuItemsCompactView));
         items.add(UItem.asShadow(null));
     }

@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package app.nimarkogram.messenger.camera;
 
 import android.content.Context;
@@ -24,7 +26,6 @@ import java.util.ArrayList;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import app.nimarkogram.messenger.NimarkoConfig;
-import app.nimarkogram.messenger.NimarkoCameraLog;
 
 public class NimarkoVideoMessagesHelper {
 
@@ -51,16 +52,11 @@ public class NimarkoVideoMessagesHelper {
     public void createCameraX(InstantCameraView instantCameraView, final SurfaceTexture... surfaceTextures) {
         if (instantCameraView == null || surfaceTextures == null || surfaceTextures.length == 0
                 || surfaceTextures[0] == null) {
-            if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("RoundCX create rejected view=" + (instantCameraView != null)
-                    + " surfaces=" + (surfaceTextures == null ? "null" : surfaceTextures.length));
             return;
         }
         SurfaceTexture requestedSecondary = surfaceTextures.length > 1
                 ? surfaceTextures[1] : null;
-        
-        if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("RoundCX create surfaces=" + surfaceTextures.length
-                + " effectiveDual=" + (requestedSecondary != null)
-                + " front=" + instantCameraView.isCameraXFrontFacing());
+
         cameraXDualBusyRetryCount = 0;
         cameraXDualBusyRetryPending = false;
         createCameraXAttempt(instantCameraView, false, surfaceTextures[0],
@@ -73,10 +69,6 @@ public class NimarkoVideoMessagesHelper {
                                       SurfaceTexture requestedSecondary) {
         final int currentGeneration = ++generation;
         final boolean requestedFrontFacing = instantCameraView.isCameraXFrontFacing();
-        if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("RoundCX attempt generation=" + currentGeneration
-                + " compatibility=" + compatibilityMode
-                + " front=" + requestedFrontFacing
-                + " dual=" + (requestedSecondary != null));
         closeActiveCameraXSessions(() -> {
             if (currentGeneration != generation) {
                 return;
@@ -93,8 +85,6 @@ public class NimarkoVideoMessagesHelper {
                               int currentGeneration,
                               boolean compatibilityMode) {
         if (currentGeneration != generation || requestedSurface == null) {
-            if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("RoundCX start stale/rejected generation=" + currentGeneration
-                    + " active=" + generation + " surface=" + (requestedSurface != null));
             return;
         }
         surfaceTexture = requestedSurface;
@@ -103,15 +93,9 @@ public class NimarkoVideoMessagesHelper {
         int size = NimarkoConfig.getVideoMessagesResolutionPx(512);
         int capture = Math.min(1200, Math.max(size, size * 2));
         final boolean dual = requestedSecondary != null;
-        
+
         final int targetWidth = dual ? (compatibilityMode ? 480 : 720) : capture;
         final int targetHeight = dual ? (compatibilityMode ? 640 : 1280) : capture;
-        if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("RoundCX start generation=" + currentGeneration
-                + " front=" + requestedFrontFacing + " dual=" + dual
-                + " compatibility=" + compatibilityMode
-                + " startWide=" + NimarkoConfig.startFromUltraWideCam
-                + " configuredSize=" + size + " capture=" + capture
-                + " target=" + targetWidth + "x" + targetHeight);
         cameraXDualMode = dual;
         cameraXDualCompatibilityMode = dual && compatibilityMode;
         cameraXDualTransitionPending = false;
@@ -124,14 +108,11 @@ public class NimarkoVideoMessagesHelper {
                 new NimarkoCameraXSurfaceSession.Callback() {
                     @Override
                     public void onReady(int width, int height) {
-                        if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("RoundCX primary ready generation="
-                                + currentGeneration + " size=" + width + "x" + height
-                                + " dual=" + cameraXDualMode);
                         if (currentGeneration == generation && cameraXSession != null) {
                             if (!cameraXDualMode
                                     || tryBindConcurrentRoundCamera(instantCameraView, width, height)) {
                                 cameraXController = getCurrentSession().getController();
-                                
+
                                 instantCameraView.onCameraXSessionReady(cameraXSession, width, height);
                             }
                         }
@@ -141,8 +122,6 @@ public class NimarkoVideoMessagesHelper {
                     public void onFailure(Throwable error) {
                         if (currentGeneration != generation || cameraXSession == null) return;
                         FileLog.e("Round video CameraX bind failed", error);
-                            if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("RoundCX primary FAILED generation="
-                                    + currentGeneration, error);
                             if (cameraXDualMode) {
                                 handleCameraXDualFailure(
                                         instantCameraView, currentGeneration,
@@ -158,8 +137,6 @@ public class NimarkoVideoMessagesHelper {
                     new NimarkoCameraXSurfaceSession.Callback() {
                         @Override
                         public void onReady(int width, int height) {
-                            if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("RoundCX secondary ready generation="
-                                    + currentGeneration + " size=" + width + "x" + height);
                             if (currentGeneration == generation && cameraXSecondarySession != null
                                     && tryBindConcurrentRoundCamera(instantCameraView, width, height)) {
                                 cameraXController = getCurrentSession().getController();
@@ -171,8 +148,6 @@ public class NimarkoVideoMessagesHelper {
                         public void onFailure(Throwable error) {
                             if (currentGeneration != generation || cameraXSecondarySession == null) return;
                             FileLog.e("Round video secondary CameraX bind failed", error);
-                            if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("RoundCX secondary FAILED generation="
-                                    + currentGeneration, error);
                             handleCameraXDualFailure(
                                     instantCameraView, currentGeneration,
                                     isConcurrentResourceFailure(error));
@@ -184,16 +159,9 @@ public class NimarkoVideoMessagesHelper {
     private boolean tryBindConcurrentRoundCamera(InstantCameraView view, int width, int height) {
         boolean primaryPrepared = cameraXSession != null && cameraXSession.isPrepared();
         boolean secondaryPrepared = cameraXSecondarySession != null && cameraXSecondarySession.isPrepared();
-        if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("RoundCX concurrent probe generation=" + generation
-                + " primaryPrepared=" + primaryPrepared
-                + " secondaryPrepared=" + secondaryPrepared
-                + " callbackSize=" + width + "x" + height
-                + " compatibility=" + cameraXDualCompatibilityMode);
         if (!primaryPrepared || !secondaryPrepared) return false;
         if (!cameraXSession.isConcurrentWith(cameraXSecondarySession)) {
             if (cameraXDualBindPending) {
-                if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("RoundCX concurrent probe ignored while bind pending generation="
-                        + generation);
                 return false;
             }
             cameraXDualBindPending = true;
@@ -211,12 +179,9 @@ public class NimarkoVideoMessagesHelper {
                     return false;
                 }
                 handleCameraXDualFailure(view, generation, false);
-                if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("RoundCX concurrent bind returned false generation="
-                        + generation);
                 return false;
             }
         }
-        if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("RoundCX concurrent ready generation=" + generation);
         return true;
     }
 
@@ -233,9 +198,6 @@ public class NimarkoVideoMessagesHelper {
         cameraXDualBusyRetryPending = true;
         cameraXDualTransitionPending = true;
         view.onCameraXTransitionStarting();
-        if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("RoundCX provider-busy retry scheduled generation="
-                + expectedGeneration + " retry=" + retry
-                + " compatibility=" + compatibility);
         AndroidUtilities.runOnUIThread(() -> {
             if (expectedGeneration != generation || !cameraXDualMode) {
                 cameraXDualBusyRetryPending = false;
@@ -244,8 +206,6 @@ public class NimarkoVideoMessagesHelper {
             }
             cameraXDualBusyRetryPending = false;
             cameraXDualTransitionPending = false;
-            if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("RoundCX provider-busy retry executing generation="
-                    + expectedGeneration + " retry=" + retry);
             createCameraXAttempt(view, compatibility, primarySurface, secondarySurface);
         }, 220L * retry);
         return true;
@@ -254,12 +214,9 @@ public class NimarkoVideoMessagesHelper {
     private void handleCameraXDualFailure(InstantCameraView view,
                                           int expectedGeneration,
                                           boolean resourceFailure) {
-        if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("RoundCX dual failure generation=" + expectedGeneration
-                + " compatibility=" + cameraXDualCompatibilityMode
-                + " resourceFailure=" + resourceFailure);
         AndroidUtilities.runOnUIThread(() -> {
             if (expectedGeneration != generation || !cameraXDualMode) return;
-            
+
             if (!resourceFailure && !cameraXDualCompatibilityMode
                     && retryCameraXDual(view)) {
                 return;
@@ -286,7 +243,6 @@ public class NimarkoVideoMessagesHelper {
                 || surfaceTexture == null || secondarySurfaceTexture == null) {
             return false;
         }
-        if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("RoundCX dual compatibility retry generation=" + generation);
         SurfaceTexture primarySurface = surfaceTexture;
         SurfaceTexture secondarySurface = secondarySurfaceTexture;
         cameraXDualTransitionPending = true;
@@ -308,8 +264,6 @@ public class NimarkoVideoMessagesHelper {
                 || cameraXDualTransitionPending) {
             return;
         }
-        if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("RoundCX dual collapse-to-single generation="
-                + expectedGeneration);
         cameraXDualTransitionPending = true;
         cameraXDualMode = false;
         cameraXDualCompatibilityMode = false;
@@ -334,15 +288,11 @@ public class NimarkoVideoMessagesHelper {
                     cameraXDualTransitionPending = false;
                     if (primary.rebindSingle()) {
                         cameraXController = primary.getController();
-                        if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("RoundCX single fallback rebound generation="
-                                + expectedGeneration);
                     } else {
                         FileLog.e("Round video CameraX single fallback bind failed");
-                        if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("RoundCX single fallback FAILED generation="
-                                + expectedGeneration);
                     }
                 };
-                
+
                 rebindSingle.run();
             });
         };
@@ -389,23 +339,18 @@ public class NimarkoVideoMessagesHelper {
     public void switchCameraX(InstantCameraView instantCameraView) {
         if (instantCameraView == null) return;
         frontFacing = instantCameraView.isCameraXFrontFacing();
-        if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("RoundCX switch requested generation=" + generation
-                + " front=" + frontFacing + " dualSessions="
-                + (cameraXSecondarySession != null));
         if (cameraXSecondarySession != null && cameraXSession != null) {
             if (cameraXSession.isConcurrentWith(cameraXSecondarySession)) {
                 NimarkoCameraXSurfaceSession current = getCurrentSession();
                 cameraXController = current == null ? null : current.getController();
             } else {
-                
+
                 FileLog.e("Round video CameraX dual switch requested before concurrent bind completed");
-                if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("RoundCX dual switch ignored: pair not ready generation="
-                        + generation);
             }
             return;
         }
         if (cameraXSession != null) {
-            
+
             final SurfaceTexture targetSurface = surfaceTexture;
             final NimarkoCameraXSurfaceSession switchingSession = cameraXSession;
             switchingSession.releaseSurfaceForRebind(() -> {
@@ -417,7 +362,7 @@ public class NimarkoVideoMessagesHelper {
                 cameraXController = switchingSession.getController();
             });
         } else if (surfaceTexture != null) {
-            
+
             if (secondarySurfaceTexture != null) {
                 createCameraX(instantCameraView, surfaceTexture, secondarySurfaceTexture);
             } else {
@@ -433,8 +378,6 @@ public class NimarkoVideoMessagesHelper {
     public void destroyCameraX(InstantCameraView instantCameraView, Runnable onClosed) {
         int oldGeneration = generation;
         generation++;
-        if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("RoundCX destroy generation=" + oldGeneration
-                + " next=" + generation);
         cameraXDualTransitionPending = false;
         cameraXDualCompatibilityMode = false;
         cameraXDualBindPending = false;
@@ -463,8 +406,6 @@ public class NimarkoVideoMessagesHelper {
                 }
             }
         }
-        if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("RoundCX close sessions count=" + sessions.size()
-                + " pending=" + closingCameraXSessions.size());
         for (NimarkoCameraXSurfaceSession session : sessions) {
             try {
                 session.enableTorch(false);
@@ -506,7 +447,7 @@ public class NimarkoVideoMessagesHelper {
                 if (onRetired != null) onRetired.run();
             });
         } else if (onRetired != null) {
-            
+
             boolean runImmediately;
             synchronized (cameraXCloseLock) {
                 runImmediately = closingCameraXSessions.isEmpty();
@@ -573,6 +514,16 @@ public class NimarkoVideoMessagesHelper {
         return current != null ? current.getMaxZoomRatio() : 1f;
     }
 
+    public float[] getZoomShortcuts() {
+        NimarkoCameraXSurfaceSession current = getCurrentSession();
+        return current != null ? current.getZoomShortcuts() : new float[0];
+    }
+
+    public boolean isZoomShortcutsReady() {
+        NimarkoCameraXSurfaceSession current = getCurrentSession();
+        return current != null && current.isZoomShortcutsReady();
+    }
+
     public boolean createFlashConfigurator(InstantCameraView instantCameraView) {
         return false;
     }
@@ -599,7 +550,7 @@ public class NimarkoVideoMessagesHelper {
     }
 
     public void showExposureControls(InstantCameraView instantCameraView, boolean show) {
-        
+
     }
 
     public int getSliderW() {
@@ -617,6 +568,11 @@ public class NimarkoVideoMessagesHelper {
     public boolean isInitiated() {
         NimarkoCameraXSurfaceSession current = getCurrentSession();
         return current != null && current.isInitiated();
+    }
+
+    public boolean isZoomReady() {
+        NimarkoCameraXSurfaceSession current = getCurrentSession();
+        return current != null && current.isInitiated() && current.getController().isZoomReady();
     }
 
     public boolean isExposureCompensationSupported() {
@@ -638,7 +594,7 @@ public class NimarkoVideoMessagesHelper {
                         if (MediaFormat.MIMETYPE_VIDEO_HEVC.equalsIgnoreCase(t)) {
                             MediaCodecInfo.CodecCapabilities caps = info.getCapabilitiesForType(t);
                             for (MediaCodecInfo.CodecProfileLevel pl : caps.profileLevels) {
-                                
+
                                 if (pl.profile == MediaCodecInfo.CodecProfileLevel.HEVCProfileMain10
                                         || pl.profile == 4096 || pl.profile == 8192) {
                                     return true;
@@ -690,7 +646,7 @@ public class NimarkoVideoMessagesHelper {
         if (clamped == 0) return null;
         try {
             LoudnessEnhancer enhancer = new LoudnessEnhancer(audioSessionId);
-            
+
             enhancer.setTargetGain(clamped * 100);
             enhancer.setEnabled(true);
             return enhancer;
@@ -742,7 +698,7 @@ public class NimarkoVideoMessagesHelper {
         }
 
         public void start() {
-            
+
         }
 
         public void stop() {
@@ -774,6 +730,6 @@ public class NimarkoVideoMessagesHelper {
             }
         }
 
-        @Override public void onAccuracyChanged(Sensor sensor, int accuracy) {   }
+        @Override public void onAccuracyChanged(Sensor sensor, int accuracy) {             }
     }
 }

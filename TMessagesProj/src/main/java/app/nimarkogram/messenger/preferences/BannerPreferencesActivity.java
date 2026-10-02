@@ -1,3 +1,7 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
+
+
 package app.nimarkogram.messenger.preferences;
 
 import android.app.Activity;
@@ -80,6 +84,7 @@ public class BannerPreferencesActivity extends BasePreferencesActivity {
         statusPoll.run();
         reload();
     }
+
     @Override
     public void onPause() {
         visible = false;
@@ -112,18 +117,21 @@ public class BannerPreferencesActivity extends BasePreferencesActivity {
 
     @Override
     public void fillItems(ArrayList<UItem> items, UniversalAdapter adapter) {
-        items.add(UItem.asHeader(LocaleController.getString(R.string.NM_SettingsSectionStatus)));
+        items.add(UItem.asHeader(-1, LocaleController.getString(R.string.NM_SettingsSectionStatus)));
         items.add(SettingsHelper.asSwitchCG(ID_ENABLED,
                 LocaleController.getString(R.string.NM_BAN_Enable))
                 .setChecked(NimarkoBannerConfig.enabled));
-        items.add(UItem.asShadow(LocaleController.getString(R.string.NM_BAN_EnableHint)));
-        if (!NimarkoBannerConfig.enabled) {
-            return;
+        if (NimarkoBannerConfig.enabled) {
+            items.add(UItem.asShadow(-2, null));
+            fillBannerItems(items);
         }
+        items.add(UItem.asShadow(-3, LocaleController.getString(R.string.NM_BAN_EnableHint)));
+    }
 
+    private void fillBannerItems(ArrayList<UItem> items) {
         String st = ctrl.statusString();
 
-        items.add(UItem.asHeader(LocaleController.getString(R.string.NM_BAN_GlobalHeader)));
+        items.add(UItem.asHeader(-4, LocaleController.getString(R.string.NM_BAN_GlobalHeader)));
         boolean sending = processingFile || ctrl.isModerationSending();
         String details;
         if (sending) details = LocaleController.getString(R.string.NM_BAN_Sending);
@@ -156,16 +164,17 @@ public class BannerPreferencesActivity extends BasePreferencesActivity {
                         LocaleController.getString(R.string.NM_BAN_SelectHint)).setEnabled(!sending && !picking));
                 break;
         }
-        items.add(UItem.asShadow(moderationHint == null
+        items.add(UItem.asShadow(-5, moderationHint == null
                 ? LocaleController.getString(R.string.NM_BAN_AutoStatus)
                 : moderationHint + "\n" + LocaleController.getString(R.string.NM_BAN_AutoStatus)));
 
-        items.add(UItem.asHeader(LocaleController.getString(R.string.NM_BAN_LocalHeader)));
+        items.add(UItem.asHeader(-6, LocaleController.getString(R.string.NM_BAN_LocalHeader)));
         if ("approved".equals(st)) {
+
             items.add(asSettingsLink(ID_PICK_LOCAL, IconBackgroundColors.BLUE_DEEP,
                     R.drawable.msg_gallery, LocaleController.getString(R.string.NM_BAN_PickLocal),
                     LocaleController.getString(R.string.NM_BAN_LocalDisabledHint)).setEnabled(false));
-            items.add(UItem.asShadow(null));
+            items.add(UItem.asShadow(-7, null));
         } else {
             items.add(SettingsHelper.asSwitchCG(ID_USE_AVATAR,
                     LocaleController.getString(R.string.NM_BAN_AvatarBanner))
@@ -189,9 +198,10 @@ public class BannerPreferencesActivity extends BasePreferencesActivity {
                         R.drawable.msg_delete, LocaleController.getString(R.string.NM_BAN_DeleteLocal))
                         .setEnabled(!processingFile && !picking).red());
             }
-            items.add(UItem.asShadow(LocaleController.getString(R.string.NM_BAN_LocalOnlyHint)));
+            items.add(UItem.asShadow(-7, LocaleController.getString(R.string.NM_BAN_LocalOnlyHint)));
         }
-        items.add(UItem.asHeader(LocaleController.getString(R.string.NM_SettingsSectionDisplay)));
+
+        items.add(UItem.asHeader(-8, LocaleController.getString(R.string.NM_SettingsSectionDisplay)));
         if ("approved".equals(st)) {
             items.add(SettingsHelper.asSwitchCG(ID_HIDE_AVATAR,
                     LocaleController.getString(R.string.NM_BAN_HideAvatar))
@@ -200,7 +210,7 @@ public class BannerPreferencesActivity extends BasePreferencesActivity {
         items.add(SettingsHelper.asSwitchCG(ID_LITE,
                 LocaleController.getString(R.string.NM_BAN_LiteMode))
                 .setChecked(NimarkoBannerConfig.liteMode));
-        items.add(UItem.asShadow(LocaleController.getString(R.string.NM_BAN_LiteModeHint)));
+        items.add(UItem.asShadow(-9, LocaleController.getString(R.string.NM_BAN_LiteModeHint)));
     }
 
     private static String statusText(String st) {
@@ -251,6 +261,7 @@ public class BannerPreferencesActivity extends BasePreferencesActivity {
                 selLocal();
                 break;
             case ID_DELETE_LOCAL:
+
                 if (processingFile || picking) return;
                 ctrl.removeLocalBanner();
                 break;
@@ -312,6 +323,7 @@ public class BannerPreferencesActivity extends BasePreferencesActivity {
         return !isFinished && owner != 0 && UserConfig.selectedAccount == account
                 && UserConfig.getInstance(account).getClientUserId() == owner;
     }
+
     private void processPickedFile(Uri uri, boolean global, int account, long owner) {
         File tmp = null;
         InputStream in = null;
@@ -328,6 +340,7 @@ public class BannerPreferencesActivity extends BasePreferencesActivity {
                 total += n;
                 if (total > MAX_SIZE) {
                     out.close(); out = null;
+
                     tmp.delete();
                     err(R.string.NM_BAN_FileTooBig);
                     return;
@@ -338,6 +351,7 @@ public class BannerPreferencesActivity extends BasePreferencesActivity {
 
             String ext = NimarkoBannerController.detectBannerExtension(tmp);
             if (ext == null) {
+
                 tmp.delete();
                 err(R.string.NM_BAN_InvalidFormat);
                 return;
@@ -355,6 +369,7 @@ public class BannerPreferencesActivity extends BasePreferencesActivity {
                 else ctrl.setLocalBanner(upload, ext);
             });
         } catch (Throwable t) {
+
             if (tmp != null) tmp.delete();
             err(R.string.NM_BAN_NoAccess);
         } finally {
@@ -370,6 +385,7 @@ public class BannerPreferencesActivity extends BasePreferencesActivity {
     private void err(int res) {
         AndroidUtilities.runOnUIThread(() -> {
             try {
+
                 BulletinFactory factory = (getParentActivity() == null || getParentActivity().isFinishing() || isFinished)
                         ? BulletinFactory.global()
                         : BulletinFactory.of(this);
@@ -379,8 +395,6 @@ public class BannerPreferencesActivity extends BasePreferencesActivity {
     }
 
     private void reload() {
-        if (listView != null && listView.adapter != null) {
-            listView.adapter.update(true);
-        }
+        updateItemsAfterToggle();
     }
 }

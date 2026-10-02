@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Modifications Copyright (C) 2026 Ettacent -->
 <resources>
     <string name="NM_EnhancedGlassBlur">Enhanced glass and blur</string>
     <string name="NM_EnhancedGlassBlur_Desc">Higher-quality effects. Uses more processing power.</string>
@@ -411,7 +412,7 @@
     <string name="NM_Config_Import_Desc">Restore settings from a file</string>
     <string name="NM_SnowInHeader">Snow in header</string>
     <string name="NM_SnowInHeader_Desc">Show snow in the top bar</string>
-    <string name="NM_CP_SnowflakesInChat_Desc">Show snow over messages in open chats</string>
+    <string name="NM_SnowflakesInChat_Desc">Show snow over messages in open chats</string>
     <string name="NM_SettingsDesc_NavigationAnimation">Choose how screens open and close</string>
     <string name="NM_SettingsDesc_PredictiveBack">Preview the previous screen while swiping back</string>
     <string name="NM_SettingsDesc_SystemEmoji">Use the emoji set installed on your device</string>

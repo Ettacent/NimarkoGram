@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 5.x.x.
  * It is licensed under GNU GPL v. 2 or later.
@@ -1033,6 +1035,7 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
 
         if (fragmentsStack.size() >= 2 && containerView.getMeasuredWidth() > 0) {
             float progress;
+
             if (materialGestureActive) {
                 progress = materialGestureProgress;
             } else if (newBackTransitions() && slideTransitionSpring == null) {
@@ -1157,6 +1160,7 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
             canvas.clipPath(clipPath);
         }
         if (materialTransitionActive) {
+
             canvas.drawRect(getPaddingLeft(), 0, getWidth() - getPaddingRight(), getHeight(), materialTransitionPaint);
         }
         super.dispatchDraw(canvas);
@@ -1166,7 +1170,6 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
     }
 
     private final AnimatedFloat hasSheetsAnimator = new AnimatedFloat(this, 280, CubicBezierInterpolator.EASE_OUT_QUINT);
-
 
     @Override
     protected boolean drawChild(Canvas canvas, View child, long drawingTime) {
@@ -1262,6 +1265,7 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
         if ((inPreviewMode || transitionAnimationPreviewMode) && child == containerView) {
             drawPreviewDrawables(canvas, containerView);
         }
+
         int materialLayer = -1;
         if (materialTransitionActive && (child == containerView || child == containerViewBack)) {
             boolean top = child == materialTopSurface;
@@ -1425,6 +1429,7 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
             if (fragmentsStack.size() > 0) {
                 lastFragment = fragmentsStack.get(fragmentsStack.size() - 1);
                 currentActionBar = lastFragment.actionBar;
+
                 lastFragment.onBecomeFullyVisible();
                 lastFragment.prepareFragmentToSlide(false, false);
             }
@@ -1627,6 +1632,7 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
         if (shouldUseMaterialAnimationForStack()) {
             materialGestureActive = true;
             materialTransitionActive = true;
+
             materialGestureDirection = predictiveBackInProgress && !predictiveBackLeft ? -1f : 1f;
             applyMaterialGestureProgress(0f);
         }
@@ -1792,6 +1798,7 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
     public boolean onBackStarted(float touchX, float touchY) {
         return onBackStarted(touchX, touchY, touchX < AndroidUtilities.displaySize.x / 2f);
     }
+
     public boolean onBackStarted(float touchX, float touchY, boolean fromLeftEdge) {
         finishSettlingSlideForNextBack();
         if (animationInProgress) {
@@ -1936,6 +1943,7 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
                                 .setStiffness(SPRING_STIFFNESS)
                                 .setDampingRatio(SpringForce.DAMPING_RATIO_NO_BOUNCY));
             }
+
             if (Float.isFinite(velX)) {
                 springAnimation.setStartVelocity(velX * SPRING_MULTIPLIER / transitionWidth);
             }
@@ -2104,9 +2112,11 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
             fragment.onLowMemory();
         }
     }
+
     private void finishSettlingSlideForNextBack() {
         if (animationInProgress && slideTransitionSpring != null
                 && currentSpringAnimation == slideTransitionSpring && slideTransitionTimeoutRunnable != null) {
+
             final Runnable completion = slideTransitionTimeoutRunnable;
             AndroidUtilities.cancelRunOnUIThread(completion);
             completion.run();
@@ -2341,6 +2351,7 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
         final boolean closing = transitionAnimationInProgress && onCloseAnimationEndRunnable != null;
         final Runnable endRunnable = !transitionAnimationInProgress ? null
                 : closing ? onCloseAnimationEndRunnable : onOpenAnimationEndRunnable;
+
         onCloseAnimationEndRunnable = null;
         onOpenAnimationEndRunnable = null;
         transitionAnimationInProgress = false;
@@ -2353,6 +2364,7 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
         newFragment = null;
         oldFragment = null;
         cancelPreviewTransitionTimeout();
+
         if (delayedOpenAnimationRunnable != null) {
             AndroidUtilities.cancelRunOnUIThread(delayedOpenAnimationRunnable);
             delayedOpenAnimationRunnable = null;
@@ -2497,12 +2509,15 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
                 armPreviewTransitionTimeout(open);
             }
         }
+
         if (shouldUseSpringAnimationForTransition()) {
             if (!preview) {
                 final float travel = getWidth() - getPaddingLeft() - getPaddingRight();
                 if (open) {
+
                     containerView.setTranslationX(travel > 0f ? travel : AndroidUtilities.displaySize.x);
                 } else {
+
                     containerView.setTranslationX(-Math.max(0f, travel) * .35f);
                 }
             }
@@ -2528,6 +2543,7 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
                 if (animation != currentSpringAnimation || ownerEpoch != navigationEpoch) {
                     return;
                 }
+
                 final float springProgress = value / SPRING_MULTIPLIER;
                 final float logicalProgress = MathUtils.clamp(springProgress, 0f, 1f);
                 animationProgress = preview ? Math.max(animationProgress, logicalProgress) : logicalProgress;
@@ -2732,14 +2748,18 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
         };
         postOnAnimation(animationRunnable);
     }
+
     private void prepareMaterialLayoutAnimation(boolean open) {
         materialTransitionActive = true;
         applyMaterialLayoutProgress(open, 0f);
     }
+
     private void applyMaterialLayoutProgress(boolean open, float progress) {
+
         applyMaterialSurfaces(open, progress, containerView, containerViewBack, newFragment, oldFragment,
                 LocaleController.isRTL ? -1f : 1f);
     }
+
     private void applyMaterialSurfaces(boolean forward, float progress, View entering, View leaving,
                                        BaseFragment destination, BaseFragment source, float direction) {
         float p = MaterialSharedAxisMotion.clamp(progress);
@@ -2756,13 +2776,16 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
         configureMaterialComposition(entering, leaving, destination, source, MaterialSharedAxisMotion.enteringAlpha(p));
         invalidate();
     }
+
     private int materialSurfaceColor(BaseFragment fragment) {
         if (fragment == null) return Theme.getColor(Theme.key_windowBackgroundGray);
+
         if (fragment instanceof MainTabsActivity) {
             return ((MainTabsActivity) fragment).getNavigationBackgroundColor();
         }
         View root = fragment.getFragmentView();
         Drawable background = root != null ? root.getBackground() : null;
+
         if (fragment instanceof DialogsActivity) {
             return fragment.getThemedColor(Theme.key_windowBackgroundWhite);
         }
@@ -2778,9 +2801,11 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
         if (background instanceof ColorDrawable && Color.alpha(((ColorDrawable) background).getColor()) == 255) {
             return ((ColorDrawable) background).getColor();
         }
+
         return fragment.getThemedColor(fragment instanceof ChatActivity
                 ? Theme.key_windowBackgroundWhite : Theme.key_windowBackgroundGray);
     }
+
     private void configureMaterialComposition(View entering, View leaving, BaseFragment destination, BaseFragment source, float mix) {
         entering.setAlpha(1f);
         leaving.setAlpha(1f);
@@ -2795,6 +2820,7 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
         materialTransitionPaint.setColor(ColorUtils.setAlphaComponent(materialGestureActive ? (enteringOnTop ? from : to)
                 : ColorUtils.blendARGB(from, to, mix), 255));
     }
+
     private void applyMaterialGestureProgress(float progress) {
         if (!materialGestureActive) return;
         materialGestureProgress = MaterialSharedAxisMotion.clamp(progress);
@@ -2810,7 +2836,9 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
         final BaseFragment destination = getBackgroundFragment();
         final BaseFragment source = getLastFragment();
         final long ownerEpoch = navigationEpoch;
+
         float width = containerView.getWidth();
+
         float scale = MaterialSharedAxisMotion.gestureScale(materialGestureProgress);
         containerView.setScaleX(scale);
         containerView.setScaleY(scale);
@@ -2828,6 +2856,7 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
         if (ownerEpoch != navigationEpoch || !materialGestureActive) return;
         if (destination != null) destination.onTransitionAnimationProgress(true, materialGestureProgress);
     }
+
     private void restoreMaterialGestureOutline() {
         if (materialRoundedSurface == null) return;
         materialRoundedSurface.setOutlineProvider(materialOriginalOutline);
@@ -2836,6 +2865,7 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
         materialRoundedSurface = null;
         materialOriginalOutline = null;
     }
+
     private void settleMaterialGesture(boolean cancel, float velocity) {
         final long ownerEpoch = navigationEpoch;
         final AnimatorSet owner = new AnimatorSet();
@@ -2854,10 +2884,12 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
         owner.playTogether(progress);
         owner.addListener(new AnimatorListenerAdapter() {
             private boolean cancelled;
+
             @Override
             public void onAnimationCancel(Animator animation) {
                 cancelled = true;
             }
+
             @Override
             public void onAnimationEnd(Animator animation) {
                 if (backAnimator != owner || navigationEpoch != ownerEpoch) return;
@@ -2874,6 +2906,7 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
         layoutToIgnore = containerViewBack;
         owner.start();
     }
+
     private void startMaterialLayoutAnimation(boolean open) {
         prepareMaterialLayoutAnimation(open);
         transitionAnimationStartTime = SystemClock.uptimeMillis();
@@ -2910,15 +2943,18 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
         currentAnimation = owner;
         owner.start();
     }
+
     @Override
     public boolean isMaterialNavigationEnabled() {
         return USE_MATERIAL_ANIMATION;
     }
+
     private boolean shouldUseMaterialAnimationForTransition() {
         return USE_MATERIAL_ANIMATION
                 && !isCommunityDialogsFragment(oldFragment)
                 && !isCommunityDialogsFragment(newFragment);
     }
+
     private boolean shouldUseMaterialAnimationForStack() {
         return USE_MATERIAL_ANIMATION && !inPreviewMode && !transitionAnimationPreviewMode
                 && MessagesController.getGlobalMainSettings().getBoolean("view_animations", true)
@@ -2984,12 +3020,14 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
                         && !animationInProgress && !startedTracking && !predictiveBackInProgress
                         && !predictiveInput && !transitionAnimationInProgress && !previewOpenAnimationInProgress;
     }
+
     private void invalidateDeferredProfileNavigation() {
         deferredProfileNavigationGeneration++;
         if (parentActivity instanceof LaunchActivity) {
             ((LaunchActivity) parentActivity).invalidateFragmentPresentationRequests();
         }
     }
+
     private boolean deferProfileNavigation(BaseFragment fragment, Runnable onReady) {
         if (!(fragment instanceof org.telegram.ui.ProfileActivity)) {
             invalidateDeferredProfileNavigation();
@@ -3000,6 +3038,7 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
                 ? source.captureNavigationRequest() : captureNavigationRequest();
         return ((org.telegram.ui.ProfileActivity) fragment).prepareChatForNavigation(requestCurrent, onReady);
     }
+
     @Override
     public boolean presentFragment(NavigationParams params) {
         BaseFragment fragment = params.fragment;
@@ -3017,9 +3056,10 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
                     if (parentActivity == null) {
                         return false;
                     }
-                    app.nimarkogram.messenger.security.NimarkoBiometricPrompt.prompt(
+                    app.nimarkogram.messenger.security.NimarkoBiometricPrompt.promptForChat(
                             parentActivity,
                             account,
+                            userId, chatId, encId,
                             () -> {
                                 app.nimarkogram.messenger.security.NimarkoBiometricPrompt
                                         .markVerified(account, userId, chatId, encId);
@@ -3058,6 +3098,7 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
         if (deferProfileNavigation(fragment, () -> presentFragment(deferredParams))) {
             return true;
         }
+
         if (delegate != null && check && !delegate.needPresentFragment(this, params)) {
             return false;
         }
@@ -3322,6 +3363,7 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
                     fragment.onTransitionAnimationEnd(true, false);
                     fragment.onBecomeFullyVisible();
                 };
+
                 final boolean noDelay = !fragment.needDelayOpenAnimation();
                 if (noDelay) {
                     if (currentFragment != null) {
@@ -3480,6 +3522,7 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
         if (fragmentsStack.contains(fragment)) {
             return false;
         }
+
         if (!fragment.onFragmentCreate()) {
             return false;
         }
@@ -3659,6 +3702,7 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
         if (USE_SPRING_ANIMATION && !isCommunityDialogsFragment(fragment)) {
             final View view = fragment.fragmentView;
             previewExpandView = view;
+
             final Rect previewBounds = new Rect(view.getLeft(), view.getTop(), view.getRight(), view.getBottom());
             final float fromMenuY = previewMenu != null ? previewMenu.getTranslationY() : 0;
 
@@ -3678,6 +3722,7 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
                 if (view.getWidth() == 0 || view.getHeight() == 0) {
                     return;
                 }
+
                 view.setPivotX(view.getWidth() * .5f);
                 view.setPivotY(view.getHeight() * .5f);
                 view.setScaleX(AndroidUtilities.lerp(previewBounds.width() / (float) view.getWidth(), 1f, progress));
@@ -4548,6 +4593,7 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
             return;
         }
         if (transitionAnimationInProgress) {
+
             onAnimationEndCheck(true);
             containerView.invalidate();
         }
@@ -4679,7 +4725,6 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
         }
         return null;
     }
-
 
     ArrayList<String> lastActions = new ArrayList<>();
     Runnable debugBlackScreenRunnable = () -> {
@@ -4814,8 +4859,6 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
         return 0;
     }
 
-
-
     @Override
     public void addView(View child, int index, ViewGroup.LayoutParams params) {
         super.addView(child, index, params);
@@ -4936,7 +4979,9 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
     private final float SPRING_STIFFNESS_PREVIEW_OUT = 800f;
     private final float SPRING_STIFFNESS_PREVIEW_EXPAND = 750f;
     private final float SPRING_MULTIPLIER = 1000f;
+
     private void setSpringPixelPrecision(SpringAnimation animation, float travelPixels) {
+
         animation.setMinimumVisibleChange(.5f * SPRING_MULTIPLIER / Math.max(1f, travelPixels));
     }
 

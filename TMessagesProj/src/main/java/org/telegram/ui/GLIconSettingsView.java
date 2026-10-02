@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui;
 
 import android.content.Context;
@@ -9,6 +11,7 @@ import android.widget.TextView;
 
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.LocaleController;
+import org.telegram.messenger.R;
 import org.telegram.ui.ActionBar.BottomSheet;
 import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.Components.ColorPicker;
@@ -25,7 +28,7 @@ public class GLIconSettingsView extends LinearLayout {
         setOrientation(VERTICAL);
 
         TextView saturationTextView = new TextView(context);
-        saturationTextView.setText("Spectral top ");
+        saturationTextView.setText(LocaleController.getString(R.string.NM_Settings_IconHighlightTop));
         saturationTextView.setTextColor(Theme.getColor(Theme.key_dialogTextBlue2));
         saturationTextView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 16);
         saturationTextView.setLines(1);
@@ -52,9 +55,8 @@ public class GLIconSettingsView extends LinearLayout {
         seekBar.setReportChanges(true);
         addView(seekBar, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, 38, 0, 5, 4, 5, 0));
 
-
         saturationTextView = new TextView(context);
-        saturationTextView.setText("Spectral bottom ");
+        saturationTextView.setText(LocaleController.getString(R.string.NM_Settings_IconHighlightBottom));
         saturationTextView.setTextColor(Theme.getColor(Theme.key_dialogTextBlue2));
         saturationTextView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 16);
         saturationTextView.setLines(1);
@@ -81,9 +83,8 @@ public class GLIconSettingsView extends LinearLayout {
         seekBar.setReportChanges(true);
         addView(seekBar, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, 38, 0, 5, 4, 5, 0));
 
-
         saturationTextView = new TextView(context);
-        saturationTextView.setText("Setup spec color");
+        saturationTextView.setText(LocaleController.getString(R.string.NM_Settings_IconHighlightColor));
         saturationTextView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 16);
         saturationTextView.setLines(1);
         saturationTextView.setGravity(Gravity.CENTER);
@@ -118,9 +119,8 @@ public class GLIconSettingsView extends LinearLayout {
         });
         addView(saturationTextView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, 48, Gravity.CENTER_VERTICAL, 16, 0, 16, 0));
 
-
         saturationTextView = new TextView(context);
-        saturationTextView.setText("Diffuse ");
+        saturationTextView.setText(LocaleController.getString(R.string.NM_Settings_IconDiffuseLighting));
         saturationTextView.setTextColor(Theme.getColor(Theme.key_dialogTextBlue2));
         saturationTextView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 16);
         saturationTextView.setLines(1);
@@ -148,7 +148,7 @@ public class GLIconSettingsView extends LinearLayout {
         addView(seekBar, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, 38, 0, 5, 4, 5, 0));
 
         saturationTextView = new TextView(context);
-        saturationTextView.setText("Normal map spectral");
+        saturationTextView.setText(LocaleController.getString(R.string.NM_Settings_IconNormalHighlights));
         saturationTextView.setTextColor(Theme.getColor(Theme.key_dialogTextBlue2));
         saturationTextView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 16);
         saturationTextView.setLines(1);
@@ -175,9 +175,8 @@ public class GLIconSettingsView extends LinearLayout {
         seekBar.setReportChanges(true);
         addView(seekBar, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, 38, 0, 5, 4, 5, 0));
 
-
         saturationTextView = new TextView(context);
-        saturationTextView.setText("Setup normal spec color");
+        saturationTextView.setText(LocaleController.getString(R.string.NM_Settings_IconNormalHighlightColor));
         saturationTextView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 16);
         saturationTextView.setLines(1);
         saturationTextView.setGravity(Gravity.CENTER);
@@ -215,10 +214,8 @@ public class GLIconSettingsView extends LinearLayout {
         });
         addView(saturationTextView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, 48, Gravity.CENTER_VERTICAL, 16, 0, 16, 0));
 
-
-
         saturationTextView = new TextView(context);
-        saturationTextView.setText("Small starts size");
+        saturationTextView.setText(LocaleController.getString(R.string.NM_Settings_IconSmallStarSize));
         saturationTextView.setTextColor(Theme.getColor(Theme.key_dialogTextBlue2));
         saturationTextView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 16);
         saturationTextView.setLines(1);

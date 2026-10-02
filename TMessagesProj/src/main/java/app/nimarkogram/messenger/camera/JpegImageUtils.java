@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /**
  * NG port of Cherrygram's JpegImageUtils. Identical to CG verbatim — only
  * the package is renamed. Provides JPEG / YUV image byte-array helpers used

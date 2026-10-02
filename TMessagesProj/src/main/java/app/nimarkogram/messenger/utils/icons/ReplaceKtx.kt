@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /**
  * Ported from Cherrygram (uz.unnarsx.cherrygram.core.icons.ReplaceKtx).
  * Originally Copyright github.com/arsLan4k1390, 2022-2026. GPL v2+.

@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package app.nimarkogram.messenger.plugins.xposed;
 
 import de.robv.android.xposed.XC_MethodHook;

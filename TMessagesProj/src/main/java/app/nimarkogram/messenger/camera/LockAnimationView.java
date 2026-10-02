@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /**
  * NG port of Cherrygram's LockAnimationView. Identical to CG's open-source
  * implementation — only the package is renamed. Used by the video-recording

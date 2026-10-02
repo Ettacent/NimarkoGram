@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package app.nimarkogram.messenger.preferences;
 
 import android.os.Handler;
@@ -6,7 +8,6 @@ import android.view.View;
 
 import java.util.ArrayList;
 
-import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.NotificationCenter;
 import org.telegram.messenger.R;
@@ -31,22 +32,6 @@ public class BottomTabsPreferencesActivity extends BasePreferencesActivity {
     private ArrayList<MainTabsManager.Tab> tabs;
     private ArrayList<MainTabsManager.Tab> initialTabs;
     private boolean resetToDefaults;
-    private boolean fragmentAlive;
-    private int uiGeneration;
-    private int pendingStructureRefreshGeneration;
-
-    private final Runnable delayedStructureRefresh = () -> {
-        if (!fragmentAlive || pendingStructureRefreshGeneration != uiGeneration) {
-            return;
-        }
-        if (editorCell != null) {
-            editorCell.setOnReorderCommitted(null);
-        }
-        editorCell = null;
-        if (listView != null && listView.adapter != null) {
-            listView.adapter.update(true);
-        }
-    };
 
     @Override
     public String getTitle() {
@@ -55,8 +40,6 @@ public class BottomTabsPreferencesActivity extends BasePreferencesActivity {
 
     @Override
     public boolean onFragmentCreate() {
-        fragmentAlive = true;
-        uiGeneration++;
         initialTabs = new ArrayList<>();
         for (MainTabsManager.Tab t : MainTabsManager.INSTANCE.getAllTabs()) {
             initialTabs.add(new MainTabsManager.Tab(t.getType(), t.enabled));
@@ -70,9 +53,6 @@ public class BottomTabsPreferencesActivity extends BasePreferencesActivity {
 
     @Override
     public void onFragmentDestroy() {
-        fragmentAlive = false;
-        uiGeneration++;
-        AndroidUtilities.cancelRunOnUIThread(delayedStructureRefresh);
         if (editorCell != null) {
             editorCell.setOnReorderCommitted(null);
         }
@@ -82,19 +62,20 @@ public class BottomTabsPreferencesActivity extends BasePreferencesActivity {
 
     @Override
     public void fillItems(ArrayList<UItem> items, UniversalAdapter adapter) {
-        items.add(UItem.asHeader(LocaleController.getString(R.string.NM_BT_LayoutHeader)));
+        items.add(UItem.asHeader(-1, LocaleController.getString(R.string.NM_BT_LayoutHeader)));
         UItem enableTabs = SettingsHelper.asSwitchCG(ID_SHOW_TABS,
                         LocaleController.getString(R.string.NM_BT_ShowTabs))
                 .setChecked(NimarkoConfig.showMainTabs);
         enableTabs.hideDivider = true;
         items.add(enableTabs);
-        items.add(UItem.asShadow(LocaleController.getString(R.string.NM_SettingsSummaryBottomTabs)));
 
         if (NimarkoConfig.showMainTabs) {
+            items.add(UItem.asShadow(-2, null));
             if (editorCell == null && getContext() != null) {
                 editorCell = new MainTabsPreviewCell(getContext());
                 editorCell.setEditMode(true);
                 editorCell.setTabs(getContext(), getResourceProvider(), tabs);
+
                 editorCell.setOnReorderCommitted(() -> {
                     resetToDefaults = false;
                     postCgTabsUpdated();
@@ -105,10 +86,10 @@ public class BottomTabsPreferencesActivity extends BasePreferencesActivity {
             if (editorCell != null) {
                 items.add(UItem.asCustom(editorCell,
                         org.telegram.ui.DialogsActivity.MAIN_TABS_HEIGHT_WITH_MARGINS));
-                items.add(UItem.asShadow(LocaleController.getString(R.string.NM_BT_EditorFooter)));
+                items.add(UItem.asShadow(-3, LocaleController.getString(R.string.NM_BT_EditorFooter)));
             }
 
-            items.add(UItem.asHeader(LocaleController.getString(R.string.NM_SettingsSectionDisplay)));
+            items.add(UItem.asHeader(-4, LocaleController.getString(R.string.NM_SettingsSectionDisplay)));
             items.add(UItem.asCheck(ID_SHOW_TITLE,
                             LocaleController.getString(R.string.NM_BT_ShowTabsTitle))
                     .setChecked(NimarkoConfig.showMainTabsTitle));
@@ -118,12 +99,12 @@ public class BottomTabsPreferencesActivity extends BasePreferencesActivity {
                     .setChecked(NimarkoConfig.showSearchInTabs));
             items.add(SettingsHelper.asSwitchCG(ID_FORCE_OPEN_CHATS,
                             LocaleController.getString(R.string.NM_BT_ForceOpenChats),
-                            LocaleController.getString(R.string.CP_MainTabs_ForceOpenChats_Desc))
+                            LocaleController.getString(R.string.NM_MainTabs_ForceOpenChats_Desc))
                     .setChecked(NimarkoConfig.mainTabsForceOpenChats));
             items.add(asSettingsLink(ID_RESET_ORDER, IconBackgroundColors.ORANGE,
                     R.drawable.msg_reset, LocaleController.getString(R.string.Reset)));
-            items.add(UItem.asShadow(null));
         }
+        items.add(UItem.asShadow(-5, LocaleController.getString(R.string.NM_SettingsSummaryBottomTabs)));
     }
 
     @Override
@@ -132,9 +113,8 @@ public class BottomTabsPreferencesActivity extends BasePreferencesActivity {
         if (id == ID_SHOW_TABS) {
             NimarkoConfig.toggleShowMainTabs();
             applyCheck(item, view, NimarkoConfig.showMainTabs);
-            AndroidUtilities.cancelRunOnUIThread(delayedStructureRefresh);
-            pendingStructureRefreshGeneration = uiGeneration;
-            AndroidUtilities.runOnUIThread(delayedStructureRefresh, 220);
+            updateItemsAfterToggle();
+
             postCgTabsUpdated();
             showRestartBulletin();
             rebuildMainTabsFragments();
@@ -158,12 +138,14 @@ public class BottomTabsPreferencesActivity extends BasePreferencesActivity {
             NimarkoConfig.toggleMainTabsForceOpenChats();
             applyCheck(item, view, NimarkoConfig.mainTabsForceOpenChats);
         } else if (id == ID_RESET_ORDER) {
+
             NimarkoConfig.setMainTabsOrder(null);
             resetToDefaults = true;
             tabs.clear();
             for (MainTabsManager.Tab t : MainTabsManager.INSTANCE.getAllTabs()) {
                 tabs.add(new MainTabsManager.Tab(t.getType(), t.enabled));
             }
+
             initialTabs = new ArrayList<>();
             for (MainTabsManager.Tab t : tabs) {
                 initialTabs.add(new MainTabsManager.Tab(t.getType(), t.enabled));

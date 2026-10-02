@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package app.nimarkogram.messenger.camera;
 
 import android.content.Context;
@@ -12,13 +14,10 @@ import androidx.annotation.Nullable;
 import androidx.camera.core.Preview;
 import androidx.camera.core.SurfaceOrientedMeteringPointFactory;
 import androidx.camera.core.SurfaceRequest;
-import androidx.camera.camera2.interop.Camera2CameraInfo;
 import androidx.core.content.ContextCompat;
 
 import org.telegram.messenger.FileLog;
 import org.telegram.messenger.AndroidUtilities;
-
-import app.nimarkogram.messenger.NimarkoCameraLog;
 
 import java.io.File;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -96,13 +95,6 @@ public final class NimarkoCameraXSurfaceSession {
         this.callback = callback;
         previewWidth = Math.max(1, targetWidth);
         previewHeight = Math.max(1, targetHeight);
-        if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("CXSurface create renderId=" + renderId
-                + " front=" + frontFacing + " requested=" + targetWidth + "x" + targetHeight
-                + " normalized=" + previewWidth + "x" + previewHeight
-                + " imageCapture=" + enableImageCapture
-                + " deferBind=" + deferInitialBind
-                + " normalizePortrait=" + normalizePortraitPhoto
-                + " configuredWide=" + useConfiguredUltraWide);
         final int captureWidth = normalizePortraitPhoto
                 ? Math.min(previewWidth, previewHeight) : previewWidth;
         final int captureHeight = normalizePortraitPhoto
@@ -120,6 +112,7 @@ public final class NimarkoCameraXSurfaceSession {
         controller.setUseConfiguredUltraWide(useConfiguredUltraWide);
         captureTargetRotation = getDisplayRotation();
         controller.setTargetOrientation(captureTargetRotation);
+
         if (enableImageCapture) {
             orientationListener = new OrientationEventListener(this.context) {
                 @Override
@@ -145,6 +138,7 @@ public final class NimarkoCameraXSurfaceSession {
                 orientationListener.enable();
             }
         } else {
+
             orientationListener = null;
         }
         controller.initCamera(this.context, frontFacing,
@@ -155,28 +149,12 @@ public final class NimarkoCameraXSurfaceSession {
     @android.annotation.SuppressLint({"RestrictedApi", "UnsafeOptInUsageError"})
     private void provideSurface(SurfaceRequest request) {
         if (closed) {
-            if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("CXSurface request rejected: closed renderId=" + renderId);
             request.willNotProvideSurface();
             return;
         }
         Size resolution = request.getResolution();
         final int requestGeneration = ++surfaceRequestGeneration;
         resetTransformationInfo();
-        String requestCameraId;
-        try {
-            requestCameraId = Camera2CameraInfo.from(
-                    request.getCamera().getCameraInfo()).getCameraId();
-        } catch (Throwable error) {
-            requestCameraId = "error:" + error.getClass().getSimpleName();
-        }
-        if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("CXSurface request renderId=" + renderId
-                + " generation=" + requestGeneration + " resolution=" + resolution
-                + " ownerFront=" + controller.isFrontface()
-                + " requestCamera=" + requestCameraId
-                + " requestPrimary=" + request.isPrimary()
-                + " expectedFps=" + request.getExpectedFrameRate()
-                + " controller=" + Integer.toHexString(
-                System.identityHashCode(controller)));
         previewWidth = resolution.getWidth();
         previewHeight = resolution.getHeight();
         boolean registeredSurface = false;
@@ -188,11 +166,6 @@ public final class NimarkoCameraXSurfaceSession {
                 mirrored = info.isMirroring();
                 hasCameraTransform = info.hasCameraTransform();
                 hasTransformationInfo = true;
-                if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("CXSurface transform renderId=" + renderId
-                        + " generation=" + requestGeneration
-                        + " rotation=" + rotationDegrees + " mirrored=" + mirrored
-                        + " cameraTransform=" + hasCameraTransform
-                        + " crop=" + info.getCropRect());
                 notifyReady();
             });
             surfaceTexture.setDefaultBufferSize(previewWidth, previewHeight);
@@ -215,9 +188,6 @@ public final class NimarkoCameraXSurfaceSession {
                 try { suppliedSurface.release(); } catch (Throwable ignored) {}
                 onProvidedSurfaceReleased();
                 int resultCode = result.getResultCode();
-                if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("CXSurface released renderId=" + renderId
-                        + " generation=" + requestGeneration + " result=" + resultCode
-                        + " remaining=" + providedSurfaceCount);
                 if (!closed && requestGeneration == surfaceRequestGeneration
                         && resultCode != SurfaceRequest.Result.RESULT_SURFACE_USED_SUCCESSFULLY
                         && resultCode != SurfaceRequest.Result.RESULT_REQUEST_CANCELLED) {
@@ -233,8 +203,6 @@ public final class NimarkoCameraXSurfaceSession {
                 onProvidedSurfaceReleased();
             }
             FileLog.e(t);
-            if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("CXSurface provide FAILED renderId=" + renderId
-                    + " generation=" + requestGeneration, t);
             request.willNotProvideSurface();
             notifyFailure(t);
         }
@@ -242,11 +210,6 @@ public final class NimarkoCameraXSurfaceSession {
 
     private void notifyReady() {
         if (closed || callback == null) return;
-        if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("CXSurface ready renderId=" + renderId
-                + " size=" + previewWidth + "x" + previewHeight
-                + " transform=" + hasTransformationInfo
-                + " cameraTransform=" + hasCameraTransform
-                + " rotation=" + rotationDegrees + " mirrored=" + mirrored);
         try {
             callback.onReady(previewWidth, previewHeight);
         } catch (Throwable callbackError) {
@@ -256,7 +219,6 @@ public final class NimarkoCameraXSurfaceSession {
 
     private void notifyFailure(Throwable error) {
         if (closed || callback == null) return;
-        if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("CXSurface failure renderId=" + renderId, error);
         try {
             callback.onFailure(error);
         } catch (Throwable callbackError) {
@@ -287,8 +249,6 @@ public final class NimarkoCameraXSurfaceSession {
 
     public void releaseSurfaceForRebind(Runnable onReleased) {
         if (onReleased == null) return;
-        if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("CXSurface releaseForRebind renderId=" + renderId
-                + " provided=" + providedSurfaceCount + " closed=" + closed);
         boolean runImmediately = false;
         synchronized (surfaceReleaseLock) {
             if (closed) {
@@ -331,10 +291,12 @@ public final class NimarkoCameraXSurfaceSession {
     }
 
     public int getCameraId() {
+
         return renderId;
     }
 
     public int getWorldAngle() {
+
         int clockwise = hasCameraTransform ? getDisplayRotationDegrees() : rotationDegrees;
         return (360 - clockwise) % 360;
     }
@@ -348,6 +310,7 @@ public final class NimarkoCameraXSurfaceSession {
     }
 
     public boolean isMirrored() {
+
         return hasTransformationInfo && mirrored;
     }
 
@@ -358,12 +321,15 @@ public final class NimarkoCameraXSurfaceSession {
     public boolean hasTransformationInfo() {
         return hasTransformationInfo;
     }
+
     public int getSurfaceRequestGeneration() {
         return surfaceRequestGeneration;
     }
+
     public boolean isSurfaceRequestCurrent(int generation) {
         return !closed && generation == surfaceRequestGeneration && hasTransformationInfo;
     }
+
     private void resetTransformationInfo() {
         hasTransformationInfo = false;
         hasCameraTransform = false;
@@ -382,8 +348,7 @@ public final class NimarkoCameraXSurfaceSession {
     public void switchCamera(boolean frontFacing) {
         if (!closed) {
             if (controller.isFrontface() == frontFacing && controller.isInitiated()) return;
-            if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("CXSurface switch renderId=" + renderId
-                    + " fromFront=" + controller.isFrontface() + " toFront=" + frontFacing);
+
             surfaceRequestGeneration++;
             resetTransformationInfo();
             controller.setFrontFace(frontFacing);
@@ -405,6 +370,7 @@ public final class NimarkoCameraXSurfaceSession {
     public float getObservedZoomRatio() {
         return closed ? 1f : controller.getObservedZoomRatio();
     }
+
     @Nullable
     public CameraXLensFrame getLensFrame(long surfaceTimestampNanos) {
         return closed ? null : controller.getLensFrame(surfaceTimestampNanos);
@@ -413,6 +379,7 @@ public final class NimarkoCameraXSurfaceSession {
     public boolean isInitialLensReady() {
         return !closed && controller.isInitialLensReady();
     }
+
     public boolean isInitialLensReady(long surfaceTimestampNanos) {
         return !closed && controller.isInitialLensReady(surfaceTimestampNanos);
     }
@@ -435,6 +402,14 @@ public final class NimarkoCameraXSurfaceSession {
         return closed ? 1f : controller.getMaxZoomRatio();
     }
 
+    public float[] getZoomShortcuts() {
+        return closed ? new float[0] : controller.getZoomShortcuts();
+    }
+
+    public boolean isZoomShortcutsReady() {
+        return !closed && controller.isZoomShortcutsReady();
+    }
+
     public boolean isExposureCompensationSupported() {
         return !closed && controller.isExposureCompensationSupported();
     }
@@ -445,6 +420,7 @@ public final class NimarkoCameraXSurfaceSession {
 
     public void focusToRect(@Nullable Rect focusRect) {
         if (closed || focusRect == null) return;
+
         int x = Math.round((focusRect.centerX() + 1000f) * previewWidth / 2000f);
         int y = Math.round((focusRect.centerY() + 1000f) * previewHeight / 2000f);
         x = Math.max(0, Math.min(previewWidth - 1, x));
@@ -488,15 +464,9 @@ public final class NimarkoCameraXSurfaceSession {
 
     public boolean bindConcurrentWith(@Nullable NimarkoCameraXSurfaceSession other,
                                       boolean compatibilityProfile) {
-        if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("CXSurface concurrent request first=" + renderId
-                + " second=" + (other == null ? "null" : other.renderId)
-                + " compatibility=" + compatibilityProfile);
         boolean result = !closed && other != null && !other.closed
                 && controller.bindConcurrentWith(
                         other.controller, compatibilityProfile);
-        if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("CXSurface concurrent result=" + result
-                + " first=" + renderId + " second="
-                + (other == null ? "null" : other.renderId));
         return result;
     }
 
@@ -576,6 +546,7 @@ public final class NimarkoCameraXSurfaceSession {
     public boolean takePicture(java.io.File file,
                                @Nullable org.telegram.messenger.Utilities.Callback<Integer> callback) {
         if (closed) return false;
+
         updateRotation();
         return controller.takePicture(file,
                 () -> {
@@ -597,8 +568,6 @@ public final class NimarkoCameraXSurfaceSession {
     }
 
     public void close(@Nullable Runnable onClosed) {
-        if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("CXSurface close renderId=" + renderId
-                + " provided=" + providedSurfaceCount + " alreadyClosed=" + closed);
         boolean closeController = false;
         Runnable completion = null;
         synchronized (surfaceReleaseLock) {
@@ -631,6 +600,7 @@ public final class NimarkoCameraXSurfaceSession {
             try {
                 controller.closeCamera();
             } catch (Throwable error) {
+
                 FileLog.e(error);
             }
         }

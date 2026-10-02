@@ -1,3 +1,7 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
+
+
 package app.nimarkogram.messenger.utils.chats;
 
 import static org.telegram.messenger.LocaleController.getString;
@@ -121,6 +125,7 @@ public class NimarkoChatsHelper extends BaseController {
         }
         if (forwardsSpan == null) {
             forwardsSpan = new SpannableStringBuilder("​");
+
             forwardsSpan.setSpan(new ColoredImageSpan(forwardsDrawable), 0, 1, 0);
         }
         spannableStringBuilder
@@ -143,6 +148,7 @@ public class NimarkoChatsHelper extends BaseController {
         }
         if (editedSpan == null) {
             editedSpan = new SpannableStringBuilder("​");
+
             editedSpan.setSpan(new ColoredImageSpan(editedDrawable), 0, 1, 0);
         }
         if (forwardsDrawable == null) {
@@ -150,6 +156,7 @@ public class NimarkoChatsHelper extends BaseController {
         }
         if (forwardsSpan == null) {
             forwardsSpan = new SpannableStringBuilder("​");
+
             forwardsSpan.setSpan(new ColoredImageSpan(forwardsDrawable), 0, 1, 0);
         }
         spannableStringBuilder
@@ -364,6 +371,7 @@ public class NimarkoChatsHelper extends BaseController {
     }
 
     public int getCustomReactionsCount(MessageObject selectedObject) {
+
         if (selectedObject == null
                 || selectedObject.messageOwner == null
                 || selectedObject.messageOwner.reactions == null
@@ -475,7 +483,7 @@ public class NimarkoChatsHelper extends BaseController {
         configStringKeys.add(getString(R.string.DirectShare));
         configValues.add(NimarkoConfig.ACTIONS_LEFT_DIRECT_SHARE);
 
-        PopupHelper.show(configStringKeys, getString(R.string.CP_LeftBottomButtonAction), configValues.indexOf(NimarkoConfig.actionsBarLeftButton), chatActivity.getContext(), i -> {
+        PopupHelper.show(configStringKeys, getString(R.string.NM_LeftBottomButtonAction), configValues.indexOf(NimarkoConfig.actionsBarLeftButton), chatActivity.getContext(), i -> {
             NimarkoConfig.setActionsBarLeftButton(configValues.get(i));
 
             if (chatActivity.actionsButtonsLayout.getReplyButton() == null) return;

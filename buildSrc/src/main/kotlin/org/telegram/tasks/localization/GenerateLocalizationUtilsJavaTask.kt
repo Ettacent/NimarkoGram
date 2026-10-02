@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.tasks.localization
 
 import org.gradle.api.DefaultTask
@@ -85,6 +87,18 @@ abstract class GenerateLocalizationUtilsJavaTask : DefaultTask() {
                 java.appendLine()
                 java.appendLine("        final String language = locale.getLanguage();")
                 java.appendLine()
+                if ("zh-CN" in languageTags || "zh-TW" in languageTags) {
+                    java.appendLine("        if (\"zh\".equals(language)) {")
+                    java.appendLine("            final String script = locale.getScript();")
+                    java.appendLine("            final String region = locale.getCountry();")
+                    java.appendLine("            final boolean traditional = \"Hant\".equals(script) || (!\"Hans\".equals(script)")
+                    java.appendLine("                    && (\"TW\".equals(region) || \"HK\".equals(region) || \"MO\".equals(region)));")
+                    val simplified = if ("zh-CN" in languageTags) "\"${getLocalizationAssetName("zh-CN")}\"" else "null"
+                    val traditional = if ("zh-TW" in languageTags) "\"${getLocalizationAssetName("zh-TW")}\"" else "null"
+                    java.appendLine("            return traditional ? $traditional : $simplified;")
+                    java.appendLine("        }")
+                    java.appendLine()
+                }
                 java.appendLine("        switch (language) {")
 
                 for (tag in languageTags) {

@@ -1,6 +1,18 @@
-/*
+/* Modifications Copyright (C) 2026 Ettacent */
+
+/**
+ * This is the source code of Cherrygram for Android.
+ * It is licensed under GNU GPL v. 2 or later.
+ * You should have received a copy of the license in this archive (see LICENSE).
+ * Please, be respectful and credit the original author if you use this code.
+ *
  * Copyright github.com/arsLan4k1390, 2022-2026.
- * Licensed under GNU GPL v2 or later. See LICENSE.
+ *
+ * NG port: ChatsHelper2.kt (Kotlin object) -> NimarkoChatHelper2.java (Java static utility).
+ * Per-method porting notes are at each method site below. CG-only branches that depend on
+ * Gemini AI / JsonBottomSheet / CG-trusted-IDs / Uzbekistan banking are intentionally
+ * dropped — these are tracked as "skipped" in the rebase plan.
+ * GPL-2.0 same-license relicensing approved (user owns both repos).
  */
 
 package app.nimarkogram.messenger.utils.chats;
@@ -88,7 +100,7 @@ public final class NimarkoChatHelper2 {
             return;
         }
         try {
-            NimarkoBiometricPrompt.prompt(fragment.getParentActivity(), account, () -> {
+            NimarkoBiometricPrompt.promptForChat(fragment.getParentActivity(), account, userId, chatId, encId, () -> {
                 NimarkoBiometricPrompt.markVerified(account, userId, chatId, encId);
                 action.run();
             }, null);
@@ -158,7 +170,7 @@ public final class NimarkoChatHelper2 {
         if (chatActivity == null) return;
         if (noForwards || chatActivity.isInScheduleMode()) {
             createReplyAction(chatActivity, selectedObject);
-            return; 
+            return;
         }
         switch (NimarkoConfig.actionsBarLeftButton) {
             case NimarkoConfig.ACTIONS_LEFT_REPLY:
@@ -197,7 +209,7 @@ public final class NimarkoChatHelper2 {
         final int currentIndex = Math.max(0, values.indexOf(NimarkoConfig.actionsBarLeftButton));
 
         PopupHelper.showSimpleAlert(chatActivity.getContext(), resourcesProvider,
-                getString(R.string.NM_MS_LeftBottomButton), 
+                getString(R.string.NM_MS_LeftBottomButton),
                 labels.toArray(new CharSequence[0]),
                 currentIndex,
                 i -> {
@@ -339,9 +351,9 @@ public final class NimarkoChatHelper2 {
             } else {
                 fmessages.add(fwd);
             }
-            
+
         } else {
-            
+
             fmessages.addAll(collectSelectedAndClear(chatActivity));
         }
 
@@ -415,10 +427,10 @@ public final class NimarkoChatHelper2 {
                     mc.deleteParticipantFromChat(currentChat.id, mc.getUser(user.id));
                 })
                 .addIf(ChatObject.hasAdminRights(currentChat) && isChatParticipant, R.drawable.msg_permissions, getString(R.string.ChangePermissions), () -> {
-                    openRightsEditor(chatActivity, user, participant,   1);
+                    openRightsEditor(chatActivity, user, participant,            1);
                 })
                 .addIf(ChatObject.canAddAdmins(currentChat) && isChatParticipant, R.drawable.msg_admins, getString(R.string.EditAdminRights), () -> {
-                    openRightsEditor(chatActivity, user, participant,   0);
+                    openRightsEditor(chatActivity, user, participant,            0);
                 });
 
         if (participant != null && participant.date != 0) {
@@ -494,7 +506,7 @@ public final class NimarkoChatHelper2 {
                 }
                 break;
             }
-            
+
             case NimarkoConfig.SLIDE_DIRECT_SHARE: {
                 ArrayList<MessageObject> one = new ArrayList<>();
                 one.add(msg);
@@ -612,7 +624,7 @@ public final class NimarkoChatHelper2 {
         } else {
             dcLabel = "DC: Available only for media.";
         }
-        opts.add(R.drawable.msg_info, dcLabel, () -> {   });
+        opts.add(R.drawable.msg_info, dcLabel, () -> {                         });
 
         String restrictions = NimarkoProfileActivityHelper.getRestrictionReasons(messageObject.messageOwner.restriction_reason);
         if (restrictions != null && !restrictions.isEmpty()) {

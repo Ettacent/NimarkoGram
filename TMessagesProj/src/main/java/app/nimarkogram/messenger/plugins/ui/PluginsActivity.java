@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package app.nimarkogram.messenger.plugins.ui;
 
 import android.content.Context;
@@ -68,7 +70,7 @@ import app.nimarkogram.messenger.utils.text.LocaleUtils;
 
 public class PluginsActivity extends BasePreferencesActivity implements NotificationCenter.NotificationCenterDelegate {
     private static final int PLUGIN_SETTINGS = 3;
-    
+
     private static final int REQ_PICK_PLUGIN = 4711;
     private static final long MAX_PICKER_PLUGIN_BYTES = 4L * 1024L * 1024L;
     private static final String PICKER_IMPORT_DIRECTORY = "imported_plugins";
@@ -141,12 +143,12 @@ public class PluginsActivity extends BasePreferencesActivity implements Notifica
                 PLUGIN_SETTINGS, R.drawable.msg_settings);
         this.engineSettingsItem.setContentDescription(LocaleController.getString(R.string.Settings));
         this.engineSettingsItem.setOnClickListener(view -> presentFragment(new PluginsInfoActivity()));
-        
+
         this.listView.setOnScrollListener(new RecyclerView.OnScrollListener() {
             @Override
             public void onScrollStateChanged(RecyclerView recyclerView, int i) {
                 if (i == 1) {
-                    
+
                     android.app.Activity parent = PluginsActivity.this.getParentActivity();
                     if (parent != null) {
                         AndroidUtilities.hideKeyboard(parent.getCurrentFocus());
@@ -180,7 +182,7 @@ public class PluginsActivity extends BasePreferencesActivity implements Notifica
                 fabLp.bottomMargin = bottomInset + AndroidUtilities.dp(16);
             }
             parent.addView(fab, fabLp);
-            
+
             updateAddButtonVisibility(false);
         }
 
@@ -247,7 +249,7 @@ public class PluginsActivity extends BasePreferencesActivity implements Notifica
     public void onInsets(int left, int top, int right, int bottom) {
         bottomInset = bottom;
         if (listView != null) {
-            
+
             listView.setPadding(0, 0, 0, bottom + AndroidUtilities.dp(80));
             listView.setClipToPadding(false);
         }
@@ -297,7 +299,7 @@ public class PluginsActivity extends BasePreferencesActivity implements Notifica
         boolean accepted = PluginUiDiskExecutor.execute(
                 "copy picker plugin",
                 () -> {
-                    
+
                     if (!isPickerIoOperationCurrent(
                             callbackLifecycleEpoch, operationEpoch)) {
                         return;
@@ -357,7 +359,7 @@ public class PluginsActivity extends BasePreferencesActivity implements Notifica
                         LocaleController.getString(R.string.NM_AddPluginFailed)).show();
             }
         } finally {
-            
+
             releaseUnclaimedPickerImportSource(path);
         }
     }
@@ -587,7 +589,17 @@ public class PluginsActivity extends BasePreferencesActivity implements Notifica
         enqueuePickerImportDelete(new File(normalized));
     }
 
-    private static void releaseUnclaimedPickerImportSource(String path) {
+    public static void returnPickerImportSource(String path) {
+        String normalized = normalizeManagedPickerImport(path);
+        if (normalized == null) return;
+        synchronized (PICKER_IMPORT_LOCK) {
+            if (ACTIVE_PICKER_IMPORTS.get(normalized) == PickerImportState.CLAIMED) {
+                ACTIVE_PICKER_IMPORTS.put(normalized, PickerImportState.READY);
+            }
+        }
+    }
+
+    public static void releaseUnclaimedPickerImportSource(String path) {
         String normalized = normalizeManagedPickerImport(path);
         if (normalized == null) {
             return;
@@ -720,13 +732,13 @@ public class PluginsActivity extends BasePreferencesActivity implements Notifica
             UItem uItemAsSpace = UItem.asSpace(AndroidUtilities.dp(8.0f));
             uItemAsSpace.transparent = true;
             arrayList.add(uItemAsSpace);
-            
+
             if (this.searching && !TextUtils.isEmpty(this.query)) {
-                
+
                 map.values().removeIf(p -> !p.getName().toLowerCase().contains(this.query.toLowerCase()));
             }
             if (map.isEmpty()) {
-                
+
                 if (this.emptyView == null) {
                     this.emptyView = new EmptyPluginsView(getContext(), getResourceProvider());
                 }
@@ -739,7 +751,7 @@ public class PluginsActivity extends BasePreferencesActivity implements Notifica
                     }
                 } else if (emptyPluginsView.getTag() == null || ((Integer) emptyPluginsView.getTag()).intValue() != 2) {
                     MediaDataController.getInstance(UserConfig.selectedAccount).setPlaceholderImage(emptyPluginsView.getBackupImageView(), "AnimatedEmojies", "📂", "100_100");
-                    
+
                     emptyPluginsView.setText(LocaleUtils.formatWithUsernames(
                             LocaleController.getString(R.string.NM_PluginsEmpty) + "\n"
                                     + LocaleController.getString(R.string.NM_PluginsEmptyHint)));
@@ -853,9 +865,9 @@ public class PluginsActivity extends BasePreferencesActivity implements Notifica
                 final boolean z = !controller.getRequestedPluginEnabled(pluginId);
                 final long operationEpoch = beginPluginUiOperation(pluginId);
                 final long cellBindingEpoch = pluginCell.getBindingEpoch();
-                
+
                 pluginCell.setChecked(z, true);
-                
+
                 pluginCell.setLoading(isPluginToggleLoading(pluginId));
                 controller.setPluginEnabled(pluginId, z, str ->
                     AndroidUtilities.runOnUIThread(() -> {
@@ -874,7 +886,7 @@ public class PluginsActivity extends BasePreferencesActivity implements Notifica
                             pluginCell.setChecked(
                                     controller.getRequestedPluginEnabled(pluginId), true);
                         }
-                        
+
                         if (PluginsActivity.this.listView != null
                                 && PluginsActivity.this.listView.adapter != null) {
                             PluginsActivity.this.listView.adapter.update(true);
@@ -902,7 +914,7 @@ public class PluginsActivity extends BasePreferencesActivity implements Notifica
 
             @Override
             public void pinPlugin(View view) {
-                
+
                 boolean zIsPluginPinned = PluginsController.isPluginPinned(plugin.getId());
                 PluginsController.setPluginPinned(plugin.getId(), !zIsPluginPinned);
                 PluginCell cell = null;
@@ -933,7 +945,7 @@ public class PluginsActivity extends BasePreferencesActivity implements Notifica
 
             @Override
             public void showKebabMenu(View anchor) {
-                
+
                 final boolean pinned = PluginsController.isPluginPinned(plugin.getId());
                 final boolean hasSettings = plugin.isEnabled()
                         && PluginsController.getInstance().hasPluginSettings(plugin.getId());
@@ -968,9 +980,9 @@ public class PluginsActivity extends BasePreferencesActivity implements Notifica
             togglePluginsEngine(view, uItem);
             return;
         }
-        
+
         if (uItem.plugin != null && view instanceof PluginCell) {
-            
+
             if (((PluginCell) view).isPointOnInteractive(f, f2)) {
                 return;
             }
@@ -979,7 +991,7 @@ public class PluginsActivity extends BasePreferencesActivity implements Notifica
                 PluginsWatchdog.showNotRespondingAlert(plugin);
                 return;
             }
-            
+
             PluginCell cellRef = (PluginCell) view;
             if (cellRef.isLoading()
                     || PluginsController.getInstance().isEnablingInProgress(plugin.getId())) {
@@ -988,7 +1000,7 @@ public class PluginsActivity extends BasePreferencesActivity implements Notifica
                                 LocaleController.formatString(R.string.NM_PluginEnabling, plugin.getName()))).show();
                 return;
             }
-            
+
             if (!plugin.isEnabled()) {
                 BulletinFactory.of(this).createSimpleBulletin(R.raw.info,
                         AndroidUtilities.replaceTags(
@@ -1104,12 +1116,12 @@ public class PluginsActivity extends BasePreferencesActivity implements Notifica
                         0.5f, true);
             }
             updateAddButtonVisibility(true);
-            
+
             if (this.listView != null && this.listView.adapter != null) {
                 this.listView.adapter.update(true);
             }
         } else if (i == NotificationCenter.reloadInterface) {
-            
+
             if (this.listView != null) {
                 if (this.listView.adapter != null) {
                     this.listView.adapter.update(true);

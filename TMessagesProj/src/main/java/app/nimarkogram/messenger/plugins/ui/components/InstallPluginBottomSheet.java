@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package app.nimarkogram.messenger.plugins.ui.components;
 
 import android.annotation.SuppressLint;
@@ -32,7 +34,6 @@ import org.telegram.messenger.MediaDataController;
 import org.telegram.messenger.MessageObject;
 import org.telegram.messenger.R;
 import org.telegram.messenger.UserConfig;
-import org.telegram.tgnet.TLRPC;
 import org.telegram.ui.ActionBar.BaseFragment;
 import org.telegram.ui.ActionBar.BottomSheet;
 import org.telegram.ui.ActionBar.Theme;
@@ -47,7 +48,6 @@ import org.telegram.ui.Stories.recorder.ButtonWithCounterView;
 import org.telegram.ui.Stories.recorder.HintView2;
 
 import java.io.File;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
 import app.nimarkogram.messenger.plugins.Plugin;
@@ -60,7 +60,7 @@ import app.nimarkogram.messenger.utils.chats.ChatUtils;
 import app.nimarkogram.messenger.utils.text.LocaleUtils;
 
 public class InstallPluginBottomSheet extends BottomSheet {
-     
+
     public interface HostInstallAuthority {
         boolean transfer(Utilities.Callback<String> callback);
         void revoke();
@@ -102,12 +102,12 @@ public class InstallPluginBottomSheet extends BottomSheet {
         hostFragment = baseFragment;
         hostFragmentView = baseFragment.getFragmentView();
         pickerImportSourcePath = params != null ? params.filePath : null;
-        
+
         Activity context = baseFragment.getParentActivity();
         fixNavigationBar();
-        
+
         boolean isUpdate = PluginsController.getInstance().plugins.containsKey(result.plugin.getId());
-        
+
         container = new FrameLayout(context);
         container.setClipChildren(false);
         container.setClipToPadding(false);
@@ -155,7 +155,7 @@ public class InstallPluginBottomSheet extends BottomSheet {
                     canvas.drawCircle(badgeX, badgeY, badgeRadius, paintFill);
                     if (badgeDrawable != null) {
                         badgeDrawable.setColorFilter(new PorterDuffColorFilter(getThemedColor(Theme.key_featuredStickers_buttonText), PorterDuff.Mode.SRC_IN));
-                        int size = AndroidUtilities.dp(16.0f); 
+                        int size = AndroidUtilities.dp(16.0f);
                         badgeDrawable.setBounds(
                                 (int) (badgeX - size / 2),
                                 (int) (badgeY - size / 2),
@@ -240,7 +240,7 @@ public class InstallPluginBottomSheet extends BottomSheet {
             badgeLayout.addView(badgeTxt);
 
             linearLayout.addView(badgeLayout, LayoutHelper.createLinear(-2, -2, Gravity.CENTER, 0, 12, 0, 0));
-            
+
             badgeLayout.setOnClickListener(v -> showIncompatibleHint(badgeLayout, params));
             AndroidUtilities.runOnUIThread(() -> {
                 if (!isDismissed() && badgeLayout.isAttachedToWindow()) {
@@ -263,7 +263,7 @@ public class InstallPluginBottomSheet extends BottomSheet {
         installBtn.setText(LocaleController.getString((int) (isUpdate ? R.string.UpdatePlugin : R.string.InstallPlugin)), false);
         installBtn.setSubText(null, false);
         installBtn.setOnClickListener(v -> installPlugin(params, result, baseFragment, isUpdate));
-        
+
         linearLayout.addView(installBtn, LayoutHelper.createLinear(-1, 48, 0, 16, 28, 16, 16));
 
         if (!result.plugin.isEnabled()) {
@@ -272,7 +272,7 @@ public class InstallPluginBottomSheet extends BottomSheet {
             checkBox.setDrawUnchecked(true);
             checkBox.setChecked(this.enableAfterInstallation, false);
             checkBox.setDrawBackgroundAsArc(10);
-            
+
             TextView checkText = new TextView(context);
             checkText.setTextColor(getThemedColor(Theme.key_windowBackgroundWhiteBlackText));
             checkText.setTextSize(1, 14.0f);
@@ -297,18 +297,17 @@ public class InstallPluginBottomSheet extends BottomSheet {
                     info.setClickable(true);
                 }
             });
-            
+
             checkLayout.addView(checkFrame, LayoutHelper.createLinear(24, 24, Gravity.CENTER_VERTICAL, 0, 0, 6, 0));
             checkLayout.addView(checkText, LayoutHelper.createLinear(-2, -2, Gravity.CENTER_VERTICAL));
-            
+
             checkLayout.setOnClickListener(v -> {
                 checkBox.setChecked(!checkBox.isChecked(), true);
                 this.enableAfterInstallation = checkBox.isChecked();
                 checkLayout.sendAccessibilityEvent(AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED);
             });
-            
+
             ScaleStateListAnimator.apply(checkLayout, 0.05f, 1.2f);
-            checkLayout.setBackground(Theme.createRadSelectorDrawable(getThemedColor(Theme.key_listSelector), 8, 8));
             linearLayout.addView(checkLayout, LayoutHelper.createLinear(-2, -2, Gravity.CENTER, 0, 0, 0, 8));
         }
 
@@ -349,7 +348,7 @@ public class InstallPluginBottomSheet extends BottomSheet {
     }
 
     public final void onHostFragmentTeardown() {
-        
+
         if (Looper.myLooper() != Looper.getMainLooper()) {
             AndroidUtilities.runOnUIThread(this::onHostFragmentTeardown);
             return;
@@ -366,22 +365,22 @@ public class InstallPluginBottomSheet extends BottomSheet {
             currentHint.hide();
             currentHint = null;
         }
-        
+
         HintView2 hint = new HintView2(getContext(), 3);
         hint.setMultilineText(true);
         hint.setBgColor(getThemedColor(Theme.key_undo_background));
         hint.setTextColor(getThemedColor(Theme.key_undo_infoColor));
-        
+
         hint.setText(AndroidUtilities.replaceTags(LocaleController.formatString(R.string.PluginIncompatibleInfo)));
-        
+
         hint.setTextAlign(Layout.Alignment.ALIGN_CENTER);
         hint.allowBlur(true);
         hint.setRounding(12.0f);
         hint.setMaxWidthPx(HintView2.cutInFancyHalf(hint.getText(), hint.getTextPaint()));
-        
+
         this.container.addView(hint, LayoutHelper.createFrame(-1, 100.0f, Gravity.TOP | Gravity.LEFT, 32.0f, 0.0f, 32.0f, 0.0f));
         this.currentHint = hint;
-        
+
         this.container.post(() -> {
             if (isDismissed() || currentHint != hint
                     || hint.getParent() != container
@@ -393,15 +392,15 @@ public class InstallPluginBottomSheet extends BottomSheet {
             anchor.getLocationInWindow(anchorPos);
             int[] containerPos = new int[2];
             this.container.getLocationInWindow(containerPos);
-            
+
             int relativeY = anchorPos[1] - containerPos[1];
             int relativeX = anchorPos[0] - containerPos[0];
-            
+
             hint.setTranslationY(relativeY - AndroidUtilities.dp(100.0f) - AndroidUtilities.dp(6.0f));
-            
+
             float jointX = -AndroidUtilities.dp(32.0f) + relativeX + (anchor.getMeasuredWidth() / 2.0f);
             hint.setJointPx(0.0f, jointX);
-            
+
             hint.setDuration(5500L);
             hint.show();
         });
@@ -479,7 +478,7 @@ public class InstallPluginBottomSheet extends BottomSheet {
             }
         }
         if (!queueConfirmed) {
-            
+
             app.nimarkogram.messenger.plugins.PluginDebugLog.log(
                     "Install queue confirmation lost its lifecycle nonce");
             try {
@@ -496,7 +495,7 @@ public class InstallPluginBottomSheet extends BottomSheet {
         try {
             dismiss();
         } catch (Throwable dismissFailure) {
-            
+
             app.nimarkogram.messenger.plugins.PluginDebugLog.log(
                     "Install sheet dismiss failed after queue confirmation",
                     dismissFailure);
@@ -778,56 +777,10 @@ public class InstallPluginBottomSheet extends BottomSheet {
         String name = plugin.getName();
         String text = LocaleController.formatString(update ? R.string.PluginUpdated : R.string.PluginInstalled, name);
 
-        if (plugin.getPack() == null || plugin.getIndex() < 0) {
-            if (finishInstallOperation(operationEpoch)) {
-                BulletinFactory.of(fragment).createSimpleBulletin(
-                        R.raw.contact_check, AndroidUtilities.replaceTags(text)).show();
-            }
-            return;
+        if (finishInstallOperation(operationEpoch)) {
+            BulletinFactory.of(fragment).createSimpleBulletin(
+                    R.raw.contact_check, AndroidUtilities.replaceTags(text)).show();
         }
-
-        TLRPC.TL_inputStickerSetShortName stickerSet = new TLRPC.TL_inputStickerSetShortName();
-        stickerSet.short_name = plugin.getPack();
-        
-        AtomicBoolean shown = new AtomicBoolean(false);
-        Runnable fallback = () -> {
-            if (shown.getAndSet(true)) {
-                return;
-            }
-            boolean canShow = isInstallUiCurrent(
-                    fragment, callbackLifecycleEpoch, operationEpoch);
-            if (finishInstallOperation(operationEpoch) && canShow) {
-                BulletinFactory.of(fragment).createSimpleBulletin(
-                        R.raw.contact_check, AndroidUtilities.replaceTags(text)).show();
-            }
-        };
-        AndroidUtilities.runOnUIThread(fallback, 300L);
-
-        MediaDataController.getInstance(UserConfig.selectedAccount).getStickerSet(stickerSet, 0, true, (res) -> {
-            AndroidUtilities.runOnUIThread(() -> {
-                if (shown.get()) return;
-                if (!isInstallUiCurrent(
-                        fragment, callbackLifecycleEpoch, operationEpoch)) {
-                    if (!shown.getAndSet(true)) {
-                        AndroidUtilities.cancelRunOnUIThread(fallback);
-                        finishInstallOperation(operationEpoch);
-                    }
-                    return;
-                }
-                
-                TLRPC.TL_messages_stickerSet set = (TLRPC.TL_messages_stickerSet) res;
-                if (set != null && set.documents != null && plugin.getIndex() < set.documents.size()) {
-                    TLRPC.Document doc = set.documents.get(plugin.getIndex());
-                    if (doc != null && !shown.getAndSet(true)) {
-                        AndroidUtilities.cancelRunOnUIThread(fallback);
-                        if (finishInstallOperation(operationEpoch)) {
-                            BulletinFactory.of(fragment).createSimpleBulletin(
-                                    doc, AndroidUtilities.replaceTags(text)).show();
-                        }
-                    }
-                }
-            });
-        });
     }
 
     @Override
@@ -888,12 +841,12 @@ public class InstallPluginBottomSheet extends BottomSheet {
             }
             super.dismiss();
         } finally {
-            
+
             revokeUnqueuedAuthority();
             releasePickerImportSource(false);
         }
     }
-    
+
     @Override
     protected void onSwipeStarts() {
         if (currentHint != null) {
@@ -918,7 +871,7 @@ public class InstallPluginBottomSheet extends BottomSheet {
         }
 
         private static boolean pluginCompatibilityCheck(String path) {
-            
+
             return false;
         }
     }

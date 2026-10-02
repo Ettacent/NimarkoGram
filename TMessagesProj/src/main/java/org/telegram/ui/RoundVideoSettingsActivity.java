@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui;
 
 import android.content.Context;
@@ -28,7 +30,6 @@ import org.telegram.ui.Components.LayoutHelper;
 import org.telegram.ui.Components.InstantCameraViewBase;
 import org.telegram.ui.Components.RecyclerListView;
 import org.telegram.utils.camera.roundvideo.RoundVideoSession;
-
 
 public class RoundVideoSettingsActivity extends BaseFragment {
     private static final int TYPE_HEADER = 0;
@@ -273,7 +274,7 @@ public class RoundVideoSettingsActivity extends BaseFragment {
                 cell.setEnabled(position == ROW_CAMERA_TYPE || enabled);
                 if (position == ROW_CAMERA_TYPE) {
                     cell.setTextAndValue(
-                            LocaleController.getString(R.string.CP_CameraType),
+                            LocaleController.getString(R.string.NM_CameraType),
                             CameraPreferencesActivity.getCameraName(),
                             true
                     );

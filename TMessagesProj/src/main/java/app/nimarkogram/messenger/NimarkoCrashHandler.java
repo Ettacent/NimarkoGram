@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package app.nimarkogram.messenger;
 
 import android.content.Context;
@@ -46,7 +48,6 @@ public final class NimarkoCrashHandler {
                             .putLong("pending_plugin_fatal_at", System.currentTimeMillis()).commit();
                 }
             } catch (Throwable ignored) {}
-            
             try {
                 dump(thread, throwable, pluginId);
             } catch (Throwable ignored) {}
@@ -68,7 +69,7 @@ public final class NimarkoCrashHandler {
         } catch (Throwable ignored) {}
         dump(thread, t, pluginId);
     }
-                    
+
     private static void dump(Thread thread, Throwable t, String pluginId) {
         final boolean oom = isOom(t);
         try {
@@ -83,11 +84,12 @@ public final class NimarkoCrashHandler {
             String reportId = ts + "-p" + android.os.Process.myPid()
                     + "-t" + threadId + "-" + reportSequence.incrementAndGet();
             File f = new File(dir, (pluginId == null ? "crash-" : "plugin-crash-") + reportId + ".txt");
-            
+
             try (PrintWriter pw = new PrintWriter(new BufferedWriter(new FileWriter(f)))) {
-                
-                pw.println(pluginId == null ? "Report this crash through the project issue tracker" : "Plugin error report — share with the plugin developer");
-                pw.println();
+                if (pluginId != null) {
+                    pw.println("Plugin error report — share with the plugin developer");
+                    pw.println();
+                }
                 pw.println(pluginId == null ? "=== NimarkoGram crash ===" : "=== NimarkoGram plugin crash ===");
                 if (pluginId != null) {
                     PluginCrashReports.writeIdentity(pw, pluginId);
@@ -97,7 +99,7 @@ public final class NimarkoCrashHandler {
                 pw.println("Time: " + new Date());
                 pw.println("Thread: " + (thread != null ? thread.getName() : "(null)"));
                 pw.println("Build: " + Build.MODEL + " / Android " + Build.VERSION.SDK_INT);
-                
+
                 try {
                     pw.println("App: " + NimarkoConfig.APP_NAME + " " + NimarkoConfig.VERSION_NAME
                             + " (code " + versionCode() + ")");
@@ -184,8 +186,8 @@ public final class NimarkoCrashHandler {
                     throw new IllegalStateException("Unable to write crash report");
                 }
             }
-            
             if (pluginId != null) PluginCrashReports.rememberFatalReport(pluginId, f);
+
             if (oom) {
                 try {
                     File hp = new File(dir, "oom-" + reportId + ".hprof");
@@ -194,7 +196,7 @@ public final class NimarkoCrashHandler {
                 } catch (Throwable ignored) {}
             }
             android.util.Log.e("nimarko-crash", "report written to " + f.getAbsolutePath());
-            
+
             if (!oom) {
                 String preview = readReportPreview(f, 64 * 1024);
                 if (preview != null) {
@@ -254,7 +256,7 @@ public final class NimarkoCrashHandler {
                 }
             } catch (Throwable ignored) {
             }
-            
+
             try {
                 File files = context.getFilesDir();
                 if (files != null) {
@@ -264,7 +266,7 @@ public final class NimarkoCrashHandler {
             } catch (Throwable ignored) {
             }
         }
-        
+
         try {
             File legacy = ensureLogDir(
                     new File(Environment.getExternalStorageDirectory(), "NimarkoGram/logs"));

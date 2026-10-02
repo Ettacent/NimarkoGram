@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /**
  * NimarkoGram port of Cherrygram's JsonBottomSheet.java.
  *

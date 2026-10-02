@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 5.x.x.
  * It is licensed under GNU GPL v. 2 or later.
@@ -755,9 +757,9 @@ public class DataSettingsActivity extends BaseFragment {
                     } else if (position == enableCacheStreamRow) {
                         //checkCell.setTextAndCheck(LocaleController.getString(R.string.CacheStreamFile), SharedConfig.saveStreamMedia, true);
                     } else if (position == enableMkvRow) {
-                        checkCell.setTextAndCheck("(beta only) Show MKV as Video", SharedConfig.streamMkv, true);
+                        checkCell.setTextAndCheck(LocaleController.getString(R.string.NM_Settings_ShowMKVAsVideoBeta), SharedConfig.streamMkv, true);
                     } else if (position == enableAllStreamRow) {
-                        checkCell.setTextAndCheck("(beta only) Stream All Videos", SharedConfig.streamAllVideo, false);
+                        checkCell.setTextAndCheck(LocaleController.getString(R.string.NM_Settings_StreamAllVideosBeta), SharedConfig.streamAllVideo, false);
                     } else if (position == autoplayGifsRow) {
                         checkCell.setTextAndCheck(LocaleController.getString(R.string.AutoplayGIF), SharedConfig.isAutoplayGifs(), true);
                     } else if (position == autoplayVideoRow) {

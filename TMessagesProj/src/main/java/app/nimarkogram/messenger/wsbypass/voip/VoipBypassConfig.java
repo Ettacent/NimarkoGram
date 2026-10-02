@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package app.nimarkogram.messenger.wsbypass.voip;
 
 import android.content.SharedPreferences;

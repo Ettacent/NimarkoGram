@@ -1,7 +1,12 @@
-/*
- * This file is part of NimarkoGram for Android.
- * Licensed under GNU GPL v2 or later. See LICENSE.
- * Copyright Ettacent, 2026.
+/* Modifications Copyright (C) 2026 Ettacent */
+
+/**
+ * This is the source code of Nimarko for Android.
+ * It is licensed under GNU GPL v. 2 or later.
+ * You should have received a copy of the license in this archive (see LICENSE).
+ * Please, be respectful and credit the original author if you use this code.
+ *
+ * Copyright github.com/arsLan4k1390, 2022-2026.
  */
 
 package app.nimarkogram.messenger.preferences;
@@ -39,6 +44,7 @@ public class MessagesPreferencesActivity extends NimarkoUniversalPreferencesActi
 
     @Override
     protected CharSequence getTitle() {
+
         return getString(R.string.MessagesSettings);
     }
 
@@ -50,13 +56,13 @@ public class MessagesPreferencesActivity extends NimarkoUniversalPreferencesActi
 
     @Override
     public void fillItems(ArrayList<UItem> items, UniversalAdapter adapter) {
-        items.add(UItem.asHeader(getString(R.string.NM_CP_Header_ChatView)));
-        items.add(asPlainSettingsRowWithSubtitle(messageMenuRow, getString(R.string.CP_MessageMenu),
+        items.add(UItem.asHeader(getString(R.string.NM_Header_ChatView)));
+        items.add(asPlainSettingsRowWithSubtitle(messageMenuRow, getString(R.string.NM_MessageMenu),
                 getString(R.string.NM_SettingsSummaryMessageMenu)));
-        items.add(asPlainSettingsRow(messageSizeRow, getString(R.string.CP_Messages_Size)));
+        items.add(asPlainSettingsRow(messageSizeRow, getString(R.string.NM_Messages_Size)));
         items.add(asPlainSettingsRowWithSubtitle(directShareRow, getString(R.string.DirectShare),
                 getString(R.string.DirectShareInfo)));
-        items.add(SettingsHelper.asSwitchCG(showForwardDateRow, getString(R.string.CP_ForwardMsgDate))
+        items.add(SettingsHelper.asSwitchCG(showForwardDateRow, getString(R.string.NM_ForwardMsgDate))
                 .setChecked(app.nimarkogram.messenger.NimarkoConfig.msgForwardDate)
         );
         items.add(SettingsHelper.asSwitchCG(pencilIconForEditedRow, getString(R.string.AP_ShowPencilIcon))
@@ -65,30 +71,30 @@ public class MessagesPreferencesActivity extends NimarkoUniversalPreferencesActi
         items.add(UItem.asShadow(null));
 
         items.add(UItem.asHeader(getString(R.string.ActionsChartTitle)));
-        items.add(asPlainSettingsRowWithSubtitle(messageFilterRow, getString(R.string.CP_Message_Filtering),
+        items.add(asPlainSettingsRowWithSubtitle(messageFilterRow, getString(R.string.NM_Message_Filtering),
                 getString(R.string.NM_SettingsSummaryMessageFilters)));
         items.add(asPlainSettingsRow(leftBottomBtnRow,
-                getString(R.string.CP_LeftBottomButtonAction), getLeftBottomButtonValue()));
+                getString(R.string.NM_LeftBottomButtonAction), getLeftBottomButtonValue()));
         items.add(asPlainSettingsRow(doubleTapRow,
-                getString(R.string.CP_DoubleTapAction), getDoubleTapActionValue()));
+                getString(R.string.NM_DoubleTapAction), getDoubleTapActionValue()));
         items.add(asPlainSettingsRow(slideActionRow,
                 getString(R.string.NM_MsgSlideAction), getSlideActionValue()));
-        items.add(SettingsHelper.asSwitchCG(deleteForAllRow, getString(R.string.CP_DeleteForAll))
+        items.add(SettingsHelper.asSwitchCG(deleteForAllRow, getString(R.string.NM_DeleteForAll))
                 .setChecked(app.nimarkogram.messenger.NimarkoConfig.deleteForAll)
         );
         items.add(UItem.asShadow(null));
 
         items.add(UItem.asHeader(getString(R.string.TelegramPremium)));
-        items.add(SettingsHelper.asSwitchCG(reactionsOverlayRow, getString(R.string.CP_DisableReactionsOverlay))
+        items.add(SettingsHelper.asSwitchCG(reactionsOverlayRow, getString(R.string.NM_DisableReactionsOverlay))
                 .setChecked(app.nimarkogram.messenger.NimarkoConfig.disableReactionsOverlay)
         );
-        items.add(SettingsHelper.asSwitchCG(reactionAnimationRow, getString(R.string.CP_DisableReactionAnim))
+        items.add(SettingsHelper.asSwitchCG(reactionAnimationRow, getString(R.string.NM_DisableReactionAnim))
                 .setChecked(app.nimarkogram.messenger.NimarkoConfig.disableReactionAnim)
         );
-        items.add(SettingsHelper.asSwitchCG(tapsOnPremiumStickersRow, getString(R.string.CP_DisablePremStickAnim))
+        items.add(SettingsHelper.asSwitchCG(tapsOnPremiumStickersRow, getString(R.string.NM_DisablePremStickAnim))
                 .setChecked(app.nimarkogram.messenger.NimarkoConfig.disablePremStickAnim)
         );
-        items.add(SettingsHelper.asSwitchCG(premiumStickersAutoplayRow, getString(R.string.CP_DisablePremStickAutoPlay))
+        items.add(SettingsHelper.asSwitchCG(premiumStickersAutoplayRow, getString(R.string.NM_DisablePremStickAutoPlay))
                 .setChecked(app.nimarkogram.messenger.NimarkoConfig.disablePremStickAutoPlay)
         );
         items.add(UItem.asShadow(null));
@@ -153,6 +159,7 @@ public class MessagesPreferencesActivity extends NimarkoUniversalPreferencesActi
 
     @Override
     public boolean onLongClick(UItem item, View view, int position, float x, float y) {
+
         return false;
     }
 
@@ -237,7 +244,7 @@ public class MessagesPreferencesActivity extends NimarkoUniversalPreferencesActi
         configStringKeys.add(getString(R.string.DirectShare));
         configValues.add(NimarkoConfig.ACTIONS_LEFT_DIRECT_SHARE);
 
-        PopupHelper.show(configStringKeys, getString(R.string.CP_LeftBottomButtonAction), configValues.indexOf(app.nimarkogram.messenger.NimarkoConfig.actionsBarLeftButton), getContext(), i -> {
+        PopupHelper.show(configStringKeys, getString(R.string.NM_LeftBottomButtonAction), configValues.indexOf(app.nimarkogram.messenger.NimarkoConfig.actionsBarLeftButton), getContext(), i -> {
             NimarkoConfig.setActionsBarLeftButton(configValues.get(i));
             if (runnable != null) runnable.run();
         });
@@ -280,7 +287,7 @@ public class MessagesPreferencesActivity extends NimarkoUniversalPreferencesActi
         configStringKeys.add(getString(R.string.NM_DoubleTap_EditOrReact));
         configValues.add(NimarkoConfig.DOUBLE_TAP_ACTION_EDIT_OR_REACTION);
 
-        PopupHelper.show(configStringKeys, getString(R.string.CP_DoubleTapAction), configValues.indexOf(app.nimarkogram.messenger.NimarkoConfig.doubletapaction), getContext(), i -> {
+        PopupHelper.show(configStringKeys, getString(R.string.NM_DoubleTapAction), configValues.indexOf(app.nimarkogram.messenger.NimarkoConfig.doubletapaction), getContext(), i -> {
             NimarkoConfig.setDoubleTapAction(configValues.get(i));
             if (runnable != null) runnable.run();
         });

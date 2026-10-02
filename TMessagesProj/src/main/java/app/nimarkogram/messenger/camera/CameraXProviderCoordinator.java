@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package app.nimarkogram.messenger.camera;
 
 import androidx.annotation.NonNull;
@@ -5,8 +7,6 @@ import androidx.annotation.Nullable;
 import androidx.camera.lifecycle.ProcessCameraProvider;
 
 import org.telegram.messenger.FileLog;
-
-import app.nimarkogram.messenger.NimarkoCameraLog;
 
 final class CameraXProviderCoordinator {
 
@@ -36,10 +36,6 @@ final class CameraXProviderCoordinator {
                     "CameraX ownership cannot change from an invalidation callback");
         }
         if (activeProvider != provider || primaryOwner != owner || secondaryOwner != null) {
-            if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("CXOwner single acquire owner=" + ownerName(owner)
-                    + " previousPrimary=" + ownerName(primaryOwner)
-                    + " previousSecondary=" + ownerName(secondaryOwner)
-                    + " generation=" + generation);
             resetActiveGraphLocked();
             activeProvider = provider;
             primaryOwner = owner;
@@ -58,12 +54,7 @@ final class CameraXProviderCoordinator {
             throw new IllegalStateException(
                     "CameraX ownership cannot change from an invalidation callback");
         }
-        if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("CXOwner concurrent acquire first=" + ownerName(first)
-                + " second=" + ownerName(second)
-                + " previousPrimary=" + ownerName(primaryOwner)
-                + " previousSecondary=" + ownerName(secondaryOwner)
-                + " generation=" + generation);
-        
+
         resetActiveGraphLocked();
         activeProvider = provider;
         primaryOwner = first;
@@ -113,7 +104,6 @@ final class CameraXProviderCoordinator {
             return;
         }
 
-        activeProvider = null;
         primaryOwner = null;
         ++generation;
         try {
@@ -143,23 +133,14 @@ final class CameraXProviderCoordinator {
         secondaryOwner = null;
         long invalidationGeneration = ++generation;
 
-        if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("CXOwner reset generation=" + invalidationGeneration
-                + " provider=" + (provider != null)
-                + " first=" + ownerName(first)
-                + " second=" + ownerName(second));
-
         if (provider != null) {
             try {
                 provider.unbindAll();
-                if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("CXOwner unbindAll dispatched generation="
-                        + invalidationGeneration);
             } catch (Throwable error) {
                 FileLog.e("CameraX provider reset failed", error);
-                if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("CXOwner unbindAll FAILED generation="
-                        + invalidationGeneration, error);
             }
         }
-        
+
         notifyingInvalidation = true;
         try {
             if (first != null) {
@@ -173,9 +154,4 @@ final class CameraXProviderCoordinator {
         }
     }
 
-    private static String ownerName(@Nullable Owner owner) {
-        return owner == null ? "null"
-                : owner.getClass().getSimpleName() + '@'
-                + Integer.toHexString(System.identityHashCode(owner));
-    }
 }

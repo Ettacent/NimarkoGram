@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /**
  * This is the source code of Cherrygram for Android, ported to NimarkoGram.
  * It is licensed under GNU GPL v. 2 or later.
@@ -109,6 +111,7 @@ public class MessageFiltersPreferencesActivity extends BaseFragment {
         if (listAdapter != null) {
             listAdapter.notifyDataSetChanged();
         }
+
         org.telegram.ui.Components.Bulletin.addDelegate(this, new org.telegram.ui.Components.Bulletin.Delegate() {
             @Override
             public int getBottomOffset(int tag) { return 0; }
@@ -159,6 +162,7 @@ public class MessageFiltersPreferencesActivity extends BaseFragment {
         frameLayout.addView(listView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT));
 
         listView.setOnItemClickListener((view, position, x, y) -> {
+
             boolean requireDonate = false;
 
             RecyclerView.ViewHolder holder = listView.findViewHolderForAdapterPosition(position);
@@ -166,6 +170,7 @@ public class MessageFiltersPreferencesActivity extends BaseFragment {
                 return;
             }
             if (requireDonate) {
+
                 return;
             }
             if (position == enableFilterRow) {
@@ -279,6 +284,7 @@ public class MessageFiltersPreferencesActivity extends BaseFragment {
                         NimarkoConfig.putBoolean("enableMsgFilters", true);
                         notifyRowChanged(enableFilterRow);
                     }
+
                     notifyRowChanged(regexPatternsRow);
                 }
             } else if (position == logicModeRow) {
@@ -293,7 +299,6 @@ public class MessageFiltersPreferencesActivity extends BaseFragment {
                 presentChatPicker(false);
             }
         });
-
 
         listView.setSections(
             view -> !(view instanceof ShadowSectionCell
@@ -353,10 +358,12 @@ public class MessageFiltersPreferencesActivity extends BaseFragment {
 
         @Override
         public void onBindViewHolder(RecyclerView.ViewHolder holder, int position) {
+
             boolean requireDonate = false;
             switch (holder.getItemViewType()) {
                 case VIEW_TYPE_SHADOW:
                     holder.itemView.setEnabled(false);
+
                     break;
                 case VIEW_TYPE_HEADER:
                     HeaderCell headerCell = (HeaderCell) holder.itemView;
@@ -474,8 +481,8 @@ public class MessageFiltersPreferencesActivity extends BaseFragment {
                     } else if (position == collapseAutomaticallyRow) {
                         textCheckCell.setEnabled(NimarkoConfig.isEnableMsgFilters(), null);
                         textCheckCell.setTextAndValueAndCheck(
-                                getString(R.string.CP_Message_Filtering_Collapse),
-                                getString(R.string.CP_Message_Filtering_Collapse_Desc),
+                                getString(R.string.NM_Message_Filtering_Collapse),
+                                getString(R.string.NM_Message_Filtering_Collapse_Desc),
                                 NimarkoConfig.isMsgFiltersCollapseAutomatically(),
                                 true,
                                 true
@@ -504,6 +511,7 @@ public class MessageFiltersPreferencesActivity extends BaseFragment {
                     TextInfoPrivacyCell textInfoPrivacyCell = (TextInfoPrivacyCell) holder.itemView;
                     if (position == filteredWordsAdviceRow) {
                         textInfoPrivacyCell.setText(getString(R.string.NM_MF_Field_Desc));
+
                     } else if (position == regexPatternsAdviceRow) {
                         textInfoPrivacyCell.setText(getString(R.string.NM_MF_Regex_Desc));
                     }
@@ -578,6 +586,7 @@ public class MessageFiltersPreferencesActivity extends BaseFragment {
                     break;
                 case VIEW_TYPE_HEADER:
                     view = new HeaderCell(mContext);
+
                     break;
                 case VIEW_TYPE_TEXT_CELL:
                     view = new TextCell(mContext);
@@ -589,6 +598,7 @@ public class MessageFiltersPreferencesActivity extends BaseFragment {
                     view = new TextInfoPrivacyCell(mContext);
                     break;
                 case VIEW_TYPE_EDIT_TEXT:
+
                     view = new OutlineEditText(mContext);
                     break;
                 default:
@@ -787,6 +797,7 @@ public class MessageFiltersPreferencesActivity extends BaseFragment {
         }
 
         UsersSelectActivity activity = new UsersSelectActivity(true, chatsList, 0);
+
         return activity;
     }
 

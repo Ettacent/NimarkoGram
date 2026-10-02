@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package app.nimarkogram.messenger.utils;
 
 import static org.telegram.messenger.LocaleController.getString;

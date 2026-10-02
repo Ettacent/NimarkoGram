@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 5.x.x.
  * It is licensed under GNU GPL v. 2 or later.
@@ -88,6 +90,10 @@ public class EditTextCaption extends EditTextBoldCursor implements FloatingToolb
     private boolean allowTextEntitiesIntersection;
     private int lineCount;
     private boolean isInitLineCount;
+    private boolean deletingScrolledText;
+    private float deletionScrollOffset;
+    private int deletionScrollDelta;
+    private android.animation.ValueAnimator deletionScrollAnimator;
     private final Theme.ResourcesProvider resourcesProvider;
     private AlertDialog creationLinkDialog;
     public boolean adaptiveCreateLinkDialog;
@@ -103,6 +109,9 @@ public class EditTextCaption extends EditTextBoldCursor implements FloatingToolb
         addTextChangedListener(new TextWatcher() {
             @Override
             public void beforeTextChanged(CharSequence s, int start, int count, int after) {
+                deletingScrolledText = count > after && (getScrollY() > 0 || deletionScrollOffset != 0f)
+                        && app.nimarkogram.messenger.NimarkoConfig.nimarkoTextAnim
+                        && org.telegram.messenger.SharedConfig.animationsEnabled();
             }
 
             @Override
@@ -124,6 +133,29 @@ public class EditTextCaption extends EditTextBoldCursor implements FloatingToolb
 
     protected void onLineCountChanged(int oldLineCount, int newLineCount) {
 
+    }
+
+    @Override
+    protected void onScrollChanged(int x, int y, int oldX, int oldY) {
+        super.onScrollChanged(x, y, oldX, oldY);
+        if (!deletingScrolledText || y == oldY || !isAttachedToWindow()) return;
+        if (deletionScrollAnimator != null) deletionScrollAnimator.cancel();
+        deletionScrollDelta += y - oldY;
+        deletionScrollOffset += y - oldY;
+        deletionScrollAnimator = android.animation.ValueAnimator.ofFloat(deletionScrollOffset, 0f);
+        deletionScrollAnimator.setDuration(200);
+        deletionScrollAnimator.setInterpolator(CubicBezierInterpolator.EASE_OUT_QUINT);
+        deletionScrollAnimator.addUpdateListener(animation -> {
+            deletionScrollOffset = (float) animation.getAnimatedValue();
+            invalidate();
+        });
+        deletionScrollAnimator.start();
+    }
+
+    public int consumeDeletionScrollDelta() {
+        int delta = deletionScrollDelta;
+        deletionScrollDelta = 0;
+        return delta;
     }
 
     public void setCaption(String value) {
@@ -375,9 +407,11 @@ public class EditTextCaption extends EditTextBoldCursor implements FloatingToolb
     public interface InputDialogCallback {
         void run(String value);
     }
+
     private static String getSelectedLinkUrl(Spanned text, int start, int end) {
         String result = null;
         for (URLSpan span : text.getSpans(start, end, URLSpan.class)) {
+
             if (!(span instanceof URLSpanReplacement) && !(span instanceof URLSpanBrowser)
                     && span.getClass() != URLSpan.class) {
                 continue;
@@ -924,7 +958,7 @@ public class EditTextCaption extends EditTextBoldCursor implements FloatingToolb
         try {
             final int saveCount = canvas.save();
             try {
-                canvas.translate(0, offsetY);
+                canvas.translate(0, offsetY + deletionScrollOffset);
                 super.onDraw(canvas);
                 try {
                     if (captionLayout != null && userNameLength == length()) {
@@ -955,10 +989,12 @@ public class EditTextCaption extends EditTextBoldCursor implements FloatingToolb
         } finally {
             final int animationSaveCount = canvas.save();
             try {
-                canvas.translate(0, offsetY);
+                canvas.translate(0, offsetY + deletionScrollOffset);
                 app.nimarkogram.messenger.textanim.NimarkoTextAnim.afterEditorDraw(this, canvas);
             } finally {
                 canvas.restoreToCount(animationSaveCount);
+                deletingScrolledText = false;
+                deletionScrollDelta = 0;
             }
         }
     }
@@ -973,6 +1009,13 @@ public class EditTextCaption extends EditTextBoldCursor implements FloatingToolb
 
     @Override
     public boolean onTouchEvent(MotionEvent event) {
+        if (event.getActionMasked() == MotionEvent.ACTION_DOWN) {
+            deletingScrolledText = false;
+            deletionScrollDelta = 0;
+            if (deletionScrollAnimator != null) deletionScrollAnimator.cancel();
+            deletionScrollOffset = 0f;
+            invalidate();
+        }
         try {
             return super.onTouchEvent(event);
         } finally {
@@ -982,6 +1025,11 @@ public class EditTextCaption extends EditTextBoldCursor implements FloatingToolb
 
     @Override
     protected void onDetachedFromWindow() {
+        deletingScrolledText = false;
+        deletionScrollDelta = 0;
+        if (deletionScrollAnimator != null) deletionScrollAnimator.cancel();
+        deletionScrollAnimator = null;
+        deletionScrollOffset = 0f;
         try {
             app.nimarkogram.messenger.textanim.NimarkoTextAnim.onEditorFocusChanged(
                     this, false);
@@ -1082,6 +1130,7 @@ public class EditTextCaption extends EditTextBoldCursor implements FloatingToolb
         }
         return super.onTextContextMenuItem(id);
     }
+
     @Override
     public InputConnection onCreateInputConnection(EditorInfo editorInfo) {
         InputConnection connection = super.onCreateInputConnection(editorInfo);
@@ -1093,6 +1142,7 @@ public class EditTextCaption extends EditTextBoldCursor implements FloatingToolb
             public boolean commitText(CharSequence text, int newCursorPosition) {
                 return super.commitText(restoreClipboardEntities(text), newCursorPosition);
             }
+
             @android.annotation.TargetApi(33)
             @Override
             public boolean commitText(CharSequence text, int newCursorPosition, TextAttribute textAttribute) {
@@ -1100,6 +1150,7 @@ public class EditTextCaption extends EditTextBoldCursor implements FloatingToolb
             }
         };
     }
+
     protected CharSequence restoreClipboardEntities(CharSequence text) {
         if (!CustomHtml.mayMatchTelegramEntitiesClipboard(text)) {
             return text;
@@ -1116,6 +1167,7 @@ public class EditTextCaption extends EditTextBoldCursor implements FloatingToolb
     protected boolean pasteTelegramEntitiesFromClipboard(CharSequence expectedPlainText) {
         return pasteTelegramEntitiesHtml(getTelegramEntitiesClipboardHtml(expectedPlainText));
     }
+
     private String getTelegramEntitiesClipboardHtml(CharSequence expectedPlainText) {
         try {
             ClipboardManager clipboard = (ClipboardManager) getContext().getSystemService(Context.CLIPBOARD_SERVICE);
@@ -1163,6 +1215,7 @@ public class EditTextCaption extends EditTextBoldCursor implements FloatingToolb
                 span.applyFontMetrics(metrics, AnimatedEmojiDrawable.getCacheTypeForEnterView());
             }
         }
+
         int rawStart = getSelectionStart();
         int rawEnd = getSelectionEnd();
         if (rawStart < 0 || rawEnd < 0) {
@@ -1182,6 +1235,7 @@ public class EditTextCaption extends EditTextBoldCursor implements FloatingToolb
         }
         return pasted;
     }
+
     private boolean pasteTelegramEntitiesHtml(String html) {
         try {
             SpannableStringBuilder pasted = parseClipboardHtml(html);

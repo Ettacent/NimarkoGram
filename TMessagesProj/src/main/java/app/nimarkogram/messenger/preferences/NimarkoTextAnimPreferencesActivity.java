@@ -1,3 +1,7 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
+
+
 package app.nimarkogram.messenger.preferences;
 
 import android.view.View;
@@ -26,14 +30,14 @@ public class NimarkoTextAnimPreferencesActivity extends BasePreferencesActivity 
 
     @Override
     public void fillItems(ArrayList<UItem> items, UniversalAdapter adapter) {
-        items.add(UItem.asHeader(LocaleController.getString(R.string.NM_TA_HeaderMain)));
+        items.add(UItem.asHeader(-1, LocaleController.getString(R.string.NM_TA_HeaderMain)));
         items.add(UItem.asCheck(ID_MASTER,
                         LocaleController.getString(R.string.NM_TA_Master))
                 .setChecked(NimarkoConfig.nimarkoTextAnim));
 
+        items.add(UItem.asShadow(-2, LocaleController.getString(R.string.NM_TA_Master_Desc)));
         if (NimarkoConfig.nimarkoTextAnim) {
-            items.add(UItem.asShadow(LocaleController.getString(R.string.NM_TA_Master_Desc)));
-            items.add(UItem.asHeader(LocaleController.getString(R.string.NM_TA_HeaderEffects)));
+            items.add(UItem.asHeader(-3, LocaleController.getString(R.string.NM_TA_HeaderEffects)));
             items.add(UItem.asCheck(ID_APPEAR,
                             LocaleController.getString(R.string.NM_TA_Appear))
                     .setChecked(NimarkoConfig.nimarkoTextAnimAppear));
@@ -46,10 +50,8 @@ public class NimarkoTextAnimPreferencesActivity extends BasePreferencesActivity 
             items.add(UItem.asCheck(ID_SPOILER,
                             LocaleController.getString(R.string.NM_TA_Spoiler))
                     .setChecked(NimarkoConfig.nimarkoTextAnimSpoiler));
-            items.add(UItem.asShadow(LocaleController.getString(R.string.NM_SettingsSummaryTextAnimation)));
-        } else {
-            items.add(UItem.asShadow(LocaleController.getString(R.string.NM_TA_Master_Hint)));
         }
+        items.add(UItem.asShadow(-4, LocaleController.getString(R.string.NM_SettingsSummaryTextAnimation)));
     }
 
     @Override

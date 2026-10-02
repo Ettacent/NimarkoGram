@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package app.nimarkogram.messenger.preferences;
 
 import android.os.Bundle;
@@ -7,11 +9,13 @@ import java.util.ArrayList;
 import java.util.List;
 
 import org.telegram.messenger.LocaleController;
+import org.telegram.messenger.DialogObject;
 import org.telegram.messenger.MessagesController;
+import org.telegram.messenger.NotificationCenter;
 import org.telegram.messenger.R;
 import org.telegram.messenger.UserConfig;
+import org.telegram.messenger.UserObject;
 import org.telegram.tgnet.TLRPC;
-import org.telegram.ui.Cells.TextCheckCell;
 import org.telegram.ui.Components.IconBackgroundColors;
 import org.telegram.ui.Components.UItem;
 import org.telegram.ui.Components.UniversalAdapter;
@@ -21,11 +25,49 @@ import org.telegram.ui.DialogsActivity;
 import app.nimarkogram.messenger.security.NimarkoBiometricPrompt;
 import app.nimarkogram.messenger.utils.LockedChats;
 
-public class LockedChatsPreferencesActivity extends BasePreferencesActivity {
+public class LockedChatsPreferencesActivity extends BasePreferencesActivity implements NotificationCenter.NotificationCenterDelegate {
 
     private static final int ID_ADD = 1_000_001;
+
     private static final int ID_DIALOG_BASE = 2_000_000;
     private final ArrayList<Long> rowDialogIds = new ArrayList<>();
+    private final Runnable refreshNames = () -> {
+        if (listView != null && listView.adapter != null) listView.adapter.update(true);
+    };
+
+    @Override
+    public boolean onFragmentCreate() {
+        if (!super.onFragmentCreate()) return false;
+        NotificationCenter center = NotificationCenter.getInstance(currentAccount);
+        center.addObserver(this, NotificationCenter.updateInterfaces);
+        center.addObserver(this, NotificationCenter.userInfoDidLoad);
+        center.addObserver(this, NotificationCenter.chatInfoDidLoad);
+        center.addObserver(this, NotificationCenter.contactsDidLoad);
+        return true;
+    }
+
+    @Override
+    public void onFragmentDestroy() {
+        NotificationCenter center = NotificationCenter.getInstance(currentAccount);
+        center.removeObserver(this, NotificationCenter.updateInterfaces);
+        center.removeObserver(this, NotificationCenter.userInfoDidLoad);
+        center.removeObserver(this, NotificationCenter.chatInfoDidLoad);
+        center.removeObserver(this, NotificationCenter.contactsDidLoad);
+        if (listView != null) listView.removeCallbacks(refreshNames);
+        super.onFragmentDestroy();
+    }
+
+    @Override
+    public void didReceivedNotification(int id, int account, Object... args) {
+        if (account != currentAccount || listView == null) return;
+        if (id == NotificationCenter.updateInterfaces) {
+            int mask = (Integer) args[0];
+            if ((mask & (MessagesController.UPDATE_MASK_NAME | MessagesController.UPDATE_MASK_CHAT_NAME
+                    | MessagesController.UPDATE_MASK_USER_PHONE)) == 0) return;
+        }
+        listView.removeCallbacks(refreshNames);
+        listView.post(refreshNames);
+    }
 
     @Override
     public String getTitle() {
@@ -49,9 +91,12 @@ public class LockedChatsPreferencesActivity extends BasePreferencesActivity {
                 long did;
                 try { did = Long.parseLong(s); } catch (Throwable t) { continue; }
                 String name = displayNameFor(messagesController, did);
+
                 int rowId = ID_DIALOG_BASE + rowDialogIds.size();
                 rowDialogIds.add(did);
-                items.add(UItem.asCheck(rowId, name).setChecked(true));
+                UItem row = UItem.asCheck(rowId, name).setChecked(true);
+                row.longValue = did;
+                items.add(row);
             }
             items.add(UItem.asShadow(LocaleController.getString(R.string.NM_PR_LockedChatsHint)));
         }
@@ -59,13 +104,18 @@ public class LockedChatsPreferencesActivity extends BasePreferencesActivity {
 
     private static String displayNameFor(MessagesController messagesController, long dialogId) {
         if (messagesController == null) return String.valueOf(dialogId);
+        if (DialogObject.isEncryptedDialog(dialogId)) {
+            TLRPC.EncryptedChat encrypted = messagesController.getEncryptedChat(DialogObject.getEncryptedChatId(dialogId));
+            if (encrypted == null) return String.valueOf(dialogId);
+            dialogId = encrypted.user_id;
+        }
         if (dialogId >= 0) {
             TLRPC.User u = messagesController.getUser(dialogId);
             if (u != null) {
-                String first = u.first_name == null ? "" : u.first_name;
-                String last = u.last_name == null ? "" : u.last_name;
-                String combined = (first + " " + last).trim();
-                return combined.isEmpty() ? String.valueOf(dialogId) : combined;
+                String name = UserObject.getUserName(u);
+                if (!android.text.TextUtils.isEmpty(name)) return name;
+                String username = UserObject.getPublicUsername(u, false);
+                return android.text.TextUtils.isEmpty(username) ? String.valueOf(dialogId) : "@" + username;
             }
         } else {
             TLRPC.Chat c = messagesController.getChat(-dialogId);
@@ -103,17 +153,17 @@ public class LockedChatsPreferencesActivity extends BasePreferencesActivity {
                 if (listView != null && listView.adapter != null) {
                     listView.adapter.update(true);
                 }
+
                 fragment.finishFragment();
                 return true;
             });
             presentFragment(picker);
             return;
         }
-        int idx = id - ID_DIALOG_BASE;
-        if (idx >= 0 && idx < rowDialogIds.size()) {
+        if (id >= ID_DIALOG_BASE && item.longValue != 0) {
             final int account = currentAccount;
             final long ownerUid = UserConfig.getInstance(account).getClientUserId();
-            final long did = rowDialogIds.get(idx);
+            final long did = item.longValue;
             if (getParentActivity() == null) {
                 showAuthenticationRequired();
                 return;
@@ -121,9 +171,6 @@ public class LockedChatsPreferencesActivity extends BasePreferencesActivity {
             NimarkoBiometricPrompt.prompt(getParentActivity(), account, () -> {
                 if (!LockedChats.setLocked(account, ownerUid, did, false)) return;
                 if (listView != null && listView.adapter != null) listView.adapter.update(true);
-                if (view instanceof TextCheckCell) {
-                    ((TextCheckCell) view).setChecked(false);
-                }
             }, this::showAuthenticationRequired);
         }
     }

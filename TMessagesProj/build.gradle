@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 import org.gradle.nativeplatform.platform.internal.DefaultNativePlatform
 
 apply plugin: 'com.android.library'
@@ -8,6 +10,16 @@ apply plugin: 'kotlin-android'
 apply plugin: 'com.chaquo.python'
 apply plugin: 'org.telegram.build-plugin'
 apply plugin: 'idea'
+
+def nimarkoPrivateProperties = new Properties()
+def nimarkoPrivateFile = rootProject.file('private.properties')
+if (nimarkoPrivateFile.exists()) {
+    nimarkoPrivateFile.withInputStream { nimarkoPrivateProperties.load(it) }
+}
+def nimarkoBuildValue = { String name, String fallback = '' ->
+    (providers.gradleProperty(name).orNull ?: System.getenv(name)
+            ?: nimarkoPrivateProperties.getProperty(name) ?: fallback).toString()
+}
 
 idea {
     module {
@@ -237,6 +249,18 @@ android {
 
 
     defaultConfig {
+        def telegramApiId = nimarkoBuildValue('TELEGRAM_API_ID', '0')
+        if (!(telegramApiId ==~ /[0-9]+/) || new BigInteger(telegramApiId) > Integer.MAX_VALUE) {
+            throw new GradleException('TELEGRAM_API_ID must be a non-negative integer')
+        }
+        buildConfigField 'int', 'TELEGRAM_API_ID', Integer.parseInt(telegramApiId).toString()
+        [
+                'TELEGRAM_API_HASH', 'GOOGLE_AUTH_CLIENT_ID', 'GOOGLE_SAFETYNET_KEY',
+                'HUAWEI_APP_ID', 'NIMARKO_API_BASE_URL', 'NIMARKO_MEDIA_API_URL',
+                'NIMARKO_TRUSTED_PLUGIN_IDS', 'NIMARKO_ASIA_RELAY_HOST'
+        ].each { name ->
+            buildConfigField 'String', name, groovy.json.JsonOutput.toJson(nimarkoBuildValue(name))
+        }
         // NimarkoGram: lowered to 23 so apksigner verifies v1 (>=24 spec
         // skips v1 entirely → Play Protect treated APK as "modern-only"
         // and hard-blocked on Android 16). Chaquopy minSdk note was a

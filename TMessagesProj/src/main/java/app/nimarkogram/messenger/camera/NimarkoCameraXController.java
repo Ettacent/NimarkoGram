@@ -1,9 +1,10 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package app.nimarkogram.messenger.camera;
 
 import android.annotation.SuppressLint;
 import android.content.Context;
 import android.hardware.camera2.CameraCaptureSession;
-import android.hardware.camera2.CameraDevice;
 import android.hardware.camera2.CaptureRequest;
 import android.hardware.camera2.CaptureResult;
 import android.hardware.camera2.TotalCaptureResult;
@@ -62,7 +63,6 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 
 import app.nimarkogram.messenger.NimarkoConfig;
-import app.nimarkogram.messenger.NimarkoCameraLog;
 
 public class NimarkoCameraXController implements CameraXProviderCoordinator.Owner {
 
@@ -89,12 +89,15 @@ public class NimarkoCameraXController implements CameraXProviderCoordinator.Owne
     @Nullable private Observer<CameraState> boundCameraStateObserver;
     @Nullable private Runnable concurrentCameraInUseFailureRunnable;
     private int boundCameraGeneration;
+    private float[] zoomShortcutCandidates = new float[0];
+    private boolean zoomShortcutsReady;
     private int initialZoomPreparedGeneration = -1;
     private volatile boolean boundCameraReady;
     private float baseZoomRatio = 1f;
     @Nullable private volatile String activePhysicalCameraId;
     @Nullable private volatile String expectedInitialPhysicalCameraId;
     private final CameraXLensFrameTracker lensFrameTracker = new CameraXLensFrameTracker();
+
     private long latestPhysicalFrameTimestampNanos;
     private final CameraXZoomCoordinator zoomCoordinator =
             new CameraXZoomCoordinator("CameraX surface zoom");
@@ -111,6 +114,10 @@ public class NimarkoCameraXController implements CameraXProviderCoordinator.Owne
     private volatile boolean lastConcurrentBindBusy;
     private int flashMode = ImageCapture.FLASH_MODE_AUTO;
     private boolean torchRequested;
+    private Camera torchSubmittedCamera;
+    private int torchSubmittedGeneration;
+    private boolean torchSubmittedValue;
+    private ListenableFuture<Void> torchSubmittedFuture;
     private boolean useConfiguredUltraWide = true;
     @Nullable private Runnable readyCallback;
     @Nullable private org.telegram.messenger.Utilities.Callback<Throwable> failureCallback;
@@ -140,6 +147,7 @@ public class NimarkoCameraXController implements CameraXProviderCoordinator.Owne
 
         public void stop() {
             try {
+
                 lifecycleRegistry.setCurrentState(Lifecycle.State.CREATED);
             } catch (IllegalStateException ignored) {
             }
@@ -186,13 +194,15 @@ public class NimarkoCameraXController implements CameraXProviderCoordinator.Owne
                 && CameraXProviderCoordinator.isOwner(this);
     }
 
+    public boolean isZoomReady() {
+        return !closed && boundCameraReady && isInitiated();
+    }
+
     public void setFrontFace(boolean isFrontFace) {
+
         if (isFrontface == isFrontFace && isInitiated()) return;
-        if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("CXController switch requested fromFront=" + isFrontface
-                + " toFront=" + isFrontFace + " provider=" + (provider != null));
         isFrontface = isFrontFace;
         if (provider != null && !bindUseCases()) {
-            if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("CXController switch bind FAILED front=" + isFrontface);
             reportFailure(new IllegalStateException("CameraX camera switch bind failed"));
         }
     }
@@ -208,7 +218,6 @@ public class NimarkoCameraXController implements CameraXProviderCoordinator.Owne
     public void initCamera(Context context, boolean isInitialFrontface, @Nullable Runnable onReady,
                            @Nullable org.telegram.messenger.Utilities.Callback<Throwable> onFailure) {
         if (context == null) return;
-        if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.dumpCameraInventory(context, "CameraX controller init");
         final int requestGeneration;
         synchronized (initializationLock) {
             requestGeneration = ++initializationGeneration;
@@ -217,13 +226,8 @@ public class NimarkoCameraXController implements CameraXProviderCoordinator.Owne
             readyCallback = onReady;
             failureCallback = onFailure;
         }
-        if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("CXController init generation=" + requestGeneration
-                + " front=" + isInitialFrontface + " target=" + targetResolution
-                + " imageCapture=" + enableImageCapture
-                + " deferBind=" + deferInitialBind);
         try {
             ListenableFuture<ProcessCameraProvider> future = CameraXUtils.getProviderFuture(context);
-            if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("CXController provider future=" + future);
             future.addListener(() -> {
                 synchronized (initializationLock) {
                     if (closed || requestGeneration != initializationGeneration) {
@@ -235,10 +239,8 @@ public class NimarkoCameraXController implements CameraXProviderCoordinator.Owne
                             return;
                         }
                         provider = resolvedProvider;
-                        if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("CXController provider ready generation="
-                                + requestGeneration + " cameras="
-                                + resolvedProvider.getAvailableCameraInfos().size());
                         if (deferInitialBind) {
+
                             lifecycle.stop();
                             if (prepareUseCases(false)) {
                                 notifyReady();
@@ -255,8 +257,6 @@ public class NimarkoCameraXController implements CameraXProviderCoordinator.Owne
                         }
                         initiated = false;
                         FileLog.e(t);
-                        if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("CXController provider/init FAILED generation="
-                                + requestGeneration, t);
                         reportFailure(t);
                     }
                 }
@@ -268,8 +268,6 @@ public class NimarkoCameraXController implements CameraXProviderCoordinator.Owne
                 }
                 initiated = false;
                 FileLog.e(t);
-                if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("CXController init threw generation="
-                        + requestGeneration, t);
                 reportFailure(t);
             }
         }
@@ -297,8 +295,6 @@ public class NimarkoCameraXController implements CameraXProviderCoordinator.Owne
     }
 
     public void closeCamera() {
-        if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("CXController close front=" + isFrontface
-                + " initiated=" + initiated + " camera=" + cameraId(boundCamera));
         synchronized (initializationLock) {
             closed = true;
             retireLensCaptureGraph();
@@ -376,17 +372,42 @@ public class NimarkoCameraXController implements CameraXProviderCoordinator.Owne
     }
 
     public void enableTorch(boolean enabled) {
+        if (android.os.Looper.myLooper() != android.os.Looper.getMainLooper()) {
+            AndroidUtilities.runOnUIThread(() -> enableTorch(enabled));
+            return;
+        }
         torchRequested = enabled;
         applyRequestedTorch();
     }
 
     private void applyRequestedTorch() {
+        if (android.os.Looper.myLooper() != android.os.Looper.getMainLooper()) {
+            AndroidUtilities.runOnUIThread(this::applyRequestedTorch);
+            return;
+        }
         Camera camera = boundCamera;
         final int generation = boundCameraGeneration;
-        if (camera == null || !boundCameraReady) return;
+        if (camera == null || !boundCameraReady || closed) return;
+        if (torchSubmittedCamera == camera && torchSubmittedGeneration == generation
+                && torchSubmittedValue == torchRequested) return;
         try {
             if (camera.getCameraInfo().hasFlashUnit()) {
                 ListenableFuture<Void> result = camera.getCameraControl().enableTorch(torchRequested);
+                torchSubmittedCamera = camera;
+                torchSubmittedGeneration = generation;
+                torchSubmittedValue = torchRequested;
+                torchSubmittedFuture = result;
+                result.addListener(() -> {
+                    try {
+                        result.get();
+                    } catch (Throwable error) {
+                        if (torchSubmittedFuture == result && torchSubmittedCamera == camera
+                                && torchSubmittedGeneration == generation) {
+                            torchSubmittedCamera = null;
+                            torchSubmittedFuture = null;
+                        }
+                    }
+                }, ContextCompat.getMainExecutor(ApplicationLoader.applicationContext));
                 trackControlFuture(
                         result, camera, generation, "CameraX torch request", null);
             }
@@ -419,6 +440,7 @@ public class NimarkoCameraXController implements CameraXProviderCoordinator.Owne
     public boolean isAvailableSlowMoMode() {
         if (boundCamera == null) return false;
         try {
+
             android.util.Range<Integer>[] ranges = androidx.camera.camera2.interop.Camera2CameraInfo
                     .from(boundCamera.getCameraInfo())
                     .getCameraCharacteristic(android.hardware.camera2.CameraCharacteristics.CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES);
@@ -435,24 +457,14 @@ public class NimarkoCameraXController implements CameraXProviderCoordinator.Owne
     @SuppressLint({"RestrictedApi", "UnsafeExperimentalUsageError", "UnsafeOptInUsageError"})
     public boolean bindUseCases() {
         if (closed || provider == null || surfaceProvider == null) {
-            if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("CXController bind skipped closed=" + closed
-                    + " provider=" + (provider != null)
-                    + " surfaceProvider=" + (surfaceProvider != null));
             return false;
         }
-        if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("CXController bind begin front=" + isFrontface
-                + " effect=" + selectedEffect + " target=" + targetResolution
-                + " imageCapture=" + enableImageCapture);
         try {
             boolean result = CameraXProviderCoordinator.withSingleOwner(
                     provider, this, this::bindUseCasesOwned);
-            if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("CXController bind end result=" + result
-                    + " camera=" + cameraId(boundCamera)
-                    + " fps=" + appliedTargetFpsRange);
             return result;
         } catch (Throwable error) {
             FileLog.e("CameraX ownership bind failed", error);
-            if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("CXController ownership bind FAILED", error);
             clearPreparedUseCases();
             return false;
         }
@@ -472,7 +484,6 @@ public class NimarkoCameraXController implements CameraXProviderCoordinator.Owne
             }
         } catch (Throwable t) {
             FileLog.e("CameraX optimized bind failed", t);
-            if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("CXController optimized bind FAILED", t);
         }
 
         if (requestedFpsWasApplied) {
@@ -484,7 +495,6 @@ public class NimarkoCameraXController implements CameraXProviderCoordinator.Owne
                 }
             } catch (Throwable retryError) {
                 FileLog.e("CameraX bind retry with platform FPS failed", retryError);
-                if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("CXController no-FPS retry FAILED", retryError);
             }
         }
 
@@ -496,7 +506,6 @@ public class NimarkoCameraXController implements CameraXProviderCoordinator.Owne
             }
         } catch (Throwable retryError) {
             FileLog.e("CameraX safe bind fallback failed", retryError);
-            if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("CXController safe fallback FAILED", retryError);
         }
 
         clearPreparedUseCases();
@@ -505,14 +514,10 @@ public class NimarkoCameraXController implements CameraXProviderCoordinator.Owne
 
     private boolean bindPreparedUseCases() {
         if (boundSessionConfig == null) return false;
-        if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("CXController bindPrepared selector="
-                + describeSelector(boundSelector) + " fps=" + appliedTargetFpsRange);
         boundCamera = provider.bindToLifecycle(
                 lifecycle, boundSelector, boundSessionConfig);
         initiated = boundCamera != null;
         attachBoundCamera(boundCamera, true);
-        if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("CXController bindPrepared result=" + initiated
-                + " camera=" + cameraId(boundCamera));
         return initiated;
     }
 
@@ -558,6 +563,7 @@ public class NimarkoCameraXController implements CameraXProviderCoordinator.Owne
                                     @Nullable CameraSelector selectorOverride,
                                     @Nullable Range<Integer> concurrentFpsRange) {
         if (closed || provider == null || surfaceProvider == null) return false;
+
         if (!rebuild && boundPreview != null && boundSelector != null
                 && lensFrameTracker.hasActiveGraph()) return true;
         final Object captureGraphToken;
@@ -582,13 +588,8 @@ public class NimarkoCameraXController implements CameraXProviderCoordinator.Owne
                         provider, isFrontface, useConfiguredUltraWide);
             }
             boundSelector = selectorOverride != null ? selector : applyExtensionMode(selector);
-            if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("CXController prepare rebuild=" + rebuild
-                    + " concurrent=" + concurrentPreview
-                    + " requestedFps=" + applyRequestedFps
-                    + " enhancements=" + applyEnhancements
-                    + " selector=" + describeSelector(boundSelector)
-                    + " target=" + targetResolution);
             Preview.Builder previewBuilder = new Preview.Builder().setTargetRotation(targetRotation);
+
             if (targetResolution != null) {
                 boolean roundVideoPreview = !enableImageCapture;
                 float targetRatio = Math.max(targetResolution.getWidth(),
@@ -609,12 +610,14 @@ public class NimarkoCameraXController implements CameraXProviderCoordinator.Owne
             }
             appliedTargetFpsRange = null;
             if (concurrentPreview && applyRequestedFps && concurrentFpsRange != null) {
+
                 previewBuilder.setTargetFrameRate(concurrentFpsRange);
                 appliedTargetFpsRange = concurrentFpsRange;
             }
             boolean configuredStartFromUltraWide = !isFrontface
                     && (useConfiguredUltraWide && NimarkoConfig.startFromUltraWideCam
                     || selectedEffect == CAMERA_WIDE);
+
             boolean startFromUltraWide = configuredStartFromUltraWide
                     && CameraXUtils.supportsSubOneZoom(provider, boundSelector)
                     && (!concurrentPreview
@@ -627,25 +630,12 @@ public class NimarkoCameraXController implements CameraXProviderCoordinator.Owne
                     observeLensMetadata = selectedInfo != null
                             && selectedInfo.isLogicalMultiCameraSupported();
                 } catch (Throwable ignored) {
+
                 }
             }
-            if (configuredStartFromUltraWide && concurrentPreview
-                    && !startFromUltraWide) {
-                if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log(
-                        "CXController concurrent wide supplied by selected physical lens"
-                                + " or blocked by device policy selector="
-                                + describeSelector(boundSelector));
-            }
             Camera2Interop.Extender<Preview> previewExtender =
-                    applyEnhancements || startFromUltraWide || concurrentPreview || observeLensMetadata
+                    applyEnhancements || startFromUltraWide || observeLensMetadata
                             ? new Camera2Interop.Extender<>(previewBuilder) : null;
-            if (concurrentPreview && previewExtender != null) {
-                installConcurrentCamera2Diagnostics(previewExtender,
-                        describeSelector(boundSelector)
-                                + " ownerFront=" + isFrontface
-                                + " controller=" + objectId(this)
-                                + " previewBuilder=" + objectId(previewBuilder));
-            }
             if (applyEnhancements) {
                 CameraXUtils.applyCamera2Controls(provider, boundSelector,
                         previewExtender, false);
@@ -659,35 +649,27 @@ public class NimarkoCameraXController implements CameraXProviderCoordinator.Owne
                             : info.getZoomState().getValue();
                     float initialRatio = CameraXUtils.getBaseZoomRatio(zoomState, true);
                     if (initialRatio < 0.999f) {
+
                         baseZoomRatio = initialRatio;
-                        if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("CXController initial wide control ratio="
-                                + initialRatio + " selector="
-                                + describeSelector(boundSelector)
-                                + " concurrent=" + concurrentPreview);
                     }
                 } catch (Throwable error) {
-                    if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log(
-                            "CXController initial wide request unavailable", error);
                 }
             }
             if (startFromUltraWide && previewExtender != null
                     && Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
                 expectedInitialPhysicalCameraId =
                         CameraXUtils.findBackUltraWideCameraId(provider);
-                if (expectedInitialPhysicalCameraId != null) {
-                    if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("CXController waiting for physical wide="
-                            + expectedInitialPhysicalCameraId);
-                }
-            }
-            if (previewExtender != null && (observeLensMetadata || startFromUltraWide)) {
-                previewExtender.setSessionCaptureCallback(createLensCaptureCallback(captureGraphToken));
             }
             if (applyEnhancements && !concurrentPreview
                     && CameraXUtils.shouldEnablePreviewStabilization(provider, boundSelector)) {
                 previewBuilder.setPreviewStabilizationEnabled(true);
             }
+            if (previewExtender != null && (observeLensMetadata || startFromUltraWide)) {
+                previewExtender.setSessionCaptureCallback(createLensCaptureCallback(captureGraphToken));
+            }
             boundPreview = previewBuilder.build();
             boundPreview.setSurfaceProvider(request -> {
+
                 if (closed || !lensFrameTracker.isCurrent(captureGraphToken)) {
                     request.willNotProvideSurface();
                     return;
@@ -713,6 +695,7 @@ public class NimarkoCameraXController implements CameraXProviderCoordinator.Owne
                 boundImageCapture = null;
             }
             if (concurrentPreview) {
+
                 boundSessionConfig = null;
             } else {
                 ArrayList<UseCase> useCases = new ArrayList<>(2);
@@ -734,8 +717,6 @@ public class NimarkoCameraXController implements CameraXProviderCoordinator.Owne
         } catch (Throwable t) {
             retireLensCaptureGraph();
             FileLog.e(t);
-            if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("CXController prepare FAILED front=" + isFrontface
-                    + " concurrent=" + concurrentPreview, t);
             boundPreview = null;
             boundImageCapture = null;
             boundSelector = null;
@@ -744,9 +725,40 @@ public class NimarkoCameraXController implements CameraXProviderCoordinator.Owne
             return false;
         }
     }
+
     private CameraCaptureSession.CaptureCallback createLensCaptureCallback(
             final Object captureGraphToken) {
         return new CameraCaptureSession.CaptureCallback() {
+            @Override
+            public void onCaptureProgressed(@NonNull CameraCaptureSession session,
+                                            @NonNull CaptureRequest request,
+                                            @NonNull CaptureResult partialResult) {
+                if (closed || Build.VERSION.SDK_INT < Build.VERSION_CODES.P
+                        || !lensFrameTracker.isCurrent(captureGraphToken)) return;
+                Long timestamp;
+                String physicalId;
+                try {
+                    timestamp = partialResult.get(CaptureResult.SENSOR_TIMESTAMP);
+                    if (timestamp == null || timestamp <= 0) return;
+                    physicalId = partialResult.get(CaptureResult.LOGICAL_MULTI_CAMERA_ACTIVE_PHYSICAL_ID);
+                    if (physicalId == null || physicalId.isEmpty()) return;
+                } catch (Throwable ignored) {
+                    return;
+                }
+                float zoomRatio = Float.NaN;
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    try {
+                        Float ratio = partialResult.get(CaptureResult.CONTROL_ZOOM_RATIO);
+                        if (ratio != null) zoomRatio = ratio;
+                    } catch (Throwable ignored) {
+                    }
+                }
+                synchronized (lensFrameTracker) {
+                    if (closed || !lensFrameTracker.isCurrent(captureGraphToken)) return;
+                    lensFrameTracker.recordPartial(captureGraphToken, physicalId, zoomRatio, timestamp);
+                }
+            }
+
             @Override
             public void onCaptureCompleted(@NonNull CameraCaptureSession session,
                                            @NonNull CaptureRequest request,
@@ -773,6 +785,7 @@ public class NimarkoCameraXController implements CameraXProviderCoordinator.Owne
                     }
                     if (!CameraXLensFrameTracker.isValidRatio(zoomRatio)) {
                         try {
+
                             Float ratio = request.get(CaptureRequest.CONTROL_ZOOM_RATIO);
                             if (ratio != null) zoomRatio = ratio;
                         } catch (Throwable ignored) {
@@ -781,6 +794,7 @@ public class NimarkoCameraXController implements CameraXProviderCoordinator.Owne
                 }
                 final long timestampNanos = timestamp == null ? 0L : timestamp;
                 synchronized (lensFrameTracker) {
+
                     if (closed || !lensFrameTracker.isCurrent(captureGraphToken)) return;
                     lensFrameTracker.record(captureGraphToken, physicalId, zoomRatio, timestampNanos);
                     if (physicalId != null && !physicalId.isEmpty()
@@ -789,84 +803,19 @@ public class NimarkoCameraXController implements CameraXProviderCoordinator.Owne
                         latestPhysicalFrameTimestampNanos = Math.max(0L, timestampNanos);
                         if (!physicalId.equals(activePhysicalCameraId)) {
                             activePhysicalCameraId = physicalId;
-                            if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log(
-                                    "CXController active physical lens=" + physicalId
-                                            + " expectedWide=" + expectedInitialPhysicalCameraId
-                                            + " frame=" + result.getFrameNumber());
                         }
                     }
                 }
             }
         };
     }
+
     private void retireLensCaptureGraph() {
         synchronized (lensFrameTracker) {
             lensFrameTracker.retireGraph();
             activePhysicalCameraId = null;
             latestPhysicalFrameTimestampNanos = 0;
         }
-    }
-
-    private static void installConcurrentCamera2Diagnostics(
-            @NonNull Camera2Interop.Extender<Preview> extender,
-            @NonNull String selectorDescription) {
-        final String label = "selector=" + selectorDescription;
-        extender.setDeviceStateCallback(new CameraDevice.StateCallback() {
-            @Override
-            public void onOpened(@NonNull CameraDevice camera) {
-                if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("CXDevice OPENED id=" + camera.getId()
-                        + " " + label);
-            }
-
-            @Override
-            public void onDisconnected(@NonNull CameraDevice camera) {
-                if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("CXDevice DISCONNECTED id=" + camera.getId()
-                        + " " + label);
-            }
-
-            @Override
-            public void onError(@NonNull CameraDevice camera, int error) {
-                if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("CXDevice ERROR id=" + camera.getId()
-                        + " code=" + error + " " + label);
-            }
-
-            @Override
-            public void onClosed(@NonNull CameraDevice camera) {
-                if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("CXDevice CLOSED id=" + camera.getId()
-                        + " " + label);
-            }
-        });
-        extender.setSessionStateCallback(new CameraCaptureSession.StateCallback() {
-            @Override
-            public void onConfigured(@NonNull CameraCaptureSession session) {
-                if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("CXSession CONFIGURED id="
-                        + session.getDevice().getId() + " " + label);
-            }
-
-            @Override
-            public void onConfigureFailed(@NonNull CameraCaptureSession session) {
-                if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("CXSession CONFIGURE_FAILED id="
-                        + session.getDevice().getId() + " " + label);
-            }
-
-            @Override
-            public void onActive(@NonNull CameraCaptureSession session) {
-                if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("CXSession ACTIVE id="
-                        + session.getDevice().getId() + " " + label);
-            }
-
-            @Override
-            public void onReady(@NonNull CameraCaptureSession session) {
-                if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("CXSession READY id="
-                        + session.getDevice().getId() + " " + label);
-            }
-
-            @Override
-            public void onClosed(@NonNull CameraCaptureSession session) {
-                if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("CXSession CLOSED id="
-                        + session.getDevice().getId() + " " + label);
-            }
-        });
     }
 
     private void unbindOwnUseCases() {
@@ -940,29 +889,21 @@ public class NimarkoCameraXController implements CameraXProviderCoordinator.Owne
         final NimarkoCameraXController backController = isFrontface ? other : this;
         final NimarkoCameraXController frontController = isFrontface ? this : other;
         if (backController.isFrontface || !frontController.isFrontface) {
-            if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("CXController concurrent rejected: pair is not front/back");
             return false;
         }
+
         boolean preferUltraWide = backController.wantsInitialUltraWide();
         CameraSelector[] selectors = CameraXUtils.buildConcurrentCameraSelectors(
                 provider, false, true, preferUltraWide);
         if (selectors == null) {
             FileLog.e("CameraX concurrent bind failed: no advertised front/back pair");
-            if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("CXController concurrent unavailable backFront="
-                    + backController.isFrontface + " frontFront=" + frontController.isFrontface);
             return false;
         }
-
-        if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("CXController concurrent begin compatibility="
-                + compatibilityProfile + " order=back-front back="
-                + backController.describeSelector(selectors[0]) + " front="
-                + frontController.describeSelector(selectors[1])
-                + " selectedFront=" + isFrontface
-                + " preferWide=" + preferUltraWide);
 
         try {
             return CameraXProviderCoordinator.withConcurrentOwners(
                     provider, backController, frontController, () -> {
+
             backController.lifecycle.stop();
             frontController.lifecycle.stop();
             backController.boundCamera = null;
@@ -973,6 +914,7 @@ public class NimarkoCameraXController implements CameraXProviderCoordinator.Owne
             Range<Integer> commonFps = compatibilityProfile ? null
                     : CameraXUtils.getCommonSupportedTargetFpsRange(
                             provider, selectors[0], selectors[1]);
+
             if (!backController.prepareUseCases(true, true, !compatibilityProfile, false,
                     selectors[0], commonFps)
                     || !frontController.prepareUseCases(true, true, !compatibilityProfile,
@@ -990,29 +932,13 @@ public class NimarkoCameraXController implements CameraXProviderCoordinator.Owne
                             selectors[0], firstGroup, backController.lifecycle),
                     new ConcurrentCamera.SingleCameraConfig(
                             selectors[1], secondGroup, backController.lifecycle));
-            if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("CXController concurrent configs commonLifecycle=true"
-                    + " strictVga=" + compatibilityProfile
-                    + " activationDeferred=true"
-                    + " backController=" + objectId(backController)
-                    + " frontController=" + objectId(frontController)
-                    + " backPreview=" + objectId(backController.boundPreview)
-                    + " frontPreview=" + objectId(frontController.boundPreview)
-                    + " backGroup=" + objectId(firstGroup)
-                    + " frontGroup=" + objectId(secondGroup)
-                    + " sharedLifecycle=" + objectId(backController.lifecycle)
-                    + " lifecycleState="
-                    + backController.lifecycle.getLifecycle().getCurrentState());
+
             ConcurrentCamera concurrentCamera = provider.bindToLifecycle(configs);
             List<Camera> cameras = concurrentCamera.getCameras();
             if (cameras == null || cameras.size() != 2) {
                 throw new IllegalStateException(
                         "CameraX returned an incomplete concurrent camera pair");
             }
-            if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("CXController concurrent returned order=["
-                    + cameraId(cameras.get(0)) + '@' + objectId(cameras.get(0))
-                    + ", " + cameraId(cameras.get(1)) + '@' + objectId(cameras.get(1))
-                    + "] expectedSelectors=[" + describeSelector(selectors[0])
-                    + ", " + describeSelector(selectors[1]) + "]");
             backController.boundCamera = cameras.get(0);
             frontController.boundCamera = cameras.get(1);
             backController.initiated = true;
@@ -1021,24 +947,15 @@ public class NimarkoCameraXController implements CameraXProviderCoordinator.Owne
             other.concurrentPeer = this;
             backController.attachBoundCamera(backController.boundCamera, true);
             frontController.attachBoundCamera(frontController.boundCamera, true);
-            if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("CXController concurrent providerMode="
-                    + provider.isConcurrentCameraModeOn());
+
             backController.lifecycle.start();
-            if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("CXController concurrent lifecycle activated state="
-                    + backController.lifecycle.getLifecycle().getCurrentState());
-            if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("CXController concurrent bound back="
-                    + cameraId(backController.boundCamera) + " front="
-                    + cameraId(frontController.boundCamera)
-                    + " commonFps=" + commonFps);
+
             return true;
                     });
         } catch (Throwable error) {
             lastConcurrentBindBusy = isCameraAlreadyRunningFailure(error);
             other.lastConcurrentBindBusy = lastConcurrentBindBusy;
             FileLog.e("CameraX concurrent bind failed", error);
-            if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("CXController concurrent FAILED compatibility="
-                    + compatibilityProfile + " providerBusy="
-                    + lastConcurrentBindBusy, error);
         }
         invalidateBoundCameraControls();
         other.invalidateBoundCameraControls();
@@ -1090,8 +1007,6 @@ public class NimarkoCameraXController implements CameraXProviderCoordinator.Owne
     }
 
     private void notifyReady() {
-        if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("CXController notifyReady front=" + isFrontface
-                + " initiated=" + initiated + " camera=" + cameraId(boundCamera));
         if (readyCallback == null) return;
         try {
             readyCallback.run();
@@ -1101,7 +1016,6 @@ public class NimarkoCameraXController implements CameraXProviderCoordinator.Owne
     }
 
     private void reportFailure(Throwable throwable) {
-        if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("CXController reportFailure front=" + isFrontface, throwable);
         if (failureCallback == null) return;
         try {
             failureCallback.run(throwable);
@@ -1128,6 +1042,7 @@ public class NimarkoCameraXController implements CameraXProviderCoordinator.Owne
         if (camera == null || !boundCameraReady) return;
         zoomCoordinator.requestZoomRatio(ratio);
     }
+
     public void setAnimatedZoomRatio(float ratio) {
         if (boundCamera == null || !boundCameraReady) return;
         zoomCoordinator.requestAnimatedZoomRatio(ratio);
@@ -1154,12 +1069,14 @@ public class NimarkoCameraXController implements CameraXProviderCoordinator.Owne
             return 1f;
         }
     }
+
     @Nullable
     public CameraXLensFrame getLensFrame(long surfaceTimestampNanos) {
         synchronized (lensFrameTracker) {
             return closed ? null : lensFrameTracker.getLensFrame(surfaceTimestampNanos);
         }
     }
+
     public boolean isInitialLensReady(long surfaceTimestampNanos) {
         if (isFrontface || !wantsInitialUltraWide()) return true;
         if (concurrentPeer != null && CameraXUtils.isOppoCph2791ConcurrentQuirk()) return true;
@@ -1180,6 +1097,7 @@ public class NimarkoCameraXController implements CameraXProviderCoordinator.Owne
             float tolerance = Math.max(0.025f, target * 0.06f);
             return Math.abs(frame.zoomRatio - target) <= tolerance;
         } catch (Throwable error) {
+
             return false;
         }
     }
@@ -1188,6 +1106,7 @@ public class NimarkoCameraXController implements CameraXProviderCoordinator.Owne
         if (isFrontface) return true;
         boolean wantsUltraWide = wantsInitialUltraWide();
         if (!wantsUltraWide) return true;
+
         if (concurrentPeer != null
                 && CameraXUtils.isOppoCph2791ConcurrentQuirk()) return true;
         Camera camera = boundCamera;
@@ -1199,6 +1118,7 @@ public class NimarkoCameraXController implements CameraXProviderCoordinator.Owne
                 if (activePhysical != null) {
                     return expectedPhysical.equals(activePhysical);
                 }
+
                 return false;
             }
             ZoomState state = camera.getCameraInfo().getZoomState().getValue();
@@ -1207,6 +1127,7 @@ public class NimarkoCameraXController implements CameraXProviderCoordinator.Owne
             float tolerance = Math.max(0.025f, target * 0.06f);
             return Math.abs(state.getZoomRatio() - target) <= tolerance;
         } catch (Throwable error) {
+
             return false;
         }
     }
@@ -1239,6 +1160,22 @@ public class NimarkoCameraXController implements CameraXProviderCoordinator.Owne
         } catch (Throwable t) {
             return Math.max(1f, baseZoomRatio);
         }
+    }
+
+    public float[] getZoomShortcuts() {
+        Camera camera = boundCamera;
+        if (camera == null || !isZoomShortcutsReady()) return new float[0];
+        try {
+            ZoomState state = camera.getCameraInfo().getZoomState().getValue();
+            return state == null ? new float[0] : CameraXZoomShortcuts.select(
+                    state.getMinZoomRatio(), state.getMaxZoomRatio(), zoomShortcutCandidates);
+        } catch (Throwable ignored) {
+            return new float[0];
+        }
+    }
+
+    public boolean isZoomShortcutsReady() {
+        return !closed && boundCamera != null && zoomShortcutsReady;
     }
 
     public float resetZoom() {
@@ -1408,14 +1345,11 @@ public class NimarkoCameraXController implements CameraXProviderCoordinator.Owne
                                @Nullable org.telegram.messenger.Utilities.Callback<Throwable> onError) {
         ImageCapture capture = boundImageCapture;
         if (capture == null || file == null) {
-            if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("CXController photo rejected capture=" + (capture != null)
-                    + " file=" + file);
             return false;
         }
-        if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("CXController photo start file=" + file.getAbsolutePath()
-                + " front=" + isFrontface + " rotation=" + imageCaptureTargetRotation);
         try {
             ImageCapture.Metadata metadata = new ImageCapture.Metadata();
+
             metadata.setReversedHorizontal(isFrontface);
             ImageCapture.OutputFileOptions options =
                     new ImageCapture.OutputFileOptions.Builder(file)
@@ -1426,24 +1360,18 @@ public class NimarkoCameraXController implements CameraXProviderCoordinator.Owne
                     new ImageCapture.OnImageSavedCallback() {
                         @Override
                         public void onImageSaved(@NonNull ImageCapture.OutputFileResults outputFileResults) {
-                            if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("CXController photo saved file="
-                                    + file.getAbsolutePath() + " uri="
-                                    + outputFileResults.getSavedUri());
                             if (onTake != null) onTake.run();
                         }
 
                         @Override
                         public void onError(@NonNull ImageCaptureException exception) {
                             FileLog.e(exception);
-                            if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("CXController photo FAILED file="
-                                    + file.getAbsolutePath(), exception);
                             if (onError != null) onError.run(exception);
                         }
                     });
             return true;
         } catch (Throwable t) {
             FileLog.e(t);
-            if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("CXController photo dispatch FAILED file=" + file, t);
             if (onError != null) onError.run(t);
             return false;
         }
@@ -1488,20 +1416,42 @@ public class NimarkoCameraXController implements CameraXProviderCoordinator.Owne
     public void attachBoundCamera(@Nullable Camera camera) {
         attachBoundCamera(camera, false);
     }
+
     private void attachBoundCamera(@Nullable Camera camera, boolean preparedGraph) {
         if (preparedGraph && camera != null) {
+
             resetBoundCameraControls();
         } else {
             invalidateBoundCameraControls();
         }
         this.boundCamera = camera;
         baseZoomRatio = 1f;
-        if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("CXController attach camera=" + cameraId(camera)
-                + " generation=" + boundCameraGeneration);
         if (camera == null) return;
 
         final int generation = boundCameraGeneration;
         zoomCoordinator.attach(camera, generation);
+        final CameraSelector shortcutSelector = boundSelector;
+        float[] cachedShortcuts = CameraXUtils.getCachedZoomShortcuts(camera.getCameraInfo(), shortcutSelector);
+        if (cachedShortcuts != null) {
+            zoomShortcutCandidates = cachedShortcuts;
+            zoomShortcutsReady = true;
+        }
+        if (cachedShortcuts == null) org.telegram.messenger.Utilities.globalQueue.postRunnable(() -> {
+            float[] discovered;
+            try {
+                discovered = CameraXUtils.findZoomShortcutCandidates(
+                        camera.getCameraInfo(), shortcutSelector);
+            } catch (Throwable ignored) {
+                discovered = new float[0];
+            }
+            final float[] candidates = discovered;
+            AndroidUtilities.runOnUIThread(() -> {
+                if (!closed && camera == boundCamera && generation == boundCameraGeneration) {
+                    zoomShortcutCandidates = candidates;
+                    zoomShortcutsReady = true;
+                }
+            });
+        });
         try {
             boundCameraState = camera.getCameraInfo().getCameraState();
             boundCameraStateObserver = state -> {
@@ -1510,11 +1460,10 @@ public class NimarkoCameraXController implements CameraXProviderCoordinator.Owne
                     return;
                 }
                 CameraState.StateError stateError = state.getError();
-                if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("CXController state camera=" + cameraId(camera)
-                        + " type=" + state.getType()
-                        + " error=" + (stateError == null ? "none" : stateError.getCode()));
                 if (stateError != null) {
                     boundCameraReady = false;
+                    torchSubmittedCamera = null;
+                    torchSubmittedFuture = null;
                     zoomCoordinator.setReady(camera, generation, false);
                     Throwable cause = stateError.getCause();
                     FileLog.e("CameraX camera state error " + stateError.getCode(),
@@ -1541,6 +1490,7 @@ public class NimarkoCameraXController implements CameraXProviderCoordinator.Owne
                 }
                 if (state.getType() == CameraState.Type.OPEN) {
                     cancelConcurrentCameraInUseFailure();
+
                     boundCameraReady = true;
                     final boolean initialZoomPrepared =
                             prepareInitialZoomIfGraphReady(camera, generation);
@@ -1554,6 +1504,7 @@ public class NimarkoCameraXController implements CameraXProviderCoordinator.Owne
                             return;
                         }
                         if (!initialZoomPrepared) {
+
                             prepareInitialZoomIfGraphReady(camera, generation);
                             prepareConcurrentPeerInitialZoomIfReady();
                         }
@@ -1562,28 +1513,14 @@ public class NimarkoCameraXController implements CameraXProviderCoordinator.Owne
                 } else if (state.getType() == CameraState.Type.CLOSING
                         || state.getType() == CameraState.Type.CLOSED) {
                     boundCameraReady = false;
+                    torchSubmittedCamera = null;
+                    torchSubmittedFuture = null;
                     zoomCoordinator.setReady(camera, generation, false);
                 }
             };
             boundCameraState.observe(lifecycle, boundCameraStateObserver);
         } catch (Throwable t) {
             FileLog.e(t);
-            if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("CXController camera-state observer FAILED", t);
-        }
-    }
-
-    private String describeSelector(@Nullable CameraSelector selector) {
-        if (selector == null || provider == null) return "null";
-        try {
-            List<androidx.camera.core.CameraInfo> infos =
-                    selector.filter(provider.getAvailableCameraInfos());
-            ArrayList<String> ids = new ArrayList<>(infos.size());
-            for (androidx.camera.core.CameraInfo info : infos) {
-                ids.add(Camera2CameraInfo.from(info).getCameraId());
-            }
-            return ids.toString();
-        } catch (Throwable error) {
-            return "error:" + error.getClass().getSimpleName();
         }
     }
 
@@ -1594,12 +1531,6 @@ public class NimarkoCameraXController implements CameraXProviderCoordinator.Owne
         } catch (Throwable error) {
             return "unknown:" + error.getClass().getSimpleName();
         }
-    }
-
-    private static String objectId(@Nullable Object object) {
-        return object == null ? "null"
-                : object.getClass().getSimpleName() + '@'
-                + Integer.toHexString(System.identityHashCode(object));
     }
 
     private synchronized boolean prepareInitialZoom(Camera camera, int generation) {
@@ -1621,13 +1552,6 @@ public class NimarkoCameraXController implements CameraXProviderCoordinator.Owne
                     || !CameraXUtils.isOppoCph2791ConcurrentQuirk());
             baseZoomRatio = CameraXUtils.getBaseZoomRatio(
                     state, startFromUltraWide);
-            if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("CXController initial zoom camera=" + cameraId(camera)
-                    + " front=" + isFrontface
-                    + " concurrent=" + (concurrentPeer != null)
-                    + " configuredWide=" + NimarkoConfig.startFromUltraWideCam
-                    + " base=" + baseZoomRatio
-                    + " range=" + (state == null ? "null"
-                    : state.getMinZoomRatio() + ".." + state.getMaxZoomRatio()));
             zoomCoordinator.requestZoomRatio(baseZoomRatio);
             initialZoomPreparedGeneration = generation;
             return true;
@@ -1638,6 +1562,7 @@ public class NimarkoCameraXController implements CameraXProviderCoordinator.Owne
     }
 
     private boolean prepareInitialZoomIfGraphReady(Camera camera, int generation) {
+
         return prepareInitialZoom(camera, generation);
     }
 
@@ -1683,7 +1608,12 @@ public class NimarkoCameraXController implements CameraXProviderCoordinator.Owne
         retireLensCaptureGraph();
         resetBoundCameraControls();
     }
+
     private void resetBoundCameraControls() {
+        zoomShortcutsReady = false;
+        zoomShortcutCandidates = new float[0];
+        torchSubmittedCamera = null;
+        torchSubmittedFuture = null;
         cancelConcurrentCameraInUseFailure();
         boundCameraReady = false;
         zoomCoordinator.detach();
@@ -1715,12 +1645,11 @@ public class NimarkoCameraXController implements CameraXProviderCoordinator.Owne
                         new ConcurrentCameraResourceException(
                         "Concurrent CameraX camera remained unavailable, error=" + errorCode,
                         cause);
-                if (NimarkoCameraLog.DEBUG) NimarkoCameraLog.log("CXController concurrent camera-in-use persisted camera="
-                        + cameraId(camera) + " error=" + errorCode, persistentError);
                 reportFailure(persistentError);
             }
         };
         concurrentCameraInUseFailureRunnable = task;
+
         AndroidUtilities.runOnUIThread(task, 1400L);
     }
 

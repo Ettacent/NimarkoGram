@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Cells;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -248,10 +250,15 @@ public class ProfileChannelCell extends FrameLayout implements Theme.Colorable {
     }
 
     private boolean set = false;
+    private long boundChannelId;
     public void set(TLRPC.Chat channel, ArrayList<MessageObject> messageObjects) {
-        final boolean animated = set;
+        final long channelId = channel == null ? 0 : channel.id;
+        final boolean animated = set && boundChannelId == channelId && isAttachedToWindow()
+                && org.telegram.messenger.SharedConfig.animationsEnabled();
         final boolean subscribersShown = channel == null || channel.participants_count > 0;
-        subscribersView.cancelAnimation();
+        if (!animated) subscribersView.cancelAnimation();
+        subscribersView.animate().cancel();
+        boundChannelId = channelId;
         subscribersView.setPivotX(0);
         if (animated) {
             subscribersView.animate().alpha(subscribersShown ? 1f : 0f).scaleX(subscribersShown ? 1f : .8f).scaleY(subscribersShown ? 1f : .8f).setDuration(420).setInterpolator(CubicBezierInterpolator.EASE_OUT_QUINT).start();
@@ -265,7 +272,7 @@ public class ProfileChannelCell extends FrameLayout implements Theme.Colorable {
             int[] result = new int[1];
             boolean ignoreShort = AndroidUtilities.isAccessibilityScreenReaderEnabled();
             String shortNumber = ignoreShort ? String.valueOf(result[0] = channel.participants_count) : LocaleController.formatShortNumber(channel.participants_count, result);
-            subscribersView.setText(LocaleController.formatPluralString("Subscribers", result[0]).replace(String.format("%d", result[0]), shortNumber), true);
+            subscribersView.setText(LocaleController.formatPluralString("Subscribers", result[0]).replace(String.format("%d", result[0]), shortNumber), animated);
 
             if (loading = (messageObjects == null || messageObjects.isEmpty())) {
                 dialogCell.setDialog(-channel.id, null, 0, false, animated);

@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 5.x.x.
  * It is licensed under GNU GPL v. 2 or later.
@@ -1198,8 +1200,10 @@ public class NotificationsController extends BaseController implements Notificat
                 }
 
                 long originalDialogId = dialogId;
-                long topicId = MessageObject.getTopicId(currentAccount, messageObject.messageOwner, getMessagesController().isForum(messageObject));
-                if (dialogId == openedDialogId && ApplicationLoader.isScreenOn && !messageObject.isStoryReactionPush && !messageObject.isOauthPush) {
+                boolean forumMessage = getMessagesController().isForum(messageObject);
+                long topicId = MessageObject.getTopicId(currentAccount, messageObject.messageOwner, forumMessage);
+                if (dialogId == openedDialogId && (!forumMessage || topicId == openedTopicId)
+                        && ApplicationLoader.isScreenOn && !messageObject.isStoryReactionPush && !messageObject.isOauthPush) {
                     if (!isFcm) {
                         // NimarkoGram: CG parity — only play the in-chat sound when notificationSound isn't disabled.
                         if (NimarkoConfig.notificationSound != NimarkoConfig.NOTIF_SOUND_DISABLE) {
@@ -1427,7 +1431,6 @@ public class NotificationsController extends BaseController implements Notificat
                         forum = chat.forum;
                     }
                 }
-
 
                 boolean canAddValue;
                 if (!forum) {
@@ -3841,6 +3844,7 @@ public class NotificationsController extends BaseController implements Notificat
             channelGroupsCreated = true;
         }
     }
+
     public static void retainNotificationSoundPermission(Uri sound, Intent result) {
         if (sound == null || !"content".equals(sound.getScheme())) {
             return;
@@ -3852,11 +3856,13 @@ public class NotificationsController extends BaseController implements Notificat
                 ApplicationLoader.applicationContext.getContentResolver().takePersistableUriPermission(
                         sound, Intent.FLAG_GRANT_READ_URI_PERMISSION);
             } catch (SecurityException e) {
+
                 FileLog.e(e);
             }
         }
         grantNotificationSoundPermission(sound);
     }
+
     private static void grantNotificationSoundPermission(Uri sound) {
         if (sound == null || !"content".equals(sound.getScheme())) {
             return;
@@ -3865,9 +3871,11 @@ public class NotificationsController extends BaseController implements Notificat
             ApplicationLoader.applicationContext.grantUriPermission(
                     "com.android.systemui", sound, Intent.FLAG_GRANT_READ_URI_PERMISSION);
         } catch (RuntimeException e) {
+
             FileLog.e(e);
         }
     }
+
     private static Uri resolveNotificationSound(String path, String defaultPath, boolean internalSound) {
         if (path == null || "NoSound".equalsIgnoreCase(path)) {
             return null;
@@ -3877,6 +3885,7 @@ public class NotificationsController extends BaseController implements Notificat
         }
         Uri sound = Uri.parse(path);
         if (sound.getScheme() == null || "file".equals(sound.getScheme())) {
+
             File file = new File(sound.getScheme() == null ? path : sound.getPath());
             sound = Uri.fromFile(file);
             if (!internalSound && AndroidUtilities.isInternalUri(sound)) {
@@ -3899,6 +3908,7 @@ public class NotificationsController extends BaseController implements Notificat
     @TargetApi(26)
     private String validateChannelId(long dialogId, long topicId, String name, long[] vibrationPattern, int ledColor, Uri sound, int importance, boolean isDefault, boolean isInApp, boolean isSilent, int type) {
         ensureGroupsCreated();
+
         grantNotificationSoundPermission(sound);
 
         SharedPreferences preferences = getAccountInstance().getNotificationsSettings();
@@ -4205,8 +4215,10 @@ public class NotificationsController extends BaseController implements Notificat
         }
         return channelId;
     }
+
     private int bannerDeliveryGeneration;
     private NimarkoInAppNotifications.Delivery pendingBannerDelivery;
+
     private void cancelBannerDelivery() {
         ++bannerDeliveryGeneration;
         if (pendingBannerDelivery != null) {
@@ -4219,6 +4231,7 @@ public class NotificationsController extends BaseController implements Notificat
         cancelBannerDelivery();
         showOrUpdateNotification(notifyAboutLast, null);
     }
+
     private void showOrUpdateNotification(boolean notifyAboutLast, Boolean inAppHandled) {
         final int bannerDelivery = bannerDeliveryGeneration;
         final long bannerPrivacy = bannerPrivacyRevision.get();
@@ -4910,6 +4923,7 @@ public class NotificationsController extends BaseController implements Notificat
             FileLog.e(e);
         }
     }
+
     private boolean offerInAppNotification(MessageObject message, long owner, long loginSession, NimarkoInAppNotifications.Delivery delivery, java.util.function.Consumer<Boolean> completion) {
         if (!app.nimarkogram.messenger.notifications.NimarkoInAppNotifications.isAvailable()
                 || !getAccountInstance().getNotificationsSettings().getBoolean("EnableInAppPopup", true)
@@ -5569,7 +5583,6 @@ public class NotificationsController extends BaseController implements Notificat
                         person = personBuilder.build();
                         personCache.put(uid, person);
                     }
-
 
                     if (!DialogObject.isEncryptedDialog(dialogId)) {
                         boolean setPhoto = false;

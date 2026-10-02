@@ -1,5 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Modifications Copyright (C) 2026 Ettacent -->
 <resources>
+    <string name="NM_EnhancedGlassBlur">增強玻璃與模糊效果</string>
+    <string name="NM_EnhancedGlassBlur_Desc">提供更高品質的效果，但會消耗更多運算資源。</string>
     <string name="NimarkoAbout">關於 NimarkoGram</string>
     <string name="NimarkoAboutAuthor">由 @NimarkoProject 製作</string>
     <string name="NimarkoAccentAsNotif">強調色作為通知顏色</string>
@@ -38,7 +41,7 @@
     <string name="NimarkoDeepLInformal">非正式</string>
     <string name="NimarkoDeletedMarkText">刪除標記文字</string>
     <string name="NimarkoDeletedMessages">已刪除訊息</string>
-    <string name="NimarkoDisableAppBarShadow">停用應用列陰影</string>
+    <string name="NimarkoDisableAppBarShadow">停用頂端列陰影</string>
     <string name="NimarkoDisableDividers">停用分隔線</string>
     <string name="NimarkoDisableGreetingSticker">隱藏歡迎貼圖</string>
     <string name="NimarkoDisableInstantCamera">停用即時相機</string>
@@ -51,14 +54,14 @@
     <string name="NimarkoDisableUnarchiveSwipe">停用滑動取消封存</string>
     <string name="NimarkoDisableVMAutoplay">停用語音訊息自動播放</string>
     <string name="NimarkoDoubleTapEdit">編輯</string>
-    <string name="NimarkoDoubleTapIn">雙擊接收訊息</string>
+    <string name="NimarkoDoubleTapIn">雙擊已收到的訊息</string>
     <string name="NimarkoDoubleTapNone">無</string>
-    <string name="NimarkoDoubleTapOut">雙擊傳送訊息</string>
+    <string name="NimarkoDoubleTapOut">雙擊已傳送的訊息</string>
     <string name="NimarkoDoubleTapReaction">回應</string>
     <string name="NimarkoDoubleTapRepeat">重複</string>
     <string name="NimarkoDoubleTapReply">回覆</string>
     <string name="NimarkoDoubleTapSave">儲存</string>
-    <string name="NimarkoDoubleTapSeek">雙擊快轉影片（秒）</string>
+    <string name="NimarkoDoubleTapSeek">雙擊影片跳轉秒數</string>
     <string name="NimarkoDoubleTapTranslate">翻譯</string>
     <string name="NimarkoDownloadSpeedBoost">提升下載速度</string>
     <string name="NimarkoDrawerArchived">已封存聊天</string>
@@ -78,7 +81,7 @@
     <string name="NimarkoEventNone">無</string>
     <string name="NimarkoEventType">節日主題</string>
     <string name="NimarkoEventValentines">情人節</string>
-    <string name="NimarkoFontWeightFallback">強制字型字重回退</string>
+    <string name="NimarkoFontWeightFallback">強制使用替代字重</string>
     <string name="NimarkoForceBlur">強制聊天模糊</string>
     <string name="NimarkoForceSnow">強制下雪</string>
     <string name="NimarkoFormatTimeSeconds">時間顯示秒數</string>
@@ -91,10 +94,10 @@
     <string name="NimarkoGhostSendUpload">傳送上傳進度</string>
     <string name="NimarkoHideActionBarStatus">隱藏頂欄狀態</string>
     <string name="NimarkoHideBottomNav">隱藏底部導覽列</string>
-    <string name="NimarkoHideCameraTile">隱藏圖庫中的相機磁貼</string>
+    <string name="NimarkoHideCameraTile">隱藏圖庫中的相機方塊</string>
     <string name="NimarkoHideChannelBottomBtns">隱藏頻道底部欄</string>
     <string name="NimarkoHideKeyboardOnScroll">捲動時隱藏鍵盤</string>
-    <string name="NimarkoHidePhoneNumber">隱藏個人資料中的手機號</string>
+    <string name="NimarkoHidePhoneNumber">隱藏個人資料中的電話號碼</string>
     <string name="NimarkoHidePhotoCounter">隱藏照片計數</string>
     <string name="NimarkoHideShareButton">隱藏「分享」按鈕</string>
     <string name="NimarkoHideStickerCategories">隱藏貼圖分類</string>
@@ -123,14 +126,14 @@
     <string name="NimarkoPermShortcut">聊天資料中的「權限」捷徑</string>
     <string name="NimarkoPluginFolder">外掛資料夾</string>
     <string name="NimarkoPlugins">外掛</string>
-    <string name="NimarkoPredictiveBack">Predictive-Back 導覽</string>
+    <string name="NimarkoPredictiveBack">預測返回導覽</string>
     <string name="NimarkoPreferIPv6">優先使用 IPv6</string>
     <string name="NimarkoPreferOriginalQuality">優先原始畫質</string>
     <string name="NimarkoQuickForward">快速轉發</string>
     <string name="NimarkoRearVideoMessages">使用後置鏡頭</string>
     <string name="NimarkoRecentActionsShortcut">「最近動作」捷徑</string>
     <string name="NimarkoReducedColors">減少色彩</string>
-    <string name="NimarkoRegexFilter">Regex 篩選器</string>
+    <string name="NimarkoRegexFilter">正規表示式篩選器</string>
     <string name="NimarkoRememberLastCamera">記住上次的鏡頭</string>
     <string name="NimarkoSaveDeleted">儲存已刪除訊息</string>
     <string name="NimarkoSaveEdited">儲存已編輯訊息</string>
@@ -138,7 +141,7 @@
     <string name="NimarkoSectionArchive">封存 &amp; 滑動</string>
     <string name="NimarkoSectionAyuGram">🕵 AyuGram</string>
     <string name="NimarkoSectionAyuPerf">效能</string>
-    <string name="NimarkoSectionCallsAV">通話 &amp; A/V</string>
+    <string name="NimarkoSectionCallsAV">通話 &amp; 音訊／視訊</string>
     <string name="NimarkoSectionCamera">相機</string>
     <string name="NimarkoSectionCategories">分類</string>
     <string name="NimarkoSectionChat">💬 聊天</string>
@@ -161,7 +164,7 @@
     <string name="NimarkoSectionVoiceTranslation">🎤 語音 &amp; 翻譯</string>
     <string name="NimarkoSettingsTitle">NimarkoGram</string>
     <string name="NimarkoShowActionTimestamps">顯示操作時間</string>
-    <string name="NimarkoShowAddToSaved">加入收藏夾</string>
+    <string name="NimarkoShowAddToSaved">加入收藏訊息</string>
     <string name="NimarkoShowClearHistory">顯示「清除歷史紀錄」</string>
     <string name="NimarkoShowCopyPhoto">顯示「複製照片」</string>
     <string name="NimarkoShowDeleteDownloaded">顯示「刪除已下載檔案」</string>
@@ -169,7 +172,7 @@
     <string name="NimarkoShowNoQuoteForward">顯示「無引用轉發」</string>
     <string name="NimarkoShowOpenIn">顯示「開啟方式…」</string>
     <string name="NimarkoShowOriginal">翻譯後顯示原文</string>
-    <string name="NimarkoShowQrCode">顯示 QR Code</string>
+    <string name="NimarkoShowQrCode">顯示 QR 碼</string>
     <string name="NimarkoShowRepeat">顯示「重複」</string>
     <string name="NimarkoShowReport">顯示「檢舉」</string>
     <string name="NimarkoShowSaveToChannel">顯示「儲存到頻道」</string>
@@ -207,7 +210,7 @@
     <string name="NimarkoTransTG">Telegram</string>
     <string name="NimarkoTransType">譯文顯示方式</string>
     <string name="NimarkoTransparentStatus">透明狀態列</string>
-    <string name="NimarkoUnlimitedRecentStickers">無限最近貼圖</string>
+    <string name="NimarkoUnlimitedRecentStickers">不限最近使用的貼圖數量</string>
     <string name="NimarkoUnmuteWithVolume">按音量鍵播放影片</string>
     <string name="NimarkoUploadSpeedBoost">提升上傳速度</string>
     <string name="NimarkoUseLNavigation">L 導覽</string>
@@ -219,9 +222,9 @@
     <string name="NimarkoWalMode">SQLite WAL 模式</string>
     <string name="NM_MF_Title">訊息過濾</string>
     <string name="NM_MF_Subtitle">依關鍵字隱藏不想看的訊息</string>
-    <string name="NM_MF_Miscellaneous">篩選訊息顯示</string>
+    <string name="NM_MF_Miscellaneous">已篩選的訊息</string>
     <string name="NM_MF_Filter">啟用過濾器</string>
-    <string name="NM_MF_Filter_Desc">將符合的訊息隱藏在劇透效果下。</string>
+    <string name="NM_MF_Filter_Desc">將收到且符合條件的訊息隱藏在劇透效果下。</string>
     <string name="NM_MF_Field">輸入要過濾的詞語</string>
     <string name="NM_MF_Field_Desc">用逗號或換行分隔詞語，片語請放在括號中。</string>
     <string name="NM_MF_Translit">音譯偵測</string>
@@ -231,7 +234,7 @@
     <string name="NM_MF_Exclusions">排除項</string>
     <string name="NM_MF_Entities">篩選連結</string>
     <string name="NM_MF_EntitiesDesc">檢查連結，符合時隱藏整則訊息。</string>
-    <string name="NM_MF_HideAll">整條訊息劇透</string>
+    <string name="NM_MF_HideAll">整則訊息套用劇透效果</string>
     <string name="NM_MF_HideAllDesc">將文字和媒體隱藏在一個劇透效果下。</string>
     <string name="NM_MF_Collapse">摺疊訊息</string>
     <string name="NM_MF_Collapse_Desc">啟用後，訊息將自動摺疊。點擊訊息即可展開。</string>
@@ -254,7 +257,7 @@
     <string name="NM_TA_Master">啟用文字動畫</string>
     <string name="NM_TA_Master_Desc">平滑游標與輸入效果</string>
     <string name="NM_TA_Master_Hint">輸入時立即生效，無需重新啟動。</string>
-    <string name="NM_TA_Appear">出現</string>
+    <string name="NM_TA_Appear">文字淡入</string>
     <string name="NM_TA_Appear_Desc">輸入的字元伴隨柔和模糊與滑動淡入</string>
     <string name="NM_TA_Cursor">平滑游標</string>
     <string name="NM_TA_Cursor_Desc">游標平滑移動到目標位置，而非瞬間跳轉</string>
@@ -271,10 +274,10 @@
     <string name="NM_Extra_DayOfWeek_Saturday">星期六</string>
     <string name="NM_Extra_DayOfWeek_Sunday">星期日</string>
     <string name="NM_Extra_YearsAgo">前</string>
-    <string name="NM_Extra_LastSeenPattern_Morning">通常在早上在線</string>
-    <string name="NM_Extra_LastSeenPattern_Afternoon">通常在下午在線</string>
-    <string name="NM_Extra_LastSeenPattern_Evening">通常在晚上在線</string>
-    <string name="NM_Extra_LastSeenPattern_Night">通常在深夜在線</string>
+    <string name="NM_Extra_LastSeenPattern_Morning">通常在早上上線</string>
+    <string name="NM_Extra_LastSeenPattern_Afternoon">通常在下午上線</string>
+    <string name="NM_Extra_LastSeenPattern_Evening">通常在晚上上線</string>
+    <string name="NM_Extra_LastSeenPattern_Night">通常在夜間上線</string>
     <string name="CryptoPillTargetCurrency">目標貨幣</string>
     <string name="NM_ProxyVpnPromo">極速 VPN，暢通無阻</string>
     <string name="NM_ProxyVlessPromo">VLESS 與 Hysteria2</string>
@@ -372,7 +375,7 @@
     <string name="NM_SettingsSummaryGeneralInterface">動畫、表情符號與字型</string>
     <string name="NM_SettingsSummaryNotificationsStories">通知、表情回應與限時動態</string>
     <string name="NM_SettingsSummaryConnection">下載、上傳與弱網路</string>
-    <string name="NM_SettingsSummaryContent">本機進階表情符號</string>
+    <string name="NM_SettingsSummaryContent">本機 Premium 表情符號</string>
     <string name="NM_SettingsSummaryDataBackup">匯出或還原設定</string>
     <string name="NM_SettingsSummaryAppearanceLayout">資料夾、分頁與個人資料樣式</string>
     <string name="NM_SettingsSummaryAppearanceInterface">圖示、開關、分隔線與模糊</string>
@@ -380,9 +383,9 @@
     <string name="NM_SettingsSummaryChatAppearance">氣泡、頭像與貼圖</string>
     <string name="NM_SettingsSummaryEffects">高光與媒體光效</string>
     <string name="NM_SettingsSummaryAvatarsStickers">圓角、貼圖大小與時間</string>
-    <string name="NM_SettingsSummaryChatList">排序、封存與收藏</string>
+    <string name="NM_SettingsSummaryChatList">排序、封存與收藏訊息</string>
     <string name="NM_SettingsSummaryChatView">頂端列、背景與訊息配置</string>
-    <string name="NM_SettingsSummaryInputText">表情符號、編輯與文字轉譯</string>
+    <string name="NM_SettingsSummaryInputText">表情符號、編輯與文字顯示</string>
     <string name="NM_SettingsSummaryGesturesActions">點按、滑動與快捷操作</string>
     <string name="NM_SettingsSummaryMediaPlayback">照片、影片與 GIF</string>
     <string name="NM_SettingsSummaryReactionsEffects">表情回應與貼圖效果</string>
@@ -399,7 +402,7 @@
     <string name="NM_Config_Import_Desc">從檔案還原設定</string>
     <string name="NM_SnowInHeader">頂端列飄雪</string>
     <string name="NM_SnowInHeader_Desc">在頂端列顯示飄雪</string>
-    <string name="NM_CP_SnowflakesInChat_Desc">在開啟的聊天中於訊息上方顯示飄雪</string>
+    <string name="NM_SnowflakesInChat_Desc">在開啟的聊天中於訊息上方顯示飄雪</string>
     <string name="NM_SettingsDesc_NavigationAnimation">選擇頁面開啟和關閉的動畫</string>
     <string name="NM_SettingsDesc_PredictiveBack">返回滑動時預覽上一個頁面</string>
     <string name="NM_SettingsDesc_SystemEmoji">使用裝置安裝的表情符號</string>
@@ -417,7 +420,7 @@
     <string name="NM_SettingsDesc_HideSearchBar">隱藏主畫面的搜尋列</string>
     <string name="NM_SettingsDesc_HideHeaderStatus">隱藏聊天標題下方的狀態文字</string>
     <string name="NM_SettingsDesc_CustomTitle">設定主畫面顯示的標題</string>
-    <string name="NM_SettingsDesc_ForceBlur">在省電模式下仍使用模糊效果</string>
+    <string name="NM_SettingsDesc_ForceBlur">在低效能模式下仍使用模糊效果</string>
     <string name="NM_SettingsDesc_StickerTime">隱藏貼圖旁的時間</string>
     <string name="NM_SettingsDesc_MessageSize">調整訊息氣泡的最大寬度</string>
     <string name="NM_SettingsDesc_CenterChatTitle">將聊天標題在頂端列置中</string>
@@ -435,7 +438,7 @@
     <string name="NM_SettingsDesc_GifSpoilers">為 GIF 套用劇透效果</string>
     <string name="NM_SettingsDesc_NotificationSound">選擇開啟聊天時的訊息提示音</string>
     <string name="NM_SettingsDesc_ChatVibration">選擇開啟聊天時的訊息震動</string>
-    <string name="NM_SettingsDesc_ChatShortcuts">選擇聊天選單中顯示的快捷操作</string>
+    <string name="NM_SettingsDesc_ChatShortcuts">選擇「更多操作」與「管理」子選單中的操作</string>
     <string name="NM_SettingsDesc_HideKeyboardOnScroll">設定捲動多遠後隱藏鍵盤</string>
     <string name="NM_SettingsDesc_VideoSeek">設定影片快轉和倒轉的秒數</string>
     <string name="NM_SettingsDesc_HideProxy">從聊天列表隱藏推廣代理聊天</string>
@@ -462,7 +465,7 @@
     <string name="NM_SettingsDesc_BannerAvatar">使用個人資料頭像作為橫幅</string>
     <string name="NM_SettingsDesc_BypassEnable">透過內建代理轉送 Telegram 流量</string>
     <string name="NM_SettingsDesc_BypassProxySettings">開啟 Telegram 代理設定</string>
-    <string name="NM_SettingsDesc_BypassCalls">透過繞過連線轉送 Telegram 通話</string>
+    <string name="NM_SettingsDesc_BypassCalls">透過繞過封鎖的連線轉送 Telegram 通話</string>
     <string name="NM_SettingsDesc_CardsEnable">在聊天列表上方顯示資訊卡片</string>
     <string name="NM_SettingsDesc_CardsInfinite">捲動列表時循環顯示卡片</string>
     <string name="NM_SettingsDesc_CardsAutoScroll">自動切換資訊卡片</string>
@@ -480,8 +483,8 @@
     <string name="NM_SettingsDesc_MenuItemVisibility">在訊息選單中顯示此操作</string>
     <string name="NM_SettingsDesc_RecentEmoji">設定最近使用表情符號的最大數量</string>
     <string name="NM_SettingsDesc_RecentStickers">設定最近使用貼圖的最大數量</string>
-    <string name="NM_MP_ReplyBackground_Desc">在回覆後顯示彩色背景</string>
-    <string name="NM_MP_ReplyCustomColors_Desc">在回覆中使用個人資料顏色</string>
+    <string name="NM_MP_ReplyBackground_Desc">在回覆區塊後方顯示彩色背景</string>
+    <string name="NM_MP_ReplyCustomColors_Desc">使用個人資料顏色作為回覆的強調色</string>
     <string name="NM_MP_ReplyBackgroundEmoji_Desc">在回覆背景中顯示個人資料表情</string>
     <string name="NM_MP_ProfileChannelPreview_Desc">在個人資料中顯示連結頻道</string>
     <string name="NM_MP_ShowIdDc_Desc">在個人資料中顯示帳號 ID 和資料中心</string>
@@ -489,4 +492,8 @@
     <string name="NM_MP_ProfileBusinessPreview_Desc">在個人資料中顯示商務資訊</string>
     <string name="NM_MP_ProfileBackgroundColor_Desc">在展開的頂端區域使用個人資料顏色</string>
     <string name="NM_MP_ProfileBackgroundEmoji_Desc">在展開的頂端區域顯示個人資料表情</string>
+    <string name="NM_InAppNotifications">應用程式內通知橫幅</string>
+    <string name="NM_InAppNotificationsDesc">在頂端顯示新訊息。向下拉可展開內容，向上滑可收合或關閉，點按可開啟聊天。</string>
+    <string name="NM_InAppNotificationsPreview">顯示範例</string>
+    <string name="NM_InAppNotificationsSample">新訊息會顯示在這裡</string>
 </resources>

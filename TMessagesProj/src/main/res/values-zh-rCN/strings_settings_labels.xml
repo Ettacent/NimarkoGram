@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Copyright (C) 2026 Ettacent -->
+<resources>
+    <string name="NM_Settings_WorldwidePreview">%1$s，全球</string>
+    <string name="NM_Settings_DCMiami">美国（迈阿密）</string>
+    <string name="NM_Settings_DCAmsterdam">荷兰（阿姆斯特丹）</string>
+    <string name="NM_Settings_DCSingapore">新加坡</string>
+    <string name="NM_Settings_BlurOpacityValue">模糊不透明度：%1$s</string>
+    <string name="NM_Settings_BlurRadius">模糊半径</string>
+    <string name="NM_Settings_IconHighlightTop">顶部高光</string>
+    <string name="NM_Settings_IconHighlightBottom">底部高光</string>
+    <string name="NM_Settings_IconHighlightColor">高光颜色</string>
+    <string name="NM_Settings_IconDiffuseLighting">漫反射光照</string>
+    <string name="NM_Settings_IconNormalHighlights">法线贴图高光</string>
+    <string name="NM_Settings_IconNormalHighlightColor">法线贴图高光颜色</string>
+    <string name="NM_Settings_IconSmallStarSize">小星星大小</string>
+    <string name="NM_Settings_ShowMKVAsVideoBeta">将 MKV 文件显示为视频（仅限测试版）</string>
+    <string name="NM_Settings_StreamAllVideosBeta">流式播放所有视频（仅限测试版）</string>
+    <string name="NM_Settings_BrowserAdaptiveColors">自适应颜色</string>
+    <string name="NM_Settings_BrowserLocalInstantViewOnly">仅使用本地即时浏览</string>
+</resources>

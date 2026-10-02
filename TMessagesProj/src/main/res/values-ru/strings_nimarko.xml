@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Modifications Copyright (C) 2026 Ettacent -->
 <resources>
     <string name="NM_EnhancedGlassBlur">Улучшенное стекло и размытие</string>
     <string name="NM_EnhancedGlassBlur_Desc">Более качественные эффекты. Повышает нагрузку.</string>
@@ -409,7 +410,7 @@
     <string name="NM_Config_Import_Desc">Восстановить настройки из файла</string>
     <string name="NM_SnowInHeader">Снег в верхней панели</string>
     <string name="NM_SnowInHeader_Desc">Показывать снег в верхней панели</string>
-    <string name="NM_CP_SnowflakesInChat_Desc">Показывать снег поверх сообщений в открытом чате</string>
+    <string name="NM_SnowflakesInChat_Desc">Показывать снег поверх сообщений в открытом чате</string>
     <string name="NM_SettingsDesc_NavigationAnimation">Выберите анимацию открытия и закрытия экранов</string>
     <string name="NM_SettingsDesc_PredictiveBack">Показывать предыдущий экран во время жеста назад</string>
     <string name="NM_SettingsDesc_SystemEmoji">Использовать набор эмодзи с устройства</string>
