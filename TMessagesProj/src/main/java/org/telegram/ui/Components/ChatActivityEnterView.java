@@ -66,6 +66,7 @@ import android.text.SpannableStringBuilder;
 import android.text.Spanned;
 import android.text.StaticLayout;
 import android.text.TextPaint;
+import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
 import android.text.TextUtils;
 import android.text.TextWatcher;
 import android.text.style.ImageSpan;
@@ -1578,7 +1579,7 @@ public class ChatActivityEnterView extends FrameLayout implements
         private String tooltipMessage;
         private StaticLayout tooltipLayout;
         private float tooltipWidth;
-        private TextPaint tooltipPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+        private TextPaint tooltipPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
         Paint lockBackgroundPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         Paint lockPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         Paint lockOutlinePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -11523,7 +11524,7 @@ public class ChatActivityEnterView extends FrameLayout implements
                 paint = messageEditText.getPaint();
             }
             if (paint == null) {
-                paint = new TextPaint();
+                paint = new SystemTextPaint(0);
                 paint.setTextSize(dp(18));
             }
             fontMetricsInt = paint.getFontMetricsInt();
@@ -11704,7 +11705,7 @@ public class ChatActivityEnterView extends FrameLayout implements
                     paint = messageEditText.getPaint();
                 }
                 if (paint == null) {
-                    paint = new TextPaint();
+                    paint = new SystemTextPaint(0);
                     paint.setTextSize(dp(18));
                 }
                 fontMetricsInt = paint.getFontMetricsInt();
@@ -16087,10 +16088,10 @@ public class ChatActivityEnterView extends FrameLayout implements
         public SlideTextView(@NonNull Context context) {
             super(context);
             smallSize = AndroidUtilities.displaySize.x <= dp(320);
-            grayPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+            grayPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
             grayPaint.setTextSize(dp(smallSize ? 13 : 15));
 
-            bluePaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+            bluePaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
             bluePaint.setTextSize(dp(15));
 
             bluePaint.setTypeface(AndroidUtilities.bold());
@@ -16392,7 +16393,7 @@ public class ChatActivityEnterView extends FrameLayout implements
         @Override
         protected void onDraw(Canvas canvas) {
             if (textPaint == null) {
-                textPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+                textPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
                 textPaint.setTextSize(dp(15));
                 textPaint.setTypeface(AndroidUtilities.bold());
                 textPaint.setColor(getThemedColor(Theme.key_chat_recordTime));

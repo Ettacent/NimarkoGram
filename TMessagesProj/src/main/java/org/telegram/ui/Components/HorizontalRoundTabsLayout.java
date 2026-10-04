@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -8,6 +10,7 @@ import android.graphics.Paint;
 import android.graphics.Path;
 import android.graphics.RectF;
 import android.text.TextPaint;
+import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
 import android.view.Gravity;
 import android.view.View;
 import android.widget.HorizontalScrollView;
@@ -31,7 +34,7 @@ public class HorizontalRoundTabsLayout extends HorizontalScrollView {
     public final LinearLayout linearLayout;
 
     private final Paint bgPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-    private final TextPaint textPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+    private final TextPaint textPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
 
     private boolean accent;
 

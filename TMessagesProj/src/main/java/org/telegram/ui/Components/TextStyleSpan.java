@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 5.x.x.
  * It is licensed under GNU GPL v. 2 or later.
@@ -59,7 +61,7 @@ public class TextStyleSpan extends MetricAffectingSpan {
         public void applyStyle(TextPaint p) {
             Typeface typeface = getTypeface();
             if (typeface != null) {
-                p.setTypeface(typeface);
+                app.nimarkogram.messenger.utils.ui.SystemTextPaint.setSpanTypeface(p, typeface);
             }
             if ((flags & FLAG_STYLE_UNDERLINE) != 0) {
                 p.setFlags(p.getFlags() | Paint.UNDERLINE_TEXT_FLAG);

@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 5.x.x.
  * It is licensed under GNU GPL v. 2 or later.
@@ -756,7 +758,7 @@ public class FileLoadOperation {
 
     protected long[] getDownloadedLengthFromOffset(final long offset, final long length) {
         final CountDownLatch countDownLatch = new CountDownLatch(1);
-        final long[] result = new long[2];
+        final long[] result = new long[3];
         Utilities.stageQueue.postRunnable(() -> {
             try {
                 result[0] = getDownloadedLengthFromOffsetInternal(notLoadedBytesRanges, offset, length);
@@ -767,11 +769,16 @@ public class FileLoadOperation {
             if (state == stateFinished) {
                 result[1] = 1;
             }
+            if (state == stateFailed || state == stateCanceled) {
+                result[2] = 1;
+            }
             countDownLatch.countDown();
         });
         try {
             countDownLatch.await();
-        } catch (Exception ignore) {
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return new long[] {0, 0, 1};
 
         }
         return result;

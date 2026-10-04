@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components;
 
 import static org.telegram.messenger.LocaleController.formatSpannable;
@@ -22,6 +24,7 @@ import android.text.SpannableStringBuilder;
 import android.text.Spanned;
 import android.text.StaticLayout;
 import android.text.TextPaint;
+import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
 import android.text.TextUtils;
 import android.text.method.LinkMovementMethod;
 import android.text.style.CharacterStyle;
@@ -324,7 +327,7 @@ public class UndoView extends FrameLayout {
         progressPaint.setStrokeCap(Paint.Cap.ROUND);
         progressPaint.setColor(getThemedColor(Theme.key_undo_infoColor));
 
-        textPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+        textPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
         textPaint.setTextSize(AndroidUtilities.dp(12));
         textPaint.setTypeface(AndroidUtilities.bold());
         textPaint.setColor(getThemedColor(Theme.key_undo_infoColor));

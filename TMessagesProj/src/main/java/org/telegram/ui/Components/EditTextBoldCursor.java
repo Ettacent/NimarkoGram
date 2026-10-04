@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 5.x.x.
  * It is licensed under GNU GPL v. 2 or later.
@@ -45,6 +47,7 @@ import android.text.Layout;
 import android.text.Spanned;
 import android.text.StaticLayout;
 import android.text.TextPaint;
+import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
 import android.text.TextUtils;
 import android.text.TextWatcher;
 import android.view.ActionMode;
@@ -374,7 +377,7 @@ public class EditTextBoldCursor extends EditTextEffects {
     private void init() {
         linePaint = new Paint();
         activeLinePaint = new Paint();
-        errorPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+        errorPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
         errorPaint.setTextSize(dp(11));
         if (Build.VERSION.SDK_INT >= 26) {
             setImportantForAutofill(View.IMPORTANT_FOR_AUTOFILL_NO);

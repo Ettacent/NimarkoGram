@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.bots;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -14,6 +16,7 @@ import android.graphics.RenderNode;
 import android.os.Build;
 import android.os.Bundle;
 import android.text.TextPaint;
+import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
 import android.util.Log;
 import android.view.GestureDetector;
 import android.view.Gravity;
@@ -453,7 +456,7 @@ public class ChatAttachAlertBotWebViewLayout extends ChatAttachAlert.AttachAlert
         webViewContainer.setWebViewPaused(false);
         CharSequence title = UserObject.getUserName(MessagesController.getInstance(currentAccount).getUser(botId));
         try {
-            TextPaint tp = new TextPaint();
+            TextPaint tp = new SystemTextPaint(0);
             tp.setTextSize(dp(20));
             title = Emoji.replaceEmoji(title, tp.getFontMetricsInt(), false);
         } catch (Exception ignore) {}

@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.messenger;
 
 import android.content.BroadcastReceiver;
@@ -391,8 +393,21 @@ public class LiteMode {
     public static class BatteryReceiver extends BroadcastReceiver {
         @Override
         public void onReceive(Context context, Intent intent) {
-            lastBatteryLevelChecked = 0;
+            if (intent == null || !Intent.ACTION_BATTERY_CHANGED.equals(intent.getAction())) {
+                return;
+            }
+            int level = intent.getIntExtra(BatteryManager.EXTRA_LEVEL, -1);
+            int scale = intent.getIntExtra(BatteryManager.EXTRA_SCALE, -1);
+            if (level < 0 || scale <= 0) {
+                return;
+            }
+            int percentage = (int) Math.min(100L, level * 100L / scale);
+            boolean changed = lastBatteryLevelCached != percentage;
+            lastBatteryLevelCached = percentage;
+            lastBatteryLevelChecked = System.currentTimeMillis();
+            if (changed) {
             getValue();
         }
     }
+}
 }

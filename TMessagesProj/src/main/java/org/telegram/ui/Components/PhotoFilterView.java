@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 5.x.x
  * It is licensed under GNU GPL v. 2 or later.
@@ -26,6 +28,7 @@ import android.os.Build;
 import android.text.Layout;
 import android.text.StaticLayout;
 import android.text.TextPaint;
+import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.HapticFeedbackConstants;
@@ -1354,8 +1357,8 @@ public class PhotoFilterView extends FrameLayout implements FilterShaders.Filter
 
     public static class EnhanceView extends View {
 
-        private TextPaint topTextPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
-        private TextPaint bottomTextPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+        private TextPaint topTextPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
+        private TextPaint bottomTextPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
 
         private StaticLayout topText;
         private float topTextWidth, topTextLeft;

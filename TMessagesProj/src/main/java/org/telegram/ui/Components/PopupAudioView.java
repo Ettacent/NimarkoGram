@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 5.x.x.
  * It is licensed under GNU GPL v. 2 or later.
@@ -14,6 +16,7 @@ import android.graphics.drawable.Drawable;
 import android.text.Layout;
 import android.text.StaticLayout;
 import android.text.TextPaint;
+import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
 import android.view.MotionEvent;
 import android.view.SoundEffectConstants;
 import android.view.View;
@@ -54,11 +57,12 @@ public class PopupAudioView extends BaseCell implements SeekBar.SeekBarDelegate,
     int timeWidth = 0;
     private String lastTimeString = null;
 
+    private int lastWeightAdjustment = Integer.MIN_VALUE;
     private int TAG;
 
     public PopupAudioView(Context context) {
         super(context);
-        timePaint = new TextPaint(TextPaint.ANTI_ALIAS_FLAG);
+        timePaint = new SystemTextPaint(TextPaint.ANTI_ALIAS_FLAG);
         timePaint.setTextSize(AndroidUtilities.dp(16));
 
         TAG = DownloadController.getInstance(currentAccount).generateObserverTag();
@@ -266,7 +270,10 @@ public class PopupAudioView extends BaseCell implements SeekBar.SeekBarDelegate,
             duration = currentMessageObject.audioProgressSec;
         }
         String timeString = AndroidUtilities.formatLongDuration(duration);
-        if (lastTimeString == null || lastTimeString != null && !lastTimeString.equals(timeString)) {
+        int weightAdjustment = SystemTextPaint.getWeightAdjustment();
+        if (lastTimeString == null || !lastTimeString.equals(timeString) || lastWeightAdjustment != weightAdjustment) {
+            lastWeightAdjustment = weightAdjustment;
+            lastTimeString = timeString;
             timeWidth = (int)Math.ceil(timePaint.measureText(timeString));
             timeLayout = new StaticLayout(timeString, timePaint, timeWidth, Layout.Alignment.ALIGN_NORMAL, 1.0f, 0.0f, false);
         }

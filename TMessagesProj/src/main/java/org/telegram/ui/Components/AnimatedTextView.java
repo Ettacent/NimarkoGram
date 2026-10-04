@@ -1,5 +1,8 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components;
 
+import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
 import static org.telegram.messenger.AndroidUtilities.lerp;
 
 import android.animation.Animator;
@@ -52,7 +55,7 @@ public class AnimatedTextView extends View {
 
     public static class AnimatedTextDrawable extends Drawable {
 
-        private final TextPaint textPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+        private final TextPaint textPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
         private int gravity = 0;
 
         private boolean isRTL = false;
@@ -1160,7 +1163,7 @@ public class AnimatedTextView extends View {
         public void copyStylesFrom(TextPaint paint) {
             setTextColor(paint.getColor());
             setTextSize(paint.getTextSize());
-            setTypeface(paint.getTypeface());
+            ((SystemTextPaint) textPaint).copyTypefaceFrom(paint);
         }
 
         public TextPaint getPaint() {

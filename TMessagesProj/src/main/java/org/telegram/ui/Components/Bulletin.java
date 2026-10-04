@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -30,6 +32,7 @@ import android.os.Build;
 import android.os.Bundle;
 import android.text.StaticLayout;
 import android.text.TextPaint;
+import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
 import android.text.TextUtils;
 import android.text.method.LinkMovementMethod;
 import android.util.Property;
@@ -2376,7 +2379,7 @@ public class Bulletin {
         public TimerView(Context context, Theme.ResourcesProvider resourcesProvider) {
             super(context);
 
-            textPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+            textPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
             textPaint.setTextSize(dp(12));
             textPaint.setTypeface(AndroidUtilities.getTypeface("fonts/num.otf"));
 

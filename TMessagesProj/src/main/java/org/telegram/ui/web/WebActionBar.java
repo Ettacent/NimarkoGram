@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.web;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -50,6 +52,7 @@ import org.telegram.ui.ActionBar.ActionBarMenuSubItem;
 import org.telegram.ui.ActionBar.BackDrawable;
 import org.telegram.ui.ActionBar.OKLCH;
 import org.telegram.ui.ActionBar.Theme;
+import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
 import org.telegram.ui.ArticleViewer;
 import org.telegram.ui.Components.AnimatedFloat;
 import org.telegram.ui.Components.AnimatedTextView;
@@ -79,7 +82,7 @@ public class WebActionBar extends FrameLayout {
     public int textColor, iconColor;
     public int addressBackgroundColor, addressTextColor;
 
-    public final TextPaint titlePaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+    public final TextPaint titlePaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
 
     public boolean isMenuShown = false;
 

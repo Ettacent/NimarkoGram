@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Cells;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -21,6 +23,7 @@ import android.os.Build;
 import android.text.Layout;
 import android.text.StaticLayout;
 import android.text.TextPaint;
+import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
 import android.text.TextUtils;
 import android.view.MotionEvent;
 import android.view.VelocityTracker;
@@ -75,7 +78,7 @@ public class ChannelRecommendationsCell {
     private TLRPC.Chat currentChat;
     public long chatId;
 
-    private final TextPaint serviceTextPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+    private final TextPaint serviceTextPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
     private StaticLayout serviceText;
     private float serviceTextLeft, serviceTextRight;
     private int serviceTextHeight;
@@ -162,7 +165,7 @@ public class ChannelRecommendationsCell {
         }
 
         if (headerText == null) {
-            headerText = new Text(getString(dialogId > 0 ? R.string.SimilarBots : R.string.SimilarChannels), 14, AndroidUtilities.bold()).hackClipBounds();
+            headerText = Text.ui(getString(dialogId > 0 ? R.string.SimilarBots : R.string.SimilarChannels), 14, AndroidUtilities.bold()).hackClipBounds();
         }
 
         if (isExpanded()) {
@@ -412,7 +415,7 @@ public class ChannelRecommendationsCell {
         public final AvatarDrawable[] avatarDrawable;
         public final ImageReceiver[] avatarImageReceiver;
 
-        private final TextPaint nameTextPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+        private final TextPaint nameTextPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
         private final CharSequence name;
         private StaticLayout nameText;
 
@@ -493,7 +496,7 @@ public class ChannelRecommendationsCell {
             if (getSubscribersCount(chat) == null) {
                 subscribersText = null;
             } else {
-                subscribersText = new Text("+" + moreCount, 9.33f, AndroidUtilities.bold());
+                subscribersText = Text.ui("+" + moreCount, 9.33f, AndroidUtilities.bold());
             }
         }
 
@@ -567,7 +570,7 @@ public class ChannelRecommendationsCell {
             if (getSubscribersCount(chat) == null) {
                 subscribersText = null;
             } else {
-                subscribersText = new Text(getSubscribersCount(chat), 9.33f, AndroidUtilities.bold());
+                subscribersText = Text.ui(getSubscribersCount(chat), 9.33f, AndroidUtilities.bold());
             }
         }
 

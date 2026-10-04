@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 5.x.x.
  * It is licensed under GNU GPL v. 2 or later.
@@ -27,6 +29,7 @@ import android.os.Build;
 import android.text.Layout;
 import android.text.StaticLayout;
 import android.text.TextPaint;
+import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
 import android.text.TextUtils;
 import android.util.Base64;
 import android.view.Gravity;
@@ -1257,6 +1260,7 @@ public class WebPlayerView extends ViewGroup implements VideoPlayer.VideoPlayerD
         private int durationWidth;
         private int duration;
         private int progress;
+        private int lastWeightAdjustment = Integer.MIN_VALUE;
         private int bufferedPosition;
         private boolean isVisible = true;
         private AnimatorSet currentAnimation;
@@ -1268,7 +1272,7 @@ public class WebPlayerView extends ViewGroup implements VideoPlayer.VideoPlayerD
             super(context);
             setWillNotDraw(false);
 
-            textPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+            textPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
             textPaint.setColor(0xffffffff);
             textPaint.setTextSize(AndroidUtilities.dp(12));
 
@@ -1285,10 +1289,12 @@ public class WebPlayerView extends ViewGroup implements VideoPlayer.VideoPlayerD
         }
 
         public void setDuration(int value) {
-            if (duration == value || value < 0 || isStream) {
+            int weightAdjustment = SystemTextPaint.getWeightAdjustment();
+            if ((duration == value && lastWeightAdjustment == weightAdjustment) || value < 0 || isStream) {
                 return;
             }
             duration = value;
+            lastWeightAdjustment = weightAdjustment;
             durationLayout = new StaticLayout(AndroidUtilities.formatShortDuration(duration), textPaint, AndroidUtilities.dp(1000), Layout.Alignment.ALIGN_NORMAL, 1.0f, 0.0f, false);
             if (durationLayout.getLineCount() > 0) {
                 durationWidth = (int) Math.ceil(durationLayout.getLineWidth(0));

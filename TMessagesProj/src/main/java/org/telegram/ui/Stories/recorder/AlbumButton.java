@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Stories.recorder;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -12,6 +14,7 @@ import android.graphics.drawable.Drawable;
 import android.text.Layout;
 import android.text.StaticLayout;
 import android.text.TextPaint;
+import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
 import android.text.TextUtils;
 import android.view.View;
 import android.view.ViewGroup;
@@ -29,11 +32,11 @@ public class AlbumButton extends View {
     private final ImageReceiver imageReceiver = new ImageReceiver(this);
     private final CharSequence title, subtitle;
 
-    private final TextPaint namePaintLayout = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+    private final TextPaint namePaintLayout = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
     private StaticLayout nameLayout;
     private float nameLayoutWidth, nameLayoutLeft;
 
-    private final TextPaint countPaintLayout = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+    private final TextPaint countPaintLayout = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
     private StaticLayout countLayout;
     private float countLayoutWidth, countLayoutLeft;
 

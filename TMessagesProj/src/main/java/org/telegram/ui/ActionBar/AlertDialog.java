@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 5.x.x.
  * It is licensed under GNU GPL v. 2 or later.
@@ -945,7 +947,7 @@ public class AlertDialog extends Dialog implements Drawable.Callback, Notificati
         if (hasButtons) {
             if (!verticalButtons) {
                 int buttonsWidth = 0;
-                TextPaint paint = new TextPaint();
+                TextPaint paint = new app.nimarkogram.messenger.utils.ui.SystemTextPaint(0);
                 paint.setTextSize(dp(16));
                 paint.setTypeface(AndroidUtilities.bold());
                 if (positiveButtonText != null) {

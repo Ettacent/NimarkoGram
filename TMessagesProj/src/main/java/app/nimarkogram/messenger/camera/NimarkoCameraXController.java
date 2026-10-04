@@ -4,6 +4,7 @@ package app.nimarkogram.messenger.camera;
 
 import android.annotation.SuppressLint;
 import android.content.Context;
+import android.content.SharedPreferences;
 import android.hardware.camera2.CameraCaptureSession;
 import android.hardware.camera2.CaptureRequest;
 import android.hardware.camera2.CaptureResult;
@@ -25,6 +26,7 @@ import androidx.camera.core.CameraState;
 import androidx.camera.core.ConcurrentCamera;
 import androidx.camera.core.ExposureState;
 import androidx.camera.core.FocusMeteringAction;
+import androidx.camera.core.FocusMeteringResult;
 import androidx.camera.core.ImageCapture;
 import androidx.camera.core.ImageCaptureException;
 import androidx.camera.core.MeteringPoint;
@@ -89,13 +91,18 @@ public class NimarkoCameraXController implements CameraXProviderCoordinator.Owne
     @Nullable private Observer<CameraState> boundCameraStateObserver;
     @Nullable private Runnable concurrentCameraInUseFailureRunnable;
     private int boundCameraGeneration;
+    private int focusRequestGeneration;
     private float[] zoomShortcutCandidates = new float[0];
     private boolean zoomShortcutsReady;
+    private volatile float observedTelephotoSwitchRatio = Float.NaN;
+    @Nullable private volatile String telephotoPhysicalCameraId;
+    @Nullable private String telephotoCalibrationKey;
     private int initialZoomPreparedGeneration = -1;
     private volatile boolean boundCameraReady;
     private float baseZoomRatio = 1f;
     @Nullable private volatile String activePhysicalCameraId;
     @Nullable private volatile String expectedInitialPhysicalCameraId;
+    private float lastObservedZoomRatio = Float.NaN;
     private final CameraXLensFrameTracker lensFrameTracker = new CameraXLensFrameTracker();
 
     private long latestPhysicalFrameTimestampNanos;
@@ -633,6 +640,7 @@ public class NimarkoCameraXController implements CameraXProviderCoordinator.Owne
 
                 }
             }
+            observeLensMetadata |= NimarkoConfig.roundVideoTapFocus;
             Camera2Interop.Extender<Preview> previewExtender =
                     applyEnhancements || startFromUltraWide || observeLensMetadata
                             ? new Camera2Interop.Extender<>(previewBuilder) : null;
@@ -802,7 +810,29 @@ public class NimarkoCameraXController implements CameraXProviderCoordinator.Owne
                             || timestampNanos >= latestPhysicalFrameTimestampNanos)) {
                         latestPhysicalFrameTimestampNanos = Math.max(0L, timestampNanos);
                         if (!physicalId.equals(activePhysicalCameraId)) {
+                            String previousPhysicalId = activePhysicalCameraId;
                             activePhysicalCameraId = physicalId;
+                            if (previousPhysicalId != null
+                                    && !previousPhysicalId.equals(physicalId)
+                                    && CameraXLensFrameTracker.isValidRatio(zoomRatio)
+                                    && zoomRatio > 1.5f
+                                    && (!Float.isFinite(lastObservedZoomRatio)
+                                    || zoomRatio >= lastObservedZoomRatio)) {
+                                if (telephotoPhysicalCameraId == null) {
+                                    telephotoPhysicalCameraId = physicalId;
+                                }
+                                if (physicalId.equals(telephotoPhysicalCameraId)
+                                        && !Float.isFinite(observedTelephotoSwitchRatio)) {
+                                    observedTelephotoSwitchRatio = zoomRatio;
+                                    saveTelephotoCalibration();
+                                }
+                            }
+                            if (CameraXLensFrameTracker.isValidRatio(zoomRatio)) {
+                                lastObservedZoomRatio = zoomRatio;
+                            }
+                        }
+                        else if (CameraXLensFrameTracker.isValidRatio(zoomRatio)) {
+                            lastObservedZoomRatio = zoomRatio;
                         }
                     }
                 }
@@ -1030,8 +1060,7 @@ public class NimarkoCameraXController implements CameraXProviderCoordinator.Owne
         try {
             ZoomState state = camera.getCameraInfo().getZoomState().getValue();
             zoomCoordinator.requestZoomRatio(
-                    CameraXUtils.normalizedZoomToRatio(
-                            state, baseZoomRatio, value));
+                    CameraXUtils.normalizedZoomToRatio(state, baseZoomRatio, value));
         } catch (Throwable t) {
             FileLog.e(t);
         }
@@ -1167,8 +1196,13 @@ public class NimarkoCameraXController implements CameraXProviderCoordinator.Owne
         if (camera == null || !isZoomShortcutsReady()) return new float[0];
         try {
             ZoomState state = camera.getCameraInfo().getZoomState().getValue();
-            return state == null ? new float[0] : CameraXZoomShortcuts.select(
-                    state.getMinZoomRatio(), state.getMaxZoomRatio(), zoomShortcutCandidates);
+            if (state == null) return new float[0];
+            loadTelephotoCalibration(camera);
+            float[] candidates = CameraXUtils.applyTelephotoCalibration(
+                    zoomShortcutCandidates, observedTelephotoSwitchRatio, state.getMaxZoomRatio());
+            float[] selected = CameraXZoomShortcuts.select(
+                    state.getMinZoomRatio(), state.getMaxZoomRatio(), candidates);
+            return selected;
         } catch (Throwable ignored) {
             return new float[0];
         }
@@ -1281,16 +1315,26 @@ public class NimarkoCameraXController implements CameraXProviderCoordinator.Owne
     }
 
     @SuppressLint({"UnsafeExperimentalUsageError", "RestrictedApi"})
-    public void focusToPoint(int x, int y/*, boolean disableAutoCancel*/) {
-        focusAndLock(x, y, false, false);
+    public boolean focusToPoint(float x, float y                               ) {
+        return focusToPoint(x, y, false);
+    }
+    public boolean focusToPoint(float x, float y, boolean forceLock) {
+        return focusAndLock(x, y, forceLock, forceLock);
     }
 
     @SuppressLint({"UnsafeExperimentalUsageError", "RestrictedApi"})
-    public boolean focusAndLock(int x, int y, boolean lockAE, boolean lockAF) {
-        if (boundCamera == null || meteringPointFactory == null) return false;
+    public boolean focusAndLock(float x, float y, boolean lockAE, boolean lockAF) {
+        if (boundCamera == null || !boundCameraReady || meteringPointFactory == null) {
+            return false;
+        }
         try {
-            MeteringPoint point = meteringPointFactory.createPoint(x, y);
-            return focusAndLock(point, lockAE, lockAF);
+            MeteringPoint point = meteringPointFactory.createPoint(
+                    Math.max(0f, Math.min(1f, x)),
+                    Math.max(0f, Math.min(1f, y)), 0.06f);
+            MeteringPoint exposurePoint = meteringPointFactory.createPoint(
+                    Math.max(0f, Math.min(1f, x)),
+                    Math.max(0f, Math.min(1f, y)), 0.12f);
+            return focusAndLock(point, exposurePoint, lockAE, lockAF);
         } catch (Throwable t) {
             FileLog.e(t);
             return false;
@@ -1299,19 +1343,55 @@ public class NimarkoCameraXController implements CameraXProviderCoordinator.Owne
 
     @SuppressLint({"UnsafeExperimentalUsageError", "RestrictedApi"})
     public boolean focusAndLock(@NonNull MeteringPoint point, boolean lockAE, boolean lockAF) {
-        if (boundCamera == null) return false;
+        return focusAndLock(point, point, lockAE, lockAF);
+    }
+    private boolean focusAndLock(@NonNull MeteringPoint point,
+                                 @NonNull MeteringPoint exposurePoint,
+                                 boolean lockAE, boolean lockAF) {
+        if (closed || boundCamera == null || !boundCameraReady) {
+            return false;
+        }
         try {
             int flags = 0;
             if (lockAF) flags |= FocusMeteringAction.FLAG_AF;
             if (lockAE) flags |= FocusMeteringAction.FLAG_AE;
             if (flags == 0) flags = FocusMeteringAction.FLAG_AF | FocusMeteringAction.FLAG_AE;
-            FocusMeteringAction.Builder b = new FocusMeteringAction.Builder(point, flags);
+            FocusMeteringAction.Builder b;
+            if ((flags & FocusMeteringAction.FLAG_AF) != 0) {
+                b = new FocusMeteringAction.Builder(point, FocusMeteringAction.FLAG_AF);
+                if ((flags & FocusMeteringAction.FLAG_AE) != 0) {
+                    b.addPoint(exposurePoint, FocusMeteringAction.FLAG_AE);
+                }
+            } else {
+                b = new FocusMeteringAction.Builder(exposurePoint, FocusMeteringAction.FLAG_AE);
+            }
             if (lockAE || lockAF) {
                 b.disableAutoCancel();
             } else {
-                b.setAutoCancelDuration(3, TimeUnit.SECONDS);
+                b.setAutoCancelDuration(5, TimeUnit.SECONDS);
             }
-            boundCamera.getCameraControl().startFocusAndMetering(b.build());
+            Camera camera = boundCamera;
+            final int generation = boundCameraGeneration;
+            final int requestGeneration = ++focusRequestGeneration;
+            ListenableFuture<FocusMeteringResult> result = camera.getCameraControl()
+                    .startFocusAndMetering(b.build());
+            result.addListener(() -> {
+                boolean stale = closed || camera != boundCamera
+                        || generation != boundCameraGeneration
+                        || requestGeneration != focusRequestGeneration
+                        || !boundCameraReady;
+                try {
+                    result.get();
+                } catch (Throwable error) {
+                    Throwable cause = error instanceof ExecutionException
+                            && error.getCause() != null ? error.getCause() : error;
+                    boolean cancelled = cause instanceof CancellationException
+                            || cause instanceof CameraControl.OperationCanceledException;
+                    if (!stale && !cancelled) {
+                        FileLog.e(cause);
+                    }
+                }
+            }, ContextCompat.getMainExecutor(ApplicationLoader.applicationContext));
             return true;
         } catch (Throwable t) {
             FileLog.e(t);
@@ -1320,6 +1400,7 @@ public class NimarkoCameraXController implements CameraXProviderCoordinator.Owne
     }
 
     public void cancelFocusAndLock() {
+        focusRequestGeneration++;
         if (boundCamera == null) return;
         try {
             boundCamera.getCameraControl().cancelFocusAndMetering();
@@ -1428,6 +1509,7 @@ public class NimarkoCameraXController implements CameraXProviderCoordinator.Owne
         baseZoomRatio = 1f;
         if (camera == null) return;
 
+        loadTelephotoCalibration(camera);
         final int generation = boundCameraGeneration;
         zoomCoordinator.attach(camera, generation);
         final CameraSelector shortcutSelector = boundSelector;
@@ -1524,14 +1606,6 @@ public class NimarkoCameraXController implements CameraXProviderCoordinator.Owne
         }
     }
 
-    private static String cameraId(@Nullable Camera camera) {
-        if (camera == null) return "null";
-        try {
-            return Camera2CameraInfo.from(camera.getCameraInfo()).getCameraId();
-        } catch (Throwable error) {
-            return "unknown:" + error.getClass().getSimpleName();
-        }
-    }
 
     private synchronized boolean prepareInitialZoom(Camera camera, int generation) {
         if (camera != boundCamera || generation != boundCameraGeneration
@@ -1612,6 +1686,10 @@ public class NimarkoCameraXController implements CameraXProviderCoordinator.Owne
     private void resetBoundCameraControls() {
         zoomShortcutsReady = false;
         zoomShortcutCandidates = new float[0];
+        observedTelephotoSwitchRatio = Float.NaN;
+        telephotoPhysicalCameraId = null;
+        telephotoCalibrationKey = null;
+        lastObservedZoomRatio = Float.NaN;
         torchSubmittedCamera = null;
         torchSubmittedFuture = null;
         cancelConcurrentCameraInUseFailure();
@@ -1627,6 +1705,35 @@ public class NimarkoCameraXController implements CameraXProviderCoordinator.Owne
         }
         boundCameraState = null;
         boundCameraStateObserver = null;
+    }
+    private void loadTelephotoCalibration(@NonNull Camera camera) {
+        if (telephotoCalibrationKey != null) return;
+        try {
+            String logicalId = Camera2CameraInfo.from(camera.getCameraInfo()).getCameraId();
+            if (logicalId == null) return;
+            telephotoCalibrationKey = CameraXUtils.telephotoCalibrationKey(logicalId);
+            SharedPreferences preferences = ApplicationLoader.applicationContext
+                    .getSharedPreferences("nimarko_camera_calibration", Context.MODE_PRIVATE);
+            float stored = preferences.getFloat(telephotoCalibrationKey, Float.NaN);
+            if (Float.isFinite(stored) && stored > 1.5f) {
+                observedTelephotoSwitchRatio = stored;
+            }
+        } catch (Throwable ignored) {
+            telephotoCalibrationKey = "unavailable";
+        }
+    }
+    private void saveTelephotoCalibration() {
+        String key = telephotoCalibrationKey;
+        float ratio = observedTelephotoSwitchRatio;
+        if (key == null || "unavailable".equals(key) || !Float.isFinite(ratio) || ratio <= 1.5f) {
+            return;
+        }
+        try {
+            ApplicationLoader.applicationContext
+                    .getSharedPreferences("nimarko_camera_calibration", Context.MODE_PRIVATE)
+                    .edit().putFloat(key, ratio).apply();
+        } catch (Throwable ignored) {
+        }
     }
 
     private void scheduleConcurrentCameraInUseFailure(

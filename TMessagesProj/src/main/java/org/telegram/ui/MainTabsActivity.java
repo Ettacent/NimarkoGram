@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -17,6 +19,7 @@ import android.text.SpannableStringBuilder;
 import android.text.Spanned;
 import android.text.TextUtils;
 import android.text.TextPaint;
+import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
 import android.text.style.ReplacementSpan;
 import android.util.TypedValue;
 import android.view.Gravity;
@@ -671,7 +674,7 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
         private static final float HEIGHT_DP = 17.333f;
         private final String count;
         private final boolean hasUnmutedUnreadDialogs;
-        private final TextPaint textPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+        private final TextPaint textPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
         private final Paint backgroundPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final float counterWidth;
 

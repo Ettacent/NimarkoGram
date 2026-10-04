@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components.voip;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -19,6 +21,7 @@ import android.os.Bundle;
 import android.text.Layout;
 import android.text.StaticLayout;
 import android.text.TextPaint;
+import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewConfiguration;
@@ -113,7 +116,7 @@ public class AcceptDeclineView extends View {
         declineDrawable.setBounds(0, 0, buttonWidth, buttonWidth);
         acceptDrawable.setBounds(0, 0, buttonWidth, buttonWidth);
 
-        TextPaint textPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+        TextPaint textPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
         textPaint.setTextSize(dp(11));
         textPaint.setColor(Color.WHITE);
 

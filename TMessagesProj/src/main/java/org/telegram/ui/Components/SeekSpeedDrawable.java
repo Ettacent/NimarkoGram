@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -34,7 +36,7 @@ public class SeekSpeedDrawable extends Drawable {
 
     private RLottieDrawable hintDrawable;
     private final Path hintArrow = new Path();
-    private final Text hintText = new Text(LocaleController.getString(R.string.SeekSpeedHint), 14);
+    private final Text hintText = Text.ui(LocaleController.getString(R.string.SeekSpeedHint), 14);
 
     private final Path leftArrow = new Path();
     private final Path rightArrow = new Path();

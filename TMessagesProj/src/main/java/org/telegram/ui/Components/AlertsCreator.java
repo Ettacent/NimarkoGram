@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 5.x.x.
  * It is licensed under GNU GPL v. 2 or later.
@@ -3867,7 +3869,7 @@ public class AlertsCreator {
         };
 
         LinearLayout linearLayout = new LinearLayout(context) {
-            private final Text separatorText = new Text(":", 18);
+            private final Text separatorText = Text.ui(":", 18);
             private boolean isAM;
             private Text ampmText;
             @Override
@@ -3877,7 +3879,7 @@ public class AlertsCreator {
                     final boolean isAM = (hourPicker.getValue() % 24) < 12;
                     if (this.isAM != isAM || ampmText == null) {
                         this.isAM = isAM;
-                        ampmText = new Text(isAM ? "AM" : "PM", 18);
+                        ampmText = Text.ui(isAM ? "AM" : "PM", 18);
                     }
                     ampmText.draw(canvas, getWidth() / 2f + dp(43), getHeight() / 2f + dp(1), Theme.getColor(Theme.key_windowBackgroundWhiteBlackText), 1f);
                 }
@@ -5338,13 +5340,13 @@ public class AlertsCreator {
         dayPicker.setValue(calendar.get(Calendar.DAY_OF_MONTH));
         monthPicker.setValue(FMT_DATE_MONTH_PICKER_HALF_SIZE + calendar.get(Calendar.MONTH));
 
-        final Text sep1 = new Text(formatString(R.string.formatDateAtTime, "", "").trim(), 16)
+        final Text sep1 = Text.ui(formatString(R.string.formatDateAtTime, "", "").trim(), 16)
             .setMaxWidth(dp(100))
             .align(Layout.Alignment.ALIGN_CENTER)
             .multiline(1)
             .setColor(datePickerColors.textColor);
 
-        final Text sep2 = new Text(":", 18)
+        final Text sep2 = Text.ui(":", 18)
             .setMaxWidth(dp(100))
             .align(Layout.Alignment.ALIGN_CENTER)
             .multiline(1)

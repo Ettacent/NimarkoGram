@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -33,6 +35,7 @@ import android.os.PowerManager;
 import android.text.Layout;
 import android.text.Spannable;
 import android.text.TextPaint;
+import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
 import android.text.TextUtils;
 import android.transition.ChangeBounds;
 import android.transition.TransitionManager;
@@ -2489,7 +2492,7 @@ public class VoIPFragment implements
                 drawable.setBounds(0, 0, AndroidUtilities.dp(40), AndroidUtilities.dp(40));
                 ((Emoji.EmojiDrawable) drawable).preload();
                 int[] emojiOnly = new int[1];
-                TextPaint paint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+                TextPaint paint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
                 paint.setTextSize(AndroidUtilities.dp(28));
                 CharSequence txt = emoji[i];
                 txt = Emoji.replaceEmoji(txt, paint.getFontMetricsInt(), false, emojiOnly);
@@ -3229,7 +3232,7 @@ public class VoIPFragment implements
                 return;
             }
 
-            text = new Text(LocaleController.formatPluralStringComma("Participants", totalCount), 14, AndroidUtilities.bold());
+            text = Text.ui(LocaleController.formatPluralStringComma("Participants", totalCount), 14, AndroidUtilities.bold());
             setVisibility(View.VISIBLE);
             invalidate();
         }

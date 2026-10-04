@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -24,6 +26,7 @@ import android.text.SpannableStringBuilder;
 import android.text.Spanned;
 import android.text.StaticLayout;
 import android.text.TextPaint;
+import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
 import android.text.TextUtils;
 import android.text.TextWatcher;
 import android.text.style.DynamicDrawableSpan;
@@ -207,7 +210,7 @@ public class FilterCreateActivity extends BaseFragment {
             filter.color = (int) (Math.random() * 8);
             creatingNew = true;
         }
-        TextPaint paint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+        TextPaint paint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
         paint.setTextSize(dp(17));
         newFilterName = new SpannableStringBuilder(filter.name);
         newFilterName = Emoji.replaceEmoji(newFilterName, paint.getFontMetricsInt(), false);
@@ -2206,7 +2209,7 @@ public class FilterCreateActivity extends BaseFragment {
 
     public static class NewSpan extends ReplacementSpan {
 
-        TextPaint textPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+        TextPaint textPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
         Paint bgPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         StaticLayout layout;
         float width, height;
@@ -2329,7 +2332,7 @@ public class FilterCreateActivity extends BaseFragment {
         public TextSpan(String text, float fontSize, int colorKey, Theme.ResourcesProvider resourcesProvider) {
             this.resourcesProvider = resourcesProvider;
             this.colorKey = colorKey;
-            this.text = new Text(text, fontSize, AndroidUtilities.bold());
+            this.text = Text.ui(text, fontSize, AndroidUtilities.bold());
             bgPaint.setStyle(Paint.Style.FILL);
         }
 

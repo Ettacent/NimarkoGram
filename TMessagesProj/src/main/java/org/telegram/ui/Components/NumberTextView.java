@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 5.x.x.
  * It is licensed under GNU GPL v. 2 or later.
@@ -18,6 +20,7 @@ import android.graphics.Typeface;
 import android.text.Layout;
 import android.text.StaticLayout;
 import android.text.TextPaint;
+import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
 import android.view.View;
 import android.view.accessibility.AccessibilityNodeInfo;
 
@@ -32,7 +35,7 @@ public class NumberTextView extends View {
 
     private ArrayList<StaticLayout> letters = new ArrayList<>();
     private ArrayList<StaticLayout> oldLetters = new ArrayList<>();
-    private TextPaint textPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+    private TextPaint textPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
     private ObjectAnimator animator;
     private float progress = 0.0f;
     private int currentNumber = 1;

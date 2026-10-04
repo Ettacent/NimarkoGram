@@ -109,9 +109,15 @@ public class EditTextCaption extends EditTextBoldCursor implements FloatingToolb
         addTextChangedListener(new TextWatcher() {
             @Override
             public void beforeTextChanged(CharSequence s, int start, int count, int after) {
-                deletingScrolledText = count > after && (getScrollY() > 0 || deletionScrollOffset != 0f)
-                        && app.nimarkogram.messenger.NimarkoConfig.nimarkoTextAnim
-                        && org.telegram.messenger.SharedConfig.animationsEnabled();
+                if (!app.nimarkogram.messenger.NimarkoConfig.nimarkoTextAnim
+                        || !org.telegram.messenger.SharedConfig.animationsEnabled()) {
+                    deletingScrolledText = false;
+                    deletionScrollDelta = 0;
+                    if (deletionScrollAnimator != null) deletionScrollAnimator.cancel();
+                    deletionScrollOffset = 0f;
+                } else if (count != 0 || after != 0) {
+                    deletingScrolledText = true;
+                }
             }
 
             @Override

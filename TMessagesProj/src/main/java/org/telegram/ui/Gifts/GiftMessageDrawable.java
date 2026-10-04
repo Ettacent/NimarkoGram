@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Gifts;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -30,6 +32,7 @@ import org.telegram.messenger.ImageLocation;
 import org.telegram.messenger.ImageReceiver;
 import org.telegram.messenger.R;
 import org.telegram.messenger.utils.DrawableUtils;
+import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
 import org.telegram.tgnet.TLObject;
 import org.telegram.tgnet.TLRPC;
 import org.telegram.ui.Components.AnimatedEmojiDrawable;
@@ -45,7 +48,7 @@ public class GiftMessageDrawable extends Drawable {
     private NinePatchDrawable bubble;
     private NinePatchDrawable bubbleBorder;
 
-    private final TextPaint textPaint = new TextPaint(TextPaint.ANTI_ALIAS_FLAG);
+    private final TextPaint textPaint = new SystemTextPaint(TextPaint.ANTI_ALIAS_FLAG);
     private final ImageReceiver avatarReceiver = new ImageReceiver();
     private final AvatarDrawable avatarDrawable = new AvatarDrawable();
 
@@ -69,6 +72,7 @@ public class GiftMessageDrawable extends Drawable {
     private int measuredWidth;
     private int measuredHeight;
 
+    private int lastWeightAdjustment = Integer.MIN_VALUE;
     public GiftMessageDrawable() {
         textPaint.setTextSize(dp(12));
         textPaint.setColor(0xFFFFFFFF);
@@ -138,6 +142,11 @@ public class GiftMessageDrawable extends Drawable {
     public int measure(int maxWidth) {
         ensureNinePatches();
 
+        if (lastWeightAdjustment != SystemTextPaint.getWeightAdjustment()) {
+            lastWeightAdjustment = SystemTextPaint.getWeightAdjustment();
+            lastMeasuredWidth = -1;
+            textLayout = null;
+        }
         if (maxWidth == lastMeasuredWidth && textLayout != null) {
             return measuredHeight;
         }

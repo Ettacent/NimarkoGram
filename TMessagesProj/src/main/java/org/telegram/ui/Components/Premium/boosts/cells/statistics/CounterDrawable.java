@@ -1,5 +1,8 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components.Premium.boosts.cells.statistics;
 
+import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
 import static org.telegram.messenger.AndroidUtilities.dp;
 
 import android.content.Context;
@@ -22,7 +25,7 @@ import org.telegram.messenger.R;
 
 public class CounterDrawable extends Drawable {
 
-    private final TextPaint textPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+    private final TextPaint textPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
     private final Paint bgPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
     private final RectF bgRoundRect = new RectF();
     private final Drawable icon;

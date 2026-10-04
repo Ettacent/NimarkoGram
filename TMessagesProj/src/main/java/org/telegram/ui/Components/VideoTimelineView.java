@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 5.x.x.
  * It is licensed under GNU GPL v. 2 or later.
@@ -24,6 +26,7 @@ import android.os.AsyncTask;
 import android.text.Layout;
 import android.text.StaticLayout;
 import android.text.TextPaint;
+import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
 import android.view.MotionEvent;
 import android.view.View;
 
@@ -519,7 +522,7 @@ public class VideoTimelineView extends View {
         private Drawable tooltipBackground;
         private Drawable tooltipBackgroundArrow;
         private StaticLayout tooltipLayout;
-        private TextPaint tooltipPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+        private TextPaint tooltipPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
         private long lastTime = -1;
 
         private float tooltipAlpha;

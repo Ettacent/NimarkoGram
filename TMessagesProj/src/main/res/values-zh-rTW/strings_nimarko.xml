@@ -1,6 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Modifications Copyright (C) 2026 Ettacent -->
 <resources>
+    <string name="NM_CAM_RoundVideoTapFocus">錄製圓形影片時對焦</string>
+    <string name="NM_CAM_RoundVideoTapFocusDesc">錄製時，輕點預覽畫面中的物體即可對其對焦。</string>
     <string name="NM_EnhancedGlassBlur">增強玻璃與模糊效果</string>
     <string name="NM_EnhancedGlassBlur_Desc">提供更高品質的效果，但會消耗更多運算資源。</string>
     <string name="NimarkoAbout">關於 NimarkoGram</string>

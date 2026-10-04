@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Gifts;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -73,6 +75,7 @@ import org.telegram.ui.ActionBar.AlertDialogDecor;
 import org.telegram.ui.ActionBar.BaseFragment;
 import org.telegram.ui.ActionBar.BottomSheet;
 import org.telegram.ui.ActionBar.Theme;
+import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
 import org.telegram.ui.Components.AnimatedColor;
 import org.telegram.ui.Components.AnimatedEmojiDrawable;
 import org.telegram.ui.Components.AnimatedEmojiSpan;
@@ -1152,7 +1155,7 @@ public class ProfileGiftsContainer extends FrameLayout implements NotificationCe
                 }
                 final SpannableStringBuilder sb = new SpannableStringBuilder(collection.title);
                 if (collection.icon != null) {
-                    final TextPaint textPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+                    final TextPaint textPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
                     textPaint.setTextSize(dp(16));
                     final SpannableStringBuilder emoji = new SpannableStringBuilder("e ");
                     final AnimatedEmojiSpan span = new AnimatedEmojiSpan(collection.icon, textPaint.getFontMetricsInt());

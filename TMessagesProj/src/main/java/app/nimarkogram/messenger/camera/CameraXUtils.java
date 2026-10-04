@@ -73,13 +73,40 @@ public final class CameraXUtils {
         public final float minimum, maximum;
         private final float[] shortcuts;
 
-        private ZoomPreview(float minimum, float maximum, float[] shortcuts) {
+        @Nullable private final String calibrationKey;
+        private ZoomPreview(float minimum, float maximum, float[] shortcuts, @Nullable String calibrationKey) {
             this.minimum = minimum;
             this.maximum = maximum;
             this.shortcuts = shortcuts.clone();
+            this.calibrationKey = calibrationKey;
         }
 
-        public float[] getShortcuts() { return shortcuts.clone(); }
+        public float[] getShortcuts() {
+            float calibrated = Float.NaN;
+            if (calibrationKey != null) {
+                try {
+                    calibrated = ApplicationLoader.applicationContext
+                            .getSharedPreferences("nimarko_camera_calibration", Context.MODE_PRIVATE)
+                            .getFloat(calibrationKey, Float.NaN);
+                } catch (RuntimeException ignored) {
+                }
+            }
+            return CameraXZoomShortcuts.select(minimum, maximum,
+                    CameraXUtils.applyTelephotoCalibration(shortcuts, calibrated, maximum));
+        }
+    }
+    static String telephotoCalibrationKey(String logicalId) {
+        return "telephoto_switch_" + Build.MANUFACTURER + "_" + Build.MODEL + "_" + logicalId;
+    }
+    static float[] applyTelephotoCalibration(float[] candidates, float calibrated, float maximum) {
+        float[] result = candidates.clone();
+        if (Float.isFinite(calibrated) && calibrated > 1.5f) {
+            float stop = Math.min(maximum, Math.max(2f, Math.round(calibrated)));
+            for (int i = 0; i < result.length; i++) {
+                if (result[i] > 1.5f && result[i] < calibrated) result[i] = stop;
+            }
+        }
+        return result;
     }
 
     @Nullable
@@ -114,8 +141,9 @@ public final class CameraXUtils {
                 ZOOM_SHORTCUTS.put(Camera2CameraInfo.from(info).getCameraId()
                         + ":" + selector.getPhysicalCameraId(), candidates);
             }
-            return new ZoomPreview(min, max, CameraXZoomShortcuts.select(min, max, candidates));
-        } catch (Throwable ignored) {
+            String calibrationKey = telephotoCalibrationKey(Camera2CameraInfo.from(info).getCameraId());
+            return new ZoomPreview(min, max, candidates, calibrationKey);
+        } catch (Throwable error) {
             return null;
         }
     }
@@ -520,7 +548,12 @@ public final class CameraXUtils {
             ArrayList<Float> scales = new ArrayList<>();
             for (CameraInfo child : children) {
                 try {
-                    if (child.getLensFacing() != info.getLensFacing()) continue;
+                    Integer childFacing = Camera2CameraInfo.from(child).getCameraCharacteristic(
+                            CameraCharacteristics.LENS_FACING);
+                    Integer parentFacing = Camera2CameraInfo.from(info).getCameraCharacteristic(
+                            CameraCharacteristics.LENS_FACING);
+                    if (childFacing == null || parentFacing == null
+                            || !childFacing.equals(parentFacing)) continue;
                     float scale = zoomShortcutOpticalScale(child);
                     if (!Float.isFinite(scale) || scale <= 0f) continue;
                     scales.add(scale);
@@ -528,7 +561,8 @@ public final class CameraXUtils {
             }
             float[] result = new float[scales.size()];
             for (int i = 0; i < result.length; i++) result[i] = scales.get(i);
-            return CameraXZoomShortcuts.fromOpticalScales(reference, result);
+            float[] candidates = CameraXZoomShortcuts.fromOpticalScales(reference, result);
+            return candidates;
         } catch (Throwable ignored) {
             return new float[0];
         }
@@ -1231,18 +1265,6 @@ public final class CameraXUtils {
                     CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE_OFF);
         }
 
-        int preferredAf = stillCapture
-                ? CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE
-                : CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_VIDEO;
-        int fallbackAf = CaptureRequest.CONTROL_AF_MODE_AUTO;
-        int selectedAf = NimarkoConfig.cameraContinuousFocus
-                && containsMode(capabilities.autofocusModes, preferredAf)
-                ? preferredAf
-                : containsMode(capabilities.autofocusModes, fallbackAf)
-                        ? fallbackAf : CaptureRequest.CONTROL_AF_MODE_OFF;
-        if (containsMode(capabilities.autofocusModes, selectedAf)) {
-            extender.setCaptureRequestOption(CaptureRequest.CONTROL_AF_MODE, selectedAf);
-        }
 
         int selectedNoiseReduction;
         if (!NimarkoConfig.cameraNoiseReduction) {

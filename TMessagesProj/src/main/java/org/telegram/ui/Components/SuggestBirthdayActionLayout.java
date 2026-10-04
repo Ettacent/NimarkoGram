@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -66,7 +68,7 @@ public class SuggestBirthdayActionLayout {
         final TLRPC.TL_messageActionSuggestBirthday action = (TLRPC.TL_messageActionSuggestBirthday) messageObject.messageOwner.action;
 
         birthday = action.birthday;
-        text = new Text(TextUtils.concat(messageObject.messageText, ":"), 13)
+        text = Text.ui(TextUtils.concat(messageObject.messageText, ":"), 13)
             .multiline(6)
             .align(Layout.Alignment.ALIGN_CENTER)
             .setMaxWidth(width() - dp(32));
@@ -75,21 +77,20 @@ public class SuggestBirthdayActionLayout {
         titles = new Text[count];
         values = new Text[count];
 
-        titles[0] = new Text(getString(R.string.DateDay), 11);
-        values[0] = new Text("" + action.birthday.day, 11, AndroidUtilities.bold());
-
-        titles[1] = new Text(getString(R.string.DateMonth), 11);
-        values[1] = new Text("" + getMonthName(action.birthday.month - 1), 11, AndroidUtilities.bold());
+        titles[0] = Text.ui(getString(R.string.DateDay), 11);
+        values[0] = Text.ui("" + action.birthday.day, 11, AndroidUtilities.bold());
+        titles[1] = Text.ui(getString(R.string.DateMonth), 11);
+        values[1] = Text.ui("" + getMonthName(action.birthday.month - 1), 11, AndroidUtilities.bold());
 
         if ((action.birthday.flags & 1) != 0) {
-            titles[2] = new Text(getString(R.string.DateYear), 11);
-            values[2] = new Text("" + action.birthday.year, 11, AndroidUtilities.bold());
+            titles[2] = Text.ui(getString(R.string.DateYear), 11);
+            values[2] = Text.ui("" + action.birthday.year, 11, AndroidUtilities.bold());
         }
 
         hasButton = !messageObject.isOutOwner();
         final boolean isDark = resourcesProvider != null ? resourcesProvider.isDark() : Theme.isCurrentThemeDark();
         buttonPaint.setColor(isDark ? Theme.multAlpha(Color.WHITE, 0.12f) : Theme.multAlpha(Color.BLACK, 0.12f));
-        button = new Text(getString(R.string.SuggestedDateOfBirthView), 14, AndroidUtilities.bold());
+        button = Text.ui(getString(R.string.SuggestedDateOfBirthView), 14, AndroidUtilities.bold());
     }
 
     private final String getMonthName(int month) {

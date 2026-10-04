@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -14,6 +16,7 @@ import android.graphics.Shader;
 import android.graphics.drawable.Drawable;
 import android.net.Uri;
 import android.text.TextPaint;
+import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
 import android.view.View;
 import android.view.ViewGroup;
 
@@ -56,7 +59,7 @@ public class VideoSeekPreviewImage extends View implements NotificationCenter.No
 
     private String frameTime;
     private int timeWidth;
-    private final TextPaint textPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+    private final TextPaint textPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
 
     private BitmapShader bitmapShader;
     private RectF dstR = new RectF();

@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 5.x.x.
  * It is licensed under GNU GPL v. 2 or later.
@@ -28,7 +30,6 @@ import android.graphics.PorterDuffXfermode;
 import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.Drawable;
 import android.os.Bundle;
-import android.text.Layout;
 import android.text.TextPaint;
 import android.text.TextUtils;
 import android.view.Gravity;
@@ -763,21 +764,14 @@ public class ChatAvatarContainer extends FrameLayout implements FactorAnimator.T
             return drawn;
         }
         if (child == avatarImageView) {
-            final boolean hasTimer = timeItem != null && timeItem.getVisibility() == VISIBLE;
             final boolean hasCommunity = communityItem != null
                     && communityItem.getVisibility() == VISIBLE
                     && !shouldUseInlineCommunityIndicator();
-            if (hasTimer || hasCommunity) {
+            if (hasCommunity) {
                 AndroidUtilities.rectTmp.set(child.getX(), child.getY(), child.getX() + child.getWidth(), child.getY() + child.getHeight());
                 AndroidUtilities.rectTmp.inset(-dp(3), -dp(3));
                 canvas.saveLayer(AndroidUtilities.rectTmp, null);
                 final boolean b = super.drawChild(canvas, child, drawingTime);
-                if (hasTimer) {
-                    final float cx = timeItem.getX() + timeItem.getWidth() / 2f;
-                    final float cy = timeItem.getY() + timeItem.getHeight() / 2f;
-                    final float r = dpf2(12f) * timeItem.getScaleX();
-                    canvas.drawCircle(cx, cy - dpf2(0.33f), r, Theme.PAINT_CLEAR);
-                }
                 if (hasCommunity) {
                     final float cx = communityItem.getX() + communityItem.getWidth() / 2f;
                     final float cy = communityItem.getY() + communityItem.getHeight() / 2f;
@@ -1424,11 +1418,12 @@ public class ChatAvatarContainer extends FrameLayout implements FactorAnimator.T
             if (centerChatTitle) {
                 timeItem.layout(nmCenteredAvatarCx + dp(8), dp(5) + viewTop, nmCenteredAvatarCx + dp(42), viewTop + dp(15 + 34));   // NimarkoGram: TTL badge follows the (dynamically centered) avatar's lower-right corner
             } else {
+                final int timerTop = subtitleTop - dp(10);
                 timeItem.layout(
                     leftPadding + dp(19.333f),
-                    viewTop - dp(8),
+                    timerTop,
                     leftPadding + dp(19.333f) + timeItem.getMeasuredWidth(),
-                    viewTop - dp(8) + timeItem.getMeasuredHeight()
+                    timerTop + timeItem.getMeasuredHeight()
                 );
             }
         }
@@ -1509,7 +1504,7 @@ public class ChatAvatarContainer extends FrameLayout implements FactorAnimator.T
         }
         boolean show = !stars;
         if (value == 0 && !secretChatTimer) {
-            show = false;
+            hideTimeItem(animated);
             return;
         }
         if (show) {
@@ -2818,14 +2813,9 @@ public class ChatAvatarContainer extends FrameLayout implements FactorAnimator.T
         if (view == null) {
             return 0f;
         }
-        float textWidth;
-        try {
             final CharSequence text = view.getText();
-            textWidth = TextUtils.isEmpty(text)
-                    ? 0f : Layout.getDesiredWidth(text, view.getTextPaint());
-        } catch (Throwable ignored) {
-            textWidth = view.getTextPaint().measureText(view.getText().toString());
-        }
+        final float textWidth = TextUtils.isEmpty(text)
+                ? 0f : view.getTextPaint().measureText(text, 0, text.length());
         final float contentWidth = Math.max(0f, textWidth)
                 + view.getSideDrawablesSize();
         return contentWidth + view.getPaddingLeft() + view.getPaddingRight();

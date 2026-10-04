@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components;
 
 import android.animation.ValueAnimator;
@@ -8,6 +10,7 @@ import android.graphics.Paint;
 import android.graphics.RectF;
 import android.graphics.Typeface;
 import android.text.TextPaint;
+import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
 import android.view.View;
 
 import org.telegram.messenger.AndroidUtilities;
@@ -20,7 +23,7 @@ public class FlatCheckBox extends View {
     public boolean enabled = true;
 
     String text;
-    TextPaint textPaint = new TextPaint(TextPaint.ANTI_ALIAS_FLAG);
+    TextPaint textPaint = new SystemTextPaint(TextPaint.ANTI_ALIAS_FLAG);
     Paint fillPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     Paint outLinePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     Paint checkPaint = new Paint(Paint.ANTI_ALIAS_FLAG);

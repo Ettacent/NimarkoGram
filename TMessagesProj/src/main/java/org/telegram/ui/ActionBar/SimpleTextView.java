@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 5.x.x.
  * It is licensed under GNU GPL v. 2 or later.
@@ -8,6 +10,7 @@
 
 package org.telegram.ui.ActionBar;
 
+import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
 import static org.telegram.messenger.AndroidUtilities.dp;
 
 import android.content.Context;
@@ -155,7 +158,7 @@ public class SimpleTextView extends View implements Drawable.Callback {
 
     public SimpleTextView(Context context) {
         super(context);
-        textPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+        textPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
         setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_YES);
     }
 
@@ -185,7 +188,16 @@ public class SimpleTextView extends View implements Drawable.Callback {
     protected void onAttachedToWindow() {
         super.onAttachedToWindow();
         attachedToWindow = true;
+        lastUpdateTime = SystemClock.elapsedRealtime();
         emojiStack = AnimatedEmojiSpan.update(emojiCacheType, this, emojiStack, layout);
+    }
+    @Override
+    protected void onWindowVisibilityChanged(int visibility) {
+        super.onWindowVisibilityChanged(visibility);
+        if (visibility == VISIBLE) {
+            lastUpdateTime = SystemClock.elapsedRealtime();
+            invalidate();
+        }
     }
 
     public void setEmojiCacheType(int cacheType) {
@@ -575,7 +587,7 @@ public class SimpleTextView extends View implements Drawable.Callback {
                     layout = new StaticLayout(string, 0, string.length(), textPaint, scrollNonFitText || ellipsizeByGradient ? dp(2000) : width + dp(8), getAlignment(), 1.0f, 0.0f, false);
                     if (cacheNaturalLayout) {
                         if (naturalLayoutPaint == null) {
-                            naturalLayoutPaint = new TextPaint();
+                            naturalLayoutPaint = new SystemTextPaint(0);
                         }
                         naturalLayoutPaint.set(textPaint);
                         naturalLayout = true;
@@ -818,14 +830,18 @@ public class SimpleTextView extends View implements Drawable.Callback {
         if (text == null && value == null || !force && text != null && text.equals(value)) {
             return false;
         }
+        final boolean sameTextContent = text != null && value != null
+                && TextUtils.equals(text, value);
         text = value;
         naturalLayout = false;
         // A marquee draws a second copy while scrollingOffset is non-zero.
         // Keeping the old offset when the text changes makes the replacement
         // title appear twice until that obsolete marquee cycle completes.
         // Every new value must start a fresh cycle from its natural position.
-        scrollingOffset = 0;
-        currentScrollDelay = SCROLL_DELAY_MS;
+        if (!sameTextContent) {
+            scrollingOffset = 0;
+            currentScrollDelay = SCROLL_DELAY_MS;
+        }
         lastUpdateTime = SystemClock.elapsedRealtime();
         recreateLayoutMaybe();
         checkUi_layerType();

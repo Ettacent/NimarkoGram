@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 5.x.x.
  * It is licensed under GNU GPL v. 2 or later.
@@ -22,6 +24,7 @@ import android.os.Build;
 import android.text.Layout;
 import android.text.StaticLayout;
 import android.text.TextPaint;
+import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
 import android.text.TextUtils;
 import android.view.View;
 import android.view.accessibility.AccessibilityNodeInfo;
@@ -48,7 +51,7 @@ public class GroupCreateSpan extends View {
     private long uid;
     private String key;
     public boolean isFlag;
-    private static TextPaint textPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+    private static TextPaint textPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
     private static Paint backPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private Drawable deleteDrawable;
     private RectF rect = new RectF();

@@ -29,6 +29,7 @@ import android.text.TextPaint;
 import android.view.Gravity;
 import android.widget.FrameLayout;
 
+import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
 import androidx.annotation.NonNull;
 import androidx.core.content.ContextCompat;
 import androidx.core.graphics.ColorUtils;
@@ -51,7 +52,7 @@ public class FoldersPreviewCell extends FrameLayout {
     private final FrameLayout preview;
 
     private final RectF rect = new RectF();
-    private final TextPaint textPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+    private final TextPaint textPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
     private final Paint outlinePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint outlinePaint2 = new Paint(Paint.ANTI_ALIAS_FLAG);
 

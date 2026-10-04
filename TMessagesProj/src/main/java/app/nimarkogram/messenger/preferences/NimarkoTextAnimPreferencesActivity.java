@@ -31,27 +31,32 @@ public class NimarkoTextAnimPreferencesActivity extends BasePreferencesActivity 
     @Override
     public void fillItems(ArrayList<UItem> items, UniversalAdapter adapter) {
         items.add(UItem.asHeader(-1, LocaleController.getString(R.string.NM_TA_HeaderMain)));
-        items.add(UItem.asCheck(ID_MASTER,
-                        LocaleController.getString(R.string.NM_TA_Master))
+        items.add(UItem.asButtonCheck(ID_MASTER,
+                        LocaleController.getString(R.string.NM_TA_Master),
+                        LocaleController.getString(R.string.NM_TA_Master_Desc))
                 .setChecked(NimarkoConfig.nimarkoTextAnim));
 
-        items.add(UItem.asShadow(-2, LocaleController.getString(R.string.NM_TA_Master_Desc)));
         if (NimarkoConfig.nimarkoTextAnim) {
             items.add(UItem.asHeader(-3, LocaleController.getString(R.string.NM_TA_HeaderEffects)));
-            items.add(UItem.asCheck(ID_APPEAR,
-                            LocaleController.getString(R.string.NM_TA_Appear))
+            items.add(UItem.asButtonCheck(ID_APPEAR,
+                            LocaleController.getString(R.string.NM_TA_Appear),
+                            LocaleController.getString(R.string.NM_TA_Appear_Desc))
                     .setChecked(NimarkoConfig.nimarkoTextAnimAppear));
-            items.add(UItem.asCheck(ID_CURSOR,
-                            LocaleController.getString(R.string.NM_TA_Cursor))
+            items.add(UItem.asButtonCheck(ID_CURSOR,
+                            LocaleController.getString(R.string.NM_TA_Cursor),
+                            LocaleController.getString(R.string.NM_TA_Cursor_Desc))
                     .setChecked(NimarkoConfig.nimarkoTextAnimCursor));
-            items.add(UItem.asCheck(ID_DELETE,
-                            LocaleController.getString(R.string.NM_TA_Delete))
+            items.add(UItem.asButtonCheck(ID_DELETE,
+                            LocaleController.getString(R.string.NM_TA_Delete),
+                            LocaleController.getString(R.string.NM_TA_Delete_Desc))
                     .setChecked(NimarkoConfig.nimarkoTextAnimDelete));
-            items.add(UItem.asCheck(ID_SPOILER,
-                            LocaleController.getString(R.string.NM_TA_Spoiler))
+            items.add(UItem.asButtonCheck(ID_SPOILER,
+                            LocaleController.getString(R.string.NM_TA_Spoiler),
+                            LocaleController.getString(R.string.NM_TA_Spoiler_Desc))
                     .setChecked(NimarkoConfig.nimarkoTextAnimSpoiler));
         }
-        items.add(UItem.asShadow(-4, LocaleController.getString(R.string.NM_SettingsSummaryTextAnimation)));
+        items.add(SettingsFooterItem.of(-4, NimarkoConfig.nimarkoTextAnim
+                ? LocaleController.getString(R.string.NM_SettingsSummaryTextAnimation) : null));
     }
 
     @Override

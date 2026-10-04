@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -18,6 +20,7 @@ import android.graphics.Rect;
 import android.graphics.RectF;
 import android.graphics.Shader;
 import android.text.TextPaint;
+import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
 import android.view.View;
 
 import androidx.annotation.Keep;
@@ -595,7 +598,7 @@ public class CheckBoxBase {
             } else if (checkProgress != 0) {
                 if (checkedText != null) {
                     if (textPaint == null) {
-                        textPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+                        textPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
                         textPaint.setTypeface(AndroidUtilities.bold());
                     }
                     final float textSize, y;

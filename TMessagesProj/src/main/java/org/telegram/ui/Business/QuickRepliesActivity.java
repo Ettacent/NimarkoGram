@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Business;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -527,7 +529,7 @@ public class QuickRepliesActivity extends BaseFragment implements NotificationCe
         private final Paint backgroundPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Text text;
         public MoreSpan(int count) {
-            text = new Text(formatPluralString("BusinessRepliesMore", count), 9.33f, AndroidUtilities.bold());
+            text = Text.ui(formatPluralString("BusinessRepliesMore", count), 9.33f, AndroidUtilities.bold());
         }
         public static CharSequence of(int count, int[] width) {
             SpannableString ss = new SpannableString("+");

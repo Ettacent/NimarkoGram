@@ -17,6 +17,7 @@ import org.telegram.messenger.FileLog;
 
 import app.nimarkogram.messenger.plugins.bridge.PythonBoundarySanitizer;
 
+import app.nimarkogram.messenger.NimarkoCrashContext;
 public final class PineAdapter extends MethodHook {
 
     private static final Method BEFORE_HOOKED_METHOD;
@@ -41,6 +42,7 @@ public final class PineAdapter extends MethodHook {
 
     private final XC_MethodHook xcHook;
     private final Member member;
+    private final String diagnosticTarget;
     private final Class<?>[] paramTypes;
     private static final Object INVALID_RESULT = new Object();
 
@@ -103,6 +105,7 @@ public final class PineAdapter extends MethodHook {
     public PineAdapter(Member member, XC_MethodHook xcHook) {
         this.member = member;
         this.xcHook = xcHook;
+        this.diagnosticTarget = member == null ? "unknown" : member.toString();
         this.paramTypes = parameterTypesOf(member);
     }
 
@@ -277,6 +280,7 @@ public final class PineAdapter extends MethodHook {
             FileLog.e("nimarko: Pine supplied a null CallFrame for " + member);
             return;
         }
+        NimarkoCrashContext.pine("before_hook", diagnosticTarget);
         if (cf.thisObject instanceof PluginHookBypassTarget
                 && ((PluginHookBypassTarget) cf.thisObject).shouldBypassPluginHooks()) {
             AdapterParam skipped = claim(cf);
@@ -285,6 +289,7 @@ public final class PineAdapter extends MethodHook {
             return;
         }
         if (receiverMismatched(cf)) {
+            NimarkoCrashContext.pine("receiver_mismatch", diagnosticTarget);
             FileLog.w("nimarko: Pine type-mismatch on " + member
                     + " — receiver " + receiverName(cf)
                     + " is not a " + member.getDeclaringClass().getName()

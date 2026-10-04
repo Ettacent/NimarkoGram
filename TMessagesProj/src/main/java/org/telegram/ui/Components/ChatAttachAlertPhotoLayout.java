@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 6.x.x.
  * It is licensed under GNU GPL v. 2 or later.
@@ -132,6 +134,7 @@ import java.util.Map;
 @SuppressLint("ViewConstructor")
 public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayout implements NotificationCenter.NotificationCenterDelegate {
 
+    private static final long CAMERA_FOCUS_LONG_PRESS_DELAY_MS = 450L;
     private static final float RADIUS = 16f;
     private static final int VIEW_TYPE_AVATAR_CONSTRUCTOR = 4;
     private static final int SHOW_FAST_SCROLL_MIN_COUNT = 30;
@@ -245,6 +248,10 @@ public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayou
     private boolean maybeStartDraging;
     private boolean dragging;
 
+    private Runnable cameraFocusLongPressRunnable;
+    private boolean cameraFocusLongPressed;
+    private float cameraFocusDownRawX;
+    private float cameraFocusDownRawY;
     private boolean cameraPhotoRecyclerViewIgnoreLayout;
 
     private int itemSize = dp(80);
@@ -1375,10 +1382,16 @@ public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayou
                 }
                 // NimarkoGram: optionally center switch & flash buttons under the shutter
                 // for a tidier landscape-style camera HUD.
-                if (app.nimarkogram.messenger.NimarkoConfig.centerCameraControlButtons && getMeasuredWidth() != dp(126)) {
+                if (app.nimarkogram.messenger.NimarkoConfig.centerCameraControlButtons) {
+                    if (getMeasuredWidth() == dp(126)) {
+                        cx2 = cx3 = cx;
+                        cy2 = cy - dp(48);
+                        cy3 = cy + dp(48);
+                    } else {
                     cx2 = cx + dp(80);
                     cx3 = cx - dp(80);
                     cy2 = cy3 = cy;
+                    }
                 }
 
                 int y = getMeasuredHeight() - tooltipTextView.getMeasuredHeight() - dp(12);
@@ -2269,6 +2282,21 @@ public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayou
                 }
                 zoomWas = false;
                 pressed = true;
+                cameraFocusLongPressed = false;
+                cameraFocusDownRawX = event.getRawX();
+                cameraFocusDownRawY = event.getRawY();
+                if (cameraView != null && !takingPhoto && event.getPointerCount() == 1) {
+                    final float rawX = cameraFocusDownRawX;
+                    final float rawY = cameraFocusDownRawY;
+                    AndroidUtilities.runOnUIThread(cameraFocusLongPressRunnable = () -> {
+                        cameraFocusLongPressRunnable = null;
+                        if (!pressed || dragging || zooming || zoomWas || cameraView == null) return;
+                        cameraFocusLongPressed = true;
+                        cameraView.getLocationOnScreen(viewPosition);
+                        cameraView.focusToPoint((int) (rawX - viewPosition[0]),
+                                (int) (rawY - viewPosition[1]), true);
+                    }, CAMERA_FOCUS_LONG_PRESS_DELAY_MS);
+                }
             }
         } else if (pressed) {
             if (event.getActionMasked() == MotionEvent.ACTION_MOVE) {
@@ -2300,6 +2328,7 @@ public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayou
                     float dy = (newY - lastY);
                     if (maybeStartDraging) {
                         if (Math.abs(dy) > AndroidUtilities.getPixelsInCM(0.4f, false)) {
+                            cancelCameraFocusLongPress();
                             maybeStartDraging = false;
                             dragging = true;
                         }
@@ -2330,6 +2359,7 @@ public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayou
                     }
                 }
             } else if (event.getActionMasked() == MotionEvent.ACTION_CANCEL || event.getActionMasked() == MotionEvent.ACTION_UP || event.getActionMasked() == MotionEvent.ACTION_POINTER_UP) {
+                cancelCameraFocusLongPress();
                 pressed = false;
                 zooming = false;
                 if (zooming) {
@@ -2354,15 +2384,22 @@ public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayou
                             cameraPanel.setTag(null);
                         }
                     }
-                } else if (cameraView != null && !zoomWas) {
+                } else if (cameraView != null && !zoomWas && !cameraFocusLongPressed) {
                     cameraView.getLocationOnScreen(viewPosition);
                     float viewX = event.getRawX() - viewPosition[0];
                     float viewY = event.getRawY() - viewPosition[1];
                     cameraView.focusToPoint((int) viewX, (int) viewY);
                 }
+                cameraFocusLongPressed = false;
             }
         }
         return true;
+    }
+    private void cancelCameraFocusLongPress() {
+        if (cameraFocusLongPressRunnable != null) {
+            AndroidUtilities.cancelRunOnUIThread(cameraFocusLongPressRunnable);
+            cameraFocusLongPressRunnable = null;
+        }
     }
 
     private void resetRecordState() {

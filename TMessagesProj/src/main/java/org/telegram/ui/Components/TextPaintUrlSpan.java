@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 5.x.x.
  * It is licensed under GNU GPL v. 2 or later.
@@ -9,6 +11,7 @@
 package org.telegram.ui.Components;
 
 import android.text.TextPaint;
+import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
 import android.text.style.MetricAffectingSpan;
 
 public class TextPaintUrlSpan extends MetricAffectingSpan {
@@ -35,7 +38,7 @@ public class TextPaintUrlSpan extends MetricAffectingSpan {
     public void updateMeasureState(TextPaint p) {
         if (textPaint != null) {
             p.setColor(textPaint.getColor());
-            p.setTypeface(textPaint.getTypeface());
+            SystemTextPaint.copyTypeface(p, textPaint);
             p.setFlags(textPaint.getFlags());
             p.setTextSize(textPaint.getTextSize());
             p.baselineShift = textPaint.baselineShift;
@@ -47,7 +50,7 @@ public class TextPaintUrlSpan extends MetricAffectingSpan {
     public void updateDrawState(TextPaint p) {
         if (textPaint != null) {
             p.setColor(textPaint.getColor());
-            p.setTypeface(textPaint.getTypeface());
+            SystemTextPaint.copyTypeface(p, textPaint);
             p.setFlags(textPaint.getFlags());
             p.setTextSize(textPaint.getTextSize());
             p.baselineShift = textPaint.baselineShift;

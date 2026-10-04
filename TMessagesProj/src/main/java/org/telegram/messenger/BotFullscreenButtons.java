@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.messenger;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -78,8 +80,8 @@ public class BotFullscreenButtons extends View {
         iconStrokePaint.setStyle(Paint.Style.STROKE);
         iconStrokePaint.setStrokeCap(Paint.Cap.ROUND);
         iconStrokePaint.setStrokeJoin(Paint.Join.ROUND);
-        backText = new Text(LocaleController.getString(R.string.BotFullscreenBack), 13, AndroidUtilities.bold());
-        closeText = new Text(LocaleController.getString(R.string.BotFullscreenClose), 13, AndroidUtilities.bold());
+        backText = Text.ui(LocaleController.getString(R.string.BotFullscreenBack), 13, AndroidUtilities.bold());
+        closeText = Text.ui(LocaleController.getString(R.string.BotFullscreenClose), 13, AndroidUtilities.bold());
 
         downloadPaint.setPathEffect(new CornerPathEffect(dp(1)));
         downloadPath.rewind();
@@ -263,7 +265,7 @@ public class BotFullscreenButtons extends View {
     }
 
     public void setName(String name, boolean verified) {
-        previewText = new Text(name, 13, AndroidUtilities.bold());
+        previewText = Text.ui(name, 13, AndroidUtilities.bold());
         if (!verified) {
             verifiedBackground = null;
             verifiedForeground = null;

@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Charts;
 
 import android.animation.ValueAnimator;
@@ -9,6 +11,7 @@ import android.graphics.RectF;
 import android.graphics.Typeface;
 import android.os.Build;
 import android.text.TextPaint;
+import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
 import android.view.HapticFeedbackConstants;
 
 import org.telegram.messenger.AndroidUtilities;
@@ -48,7 +51,7 @@ public class PieChartView extends StackLinearChartView<PieChartViewData> {
             lookupTable[i] = i + "%";
         }
 
-        textPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+        textPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
         textPaint.setTextAlign(Paint.Align.CENTER);
         textPaint.setColor(Color.WHITE);
         textPaint.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));

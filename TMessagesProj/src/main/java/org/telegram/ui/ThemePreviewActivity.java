@@ -52,6 +52,7 @@ import android.os.SystemClock;
 import android.text.SpannableStringBuilder;
 import android.text.Spanned;
 import android.text.TextPaint;
+import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
 import android.text.TextUtils;
 import android.util.SparseIntArray;
 import android.util.StateSet;
@@ -1549,7 +1550,7 @@ public class ThemePreviewActivity extends BaseFragment implements DownloadContro
             sheetDrawable.getPadding(paddings);
             sheetDrawable.setColorFilter(new PorterDuffColorFilter(getThemedColor(Theme.key_windowBackgroundWhite), PorterDuff.Mode.MULTIPLY));
 
-            TextPaint textPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+            TextPaint textPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
             textPaint.setTextSize(dp(14));
             textPaint.setTypeface(AndroidUtilities.bold());
             if (!(currentWallpaper instanceof WallpapersListActivity.EmojiWallpaper)) {
@@ -5951,12 +5952,12 @@ public class ThemePreviewActivity extends BaseFragment implements DownloadContro
         }
 
         public void setText(CharSequence text) {
-            this.text = new Text(text, 14, AndroidUtilities.bold());
+            this.text = Text.ui(text, 14, AndroidUtilities.bold());
         }
 
         public void setSubText(CharSequence subtext, boolean animated) {
             if (subtext != null) {
-                this.subtext = new Text(subtext, 12);
+                this.subtext = Text.ui(subtext, 12);
             }
             subtextShown = subtext != null;
             if (!animated) {
@@ -6084,9 +6085,9 @@ public class ThemePreviewActivity extends BaseFragment implements DownloadContro
         public final Paint chat_actionBackgroundSelectedPaint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
         public final Paint chat_actionBackgroundGradientDarkenPaint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
 
-        public final TextPaint chat_actionTextPaint = new TextPaint();
-        public final TextPaint chat_actionTextPaint2 = new TextPaint();
-        public final TextPaint chat_botButtonPaint = new TextPaint();
+        public final TextPaint chat_actionTextPaint = new SystemTextPaint(0);
+        public final TextPaint chat_actionTextPaint2 = new SystemTextPaint(0);
+        public final TextPaint chat_botButtonPaint = new SystemTextPaint(0);
 
         private Bitmap serviceBitmap;
         public BitmapShader serviceBitmapShader;

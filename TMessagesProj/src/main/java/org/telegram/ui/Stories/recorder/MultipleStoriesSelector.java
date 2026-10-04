@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Stories.recorder;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -176,8 +178,8 @@ public class MultipleStoriesSelector extends FrameLayout {
         this.selectedOrder = selectedOrder;
         this.selectedStories = selectedStories;
 
-        counter = new Text(Integer.toString(stories.size()), 20, AndroidUtilities.getTypeface("fonts/num.otf"));
-        hint = new Text(LocaleController.formatPluralStringComma("HintViewStoriesMultiple", stories.size()), 14);
+        counter = Text.ui(Integer.toString(stories.size()), 20, AndroidUtilities.getTypeface("fonts/num.otf"));
+        hint = Text.ui(LocaleController.formatPluralStringComma("HintViewStoriesMultiple", stories.size()), 14);
 
         listView.adapter.update(false);
     }

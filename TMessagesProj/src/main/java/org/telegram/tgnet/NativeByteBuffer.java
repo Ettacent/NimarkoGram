@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.tgnet;
 
 import org.telegram.messenger.BuildVars;
@@ -16,6 +18,7 @@ public class NativeByteBuffer extends AbstractSerializedData {
     private int len;
     public boolean reused = true;
 
+    private static final int MAX_CACHED_WRAPPERS = 64;
     private static final ThreadLocal<LinkedList<NativeByteBuffer>> addressWrappers = new ThreadLocal<LinkedList<NativeByteBuffer>>() {
         @Override
         protected LinkedList<NativeByteBuffer> initialValue() {
@@ -647,11 +650,17 @@ public class NativeByteBuffer extends AbstractSerializedData {
         return 0;
     }
 
-    public void reuse() {
+    public synchronized void reuse() {
         if (address != 0) {
-            addressWrappers.get().add(this);
+            long releasedAddress = address;
+            address = 0;
+            buffer = null;
             reused = true;
-            native_reuse(address);
+            native_reuse(releasedAddress);
+            LinkedList<NativeByteBuffer> queue = addressWrappers.get();
+            if (queue.size() < MAX_CACHED_WRAPPERS) {
+                queue.add(this);
+            }
         }
     }
 

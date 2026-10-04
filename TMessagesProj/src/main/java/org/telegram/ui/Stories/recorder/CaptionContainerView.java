@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Stories.recorder;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -32,6 +34,7 @@ import android.os.Build;
 import android.text.Editable;
 import android.text.SpannableStringBuilder;
 import android.text.TextPaint;
+import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
 import android.text.TextWatcher;
 import android.view.Gravity;
 import android.view.MotionEvent;
@@ -111,7 +114,7 @@ public class CaptionContainerView extends FrameLayout {
     private final Matrix matrix = new Matrix();
 
     private Bitmap hintTextBitmap;
-    private final TextPaint hintTextPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
+    private final TextPaint hintTextPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
     private final Paint hintTextBitmapPaint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
 
     private final FrameLayout rootView;
@@ -903,8 +906,8 @@ public class CaptionContainerView extends FrameLayout {
         } else {
             hasReply = true;
 
-            replyTitle = new Text(title == null ? "" : title, 14, AndroidUtilities.bold());
-            replyText = new Text(text == null ? "" : text, 14);
+            replyTitle = Text.ui(title == null ? "" : title, 14, AndroidUtilities.bold());
+            replyText = Text.ui(text == null ? "" : text, 14);
         }
     }
 

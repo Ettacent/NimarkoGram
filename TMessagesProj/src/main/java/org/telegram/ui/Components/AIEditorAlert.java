@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components;
 
 import static androidx.core.view.ViewCompat.performHapticFeedback;
@@ -26,6 +28,7 @@ import android.text.SpannableStringBuilder;
 import android.text.Spanned;
 import android.text.StaticLayout;
 import android.text.TextPaint;
+import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
 import android.text.TextUtils;
 import android.text.TextWatcher;
 import android.text.style.ReplacementSpan;
@@ -1221,7 +1224,7 @@ public class AIEditorAlert extends BottomSheetWithRecyclerListView implements No
         if (tab == TAB_STYLE && styledText != null) text = styledText;
         if (tab == TAB_FIX && fixedText != null) text = fixedText;
 
-        final TextPaint textPaint = new TextPaint();
+        final TextPaint textPaint = new SystemTextPaint(0);
         textPaint.setTextSize(dp(16));
         final Layout layout = new StaticLayout(text, textPaint, AndroidUtilities.displaySize.x - dp(20 + 20 + 12 + 12) - backgroundPaddingLeft - backgroundPaddingLeft, Layout.Alignment.ALIGN_NORMAL, 1.0f, 0.0f, true);
         return MathUtils.clamp(layout.getLineCount(), 1, 10);
@@ -1901,7 +1904,7 @@ public class AIEditorAlert extends BottomSheetWithRecyclerListView implements No
         private final Text text;
 
         public LimitSpan(CharSequence text) {
-            this.text = new Text(text, 13, AndroidUtilities.getTypeface("fonts/num.otf"));
+            this.text = Text.ui(text, 13, AndroidUtilities.getTypeface("fonts/num.otf"));
             this.text.paint.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.CLEAR));
         }
 

@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components;
 
 import android.content.Context;
@@ -5,6 +7,7 @@ import android.graphics.Canvas;
 import android.graphics.Paint;
 import android.graphics.Rect;
 import android.text.TextPaint;
+import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
 import android.view.View;
 
 import org.telegram.messenger.AndroidUtilities;
@@ -15,7 +18,7 @@ import org.telegram.ui.ActionBar.Theme;
 public class LoginOrView extends View {
     private final static int LINE_SIZE_DP = 64;
 
-    private TextPaint textPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+    private TextPaint textPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
     private Paint linePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private String string;
     private Rect textBounds = new Rect();

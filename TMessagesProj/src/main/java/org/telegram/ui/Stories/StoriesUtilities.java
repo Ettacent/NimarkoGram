@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Stories;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -21,6 +23,7 @@ import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.Drawable;
 import android.text.SpannableStringBuilder;
 import android.text.TextPaint;
+import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
 import android.view.HapticFeedbackConstants;
 import android.view.MotionEvent;
 import android.view.View;
@@ -92,6 +95,7 @@ public class StoriesUtilities {
 
     public static Drawable expiredStoryDrawable;
 
+    private static int expiredStoryFontWeightAdjustment = Integer.MIN_VALUE;
     private final static RectF rectTmp = new RectF();
 
     public static void drawAvatarWithStory(long dialogId, Canvas canvas, ImageReceiver avatarImage, AvatarStoryParams params) {
@@ -406,7 +410,7 @@ public class StoriesUtilities {
 
     public static void drawLive(Canvas canvas, RectF rect, float alpha, boolean drawText, float large) {
         if (liveText == null) {
-            liveText = new Text(getString(R.string.LiveStoryBadge), 9.66f, AndroidUtilities.bold());
+            liveText = Text.ui(getString(R.string.LiveStoryBadge), 9.66f, AndroidUtilities.bold());
         }
         if (liveCutPaint == null) {
             liveCutPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -975,17 +979,19 @@ public class StoriesUtilities {
     }
 
     public static Drawable getExpiredStoryDrawable() {
-        if (expiredStoryDrawable == null) {
+        int weightAdjustment = SystemTextPaint.getWeightAdjustment();
+        if (expiredStoryDrawable == null || expiredStoryFontWeightAdjustment != weightAdjustment) {
             Bitmap bitmap = Bitmap.createBitmap(360, 180, Bitmap.Config.ARGB_8888);
             bitmap.eraseColor(Color.GRAY);
             Canvas canvas = new Canvas(bitmap);
-            TextPaint textPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+            TextPaint textPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
             textPaint.setTextSize(15);
             textPaint.setTextAlign(Paint.Align.CENTER);
             textPaint.setColor(ColorUtils.setAlphaComponent(Color.BLACK, 100));
             canvas.drawText("expired", 360 / 2f, 180 / 2f - 4, textPaint);
             canvas.drawText("story", 360 / 2f, 180 / 2f + 16, textPaint);
             expiredStoryDrawable = new BitmapDrawable(bitmap);
+            expiredStoryFontWeightAdjustment = weightAdjustment;
         }
         return expiredStoryDrawable;
     }

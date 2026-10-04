@@ -67,6 +67,7 @@ public class CameraPreferencesActivity extends NimarkoUniversalPreferencesActivi
     private final int roundZoomScaleRow = 22;
     private final int cameraControlButtonsSideRow = 23;
 
+    private final int roundVideoTapFocusRow = 24;
     private boolean cameraImprovementsExpanded = false;
     private CameraTypeSelector cameraTypeSelector;
 
@@ -151,6 +152,9 @@ public class CameraPreferencesActivity extends NimarkoUniversalPreferencesActivi
             items.add(SettingsHelper.asSwitchCG(smoothCameraModuleTransitionsRow,
                     getString(R.string.NM_CAM_SmoothModules), getString(R.string.NM_CAM_SmoothModulesDesc))
                     .setChecked(NimarkoConfig.smoothCameraModuleTransitions));
+            items.add(SettingsHelper.asSwitchCG(roundVideoTapFocusRow,
+                    getString(R.string.NM_CAM_RoundVideoTapFocus), getString(R.string.NM_CAM_RoundVideoTapFocusDesc))
+                    .setChecked(NimarkoConfig.roundVideoTapFocus));
             items.add(SettingsHelper.asSwitchCG(startFromUltraWideRow, getString(R.string.NM_CameraUW), getString(R.string.NM_CameraUW_Desc))
                     .setChecked(app.nimarkogram.messenger.NimarkoConfig.startFromUltraWideCam)
             );
@@ -238,6 +242,9 @@ public class CameraPreferencesActivity extends NimarkoUniversalPreferencesActivi
         } else if (item.id == smoothCameraModuleTransitionsRow) {
             NimarkoConfig.toggleSmoothCameraModuleTransitions();
             updateCheckState(view, NimarkoConfig.smoothCameraModuleTransitions);
+        } else if (item.id == roundVideoTapFocusRow) {
+            NimarkoConfig.toggleRoundVideoTapFocus();
+            updateCheckState(view, NimarkoConfig.roundVideoTapFocus);
         } else if (item.id == startFromUltraWideRow) {
             NimarkoConfig.toggleStartFromUltraWideCam();
             updateCheckState(view, app.nimarkogram.messenger.NimarkoConfig.startFromUltraWideCam);

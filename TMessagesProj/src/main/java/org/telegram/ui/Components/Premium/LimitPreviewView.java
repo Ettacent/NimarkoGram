@@ -1,5 +1,8 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components.Premium;
 
+import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
 import static android.graphics.Canvas.ALL_SAVE_FLAG;
 import static org.telegram.messenger.AndroidUtilities.dp;
 import static org.telegram.messenger.AndroidUtilities.lerp;
@@ -1003,7 +1006,7 @@ public class LimitPreviewView extends LinearLayout {
 
         Path path = new Path();
         PathEffect pathEffect = new CornerPathEffect(dp(6));
-        TextPaint textPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+        TextPaint textPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
 
         StaticLayout textLayout;
         float textWidth;

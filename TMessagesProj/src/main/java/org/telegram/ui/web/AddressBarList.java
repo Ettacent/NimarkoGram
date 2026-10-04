@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.web;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -761,7 +763,7 @@ public class AddressBarList extends FrameLayout {
                 CombinedDrawable drawable = new CombinedDrawable(
                         Theme.createRoundRectDrawable(dp(6), Theme.multAlpha(textColor, .1f)),
                         new Drawable() {
-                            private final Text text = new Text(firstLetter, 14, AndroidUtilities.bold());
+                            private final Text text = Text.ui(firstLetter, 14, AndroidUtilities.bold());
                             @Override
                             public void draw(@NonNull Canvas canvas) {
                                 text.draw(canvas, getBounds().centerX() - text.getCurrentWidth() / 2f, getBounds().centerY(), textColor, 1f);
@@ -837,7 +839,7 @@ public class AddressBarList extends FrameLayout {
                 CombinedDrawable drawable = new CombinedDrawable(
                         Theme.createRoundRectDrawable(dp(6), Theme.multAlpha(textColor, .1f)),
                         new Drawable() {
-                            private final Text text = new Text(firstLetter, 14, AndroidUtilities.bold());
+                            private final Text text = Text.ui(firstLetter, 14, AndroidUtilities.bold());
                             @Override
                             public void draw(@NonNull Canvas canvas) {
                                 text.draw(canvas, getBounds().centerX() - text.getCurrentWidth() / 2f, getBounds().centerY(), textColor, 1f);

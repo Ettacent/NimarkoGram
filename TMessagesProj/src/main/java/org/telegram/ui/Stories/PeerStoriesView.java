@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Stories;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -5220,7 +5222,7 @@ public class PeerStoriesView extends SizeNotifierFrameLayout implements Notifica
                     sb.setSpan(new ReplacementSpan() {
                         private final RectF rect = new RectF();
                         private final Paint bg = new Paint(Paint.ANTI_ALIAS_FLAG);
-                        private final Text text = new Text(getString(R.string.LiveStoryBadge), 9, AndroidUtilities.bold());
+                        private final Text text = Text.ui(getString(R.string.LiveStoryBadge), 9, AndroidUtilities.bold());
                         @Override
                         public int getSize(@NonNull Paint paint, CharSequence charSequence, int i, int i1, @Nullable Paint.FontMetricsInt fontMetricsInt) {
                             return (int) (text.getWidth() + dp(12));

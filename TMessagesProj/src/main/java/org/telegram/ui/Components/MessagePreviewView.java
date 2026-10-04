@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -2018,7 +2020,7 @@ public class MessagePreviewView extends FrameLayout {
 
             public Tab(int id, String name) {
                 this.id = id;
-                text = new Text(name, 14, AndroidUtilities.bold());
+                text = Text.ui(name, 14, AndroidUtilities.bold());
             }
         }
 

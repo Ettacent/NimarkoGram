@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.bots;
 
 import static android.graphics.PorterDuff.Mode.SRC_IN;
@@ -305,7 +307,7 @@ public class SetupEmojiStatusSheet {
 //            );
             setRandomStatus();
 
-            text = new Text(UserObject.getUserName(user), 14);
+            text = Text.ui(UserObject.getUserName(user), 14);
         }
 
         @Override
@@ -364,7 +366,7 @@ public class SetupEmojiStatusSheet {
                 svgThumb, 0, null, null, 0
             );
 
-            text = new Text(UserObject.getUserName(user), 14);
+            text = Text.ui(UserObject.getUserName(user), 14);
         }
 
         private boolean attached;

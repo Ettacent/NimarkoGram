@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.iv;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -41,6 +43,7 @@ import org.telegram.ui.Components.UItem;
 import org.telegram.ui.Components.UniversalAdapter;
 import org.telegram.ui.Components.UniversalRecyclerView;
 
+import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
 import java.io.File;
 import java.util.ArrayList;
 
@@ -64,7 +67,7 @@ public class RichAudioCell extends RichBlockCell
     private final Theme.ResourcesProvider resourcesProvider;
 
     private final Paint selectionPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-    private final TextPaint audioTimePaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+    private final TextPaint audioTimePaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
 
     private final RadialProgress2 radialProgress;
     private final SeekBar seekBar;
@@ -80,6 +83,7 @@ public class RichAudioCell extends RichBlockCell
     private StaticLayout durationLayout;
     private String lastTimeString;
 
+    private int lastWeightAdjustment = Integer.MIN_VALUE;
     private Delegate delegate;
     private MessageObject messageObject;
     private TLRPC.Document boundDocument;
@@ -295,6 +299,12 @@ public class RichAudioCell extends RichBlockCell
 
     @Override
     protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
+        if (lastWeightAdjustment != SystemTextPaint.getWeightAdjustment()) {
+            lastWeightAdjustment = SystemTextPaint.getWeightAdjustment();
+            lastTimeString = null;
+            titleLayout = null;
+            durationLayout = null;
+        }
         final int w = MeasureSpec.getSize(widthMeasureSpec);
         final int capH = caption.measure(blockRtl ? 0 : blockInset(), blockRtl ? blockInset() : 0, w);
         setMeasuredDimension(w, dp(66) + capH);
@@ -304,6 +314,9 @@ public class RichAudioCell extends RichBlockCell
     protected void onLayout(boolean changed, int left, int top, int right, int bottom) {
         caption.layout(blockRtl ? 0 : blockInset(), blockRtl ? blockInset() : 0, right - left, dp(66));
         layoutInner();
+        if (durationLayout == null) {
+            updatePlayingMessageProgress();
+        }
     }
 
     private int getIconForCurrentState() {

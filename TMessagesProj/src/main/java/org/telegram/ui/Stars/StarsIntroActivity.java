@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Stars;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -5110,7 +5112,7 @@ public class StarsIntroActivity extends GradientHeaderActivity implements Notifi
         refund.setSpan(new ReplacementSpan() {
             private final Paint backgroundPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
             { backgroundPaint.setColor(Theme.multAlpha(color, .10f)); }
-            private final Text layout = new Text(string, 13, AndroidUtilities.bold());
+            private final Text layout = Text.ui(string, 13, AndroidUtilities.bold());
 
             @Override
             public int getSize(@NonNull Paint paint, CharSequence text, int start, int end, @Nullable Paint.FontMetricsInt fm) {

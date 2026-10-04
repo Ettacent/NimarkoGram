@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -11,6 +13,7 @@ import android.graphics.RectF;
 import android.graphics.Shader;
 import android.os.SystemClock;
 import android.text.TextPaint;
+import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
 import android.view.View;
 
 import org.telegram.messenger.AndroidUtilities;
@@ -1065,7 +1068,7 @@ public class FlickerLoadingView extends View implements Theme.Colorable {
 
     private float memberRequestButtonWidth;
     public void setMemberRequestButton(boolean isChannel) {
-        TextPaint paint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+        TextPaint paint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
         paint.setTypeface(AndroidUtilities.bold());
         paint.setTextSize(dp(14));
         memberRequestButtonWidth = dp(17 + 17) + paint.measureText(isChannel ? LocaleController.getString(R.string.AddToChannel) : LocaleController.getString(R.string.AddToGroup));

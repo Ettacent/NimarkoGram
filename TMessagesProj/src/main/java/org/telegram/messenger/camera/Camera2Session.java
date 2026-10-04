@@ -593,6 +593,108 @@ public class Camera2Session {
     }
 
     private final Rect cropRegion = new Rect();
+    public boolean focusAtPreviewPoint(float normalizedX, float normalizedY,
+                                       float viewAspectRatio) {
+        if (!isInitiated() || sensorSize == null || captureSession == null
+                || captureRequestBuilder == null || previewSize == null) {
+            return false;
+        }
+        float x = Math.max(0f, Math.min(1f, normalizedX));
+        float y = Math.max(0f, Math.min(1f, normalizedY));
+        float sourceAspect = previewSize.getWidth() / (float) previewSize.getHeight();
+        if (viewAspectRatio > 0f && sourceAspect > viewAspectRatio) {
+            float visible = viewAspectRatio / sourceAspect;
+            x = (1f - visible) * 0.5f + x * visible;
+        } else if (viewAspectRatio > 0f && sourceAspect < viewAspectRatio) {
+            float visible = sourceAspect / viewAspectRatio;
+            y = (1f - visible) * 0.5f + y * visible;
+        }
+        float sensorX;
+        float sensorY;
+        switch (getDisplayOrientation()) {
+            case 90:
+                sensorX = y;
+                sensorY = 1f - x;
+                break;
+            case 180:
+                sensorX = 1f - x;
+                sensorY = 1f - y;
+                break;
+            case 270:
+                sensorX = 1f - y;
+                sensorY = x;
+                break;
+            default:
+                sensorX = x;
+                sensorY = y;
+                break;
+        }
+        Rect active = new Rect(sensorSize);
+        if (!zoomRatioSupported && currentZoom > 1f) {
+            int cx = active.centerX();
+            int cy = active.centerY();
+            int halfW = Math.max(1, Math.round(active.width() * 0.5f / currentZoom));
+            int halfH = Math.max(1, Math.round(active.height() * 0.5f / currentZoom));
+            active.set(cx - halfW, cy - halfH, cx + halfW, cy + halfH);
+        }
+        int px = active.left + Math.round(sensorX * active.width());
+        int py = active.top + Math.round(sensorY * active.height());
+        int size = Math.max(32, Math.round(Math.min(active.width(), active.height()) * 0.12f));
+        Rect focus = new Rect(px - size / 2, py - size / 2,
+                px + size / 2, py + size / 2);
+        focus.left = Math.max(active.left, Math.min(active.right - 1, focus.left));
+        focus.top = Math.max(active.top, Math.min(active.bottom - 1, focus.top));
+        focus.right = Math.max(focus.left + 1, Math.min(active.right, focus.right));
+        focus.bottom = Math.max(focus.top + 1, Math.min(active.bottom, focus.bottom));
+        return focusToRect(focus, focus);
+    }
+    public boolean focusToRect(Rect focusRect, Rect meteringRect) {
+        if (!isInitiated() || captureSession == null || captureRequestBuilder == null
+                || focusRect == null) {
+            return false;
+        }
+        final Rect af = new Rect(focusRect);
+        final Rect ae = meteringRect == null ? new Rect(focusRect) : new Rect(meteringRect);
+        handler.post(() -> {
+            if (destroyed || isClosed || cameraDevice == null || captureSession == null) return;
+            try {
+                captureRequestBuilder.set(CaptureRequest.CONTROL_AF_MODE,
+                        CaptureRequest.CONTROL_AF_MODE_AUTO);
+                captureRequestBuilder.set(CaptureRequest.CONTROL_AF_REGIONS,
+                        new android.hardware.camera2.params.MeteringRectangle[] {
+                                new android.hardware.camera2.params.MeteringRectangle(af, 1000)
+                        });
+                captureRequestBuilder.set(CaptureRequest.CONTROL_AE_REGIONS,
+                        new android.hardware.camera2.params.MeteringRectangle[] {
+                                new android.hardware.camera2.params.MeteringRectangle(ae, 1000)
+                        });
+                captureRequestBuilder.set(CaptureRequest.CONTROL_AF_TRIGGER,
+                        CaptureRequest.CONTROL_AF_TRIGGER_START);
+                captureSession.capture(captureRequestBuilder.build(),
+                        new CameraCaptureSession.CaptureCallback() {
+                            @Override
+                            public void onCaptureCompleted(@NonNull CameraCaptureSession session,
+                                                            @NonNull CaptureRequest request,
+                                                            @NonNull android.hardware.camera2.TotalCaptureResult result) {
+                                handler.post(() -> {
+                                    if (destroyed || isClosed || captureSession != session) return;
+                                    try {
+                                        captureRequestBuilder.set(CaptureRequest.CONTROL_AF_TRIGGER,
+                                                CaptureRequest.CONTROL_AF_TRIGGER_IDLE);
+                                        captureSession.setRepeatingRequest(captureRequestBuilder.build(),
+                                                null, handler);
+                                    } catch (Throwable t) {
+                                        FileLog.e("Camera2Session focus repeat failed", t);
+                                    }
+                                });
+                            }
+                        }, handler);
+            } catch (Throwable t) {
+                FileLog.e("Camera2Session focus failed", t);
+            }
+        });
+        return true;
+    }
     public void setZoom(float value) {
         if (!isInitiated()) return;
         if (captureRequestBuilder == null || cameraDevice == null || sensorSize == null) return;

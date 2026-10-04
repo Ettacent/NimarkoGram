@@ -21,7 +21,6 @@ import java.text.NumberFormat;
 import java.util.Currency;
 import java.util.HashMap;
 import java.util.Locale;
-import app.nimarkogram.messenger.NimarkoConfig;
 import app.nimarkogram.messenger.infocards.preferences.InfoCardsPreferencesActivity;
 
 public class CryptoCard extends BaseInfoCard {
@@ -91,7 +90,6 @@ public class CryptoCard extends BaseInfoCard {
 
     private boolean firstPaint = true;
     private String renderedCurrency;
-    private boolean renderedCompactTon;
 
     private static final long WARMUP_MS = 1500;
     private boolean warmupDone;
@@ -106,8 +104,7 @@ public class CryptoCard extends BaseInfoCard {
         lifecycleGeneration++;
         super.onAttachedToWindow();
         String currency = resolveCardCurrency(getCardId(), InfoCardsConfig.getTargetCurrency(getCardId()));
-        if (InfoCardRates.hasCached() && (!currency.equals(renderedCurrency)
-                || renderedCompactTon != compactTonValue())) {
+        if (InfoCardRates.hasCached() && !currency.equals(renderedCurrency)) {
             render(false);
             firstPaint = false;
         }
@@ -162,8 +159,7 @@ public class CryptoCard extends BaseInfoCard {
             value = InfoCardRates.coinInFiat(coinKey, ccy);
         }
         renderedCurrency = ccy;
-        renderedCompactTon = compactTonValue();
-        setText(format(value, ccy, renderedCompactTon), animated);
+        setText(format(value, ccy), animated);
         stopLoading();
         markDataUpdated();
     }
@@ -204,16 +200,10 @@ public class CryptoCard extends BaseInfoCard {
         super.onDetachedFromWindow();
     }
 
-    private boolean compactTonValue() {
-        return pillId == InfoCardType.TON.id && !NimarkoConfig.systemFonts;
-    }
-    private static String format(double value, String ccy, boolean compact) {
+    private static String format(double value, String ccy) {
         String iso = ccy == null ? "USD" : ccy.trim().toUpperCase(Locale.ROOT);
 
         int exp = Math.max(0, BillingController.getInstance().getCurrencyExp(iso));
-        if (compact) {
-            exp = Math.min(exp, 1);
-        }
         BigDecimal scaled = BigDecimal.valueOf(value).setScale(exp, RoundingMode.HALF_UP);
         NumberFormat nf = NumberFormat.getNumberInstance(Locale.US);
         nf.setGroupingUsed(true);
@@ -303,7 +293,7 @@ public class CryptoCard extends BaseInfoCard {
         String ccy = resolveCardCurrency(cardId, InfoCardsConfig.getTargetCurrency(cardId));
         double value = coin != null ? InfoCardRates.coinInFiat(coin, ccy) : InfoCardRates.fiatRate(ccy);
         if (Double.isNaN(value) || value <= 0) return null;
-        return format(value, ccy, cardId == InfoCardType.TON.id && !NimarkoConfig.systemFonts);
+        return format(value, ccy);
     }
 
     private static String resolveCurrency(String stored) {

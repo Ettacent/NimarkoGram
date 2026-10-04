@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -94,7 +96,7 @@ public class TopicSeparator {
                 }
                 avatarDrawable.setInfo(userOrChat);
                 image.setForUserOrChat(userOrChat, avatarDrawable);
-                text = new Text(DialogObject.getName(userOrChat), 14, AndroidUtilities.bold());
+                text = Text.ui(DialogObject.getName(userOrChat), 14, AndroidUtilities.bold());
             } else {
                 image.setRoundRadius(0);
                 final long topicId = messageObject.getTopicId();
@@ -116,7 +118,7 @@ public class TopicSeparator {
                     image.clearImage();
                 }
                 if (topic != null) {
-                    text = new Text(topic == null ? "" : topic.title, 14, AndroidUtilities.bold());
+                    text = Text.ui(topic == null ? "" : topic.title, 14, AndroidUtilities.bold());
                 } else {
                     text = null;
                 }
@@ -126,7 +128,7 @@ public class TopicSeparator {
     }
 
     public void setText(String text) {
-        this.text = new Text(text, 14, AndroidUtilities.bold());
+        this.text = Text.ui(text, 14, AndroidUtilities.bold());
     }
 
     public void attach() {

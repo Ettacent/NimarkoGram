@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -203,8 +205,8 @@ public class ProfileMusicView extends View {
     }
 
     public void setText(CharSequence author, CharSequence title) {
-        this.author = new Text(author, 11, AndroidUtilities.bold());
-        this.title = new Text(title, 11);
+        this.author = Text.ui(author, 11, AndroidUtilities.bold());
+        this.title = Text.ui(title, 11);
 
         setContentDescription(getString(R.string.AccDescrProfileMusic) + " " + author + " — " + title);
     }

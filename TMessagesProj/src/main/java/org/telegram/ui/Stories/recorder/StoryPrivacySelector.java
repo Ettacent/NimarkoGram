@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Stories.recorder;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -18,6 +20,7 @@ import android.os.Build;
 import android.text.Layout;
 import android.text.StaticLayout;
 import android.text.TextPaint;
+import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
 import android.view.Gravity;
 import android.view.HapticFeedbackConstants;
 import android.view.MotionEvent;
@@ -222,7 +225,7 @@ public class StoryPrivacySelector extends View {
     public static class StoryPrivacyHint extends View {
 
         private final Paint backgroundPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-        private final TextPaint textPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+        private final TextPaint textPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
 
         private final StaticLayout layout;
         private final float layoutWidth, layoutLeft;

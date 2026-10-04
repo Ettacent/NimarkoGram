@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -24,6 +26,7 @@ import android.media.MediaMetadataRetriever;
 import android.os.Build;
 import android.os.SystemClock;
 import android.text.TextPaint;
+import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
 import android.text.TextUtils;
 import android.view.Gravity;
 import android.view.HapticFeedbackConstants;
@@ -2212,9 +2215,11 @@ public class ChatAttachAlertPhotoLayoutPreview extends ChatAttachAlert.AttachAle
 
                 private Bitmap indexBitmap = null;
                 private String indexBitmapText = null;
+                private int indexBitmapWeightAdjustment;
                 private Bitmap videoDurationBitmap = null;
                 private String videoDurationBitmapText = null;
 
+                private int videoDurationBitmapWeightAdjustment;
                 private Rect indexIn = new Rect(), indexOut = new Rect();
                 private Rect durationIn = new Rect(), durationOut = new Rect();
 
@@ -2224,15 +2229,16 @@ public class ChatAttachAlertPhotoLayoutPreview extends ChatAttachAlert.AttachAle
                               sz = (radius + strokeWidth) * 2,
                               pad = strokeWidth * 4;
 
-                    if (indexText != null && (indexBitmap == null || indexBitmapText == null || !indexBitmapText.equals(indexText))) {
+                    final int weightAdjustment = SystemTextPaint.getWeightAdjustment();
+                    if (indexText != null && (indexBitmap == null || indexBitmapText == null || !indexBitmapText.equals(indexText) || indexBitmapWeightAdjustment != weightAdjustment)) {
                         if (indexBitmap == null) {
                             indexBitmap = Bitmap.createBitmap(sz, sz, Bitmap.Config.ARGB_8888);
                         }
+                        indexBitmap.eraseColor(0x00000000);
                         Canvas bitmapCanvas = new Canvas(indexBitmap);
-                        bitmapCanvas.drawColor(0x00000000);
 
                         if (textPaint == null) {
-                            textPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+                            textPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
                             textPaint.setTypeface(AndroidUtilities.bold());
                         }
                         textPaint.setColor(getThemedColor(Theme.key_chat_attachCheckBoxCheck));
@@ -2262,6 +2268,7 @@ public class ChatAttachAlertPhotoLayoutPreview extends ChatAttachAlert.AttachAle
 
                         indexIn.set(0, 0, sz, sz);
                         indexBitmapText = indexText;
+                        indexBitmapWeightAdjustment = weightAdjustment;
                     }
 
                     if (indexBitmap != null) {
@@ -2273,9 +2280,10 @@ public class ChatAttachAlertPhotoLayoutPreview extends ChatAttachAlert.AttachAle
 
                 private void drawDuration(Canvas canvas, float left, float bottom, String durationText, float scale, float alpha) {
                     if (durationText != null) {
-                        if (videoDurationBitmap == null || videoDurationBitmapText == null || !videoDurationBitmapText.equals(durationText)) {
+                        final int weightAdjustment = SystemTextPaint.getWeightAdjustment();
+                        if (videoDurationBitmap == null || videoDurationBitmapText == null || !videoDurationBitmapText.equals(durationText) || videoDurationBitmapWeightAdjustment != weightAdjustment) {
                             if (videoDurationTextPaint == null) {
-                                videoDurationTextPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+                                videoDurationTextPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
                                 videoDurationTextPaint.setTypeface(AndroidUtilities.bold());
                                 videoDurationTextPaint.setColor(0xffffffff);
                             }
@@ -2292,6 +2300,7 @@ public class ChatAttachAlertPhotoLayoutPreview extends ChatAttachAlert.AttachAle
                                 }
                                 videoDurationBitmap = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
                             }
+                            videoDurationBitmap.eraseColor(0x00000000);
                             Canvas bitmapCanvas = new Canvas(videoDurationBitmap);
 
                             AndroidUtilities.rectTmp.set(0, 0, width, height);
@@ -2305,6 +2314,7 @@ public class ChatAttachAlertPhotoLayoutPreview extends ChatAttachAlert.AttachAle
 
                             durationIn.set(0, 0, w, h);
                             videoDurationBitmapText = durationText;
+                            videoDurationBitmapWeightAdjustment = weightAdjustment;
                         }
 
                         int w = videoDurationBitmap.getWidth(), h = videoDurationBitmap.getHeight();
@@ -2617,7 +2627,7 @@ public class ChatAttachAlertPhotoLayoutPreview extends ChatAttachAlert.AttachAle
                 if (stars <= 0) return;
 
                 if (buttonText == null || buttonTextPrice != stars) {
-                    buttonText = new Text(StarsIntroActivity.replaceStarsWithPlain(LocaleController.formatPluralStringComma("UnlockPaidContent", (int) (buttonTextPrice = stars)), .7f), 14, AndroidUtilities.bold());
+                    buttonText = Text.ui(StarsIntroActivity.replaceStarsWithPlain(LocaleController.formatPluralStringComma("UnlockPaidContent", (int) (buttonTextPrice = stars)), .7f), 14, AndroidUtilities.bold());
                 }
                 final float buttonWidth = dp(14 + 14) + buttonText.getCurrentWidth();
                 final float buttonHeight = dp(32);

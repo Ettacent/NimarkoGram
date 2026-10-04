@@ -1,5 +1,8 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components.Premium.boosts;
 
+import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
 import static org.telegram.messenger.AndroidUtilities.dp;
 
 import android.graphics.Canvas;
@@ -30,7 +33,7 @@ public class DiscountSpan extends ReplacementSpan {
         return spannableStringBuilder;
     }
 
-    TextPaint textPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+    TextPaint textPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
     Paint bgPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     StaticLayout layout;
     float width, height;

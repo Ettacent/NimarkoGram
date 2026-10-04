@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components;
 
 import android.animation.Animator;
@@ -20,6 +22,7 @@ import android.os.SystemClock;
 import android.text.Layout;
 import android.text.StaticLayout;
 import android.text.TextPaint;
+import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
 import android.text.TextUtils;
 import android.view.Gravity;
 import android.view.View;
@@ -777,7 +780,7 @@ public class ThemeSmallPreviewView extends FrameLayout implements NotificationCe
         if (textLayout != null) {
             return textLayout;
         }
-        noThemeTextPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG + TextPaint.SUBPIXEL_TEXT_FLAG);
+        noThemeTextPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG + TextPaint.SUBPIXEL_TEXT_FLAG);
         noThemeTextPaint.setColor(getThemedColor(Theme.key_chat_emojiPanelTrendingDescription));
         noThemeTextPaint.setTextSize(AndroidUtilities.dp(noThemeStringTextSize()));
         noThemeTextPaint.setTypeface(AndroidUtilities.bold());

@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Stories;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -16,6 +18,7 @@ import android.text.SpannableString;
 import android.text.Spanned;
 import android.text.StaticLayout;
 import android.text.TextPaint;
+import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
 import android.text.style.ForegroundColorSpan;
 import android.view.View;
 
@@ -76,7 +79,7 @@ public class StoryContainsEmojiButton extends View {
         setBackground(Theme.createRadSelectorDrawable(Theme.getColor(Theme.key_listSelector, resourcesProvider), 0, 8));
         setClickable(true);
 
-        textPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+        textPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
         textPaint.setTextSize(dp(13));
         textPaint.setColor(Theme.getColor(Theme.key_actionBarDefaultSubmenuItem, resourcesProvider));
         colorFilter = new PorterDuffColorFilter(Theme.getColor(Theme.key_actionBarDefaultSubmenuItem, resourcesProvider), PorterDuff.Mode.SRC_IN);

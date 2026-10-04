@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -1075,7 +1077,7 @@ public class ProfileActionsView extends View {
         }
 
         public void setText(CharSequence cs) {
-            this.text = new Text(cs, 11, AndroidUtilities.bold())
+            this.text = Text.ui(cs, 11, AndroidUtilities.bold())
                 .multiline(3)
                 .align(Layout.Alignment.ALIGN_CENTER);
         }

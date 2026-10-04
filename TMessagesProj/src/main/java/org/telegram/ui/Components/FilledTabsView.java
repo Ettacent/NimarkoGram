@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -34,7 +36,7 @@ public class FilledTabsView extends View {
         bounds = new RectF[texts.length];
 
         for (int i = 0; i < texts.length; ++i) {
-            tabs[i] = new Text(texts[i], 14, AndroidUtilities.bold());
+            tabs[i] = Text.ui(texts[i], 14, AndroidUtilities.bold());
             bounds[i] = new RectF();
         }
 

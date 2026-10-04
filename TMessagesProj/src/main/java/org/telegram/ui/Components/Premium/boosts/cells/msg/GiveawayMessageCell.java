@@ -1,5 +1,8 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components.Premium.boosts.cells.msg;
 
+import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
 import static org.telegram.messenger.AndroidUtilities.dp;
 import static org.telegram.messenger.AndroidUtilities.replaceTags;
 import static org.telegram.messenger.LocaleController.formatPluralString;
@@ -135,13 +138,13 @@ public class GiveawayMessageCell {
         if (counterTextPaint != null) {
             return;
         }
-        counterTextPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
-        counterStarsTextPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
-        chatTextPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
-        textPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
-        textDividerPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+        counterTextPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
+        counterStarsTextPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
+        chatTextPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
+        textPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
+        textDividerPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
         lineDividerPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-        countriesTextPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+        countriesTextPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
         counterBgPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         chatBgPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
 

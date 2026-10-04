@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.messenger;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -39,6 +41,7 @@ import android.text.SpannableStringBuilder;
 import android.text.Spanned;
 import android.text.StaticLayout;
 import android.text.TextPaint;
+import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
 import android.text.TextUtils;
 import android.text.style.CharacterStyle;
 import android.text.style.ClickableSpan;
@@ -177,8 +180,8 @@ public class RichMessageLayout {
 
     public boolean invalidateAnimatedEmojiInParent;
 
-    public final TextPaint textPaint = new TextPaint(TextPaint.ANTI_ALIAS_FLAG);
-    public final TextPaint numTextPaint = new TextPaint(TextPaint.ANTI_ALIAS_FLAG);
+    public final TextPaint textPaint = new SystemTextPaint(TextPaint.ANTI_ALIAS_FLAG);
+    public final TextPaint numTextPaint = new SystemTextPaint(TextPaint.ANTI_ALIAS_FLAG);
     public final ReplyMessageLine quoteLine = new ReplyMessageLine(null);
     public final GradientClip clip = new GradientClip();
 
@@ -197,6 +200,7 @@ public class RichMessageLayout {
     private boolean showMorePressed;
 
     private int fontSize;
+    private int fontWeightAdjustment;
     private float density;
 
     public boolean isRtl() { return richMessage != null && richMessage.rtl; }
@@ -220,6 +224,7 @@ public class RichMessageLayout {
         this.maxWidth = maxWidth;
         this.resourcesProvider = resourcesProvider;
         fontSize = SharedConfig.fontSize;
+        fontWeightAdjustment = SystemTextPaint.getWeightAdjustment();
         density = AndroidUtilities.density;
         textPaint.setTextSize(dp(fontSize));
         numTextPaint.setTextSize(dp(fontSize));
@@ -263,6 +268,7 @@ public class RichMessageLayout {
         return (
             richMessage != newRichMessage ||
             fontSize != SharedConfig.fontSize ||
+            fontWeightAdjustment != SystemTextPaint.getWeightAdjustment() ||
             Math.abs(density - AndroidUtilities.density) > 0.1f ||
             maxWidth != this.maxWidth
         );
@@ -364,6 +370,7 @@ public class RichMessageLayout {
         textBlockBlockIndex.clear();
         joinedText = "";
         fontSize = SharedConfig.fontSize;
+        fontWeightAdjustment = SystemTextPaint.getWeightAdjustment();
         density = AndroidUtilities.density;
         textPaint.setTextSize(dp(SharedConfig.fontSize));
         numTextPaint.setTextSize(dp(SharedConfig.fontSize));
@@ -917,7 +924,7 @@ public class RichMessageLayout {
             level++;
             numTextPaint.setTextSize(dp(SharedConfig.fontSize));
             final TextPaint markerMeasurePaint = new TextPaint(numTextPaint);
-            markerMeasurePaint.setTypeface(AndroidUtilities.bold());
+            SystemTextPaint.setSpanTypeface(markerMeasurePaint, AndroidUtilities.bold());
             int maxNumWidth = dp(ORDERED_LIST_MARKER_WIDTH_DP);
             for (int i = 0; i < list.items.size(); i++) {
                 final TL_iv.PageListOrderedItem item = list.items.get(i);
@@ -1580,7 +1587,7 @@ public class RichMessageLayout {
         final int color = getThemedColor(isOut() ? Theme.key_chat_outPreviewInstantText : Theme.key_chat_inPreviewInstantText);
 
         if (showMoreText == null) {
-            showMoreText = new org.telegram.ui.Components.Text(LocaleController.getString(R.string.ShowMore), 16, AndroidUtilities.bold());
+            showMoreText = org.telegram.ui.Components.Text.ui(LocaleController.getString(R.string.ShowMore), 16, AndroidUtilities.bold());
         }
         if (showMoreBounce == null) {
             showMoreBounce = new ButtonBounce(view, 1.5f, 2.0f);
@@ -2222,7 +2229,7 @@ public class RichMessageLayout {
         public void applyStyle(TextPaint p) {
             final Typeface typeface = getTypeface();
             if (typeface != null) {
-                p.setTypeface(typeface);
+                SystemTextPaint.setSpanTypeface(p, typeface);
             }
 
             int textSize = getTextSize();
@@ -7374,7 +7381,7 @@ public class RichMessageLayout {
 
         private final RadialProgress2 radialProgress;
         private final SeekBar seekBar;
-        private final TextPaint audioTimePaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+        private final TextPaint audioTimePaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
 
         private StaticLayout titleLayout;
         private StaticLayout durationLayout;
@@ -7714,8 +7721,8 @@ public class RichMessageLayout {
         private final RadialProgress2 radialProgress;
         private final ImageReceiver previewImage = new ImageReceiver();
         private final Paint previewBackgroundPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-        private final TextPaint titlePaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
-        private final TextPaint sizePaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+        private final TextPaint titlePaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
+        private final TextPaint sizePaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
         private StaticLayout titleLayout;
         private StaticLayout sizeLayout;
         private final int buttonX = dp(16);

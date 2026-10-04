@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 5.x.x.
  * It is licensed under GNU GPL v. 2 or later.
@@ -416,7 +418,7 @@ public class BackupImageView extends View {
             return;
         }
 
-        blurText = new Text(str, 16.5f, AndroidUtilities.bold());
+        blurText = Text.ui(str, 16.5f, AndroidUtilities.bold());
         if (blurTextBgColorFilter == null) {
             ColorMatrix colorMatrix = new ColorMatrix();
             colorMatrix.setSaturation(1.2f);

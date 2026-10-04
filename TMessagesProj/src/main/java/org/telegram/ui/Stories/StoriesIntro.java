@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Stories;
 
 import android.animation.Animator;
@@ -14,6 +16,7 @@ import android.graphics.Rect;
 import android.graphics.RectF;
 import android.graphics.drawable.BitmapDrawable;
 import android.text.TextPaint;
+import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.View;
@@ -200,12 +203,12 @@ public class StoriesIntro extends FrameLayout {
             backgroundPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
             backgroundPaint.setColor(0x16D8D8D8);
 
-            headerTextPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+            headerTextPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
             headerTextPaint.setColor(Color.WHITE);
             headerTextPaint.setTextSize(TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, 16, getResources().getDisplayMetrics()));
             headerTextPaint.setTypeface(AndroidUtilities.bold());
 
-            subHeaderTextPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+            subHeaderTextPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
             subHeaderTextPaint.setColor(0x96FFFFFF);
 
             subHeaderTextPaint.setTextSize(TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, 14, getResources().getDisplayMetrics()));

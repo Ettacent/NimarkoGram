@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Stories.recorder;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -32,6 +34,7 @@ import android.text.SpannableStringBuilder;
 import android.text.Spanned;
 import android.text.StaticLayout;
 import android.text.TextPaint;
+import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
 import android.text.TextUtils;
 import android.util.LruCache;
 import android.util.Pair;
@@ -903,8 +906,8 @@ public class GalleryListView extends FrameLayout implements NotificationCenter.N
         private final Matrix gradientMatrix = new Matrix();
 
         private final Paint durationBackgroundPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-        private final TextPaint durationTextPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
-        private final TextPaint draftTextPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+        private final TextPaint durationTextPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
+        private final TextPaint draftTextPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
         private final Drawable durationPlayDrawable;
 
         private boolean drawDurationPlay;

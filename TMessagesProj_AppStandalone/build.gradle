@@ -2,7 +2,9 @@
 
 apply plugin: 'com.android.application'
 apply plugin: 'org.telegram.build-app-plugin'
-apply plugin: 'com.google.firebase.crashlytics'
+if (nimarkoFirebaseEnabled) {
+    apply plugin: 'com.google.firebase.crashlytics'
+}
 
 // Opt-in size-audit build. Keep the production path unchanged until the
 // resulting resource/R8 reports have been reviewed for plugin compatibility.
@@ -64,10 +66,6 @@ android {
 
     signingConfigs {
         debug {
-            storeFile file("../TMessagesProj/config/release.keystore")
-            storePassword RELEASE_STORE_PASSWORD
-            keyAlias RELEASE_KEY_ALIAS
-            keyPassword RELEASE_KEY_PASSWORD
             enableV1Signing true
             enableV2Signing true
             enableV3Signing true
@@ -75,14 +73,12 @@ android {
         }
 
         release {
-            storeFile file("../TMessagesProj/config/release.keystore")
-            storePassword RELEASE_STORE_PASSWORD
-            keyAlias RELEASE_KEY_ALIAS
-            keyPassword RELEASE_KEY_PASSWORD
-            // Sign with ALL APK signature schemes (v1 JAR + v2 + v3 + v3.1)
-            // so Android stops prompting "additional APK verification" on
-            // install. v2-only was the previous behaviour and triggered the
-            // Play Protect / "Verify before install" sheet on modern Androids.
+            if (nimarkoReleaseSigningConfigured) {
+                storeFile rootProject.file(nimarkoSigning.RELEASE_STORE_FILE)
+                storePassword nimarkoSigning.RELEASE_STORE_PASSWORD
+                keyAlias nimarkoSigning.RELEASE_KEY_ALIAS
+                keyPassword nimarkoSigning.RELEASE_KEY_PASSWORD
+            }
             enableV1Signing true
             enableV2Signing true
             enableV3Signing true
@@ -95,10 +91,6 @@ android {
             debuggable true
             jniDebuggable true
             signingConfig signingConfigs.debug
-            // NimarkoGram: ".web" suffix dropped permanently from vc6934.
-            // Clean package 'app.nimarkogram.messenger' (the ".web" suffix
-            // was a hybrid-app malware pattern signal for Play Protect's
-            // package classifier in mid-2026 — contributing to hard-blocks).
             minifyEnabled false
             multiDexEnabled true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), '../TMessagesProj/proguard-rules.pro'
@@ -106,14 +98,15 @@ android {
         }
         standalone {
             matchingFallbacks = ['release']
-            firebaseCrashlytics {
-                nativeSymbolUploadEnabled true
-                unstrippedNativeLibsDir project(':TMessagesProj').layout.buildDirectory.dir('intermediates/merged_native_libs/standalone/mergeStandaloneNativeLibs/out/lib')
+            if (nimarkoFirebaseEnabled) {
+                firebaseCrashlytics {
+                    nativeSymbolUploadEnabled nimarkoCrashlyticsUploadEnabled
+                    unstrippedNativeLibsDir project(':TMessagesProj').layout.buildDirectory.dir('intermediates/merged_native_libs/standalone/mergeStandaloneNativeLibs/out/lib')
+                }
             }
             debuggable false
             jniDebuggable false
-            signingConfig signingConfigs.release
-            // NimarkoGram: ".web" suffix dropped (see comment in debug block).
+            signingConfig nimarkoReleaseSigningConfigured ? signingConfigs.release : null
             // The normal standalone artifact remains plugins-friendly. Passing
             // -PngCompactStandalone enables an isolated, measurable experiment
             // with app-level R8 and resource shrinking; it is never implicit.
@@ -203,16 +196,15 @@ android {
     }
 }
 
-// NimarkoGram: dedicated Firebase project for app.nimarkogram.messenger
-// (project_id=nimarkogram-3a6f7) — the google-services.json next to this
-// build.gradle holds the matching client config. Without this plugin enabled
-// the FirebaseApp wouldn't initialise at runtime and FCM tokens never get
-// registered → push notifications silently never arrive in background. See
-// also the same JSON copied into TMessagesProj/ so the base manifest resolves.
-apply plugin: 'com.google.gms.google-services'
+if (nimarkoFirebaseEnabled) {
+    apply plugin: 'com.google.gms.google-services'
+}
 
 androidComponents {
     onVariants(selector().withBuildType('standalone')) { variant ->
+        if (!nimarkoCrashlyticsUploadEnabled) {
+            return
+        }
         def variantName = variant.name.capitalize()
         if (!nimarkoCompactStandalone) {
             tasks.withType(com.google.firebase.crashlytics.buildtools.gradle.tasks.InjectMappingFileIdTask).configureEach {

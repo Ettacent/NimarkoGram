@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 1.3.x.
  * It is licensed under GNU GPL v. 2 or later.
@@ -21,6 +23,7 @@ import android.text.Layout;
 import android.text.StaticLayout;
 import android.text.TextPaint;
 
+import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
 import androidx.annotation.NonNull;
 import androidx.core.content.ContextCompat;
 
@@ -33,7 +36,7 @@ import org.telegram.ui.ActionBar.Theme;
 
 public class TimerDrawable extends Drawable {
 
-    private TextPaint timePaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+    private TextPaint timePaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
     private Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private Paint linePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private StaticLayout timeLayout;
@@ -46,6 +49,7 @@ public class TimerDrawable extends Drawable {
     Context context;
     Theme.ResourcesProvider resourcesProvider;
     private boolean overrideColor;
+    private Integer foregroundColorOverride;
     private boolean isStaticIcon;
     private boolean isDialog;
 
@@ -157,7 +161,7 @@ public class TimerDrawable extends Drawable {
             if (!overrideColor) {
                 paint.setColor(Theme.getColor(Theme.key_actionBarDefault, resourcesProvider));
             }
-            timePaint.setColor(Theme.getColor(Theme.key_actionBarDefaultTitle, resourcesProvider));
+            timePaint.setColor(getForegroundColor());
         } else {
             timePaint.setColor(Theme.getColor(Theme.key_actionBarDefaultSubmenuItemIcon, resourcesProvider));
         }
@@ -165,7 +169,7 @@ public class TimerDrawable extends Drawable {
         if (currentTtlIcon != null) {
             if (!isStaticIcon && !isDialog) {
                 canvas.drawCircle(getBounds().centerX(), getBounds().centerY(), getBounds().width() / 2f, paint);
-                int iconColor = Theme.getColor(Theme.key_actionBarDefaultTitle, resourcesProvider);
+                int iconColor = getForegroundColor();
                 if (this.iconColor != iconColor) {
                     this.iconColor = iconColor;
                     currentTtlIcon.setColorFilter(new PorterDuffColorFilter(iconColor, PorterDuff.Mode.MULTIPLY));
@@ -234,6 +238,19 @@ public class TimerDrawable extends Drawable {
     public void setBackgroundColor(int currentActionBarColor) {
         overrideColor = true;
         paint.setColor(currentActionBarColor);
+        invalidateSelf();
+    }
+    public int getBackgroundColor() {
+        return overrideColor ? paint.getColor()
+                : Theme.getColor(Theme.key_actionBarDefault, resourcesProvider);
+    }
+    public int getForegroundColor() {
+        return foregroundColorOverride != null ? foregroundColorOverride
+                : Theme.getColor(Theme.key_actionBarDefaultTitle, resourcesProvider);
+    }
+    public void setForegroundColor(int color) {
+        foregroundColorOverride = color;
+        invalidateSelf();
     }
 
     public int getTime() {

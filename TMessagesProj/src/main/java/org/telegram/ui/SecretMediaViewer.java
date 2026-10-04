@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 5.x.x.
  * It is licensed under GNU GPL v. 2 or later.
@@ -45,6 +47,7 @@ import android.text.SpannableString;
 import android.text.SpannableStringBuilder;
 import android.text.StaticLayout;
 import android.text.TextPaint;
+import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
 import android.text.TextUtils;
 import android.text.style.ClickableSpan;
 import android.transition.Fade;
@@ -164,7 +167,7 @@ public class SecretMediaViewer implements NotificationCenter.NotificationCenterD
 
         private RLottieDrawable drawable;
 
-        private TextPaint oncePaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+        private TextPaint oncePaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
         private StaticLayout onceLayout;
         private float onceLayoutWidth, onceLayoutHeight;
 

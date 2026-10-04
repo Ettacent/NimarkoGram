@@ -104,7 +104,8 @@ public class BottomTabsPreferencesActivity extends BasePreferencesActivity {
             items.add(asSettingsLink(ID_RESET_ORDER, IconBackgroundColors.ORANGE,
                     R.drawable.msg_reset, LocaleController.getString(R.string.Reset)));
         }
-        items.add(UItem.asShadow(-5, LocaleController.getString(R.string.NM_SettingsSummaryBottomTabs)));
+        items.add(SettingsFooterItem.of(-5, NimarkoConfig.showMainTabs
+                ? LocaleController.getString(R.string.NM_SettingsSummaryBottomTabs) : null));
     }
 
     @Override

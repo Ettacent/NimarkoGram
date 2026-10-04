@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Cells;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -189,13 +191,13 @@ public class GroupMedia {
         height = (int) (layout.height * layout.maxSizeHeight);
 
         if (hidden) {
-            buttonText = new Text(StarsIntroActivity.replaceStarsWithPlain(LocaleController.formatPluralStringComma("UnlockPaidContent", (int) (buttonTextPrice = paidMedia.stars_amount)), .7f), 14, AndroidUtilities.bold());
+            buttonText = Text.ui(StarsIntroActivity.replaceStarsWithPlain(LocaleController.formatPluralStringComma("UnlockPaidContent", (int) (buttonTextPrice = paidMedia.stars_amount)), .7f), 14, AndroidUtilities.bold());
             if (buttonText.getCurrentWidth() > width - dp(30)) {
-                buttonText = new Text(StarsIntroActivity.replaceStarsWithPlain(LocaleController.formatPluralStringComma("UnlockPaidContentShort", (int) (buttonTextPrice = paidMedia.stars_amount)), .7f), 14, AndroidUtilities.bold());
+                buttonText = Text.ui(StarsIntroActivity.replaceStarsWithPlain(LocaleController.formatPluralStringComma("UnlockPaidContentShort", (int) (buttonTextPrice = paidMedia.stars_amount)), .7f), 14, AndroidUtilities.bold());
             }
         }
         if (priceText == null || priceTextPrice != paidMedia.stars_amount) {
-            priceText = new Text(StarsIntroActivity.replaceStars(LocaleController.formatPluralStringComma("PaidMediaPrice", (int) (priceTextPrice = paidMedia.stars_amount)), .9f), 12, AndroidUtilities.bold());
+            priceText = Text.ui(StarsIntroActivity.replaceStars(LocaleController.formatPluralStringComma("PaidMediaPrice", (int) (priceTextPrice = paidMedia.stars_amount)), .9f), 12, AndroidUtilities.bold());
         }
     }
 
@@ -289,9 +291,9 @@ public class GroupMedia {
         if (hidden) {
             final TLRPC.TL_messageMediaPaidMedia paidMedia = messageObject == null ? null : (TLRPC.TL_messageMediaPaidMedia) messageObject.messageOwner.media;
             if (paidMedia != null) {
-                buttonText = new Text(StarsIntroActivity.replaceStarsWithPlain(LocaleController.formatPluralStringComma("UnlockPaidContent", (int) (buttonTextPrice = paidMedia.stars_amount)), .7f), 14, AndroidUtilities.bold());
+                buttonText = Text.ui(StarsIntroActivity.replaceStarsWithPlain(LocaleController.formatPluralStringComma("UnlockPaidContent", (int) (buttonTextPrice = paidMedia.stars_amount)), .7f), 14, AndroidUtilities.bold());
                 if (buttonText.getCurrentWidth() > width - dp(30)) {
-                    buttonText = new Text(StarsIntroActivity.replaceStarsWithPlain(LocaleController.formatPluralStringComma("UnlockPaidContentShort", (int) (buttonTextPrice = paidMedia.stars_amount)), .7f), 14, AndroidUtilities.bold());
+                    buttonText = Text.ui(StarsIntroActivity.replaceStarsWithPlain(LocaleController.formatPluralStringComma("UnlockPaidContentShort", (int) (buttonTextPrice = paidMedia.stars_amount)), .7f), 14, AndroidUtilities.bold());
                 }
             }
         }
@@ -703,7 +705,7 @@ public class GroupMedia {
             if (video) return;
             final int newDurationValue = Math.max(0, duration - time);
             if (durationValue != newDurationValue) {
-                durationText = new Text(AndroidUtilities.formatLongDuration(durationValue = newDurationValue), 12);
+                durationText = Text.ui(AndroidUtilities.formatLongDuration(durationValue = newDurationValue), 12);
             }
         }
 
@@ -727,7 +729,7 @@ public class GroupMedia {
                 duration = p.video_duration;
             }
             if (video) {
-                durationText = new Text(AndroidUtilities.formatLongDuration(durationValue = duration), 12);
+                durationText = Text.ui(AndroidUtilities.formatLongDuration(durationValue = duration), 12);
             }
             this.imageReceiver = new ImageReceiver(cell);
             this.imageReceiver.setColorFilter(null);

@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -43,7 +45,7 @@ public class AvatarsImageView extends View {
 
     public void setPlus(int n, int bgColor) {
         premiumGradient = new PremiumGradient.PremiumGradientTools(Theme.key_premiumGradient1, Theme.key_premiumGradient2, -1, -1, -1, null);
-        plusText = new Text("+" + n, 12, AndroidUtilities.getTypeface("fonts/num.otf"));
+        plusText = Text.ui("+" + n, 12, AndroidUtilities.getTypeface("fonts/num.otf"));
         plusBgPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         plusBgPaint.setColor(bgColor);
     }

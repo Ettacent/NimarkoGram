@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components.Crop;
 
 import android.content.Context;
@@ -9,6 +11,7 @@ import android.graphics.PorterDuffColorFilter;
 import android.graphics.RectF;
 import android.os.Build;
 import android.text.TextPaint;
+import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
 import android.view.Gravity;
 import android.view.HapticFeedbackConstants;
 import android.view.MotionEvent;
@@ -110,7 +113,7 @@ public class CropRotationWheel extends FrameLayout {
         rotation90Button.setContentDescription(LocaleController.getString(R.string.AccDescrRotate));
         addView(rotation90Button, LayoutHelper.createFrame(70, 64, Gravity.RIGHT | Gravity.CENTER_VERTICAL));
 
-        degreesTextPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+        degreesTextPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
         degreesTextPaint.setColor(Color.WHITE);
         degreesTextPaint.setTextSize(AndroidUtilities.dp(14));
 

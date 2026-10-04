@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 5.x.x.
  * It is licensed under GNU GPL v. 2 or later.
@@ -14,6 +16,7 @@ import android.graphics.Canvas;
 import android.graphics.Paint;
 import android.graphics.Path;
 import android.text.TextPaint;
+import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
 import android.view.MotionEvent;
 import android.view.View;
 
@@ -53,7 +56,7 @@ public class PhotoFilterCurvesControl extends View {
     private Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private Paint paintDash = new Paint(Paint.ANTI_ALIAS_FLAG);
     private Paint paintCurve = new Paint(Paint.ANTI_ALIAS_FLAG);
-    private TextPaint textPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+    private TextPaint textPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
     private Path path = new Path();
 
     private PhotoFilterCurvesControlDelegate delegate;

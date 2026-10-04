@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Stories;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -10,6 +12,7 @@ import android.graphics.RectF;
 import android.text.Layout;
 import android.text.StaticLayout;
 import android.text.TextPaint;
+import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
 import android.util.Log;
 import android.view.View;
 
@@ -37,7 +40,7 @@ public class StoryLinesDrawable {
         this.sharedResources = sharedResources;
         zoomT = new AnimatedFloat(view, 0, 360, CubicBezierInterpolator.EASE_OUT_QUINT);
 
-        zoomHintPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+        zoomHintPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
         zoomHintPaint.setTextSize(dp(14));
         zoomHintPaint.setColor(0xffffffff);
         zoomHintPaint.setShadowLayer(dp(3), 0, dp(1), 0x30000000);

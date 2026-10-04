@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components.Reactions;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -16,6 +18,7 @@ import android.graphics.drawable.Drawable;
 import android.text.SpannableString;
 import android.text.Spanned;
 import android.text.TextPaint;
+import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
 import android.text.TextUtils;
 import android.view.Gravity;
 import android.view.MotionEvent;
@@ -77,7 +80,7 @@ public class ReactionsLayoutInBubble {
     private static final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private static final Paint tagPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private static final Paint cutTagPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-    private static final TextPaint textPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+    private static final TextPaint textPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
 
     public static void initPaints(Theme.ResourcesProvider resourcesProvider) {
         paint.setColor(Theme.getColor(Theme.key_chat_inLoader, resourcesProvider));
@@ -1804,7 +1807,7 @@ public class ReactionsLayoutInBubble {
         }
 
         public CharSequence toCharSequence(int textSizeDp) {
-            TextPaint textPaint = new TextPaint();
+            TextPaint textPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
             textPaint.setTextSize(AndroidUtilities.dp(textSizeDp));
             if (!TextUtils.isEmpty(emojicon)) {
                 CharSequence string = emojicon;

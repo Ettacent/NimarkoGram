@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 5.x.x.
  * It is licensed under GNU GPL v. 2 or later.
@@ -607,11 +609,7 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
             titleTextView[i].setTextColor(getThemedColor(Theme.key_actionBarDefaultTitle));
         }
         titleTextView[i].setEmojiColor(titleTextView[i].getTextColor());
-        if (gilroy) {
-            titleTextView[i].setTypeface(app.nimarkogram.messenger.utils.ui.FontHelper.createTypeface2(app.nimarkogram.messenger.utils.ui.FontHelper.TYPEFACE_GILROY_EXTRABOLD));
-        } else {
             titleTextView[i].setTypeface(AndroidUtilities.bold());
-        }
         titleTextView[i].setDrawablePadding(dp(4));
         titleTextView[i].setPadding(0, dp(8), 0, dp(8));
         titleTextView[i].setRightDrawableTopPadding(-dp(1));
@@ -957,7 +955,7 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
 
     public Paint.FontMetricsInt getTitleFontMetricsInt() {
         if (titleTextView[0] == null) {
-            TextPaint paint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+            TextPaint paint = new app.nimarkogram.messenger.utils.ui.SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
             paint.setTextSize(dp(!AndroidUtilities.isTablet() && getResources().getConfiguration().orientation == Configuration.ORIENTATION_LANDSCAPE ? 18 : 20));
             return paint.getFontMetricsInt();
         }

@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 5.x.x
  * It is licensed under GNU GPL v. 2 or later.
@@ -27,6 +29,7 @@ import android.text.SpannableString;
 import android.text.SpannableStringBuilder;
 import android.text.Spanned;
 import android.text.TextPaint;
+import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
 import android.text.TextUtils;
 import android.text.TextWatcher;
 import android.text.style.ImageSpan;
@@ -164,7 +167,7 @@ public class PhotoViewerCaptionEnterView extends FrameLayout implements Notifica
         emojiIconDrawable.setColorFilter(new PorterDuffColorFilter(Color.WHITE, PorterDuff.Mode.MULTIPLY));
         emojiIconDrawable.setIcon(R.drawable.input_smile, false);
 
-        lengthTextPaint = new TextPaint(TextPaint.ANTI_ALIAS_FLAG);
+        lengthTextPaint = new SystemTextPaint(TextPaint.ANTI_ALIAS_FLAG);
         lengthTextPaint.setTextSize(AndroidUtilities.dp(13));
         lengthTextPaint.setTypeface(AndroidUtilities.bold());
         lengthTextPaint.setColor(0xffd9d9d9);

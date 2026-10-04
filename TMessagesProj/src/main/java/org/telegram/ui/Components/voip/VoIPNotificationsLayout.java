@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components.voip;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -13,6 +15,7 @@ import android.graphics.RectF;
 import android.text.Layout;
 import android.text.StaticLayout;
 import android.text.TextPaint;
+import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
 import android.text.TextUtils;
 import android.transition.ChangeBounds;
 import android.transition.Fade;
@@ -51,7 +54,7 @@ public class VoIPNotificationsLayout extends LinearLayout {
     boolean wasChanged;
     Runnable onViewsUpdated;
     VoIPBackgroundProvider backgroundProvider;
-    TextPaint textPaint = new TextPaint();
+    TextPaint textPaint = new SystemTextPaint(0);
 
     public VoIPNotificationsLayout(Context context, VoIPBackgroundProvider backgroundProvider) {
         super(context);

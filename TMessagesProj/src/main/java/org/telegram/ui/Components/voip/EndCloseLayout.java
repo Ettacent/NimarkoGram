@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components.voip;
 
 import android.animation.Animator;
@@ -6,6 +8,7 @@ import android.animation.AnimatorSet;
 import android.animation.ArgbEvaluator;
 import android.animation.ValueAnimator;
 import android.content.Context;
+import android.content.res.Configuration;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
@@ -34,6 +37,7 @@ import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.Components.CubicBezierInterpolator;
 import org.telegram.ui.Components.LayoutHelper;
 
+import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
 public class EndCloseLayout extends FrameLayout {
     private final EndCloseView endCloseView;
     private final TransitionSet transitionSet;
@@ -161,8 +165,8 @@ public class EndCloseLayout extends FrameLayout {
     static class EndCloseView extends View {
         private Drawable rippleDrawable;
         private final Paint backgroundPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-        private final Paint textPaintMask = new Paint(Paint.ANTI_ALIAS_FLAG);
-        private final Paint textPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Paint textPaintMask = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
+        private final Paint textPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
         private final RectF backgroundRect = new RectF();
         private final Drawable callDeclineDrawable;
         private final String closeText;
@@ -187,6 +191,12 @@ public class EndCloseLayout extends FrameLayout {
             setLayerType(View.LAYER_TYPE_HARDWARE, null);
             setClickable(true);
             closeText = LocaleController.getString(R.string.Close);
+        }
+
+        @Override
+        protected void onConfigurationChanged(Configuration newConfig) {
+            super.onConfigurationChanged(newConfig);
+            invalidate();
         }
 
         @Override

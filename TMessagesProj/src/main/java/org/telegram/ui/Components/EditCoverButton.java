@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -45,7 +47,7 @@ public class EditCoverButton extends View {
         imageReceiver = new ImageReceiver(this);
         imageReceiver.setRoundRadius(dp(22.66f));
 
-        this.text = new Text(text, 14, AndroidUtilities.bold());
+        this.text = Text.ui(text, 14, AndroidUtilities.bold());
         if (withArrow) {
             this.arrowDrawable = context.getResources().getDrawable(R.drawable.arrow_newchat).mutate();
             this.arrowDrawable.setColorFilter(new PorterDuffColorFilter(0x99FFFFFF, PorterDuff.Mode.SRC_IN));

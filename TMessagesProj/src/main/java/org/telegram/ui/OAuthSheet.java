@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -570,7 +572,7 @@ public class OAuthSheet {
 
             Drawable thumb = Emoji.getEmojiBigDrawable(code);
             if (thumb == null) {
-                final Text text = new Text(code, 30, AndroidUtilities.bold());
+                final Text text = Text.ui(code, 30, AndroidUtilities.bold());
                 thumb = new Drawable() {
                     @Override
                     public void draw(@NonNull Canvas canvas) {

@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui;
 
 import android.Manifest;
@@ -37,6 +39,7 @@ import android.text.SpannableStringBuilder;
 import android.text.Spanned;
 import android.text.StaticLayout;
 import android.text.TextPaint;
+import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
 import android.text.TextUtils;
 import android.text.TextWatcher;
 import android.text.method.PasswordTransformationMethod;
@@ -429,7 +432,7 @@ public class PassportActivity extends BaseFragment implements NotificationCenter
         public void updateDrawState(TextPaint ds) {
             super.updateDrawState(ds);
             ds.setUnderlineText(true);
-            ds.setTypeface(AndroidUtilities.bold());
+            SystemTextPaint.setSpanTypeface(ds, AndroidUtilities.bold());
         }
 
         @Override

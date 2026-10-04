@@ -64,7 +64,8 @@ public class NimarkoMediaPreferencesActivity extends BasePreferencesActivity {
                         .setChecked(NimarkoConfig.nimarkoMediaYtFmt == 1));
             }
         }
-        items.add(UItem.asShadow(ID_SHADOW_PLATFORMS, supportedPlatforms));
+        items.add(SettingsFooterItem.of(ID_SHADOW_PLATFORMS,
+                NimarkoConfig.nimarkoMediaAuto ? supportedPlatforms : null));
     }
 
     @Override

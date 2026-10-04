@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -18,6 +20,7 @@ import android.graphics.drawable.GradientDrawable;
 import android.os.SystemClock;
 import android.text.Layout;
 import android.text.TextPaint;
+import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
 import android.text.TextUtils;
 import android.transition.TransitionManager;
 import android.util.SparseArray;
@@ -1433,7 +1436,10 @@ public class ViewPagerFixed extends FrameLayout {
                     if (this.text != null) {
                         this.text.detach();
                     }
-                    this.text = new Text(currentText, textPaint.getTextSize() / AndroidUtilities.density, textPaint.getTypeface())
+                    TextPaint titlePaint = new SystemTextPaint(textPaint.getFlags());
+                    titlePaint.setTextSize(textPaint.getTextSize());
+                    SystemTextPaint.copyTypeface(titlePaint, textPaint);
+                    this.text = new Text(currentText, titlePaint)
                         .supportAnimatedEmojis(this);
                 }
                 if (this.text != null) {
@@ -1500,8 +1506,8 @@ public class ViewPagerFixed extends FrameLayout {
             }
         }
 
-        private final TextPaint textPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
-        private final TextPaint textCounterPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+        private final TextPaint textPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
+        private final TextPaint textCounterPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
         private final Paint deletePaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
         private final Paint counterPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
 

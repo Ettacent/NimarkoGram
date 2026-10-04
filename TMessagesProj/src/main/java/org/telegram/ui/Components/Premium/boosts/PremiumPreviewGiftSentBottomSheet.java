@@ -1,5 +1,8 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components.Premium.boosts;
 
+import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
 import static org.telegram.messenger.AndroidUtilities.dp;
 import static org.telegram.messenger.AndroidUtilities.replaceTags;
 import static org.telegram.messenger.LocaleController.formatPluralString;
@@ -203,7 +206,7 @@ public class PremiumPreviewGiftSentBottomSheet extends PremiumPreviewBottomSheet
 
     static class AdditionalCounterView extends View {
 
-        TextPaint paint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+        TextPaint paint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
         int count;
 
         public AdditionalCounterView(Context context) {

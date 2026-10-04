@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Stories.recorder;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -20,6 +22,7 @@ import android.os.Build;
 import android.text.Layout;
 import android.text.StaticLayout;
 import android.text.TextPaint;
+import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
@@ -363,8 +366,8 @@ public class DownloadButton extends ImageView {
     public static class PreparingVideoToast extends View {
 
         private final Paint dimPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-        private final TextPaint textPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
-        private final TextPaint textPaint2 = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+        private final TextPaint textPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
+        private final TextPaint textPaint2 = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
         private final Paint backgroundPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint whitePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint greyPaint = new Paint(Paint.ANTI_ALIAS_FLAG);

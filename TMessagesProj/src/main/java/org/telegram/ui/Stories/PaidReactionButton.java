@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Stories;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -287,7 +289,7 @@ public class PaidReactionButton extends View {
                 sb.setSpan(span, 0, sb.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
                 sb.append(" ");
                 sb.append(LocaleController.formatNumber(stars, ','));
-                text = new Text(sb, 10, AndroidUtilities.getTypeface("fonts/num.otf"));
+                text = Text.ui(sb, 10, AndroidUtilities.getTypeface("fonts/num.otf"));
 
                 progress = new AnimatedFloat(view, 2000, new LinearInterpolator());
                 progress.force(0.0f);

@@ -596,6 +596,8 @@ public class ApplicationLoader extends Application {
                 SystemClock.elapsedRealtime() + NG_PINE_HOOK_WAIT_BUDGET_MS;
         boolean pineReady = false;
         markPineInitializationStarted();
+        app.nimarkogram.messenger.NimarkoCrashContext.pine(
+                "initialization", "ApplicationLoader.ensurePineInited");
         try {
 
             boolean hiddenApiBypassReady = false;
@@ -653,6 +655,8 @@ public class ApplicationLoader extends Application {
                     + ", initialised=" + pineReady
                     + ", hookMode=" + top.canyie.pine.Pine.getHookMode());
         } catch (Throwable t) {
+            app.nimarkogram.messenger.NimarkoCrashContext.failure(
+                    "pine", null, "ApplicationLoader.ensurePineInited", t);
             ngPineUnavailableReason = t.getClass().getSimpleName()
                     + (t.getMessage() == null ? "" : ": " + t.getMessage());
             org.telegram.messenger.FileLog.e("nimarko: Pine init failed", t);
@@ -939,6 +943,8 @@ public class ApplicationLoader extends Application {
 
         super.onCreate();
 
+        app.nimarkogram.messenger.utils.ui.SystemTextPaint.configure(
+                getResources().getConfiguration(), app.nimarkogram.messenger.NimarkoConfig.systemFonts);
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                 app.nimarkogram.messenger.plugins.utils.NativeCrashHandler
@@ -1097,6 +1103,8 @@ public class ApplicationLoader extends Application {
     @Override
     public void onConfigurationChanged(Configuration newConfig) {
         super.onConfigurationChanged(newConfig);
+        app.nimarkogram.messenger.utils.ui.SystemTextPaint.configure(
+                newConfig, app.nimarkogram.messenger.NimarkoConfig.systemFonts);
         try {
             LocaleController.getInstance().onDeviceConfigurationChange(newConfig);
             AndroidUtilities.checkDisplaySize(applicationContext, newConfig);

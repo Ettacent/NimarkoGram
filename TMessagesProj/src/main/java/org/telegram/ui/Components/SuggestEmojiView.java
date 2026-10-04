@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components;
 
 import android.content.Context;
@@ -42,6 +44,7 @@ import org.telegram.messenger.UserObject;
 import org.telegram.tgnet.TLRPC;
 import org.telegram.ui.ActionBar.BaseFragment;
 import org.telegram.ui.ActionBar.Theme;
+import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
 import org.telegram.ui.ChatActivity;
 import org.telegram.ui.ContentPreviewViewer;
 
@@ -630,7 +633,7 @@ public class SuggestEmojiView extends FrameLayout implements NotificationCenter.
             fontMetricsInt = enterView.getEditField().getPaint().getFontMetricsInt();
         }
         if (fontMetricsInt == null) {
-            Paint paint = new Paint();
+            Paint paint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
             paint.setTextSize(AndroidUtilities.dp(18));
             fontMetricsInt = paint.getFontMetricsInt();
         }

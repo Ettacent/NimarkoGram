@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Cells;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -55,10 +57,10 @@ public class BotAskCellDrawable extends Drawable {
         this.currentAccount = currentAccount;
         this.resourcesProvider = resourcesProvider;
 
-        title = new Text(LocaleController.getString(R.string.BotForumAskForStartNewChatTitle), 14, AndroidUtilities.bold());
+        title = Text.ui(LocaleController.getString(R.string.BotForumAskForStartNewChatTitle), 14, AndroidUtilities.bold());
         title.align(Layout.Alignment.ALIGN_CENTER);
 
-        text = new Text("", 13);
+        text = Text.ui("", 13);
         text.multiline(4);
         text.align(Layout.Alignment.ALIGN_CENTER);
 

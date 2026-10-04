@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui;
 
 import static android.content.Context.AUDIO_SERVICE;
@@ -9892,10 +9894,10 @@ public class GroupCallActivity extends BottomSheet implements NotificationCenter
             }
 
             backgroundPaint.setColor(Theme.getColor(Theme.key_voipgroup_listViewBackground));
-            text1 = new Text(getString(R.string.ConferenceEncrypted), 12, AndroidUtilities.bold());
-            text2 = new Text(getString(R.string.ConferenceEncryptedInfo), 11)
+            text1 = Text.ui(getString(R.string.ConferenceEncrypted), 12, AndroidUtilities.bold());
+            text2 = Text.ui(getString(R.string.ConferenceEncryptedInfo), 11)
                 .multiline(99).setMaxWidth(dp(200)).lineSpacing(dp(2.66f));
-            closeText = new Text(getString(R.string.ConferenceEncryptedClose), 14, AndroidUtilities.bold());
+            closeText = Text.ui(getString(R.string.ConferenceEncryptedClose), 14, AndroidUtilities.bold());
 
             setEmojis(null);
         }

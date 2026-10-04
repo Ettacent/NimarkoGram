@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Stories;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -1774,7 +1776,7 @@ public class LiveCommentsView extends FrameLayout implements NotificationCenter.
                 name.setSpan(new ReplacementSpan() {
                     private final RectF rect = new RectF();
                     private final Paint bg = new Paint(Paint.ANTI_ALIAS_FLAG);
-                    private final Text text = new Text(getString(R.string.LiveStoryBadge), 8, AndroidUtilities.bold());
+                    private final Text text = Text.ui(getString(R.string.LiveStoryBadge), 8, AndroidUtilities.bold());
                     @Override
                     public int getSize(@NonNull Paint paint, CharSequence charSequence, int i, int i1, @Nullable Paint.FontMetricsInt fontMetricsInt) {
                         return (int) (text.getWidth() + dp(8));
@@ -2026,7 +2028,7 @@ public class LiveCommentsView extends FrameLayout implements NotificationCenter.
         public CrownDrawable(Context context, int place) {
             scale = 0.75f;
             crown = context.getResources().getDrawable(R.drawable.filled_stream_crown).mutate();
-            text = new Text("" + place, 8, AndroidUtilities.getTypeface("fonts/num.otf"));
+            text = Text.ui("" + place, 8, AndroidUtilities.getTypeface("fonts/num.otf"));
             text.paint.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.CLEAR));
         }
 

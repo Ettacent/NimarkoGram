@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui;
 
 import static org.telegram.messenger.AndroidUtilities.distance;
@@ -37,6 +39,7 @@ import android.os.Build;
 import android.text.SpannableStringBuilder;
 import android.text.Spanned;
 import android.text.TextPaint;
+import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
 import android.text.TextUtils;
 import android.text.style.ReplacementSpan;
 import android.util.Log;
@@ -554,7 +557,7 @@ public class PeerColorActivity extends BaseFragment implements NotificationCente
                                         selectedTab = tabs.size();
                                     }
                                     index2gift.put(tabs.size(), starGift);
-                                    final TextPaint textPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+                                    final TextPaint textPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
                                     textPaint.setTextSize(dp(14));
                                     final SpannableStringBuilder sb = new SpannableStringBuilder("x ");
                                     final AnimatedEmojiSpan span = new AnimatedEmojiSpan(starGift.getDocument(), textPaint.getFontMetricsInt());
@@ -979,7 +982,7 @@ public class PeerColorActivity extends BaseFragment implements NotificationCente
                 } else {
                     imageDrawable.set((Drawable) null, animated);
                     if (offText == null) {
-                        offText = new Text(getString(isChannel ? R.string.ChannelReplyIconOff : R.string.UserReplyIconOff), 16);
+                        offText = Text.ui(getString(isChannel ? R.string.ChannelReplyIconOff : R.string.UserReplyIconOff), 16);
                     }
                 }
             }
@@ -2249,7 +2252,7 @@ public class PeerColorActivity extends BaseFragment implements NotificationCente
 
         public LevelLock(Context context, boolean plus, int lvl, Theme.ResourcesProvider resourcesProvider) {
             this.resourcesProvider = resourcesProvider;
-            text = new Text(LocaleController.formatPluralString(plus ? "BoostLevelPlus" : "BoostLevel", lvl), 12, AndroidUtilities.bold());
+            text = Text.ui(LocaleController.formatPluralString(plus ? "BoostLevelPlus" : "BoostLevel", lvl), 12, AndroidUtilities.bold());
             lock = context.getResources().getDrawable(R.drawable.mini_switch_lock).mutate();
             lock.setColorFilter(new PorterDuffColorFilter(Color.WHITE, PorterDuff.Mode.SRC_IN));
             gradientTools = new PremiumGradient.PremiumGradientTools(Theme.key_premiumGradient1, Theme.key_premiumGradient2, -1, -1, -1, resourcesProvider);
@@ -2369,7 +2372,7 @@ public class PeerColorActivity extends BaseFragment implements NotificationCente
                 }
             }
             setContentDescription(button);
-            buttonText = new Text(button, 16);
+            buttonText = Text.ui(button, 16);
             updateColors();
         }
 
@@ -2391,7 +2394,7 @@ public class PeerColorActivity extends BaseFragment implements NotificationCente
             needDivider = divider;
             CharSequence text = chat.title;
             text = Emoji.replaceEmoji(text, Theme.chat_msgTextPaint.getFontMetricsInt(), false);
-            userText = new Text(text, 13, AndroidUtilities.bold());
+            userText = Text.ui(text, 13, AndroidUtilities.bold());
 
             if (color1Drawable != null) {
                 color1Drawable.setView(null);
@@ -2454,7 +2457,7 @@ public class PeerColorActivity extends BaseFragment implements NotificationCente
             }
             CharSequence text = name;
             text = Emoji.replaceEmoji(text, Theme.chat_msgTextPaint.getFontMetricsInt(), false);
-            userText = new Text(text, 13, AndroidUtilities.bold());
+            userText = Text.ui(text, 13, AndroidUtilities.bold());
             if (color1Drawable != null) {
                 color1Drawable.setView(null);
             }

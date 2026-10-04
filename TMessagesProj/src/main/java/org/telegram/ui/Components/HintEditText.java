@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 5.x.x.
  * It is licensed under GNU GPL v. 2 or later.
@@ -13,12 +15,13 @@ import android.graphics.Canvas;
 import android.graphics.Paint;
 import android.graphics.Rect;
 import android.text.TextPaint;
+import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
 import android.util.TypedValue;
 
 import org.telegram.ui.ActionBar.Theme;
 
 public class HintEditText extends EditTextBoldCursor {
-    protected TextPaint hintPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+    protected TextPaint hintPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
 
     private String hintText;
     private Rect rect = new Rect();

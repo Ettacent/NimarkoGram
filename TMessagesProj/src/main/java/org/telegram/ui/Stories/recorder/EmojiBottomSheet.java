@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Stories.recorder;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -31,6 +33,7 @@ import android.text.SpannableStringBuilder;
 import android.text.Spanned;
 import android.text.StaticLayout;
 import android.text.TextPaint;
+import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
 import android.text.TextUtils;
 import android.text.TextWatcher;
 import android.util.SparseArray;
@@ -2689,7 +2692,7 @@ public class EmojiBottomSheet extends BottomSheet implements NotificationCenter.
 
     private static class TabsView extends View {
 
-        private final TextPaint textPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+        private final TextPaint textPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
         private final Paint selectPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
 
         private StaticLayout emojiLayout;
@@ -2871,7 +2874,7 @@ public class EmojiBottomSheet extends BottomSheet implements NotificationCenter.
     private class StoryWidgetsCell extends View {
 
         private final Paint bgPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-        private final TextPaint textPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+        private final TextPaint textPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
         {
             bgPaint.setColor(0x19ffffff);
             textPaint.setTypeface(AndroidUtilities.getTypeface("fonts/rcondensedbold.ttf"));

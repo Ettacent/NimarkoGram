@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Charts;
 
 import android.animation.Animator;
@@ -19,6 +21,7 @@ import android.os.Bundle;
 import android.os.VibrationEffect;
 import android.os.Vibrator;
 import android.text.TextPaint;
+import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
 import android.view.HapticFeedbackConstants;
 import android.view.MotionEvent;
 import android.view.View;
@@ -100,9 +103,9 @@ public abstract class BaseChartView<T extends ChartData, L extends LineViewData>
 
     Paint linePaint = new Paint();
     Paint selectedLinePaint = new Paint();
-    TextPaint signaturePaint = new TextPaint(TextPaint.ANTI_ALIAS_FLAG);
-    TextPaint signaturePaint2 = new TextPaint(TextPaint.ANTI_ALIAS_FLAG);
-    Paint bottomSignaturePaint = new TextPaint(TextPaint.ANTI_ALIAS_FLAG);
+    TextPaint signaturePaint = new SystemTextPaint(TextPaint.ANTI_ALIAS_FLAG);
+    TextPaint signaturePaint2 = new SystemTextPaint(TextPaint.ANTI_ALIAS_FLAG);
+    Paint bottomSignaturePaint = new SystemTextPaint(TextPaint.ANTI_ALIAS_FLAG);
     Paint pickerSelectorPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     Paint unactiveBottomChartPaint = new Paint();
     Paint selectionBackgroundPaint = new Paint(Paint.ANTI_ALIAS_FLAG);

@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -24,6 +26,7 @@ import android.graphics.drawable.Drawable;
 import android.graphics.drawable.ShapeDrawable;
 import android.text.SpannableStringBuilder;
 import android.text.TextPaint;
+import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
 import android.util.Pair;
 import android.util.TypedValue;
 import android.view.Gravity;
@@ -1216,8 +1219,8 @@ public class FolderBottomSheet extends BottomSheetWithRecyclerListView {
 
         private class FoldersPreview extends View {
 
-            TextPaint paint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
-            TextPaint selectedTextPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+            TextPaint paint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
+            TextPaint selectedTextPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
             Paint selectedPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
             Path path = new Path();
             float[] radii = new float[8];
@@ -1267,17 +1270,17 @@ public class FolderBottomSheet extends BottomSheetWithRecyclerListView {
                 final int textColor = Theme.multAlpha(Theme.getColor(Theme.key_profile_tabText), .8f);
                 final int selectedTextColor = Theme.getColor(Theme.key_windowBackgroundWhiteBlueText2);
                 if (left2FolderText != null) {
-                    leftFolder2 = new Text(normalizeTitle(left2FolderText), 15.33f, AndroidUtilities.bold())
+                    leftFolder2 = Text.ui(normalizeTitle(left2FolderText), 15.33f, AndroidUtilities.bold())
                         .supportAnimatedEmojis(this)
                         .setColor(textColor);
                 }
                 if (left1FolderText != null) {
-                    leftFolder = new Text(normalizeTitle(left1FolderText), 15.33f, AndroidUtilities.bold())
+                    leftFolder = Text.ui(normalizeTitle(left1FolderText), 15.33f, AndroidUtilities.bold())
                         .supportAnimatedEmojis(this)
                         .setColor(textColor);
                 }
                 middleFolderText = normalizeTitle(middleFolderText);
-                middleFolder = new Text(middleFolderText, 15.33f, AndroidUtilities.bold())
+                middleFolder = Text.ui(middleFolderText, 15.33f, AndroidUtilities.bold())
                     .supportAnimatedEmojis(this)
                     .setColor(selectedTextColor);
                 middleFolderText = Emoji.replaceEmoji(middleFolderText, middleFolder.getFontMetricsInt(), false);
@@ -1285,12 +1288,12 @@ public class FolderBottomSheet extends BottomSheetWithRecyclerListView {
                 middleFolder.setText(middleFolderText);
                 middleFolder.setEmojiCacheType(middleFolderNoanimate ? AnimatedEmojiDrawable.CACHE_TYPE_NOANIMATE_FOLDER : AnimatedEmojiDrawable.CACHE_TYPE_MESSAGES);
                 if (right1FolderText != null) {
-                    rightFolder = new Text(normalizeTitle(right1FolderText), 15.33f, AndroidUtilities.bold())
+                    rightFolder = Text.ui(normalizeTitle(right1FolderText), 15.33f, AndroidUtilities.bold())
                         .supportAnimatedEmojis(this)
                         .setColor(textColor);
                 }
                 if (right2FolderText != null) {
-                    rightFolder2 = new Text(normalizeTitle(right2FolderText), 15.33f, AndroidUtilities.bold())
+                    rightFolder2 = Text.ui(normalizeTitle(right2FolderText), 15.33f, AndroidUtilities.bold())
                         .supportAnimatedEmojis(this)
                         .setColor(textColor);
                 }

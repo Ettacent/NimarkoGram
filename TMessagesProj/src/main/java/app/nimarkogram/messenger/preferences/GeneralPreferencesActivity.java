@@ -103,7 +103,6 @@ public class GeneralPreferencesActivity extends NimarkoUniversalPreferencesActiv
     private static final int archiveStoriesRow = 8;
 
     private static final int useSystemEmojiRow = 9;
-    private static final int useSystemFontsRow = 10;
     private static final int tabledModeRow = 11;
 
     private static final int downloadSpeedBoostRow = 12;
@@ -127,7 +126,7 @@ public class GeneralPreferencesActivity extends NimarkoUniversalPreferencesActiv
     public static GeneralPreferencesActivity forSetting(int itemId) {
         int targetPage = switch (itemId) {
             case springAnimationRow, predictiveBackRow,
-                    useSystemEmojiRow, useSystemFontsRow, tabledModeRow -> PAGE_SYSTEM;
+                    useSystemEmojiRow, tabledModeRow -> PAGE_SYSTEM;
             case silenceNonContactsRow, residentNotificationRow, notificationReactionsRow,
                     notificationReactionEmojiRow, hideStoriesRow, archiveStoriesRow,
                     inAppNotificationsRow, inAppNotificationsPreviewRow -> PAGE_NOTIFICATIONS;
@@ -245,9 +244,6 @@ public class GeneralPreferencesActivity extends NimarkoUniversalPreferencesActiv
         }
         items.add(SettingsHelper.asSwitchCG(useSystemEmojiRow, getString(R.string.AP_SystemEmoji))
                 .setChecked(NimarkoConfig.systemEmoji)
-        );
-        items.add(SettingsHelper.asSwitchCG(useSystemFontsRow, getString(R.string.AP_SystemFonts))
-                .setChecked(NimarkoConfig.systemFonts)
         );
         items.add(asSettingsValue(tabledModeRow, IconBackgroundColors.CYAN,
                 R.drawable.msg_screencast_off, getString(R.string.AP_Tablet_Mode), getTabletModeValue()));
@@ -403,10 +399,6 @@ public class GeneralPreferencesActivity extends NimarkoUniversalPreferencesActiv
             NimarkoConfig.toggleSystemEmoji();
             SettingsHelper.updateCheckState(view, NimarkoConfig.systemEmoji);
 
-            showRestartBulletin();
-        } else if (item.id == useSystemFontsRow) {
-            NimarkoConfig.toggleSystemFonts();
-            SettingsHelper.updateCheckState(view, NimarkoConfig.systemFonts);
 
             showRestartBulletin();
         } else if (item.id == tabledModeRow) {

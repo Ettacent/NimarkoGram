@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Cells;
 
 import android.content.Context;
@@ -6,6 +8,7 @@ import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.RectF;
 import android.text.TextPaint;
+import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
 import android.view.Gravity;
 import android.view.accessibility.AccessibilityEvent;
 import android.view.accessibility.AccessibilityNodeInfo;
@@ -27,7 +30,7 @@ public class ChatListCell extends LinearLayout {
         private RadioButton button;
         private boolean isThreeLines;
         private RectF rect = new RectF();
-        private TextPaint textPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+        private TextPaint textPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
 
         public ListView(Context context, boolean threeLines) {
             super(context);

@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Stories.recorder;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -187,7 +189,7 @@ public class CaptionStory extends CaptionContainerView {
 
             if (slideToCancelAlpha > 0) {
                 if (slideToCancelText == null) {
-                    slideToCancelText = new Text(LocaleController.getString(R.string.SlideToCancel2), 15);
+                    slideToCancelText = Text.ui(LocaleController.getString(R.string.SlideToCancel2), 15);
                 }
                 if (slideToCancelArrowPath == null) {
                     slideToCancelArrowPath = new Path();
@@ -220,7 +222,7 @@ public class CaptionStory extends CaptionContainerView {
 
             if (cancelAlpha > 0) {
                 if (cancelText == null) {
-                    cancelText = new Text(LocaleController.getString(R.string.CancelRound), 15, AndroidUtilities.bold());
+                    cancelText = Text.ui(LocaleController.getString(R.string.CancelRound), 15, AndroidUtilities.bold());
                 }
 
                 cancelText.ellipsize((int) (bounds.width() - dp(5 + 21 + 16 + 10 + 64) - timerTextDrawable.getCurrentWidth()));

@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.ActionBar;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -1159,7 +1161,7 @@ public class BottomSheetTabsOverlay extends View {
         canvas.restore();
 
         if (closeAllButtonText == null) {
-            closeAllButtonText = new Text(getString(R.string.BotCloseAllTabs), 14, AndroidUtilities.bold());
+            closeAllButtonText = Text.ui(getString(R.string.BotCloseAllTabs), 14, AndroidUtilities.bold());
         }
         if (closeAllButtonBackground == null || closeAllButtonBackgroundDark != Theme.isCurrentThemeDark()) {
             closeAllButtonBackgroundDark = Theme.isCurrentThemeDark();

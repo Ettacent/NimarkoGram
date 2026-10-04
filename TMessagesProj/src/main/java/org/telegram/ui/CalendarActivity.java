@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui;
 
 import android.animation.Animator;
@@ -14,6 +16,7 @@ import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.Drawable;
 import android.os.Bundle;
 import android.text.TextPaint;
+import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
 import android.util.SparseArray;
 import android.util.TypedValue;
 import android.view.GestureDetector;
@@ -80,9 +83,9 @@ public class CalendarActivity extends BaseFragment implements NotificationCenter
 
     RecyclerListView listView;
     LinearLayoutManager layoutManager;
-    TextPaint textPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
-    TextPaint activeTextPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
-    TextPaint textPaint2 = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+    TextPaint textPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
+    TextPaint activeTextPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
+    TextPaint textPaint2 = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
 
     TextView selectDaysButton;
     TextView removeDaysButton;

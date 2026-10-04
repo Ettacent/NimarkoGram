@@ -61,18 +61,13 @@ android {
     }
 
     signingConfigs {
-        debug {
-            storeFile file("../TMessagesProj/config/release.keystore")
-            storePassword RELEASE_STORE_PASSWORD
-            keyAlias RELEASE_KEY_ALIAS
-            keyPassword RELEASE_KEY_PASSWORD
-        }
-
         release {
-            storeFile file("../TMessagesProj/config/release.keystore")
-            storePassword RELEASE_STORE_PASSWORD
-            keyAlias RELEASE_KEY_ALIAS
-            keyPassword RELEASE_KEY_PASSWORD
+            if (nimarkoReleaseSigningConfigured) {
+                storeFile rootProject.file(nimarkoSigning.RELEASE_STORE_FILE)
+                storePassword nimarkoSigning.RELEASE_STORE_PASSWORD
+                keyAlias nimarkoSigning.RELEASE_KEY_ALIAS
+                keyPassword nimarkoSigning.RELEASE_KEY_PASSWORD
+            }
         }
     }
 
@@ -90,7 +85,7 @@ android {
         standalone {
             debuggable false
             jniDebuggable false
-            signingConfig signingConfigs.release
+            signingConfig nimarkoReleaseSigningConfigured ? signingConfigs.release : null
             applicationIdSuffix ".web"
             minifyEnabled true
             multiDexEnabled true
@@ -169,4 +164,3 @@ android {
         checkReleaseBuilds false
     }
 }
-

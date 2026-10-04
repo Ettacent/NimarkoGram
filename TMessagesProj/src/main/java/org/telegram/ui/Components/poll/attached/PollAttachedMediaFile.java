@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components.poll.attached;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -12,6 +14,7 @@ import android.net.Uri;
 import android.text.Layout;
 import android.text.StaticLayout;
 import android.text.TextPaint;
+import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
 import android.text.TextUtils;
 import android.view.View;
 
@@ -67,7 +70,7 @@ public class PollAttachedMediaFile extends PollAttachedMedia {
         }
 
         if (!TextUtils.isEmpty(ext)) {
-            tp = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+            tp = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
             tp.setTextSize(dp(13));
             tp.setTypeface(AndroidUtilities.bold());
             tp.setColor(Theme.getColor(Theme.key_files_iconText));
@@ -103,7 +106,7 @@ public class PollAttachedMediaFile extends PollAttachedMedia {
         }
 
         if (!TextUtils.isEmpty(ext)) {
-            tp = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+            tp = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
             tp.setTextSize(dp(13));
             tp.setTypeface(AndroidUtilities.bold());
             tp.setColor(Theme.getColor(Theme.key_files_iconText));
@@ -200,11 +203,11 @@ public class PollAttachedMediaFile extends PollAttachedMedia {
             paddingEnd = dp(12);
             lineSpacing = dp(4);
 
-            titlePaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+            titlePaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
             titlePaint.setTextSize(dp(15));
             titlePaint.setTypeface(AndroidUtilities.bold());
 
-            subtitlePaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+            subtitlePaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
             subtitlePaint.setTextSize(dp(13));
         }
 

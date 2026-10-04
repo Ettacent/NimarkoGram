@@ -39,6 +39,7 @@ import android.text.Layout;
 import android.text.SpannableStringBuilder;
 import android.text.StaticLayout;
 import android.text.TextPaint;
+import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
 import android.util.Pair;
 import android.util.SparseIntArray;
 import android.util.StateSet;
@@ -541,7 +542,7 @@ public class RecyclerListView extends RecyclerView implements IBlur3Capture {
         private boolean fromTop;
         private float lastLetterY;
         private float fromWidth;
-        private TextPaint letterPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+        private TextPaint letterPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
         private String currentLetter;
         private Path path = new Path();
         private Path arrowPath = new Path();

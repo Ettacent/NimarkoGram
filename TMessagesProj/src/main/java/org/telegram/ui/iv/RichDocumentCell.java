@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.iv;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -37,6 +39,7 @@ import org.telegram.ui.Components.UItem;
 import org.telegram.ui.Components.UniversalAdapter;
 import org.telegram.ui.Components.UniversalRecyclerView;
 
+import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
 import java.io.File;
 import java.util.ArrayList;
 
@@ -61,8 +64,8 @@ public class RichDocumentCell extends RichBlockCell implements Theme.Colorable,
     private final Theme.ResourcesProvider resourcesProvider;
     private final Paint selectionPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint previewBackgroundPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-    private final TextPaint textPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
-    private final TextPaint sizePaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+    private final TextPaint textPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
+    private final TextPaint sizePaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
     private final RadialProgress2 radialProgress;
     private final ImageReceiver previewImage;
     private final RichCaptionController caption;
@@ -78,6 +81,7 @@ public class RichDocumentCell extends RichBlockCell implements Theme.Colorable,
     private int buttonState;
     private StaticLayout titleLayout;
     private StaticLayout sizeLayout;
+    private int lastWeightAdjustment = Integer.MIN_VALUE;
     private Delegate delegate;
     private MessageObject messageObject;
     private TLRPC.Document boundDocument;
@@ -290,6 +294,11 @@ public class RichDocumentCell extends RichBlockCell implements Theme.Colorable,
     }
 
     @Override protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
+        if (lastWeightAdjustment != SystemTextPaint.getWeightAdjustment()) {
+            lastWeightAdjustment = SystemTextPaint.getWeightAdjustment();
+            titleLayout = null;
+            sizeLayout = null;
+        }
         final int w = MeasureSpec.getSize(widthMeasureSpec);
         final int capH = caption.measure(blockRtl ? 0 : blockInset(), blockRtl ? blockInset() : 0, w);
         setMeasuredDimension(w, dp(hasPreview ? 106 : 66) + capH);

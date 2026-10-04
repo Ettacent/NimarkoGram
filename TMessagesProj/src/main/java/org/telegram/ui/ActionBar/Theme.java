@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 5.x.x.
  * It is licensed under GNU GPL v. 2 or later.
@@ -8,6 +10,7 @@
 
 package org.telegram.ui.ActionBar;
 
+import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
 import static org.telegram.messenger.AndroidUtilities.dp;
 import static org.telegram.messenger.AndroidUtilities.dpf2;
 import static org.telegram.messenger.LocaleController.getString;
@@ -8037,9 +8040,9 @@ public class Theme extends com.exteragram.messenger.utils.ui.LegacyThemeFields {
 
     public static void createCommonDialogResources(Context context) {
         if (dialogs_countTextPaint == null) {
-            dialogs_countTextPaint = new TextPaint(TextPaint.ANTI_ALIAS_FLAG);
+            dialogs_countTextPaint = new SystemTextPaint(TextPaint.ANTI_ALIAS_FLAG);
             dialogs_countTextPaint.setTypeface(AndroidUtilities.bold());
-            dialogs_countTextPaint2 = new TextPaint(TextPaint.ANTI_ALIAS_FLAG);
+            dialogs_countTextPaint2 = new SystemTextPaint(TextPaint.ANTI_ALIAS_FLAG);
             dialogs_countTextPaint2.setTypeface(AndroidUtilities.bold());
             dialogs_countPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
             dialogs_onlineCirclePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -8061,29 +8064,29 @@ public class Theme extends com.exteragram.messenger.utils.ui.LegacyThemeFields {
             dialogs_messagePaint = new TextPaint[2];
             dialogs_messagePrintingPaint = new TextPaint[2];
             for (int a = 0; a < 2; a++) {
-                dialogs_namePaint[a] = new TextPaint(TextPaint.ANTI_ALIAS_FLAG);
+                dialogs_namePaint[a] = new SystemTextPaint(TextPaint.ANTI_ALIAS_FLAG);
                 dialogs_namePaint[a].setTypeface(AndroidUtilities.bold());
-                dialogs_nameEncryptedPaint[a] = new TextPaint(TextPaint.ANTI_ALIAS_FLAG);
+                dialogs_nameEncryptedPaint[a] = new SystemTextPaint(TextPaint.ANTI_ALIAS_FLAG);
                 dialogs_nameEncryptedPaint[a].setTypeface(AndroidUtilities.bold());
-                dialogs_messagePaint[a] = new TextPaint(TextPaint.ANTI_ALIAS_FLAG);
-                dialogs_messagePrintingPaint[a] = new TextPaint(TextPaint.ANTI_ALIAS_FLAG);
+                dialogs_messagePaint[a] = new SystemTextPaint(TextPaint.ANTI_ALIAS_FLAG);
+                dialogs_messagePrintingPaint[a] = new SystemTextPaint(TextPaint.ANTI_ALIAS_FLAG);
             }
-            dialogs_searchNamePaint = new TextPaint(TextPaint.ANTI_ALIAS_FLAG);
+            dialogs_searchNamePaint = new SystemTextPaint(TextPaint.ANTI_ALIAS_FLAG);
             dialogs_searchNamePaint.setTypeface(AndroidUtilities.bold());
-            dialogs_searchNameEncryptedPaint = new TextPaint(TextPaint.ANTI_ALIAS_FLAG);
+            dialogs_searchNameEncryptedPaint = new SystemTextPaint(TextPaint.ANTI_ALIAS_FLAG);
             dialogs_searchNameEncryptedPaint.setTypeface(AndroidUtilities.bold());
-            dialogs_messageNamePaint = new TextPaint(TextPaint.ANTI_ALIAS_FLAG);
+            dialogs_messageNamePaint = new SystemTextPaint(TextPaint.ANTI_ALIAS_FLAG);
             dialogs_messageNamePaint.setTypeface(AndroidUtilities.bold());
-            dialogs_timePaint = new TextPaint(TextPaint.ANTI_ALIAS_FLAG);
-            dialogs_timePaintBold = new TextPaint(TextPaint.ANTI_ALIAS_FLAG);
-            dialogs_timePaintBoldAccent = new TextPaint(TextPaint.ANTI_ALIAS_FLAG);
-            dialogs_archiveTextPaint = new TextPaint(TextPaint.ANTI_ALIAS_FLAG);
+            dialogs_timePaint = new SystemTextPaint(TextPaint.ANTI_ALIAS_FLAG);
+            dialogs_timePaintBold = new SystemTextPaint(TextPaint.ANTI_ALIAS_FLAG);
+            dialogs_timePaintBoldAccent = new SystemTextPaint(TextPaint.ANTI_ALIAS_FLAG);
+            dialogs_archiveTextPaint = new SystemTextPaint(TextPaint.ANTI_ALIAS_FLAG);
             dialogs_archiveTextPaint.setTypeface(AndroidUtilities.bold());
-            dialogs_archiveTextPaintSmall = new TextPaint(TextPaint.ANTI_ALIAS_FLAG);
+            dialogs_archiveTextPaintSmall = new SystemTextPaint(TextPaint.ANTI_ALIAS_FLAG);
             dialogs_archiveTextPaintSmall.setTypeface(AndroidUtilities.bold());
-            dialogs_onlinePaint = new TextPaint(TextPaint.ANTI_ALIAS_FLAG);
-            dialogs_offlinePaint = new TextPaint(TextPaint.ANTI_ALIAS_FLAG);
-            dialogs_tagTextPaint = new TextPaint(TextPaint.ANTI_ALIAS_FLAG);
+            dialogs_onlinePaint = new SystemTextPaint(TextPaint.ANTI_ALIAS_FLAG);
+            dialogs_offlinePaint = new SystemTextPaint(TextPaint.ANTI_ALIAS_FLAG);
+            dialogs_tagTextPaint = new SystemTextPaint(TextPaint.ANTI_ALIAS_FLAG);
             dialogs_tagTextPaint.setTypeface(AndroidUtilities.bold());
 
             dialogs_tabletSeletedPaint = new Paint();
@@ -8246,40 +8249,40 @@ public class Theme extends com.exteragram.messenger.utils.ui.LegacyThemeFields {
     public static void createCommonMessageResources() {
         synchronized (sync) {
             if (chat_msgTextPaint == null) {
-                chat_msgTextPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
-                chat_msgGameTextPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+                chat_msgTextPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
+                chat_msgGameTextPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
                 chat_msgTextPaintEmoji = new TextPaint[6];
-                chat_msgTextPaintOneEmoji = new TextPaint(Paint.ANTI_ALIAS_FLAG);
-                chat_msgTextPaintTwoEmoji = new TextPaint(Paint.ANTI_ALIAS_FLAG);
-                chat_msgTextPaintThreeEmoji = new TextPaint(Paint.ANTI_ALIAS_FLAG);
-                chat_msgBotButtonPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+                chat_msgTextPaintOneEmoji = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
+                chat_msgTextPaintTwoEmoji = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
+                chat_msgTextPaintThreeEmoji = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
+                chat_msgBotButtonPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
                 chat_msgBotButtonPaint.setTypeface(AndroidUtilities.bold());
-                chat_namePaint = new TextPaint(TextPaint.ANTI_ALIAS_FLAG);
+                chat_namePaint = new SystemTextPaint(TextPaint.ANTI_ALIAS_FLAG);
                 chat_namePaint.setTypeface(AndroidUtilities.bold());
-                chat_replyNamePaint = new TextPaint(TextPaint.ANTI_ALIAS_FLAG);
+                chat_replyNamePaint = new SystemTextPaint(TextPaint.ANTI_ALIAS_FLAG);
                 chat_replyNamePaint.setTypeface(AndroidUtilities.bold());
-                chat_replyTextPaint = new TextPaint(TextPaint.ANTI_ALIAS_FLAG);
-                chat_quoteTextPaint = new TextPaint(TextPaint.ANTI_ALIAS_FLAG);
-                chat_explanationTextPaint = new TextPaint(TextPaint.ANTI_ALIAS_FLAG);
-                chat_titleLabelTextPaint = new TextPaint(TextPaint.ANTI_ALIAS_FLAG);
-                chat_topicTextPaint = new TextPaint(TextPaint.ANTI_ALIAS_FLAG);
+                chat_replyTextPaint = new SystemTextPaint(TextPaint.ANTI_ALIAS_FLAG);
+                chat_quoteTextPaint = new SystemTextPaint(TextPaint.ANTI_ALIAS_FLAG);
+                chat_explanationTextPaint = new SystemTextPaint(TextPaint.ANTI_ALIAS_FLAG);
+                chat_titleLabelTextPaint = new SystemTextPaint(TextPaint.ANTI_ALIAS_FLAG);
+                chat_topicTextPaint = new SystemTextPaint(TextPaint.ANTI_ALIAS_FLAG);
                 chat_topicTextPaint.setTypeface(AndroidUtilities.bold());
-                chat_forwardNamePaint = new TextPaint(TextPaint.ANTI_ALIAS_FLAG);
-                chat_adminPaint = new TextPaint(TextPaint.ANTI_ALIAS_FLAG);
+                chat_forwardNamePaint = new SystemTextPaint(TextPaint.ANTI_ALIAS_FLAG);
+                chat_adminPaint = new SystemTextPaint(TextPaint.ANTI_ALIAS_FLAG);
                 chat_timePaint = createChatTimePaint(TextPaint.ANTI_ALIAS_FLAG);
-                chat_msgTextCodePaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+                chat_msgTextCodePaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
                 chat_msgTextCodePaint.setTypeface(Typeface.MONOSPACE);
-                chat_msgTextCode2Paint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+                chat_msgTextCode2Paint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
                 chat_msgTextCode2Paint.setTypeface(Typeface.MONOSPACE);
-                chat_msgTextCode3Paint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+                chat_msgTextCode3Paint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
                 chat_msgTextCode3Paint.setTypeface(Typeface.MONOSPACE);
-                chat_msgCodeBgPaint = new TextPaint(TextPaint.ANTI_ALIAS_FLAG);
-                chat_ephemeralPaint = new TextPaint(TextPaint.ANTI_ALIAS_FLAG);
+                chat_msgCodeBgPaint = new SystemTextPaint(TextPaint.ANTI_ALIAS_FLAG);
+                chat_ephemeralPaint = new SystemTextPaint(TextPaint.ANTI_ALIAS_FLAG);
             }
 
             final float[] emojiSizePercents = new float[] {.68f, .46f, .34f, .28f, .22f, .19f};
             for (int i = 0; i < chat_msgTextPaintEmoji.length; ++i) {
-                chat_msgTextPaintEmoji[i] = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+                chat_msgTextPaintEmoji[i] = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
                 chat_msgTextPaintEmoji[i].setTextSize(dp(emojiSizePercents[i] * 120f));
             }
             chat_msgTextPaintOneEmoji.setTextSize(dp(28 + 18));
@@ -8309,20 +8312,20 @@ public class Theme extends com.exteragram.messenger.utils.ui.LegacyThemeFields {
         createCommonMessageResources();
 
         if (chat_infoPaint == null) {
-            chat_infoPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
-            chat_infoBoldPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+            chat_infoPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
+            chat_infoBoldPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
             chat_infoBoldPaint.setTypeface(AndroidUtilities.bold());
-            chat_stickerCommentCountPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+            chat_stickerCommentCountPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
             chat_stickerCommentCountPaint.setTypeface(AndroidUtilities.bold());
-            chat_docNamePaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+            chat_docNamePaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
             chat_docNamePaint.setTypeface(AndroidUtilities.bold());
             chat_docBackPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
             chat_deleteProgressPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
             chat_deleteProgressPaint.setStyle(Paint.Style.STROKE);
             chat_deleteProgressPaint.setStrokeCap(Paint.Cap.ROUND);
-            chat_locationTitlePaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+            chat_locationTitlePaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
             chat_locationTitlePaint.setTypeface(AndroidUtilities.bold());
-            chat_locationAddressPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+            chat_locationAddressPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
             chat_urlPaint = new Paint();
             chat_urlPaint.setPathEffect(LinkPath.getRoundedEffect());
             chat_outUrlPaint = new Paint();
@@ -8336,35 +8339,35 @@ public class Theme extends com.exteragram.messenger.utils.ui.LegacyThemeFields {
             chat_radialProgress2Paint = new Paint(Paint.ANTI_ALIAS_FLAG);
             chat_radialProgress2Paint.setStrokeCap(Paint.Cap.ROUND);
             chat_radialProgress2Paint.setStyle(Paint.Style.STROKE);
-            chat_audioTimePaint = new TextPaint(TextPaint.ANTI_ALIAS_FLAG);
-            chat_livePaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+            chat_audioTimePaint = new SystemTextPaint(TextPaint.ANTI_ALIAS_FLAG);
+            chat_livePaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
             chat_livePaint.setTypeface(Typeface.DEFAULT_BOLD);
-            chat_audioTitlePaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+            chat_audioTitlePaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
             chat_audioTitlePaint.setTypeface(AndroidUtilities.bold());
-            chat_audioPerformerPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
-            chat_botButtonPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+            chat_audioPerformerPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
+            chat_botButtonPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
             chat_botButtonPaint.setTypeface(AndroidUtilities.bold());
-            chat_contactNamePaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+            chat_contactNamePaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
             chat_contactNamePaint.setTypeface(AndroidUtilities.bold());
-            chat_contactPhonePaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
-            chat_durationPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
-            chat_gamePaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+            chat_contactPhonePaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
+            chat_durationPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
+            chat_gamePaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
             chat_gamePaint.setTypeface(AndroidUtilities.bold());
-            chat_shipmentPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+            chat_shipmentPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
             chat_timePaint = createChatTimePaint(TextPaint.ANTI_ALIAS_FLAG);
-            chat_adminPaint = new TextPaint(TextPaint.ANTI_ALIAS_FLAG);
-            chat_ephemeralPaint = new TextPaint(TextPaint.ANTI_ALIAS_FLAG);
-            chat_namePaint = new TextPaint(TextPaint.ANTI_ALIAS_FLAG);
+            chat_adminPaint = new SystemTextPaint(TextPaint.ANTI_ALIAS_FLAG);
+            chat_ephemeralPaint = new SystemTextPaint(TextPaint.ANTI_ALIAS_FLAG);
+            chat_namePaint = new SystemTextPaint(TextPaint.ANTI_ALIAS_FLAG);
             chat_namePaint.setTypeface(AndroidUtilities.bold());
-            chat_forwardNamePaint = new TextPaint(TextPaint.ANTI_ALIAS_FLAG);
-            chat_replyNamePaint = new TextPaint(TextPaint.ANTI_ALIAS_FLAG);
+            chat_forwardNamePaint = new SystemTextPaint(TextPaint.ANTI_ALIAS_FLAG);
+            chat_replyNamePaint = new SystemTextPaint(TextPaint.ANTI_ALIAS_FLAG);
             chat_replyNamePaint.setTypeface(AndroidUtilities.bold());
-            chat_replyTextPaint = new TextPaint(TextPaint.ANTI_ALIAS_FLAG);
-            chat_topicTextPaint = new TextPaint(TextPaint.ANTI_ALIAS_FLAG);
+            chat_replyTextPaint = new SystemTextPaint(TextPaint.ANTI_ALIAS_FLAG);
+            chat_topicTextPaint = new SystemTextPaint(TextPaint.ANTI_ALIAS_FLAG);
             chat_topicTextPaint.setTypeface(AndroidUtilities.bold());
-            chat_titleLabelTextPaint = new TextPaint(TextPaint.ANTI_ALIAS_FLAG);
-            chat_commentTextPaint = new TextPaint(TextPaint.ANTI_ALIAS_FLAG);
-            chat_instantViewPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+            chat_titleLabelTextPaint = new SystemTextPaint(TextPaint.ANTI_ALIAS_FLAG);
+            chat_commentTextPaint = new SystemTextPaint(TextPaint.ANTI_ALIAS_FLAG);
+            chat_instantViewPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
             chat_instantViewPaint.setTypeface(AndroidUtilities.bold());
             chat_instantViewRectPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
             chat_instantViewRectPaint.setStyle(Paint.Style.STROKE);
@@ -8379,18 +8382,18 @@ public class Theme extends com.exteragram.messenger.utils.ui.LegacyThemeFields {
             chat_statusRecordPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
             chat_statusRecordPaint.setStyle(Paint.Style.STROKE);
             chat_statusRecordPaint.setStrokeCap(Paint.Cap.ROUND);
-            chat_actionTextPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
-            chat_actionTextPaint2 = new TextPaint(Paint.ANTI_ALIAS_FLAG);
-            chat_actionTextPaint3 = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+            chat_actionTextPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
+            chat_actionTextPaint2 = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
+            chat_actionTextPaint3 = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
             chat_actionTextPaint.setTypeface(AndroidUtilities.bold());
-            chat_unlockExtendedMediaTextPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+            chat_unlockExtendedMediaTextPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
             chat_unlockExtendedMediaTextPaint.setTypeface(AndroidUtilities.bold());
             chat_actionBackgroundGradientDarkenPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
             chat_actionBackgroundGradientDarkenPaint.setColor(0x15000000);
             chat_timeBackgroundPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-            chat_contextResult_titleTextPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+            chat_contextResult_titleTextPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
             chat_contextResult_titleTextPaint.setTypeface(AndroidUtilities.bold());
-            chat_contextResult_descriptionTextPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+            chat_contextResult_descriptionTextPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
             chat_composeBackgroundPaint = new Paint();
             chat_radialProgressPausedPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
             chat_radialProgressPausedSeekbarPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -9107,7 +9110,7 @@ public class Theme extends com.exteragram.messenger.utils.ui.LegacyThemeFields {
 
     public static void createProfileResources(Context context) {
         if (profile_verifiedDrawable == null) {
-            profile_aboutTextPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+            profile_aboutTextPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
 
             Resources resources = context.getResources();
 

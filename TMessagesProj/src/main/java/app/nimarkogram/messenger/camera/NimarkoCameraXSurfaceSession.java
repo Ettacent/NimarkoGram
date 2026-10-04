@@ -104,7 +104,7 @@ public final class NimarkoCameraXSurfaceSession {
         Preview.SurfaceProvider provider = this::provideSurface;
         controller = new NimarkoCameraXController(
                 lifecycle,
-                new SurfaceOrientedMeteringPointFactory(captureWidth, captureHeight),
+                new SurfaceOrientedMeteringPointFactory(1f, 1f),
                 provider,
                 new Size(captureWidth, captureHeight),
                 enableImageCapture,
@@ -421,11 +421,70 @@ public final class NimarkoCameraXSurfaceSession {
     public void focusToRect(@Nullable Rect focusRect) {
         if (closed || focusRect == null) return;
 
-        int x = Math.round((focusRect.centerX() + 1000f) * previewWidth / 2000f);
-        int y = Math.round((focusRect.centerY() + 1000f) * previewHeight / 2000f);
-        x = Math.max(0, Math.min(previewWidth - 1, x));
-        y = Math.max(0, Math.min(previewHeight - 1, y));
+        float x = Math.max(0f, Math.min(1f, (focusRect.centerX() + 1000f) / 2000f));
+        float y = Math.max(0f, Math.min(1f, (focusRect.centerY() + 1000f) / 2000f));
         controller.focusToPoint(x, y);
+    }
+    public boolean focusAtPreviewPoint(float normalizedX, float normalizedY,
+                                       int viewWidth, int viewHeight) {
+        return focusAtPreviewPoint(normalizedX, normalizedY, viewWidth, viewHeight, false);
+    }
+    public boolean focusAtPreviewPoint(float normalizedX, float normalizedY,
+                                       int viewWidth, int viewHeight, boolean forceLock) {
+        if (closed || previewWidth <= 0 || previewHeight <= 0) {
+            return false;
+        }
+        float x = clamp01(normalizedX);
+        float y = clamp01(normalizedY);
+        if (!hasCameraTransform && viewWidth > 0 && viewHeight > 0) {
+            float viewAspect = viewWidth / (float) viewHeight;
+            float surfaceAspect = previewWidth / (float) previewHeight;
+            if (surfaceAspect > viewAspect) {
+                float visibleWidth = viewAspect / surfaceAspect;
+                x = (1f - visibleWidth) * 0.5f + x * visibleWidth;
+            } else if (surfaceAspect < viewAspect) {
+                float visibleHeight = surfaceAspect / viewAspect;
+                y = (1f - visibleHeight) * 0.5f + y * visibleHeight;
+            }
+        }
+        float surfaceX;
+        float surfaceY;
+        if (hasCameraTransform) {
+            surfaceX = x;
+            surfaceY = y;
+        } else {
+            if (mirrored) {
+                x = 1f - x;
+            }
+            switch (rotationDegrees) {
+                case 90:
+                    surfaceX = 1f - y;
+                    surfaceY = x;
+                    break;
+                case 180:
+                    surfaceX = 1f - x;
+                    surfaceY = 1f - y;
+                    break;
+                case 270:
+                    surfaceX = y;
+                    surfaceY = 1f - x;
+                    break;
+                default:
+                    surfaceX = x;
+                    surfaceY = y;
+                    break;
+            }
+        }
+        return controller.focusToPoint(clamp01(surfaceX), clamp01(surfaceY), forceLock);
+    }
+    public boolean focusAtPreviewPoint(float normalizedX, float normalizedY) {
+        return focusAtPreviewPoint(normalizedX, normalizedY, 0, 0);
+    }
+    public boolean focusAtPreviewPoint(float normalizedX, float normalizedY, boolean forceLock) {
+        return focusAtPreviewPoint(normalizedX, normalizedY, 0, 0, forceLock);
+    }
+    private static float clamp01(float value) {
+        return Math.max(0f, Math.min(1f, value));
     }
 
     public void setTargetOrientation(int rotation) {

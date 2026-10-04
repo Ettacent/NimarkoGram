@@ -1,5 +1,8 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components.chat;
 
+import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
 import static org.telegram.messenger.AndroidUtilities.dp;
 
 import android.content.Context;
@@ -403,7 +406,7 @@ public class ChatActivityMessageMetricsView extends View implements ViewTreeObse
         }
 
         if (tmpTextPaint == null) {
-            tmpTextPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+            tmpTextPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
             tmpTextPaint.setColor(0xFF0000FF);
             tmpTextPaint.setTextSize(dp(10));
         }

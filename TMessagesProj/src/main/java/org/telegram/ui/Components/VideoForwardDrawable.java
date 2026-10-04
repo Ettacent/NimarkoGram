@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components;
 
 import android.graphics.Canvas;
@@ -8,13 +10,14 @@ import android.graphics.PixelFormat;
 import android.graphics.drawable.Drawable;
 import android.text.TextPaint;
 
+import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.LocaleController;
 
 public class VideoForwardDrawable extends Drawable {
 
     private Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
-    private TextPaint textPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+    private TextPaint textPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
     private Path path1 = new Path();
     private boolean leftSide;
     private boolean isRound;

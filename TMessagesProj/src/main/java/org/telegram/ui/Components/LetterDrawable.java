@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 5.x.x.
  * It is licensed under GNU GPL v. 2 or later.
@@ -27,6 +29,7 @@ import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.FileLog;
 import org.telegram.ui.ActionBar.Theme;
 
+import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
 public class LetterDrawable extends Drawable {
 
     public static Paint paint = new Paint();
@@ -57,7 +60,7 @@ public class LetterDrawable extends Drawable {
         this.style = style;
         if (style == STYLE_DEFAULT) {
             if (namePaint == null) {
-                namePaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+                namePaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
             }
             namePaint.setTextSize(dp(28));
             paint.setColor(Theme.getColor(Theme.key_sharedMedia_linkPlaceholder, resourcesProvider));
@@ -65,7 +68,7 @@ public class LetterDrawable extends Drawable {
             textPaint = namePaint;
         } else if (style == STYLE_TOPIC_DRAWABLE) {
             if (namePaintTopic == null) {
-                namePaintTopic = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+                namePaintTopic = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
             }
             namePaintTopic.setColor(Color.WHITE);
             namePaintTopic.setTextSize(dp(13));
@@ -73,7 +76,7 @@ public class LetterDrawable extends Drawable {
             textPaint = namePaintTopic;
         } else {
             if (namePaintSmallTopic == null) {
-                namePaintSmallTopic = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+                namePaintSmallTopic = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
             }
             namePaintSmallTopic.setColor(Color.WHITE);
             namePaintSmallTopic.setTextSize(Theme.chat_topicTextPaint.getTextSize() * .75f);

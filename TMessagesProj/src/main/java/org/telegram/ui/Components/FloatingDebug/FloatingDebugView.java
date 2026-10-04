@@ -1,5 +1,8 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components.FloatingDebug;
 
+import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
 import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.content.Context;
@@ -604,7 +607,7 @@ public class FloatingDebugView extends FrameLayout implements NotificationCenter
 
             setWillNotDraw(false);
 
-            textPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+            textPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
             textPaint.setTextSize(AndroidUtilities.dp(16));
 
             seekBar = new SeekBarView(context);

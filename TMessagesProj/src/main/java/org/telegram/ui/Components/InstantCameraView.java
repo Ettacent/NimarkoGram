@@ -143,12 +143,15 @@ import javax.microedition.khronos.egl.EGLSurface;
 @SuppressLint("ViewConstructor")
 public class InstantCameraView extends InstantCameraViewBase implements NotificationCenter.NotificationCenterDelegate {
 
+    private static final long CAMERA_FOCUS_LONG_PRESS_DELAY_MS = 450L;
     public boolean WRITE_TO_FILE_IN_BACKGROUND;
 
     private int currentAccount = UserConfig.selectedAccount;
     private InstantViewCameraContainer cameraContainer;
     private Delegate delegate;
     private Paint paint;
+    private Paint roundFocusPaint;
+    private Paint roundFocusInnerPaint;
     private RectF rect;
     private final FlashViews.ImageViewInvertable switchCameraButton;
     private final FlashViews.ImageViewInvertable flashButton;
@@ -537,6 +540,24 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
     // ratio). Coexists with pinch; a second finger hands control to pinch.
     private boolean singleZoomMaybe;
     private boolean singleZoomActive;
+    private boolean roundFocusTapMaybe;
+    private boolean roundFocusLongPressed;
+    private Runnable roundFocusLongPressRunnable;
+    private float roundFocusTapX;
+    private float roundFocusTapY;
+    private float roundFocusProgress;
+    private float roundFocusInnerAlpha;
+    private float roundFocusOuterAlpha;
+    private float roundFocusLockProgress = 1f;
+    private float roundFocusLockAlpha;
+    private float roundFocusDrawX;
+    private float roundFocusDrawY;
+    private float roundFocusMoveFromX;
+    private float roundFocusMoveFromY;
+    private float roundFocusMoveProgress = 1f;
+    private long roundFocusLastDrawTime;
+    private long roundFocusTouchTime;
+    private final DecelerateInterpolator roundFocusInterpolator = new DecelerateInterpolator();
     private float singleZoomStartY;
     private float singleZoomStartRatio;   // CameraX/Camera2: ratio; legacy: 0..1
     private float legacyZoom;             // persistent 0..1 for the legacy path
@@ -640,6 +661,13 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
         paint.setStrokeWidth(dp(3));
         paint.setColor(0xffffffff);
 
+        roundFocusPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        roundFocusPaint.setStyle(Paint.Style.STROKE);
+        roundFocusPaint.setStrokeWidth(dp(2));
+        roundFocusPaint.setColor(Color.WHITE);
+        roundFocusInnerPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        roundFocusInnerPaint.setStyle(Paint.Style.FILL);
+        roundFocusInnerPaint.setColor(Color.WHITE);
         rect = new RectF();
 
         flashViews = new FlashViews(getContext(), null, this, null);
@@ -1255,6 +1283,57 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
             roundZoomControl.setHostAlpha(buttonsLayout.getAlpha());
         }
         super.dispatchDraw(canvas);
+        drawRoundFocusIndicator(canvas);
+    }
+    private void drawRoundFocusIndicator(Canvas canvas) {
+        if (roundFocusProgress >= 1f && roundFocusInnerAlpha <= 0f
+                && roundFocusOuterAlpha <= 0f && roundFocusLockAlpha <= 0f) return;
+        long now = SystemClock.elapsedRealtime();
+        long dt = roundFocusLastDrawTime == 0 ? 16 : now - roundFocusLastDrawTime;
+        if (dt < 0 || dt > 32) dt = 16;
+        roundFocusLastDrawTime = now;
+        float interpolated = roundFocusInterpolator.getInterpolation(roundFocusProgress);
+        if (roundFocusMoveProgress < 1f) {
+            roundFocusMoveProgress = Math.min(1f, roundFocusMoveProgress + dt / 120f);
+            float move = roundFocusInterpolator.getInterpolation(roundFocusMoveProgress);
+            roundFocusDrawX = roundFocusMoveFromX + (roundFocusTapX - roundFocusMoveFromX) * move;
+            roundFocusDrawY = roundFocusMoveFromY + (roundFocusTapY - roundFocusMoveFromY) * move;
+        } else {
+            roundFocusDrawX = roundFocusTapX;
+            roundFocusDrawY = roundFocusTapY;
+        }
+        int baseRadius = dp(20);
+        roundFocusPaint.setStyle(Paint.Style.STROKE);
+        roundFocusPaint.setStrokeWidth(dp(2));
+        roundFocusPaint.setStrokeCap(Paint.Cap.ROUND);
+        roundFocusPaint.setAlpha((int) (roundFocusInterpolator.getInterpolation(roundFocusOuterAlpha) * 255));
+        roundFocusInnerPaint.setAlpha((int) (roundFocusInterpolator.getInterpolation(roundFocusInnerAlpha) * 127));
+        canvas.drawCircle(roundFocusDrawX, roundFocusDrawY,
+                baseRadius + baseRadius * (1f - interpolated), roundFocusPaint);
+        canvas.drawCircle(roundFocusDrawX, roundFocusDrawY,
+                baseRadius * interpolated, roundFocusInnerPaint);
+        if (roundFocusLockAlpha > 0f) {
+            float lockProgress = roundFocusInterpolator.getInterpolation(roundFocusLockProgress);
+            roundFocusPaint.setStrokeWidth(dp(2));
+            roundFocusPaint.setAlpha((int) (roundFocusLockAlpha * 220));
+            canvas.drawCircle(roundFocusDrawX, roundFocusDrawY,
+                    baseRadius + dp(5) + dp(8) * lockProgress, roundFocusPaint);
+            roundFocusLockProgress = Math.min(1f, roundFocusLockProgress + dt / 420f);
+            roundFocusLockAlpha = Math.max(0f, 1f - roundFocusLockProgress);
+        }
+        if (roundFocusProgress < 1f) {
+            roundFocusProgress = Math.min(1f, roundFocusProgress + dt / 200f);
+        } else if (roundFocusInnerAlpha > 0f) {
+            roundFocusInnerAlpha = Math.max(0f, roundFocusInnerAlpha - dt / 150f);
+        } else if (roundFocusOuterAlpha > 0f) {
+            roundFocusOuterAlpha = Math.max(0f, roundFocusOuterAlpha - dt / 150f);
+        }
+        if (roundFocusProgress < 1f || roundFocusInnerAlpha > 0f || roundFocusOuterAlpha > 0f) {
+            invalidate();
+        }
+        if (roundFocusLockAlpha > 0f) {
+            invalidate();
+        }
     }
 
     private void prepareRoundZoomPreview() {
@@ -2079,8 +2158,8 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
     // release barrier. These durations only control the GL cover around it;
     // keeping the old 140 + 300 ms animation after the replacement frame was
     // ready made single-camera flips feel substantially slower on ColorOS.
-    private static final long NM_CAMERAX_SINGLE_BLUR_IN_MS = 100;
-    private static final long NM_CAMERAX_SINGLE_REVEAL_MS = 180;
+    private static final long NM_CAMERAX_SINGLE_BLUR_IN_MS = 80;
+    private static final long NM_CAMERAX_SINGLE_REVEAL_MS = 160;
 
     // NimarkoGram: arm the no-frame watchdog for the current round session. Only logical sessions are watched —
     // a physical lens that stalls has no better fallback, and the timeout must not loop on it.
@@ -3673,6 +3752,10 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
 
         public void finish() {
 
+            if (shutdownRequested && eglDisplay == null && eglContext == null
+                    && eglSurface == null) {
+                return;
+            }
             snapshotContextClosed = true;
             clearCameraXSnapshot();
             if (cameraSurface != null) {
@@ -3692,15 +3775,17 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
             cameraFrameAvailable[1] = false;
             cameraFrameLatched[0] = false;
             cameraFrameLatched[1] = false;
-            if (eglSurface != null && eglContext != null) {
+            if (eglSurface != null && eglContext != null && eglDisplay != null) {
                 if (!eglContext.equals(egl10.eglGetCurrentContext()) || !eglSurface.equals(egl10.eglGetCurrentSurface(EGL10.EGL_DRAW))) {
                     egl10.eglMakeCurrent(eglDisplay, eglSurface, eglSurface, eglContext);
                 }
-                if (cameraTexture != null && cameraTexture[0] != Integer.MIN_VALUE) {
+                if (cameraTexture != null && cameraTexture.length > 0
+                        && cameraTexture[0] != Integer.MIN_VALUE) {
                     GLES20.glDeleteTextures(1, cameraTexture, 0);
                     cameraTexture[0] = Integer.MIN_VALUE;
                 }
-                if (cameraTexture != null && cameraTexture[1] != Integer.MIN_VALUE) {
+                if (cameraTexture != null && cameraTexture.length > 1
+                        && cameraTexture[1] != Integer.MIN_VALUE) {
                     GLES20.glDeleteTextures(1, cameraTexture, 1);
                     cameraTexture[1] = Integer.MIN_VALUE;
                 }
@@ -7320,6 +7405,30 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
         }
 
         if (useCameraX && videoPlayer == null && !isRoundCameraXZoomReady()) {
+            if (ev.getActionMasked() == MotionEvent.ACTION_DOWN && recording
+                    && app.nimarkogram.messenger.NimarkoConfig.roundVideoTapFocus) {
+                AndroidUtilities.rectTmp.set(cameraContainer.getX(), cameraContainer.getY(),
+                        cameraContainer.getX() + cameraContainer.getMeasuredWidth(),
+                        cameraContainer.getY() + cameraContainer.getMeasuredHeight());
+                if (AndroidUtilities.rectTmp.contains(ev.getX(), ev.getY())) {
+                    armRoundFocusTap(ev.getX(), ev.getY());
+                }
+            } else if (ev.getActionMasked() == MotionEvent.ACTION_UP && roundFocusTapMaybe) {
+                cancelRoundFocusLongPress();
+                if (!roundFocusLongPressed) {
+                    focusRoundVideoAt(roundFocusTapX, roundFocusTapY, false);
+                }
+                roundFocusTapMaybe = false;
+                roundFocusLongPressed = false;
+            } else if (ev.getActionMasked() == MotionEvent.ACTION_MOVE && roundFocusTapMaybe
+                    && Math.hypot(ev.getX() - roundFocusTapX, ev.getY() - roundFocusTapY) > dp(8)) {
+                cancelRoundFocusLongPress();
+                roundFocusTapMaybe = false;
+            } else if (ev.getActionMasked() == MotionEvent.ACTION_CANCEL
+                    || ev.getActionMasked() == MotionEvent.ACTION_POINTER_DOWN) {
+                cancelRoundFocusLongPress();
+                roundFocusTapMaybe = false;
+            }
             cancelRoundZoomGesture();
             return true;
         }
@@ -7337,6 +7446,7 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
                 // A second finger landed → pinch takes over; abandon single drag.
                 singleZoomMaybe = false;
                 singleZoomActive = false;
+                roundFocusTapMaybe = false;
             }
             if (ev.getActionMasked() == MotionEvent.ACTION_DOWN) {
                 AndroidUtilities.rectTmp.set(cameraContainer.getX(), cameraContainer.getY(), cameraContainer.getX() + cameraContainer.getMeasuredWidth(), cameraContainer.getY() + cameraContainer.getMeasuredHeight());
@@ -7349,6 +7459,14 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
                     singleZoomStartY = ev.getY();
                     singleZoomStartRatio = currentRoundZoomRatio();
                     roundZoomGestureFilter.reset(0, ev.getEventTime());
+                    roundFocusTapMaybe = (useCameraX || useCamera2)
+                            && app.nimarkogram.messenger.NimarkoConfig.roundVideoTapFocus;
+                    roundFocusTapX = ev.getX();
+                    roundFocusTapY = ev.getY();
+                    roundFocusTouchTime = SystemClock.elapsedRealtime();
+                    if (roundFocusTapMaybe) {
+                        armRoundFocusLongPress(roundFocusTapX, roundFocusTapY);
+                    }
                 }
             }
             return true;
@@ -7397,6 +7515,11 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
         } else if (ev.getActionMasked() == MotionEvent.ACTION_MOVE && singleZoomMaybe
                 && !isInPinchToZoomTouchMode && ev.getPointerCount() == 1) {
             float dy = singleZoomStartY - ev.getY(); // up = positive = zoom in
+            if (roundFocusTapMaybe && Math.hypot(ev.getX() - roundFocusTapX,
+                    ev.getY() - roundFocusTapY) > dp(8)) {
+                cancelRoundFocusLongPress();
+                roundFocusTapMaybe = false;
+            }
             if (!singleZoomActive && Math.abs(dy) > AndroidUtilities.dp(8)) {
                 singleZoomActive = true;
 
@@ -7416,12 +7539,104 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
                 isInPinchToZoomTouchMode = false;
                 finishZoom();
             }
+            if (ev.getActionMasked() == MotionEvent.ACTION_UP && roundFocusTapMaybe
+                    && !singleZoomActive && !cancelled && !roundFocusLongPressed) {
+                focusRoundVideoAt(roundFocusTapX, roundFocusTapY, false);
+            }
+            cancelRoundFocusLongPress();
+            roundFocusTapMaybe = false;
+            roundFocusLongPressed = false;
             // Single-finger zoom is PERSISTENT — just end the gesture, keep the
             // zoom where the user left it.
             singleZoomMaybe = false;
             singleZoomActive = false;
         }
         return true;
+    }
+    private void armRoundFocusTap(float x, float y) {
+        roundFocusTapMaybe = true;
+        roundFocusLongPressed = false;
+        roundFocusTapX = x;
+        roundFocusTapY = y;
+        roundFocusTouchTime = SystemClock.elapsedRealtime();
+        armRoundFocusLongPress(x, y);
+    }
+    private void armRoundFocusLongPress(float x, float y) {
+        cancelRoundFocusLongPress();
+        final float tapX = x;
+        final float tapY = y;
+        AndroidUtilities.runOnUIThread(roundFocusLongPressRunnable = () -> {
+            roundFocusLongPressRunnable = null;
+            if (!roundFocusTapMaybe || singleZoomActive || isInPinchToZoomTouchMode) return;
+            roundFocusLongPressed = true;
+            focusRoundVideoAt(tapX, tapY, true);
+        }, CAMERA_FOCUS_LONG_PRESS_DELAY_MS);
+    }
+    private void cancelRoundFocusLongPress() {
+        if (roundFocusLongPressRunnable != null) {
+            AndroidUtilities.cancelRunOnUIThread(roundFocusLongPressRunnable);
+            roundFocusLongPressRunnable = null;
+        }
+    }
+    private void focusRoundVideoAt(float x, float y) {
+        focusRoundVideoAt(x, y, false);
+    }
+    private void focusRoundVideoAt(float x, float y, boolean forceLock) {
+        if ((!useCameraX && !useCamera2) || !recording || cameraContainer == null) {
+            return;
+        }
+        NimarkoCameraXSurfaceSession session = useCameraX
+                ? videoMessagesHelper.getCurrentSession() : null;
+        if ((useCameraX && session == null) || (useCamera2 && camera2SessionCurrent == null)
+                || cameraContainer.getMeasuredWidth() <= 0
+                || cameraContainer.getMeasuredHeight() <= 0) {
+            return;
+        }
+        float indicatorRadius = Math.min(dp(30), Math.min(cameraContainer.getMeasuredWidth(),
+                cameraContainer.getMeasuredHeight()) / 2f - dp(2));
+        indicatorRadius = Math.max(0, indicatorRadius);
+        final float containerLeft = cameraContainer.getX();
+        final float containerTop = cameraContainer.getY();
+        final float containerRight = containerLeft + cameraContainer.getMeasuredWidth();
+        final float containerBottom = containerTop + cameraContainer.getMeasuredHeight();
+        float focusX = Math.max(containerLeft, Math.min(containerRight, x));
+        float focusY = Math.max(containerTop, Math.min(containerBottom, y));
+        float indicatorX = Math.max(containerLeft + indicatorRadius,
+                Math.min(containerRight - indicatorRadius, focusX));
+        float indicatorY = Math.max(containerTop + indicatorRadius,
+                Math.min(containerBottom - indicatorRadius, focusY));
+        float normalizedX = (focusX - containerLeft) / cameraContainer.getMeasuredWidth();
+        float normalizedY = (focusY - containerTop) / cameraContainer.getMeasuredHeight();
+        boolean accepted;
+        if (useCameraX) {
+            accepted = session.focusAtPreviewPoint(normalizedX, normalizedY,
+                    cameraContainer.getMeasuredWidth(), cameraContainer.getMeasuredHeight(), forceLock);
+        } else {
+            accepted = camera2SessionCurrent.focusAtPreviewPoint(normalizedX, normalizedY,
+                    cameraContainer.getMeasuredWidth() / (float) cameraContainer.getMeasuredHeight());
+        }
+        if (accepted) {
+            if (roundFocusProgress < 1f || roundFocusInnerAlpha > 0f || roundFocusOuterAlpha > 0f) {
+                roundFocusMoveFromX = roundFocusDrawX;
+                roundFocusMoveFromY = roundFocusDrawY;
+            } else {
+                roundFocusMoveFromX = focusX;
+                roundFocusMoveFromY = focusY;
+            }
+            roundFocusTapX = indicatorX;
+            roundFocusTapY = indicatorY;
+            roundFocusMoveProgress = 0f;
+            roundFocusProgress = 0f;
+            roundFocusInnerAlpha = 1f;
+            roundFocusOuterAlpha = 1f;
+            if (forceLock) {
+                roundFocusLockProgress = 0f;
+                roundFocusLockAlpha = 1f;
+            }
+            roundFocusLastDrawTime = SystemClock.elapsedRealtime();
+            performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK);
+            invalidate();
+        }
     }
 
     private void cancelRoundZoomGesture() {

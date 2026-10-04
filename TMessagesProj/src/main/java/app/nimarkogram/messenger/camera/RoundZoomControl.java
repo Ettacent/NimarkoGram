@@ -63,6 +63,7 @@ import java.util.Arrays;
 import java.util.Locale;
 
 import app.nimarkogram.messenger.NimarkoConfig;
+import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
 import org.telegram.messenger.SharedConfig;
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.LocaleController;
@@ -166,11 +167,11 @@ public final class RoundZoomControl extends View {
 
     private final Paint backgroundPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint selectorPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-    private final Paint toggleTextPaint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.SUBPIXEL_TEXT_FLAG);
-    private final Paint selectedToggleTextPaint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.SUBPIXEL_TEXT_FLAG);
+    private final Paint toggleTextPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG | Paint.SUBPIXEL_TEXT_FLAG);
+    private final Paint selectedToggleTextPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG | Paint.SUBPIXEL_TEXT_FLAG);
     private final Paint tickPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint markerPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-    private final Paint rulerLabelPaint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.SUBPIXEL_TEXT_FLAG);
+    private final Paint rulerLabelPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG | Paint.SUBPIXEL_TEXT_FLAG);
     private final Paint edgeFadePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
 
     private Drawable protectionBackgroundDrawable;

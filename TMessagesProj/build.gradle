@@ -140,7 +140,6 @@ dependencies {
     // Kotlin stdlib pinned to 1.9.0 (matches buildscript classpath).
     implementation 'org.jetbrains.kotlin:kotlin-stdlib-jdk8:1.9.0'
     // Pine xposed-style hooks (used by extera plugins.xposed). We keep the 0.3.0 AAR for its Java classes,
-    // Pine hook engine, rebuilt from canyie/pine @0.3.0 sources (see local Pine build directory) instead of the maven AAR
     // for TWO reasons: (1) 16KB-page alignment — the stock 0.3.0 .so is 4KB-aligned and fails to load on
     // 16KB-page Android 15/16 devices, crashing the plugin engine; our jni/<abi>/libpine.so is built with
     // -Wl,-z,max-page-size=16384. (2) A Java-side guard in Pine.handleCall that turns Pine 0.3.0's arm64
@@ -261,10 +260,6 @@ android {
         ].each { name ->
             buildConfigField 'String', name, groovy.json.JsonOutput.toJson(nimarkoBuildValue(name))
         }
-        // NimarkoGram: lowered to 23 so apksigner verifies v1 (>=24 spec
-        // skips v1 entirely → Play Protect treated APK as "modern-only"
-        // and hard-blocked on Android 16). Chaquopy minSdk note was a
-        // soft preference; actual native libs work on 23 fine.
         minSdkVersion 24
         targetSdkVersion 36
 

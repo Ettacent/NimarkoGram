@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 5.x.x.
  * It is licensed under GNU GPL v. 2 or later.
@@ -364,7 +366,7 @@ public class ShareDialogCell extends FrameLayout implements NotificationCenter.N
                     float cy = imageView.getTop() + imageView.getMeasuredHeight() / 2.0f - dp(20.83f);
 
                     if (priceText == null || priceTextValue != starsPriceBlocked && starsPriceBlocked > 0) {
-                        priceText = new Text(StarsIntroActivity.replaceStars("⭐️" + AndroidUtilities.formatWholeNumber((int) (priceTextValue = starsPriceBlocked), 0), .65f), 9.33f, AndroidUtilities.bold());
+                        priceText = Text.ui(StarsIntroActivity.replaceStars("⭐️" + AndroidUtilities.formatWholeNumber((int) (priceTextValue = starsPriceBlocked), 0), .65f), 9.33f, AndroidUtilities.bold());
                     }
                     final float w = (priceText == null ? 0 : priceText.getCurrentWidth()) + dp(10);
                     final float h = dp(14.33f);

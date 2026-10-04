@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components;
 
 import static org.telegram.messenger.LocaleController.getString;
@@ -234,6 +236,10 @@ public class SearchViewPager extends ViewPagerFixed implements FilteredSearchVie
         dialogsSearchAdapter = new DialogsSearchAdapter(context, fragment, type, initialDialogsType, itemAnimator, fragment.getAllowGlobalSearch(), null) {
             @Override
             public void notifyDataSetChanged() {
+                if (searchListView != null && searchListView.isComputingLayout()) {
+                    searchListView.post(this::notifyDataSetChanged);
+                    return;
+                }
                 cancelPendingSearchResultsEntrance();
                 int itemCount = getCurrentItemCount();
                 ArrayList<SearchRow> nextRows = snapshotSearchRows(this);

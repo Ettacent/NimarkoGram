@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 5.x.x.
  * It is licensed under GNU GPL v. 2 or later.
@@ -59,6 +61,7 @@ import android.text.SpannableStringBuilder;
 import android.text.Spanned;
 import android.text.StaticLayout;
 import android.text.TextPaint;
+import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
 import android.text.TextUtils;
 import android.text.TextWatcher;
 import android.text.style.DynamicDrawableSpan;
@@ -875,7 +878,7 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
 
             setWillNotDraw(false);
 
-            textPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+            textPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
             textPaint.setTextSize(dp(16));
 
             sizeBar = new SeekBarView(context, getResourcesProvider());
@@ -2689,7 +2692,7 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
     public static final int TEXT_FLAG_SUP         = 1 << 8;
     public static final int TEXT_FLAG_WEBPAGE_URL = 1 << 9;
 
-    private static final TextPaint audioTimePaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+    private static final TextPaint audioTimePaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
     private static final Resources resources = new Resources(false);
 
     @Override
@@ -3445,7 +3448,7 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
         }
         if (currentMap == null) {
             if (resources.errorTextPaint == null) {
-                resources.errorTextPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+                resources.errorTextPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
                 resources.errorTextPaint.setColor(0xffff0000);
             }
             resources.errorTextPaint.setTextSize(dp(14));
@@ -3453,7 +3456,7 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
         }
         TextPaint paint = currentMap.get(flags);
         if (paint == null) {
-            paint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+            paint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
             if ((flags & TEXT_FLAG_MONO) != 0) {
                 paint.setTypeface(AndroidUtilities.getTypeface("fonts/rmono.ttf"));
             } else {
@@ -3549,14 +3552,14 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
             TL_iv.pageBlockEmbedPost pageBlockEmbedPost = (TL_iv.pageBlockEmbedPost) parentBlock;
             if (pageBlockEmbedPost.author == plainText) {
                 if (embedPostAuthorPaint == null) {
-                    embedPostAuthorPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+                    embedPostAuthorPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
                     embedPostAuthorPaint.setColor(parent.getTextColor());
                 }
                 embedPostAuthorPaint.setTextSize(dp(15) + additionalSize);
                 paint = embedPostAuthorPaint;
             } else {
                 if (embedPostDatePaint == null) {
-                    embedPostDatePaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+                    embedPostDatePaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
                     embedPostDatePaint.setColor(parent.getGrayTextColor());
                 }
                 embedPostDatePaint.setTextSize(dp(14) + additionalSize);
@@ -3564,10 +3567,10 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
             }
         } else if (parentBlock instanceof TL_iv.pageBlockChannel) {
             if (channelNamePaint == null) {
-                channelNamePaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+                channelNamePaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
                 channelNamePaint.setTypeface(AndroidUtilities.bold());
 
-                channelNamePhotoPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+                channelNamePhotoPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
                 channelNamePhotoPaint.setTypeface(AndroidUtilities.bold());
             }
             channelNamePaint.setColor(parent.getTextColor());
@@ -3581,7 +3584,7 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
             TL_pageBlockRelatedArticlesChild pageBlockRelatedArticlesChild = (TL_pageBlockRelatedArticlesChild) parentBlock;
             if (plainText == pageBlockRelatedArticlesChild.parent.articles.get(pageBlockRelatedArticlesChild.num).title) {
                 if (relatedArticleHeaderPaint == null) {
-                    relatedArticleHeaderPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+                    relatedArticleHeaderPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
                     relatedArticleHeaderPaint.setTypeface(AndroidUtilities.bold());
                 }
                 relatedArticleHeaderPaint.setColor(parent.getTextColor());
@@ -3589,7 +3592,7 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
                 paint = relatedArticleHeaderPaint;
             } else {
                 if (relatedArticleTextPaint == null) {
-                    relatedArticleTextPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+                    relatedArticleTextPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
                 }
                 relatedArticleTextPaint.setColor(parent.getGrayTextColor());
                 relatedArticleTextPaint.setTextSize(dp(14) + additionalSize);
@@ -3597,11 +3600,11 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
             }
         } else if (isListItemBlock(parentBlock) && plainText != null) {
             if (listTextPointerPaint == null) {
-                listTextPointerPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+                listTextPointerPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
                 listTextPointerPaint.setColor(parent.getTextColor());
             }
             if (listTextNumPaint == null) {
-                listTextNumPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+                listTextNumPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
                 listTextNumPaint.setColor(parent.getTextColor());
             }
             listTextPointerPaint.setTextSize(dp(19) + additionalSize);

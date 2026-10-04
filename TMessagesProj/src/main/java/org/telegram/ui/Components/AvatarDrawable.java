@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 5.x.x.
  * It is licensed under GNU GPL v. 2 or later.
@@ -40,6 +42,7 @@ import org.telegram.tgnet.TLObject;
 import org.telegram.tgnet.TLRPC;
 import org.telegram.ui.ActionBar.Theme;
 
+import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
 import java.util.ArrayList;
 
 public class AvatarDrawable extends Drawable {
@@ -62,6 +65,7 @@ public class AvatarDrawable extends Drawable {
     private StringBuilder stringBuilder = new StringBuilder(5);
     private int roundRadius = -1;
 
+    private int lastWeightAdjustment = Integer.MIN_VALUE;
     private int gradientTop, gradientBottom;
     private int gradientColor1, gradientColor2;
     private LinearGradient gradient;
@@ -127,7 +131,7 @@ public class AvatarDrawable extends Drawable {
     public AvatarDrawable(Theme.ResourcesProvider resourcesProvider) {
         super();
         this.resourcesProvider = resourcesProvider;
-        namePaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+        namePaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
         namePaint.setTypeface(AndroidUtilities.bold());
         namePaint.setTextSize(dp(18));
     }
@@ -558,6 +562,12 @@ public class AvatarDrawable extends Drawable {
 
     @Override
     public void draw(Canvas canvas) {
+        int weightAdjustment = SystemTextPaint.getWeightAdjustment();
+        boolean weightChanged = lastWeightAdjustment != weightAdjustment;
+        if (lastWeightAdjustment != weightAdjustment) {
+            lastWeightAdjustment = weightAdjustment;
+            invalidateTextLayout = true;
+        }
         Rect bounds = getBounds();
         if (bounds == null) {
             return;
@@ -720,7 +730,7 @@ public class AvatarDrawable extends Drawable {
                 if (stringBuilder.length() > 0) {
                     CharSequence text = stringBuilder.toString().toUpperCase();
                     text = Emoji.replaceEmoji(text, namePaint.getFontMetricsInt(), true);
-                    if (textLayout == null || !TextUtils.equals(text, textLayout.getText())) {
+                    if (weightChanged || textLayout == null || !TextUtils.equals(text, textLayout.getText())) {
                         try {
                             textLayout = new StaticLayout(text, namePaint, dp(100), Layout.Alignment.ALIGN_NORMAL, 1.0f, 0.0f, false);
                             if (textLayout.getLineCount() > 0) {

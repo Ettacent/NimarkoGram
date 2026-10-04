@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Cells;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -91,8 +93,8 @@ public class UserInfoCell extends View implements NotificationCenter.Notificatio
         public final RectF bounds = new RectF();
 
         public Row(CharSequence key, CharSequence value, boolean avatars) {
-            this.key = new Text(key, 12);
-            this.value = new Text(value, 12, AndroidUtilities.bold());
+            this.key = Text.ui(key, 12);
+            this.value = Text.ui(value, 12, AndroidUtilities.bold());
             this.avatars = avatars;
         }
     }
@@ -158,9 +160,9 @@ public class UserInfoCell extends View implements NotificationCenter.Notificatio
         final int maxWidth = (int) (AndroidUtilities.displaySize.x * .95f);
 
         height += dp(14);
-        title = new Text(DialogObject.getName(dialogId), 14, AndroidUtilities.bold());
+        title = Text.ui(DialogObject.getName(dialogId), 14, AndroidUtilities.bold());
         height += title.getHeight() + dp(3);
-        subtitle = new Text(getString(ContactsController.getInstance(currentAccount).isContact(dialogId) ? R.string.ContactInfoIsContact : R.string.ContactInfoIsNotContact), 14);
+        subtitle = Text.ui(getString(ContactsController.getInstance(currentAccount).isContact(dialogId) ? R.string.ContactInfoIsContact : R.string.ContactInfoIsNotContact), 14);
         height += subtitle.getHeight() + dp(11);
 
         if (settings != null && settings.phone_country != null) {
@@ -204,10 +206,10 @@ public class UserInfoCell extends View implements NotificationCenter.Notificatio
                 if (userFull != null && userFull.bot_verification != null) {
                     final TL_bots.botVerification verification = userFull.bot_verification;
                     final SpannableStringBuilder sb = new SpannableStringBuilder("i  ");
-                    footer = new Text(sb, 12);
+                    footer = Text.ui(sb, 12);
                     sb.setSpan(new AnimatedEmojiSpan(verification.icon, footer.getFontMetricsInt()), 0, 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
                     sb.append(verification.description);
-                    footer = new Text(sb, 12).align(Layout.Alignment.ALIGN_CENTER).multiline(5).setMaxWidth(Math.min(AndroidUtilities.displaySize.x, AndroidUtilities.displaySize.y) * .5f).supportAnimatedEmojis(this);
+                    footer = Text.ui(sb, 12).align(Layout.Alignment.ALIGN_CENTER).multiline(5).setMaxWidth(Math.min(AndroidUtilities.displaySize.x, AndroidUtilities.displaySize.y) * .5f).supportAnimatedEmojis(this);
                     height += dp(12) + footer.getHeight() + dp(15.33f);
                 } else {
                     footer = null;
@@ -220,7 +222,7 @@ public class UserInfoCell extends View implements NotificationCenter.Notificatio
                 span.translate(dp(1), dp(-1));
                 sb.setSpan(span, 0, 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
                 sb.append(getString(R.string.ContactInfoNotVerified));
-                footer = new Text(sb, 12);
+                footer = Text.ui(sb, 12);
                 height += dp(12) + footer.getHeight() + dp(15.33f);
             }
         } else {
@@ -249,7 +251,7 @@ public class UserInfoCell extends View implements NotificationCenter.Notificatio
                     set(dialogId, MessagesController.getInstance(currentAccount).getPeerSettings(dialogId));
                     requestLayout();
                 } else {
-                    groupsRow.value = new Text(LocaleController.formatPluralString("Groups", count), 12, AndroidUtilities.bold());
+                    groupsRow.value = Text.ui(LocaleController.formatPluralString("Groups", count), 12, AndroidUtilities.bold());
                     groupsAvatars.setCount(Math.min(3, commonChats.chats.size()));
                     for (int i = 0; i < Math.min(3, commonChats.chats.size()); ++i) {
                         groupsAvatars.setObject(i, currentAccount, commonChats.chats.get(i));

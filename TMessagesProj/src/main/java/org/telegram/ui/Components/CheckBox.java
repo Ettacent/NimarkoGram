@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 5.x.x.
  * It is licensed under GNU GPL v. 2 or later.
@@ -21,6 +23,7 @@ import android.graphics.PorterDuffXfermode;
 import android.graphics.drawable.Drawable;
 import androidx.annotation.Keep;
 import android.text.TextPaint;
+import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
 import android.view.View;
 import android.view.accessibility.AccessibilityNodeInfo;
 
@@ -76,7 +79,7 @@ public class CheckBox extends View {
         eraser2.setStrokeWidth(AndroidUtilities.dp(28));
         backgroundPaint.setStrokeWidth(AndroidUtilities.dp(2));
 
-        textPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+        textPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
         textPaint.setTextSize(AndroidUtilities.dp(18));
         textPaint.setTypeface(AndroidUtilities.bold());
 

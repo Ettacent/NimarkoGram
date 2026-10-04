@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components;
 
 import android.animation.ValueAnimator;
@@ -16,12 +18,13 @@ import androidx.core.graphics.ColorUtils;
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.ui.ActionBar.Theme;
 
+import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
 public class UnreadCounterTextView extends View {
 
     private int currentCounter;
     private String currentCounterString;
     private int textWidth;
-    private TextPaint textPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+    private TextPaint textPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
     private Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private RectF rect = new RectF();
     private int circleWidth;
@@ -32,7 +35,7 @@ public class UnreadCounterTextView extends View {
     private Drawable iconOut;
     private StaticLayout textLayoutOut;
     private int layoutTextWidth;
-    private TextPaint layoutPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+    private TextPaint layoutPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
 
     Drawable selectableBackground;
 

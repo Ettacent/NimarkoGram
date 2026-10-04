@@ -164,6 +164,8 @@ public class NimarkoCameraXView extends BaseCameraView {
     private float focusProgress = 1.0f;
     private float innerAlpha;
     private float outerAlpha;
+    private float focusLockProgress = 1.0f;
+    private float focusLockAlpha;
     private long focusLastDrawTime;
     private int focusCx;
     private int focusCy;
@@ -423,9 +425,10 @@ public class NimarkoCameraXView extends BaseCameraView {
         Preview.Builder previewBuilder = new Preview.Builder()
                 .setResolutionSelector(CameraXUtils.buildResolutionSelector(
                         targetSize, aspectRatio, true));
+        Camera2Interop.Extender<Preview> previewExtender =
+                new Camera2Interop.Extender<>(previewBuilder);
         if (applyEnhancements) {
-            CameraXUtils.applyCamera2Controls(provider, selector,
-                    new Camera2Interop.Extender<>(previewBuilder), false);
+            CameraXUtils.applyCamera2Controls(provider, selector, previewExtender, false);
         }
         if (applyEnhancements
                 && CameraXUtils.shouldEnablePreviewStabilization(provider, selector)) {
@@ -892,15 +895,26 @@ public class NimarkoCameraXView extends BaseCameraView {
 
     @Override
     public void focusToPoint(int x, int y) {
-        if (camera != null) {
+        focusToPoint(x, y, false);
+    }
+    @Override
+    public void focusToPoint(int x, int y, boolean forceLock) {
+        if (camera != null && !destroyed) {
             try {
                 MeteringPointFactory factory = previewView.getMeteringPointFactory();
-                MeteringPoint point = factory.createPoint(x, y);
-                FocusMeteringAction action = new FocusMeteringAction.Builder(point,
-                        FocusMeteringAction.FLAG_AF | FocusMeteringAction.FLAG_AE)
-                        .setAutoCancelDuration(3, TimeUnit.SECONDS)
-                        .build();
-                camera.getCameraControl().startFocusAndMetering(action);
+                MeteringPoint point = factory.createPoint(x, y, 0.06f);
+                MeteringPoint exposurePoint = factory.createPoint(x, y, 0.12f);
+                FocusMeteringAction.Builder actionBuilder = new FocusMeteringAction.Builder(point,
+                        FocusMeteringAction.FLAG_AF)
+                        .addPoint(exposurePoint, FocusMeteringAction.FLAG_AE);
+                if (forceLock) {
+                    actionBuilder.disableAutoCancel();
+                } else {
+                    actionBuilder.setAutoCancelDuration(5, TimeUnit.SECONDS);
+                }
+                FocusMeteringAction action = actionBuilder.build();
+                final Camera focusCamera = camera;
+                focusCamera.getCameraControl().startFocusAndMetering(action);
             } catch (Throwable t) {
                 FileLog.e(t);
             }
@@ -909,6 +923,10 @@ public class NimarkoCameraXView extends BaseCameraView {
         focusProgress = 0.0f;
         innerAlpha = 1.0f;
         outerAlpha = 1.0f;
+        if (forceLock) {
+            focusLockProgress = 0.0f;
+            focusLockAlpha = 1.0f;
+        }
         focusCx = x;
         focusCy = y;
         focusLastDrawTime = System.currentTimeMillis();
@@ -918,7 +936,8 @@ public class NimarkoCameraXView extends BaseCameraView {
     @Override
     protected boolean drawChild(Canvas canvas, View child, long drawingTime) {
         boolean result = super.drawChild(canvas, child, drawingTime);
-        if (focusProgress != 1.0f || innerAlpha != 0.0f || outerAlpha != 0.0f) {
+        if (focusProgress != 1.0f || innerAlpha != 0.0f || outerAlpha != 0.0f
+                || focusLockAlpha > 0.0f) {
             int baseRad = AndroidUtilities.dp(30);
             long newTime = System.currentTimeMillis();
             long dt = newTime - focusLastDrawTime;
@@ -932,6 +951,16 @@ public class NimarkoCameraXView extends BaseCameraView {
             canvas.drawCircle(focusCx, focusCy, baseRad + baseRad * (1.0f - interpolated), outerPaint);
             canvas.drawCircle(focusCx, focusCy, baseRad * interpolated, innerPaint);
 
+            if (focusLockAlpha > 0.0f) {
+                float lockProgress = focusInterpolator.getInterpolation(focusLockProgress);
+                outerPaint.setAlpha((int) (focusLockAlpha * 220));
+                canvas.drawCircle(focusCx, focusCy,
+                        baseRad + AndroidUtilities.dp(5) + AndroidUtilities.dp(8) * lockProgress,
+                        outerPaint);
+                focusLockProgress += dt / 420.0f;
+                if (focusLockProgress > 1.0f) focusLockProgress = 1.0f;
+                focusLockAlpha = Math.max(0.0f, 1.0f - focusLockProgress);
+            }
             if (focusProgress < 1) {
                 focusProgress += dt / 200.0f;
                 if (focusProgress > 1) {

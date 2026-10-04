@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components;
 
 import android.animation.Animator;
@@ -12,6 +14,7 @@ import android.graphics.Path;
 import android.text.Layout;
 import android.text.StaticLayout;
 import android.text.TextPaint;
+import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
 import android.view.View;
 import android.view.animation.DecelerateInterpolator;
 import android.view.animation.Interpolator;
@@ -28,7 +31,7 @@ import java.util.regex.Pattern;
 public class TextSelectionHint extends View {
 
     StaticLayout textLayout;
-    TextPaint textPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+    TextPaint textPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
     Paint selectionPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
 
     int padding = AndroidUtilities.dp(24);

@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Stories.recorder;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -35,6 +37,7 @@ import android.text.SpannableString;
 import android.text.Spanned;
 import android.text.StaticLayout;
 import android.text.TextPaint;
+import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
 import android.text.TextUtils;
 import android.text.style.ClickableSpan;
 import android.text.style.ReplacementSpan;
@@ -115,7 +118,7 @@ public class HintView2 extends View {
     private AnimatedTextView.AnimatedTextDrawable textDrawable;
 
     private boolean multiline;
-    private final TextPaint textPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+    private final TextPaint textPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
     private Layout.Alignment textLayoutAlignment = Layout.Alignment.ALIGN_NORMAL;
     private StaticLayout textLayout;
     private AnimatedEmojiSpan.EmojiGroupedSpans emojiGroupedSpans;
@@ -359,6 +362,9 @@ public class HintView2 extends View {
         if (spans == null || spans.length == 0) {
             return paint.measureText(text.toString()) + add;
         }
+        Paint savedPaint = paint instanceof SystemTextPaint
+                ? new SystemTextPaint(paint.getFlags()) : new Paint();
+        savedPaint.set(paint);
         float len = 0;
         int s = 0, e;
         for (int i = 0; i < spans.length; ++i) {
@@ -372,10 +378,12 @@ public class HintView2 extends View {
             s = e;
             e = Math.max(s, spanend);
             if (e - s > 0) {
-                Typeface oldTypeface = paint.getTypeface();
-                paint.setTypeface(spans[i].getTypeface());
+                try {
+                    SystemTextPaint.setSpanTypeface(paint, spans[i].getTypeface());
                 len += paint.measureText(spanned, s, e);
-                paint.setTypeface(oldTypeface);
+                } finally {
+                    paint.set(savedPaint);
+                }
             }
             s = e;
         }

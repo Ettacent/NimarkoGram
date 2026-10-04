@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -1936,7 +1938,7 @@ public class MessageSendPreview extends Dialog implements NotificationCenter.Not
     private Paint buttonBgPaint;
 
     public void setStars(long stars) {
-        buttonText = stars <= 0 ? null : new Text(StarsIntroActivity.replaceStarsWithPlain(LocaleController.formatPluralStringComma("UnlockPaidContent", (int) stars), .7f), 14, AndroidUtilities.bold());
+        buttonText = stars <= 0 ? null : Text.ui(StarsIntroActivity.replaceStarsWithPlain(LocaleController.formatPluralStringComma("UnlockPaidContent", (int) stars), .7f), 14, AndroidUtilities.bold());
         if (buttonBgPaint == null) {
             buttonBgPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
             buttonBgPaint.setColor(0x40000000);

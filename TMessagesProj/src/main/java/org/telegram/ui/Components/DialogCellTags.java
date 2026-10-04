@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -57,7 +59,7 @@ public class DialogCellTags {
             tag.filterId = n;
 
             String text = "+" + n;
-            tag.text = new Text(text, 10, AndroidUtilities.bold()).supportAnimatedEmojis(view);
+            tag.text = Text.ui(text, 10, AndroidUtilities.bold()).supportAnimatedEmojis(view);
             tag.width = dp(2 * padDp) + (int) tag.text.getCurrentWidth();
             tag.textHeight = (int) tag.text.getHeight();
 
@@ -72,7 +74,7 @@ public class DialogCellTags {
             tag.colorId = filter.color;
 
             CharSequence text = new SpannableStringBuilder((filter.name == null ? "" : filter.name).toUpperCase());
-            tag.text = new Text(text, 10, AndroidUtilities.bold()).supportAnimatedEmojis(view);
+            tag.text = Text.ui(text, 10, AndroidUtilities.bold()).supportAnimatedEmojis(view);
             text = Emoji.replaceEmoji(text, tag.text.getFontMetricsInt(), false);
             text = MessageObject.replaceAnimatedEmoji(text, filter.entities, tag.text.getFontMetricsInt());
             tag.text.setText(text);

@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 5.x.x.
  * It is licensed under GNU GPL v. 2 or later.
@@ -353,6 +355,7 @@ public class MessageObject {
     public int totalAnimatedEmojiCount;
     private boolean layoutCreated;
     private int generatedWithMinSize;
+    private int generatedWithFontWeightAdjustment;
     private float generatedWithDensity;
     private float generatedWithFontSize;
     public boolean wasJustSent;
@@ -1085,7 +1088,7 @@ public class MessageObject {
         public void layoutCode(String lng, int codeLength, boolean noforwards) {
             hasCodeCopyButton = codeLength >= 75 && !noforwards;
             if (hasCodeCopyButton) {
-                copyText = new Text(getString(R.string.CopyCode).toUpperCase(), SharedConfig.fontSize - 3, AndroidUtilities.bold());
+                copyText = Text.ui(getString(R.string.CopyCode).toUpperCase(), SharedConfig.fontSize - 3, AndroidUtilities.bold());
                 copyIcon = ApplicationLoader.applicationContext.getResources().getDrawable(R.drawable.msg_copy).mutate();
                 copyIcon.setColorFilter(new PorterDuffColorFilter(copyIconColor, PorterDuff.Mode.SRC_IN));
                 copySelector = Theme.createRadSelectorDrawable(copySelectorColor, 0, 0, Math.min(5, SharedConfig.bubbleRadius), 0);
@@ -1097,7 +1100,7 @@ public class MessageObject {
                 return;
             }
             language = lng;
-            languageLayout = new Text(
+                languageLayout = Text.ui(
                 capitalizeLanguage(lng),
                 SharedConfig.fontSize - 1 - CodeHighlighting.getTextSizeDecrement(codeLength) / 2,
                 AndroidUtilities.bold()
@@ -3859,10 +3862,6 @@ public class MessageObject {
 
     @Deprecated
     public void generateSuggestionApprovalMessageText() {
-        final String channelName = ForumUtilities.getMonoForumTitle(currentAccount, DialogObject.getPeerDialogId(messageOwner.peer_id), true);
-        final String userName = MessagesController.getInstance(currentAccount).getPeerName(DialogObject.getPeerDialogId(messageOwner.saved_peer_id));
-
-        messageText = getActionSuggestionApprovalText(channelName, userName);
     }
 
     public void generatePaymentSentMessageText(TLRPC.User fromUser, boolean me) {
@@ -6133,7 +6132,7 @@ public class MessageObject {
         Theme.createCommonChatResources();
         TextPaint paint = Theme.chat_actionTextPaint;
         if (paint == null) {
-            paint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+            paint = new app.nimarkogram.messenger.utils.ui.SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
             paint.setTypeface(AndroidUtilities.bold());
             paint.setTextSize(dp(Math.max(16, SharedConfig.fontSize) - 2));
         }
@@ -6823,7 +6822,8 @@ public class MessageObject {
                     ? layoutParentWidth
                     : AndroidUtilities.isTablet() ? AndroidUtilities.getMinTabletSide() : AndroidUtilities.displaySize.x;
             float newFontSize = Theme.chat_msgTextPaint != null ? Theme.chat_msgTextPaint.getTextSize() : 0;
-            if (Math.abs(generatedWithMinSize - newMinSize) > dp(52) || generatedWithDensity != AndroidUtilities.density || generatedWithFontSize != newFontSize) {
+            if (Math.abs(generatedWithMinSize - newMinSize) > dp(52) || generatedWithDensity != AndroidUtilities.density || generatedWithFontSize != newFontSize
+                    || generatedWithFontWeightAdjustment != app.nimarkogram.messenger.utils.ui.SystemTextPaint.getWeightAdjustment()) {
                 layoutCreated = false;
             }
         }
@@ -8517,6 +8517,7 @@ public class MessageObject {
             generatedWithMinSize = getParentWidth();
         }
         generatedWithDensity = AndroidUtilities.density;
+        generatedWithFontWeightAdjustment = app.nimarkogram.messenger.utils.ui.SystemTextPaint.getWeightAdjustment();
         generatedWithFontSize = Theme.chat_msgTextPaint != null ? Theme.chat_msgTextPaint.getTextSize() : 0;
         if (hasCode && !isSaved) {
             maxWidth = generatedWithMinSize - dp(45 + 15);

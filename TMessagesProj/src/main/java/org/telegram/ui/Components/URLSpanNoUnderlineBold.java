@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 5.x.x.
  * It is licensed under GNU GPL v. 2 or later.
@@ -10,6 +12,7 @@ package org.telegram.ui.Components;
 
 import android.text.TextPaint;
 
+import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
 import org.telegram.messenger.AndroidUtilities;
 
 public class URLSpanNoUnderlineBold extends URLSpanNoUnderline {
@@ -21,7 +24,7 @@ public class URLSpanNoUnderlineBold extends URLSpanNoUnderline {
     @Override
     public void updateDrawState(TextPaint ds) {
         super.updateDrawState(ds);
-        ds.setTypeface(AndroidUtilities.bold());
+        SystemTextPaint.setSpanTypeface(ds, AndroidUtilities.bold());
         ds.setUnderlineText(false);
     }
 }

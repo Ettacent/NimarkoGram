@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 5.x.x.
  * It is licensed under GNU GPL v. 2 or later.
@@ -66,6 +68,7 @@ import android.text.SpannableStringBuilder;
 import android.text.Spanned;
 import android.text.StaticLayout;
 import android.text.TextPaint;
+import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
 import android.text.TextUtils;
 import android.text.style.CharacterStyle;
 import android.text.style.ClickableSpan;
@@ -3916,9 +3919,6 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
     }
 
     public void didPressVoteHint() {
-        if (delegate != null) {
-            delegate.didPressHint(this, 0);
-        }
 
         if (currentMessageObject != null) {
             currentMessageObject.expandedExplanation = !currentMessageObject.expandedExplanation;
@@ -5737,7 +5737,7 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
                 final TLObject obj = MessagesController.getInstance(currentAccount).getUserOrChat(send_as);
                 button.avatarDrawable.setInfo(obj);
                 button.avatarImageReceiver.setForUserOrChat(obj, button.avatarDrawable);
-                button.author = new Text(DialogObject.getName(obj), 12);
+                button.author = Text.ui(DialogObject.getName(obj), 12);
             }
             pollCheckBox[index].setChecked(!button.chosen, true);
             if (animatedInfoLayout != null) {
@@ -6210,15 +6210,6 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
     }
 
     private void didClickedPollImage(ChatMessageCell cell, ImageReceiver imageReceiver, TLRPC.PollAnswer answer, TLRPC.MessageMedia media, float x, float y, int unshuffledIndex) {
-            if (pollContentDrawable != null && pollContentDrawable.getMedia() != null && pollContentDrawable.getMedia().document != null && (pollContentDrawable.isFile() || pollContentDrawable.isMusic())) {
-                FileLoader.getInstance(currentAccount).loadFile(pollContentDrawable.getMedia().document,
-                    currentMessageObject,
-                    FileLoader.PRIORITY_NORMAL_UP,
-                    currentMessageObject.shouldEncryptPhotoOrVideo() ? 2 : 0);
-                invalidate();
-            }
-            return;
-        }*/
 
         if (delegate != null) {
             delegate.didPressPollMedia(cell, imageReceiver, answer, media, x, y, unshuffledIndex);
@@ -6271,13 +6262,6 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
         } else if (currentMessageObject.type == MessageObject.TYPE_GIF) {
             if (buttonState == -1 || buttonState == 1 && canStreamVideo && autoPlayingMedia) {
                 delegate.didPressImage(this, lastTouchX, lastTouchY, false);
-                    buttonState = 2;
-                    currentMessageObject.gifState = 1;
-                    photoImage.setAllowStartAnimation(false);
-                    photoImage.stopAnimation();
-                    radialProgress.setIcon(getIconForCurrentState(), false, true);
-                    invalidate();
-                }*/
             } else if (buttonState == 2 || buttonState == 0) {
                 didPressButton(true, false);
             }
@@ -9326,7 +9310,7 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
                         if (i >= count) break;
                     }
                     groupCallParticipantsAvatars.commitTransition(false);
-                    groupCallParticipantsText = new Text(formatPluralStringComma("ConferenceCallOther", dialogIds.size()), 13);
+                    groupCallParticipantsText = Text.ui(formatPluralStringComma("ConferenceCallOther", dialogIds.size()), 13);
                 } else {
                     groupCallParticipantsText = null;
                 }
@@ -11519,7 +11503,7 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
                             }
                         }
                     }
-                    starsPriceText = new Text(text, 14, AndroidUtilities.bold())
+                    starsPriceText = Text.ui(text, 14, AndroidUtilities.bold())
                         .multiline(3)
                         .setMaxWidth(currentMessageObject.getMaxMessageTextWidth())
                         .align(Layout.Alignment.ALIGN_CENTER)
@@ -11559,7 +11543,7 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
                             text = StarsIntroActivity.replaceDiamond(replaceWithLink(formatString(R.string.StakeDiceActionLost, StarsIntroActivity.formatTON(-diceStakeOutcome)), "un1", fromObject), 0.825f);
                         }
                     }
-                    bottomActionText = new Text(text, 14, AndroidUtilities.bold())
+                    bottomActionText = Text.ui(text, 14, AndroidUtilities.bold())
                         .multiline(3)
                         .setMaxWidth(currentMessageObject.getMaxMessageTextWidth())
                         .align(Layout.Alignment.ALIGN_CENTER)
@@ -12243,7 +12227,7 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
                             TLObject obj = MessagesController.getInstance(currentAccount).getUserOrChat(DialogObject.getPeerDialogId(completion.completed_by));
                             button.avatarDrawable.setInfo(obj);
                             button.avatarImageReceiver.setForUserOrChat(obj, button.avatarDrawable);
-                            button.author = new Text(DialogObject.getName(obj), 12);
+                            button.author = Text.ui(DialogObject.getName(obj), 12);
                             break;
                         }
                     }
@@ -17154,7 +17138,7 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
     private void drawFilteredMessageCollapsed(Canvas canvas) {
         if (filterCollapsedBackgroundPaint == null) {
             filterCollapsedBackgroundPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-            filterCollapsedTextPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+            filterCollapsedTextPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
             filterCollapsedTextPaint.setTextSize(dp(15));
             filterCollapsedTextPaint.setTypeface(AndroidUtilities.bold());
             Paint.FontMetrics fm = filterCollapsedTextPaint.getFontMetrics();
@@ -20328,8 +20312,8 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
         if (messageObject.summarized && (currentPosition == null || currentPosition.minY == 0)) {
             drawSummaryReply = true;
             if (summaryTitle == null) {
-                summaryTitle = new Text(getString(R.string.SummaryTitle), 14, AndroidUtilities.bold());
-                summarySubtitle = new Text(getString(R.string.SummarySubtitle), 14);
+                summaryTitle = Text.ui(getString(R.string.SummaryTitle), 14, AndroidUtilities.bold());
+                summarySubtitle = Text.ui(getString(R.string.SummarySubtitle), 14);
             }
             summaryTitle.multiline(3).setMaxWidth(getMaxNameWidth() - dp(25));
             summarySubtitle.multiline(3).setMaxWidth(getMaxNameWidth() - dp(25));
@@ -27031,7 +27015,7 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
                 SpannableStringBuilder sensitiveTextString = new SpannableStringBuilder("x " + getString(R.string.MessageSensitiveContent));
                 ColoredImageSpan span = new ColoredImageSpan(R.drawable.filled_sensitive);
                 sensitiveTextString.setSpan(span, 0, 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-                sensitiveText = new Text(sensitiveTextString, 14, AndroidUtilities.getTypeface(AndroidUtilities.TYPEFACE_ROBOTO_MEDIUM));
+                sensitiveText = Text.ui(sensitiveTextString, 14, AndroidUtilities.getTypeface(AndroidUtilities.TYPEFACE_ROBOTO_MEDIUM));
             }
             int textPadding = 13, textHeight = 32;
             Text text = sensitiveText;
@@ -27040,14 +27024,14 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
                     SpannableStringBuilder sensitiveTextString = new SpannableStringBuilder("x " + getString(R.string.MessageSensitiveContentShort));
                     ColoredImageSpan span = new ColoredImageSpan(R.drawable.filled_sensitive);
                     sensitiveTextString.setSpan(span, 0, 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-                    sensitiveTextShort = new Text(sensitiveTextString, 14, AndroidUtilities.getTypeface(AndroidUtilities.TYPEFACE_ROBOTO_MEDIUM));
+                    sensitiveTextShort = Text.ui(sensitiveTextString, 14, AndroidUtilities.getTypeface(AndroidUtilities.TYPEFACE_ROBOTO_MEDIUM));
                 }
                 text = sensitiveTextShort;
             }
             if (photoImage.getImageWidth() < 2 * dp(textPadding + textPadding) + text.getCurrentWidth()) {
                 if (sensitiveTextShort2 == null) {
                     SpannableStringBuilder sensitiveTextString = new SpannableStringBuilder(getString(R.string.MessageSensitiveContentShort));
-                    sensitiveTextShort2 = new Text(sensitiveTextString, 13, AndroidUtilities.getTypeface(AndroidUtilities.TYPEFACE_ROBOTO_MEDIUM));
+                    sensitiveTextShort2 = Text.ui(sensitiveTextString, 13, AndroidUtilities.getTypeface(AndroidUtilities.TYPEFACE_ROBOTO_MEDIUM));
                 }
                 text = sensitiveTextShort2;
                 textPadding = 10;
@@ -30193,8 +30177,8 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
             } else {
                 factCheckHeight += dp(4.66f);
 
-                factCheckTitle = new Text(getString(R.string.FactCheck), 14, AndroidUtilities.bold());
-                factCheckWhat = new Text(getString(R.string.FactCheckWhat), 11);
+                factCheckTitle = Text.ui(getString(R.string.FactCheck), 14, AndroidUtilities.bold());
+                factCheckWhat = Text.ui(getString(R.string.FactCheckWhat), 11);
                 factCheckHeight += dp(17.33f);
                 factCheckWidth = (int) (dp(20) + factCheckTitle.getCurrentWidth() + factCheckWhat.getCurrentWidth() + dp(18));
 

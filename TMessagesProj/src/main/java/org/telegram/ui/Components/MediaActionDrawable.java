@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components;
 
 import android.graphics.Canvas;
@@ -13,6 +15,7 @@ import android.graphics.RectF;
 import android.graphics.Shader;
 import android.graphics.drawable.Drawable;
 import android.text.TextPaint;
+import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
 import android.view.animation.DecelerateInterpolator;
 
 import org.telegram.messenger.AndroidUtilities;
@@ -38,7 +41,7 @@ public class MediaActionDrawable extends Drawable {
     public static final int ICON_CANCEL_FILL = 14;
     public static final int ICON_UPDATE = 15;
 
-    private TextPaint textPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+    private TextPaint textPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
     public Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private Paint backPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     public Paint paint2 = new Paint(Paint.ANTI_ALIAS_FLAG);

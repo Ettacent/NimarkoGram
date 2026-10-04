@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 1.3.x.
  * It is licensed under GNU GPL v. 2 or later.
@@ -18,6 +20,7 @@ import android.text.SpannableStringBuilder;
 import android.text.Spanned;
 import android.text.StaticLayout;
 import android.text.TextPaint;
+import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
 import android.util.Pair;
 import android.view.MotionEvent;
 import android.view.View;
@@ -329,7 +332,7 @@ public class SeekBar {
         timestamps = new ArrayList<>();
         timestampsAppearing = 0;
         if (timestampLabelPaint == null) {
-            timestampLabelPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+            timestampLabelPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
             timestampLabelPaint.setTextSize(AndroidUtilities.dp(12));
             timestampLabelPaint.setColor(0xffffffff);
         }

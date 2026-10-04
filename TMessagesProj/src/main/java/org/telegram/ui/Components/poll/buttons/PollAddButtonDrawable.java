@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components.poll.buttons;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -21,6 +23,7 @@ import androidx.annotation.NonNull;
 import org.telegram.messenger.R;
 import org.telegram.messenger.utils.DrawableUtils;
 import org.telegram.ui.ActionBar.Theme;
+import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
 import org.telegram.ui.Components.CubicBezierInterpolator;
 import org.telegram.ui.Components.poll.PollAttachedMedia;
 
@@ -36,16 +39,18 @@ public class PollAddButtonDrawable extends PollButtonDrawableBase implements Fac
 
     private final int[] pressedState = new int[] { android.R.attr.state_enabled, android.R.attr.state_pressed };
     private final Drawable addDrawable;
-    private final TextPaint addAnOptionTextPaint;
+    private final SystemTextPaint addAnOptionTextPaint;
     private StaticLayout addAnOptionText;
     private int addAnOptionLastWidth;
     private int textLastColor;
 
+    private int lastWeightAdjustment = Integer.MIN_VALUE;
     public PollAddButtonDrawable(Context context, Theme.ResourcesProvider resourcesProvider) {
         super(resourcesProvider);
 
         this.addDrawable = context.getResources().getDrawable(R.drawable.outline_poll_add_24).mutate();
-        this.addAnOptionTextPaint = new TextPaint(Theme.chat_audioPerformerPaint);
+        this.addAnOptionTextPaint = new SystemTextPaint(TextPaint.ANTI_ALIAS_FLAG);
+        this.addAnOptionTextPaint.copyTypefaceFrom(Theme.chat_audioPerformerPaint);
 
         setSelectorsColor(Theme.getColor(Theme.key_listSelector, resourcesProvider));
         checkIconsAlpha();
@@ -97,8 +102,10 @@ public class PollAddButtonDrawable extends PollButtonDrawableBase implements Fac
         DrawableUtils.setBounds(addDrawable, cxl, cy, Gravity.CENTER);
 
         final int width = bounds.width() - dp(56);
-        if (addAnOptionText == null || addAnOptionLastWidth != width) {
+        int weightAdjustment = SystemTextPaint.getWeightAdjustment();
+        if (addAnOptionText == null || addAnOptionLastWidth != width || lastWeightAdjustment != weightAdjustment) {
             addAnOptionLastWidth = width;
+            lastWeightAdjustment = weightAdjustment;
             addAnOptionText = new StaticLayout(getString(R.string.PollAddAnOption), addAnOptionTextPaint, width, Layout.Alignment.ALIGN_NORMAL, 1.0f, 0.0f, false);
         }
     }

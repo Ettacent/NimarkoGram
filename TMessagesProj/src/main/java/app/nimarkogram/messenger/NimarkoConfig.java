@@ -912,6 +912,8 @@ public final class NimarkoConfig {
     public static boolean cameraContinuousFocus = getPreferences().getBoolean("cameraContinuousFocus", true);
     public static void toggleCameraContinuousFocus() { cameraContinuousFocus = !cameraContinuousFocus; getEditor().putBoolean("cameraContinuousFocus", cameraContinuousFocus).apply(); }
 
+    public static boolean roundVideoTapFocus = getPreferences().getBoolean("roundVideoTapFocus", false);
+    public static void toggleRoundVideoTapFocus() { roundVideoTapFocus = !roundVideoTapFocus; getEditor().putBoolean("roundVideoTapFocus", roundVideoTapFocus).apply(); }
     public static boolean cameraNoiseReduction = getPreferences().getBoolean("cameraNoiseReduction", true);
     public static void toggleCameraNoiseReduction() { cameraNoiseReduction = !cameraNoiseReduction; getEditor().putBoolean("cameraNoiseReduction", cameraNoiseReduction).apply(); }
 
@@ -958,8 +960,7 @@ public final class NimarkoConfig {
     public static boolean systemEmoji = getPreferences().getBoolean("systemEmoji", false);
     public static void toggleSystemEmoji() { systemEmoji = !systemEmoji; getEditor().putBoolean("systemEmoji", systemEmoji).apply(); }
 
-    public static boolean systemFonts = getPreferences().getBoolean("systemFonts", false);
-    public static void toggleSystemFonts() { systemFonts = !systemFonts; getEditor().putBoolean("systemFonts", systemFonts).apply(); }
+    public static final boolean systemFonts = true;
 
     public static final int SPRING_SPRING = 0;
     public static final int SPRING_CLASSIC = 1;

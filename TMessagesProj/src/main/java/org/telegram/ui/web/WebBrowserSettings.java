@@ -583,7 +583,7 @@ public class WebBrowserSettings extends UniversalFragment implements Notificatio
                 CombinedDrawable drawable = new CombinedDrawable(
                     Theme.createRoundRectDrawable(dp(6), Theme.multAlpha(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText), .1f)),
                     new Drawable() {
-                        private final Text text = new Text(s.substring(0, !s.isEmpty() ? 1 : 0), 14, AndroidUtilities.bold());
+                        private final Text text = Text.ui(s.substring(0, !s.isEmpty() ? 1 : 0), 14, AndroidUtilities.bold());
                         @Override
                         public void draw(@NonNull Canvas canvas) {
                             text.draw(canvas, getBounds().centerX() - text.getCurrentWidth() / 2f, getBounds().centerY(), Theme.getColor(Theme.key_windowBackgroundWhiteBlackText), 1f);

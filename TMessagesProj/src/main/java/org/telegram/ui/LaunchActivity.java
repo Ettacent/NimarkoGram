@@ -470,6 +470,8 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
         flagSecureReason.attach();
 
         super.onCreate(savedInstanceState);
+        app.nimarkogram.messenger.utils.ui.SystemTextPaint.configure(
+                getResources().getConfiguration(), app.nimarkogram.messenger.NimarkoConfig.systemFonts);
         // NimarkoGram: the launch animation is an AnimatedVectorDrawable (splash_plane_avd) wired as the
         // system windowSplashScreenAnimatedIcon — the OS auto-plays it on the splash (like official
         // Telegram), so no custom exit-listener / overlay is needed here (which previously caused the swap).
@@ -7808,6 +7810,8 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
         AndroidUtilities.checkDisplaySize(this, newConfig);
         AndroidUtilities.setPreferredMaxRefreshRate(getWindow());
         super.onConfigurationChanged(newConfig);
+        app.nimarkogram.messenger.utils.ui.SystemTextPaint.configure(
+                newConfig, app.nimarkogram.messenger.NimarkoConfig.systemFonts);
         pipActivityHandler.onConfigurationChanged(newConfig);
         AndroidUtilities.resetTabletFlag();
         invalidateTabletMode();

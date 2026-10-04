@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Stories.recorder;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -27,6 +29,7 @@ import android.os.Build;
 import android.text.Layout;
 import android.text.StaticLayout;
 import android.text.TextPaint;
+import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
 import android.text.TextUtils;
 import android.view.Gravity;
 import android.view.HapticFeedbackConstants;
@@ -260,7 +263,7 @@ public class TimelineView extends View {
     private final Paint regionHandlePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint progressShadowPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint progressWhitePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-    private final TextPaint countTextPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+    private final TextPaint countTextPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
 
     private final RectF audioBounds = new RectF();
     private final Path audioClipPath = new Path();
@@ -269,10 +272,10 @@ public class TimelineView extends View {
 
     private final Paint audioDotPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Drawable audioIcon;
-    private final TextPaint audioAuthorPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+    private final TextPaint audioAuthorPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
     private StaticLayout audioAuthor;
     private float audioAuthorWidth, audioAuthorLeft;
-    private final TextPaint audioTitlePaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+    private final TextPaint audioTitlePaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
     private StaticLayout audioTitle;
     private float audioTitleWidth, audioTitleLeft;
 
@@ -320,7 +323,7 @@ public class TimelineView extends View {
         progressWhitePaint.setColor(0xffffffff);
         progressShadowPaint.setColor(0x26000000);
 
-        timelineText = new Text(LocaleController.getString(R.string.StoryTimeline), 12, AndroidUtilities.bold());
+        timelineText = Text.ui(LocaleController.getString(R.string.StoryTimeline), 12, AndroidUtilities.bold());
         timelineIcon = getContext().getResources().getDrawable(R.drawable.timeline).mutate();
         timelineIcon.setColorFilter(new PorterDuffColorFilter(0xffffffff, PorterDuff.Mode.SRC_IN));
 

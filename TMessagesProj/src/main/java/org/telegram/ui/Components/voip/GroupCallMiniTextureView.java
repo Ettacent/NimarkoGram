@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components.voip;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -24,6 +26,7 @@ import android.graphics.drawable.GradientDrawable;
 import android.text.Layout;
 import android.text.StaticLayout;
 import android.text.TextPaint;
+import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.MotionEvent;
@@ -179,12 +182,12 @@ public class GroupCallMiniTextureView extends FrameLayout implements GroupCallSt
 
         castingScreenDrawable = parentContainer.getContext().getResources().getDrawable(R.drawable.screencast_big).mutate();
 
-        TextPaint textPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+        TextPaint textPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
         textPaint.setTypeface(AndroidUtilities.bold());
         textPaint.setTextSize(dp(13));
         textPaint.setColor(Color.WHITE);
 
-        TextPaint textPaint2 = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+        TextPaint textPaint2 = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
         textPaint2.setTypeface(AndroidUtilities.bold());
         textPaint2.setTextSize(dp(15));
         textPaint2.setColor(Color.WHITE);

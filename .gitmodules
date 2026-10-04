@@ -43,3 +43,6 @@
 [submodule "TMessagesProj/jni/third_party/wamr"]
 	path = TMessagesProj/jni/third_party/wamr
 	url = https://github.com/wasm-micro-runtime/wasm-micro-runtime.git
+[submodule "third_party/pine"]
+	path = third_party/pine
+	url = https://github.com/canyie/pine.git

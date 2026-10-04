@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components;
 
 import android.content.Context;
@@ -7,6 +9,7 @@ import android.graphics.Paint;
 import android.graphics.PixelFormat;
 import android.graphics.drawable.Drawable;
 import android.text.TextPaint;
+import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
 import android.text.TextUtils;
 import android.view.View;
 import android.view.animation.DecelerateInterpolator;
@@ -58,12 +61,12 @@ public class OtherDocumentPlaceholderDrawable extends RecyclableDrawable impleme
     static {
         paint = new Paint();
         progressPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-        docPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
-        namePaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
-        sizePaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
-        buttonPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
-        percentPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
-        openPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+        docPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
+        namePaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
+        sizePaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
+        buttonPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
+        percentPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
+        openPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
 
         decelerateInterpolator = new DecelerateInterpolator();
 

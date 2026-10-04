@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components.voip;
 
 import android.content.Context;
@@ -9,6 +11,7 @@ import android.graphics.drawable.Drawable;
 import android.text.Layout;
 import android.text.StaticLayout;
 import android.text.TextPaint;
+import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
 import android.view.View;
 
 import androidx.core.content.ContextCompat;
@@ -25,7 +28,7 @@ public class VoIPTimerView extends View {
     Paint activePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     Paint inactivePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     String currentTimeStr;
-    TextPaint textPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+    TextPaint textPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
     private int signalBarCount = 4;
     private boolean isDrawCallIcon = false;
     private final Drawable callsDeclineDrawable;

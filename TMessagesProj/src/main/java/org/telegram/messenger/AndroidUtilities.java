@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 5.x.x.
  * It is licensed under GNU GPL v. 2 or later.
@@ -2493,12 +2495,7 @@ public class AndroidUtilities {
             Typeface cached = typefaceCache.get(assetPath);
             if (cached != null) return cached;
             try {
-                Typeface t;
-                if (app.nimarkogram.messenger.NimarkoConfig.systemFonts) {
-                    t = app.nimarkogram.messenger.utils.ui.FontHelper.createTypeface(assetPath);
-                } else {
-                    t = app.nimarkogram.messenger.utils.ui.FontHelper.createTypefaceFromAsset(assetPath);
-                }
+                Typeface t = app.nimarkogram.messenger.utils.ui.FontHelper.createTypeface(assetPath);
                 if (t != null) typefaceCache.put(assetPath, t);
                 return t;
             } catch (Exception e) {
@@ -3181,17 +3178,6 @@ public class AndroidUtilities {
         }
     }
 
-        if (editText == null) {
-            return;
-        }
-        try {
-            Field mCursorDrawableRes = TextView.class.getDeclaredField("mCursorDrawableRes");
-            mCursorDrawableRes.setAccessible(true);
-            mCursorDrawableRes.setInt(editText, 0);
-        } catch (Exception e) {
-            FileLog.e(e);
-        }
-    }*/
     private static Runnable unregisterRunnable;
     private static boolean hasCallPermissions = Build.VERSION.SDK_INT >= 23;
 
@@ -3696,51 +3682,6 @@ public class AndroidUtilities {
         springAnimation.start();
     }
 
-        if (text == null || paint == null) {
-            return null;
-        }
-        int count;
-        int offset = 0;
-        StringBuilder result = null;
-        TextView
-        for (int a = 0; a < maxLines; a++) {
-            count = paint.breakText(text, true, maxWidth, null);
-            if (a != maxLines - 1) {
-                if (result == null) {
-                    result = new StringBuilder(count * maxLines + 1);
-                }
-                boolean foundSpace = false;
-                for (int c = count - 1; c >= offset; c--) {
-                    if (text.charAt(c) == ' ') {
-                        foundSpace = true;
-                        result.append(text.substring(offset, c - 1));
-                        offset = c - 1;
-                    }
-                }
-                if (!foundSpace) {
-                    offset = count;
-                }
-                text = text.substring(0, offset);
-            } else if (maxLines == 1) {
-                return text.substring(0, count);
-            } else {
-                result.append(text.substring(0, count));
-            }
-        }
-        return result.toString();
-    }*/
-        if (window == null || Build.MODEL == null) {
-            return;
-        }
-        if (Build.MODEL.contains("GT-S5301") ||
-                Build.MODEL.contains("GT-S5303") ||
-                Build.MODEL.contains("GT-B5330") ||
-                Build.MODEL.contains("GT-S5302") ||
-                Build.MODEL.contains("GT-S6012B") ||
-                Build.MODEL.contains("MegaFon_SP-AI")) {
-            window.clearFlags(WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED);
-        }
-    }*/
     public static void appCenterLog(Throwable e) {
         ApplicationLoader.appCenterLog(e);
     }

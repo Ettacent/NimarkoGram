@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.iv;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -24,6 +26,7 @@ import org.telegram.messenger.WebFile;
 import org.telegram.tgnet.TLRPC;
 import org.telegram.tgnet.tl.TL_iv;
 import org.telegram.ui.ActionBar.Theme;
+import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
 import org.telegram.ui.Cells.TextSelectionHelper;
 import org.telegram.ui.Components.LayoutHelper;
 import org.telegram.ui.Components.RecyclerListView;
@@ -56,7 +59,7 @@ public class RichMapCell extends RichBlockCell
     private final Paint backgroundPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint placeholderPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint selectionPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-    private final TextPaint hintPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+    private final TextPaint hintPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
     private final ImageReceiver imageReceiver;
     private final Drawable placeholderIcon;
     private final View clickView;

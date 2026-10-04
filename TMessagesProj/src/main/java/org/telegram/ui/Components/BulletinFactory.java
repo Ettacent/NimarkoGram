@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -49,6 +51,7 @@ import org.telegram.tgnet.TLRPC;
 import org.telegram.ui.ActionBar.BaseFragment;
 import org.telegram.ui.ActionBar.BottomSheet;
 import org.telegram.ui.ActionBar.Theme;
+import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
 import org.telegram.ui.ChatActivity;
 import org.telegram.ui.LaunchActivity;
 import org.telegram.ui.PeerColorActivity;
@@ -1623,7 +1626,7 @@ public final class BulletinFactory {
         layout.textView.setEllipsize(TextUtils.TruncateAt.END);
         layout.textView.setPadding(0, 0, 0, dp(8));
 
-        TextPaint textPaint = new TextPaint();
+        TextPaint textPaint = new SystemTextPaint(TextPaint.ANTI_ALIAS_FLAG);
         textPaint.setTextSize(dp(20));
         SpannableString spannable = new SpannableString("d");
         spannable.setSpan(new AnimatedEmojiSpan(document, textPaint.getFontMetricsInt()), 0, spannable.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);

@@ -15,6 +15,7 @@ import com.chaquo.python.Python;
 import com.chaquo.python.android.AndroidPlatform;
 
 import app.nimarkogram.messenger.NimarkoConfig;
+import app.nimarkogram.messenger.NimarkoCrashContext;
 import app.nimarkogram.messenger.plugins.hooks.PluginsHooks;
 import app.nimarkogram.messenger.plugins.pip.PipController;
 import app.nimarkogram.messenger.plugins.models.DividerSetting;
@@ -2730,6 +2731,7 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
             throw new IllegalStateException(
                     "Internal plugin loader is pluginsQueue-only");
         }
+        NimarkoCrashContext.python(str, "PythonPluginsEngine.loadPlugin", 0);
         PluginDebugLog.log("loadPlugin START id=" + str + " file=" + str2 + " plugin=" + (plugin != null ? plugin.getId() : "null"));
         if (PYTHON_RUNTIME_ABANDONED.get()) {
             throw new IOException(
@@ -3017,6 +3019,8 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
             }
             throw cancelled;
         } catch (Exception failure) {
+            NimarkoCrashContext.failure("plugin_load", str,
+                    "PythonPluginsEngine." + loadPhase, failure);
             if (!"on_plugin_load".equals(loadPhase)) {
                 reportPluginLoadFailure(str, loadPhase, failure);
             }
@@ -3031,6 +3035,8 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
             }
             throw failure;
         } catch (Error failure) {
+            NimarkoCrashContext.failure("plugin_load", str,
+                    "PythonPluginsEngine." + loadPhase, failure);
             if (!"on_plugin_load".equals(loadPhase)) {
                 reportPluginLoadFailure(str, loadPhase, failure);
             }

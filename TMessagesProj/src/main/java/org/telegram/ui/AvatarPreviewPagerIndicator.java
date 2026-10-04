@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui;
 
 import android.animation.Animator;
@@ -15,6 +17,7 @@ import android.graphics.drawable.GradientDrawable;
 import android.os.Build;
 import android.os.SystemClock;
 import android.text.TextPaint;
+import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
 import android.view.View;
 
 import org.telegram.messenger.AndroidUtilities;
@@ -113,7 +116,7 @@ public class AvatarPreviewPagerIndicator extends View implements ProfileGalleryV
         });
 
 
-        textPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+        textPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
         textPaint.setColor(Color.WHITE);
         textPaint.setTypeface(Typeface.SANS_SERIF);
         textPaint.setTextAlign(Paint.Align.CENTER);

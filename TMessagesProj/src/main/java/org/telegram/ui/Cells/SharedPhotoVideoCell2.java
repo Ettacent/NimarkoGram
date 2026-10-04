@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Cells;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -27,6 +29,7 @@ import android.text.SpannableStringBuilder;
 import android.text.Spanned;
 import android.text.StaticLayout;
 import android.text.TextPaint;
+import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
 import android.text.TextUtils;
 import android.util.Pair;
 import android.util.SparseArray;
@@ -455,7 +458,7 @@ public class SharedPhotoVideoCell2 extends FrameLayout {
             AvatarSpan avatar = new AvatarSpan(this, currentAccount, parentColumnsCount == 2 ? 16f : 13.66f);
             avatar.setDialogId(did);
             sb.setSpan(avatar, 0, 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-            authorText = new Text(sb, parentColumnsCount == 2 ? 14f : 10.1666f,  AndroidUtilities.bold());
+            authorText = Text.ui(sb, parentColumnsCount == 2 ? 14f : 10.1666f,  AndroidUtilities.bold());
         }
 
         updateAccessibilityDescription();
@@ -703,7 +706,7 @@ public class SharedPhotoVideoCell2 extends FrameLayout {
                         SpannableStringBuilder sensitiveTextString = new SpannableStringBuilder("x " + getString(R.string.MessageSensitiveContent));
                         ColoredImageSpan span = new ColoredImageSpan(R.drawable.filled_sensitive);
                         sensitiveTextString.setSpan(span, 0, 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-                        sensitiveText = new Text(sensitiveTextString, 14, AndroidUtilities.getTypeface(AndroidUtilities.TYPEFACE_ROBOTO_MEDIUM));
+                        sensitiveText = Text.ui(sensitiveTextString, 14, AndroidUtilities.getTypeface(AndroidUtilities.TYPEFACE_ROBOTO_MEDIUM));
                     }
                     int textPadding = 13, textHeight = 32;
                     Text text = sensitiveText;
@@ -712,14 +715,14 @@ public class SharedPhotoVideoCell2 extends FrameLayout {
                             SpannableStringBuilder sensitiveTextString = new SpannableStringBuilder("x " + getString(R.string.MessageSensitiveContentShort));
                             ColoredImageSpan span = new ColoredImageSpan(R.drawable.filled_sensitive);
                             sensitiveTextString.setSpan(span, 0, 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-                            sensitiveTextShort = new Text(sensitiveTextString, 14, AndroidUtilities.getTypeface(AndroidUtilities.TYPEFACE_ROBOTO_MEDIUM));
+                            sensitiveTextShort = Text.ui(sensitiveTextString, 14, AndroidUtilities.getTypeface(AndroidUtilities.TYPEFACE_ROBOTO_MEDIUM));
                         }
                         text = sensitiveTextShort;
                     }
                     if (imageWidth < 2 * dp(textPadding + textPadding) + text.getCurrentWidth()) {
                         if (sensitiveTextShort2 == null) {
                             SpannableStringBuilder sensitiveTextString = new SpannableStringBuilder(getString(R.string.MessageSensitiveContentShort));
-                            sensitiveTextShort2 = new Text(sensitiveTextString, 13, AndroidUtilities.getTypeface(AndroidUtilities.TYPEFACE_ROBOTO_MEDIUM));
+                            sensitiveTextShort2 = Text.ui(sensitiveTextString, 13, AndroidUtilities.getTypeface(AndroidUtilities.TYPEFACE_ROBOTO_MEDIUM));
                         }
                         text = sensitiveTextShort2;
                         textPadding = 10;
@@ -1268,7 +1271,7 @@ public class SharedPhotoVideoCell2 extends FrameLayout {
     }
 
     public static class SharedResources {
-        TextPaint textPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+        TextPaint textPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
         private Paint backgroundPaint = new Paint();
         Drawable playDrawable;
         Drawable viewDrawable;

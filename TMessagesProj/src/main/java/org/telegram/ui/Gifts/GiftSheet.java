@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Gifts;
 
 import static android.view.View.IMPORTANT_FOR_ACCESSIBILITY_NO;
@@ -1371,10 +1373,10 @@ public class GiftSheet extends BottomSheetWithRecyclerListView implements Notifi
 
             if (gift != null) {
                 if (title == null) {
-                    title = new Text(gift.title, 20, AndroidUtilities.bold());
+                    title = Text.ui(gift.title, 20, AndroidUtilities.bold());
                 }
                 if (subtitle == null) {
-                    subtitle = new Text(LocaleController.formatPluralStringComma("Gift2CollectionNumber", gift.num), 13);
+                    subtitle = Text.ui(LocaleController.formatPluralStringComma("Gift2CollectionNumber", gift.num), 13);
                 }
 
                 title
@@ -2186,7 +2188,7 @@ public class GiftSheet extends BottomSheetWithRecyclerListView implements Notifi
         }
 
         public void setText(int textSizeDp, CharSequence text, boolean bold) {
-            this.text = new Text(text, textSizeDp, bold ? AndroidUtilities.bold() : null);
+            this.text = Text.ui(text, textSizeDp, bold ? AndroidUtilities.bold() : null);
         }
 
         private boolean left;

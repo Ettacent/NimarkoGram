@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Stars;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -361,7 +363,7 @@ public class StarsReactionsSheet extends BottomSheet implements NotificationCent
                     private final Matrix gradientMatrix = new Matrix();
                     private final Paint backgroundPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
                     private final Paint separatorPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-                    private final Text text = new Text(getString(R.string.StarsReactionTopSenders), 14.16f, AndroidUtilities.bold());
+                    private final Text text = Text.ui(getString(R.string.StarsReactionTopSenders), 14.16f, AndroidUtilities.bold());
 
                     @Override
                     public void dispatchDraw(Canvas canvas) {
@@ -2028,7 +2030,7 @@ public class StarsReactionsSheet extends BottomSheet implements NotificationCent
                 anonymousAvatarDrawable.setAvatarType(AvatarDrawable.AVATAR_TYPE_ANONYMOUS);
                 anonymousAvatarDrawable.setColor(Theme.getColor(Theme.key_avatar_backgroundGray, resourcesProvider));
 
-                text = new Text(name, 12);
+                text = Text.ui(name, 12);
             }
 
             public void detach() {
@@ -2055,7 +2057,7 @@ public class StarsReactionsSheet extends BottomSheet implements NotificationCent
                     } else {
                         name = DialogObject.getShortName(did);
                     }
-                    text = new Text(name, 12);
+                    text = Text.ui(name, 12);
                     TopSendersView.this.invalidate();
                 }
             }
@@ -2083,7 +2085,7 @@ public class StarsReactionsSheet extends BottomSheet implements NotificationCent
                         imageReceiver.setForUserOrChat(chat, avatarDrawable);
                     }
 
-                    text = new Text(name, 12);
+                    text = Text.ui(name, 12);
 
                     TopSendersView.this.invalidate();
                 }

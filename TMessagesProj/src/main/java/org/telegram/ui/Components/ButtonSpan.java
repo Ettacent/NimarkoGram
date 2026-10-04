@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -38,7 +40,7 @@ public class ButtonSpan extends ReplacementSpan {
     public ButtonSpan(CharSequence buttonText, Runnable onClick, Theme.ResourcesProvider resourcesProvider) {
         this.resourcesProvider = resourcesProvider;
         this.onClickListener = onClick;
-        text = new Text(buttonText, 12);
+        text = Text.ui(buttonText, 12);
     }
 
     public static CharSequence make(CharSequence buttonText, Runnable onClick) {

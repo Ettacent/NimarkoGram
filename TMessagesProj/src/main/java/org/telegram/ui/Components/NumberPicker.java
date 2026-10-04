@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * Copyright (C) 2008 The Android Open Source Project
  *
@@ -44,6 +46,7 @@ import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.Utilities;
 import org.telegram.ui.ActionBar.Theme;
 
+import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
 import java.util.Locale;
 
 public class NumberPicker extends LinearLayout {
@@ -189,11 +192,11 @@ public class NumberPicker extends LinearLayout {
         mMinimumFlingVelocity = configuration.getScaledMinimumFlingVelocity();
         mMaximumFlingVelocity = configuration.getScaledMaximumFlingVelocity() / SELECTOR_MAX_FLING_VELOCITY_ADJUSTMENT;
 
-        Paint paint = new Paint();
+        SystemTextPaint paint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
         paint.setAntiAlias(true);
         paint.setTextAlign(Align.CENTER);
         paint.setTextSize(mTextSize);
-        paint.setTypeface(mInputText.getTypeface());
+        paint.copyTypefaceFrom(mInputText.getPaint());
         ColorStateList colors = mInputText.getTextColors();
         int color = colors.getColorForState(ENABLED_STATE_SET, Color.WHITE);
         paint.setColor(color);

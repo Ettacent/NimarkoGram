@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.messenger;
 
 import androidx.media3.exoplayer.ExoPlayer;
@@ -72,6 +74,9 @@ public class AnimatedFileDrawableStream implements FileLoadOperationStream {
                     }
                     long[] result = loadOperation.getDownloadedLengthFromOffset(offset, readLength);
                     availableLength = result[0];
+                    if (result[2] != 0) {
+                        return 0;
+                    }
                     if (!finishedLoadingFile && result[1] != 0) {
                         finishedLoadingFile = true;
                         finishedFilePath = loadOperation.getCacheFileFinal().getAbsolutePath();

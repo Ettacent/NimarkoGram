@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -40,6 +42,7 @@ import android.text.SpannableStringBuilder;
 import android.text.Spanned;
 import android.text.StaticLayout;
 import android.text.TextPaint;
+import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
 import android.text.TextUtils;
 import android.text.style.ForegroundColorSpan;
 import android.transition.TransitionManager;
@@ -3074,12 +3077,14 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
 
                             } else {
                                 if (archivedHintPaint == null) {
-                                    archivedHintPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+                                    archivedHintPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
                                     archivedHintPaint.setTextSize(dp(14));
                                     archivedHintPaint.setColor(getThemedColor(Theme.key_windowBackgroundWhiteGrayText2));
                                 }
                                 int width = getMeasuredWidth() - dp(60);
-                                if (archivedHintLayout == null || archivedHintLayout.getWidth() != width) {
+                                int weightAdjustment = SystemTextPaint.getWeightAdjustment();
+                                if (archivedHintLayout == null || archivedHintLayout.getWidth() != width || archivedHintWeightAdjustment != weightAdjustment) {
+                                    archivedHintWeightAdjustment = weightAdjustment;
                                     boolean isChannel = profileActivity != null && ChatObject.isChannelAndNotMegaGroup(profileActivity.getMessagesController().getChat(-dialog_id));
                                     archivedHintLayout = new StaticLayout(getString(isArchivedOnlyStoriesView() ? (isChannel ? R.string.ProfileStoriesArchiveChannelHint : R.string.ProfileStoriesArchiveGroupHint) : R.string.ProfileStoriesArchiveHint), archivedHintPaint, width, Layout.Alignment.ALIGN_CENTER, 1f, 0f, false);
                                     archivedHintLayoutWidth = 0;
@@ -12805,6 +12810,7 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
         protected StaticLayout archivedHintLayout;
         protected float archivedHintLayoutWidth, archivedHintLayoutLeft;
 
+        protected int archivedHintWeightAdjustment = Integer.MIN_VALUE;
         UserListPoller poller;
 
         public RecyclerListView.FastScrollAdapter getMovingAdapter() {

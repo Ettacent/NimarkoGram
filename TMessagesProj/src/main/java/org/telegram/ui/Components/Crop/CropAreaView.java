@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components.Crop;
 
 import android.animation.Animator;
@@ -18,6 +20,7 @@ import android.os.SystemClock;
 import android.text.Layout;
 import android.text.StaticLayout;
 import android.text.TextPaint;
+import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
@@ -166,7 +169,7 @@ public class CropAreaView extends ViewGroup {
     private void updateSubtitle() {
         if (subtitle != null) {
             if (subtitlePaint == null) {
-                subtitlePaint = new TextPaint();
+                subtitlePaint = new SystemTextPaint(0);
                 subtitlePaint.setColor(ColorUtils.setAlphaComponent(Color.WHITE, 120));
                 subtitlePaint.setTextSize(AndroidUtilities.dp(13));
                 subtitlePaint.setTextAlign(Paint.Align.CENTER);

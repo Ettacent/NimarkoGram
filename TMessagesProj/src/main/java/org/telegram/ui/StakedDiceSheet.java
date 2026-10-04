@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -116,7 +118,7 @@ public class StakedDiceSheet extends BottomSheetWithRecyclerListView {
         int betaIndex = title.length();
         title.append(getString(R.string.StakeDiceTitleBeta));
         title.setSpan(new ReplacementSpan() {
-            final Text text = new Text(getString(R.string.StakeDiceTitleBeta), 12, AndroidUtilities.bold());
+            final Text text = Text.ui(getString(R.string.StakeDiceTitleBeta), 12, AndroidUtilities.bold());
             final Paint bgPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
             @Override
             public int getSize(@NonNull Paint paint, CharSequence text, int start, int end, @Nullable Paint.FontMetricsInt fm) {

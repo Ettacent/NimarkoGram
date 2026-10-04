@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -14,6 +16,7 @@ import android.graphics.drawable.Drawable;
 import android.text.Layout;
 import android.text.StaticLayout;
 import android.text.TextPaint;
+import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
 import android.text.TextUtils;
 import android.view.Gravity;
 import android.view.MotionEvent;
@@ -36,9 +39,9 @@ public class UnsupportedBlockDrawable extends Drawable {
 
     private final Drawable planeDrawable;
     private final Drawable bubbleDrawable;
-    private final TextPaint titlePaint = new TextPaint(TextPaint.ANTI_ALIAS_FLAG);
-    private final TextPaint subtitlePaint = new TextPaint(TextPaint.ANTI_ALIAS_FLAG);
-    private final TextPaint buttonTextPaint = new TextPaint(TextPaint.ANTI_ALIAS_FLAG);
+    private final TextPaint titlePaint = new SystemTextPaint(TextPaint.ANTI_ALIAS_FLAG);
+    private final TextPaint subtitlePaint = new SystemTextPaint(TextPaint.ANTI_ALIAS_FLAG);
+    private final TextPaint buttonTextPaint = new SystemTextPaint(TextPaint.ANTI_ALIAS_FLAG);
     private final Paint buttonBackgroundPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final RectF buttonRect = new RectF();
     private final ButtonBounce buttonBounce = new ButtonBounce(null);

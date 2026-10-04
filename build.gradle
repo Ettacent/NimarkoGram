@@ -27,7 +27,39 @@ repositories {
     maven { url 'https://chaquo.com/maven' }
     maven { url 'https://jitpack.io' }
 }
+def nimarkoPrivateProperties = new Properties()
+def nimarkoPrivateFile = rootProject.file('private.properties')
+if (nimarkoPrivateFile.exists()) {
+    nimarkoPrivateFile.withInputStream { nimarkoPrivateProperties.load(it) }
+}
+ext.nimarkoBuildValue = { String name, String fallback = '' ->
+    def value = providers.gradleProperty(name).orNull
+    if (value == null) value = System.getenv(name)
+    if (value == null) value = nimarkoPrivateProperties.getProperty(name)
+    return value == null ? fallback : value.toString()
+}
+def nimarkoSigning = ['RELEASE_STORE_FILE', 'RELEASE_STORE_PASSWORD', 'RELEASE_KEY_ALIAS', 'RELEASE_KEY_PASSWORD']
+        .collectEntries { name -> [(name): rootProject.ext.nimarkoBuildValue(name)] }
+def nimarkoSigningConfigured = nimarkoSigning.values().every { !it.isEmpty() }
+if (!nimarkoSigningConfigured && nimarkoSigning.values().any { !it.isEmpty() }) {
+    throw new GradleException('Release signing requires RELEASE_STORE_FILE, RELEASE_STORE_PASSWORD, RELEASE_KEY_ALIAS and RELEASE_KEY_PASSWORD together')
+}
 allprojects {
+    ext.nimarkoReleaseSigningConfigured = nimarkoSigningConfigured
+    ext.nimarkoSigning = nimarkoSigning
+    ext.nimarkoFirebaseEnabled = rootProject.ext.nimarkoBuildValue('NIMARKO_FIREBASE_ENABLED', file('google-services.json').isFile().toString()).toBoolean()
+    ext.nimarkoCrashlyticsUploadEnabled = nimarkoFirebaseEnabled && rootProject.ext.nimarkoBuildValue('NIMARKO_CRASHLYTICS_UPLOAD', 'false').toBoolean()
+    plugins.withId('com.android.application') {
+        android.defaultConfig.manifestPlaceholders['GOOGLE_MAPS_API_KEY'] = rootProject.ext.nimarkoBuildValue('GOOGLE_MAPS_API_KEY')
+    }
+    plugins.withId('com.google.firebase.crashlytics') {
+        android.buildTypes.configureEach {
+            firebaseCrashlytics {
+                mappingFileUploadEnabled nimarkoCrashlyticsUploadEnabled
+                nativeSymbolUploadEnabled nimarkoCrashlyticsUploadEnabled
+            }
+        }
+    }
     configurations.configureEach {
         resolutionStrategy.dependencySubstitution {
             ['common', 'container', 'muxer'].each { mediaModule ->

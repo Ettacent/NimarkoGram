@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.bots;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -24,6 +26,7 @@ import android.graphics.drawable.Drawable;
 import android.os.Build;
 import android.os.Bundle;
 import android.text.TextPaint;
+import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
 import android.text.TextUtils;
 import android.view.Gravity;
 import android.view.MotionEvent;
@@ -960,7 +963,7 @@ public class BotWebViewAttachedSheet implements NotificationCenter.NotificationC
         TLRPC.User userbot = MessagesController.getInstance(currentAccount).getUser(botId);
         CharSequence title = UserObject.getUserName(userbot);
         try {
-            TextPaint tp = new TextPaint();
+            TextPaint tp = new SystemTextPaint(0);
             tp.setTextSize(dp(20));
             title = Emoji.replaceEmoji(title, tp.getFontMetricsInt(), false);
         } catch (Exception ignore) {}

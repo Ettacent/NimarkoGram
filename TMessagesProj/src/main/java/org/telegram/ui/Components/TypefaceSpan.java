@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 5.x.x.
  * It is licensed under GNU GPL v. 2 or later.
@@ -74,7 +76,7 @@ public class TypefaceSpan extends MetricAffectingSpan {
     @Override
     public void updateMeasureState(TextPaint p) {
         if (typeface != null) {
-            p.setTypeface(typeface);
+            app.nimarkogram.messenger.utils.ui.SystemTextPaint.setSpanTypeface(p, typeface);
         }
         if (textSize != 0) {
             p.setTextSize(textSize);
@@ -88,7 +90,7 @@ public class TypefaceSpan extends MetricAffectingSpan {
             color = Theme.getColor(colorKey, resourcesProvider);
         }
         if (typeface != null) {
-            tp.setTypeface(typeface);
+            app.nimarkogram.messenger.utils.ui.SystemTextPaint.setSpanTypeface(tp, typeface);
         }
         if (textSize != 0) {
             tp.setTextSize(textSize);

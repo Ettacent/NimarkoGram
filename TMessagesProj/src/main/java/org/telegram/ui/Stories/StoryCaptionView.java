@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Stories;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -29,6 +31,7 @@ import android.text.SpannableStringBuilder;
 import android.text.Spanned;
 import android.text.StaticLayout;
 import android.text.TextPaint;
+import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
 import android.text.TextUtils;
 import android.text.style.CharacterStyle;
 import android.text.style.ClickableSpan;
@@ -806,10 +809,10 @@ public class StoryCaptionView extends NestedScrollView implements ItemOptions.Sc
 
         public void draw(Canvas canvas, float width) {
             if (titleLayout == null) {
-                titleLayout = new Text(title == null ? "" : title, music != null ? 12 : 14, music != null ? null : AndroidUtilities.bold());
+                titleLayout = Text.ui(title == null ? "" : title, music != null ? 12 : 14, music != null ? null : AndroidUtilities.bold());
             }
             if (textLayout == null || updateText) {
-                textLayout = new Text(text == null ? "" : text, 14);
+                textLayout = Text.ui(text == null ? "" : text, 14);
             }
 
             final float smallT = animatedSmall.set(small);
@@ -855,8 +858,8 @@ public class StoryCaptionView extends NestedScrollView implements ItemOptions.Sc
         private final PorterDuffColorFilter emojiColorFilter;
 
         boolean shouldCollapse;
-        TextPaint textPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
-        TextPaint showMorePaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+        TextPaint textPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
+        TextPaint showMorePaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
         private final Paint xRefPaint = new Paint();
         private final Paint xRefGradinetPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
 

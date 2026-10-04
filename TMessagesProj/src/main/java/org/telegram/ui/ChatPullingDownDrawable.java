@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui;
 
 import android.animation.Animator;
@@ -16,6 +18,7 @@ import android.graphics.drawable.Drawable;
 import android.text.Layout;
 import android.text.StaticLayout;
 import android.text.TextPaint;
+import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
 import android.text.TextUtils;
 import android.view.Gravity;
 import android.view.HapticFeedbackConstants;
@@ -52,8 +55,8 @@ public class ChatPullingDownDrawable implements NotificationCenter.NotificationC
     float circleRadius;
 
     Paint arrowPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-    TextPaint textPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
-    TextPaint textPaint2 = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+    TextPaint textPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
+    TextPaint textPaint2 = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
     private Paint xRefPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     Path path = new Path();
 

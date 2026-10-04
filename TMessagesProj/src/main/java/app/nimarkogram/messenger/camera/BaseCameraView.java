@@ -77,6 +77,9 @@ public abstract class BaseCameraView extends FrameLayout {
     public boolean isExposureCompensationSupported() { return false; }
     public void focusToPoint(int x, int y) {   }
 
+    public void focusToPoint(int x, int y, boolean forceLock) {
+        focusToPoint(x, y);
+    }
     public void setFlashMode(int mode) {   }
     public int getFlashMode() { return 0; }
 

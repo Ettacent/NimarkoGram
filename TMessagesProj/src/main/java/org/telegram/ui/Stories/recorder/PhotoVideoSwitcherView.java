@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Stories.recorder;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -43,9 +45,9 @@ public class PhotoVideoSwitcherView extends View implements FlashViews.Invertabl
     public PhotoVideoSwitcherView(Context context) {
         super(context);
 
-        liveText =  new Text(getString(R.string.StoryLive),  14, AndroidUtilities.bold());
-        photoText = new Text(getString(R.string.StoryPhoto), 14, AndroidUtilities.bold());
-        videoText = new Text(getString(R.string.StoryVideo), 14, AndroidUtilities.bold());
+        liveText =  Text.ui(getString(R.string.StoryLive),  14, AndroidUtilities.bold());
+        photoText = Text.ui(getString(R.string.StoryPhoto), 14, AndroidUtilities.bold());
+        videoText = Text.ui(getString(R.string.StoryVideo), 14, AndroidUtilities.bold());
 
         scrollWidth = dp(32) + liveText.getWidth() / 2 + photoText.getWidth() / 2 + videoText.getWidth() / 2;
 

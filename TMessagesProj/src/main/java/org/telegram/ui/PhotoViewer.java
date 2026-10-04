@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 5.x.x.
  * It is licensed under GNU GPL v. 2 or later.
@@ -72,6 +74,7 @@ import android.text.SpannableStringBuilder;
 import android.text.Spanned;
 import android.text.StaticLayout;
 import android.text.TextPaint;
+import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
 import android.text.TextUtils;
 import android.text.style.ClickableSpan;
 import android.text.style.ForegroundColorSpan;
@@ -715,7 +718,7 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
 
         Paint backgroundPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         AnimatedTextView.AnimatedTextDrawable left;
-        TextPaint paint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+        TextPaint paint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
         StaticLayout center;
         float centerWidth, centerTop;
         AnimatedTextView.AnimatedTextDrawable right;
@@ -2607,7 +2610,7 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
 
         public CounterView(Context context) {
             super(context);
-            textPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+            textPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
             textPaint.setTextSize(dp(15));
             textPaint.setTypeface(AndroidUtilities.bold());
             textPaint.setColor(0xffffffff);
@@ -12801,8 +12804,16 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
 
     private boolean wasCountViewShown;
 
+    private boolean isPhotoReadyForCrop(Bitmap bitmap) {
+        return bitmap != null && !bitmap.isRecycled()
+                && centerImage.getBitmapWidth() > 0 && centerImage.getBitmapHeight() > 0
+                && photoProgressViews[0].backgroundState == PROGRESS_NONE;
+    }
     public void switchToEditMode(final int mode) {
-        if (currentEditMode == mode || (isCurrentVideo && photoProgressViews[0].backgroundState != 3) && !isCurrentVideo && (centerImage.getBitmap() == null || photoProgressViews[0].backgroundState != -1) || changeModeAnimation != null || imageMoveAnimation != null || isCaptionOpen()) {
+        if (currentEditMode == mode || changeModeAnimation != null || imageMoveAnimation != null || isCaptionOpen()) {
+            return;
+        }
+        if (mode == EDIT_MODE_CROP && !isCurrentVideo && !isPhotoReadyForCrop(centerImage.getBitmap())) {
             return;
         }
         if (placeProvider != null && (currentEditMode == EDIT_MODE_NONE || mode == EDIT_MODE_NONE)) {
@@ -13226,6 +13237,26 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
                 @Override
                 public void onAnimationEnd(Animator animation) {
                     changeModeAnimation = null;
+                    final Bitmap bitmap = centerImage.getBitmap();
+                    if (!isCurrentVideo && !isPhotoReadyForCrop(bitmap)) {
+                        for (Animator item : arrayList) {
+                            ((ValueAnimator) item).setCurrentPlayTime(0);
+                        }
+                        switchingToMode = -1;
+                        photoCropView.onDisappear();
+                        windowView.setClipChildren(currentEditMode == EDIT_MODE_FILTER);
+                        showEditCaption(editing && savedState == null && currentEditMode == EDIT_MODE_NONE, false);
+                        showStickerMode((currentEditMode == EDIT_MODE_NONE || currentEditMode == EDIT_MODE_STICKER_MASK
+                                || currentEditMode == EDIT_MODE_PAINT && stickerEmpty) && sendPhotoType == SELECT_TYPE_STICKER, false);
+                        if (countView != null) {
+                            countView.updateShow(currentEditMode == EDIT_MODE_NONE && wasCountViewShown, false);
+                        }
+                        if (placeProvider != null && currentEditMode == EDIT_MODE_NONE) {
+                            placeProvider.onEditModeChanged(false);
+                        }
+                        containerView.invalidate();
+                        return;
+                    }
                     pickerView.setVisibility(View.GONE);
                     pickerViewSendButton.setVisibility(View.GONE);
                     doneButtonFullWidth.setVisibility(View.GONE);
@@ -13254,7 +13285,6 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
                         animateToRotate = 0;
                     }
 
-                    final Bitmap bitmap = centerImage.getBitmap();
                     if (bitmap != null || isCurrentVideo) {
                         photoCropView.setBitmap(bitmap, centerImage.getOrientation(), sendPhotoType != SELECT_TYPE_AVATAR, false, paintingOverlay, cropTransform, isCurrentVideo ? (VideoEditTextureView) videoTextureView : null, editState.cropState);
                         photoCropView.onDisappear();
@@ -22360,7 +22390,7 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
             super(context);
 
             paint = new Paint(Paint.ANTI_ALIAS_FLAG);
-            textPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+            textPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
             textPaint.setTextSize(dp(14));
             textPaint.setColor(0xffcdcdcd);
 

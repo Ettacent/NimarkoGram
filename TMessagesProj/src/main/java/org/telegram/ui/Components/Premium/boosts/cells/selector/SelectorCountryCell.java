@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components.Premium.boosts.cells.selector;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -21,6 +23,7 @@ import org.telegram.messenger.Emoji;
 import org.telegram.messenger.LocaleController;
 import org.telegram.tgnet.TLRPC;
 import org.telegram.ui.ActionBar.Theme;
+import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
 import org.telegram.ui.Components.AnimatedEmojiDrawable;
 import org.telegram.ui.Components.CheckBox2;
 import org.telegram.ui.Components.LayoutHelper;
@@ -31,7 +34,7 @@ public class SelectorCountryCell extends BaseCell {
 
     private final CheckBox2 checkBox;
     private TLRPC.TL_help_country country;
-    private TextPaint paint = new TextPaint();
+    private TextPaint paint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
 
     public SelectorCountryCell(Context context, Theme.ResourcesProvider resourcesProvider) {
         super(context, resourcesProvider);

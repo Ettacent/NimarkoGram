@@ -1,8 +1,11 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.bots;
 
 import static org.telegram.messenger.LocaleController.getString;
 
 import android.content.Context;
+import android.content.res.Configuration;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
@@ -44,11 +47,12 @@ import org.telegram.ui.Components.StaticLayoutEx;
 
 import java.util.ArrayList;
 
+import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
 public class BotCommandsMenuView extends View {
 
     final RectF rectTmp = new RectF();
     final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
-    final TextPaint textPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+    final TextPaint textPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
     final MenuDrawable backDrawable = new MenuDrawable() {
         @Override
         public void invalidateSelf() {
@@ -110,13 +114,23 @@ public class BotCommandsMenuView extends View {
 
     int lastSize;
 
+    private int measuredFontWeightAdjustment;
+    @Override
+    protected void onConfigurationChanged(Configuration newConfig) {
+        super.onConfigurationChanged(newConfig);
+        menuTextLayout = null;
+        requestLayout();
+        invalidate();
+    }
     @Override
     protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
         int size = MeasureSpec.getSize(widthMeasureSpec) + MeasureSpec.getSize(heightMeasureSpec) << 16;
-        if (lastSize != size || menuTextLayout == null) {
+        int fontWeightAdjustment = SystemTextPaint.getWeightAdjustment();
+        if (lastSize != size || menuTextLayout == null || measuredFontWeightAdjustment != fontWeightAdjustment) {
             backDrawable.setBounds(0, 0, getMeasuredWidth(), getMeasuredHeight());
             textPaint.setTextSize(AndroidUtilities.dp(15));
             lastSize = size;
+            measuredFontWeightAdjustment = fontWeightAdjustment;
             CharSequence c = Emoji.replaceEmoji(menuText, textPaint.getFontMetricsInt(), false);
             int w = (int) (AndroidUtilities.displaySize.x * .6f);
             menuTextLayout = StaticLayoutEx.createStaticLayout(c, textPaint, w, Layout.Alignment.ALIGN_NORMAL, 1.0f, 0f, false, TextUtils.TruncateAt.END, w, 1);

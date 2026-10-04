@@ -35,6 +35,7 @@ import org.telegram.ui.Components.SeekBarView;
 
 import app.nimarkogram.messenger.NimarkoConfig;
 
+import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
 @SuppressLint("ViewConstructor")
 public class AvatarCornersPreviewCell extends FrameLayout {
 
@@ -54,7 +55,7 @@ public class AvatarCornersPreviewCell extends FrameLayout {
     private final Paint avatarPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint onlinePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint barPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-    private final Paint initialsPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint initialsPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
     private final RectF rect = new RectF();
     private final Path clipPath = new Path();
     private LinearGradient avatarGradient;

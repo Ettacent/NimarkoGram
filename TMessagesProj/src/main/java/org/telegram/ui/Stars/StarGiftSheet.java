@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Stars;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -158,6 +160,7 @@ import org.telegram.ui.Components.ScaleStateListAnimator;
 import org.telegram.ui.Components.ShareAlert;
 import org.telegram.ui.Components.TableView;
 import org.telegram.ui.Components.Text;
+import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
 import org.telegram.ui.Components.TextHelper;
 import org.telegram.ui.Components.ViewPagerFixed;
 import org.telegram.ui.Components.spoilers.SpoilersTextView;
@@ -7438,13 +7441,13 @@ public class StarGiftSheet extends BottomSheetWithRecyclerListView implements No
             if (gift instanceof TL_stars.TL_starGift) {
                 setGiftImage(imageReceiver, gift.sticker, (int) (sizeDp * .75f));
 
-                giftName = new Text(gift.title != null ? gift.title : "Gift", 16, AndroidUtilities.bold());
+                giftName = Text.ui(gift.title != null ? gift.title : "Gift", 16, AndroidUtilities.bold());
                 giftName.setColor(Color.WHITE);
                 giftName.setMaxWidth(dp(sizeDp - 30));
                 giftName.align(Layout.Alignment.ALIGN_CENTER);
                 giftName.multiline(1);
 
-                giftStatus = new Text(gift.sold_out ? getString(R.string.Gift2SoldOutTitle) :
+                giftStatus = Text.ui(gift.sold_out ? getString(R.string.Gift2SoldOutTitle) :
                     formatPluralString("Gift2SoldAuctionPreviewGifts", gift.availability_total), 13);
                 giftStatus.setMaxWidth(dp(sizeDp - 30));
                 giftStatus.align(Layout.Alignment.ALIGN_CENTER);
@@ -8358,7 +8361,7 @@ public class StarGiftSheet extends BottomSheetWithRecyclerListView implements No
         public ActionView(Context context) {
             super(context);
 
-            paint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+            paint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
             paint.setColor(Color.WHITE);
             paint.setTextSize(dp(13));
 

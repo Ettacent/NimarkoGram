@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components.Reactions;
 
 import static android.graphics.Canvas.ALL_SAVE_FLAG;
@@ -12,6 +14,7 @@ import android.graphics.RectF;
 import android.text.Layout;
 import android.text.StaticLayout;
 import android.text.TextPaint;
+import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
 import android.text.style.ReplacementSpan;
 import android.view.View;
 
@@ -25,7 +28,7 @@ import org.telegram.ui.ActionBar.Theme;
 
 public class AddReactionsSpan extends ReplacementSpan {
 
-    private final TextPaint textPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+    private final TextPaint textPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
     private final RectF rectF = new RectF();
     private StaticLayout layout;
     private float width, height;

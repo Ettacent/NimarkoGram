@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package com.exteragram.messenger;
 
 public final class ExteraConfig {
@@ -132,7 +134,7 @@ public final class ExteraConfig {
     }
 
     public static boolean getUseSystemFonts() {
-        try { return app.nimarkogram.messenger.NimarkoConfig.systemFonts; } catch (Throwable t) { return false; }
+        return true;
     }
 
     public static boolean getHideStories() {

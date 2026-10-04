@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -18,6 +20,7 @@ import android.text.SpannableString;
 import android.text.SpannableStringBuilder;
 import android.text.Spanned;
 import android.text.TextPaint;
+import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
 import android.text.TextUtils;
 import android.text.TextWatcher;
 import android.text.style.ImageSpan;
@@ -302,7 +305,7 @@ public class PollCreateActivity extends BaseFragment implements NotificationCent
         if (media instanceof TLRPC.TL_messageMediaToDo) {
             final TLRPC.TL_messageMediaToDo m = (TLRPC.TL_messageMediaToDo) media;
 
-            final TextPaint paint = new TextPaint(TextPaint.ANTI_ALIAS_FLAG);
+            final TextPaint paint = new SystemTextPaint(TextPaint.ANTI_ALIAS_FLAG);
             paint.setTextSize(dp(16));
 
             questionString = new SpannableStringBuilder(m.todo.title.text);

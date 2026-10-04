@@ -86,6 +86,7 @@ import org.telegram.ui.PopupNotificationActivity;
 import org.telegram.ui.Stories.recorder.StoryEntry;
 
 import app.nimarkogram.messenger.NimarkoConfig;
+import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
 import app.nimarkogram.messenger.notifications.NimarkoInAppNotifications;
 import app.nimarkogram.messenger.chats.filters.MessagesFilterHelper;
 
@@ -6187,7 +6188,7 @@ public class NotificationsController extends BaseController implements Notificat
                     canvas.drawCircle(x + sz * s / 2, y + sz * s / 2, sz * s / 2, paint);
 
                     if (textPaint == null) {
-                        textPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+                        textPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
                         textPaint.setTypeface(AndroidUtilities.bold());
                         textPaint.setTextSize(sz * .25f);
                         textPaint.setColor(0xFFFFFFFF);

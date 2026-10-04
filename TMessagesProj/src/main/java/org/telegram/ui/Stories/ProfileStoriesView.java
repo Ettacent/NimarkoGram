@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Stories;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -533,6 +535,7 @@ public class ProfileStoriesView extends View implements NotificationCenter.Notif
         }
 
         final float ringAlpha = storyRingPresence.set(hasStoryRing ? 1f : 0f)
+                * clamp(fragmentTransitionProgress, 1f, 0f);
         float segmentsAlpha = clamp(1f - expandProgress / 0.2f, 1, 0) * ringAlpha;
         boolean isFailed = storiesController.isLastUploadingFailed(dialogId);
         boolean hasUploadingStories = storiesController.hasUploadingStories(dialogId);

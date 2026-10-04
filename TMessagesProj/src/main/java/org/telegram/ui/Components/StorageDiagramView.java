@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components;
 
 import android.animation.Animator;
@@ -11,6 +13,7 @@ import android.os.Build;
 import android.text.Layout;
 import android.text.StaticLayout;
 import android.text.TextPaint;
+import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
 import android.text.TextUtils;
 import android.view.Gravity;
 import android.view.MotionEvent;
@@ -132,7 +135,7 @@ public class StorageDiagramView extends View implements NotificationCenter.Notif
 
         if (dialogText != null) {
             if (dialogTextPaint == null) {
-                dialogTextPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+                dialogTextPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
             }
             dialogTextPaint.setTextSize(AndroidUtilities.dp(13));
             int width = MeasureSpec.getSize(widthMeasureSpec) - AndroidUtilities.dp(60);

@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 5.x.x.
  * It is licensed under GNU GPL v. 2 or later.
@@ -24,6 +26,7 @@ import android.text.SpannableString;
 import android.text.SpannableStringBuilder;
 import android.text.StaticLayout;
 import android.text.TextPaint;
+import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
 import android.text.TextUtils;
 import android.util.SparseArray;
 import android.view.Gravity;
@@ -202,11 +205,11 @@ public class SharedLinkCell extends FrameLayout {
         this.viewType = viewType;
         setFocusable(true);
 
-        titleTextPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+        titleTextPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
         titleTextPaint.setTypeface(AndroidUtilities.bold());
         titleTextPaint.setColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText, resourcesProvider));
 
-        descriptionTextPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+        descriptionTextPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
 
         titleTextPaint.setTextSize(dp(14));
         descriptionTextPaint.setTextSize(dp(14));
@@ -224,11 +227,11 @@ public class SharedLinkCell extends FrameLayout {
         addView(checkBox, LayoutHelper.createFrame(24, 24, (LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT) | Gravity.TOP, LocaleController.isRTL ? 0 : 44, 44, LocaleController.isRTL ? 44 : 0, 0));
 
         if (viewType == VIEW_TYPE_GLOBAL_SEARCH) {
-            description2TextPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+            description2TextPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
             description2TextPaint.setTextSize(dp(13));
         }
 
-        captionTextPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+        captionTextPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
         captionTextPaint.setTextSize(dp(13));
     }
 

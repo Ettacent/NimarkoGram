@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 5.x.x.
  * It is licensed under GNU GPL v. 2 or later.
@@ -39,6 +41,7 @@ import android.os.SystemClock;
 import android.text.SpannableStringBuilder;
 import android.text.Spanned;
 import android.text.TextPaint;
+import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
 import android.text.TextUtils;
 import android.util.TypedValue;
 import android.view.Gravity;
@@ -2450,7 +2453,7 @@ public class FragmentContextView extends FrameLayout implements NotificationCent
                 TLRPC.Chat chat = chatActivity.getCurrentChat();
                 if (call.isScheduled()) {
                     if (gradientPaint == null) {
-                        gradientTextPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+                        gradientTextPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
                         gradientTextPaint.setColor(0xffffffff);
                         gradientTextPaint.setTextSize(dp(14));
                         gradientTextPaint.setTypeface(AndroidUtilities.bold());

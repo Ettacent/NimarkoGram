@@ -61,6 +61,7 @@ import android.text.Spannable;
 import android.text.SpannableStringBuilder;
 import android.text.Spanned;
 import android.text.TextPaint;
+import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
 import android.text.TextUtils;
 import android.text.style.ImageSpan;
 import android.util.LongSparseArray;
@@ -660,7 +661,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
 
     private RectF rect = new RectF();
     private Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
-    private TextPaint textPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+    private TextPaint textPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
 
     private FragmentContextView fragmentLocationContextView;
     private FrameLayout fragmentLocationContextViewWrapper;
@@ -12743,7 +12744,8 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
     }
 
     public void setDelegate(DialogsActivityDelegate dialogsActivityDelegate) {
-        delegate = dialogsActivityDelegate;
+        delegate = app.nimarkogram.messenger.plugins.bridge.PythonInterfaceProxy
+                .adaptDialogsDelegate(dialogsActivityDelegate);
     }
 
     public void setSharedMedia(ArrayList<MediaController.PhotoEntry> entries, CharSequence initialCaption) {

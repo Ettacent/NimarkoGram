@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 5.x.x.
  * It is licensed under GNU GPL v. 2 or later.
@@ -41,6 +43,7 @@ import android.text.SpannableStringBuilder;
 import android.text.Spanned;
 import android.text.StaticLayout;
 import android.text.TextPaint;
+import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
 import android.text.TextUtils;
 import android.text.style.AlignmentSpan;
 import android.text.style.CharacterStyle;
@@ -440,9 +443,9 @@ public class ChatActionCell extends BaseCell implements DownloadController.FileD
     private StaticLayout settingWallpaperProgressTextLayout;
     private float giftPremiumButtonWidth;
 
-    private TextPaint giftTitlePaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
-    private TextPaint giftTextPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
-    private TextPaint giftSubtitlePaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+    private TextPaint giftTitlePaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
+    private TextPaint giftTextPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
+    private TextPaint giftSubtitlePaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
 
     private TLRPC.Document giftSticker;
     private TLRPC.VideoSize giftEffectAnimation;
@@ -2663,7 +2666,7 @@ public class ChatActionCell extends BaseCell implements DownloadController.FileD
             giftPremiumSubtitleLayout = null;
         }
         if (releasedBy != null) {
-            giftPremiumReleasedText = new Text(releasedBy, 10);
+            giftPremiumReleasedText = Text.ui(releasedBy, 10);
             giftPremiumReleasedText.paint.linkColor = 0xFFFFFFFF;
         } else {
             giftPremiumReleasedText = null;
@@ -2700,7 +2703,7 @@ public class ChatActionCell extends BaseCell implements DownloadController.FileD
             if (allowCollapsing && giftPremiumText.layout.getLineCount() > 3) {
                 giftPremiumTextCollapsed = !giftPremiumTextUncollapsed;
                 giftPremiumTextCollapsedHeight = giftPremiumText.layout.getLineBottom(2);
-                giftPremiumTextMore = new Text(LocaleController.getString(R.string.Gift2CaptionMore), giftTextPaint.getTextSize() / AndroidUtilities.density, AndroidUtilities.bold());
+                giftPremiumTextMore = Text.ui(LocaleController.getString(R.string.Gift2CaptionMore), giftTextPaint.getTextSize() / AndroidUtilities.density, AndroidUtilities.bold());
                 giftPremiumTextMoreY = giftPremiumText.layout.getLineBottom(2);
                 giftPremiumTextMoreH = giftPremiumTextMoreY - giftPremiumText.layout.getLineTop(2);
                 giftPremiumTextMoreX = (int) giftPremiumText.layout.getLineRight(2);
@@ -2733,7 +2736,7 @@ public class ChatActionCell extends BaseCell implements DownloadController.FileD
                 giftRibbonPath = new Path();
                 GiftSheet.RibbonDrawable.fillRibbonPath(giftRibbonPath, 1.35f, false);
             }
-            giftRibbonText = new Text(ribbon, ribbonTextDp, AndroidUtilities.bold());
+            giftRibbonText = Text.ui(ribbon, ribbonTextDp, AndroidUtilities.bold());
             giftRibbonText.ellipsize(dp(62));
         } else {
             giftRibbonPath = null;
@@ -3027,7 +3030,7 @@ public class ChatActionCell extends BaseCell implements DownloadController.FileD
             if (messageObject.type == MessageObject.TYPE_ACTION_WALLPAPER) {
                 if (radialProgress.getTransitionProgress() != 1f || radialProgress.getIcon() != MediaActionDrawable.ICON_NONE) {
                     if (settingWallpaperLayout == null) {
-                        settingWallpaperPaint = new TextPaint();
+                        settingWallpaperPaint = new SystemTextPaint(0);
                         settingWallpaperPaint.setTextSize(dp(13));
                         SpannableStringBuilder cs = new SpannableStringBuilder(getString(R.string.ActionSettingWallpaper));
                         int index = cs.toString().indexOf("..."), len = 3;
@@ -3347,7 +3350,7 @@ public class ChatActionCell extends BaseCell implements DownloadController.FileD
             if (overrideBackgroundPaint == null) {
                 overrideBackgroundPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
                 overrideBackgroundPaint.setColor(color);
-                overrideTextPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+                overrideTextPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
                 overrideTextPaint.setTypeface(AndroidUtilities.bold());
                 overrideTextPaint.setTextSize(dp(Math.max(16, SharedConfig.fontSize) - 2));
                 overrideTextPaint.setColor(getThemedColor(overrideText));

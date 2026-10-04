@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -1590,7 +1592,7 @@ public class ChannelColorActivity extends BaseFragment implements NotificationCe
             if (documentId == 0) {
                 imageDrawable.set((Drawable) null, animated);
                 if (offText == null) {
-                    offText = new Text(LocaleController.getString(R.string.ChannelReplyIconOff), 16);
+                    offText = Text.ui(LocaleController.getString(R.string.ChannelReplyIconOff), 16);
                 }
             } else {
                 imageDrawable.set(documentId, animated);
@@ -1603,7 +1605,7 @@ public class ChannelColorActivity extends BaseFragment implements NotificationCe
             if (document == null) {
                 imageDrawable.set((Drawable) null, animated);
                 if (offText == null) {
-                    offText = new Text(LocaleController.getString(R.string.ChannelReplyIconOff), 16);
+                    offText = Text.ui(LocaleController.getString(R.string.ChannelReplyIconOff), 16);
                 }
             } else {
                 imageDrawable.set(document, animated);

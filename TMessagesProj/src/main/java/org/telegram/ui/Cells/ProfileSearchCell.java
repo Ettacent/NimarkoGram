@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 5.x.x.
  * It is licensed under GNU GPL v. 2 or later.
@@ -26,6 +28,7 @@ import android.text.SpannableStringBuilder;
 import android.text.Spanned;
 import android.text.StaticLayout;
 import android.text.TextPaint;
+import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
 import android.text.TextUtils;
 import android.view.MotionEvent;
 import android.view.accessibility.AccessibilityEvent;
@@ -285,7 +288,7 @@ public class ProfileSearchCell extends BaseCell implements NotificationCenter.No
     public void setOpenBotButton(boolean show) {
         if (openBot == show) return;
         if (openButtonText == null) {
-            openButtonText = new Text(getString(R.string.BotOpen), 14, AndroidUtilities.bold());
+            openButtonText = Text.ui(getString(R.string.BotOpen), 14, AndroidUtilities.bold());
         }
         final int buttonWidth = show ? (int) openButtonText.getCurrentWidth() + dp(15 + 15) : 0;
         setPadding(LocaleController.isRTL ? buttonWidth : 0, 0, LocaleController.isRTL ? 0 : buttonWidth, 0);
@@ -528,7 +531,7 @@ public class ProfileSearchCell extends BaseCell implements NotificationCenter.No
                 span.spaceScaleX = .7f;
                 span.translate(-dp(2), 0);
                 sb.setSpan(span, sb.length() - 1, sb.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-                adText = new Text(sb, 12);
+                adText = Text.ui(sb, 12);
             }
             if (adBackgroundPaint == null) {
                 adBackgroundPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -567,7 +570,7 @@ public class ProfileSearchCell extends BaseCell implements NotificationCenter.No
         }
         if (customPaints) {
             if (namePaint == null) {
-                namePaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+                namePaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
                 namePaint.setTypeface(AndroidUtilities.bold());
             }
             namePaint.setTextSize(dp(callCellStyle ? 15 : 16));
@@ -734,7 +737,7 @@ public class ProfileSearchCell extends BaseCell implements NotificationCenter.No
         }
         if (customPaints) {
             if (statusPaint == null) {
-                statusPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+                statusPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
             }
             statusPaint.setTextSize(dp(callCellStyle ? 13f : 15));
             if (currentStatusPaint == Theme.dialogs_offlinePaint) {

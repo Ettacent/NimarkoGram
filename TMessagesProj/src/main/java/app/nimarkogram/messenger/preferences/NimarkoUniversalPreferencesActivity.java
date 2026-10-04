@@ -21,9 +21,12 @@ public abstract class NimarkoUniversalPreferencesActivity extends UniversalFragm
     private int initialSearchItemId;
     private SettingsSearchHighlight searchHighlight;
     private int listWorkGeneration;
-    private boolean toggleRowsRefreshPending;
     private Runnable initialSearchScroll;
-    private Runnable toggleRowsRefresh;
+    private final Runnable toggleRowsRefresh = () -> {
+        if (listView != null && listView.adapter != null) {
+            listView.adapter.update(true);
+        }
+    };
 
     @Override
     public boolean isSupportEdgeToEdge() {
@@ -103,36 +106,24 @@ public abstract class NimarkoUniversalPreferencesActivity extends UniversalFragm
         searchHighlight = new SettingsSearchHighlight(listView, itemId);
     }
     protected void updateItemsAfterToggle() {
-        if (listView != null && toggleRowsRefresh != null && !toggleRowsRefreshPending) {
-            toggleRowsRefreshPending = true;
-            listView.postOnAnimation(toggleRowsRefresh);
-        }
+        toggleRowsRefresh.run();
     }
     private void prepareListCallbacks() {
         final int generation = listWorkGeneration;
         initialSearchScroll = () -> {
             if (generation == listWorkGeneration) scrollToItem(initialSearchItemId);
         };
-        toggleRowsRefresh = () -> {
-            if (generation == listWorkGeneration && toggleRowsRefreshPending) {
-                toggleRowsRefreshPending = false;
-                listView.adapter.update(true);
-            }
-        };
     }
     private void cancelPendingListWork() {
         ++listWorkGeneration;
-        toggleRowsRefreshPending = false;
         if (searchHighlight != null) {
             searchHighlight.run();
             searchHighlight = null;
         }
         if (listView != null) {
             listView.removeCallbacks(initialSearchScroll);
-            listView.removeCallbacks(toggleRowsRefresh);
         }
         initialSearchScroll = null;
-        toggleRowsRefresh = null;
     }
     @Override
     public void onFragmentDestroy() {

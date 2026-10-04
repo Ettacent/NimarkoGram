@@ -172,7 +172,6 @@ final class NimarkoSettingsSearchIndex {
                 1, R.string.EP_NavigationAnimation,
                 3, R.string.NM_PredictiveBackAnimation,
                 9, R.string.AP_SystemEmoji,
-                10, R.string.AP_SystemFonts,
                 11, R.string.AP_Tablet_Mode);
         row(entries, guid, SCREEN_GENERAL, 4, R.string.NM_SilenceNonContacts, R.string.NM_SilenceNonContacts_Desc,
                 R.drawable.msg_settings_solar, R.string.NM_Cat_General, R.string.NM_SettingsSectionNotificationsStories);
@@ -622,7 +621,6 @@ final class NimarkoSettingsSearchIndex {
         if (titleRes == R.string.EP_NavigationAnimation) return R.string.NM_SettingsDesc_NavigationAnimation;
         if (titleRes == R.string.NM_PredictiveBackAnimation) return R.string.NM_SettingsDesc_PredictiveBack;
         if (titleRes == R.string.AP_SystemEmoji) return R.string.NM_SettingsDesc_SystemEmoji;
-        if (titleRes == R.string.AP_SystemFonts) return R.string.NM_SettingsDesc_SystemFonts;
         if (titleRes == R.string.AP_Tablet_Mode) return R.string.NM_SettingsDesc_TabletMode;
         if (titleRes == R.string.NM_ResidentNotification) return R.string.NM_SettingsDesc_ResidentNotification;
         if (titleRes == R.string.NM_NotificationReactionEmoji) return R.string.NM_SettingsDesc_ReactionEmoji;

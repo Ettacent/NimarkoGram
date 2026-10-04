@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Stars;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -107,8 +109,8 @@ public class StarGiftUniqueActionLayout {
         public final float y;
         public final Text name, value;
         public Row(float y, CharSequence name, CharSequence value) {
-            this.name = new Text(name, 12);
-            this.value = new Text(value, 12, AndroidUtilities.bold());
+            this.name = Text.ui(name, 12);
+            this.value = Text.ui(value, 12, AndroidUtilities.bold());
             this.y = y + getHeight() / 2.0f;
         }
         public float getHeight() {
@@ -223,27 +225,27 @@ public class StarGiftUniqueActionLayout {
         h += dp(110);
         h += dp(9.33f);
         if (repost) {
-            title = new Text(gift.title, 14, AndroidUtilities.bold());
+            title = Text.ui(gift.title, 14, AndroidUtilities.bold());
         } else if (action.peer != null || UserObject.isService(messageObject.getDialogId())) {
-            title = new Text(LocaleController.getString(R.string.Gift2UniqueTitle2), 14, AndroidUtilities.bold());
+            title = Text.ui(LocaleController.getString(R.string.Gift2UniqueTitle2), 14, AndroidUtilities.bold());
         } else if (messageObject.getDialogId() == UserConfig.getInstance(currentAccount).getClientUserId()) {
             if (gift.crafted) {
-                title = new Text(LocaleController.getString(R.string.Gift2ActionCraftedTitle), 14, AndroidUtilities.bold());
+                title = Text.ui(LocaleController.getString(R.string.Gift2ActionCraftedTitle), 14, AndroidUtilities.bold());
             } else if (action.resale_amount != null) {
-                title = new Text(LocaleController.getString(R.string.Gift2ActionPurchasedTitle), 14, AndroidUtilities.bold());
+                title = Text.ui(LocaleController.getString(R.string.Gift2ActionPurchasedTitle), 14, AndroidUtilities.bold());
             } else {
-                title = new Text(LocaleController.getString(R.string.Gift2ActionUpgradedTitle), 14, AndroidUtilities.bold());
+                title = Text.ui(LocaleController.getString(R.string.Gift2ActionUpgradedTitle), 14, AndroidUtilities.bold());
             }
         } else {
-            title = new Text(LocaleController.formatString(R.string.Gift2UniqueTitle, fromName), 14, AndroidUtilities.bold());
+            title = Text.ui(LocaleController.formatString(R.string.Gift2UniqueTitle, fromName), 14, AndroidUtilities.bold());
         }
         titleY = h + title.getHeight() / 2.0f;
         h += title.getHeight();
         h += dp(3);
         if (repost) {
-            subtitle = new Text(formatPluralStringComma("Gift2CollectionNumber", gift.num), 12, AndroidUtilities.bold());
+            subtitle = Text.ui(formatPluralStringComma("Gift2CollectionNumber", gift.num), 12, AndroidUtilities.bold());
         } else {
-            subtitle = new Text(gift.title + " #" + LocaleController.formatNumber(gift.num, ','), 12);
+            subtitle = Text.ui(gift.title + " #" + LocaleController.formatNumber(gift.num, ','), 12);
         }
         subtitleY = h + subtitle.getHeight() / 2.0f;
         h += subtitle.getHeight();
@@ -337,7 +339,7 @@ public class StarGiftUniqueActionLayout {
         h += dp(11.66f);
         if (!repost) {
             buttonY = h;
-            buttonText = new Text(LocaleController.getString(R.string.Gift2UniqueView), 14, AndroidUtilities.bold());
+            buttonText = Text.ui(LocaleController.getString(R.string.Gift2UniqueView), 14, AndroidUtilities.bold());
             h += (buttonHeight = dp(30));
             h += dp(11);
         } else {
@@ -405,12 +407,12 @@ public class StarGiftUniqueActionLayout {
         h += dp(9.33f);
 
         final String fromName = DialogObject.getShortName(fromId);
-        this.title = new Text(LocaleController.formatString(R.string.Gift2UniqueTitle, fromName), 14, AndroidUtilities.bold());
+        this.title = Text.ui(LocaleController.formatString(R.string.Gift2UniqueTitle, fromName), 14, AndroidUtilities.bold());
         titleY = h + this.title.getHeight() / 2.0f;
         h += this.title.getHeight();
         h += dp(3);
 
-        subtitle = new Text(gift.title + " #" + LocaleController.formatNumber(gift.num, ','), 12);
+        subtitle = Text.ui(gift.title + " #" + LocaleController.formatNumber(gift.num, ','), 12);
         subtitleY = h + subtitle.getHeight() / 2.0f;
         h += subtitle.getHeight();
         h += dp(11);
@@ -456,7 +458,7 @@ public class StarGiftUniqueActionLayout {
 
         h += dp(11.66f);
         buttonY = h;
-        buttonText = new Text(button, 14, AndroidUtilities.bold());
+        buttonText = Text.ui(button, 14, AndroidUtilities.bold());
         h += (buttonHeight = dp(30));
         h += dp(11);
         this.height = (int) h;

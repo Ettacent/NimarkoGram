@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -16,6 +18,7 @@ import android.os.Build;
 import android.text.Layout;
 import android.text.StaticLayout;
 import android.text.TextPaint;
+import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
 import android.text.TextUtils;
 import android.util.Log;
 import android.view.View;
@@ -35,6 +38,16 @@ public class Text {
     private Layout.Alignment align = Layout.Alignment.ALIGN_NORMAL;
     private float lineSpacingAdd;
 
+    private int layoutWeightAdjustment = Integer.MIN_VALUE;
+    public static Text ui(CharSequence text, float textSizeDp) {
+        return ui(text, textSizeDp, null);
+    }
+    public static Text ui(CharSequence text, float textSizeDp, Typeface typeface) {
+        TextPaint paint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
+        paint.setTextSize(dp(textSizeDp));
+        paint.setTypeface(typeface);
+        return new Text(text, paint);
+    }
     public Text(CharSequence text, TextPaint paint) {
         this.paint = paint;
         setText(text);
@@ -116,9 +129,18 @@ public class Text {
         if (parentView != null && parentView.isAttachedToWindow()) {
             animatedEmojis = AnimatedEmojiSpan.update(animatedEmojisCacheType, parentView, animatedEmojis, layout);
         }
+        layoutWeightAdjustment = paint instanceof SystemTextPaint ? SystemTextPaint.getWeightAdjustment() : Integer.MIN_VALUE;
+    }
+    private void ensureCurrentLayout() {
+        if (!(paint instanceof SystemTextPaint) || layout == null) return;
+        int adjustment = SystemTextPaint.getWeightAdjustment();
+        if (layoutWeightAdjustment != adjustment) {
+            setText(layout.getText());
+        }
     }
 
     public float calculateRealWidth() {
+        ensureCurrentLayout();
         float width = 0;
         for (int i = 0; i < layout.getLineCount(); ++i) {
             width = Math.max(width, layout.getLineWidth(i));
@@ -159,10 +181,12 @@ public class Text {
     }
 
     public int getLineCount() {
+        ensureCurrentLayout();
         return layout.getLineCount();
     }
 
     public Layout getLayout() {
+        ensureCurrentLayout();
         return layout;
     }
 
@@ -183,6 +207,7 @@ public class Text {
     }
 
     public boolean isEmpty() {
+        ensureCurrentLayout();
         return layout == null || TextUtils.isEmpty(layout.getText());
     }
 
@@ -203,6 +228,7 @@ public class Text {
     }
 
     public void draw(Canvas canvas, int color) {
+        ensureCurrentLayout();
         if (layout == null) {
             return;
         }
@@ -210,6 +236,7 @@ public class Text {
     }
 
     public void draw(Canvas canvas, float x, float cy, int color, float alpha) {
+        ensureCurrentLayout();
         if (layout == null) {
             return;
         }
@@ -235,6 +262,7 @@ public class Text {
     }
 
     public void draw(Canvas canvas, float x, float cy, float alpha) {
+        ensureCurrentLayout();
         if (layout == null) {
             return;
         }
@@ -269,6 +297,7 @@ public class Text {
 
 
     public void draw(Canvas canvas) {
+        ensureCurrentLayout();
         if (layout == null) {
             return;
         }
@@ -312,19 +341,23 @@ public class Text {
     }
 
     public float getWidth() {
+        ensureCurrentLayout();
         return ellipsizeWidth >= 0 ? Math.min(ellipsizeWidth, width) : width;
     }
 
     public float getCurrentWidth() {
+        ensureCurrentLayout();
         return width;
     }
 
     public float getHeight() {
+        ensureCurrentLayout();
         return layout.getHeight();
     }
 
     @NonNull
     public CharSequence getText() {
+        ensureCurrentLayout();
         if (layout == null || layout.getText() == null) {
             return "";
         }

@@ -484,7 +484,7 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
     public void setOpenBotButton(boolean show) {
         if (openBot == show) return;
         if (openButtonText == null) {
-            openButtonText = new Text(getString(R.string.BotOpen), 14, AndroidUtilities.bold());
+            openButtonText = Text.ui(getString(R.string.BotOpen), 14, AndroidUtilities.bold());
         }
         openBot = show;
         openButtonBounce.setPressed(false);

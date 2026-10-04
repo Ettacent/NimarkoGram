@@ -25,6 +25,8 @@
     <string name="NimarkoCamRear">Основная</string>
     <string name="NimarkoCameraType">Тип камеры</string>
     <string name="NimarkoCameraXOptimized">Оптимизированный CameraX</string>
+    <string name="NM_CAM_RoundVideoTapFocus">Фокусировка при записи кружков</string>
+    <string name="NM_CAM_RoundVideoTapFocusDesc">Нажмите на объект в кадре, чтобы сфокусироваться на нём во время записи.</string>
     <string name="NimarkoCategoryAppearance">Внешний вид</string>
     <string name="NimarkoCategoryAyuGram">AyuGram</string>
     <string name="NimarkoCategoryCamera">Камера</string>

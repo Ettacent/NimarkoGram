@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Charts.view_data;
 
 import android.content.Context;
@@ -17,6 +19,7 @@ import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.R;
 import org.telegram.ui.ActionBar.Theme;
+import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
 import org.telegram.ui.Charts.BaseChartView;
 import org.telegram.ui.Components.LayoutHelper;
 
@@ -46,7 +49,7 @@ public class ChartHeaderView extends FrameLayout {
     public ChartHeaderView(Context context, Theme.ResourcesProvider resourcesProvider) {
         super(context);
         this.resourcesProvider = resourcesProvider;
-        TextPaint textPaint = new TextPaint();
+        TextPaint textPaint = new SystemTextPaint(TextPaint.ANTI_ALIAS_FLAG);
         textPaint.setTextSize(14);
         textPaint.setTypeface(AndroidUtilities.bold());
         textMargin = (int) textPaint.measureText("00 MMM 0000 - 00 MMM 000");

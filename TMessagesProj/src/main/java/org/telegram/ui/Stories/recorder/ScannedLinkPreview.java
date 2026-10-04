@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Stories.recorder;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -142,7 +144,7 @@ public class ScannedLinkPreview extends View {
 
     private void setup() {
         if (resolved == null) return;
-        title = new Text(resolved.getTitle(), 16, AndroidUtilities.bold());
+        title = Text.ui(resolved.getTitle(), 16, AndroidUtilities.bold());
         final SpannableStringBuilder sb = new SpannableStringBuilder(resolved.getSubtitle());
         if (sb.toString().contains(">")) {
             sb.clear();
@@ -154,7 +156,7 @@ public class ScannedLinkPreview extends View {
             span.setScale(1.25f, 1.25f);
             sb.setSpan(span, sb.length() - 1, sb.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
         }
-        subtitle = new Text(sb, 14);
+        subtitle = Text.ui(sb, 14);
         hasImage = resolved.setImage(imageReceiver);
     }
 

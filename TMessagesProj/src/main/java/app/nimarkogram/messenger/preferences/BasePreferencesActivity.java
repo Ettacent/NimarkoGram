@@ -52,9 +52,12 @@ public abstract class BasePreferencesActivity extends BaseFragment {
     private int initialSearchItemId;
     private SettingsSearchHighlight searchHighlight;
     private int listWorkGeneration;
-    private boolean toggleRowsRefreshPending;
     private Runnable initialSearchScroll;
-    private Runnable toggleRowsRefresh;
+    private final Runnable toggleRowsRefresh = () -> {
+        if (listView != null && listView.adapter != null) {
+            listView.adapter.update(true);
+        }
+    };
 
     @Override
     public View createView(Context context) {
@@ -171,8 +174,6 @@ public abstract class BasePreferencesActivity extends BaseFragment {
     public void onResume() {
         super.onResume();
         if (this.listView != null) {
-            toggleRowsRefreshPending = false;
-            this.listView.removeCallbacks(toggleRowsRefresh);
             this.listView.adapter.update(false);
         }
         Bulletin.addDelegate(this, new Bulletin.Delegate() {
@@ -204,36 +205,24 @@ public abstract class BasePreferencesActivity extends BaseFragment {
         layoutManager.scrollToPositionWithOffset(iFindPositionByItemId, AndroidUtilities.dp(80.0f));
     }
     protected void updateItemsAfterToggle() {
-        if (listView != null && toggleRowsRefresh != null && !toggleRowsRefreshPending) {
-            toggleRowsRefreshPending = true;
-            listView.postOnAnimation(toggleRowsRefresh);
-        }
+        toggleRowsRefresh.run();
     }
     private void prepareListCallbacks() {
         final int generation = listWorkGeneration;
         initialSearchScroll = () -> {
             if (generation == listWorkGeneration) scrollToItem(initialSearchItemId);
         };
-        toggleRowsRefresh = () -> {
-            if (generation == listWorkGeneration && toggleRowsRefreshPending) {
-                toggleRowsRefreshPending = false;
-                listView.adapter.update(true);
-            }
-        };
     }
     private void cancelPendingListWork() {
         ++listWorkGeneration;
-        toggleRowsRefreshPending = false;
         if (searchHighlight != null) {
             searchHighlight.run();
             searchHighlight = null;
         }
         if (listView != null) {
             listView.removeCallbacks(initialSearchScroll);
-            listView.removeCallbacks(toggleRowsRefresh);
         }
         initialSearchScroll = null;
-        toggleRowsRefresh = null;
     }
     @Override
     public void onFragmentDestroy() {

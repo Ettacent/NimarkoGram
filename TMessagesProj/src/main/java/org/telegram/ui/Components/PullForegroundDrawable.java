@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components;
 
 import android.animation.Animator;
@@ -15,6 +17,7 @@ import android.graphics.drawable.Drawable;
 import android.text.Layout;
 import android.text.StaticLayout;
 import android.text.TextPaint;
+import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
 import android.view.View;
 import android.view.ViewConfiguration;
 import android.view.animation.LinearInterpolator;
@@ -49,7 +52,7 @@ public class PullForegroundDrawable {
     private final Paint paintBackgroundAccent = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint backgroundPaint = new Paint();
     private final RectF rectF = new RectF();
-    private final TextPaint tooltipTextPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+    private final TextPaint tooltipTextPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
     private final ArrowDrawable arrowDrawable = new ArrowDrawable();
     private int generalTopicDrawableColor;
     private Drawable generalTopicDrawable;

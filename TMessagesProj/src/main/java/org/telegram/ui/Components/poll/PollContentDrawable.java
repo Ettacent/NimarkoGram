@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components.poll;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -392,25 +394,25 @@ public class PollContentDrawable extends Drawable implements DownloadController.
 
             if (fileName != null) {
                 if (fileNameText == null) {
-                    fileNameText = new Text(fileName, 15, AndroidUtilities.bold());
+                    fileNameText = Text.ui(fileName, 15, AndroidUtilities.bold());
                 }
                 fileNameText.setText(TextUtils.ellipsize(fileName, fileNameText.paint, w, TextUtils.TruncateAt.MIDDLE));
             }
             if (authorInfo != null) {
                 if (authorInfoText == null) {
-                    authorInfoText = new Text(authorInfo, 14);
+                    authorInfoText = Text.ui(authorInfo, 14);
                 }
                 authorInfoText.setText(TextUtils.ellipsize(authorInfo, authorInfoText.paint, w, TextUtils.TruncateAt.END));
             }
             if (fileInfo != null) {
                 if (fileInfoText == null) {
-                    fileInfoText = new Text(fileInfo, 12);
+                    fileInfoText = Text.ui(fileInfo, 12);
                 }
                 fileInfoText.setText(TextUtils.ellipsize(fileInfo, fileInfoText.paint, w, TextUtils.TruncateAt.END));
             }
             if (isVideo) {
                 if (videoDurationText == null) {
-                    videoDurationText = new Text(AndroidUtilities.formatLongDuration(videoDuration), 12);
+                    videoDurationText = Text.ui(AndroidUtilities.formatLongDuration(videoDuration), 12);
                 }
             }
         }

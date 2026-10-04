@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 5.x.x.
  * It is licensed under GNU GPL v. 2 or later.
@@ -37,6 +39,7 @@ import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 
+import java.util.concurrent.TimeUnit;
 @OptIn(markerClass = UnstableApi.class)
 public class FileStreamLoadOperation implements DataSource, FileLoadOperationStream {
 
@@ -48,9 +51,9 @@ public class FileStreamLoadOperation implements DataSource, FileLoadOperationStr
     private long bytesRemaining;
     private long bytesTransferred;
     private long requestedLength;
-    private boolean opened;
+    private volatile boolean opened;
     private long currentOffset;
-    private CountDownLatch countDownLatch;
+    private volatile CountDownLatch countDownLatch;
     private RandomAccessFile file;
     private TLRPC.Document document;
     private Object parentObject;
@@ -160,10 +163,15 @@ public class FileStreamLoadOperation implements DataSource, FileLoadOperationStr
                 if (bytesRemaining < readLength) {
                     readLength = (int) bytesRemaining;
                 }
-                while ((availableLength == 0 && opened) || file == null) {
-                    availableLength = (int) loadOperation.getDownloadedLengthFromOffset(currentOffset, readLength)[0];
+                while (opened && (availableLength == 0 || file == null)) {
+                    final CountDownLatch wakeup = new CountDownLatch(1);
+                    countDownLatch = wakeup;
+                    long[] result = loadOperation.getDownloadedLengthFromOffset(currentOffset, readLength);
+                    if (result[2] != 0) {
+                        throw new IOException("Media download failed or was cancelled");
+                    }
+                    availableLength = (int) result[0];
                     if (availableLength == 0) {
-                        countDownLatch = new CountDownLatch(1);
                         FileLoadOperation loadOperation = FileLoader.getInstance(currentAccount).loadStreamFile(this, document, null, parentObject, currentOffset, false, getCurrentPriority());
                         if (this.loadOperation != loadOperation) {
 //                            FileLog.e("FileStreamLoadOperation " + document.id + " read: changed operation!");
@@ -171,9 +179,8 @@ public class FileStreamLoadOperation implements DataSource, FileLoadOperationStr
                             this.loadOperation = loadOperation;
                         }
 //                        FileLog.e("FileStreamLoadOperation " + document.id + " read sleeping.... Zzz");
-                        if (countDownLatch != null) {
-                            countDownLatch.await();
-                            countDownLatch = null;
+                        if (opened) {
+                            wakeup.await(1, TimeUnit.SECONDS);
                         }
                     }
 //                    FileLog.e("FileStreamLoadOperation " + document.id + " read availableLength=" + availableLength);
@@ -231,9 +238,12 @@ public class FileStreamLoadOperation implements DataSource, FileLoadOperationStr
                 }
             } catch (InterruptedException e) {
                 FileLog.e(e);
+                Thread.currentThread().interrupt();
                 return C.RESULT_NOTHING_READ;
             } catch (Exception e) {
                 throw new IOException(e);
+            } finally {
+                countDownLatch = null;
             }
             return bytesRead;
         }

@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -10,6 +12,7 @@ import android.graphics.Rect;
 import android.graphics.drawable.Drawable;
 import android.text.Editable;
 import android.text.TextPaint;
+import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
 import android.view.GestureDetector;
 import android.view.HapticFeedbackConstants;
 import android.view.KeyEvent;
@@ -281,8 +284,8 @@ public class CustomPhoneKeyboardView extends ViewGroup {
     }
 
     private final static class NumberButtonView extends View {
-        private final TextPaint numberTextPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
-        private final TextPaint symbolsTextPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+        private final TextPaint numberTextPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
+        private final TextPaint symbolsTextPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
         private final String mNumber;
         private final String mSymbols;
         private final Rect rect = new Rect();

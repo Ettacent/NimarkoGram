@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.ActionBar;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -389,7 +391,7 @@ public class BottomSheetTabs extends FrameLayout {
     private static TextPaint textPaint;
     private static TextPaint getTextPaint() {
         if (textPaint == null) {
-            textPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+            textPaint = new app.nimarkogram.messenger.utils.ui.SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
             textPaint.setTypeface(AndroidUtilities.bold());
             textPaint.setTextSize(AndroidUtilities.dp(17));
         }
@@ -810,7 +812,7 @@ public class BottomSheetTabs extends FrameLayout {
 
             this.favicon = tab.favicon;
             CharSequence title = Emoji.replaceEmoji(tab.getTitle(), getTextPaint().getFontMetricsInt(), false);
-            this.title = new Text(title, 17, AndroidUtilities.bold());
+            this.title = Text.ui(title, 17, AndroidUtilities.bold());
             this.tabColor = tab.actionBarColor;
             this.tabIsDark = AndroidUtilities.computePerceivedBrightness(tabColor) < .721f;
             if (tab.isArticle()) {
@@ -834,7 +836,7 @@ public class BottomSheetTabs extends FrameLayout {
             if (title == null) {
                 overrideTitle = null;
             } else {
-                overrideTitle = new Text(title, 17, AndroidUtilities.bold());
+                overrideTitle = Text.ui(title, 17, AndroidUtilities.bold());
             }
         }
 

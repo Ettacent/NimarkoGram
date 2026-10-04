@@ -73,6 +73,7 @@ import android.text.SpannableString;
 import android.text.SpannableStringBuilder;
 import android.text.Spanned;
 import android.text.TextPaint;
+import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
 import android.text.TextUtils;
 import android.text.style.CharacterStyle;
 import android.text.style.ClickableSpan;
@@ -2572,7 +2573,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             super(context);
             setVisibility(GONE);
 
-            textPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+            textPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
             textPaint.setColor(Color.WHITE);
             textPaint.setTypeface(Typeface.SANS_SERIF);
             textPaint.setTextAlign(Paint.Align.CENTER);
@@ -4405,6 +4406,10 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
 
             @Override
             protected boolean drawChild(Canvas canvas, View child, long drawingTime) {
+                if (profileTransitionAwaitingOpenStart
+                        && (child == avatarContainer2 || child == timeItem)) {
+                    return true;
+                }
                 if (pinchToZoomHelper.isInOverlayMode() && (child == avatarContainer2 || child == actionBar || child == writeButton)) {
                     return true;
                 }
@@ -7882,6 +7887,10 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                 visible = true;
             }
         }
+        if (!fragmentOpened) {
+            AndroidUtilities.updateViewVisibilityAnimated(ttlIconView, false, 0.8f, false);
+            return;
+        }
         AndroidUtilities.updateViewVisibilityAnimated(ttlIconView, visible, 0.8f, fragmentOpened);
     }
 
@@ -9785,7 +9794,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
         }
 
         float extra = dp(42) * (avatarScale * 100 / 42) - dp(42);
-        if (profileTransitionUsesFloatingHeader && profileTransitionHasTimeItemRect) {
+        if (profileTransitionHasTimeItemRect) {
             // The centred header keeps its timer at the avatar's lower-right
             // edge, while ProfileActivity's legacy compact endpoint is above
             // the avatar. Interpolate to the exact source drawable centre so
@@ -11742,6 +11751,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                     invalidateScroll = true;
                     fragmentView.requestLayout();
                 }
+                updateTtlIcon();
             }
             if (actionsView != null) {
                 actionsView.isOpeningLayout = false;
@@ -11841,7 +11851,13 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
         int actionBarColor2 = actionBarColor;
         actionBarColor = ColorUtils.setAlphaComponent(actionBarColor, 0);
         topView.setBackgroundColor(ColorUtils.blendARGB(actionBarColor, color, progress));
-        timerDrawable.setBackgroundColor(ColorUtils.blendARGB(actionBarColor2, color, progress));
+        timerDrawable.setBackgroundColor(profileTransitionTimerBackground != null
+                ? profileTransitionTimerBackground
+                : ColorUtils.blendARGB(actionBarColor2, color, progress));
+        timerDrawable.setForegroundColor(profileTransitionTimerForeground != null
+                ? profileTransitionTimerForeground
+                : ColorUtils.blendARGB(getThemedColor(Theme.key_actionBarDefaultTitle),
+                        peerColor != null ? Color.WHITE : getThemedColor(Theme.key_profile_title), progress));
 
         if (profileTransitionOwnsActionBarColors) {
             applyProfileTransitionActionBarColors(avatarAnimationProgress);
@@ -11905,6 +11921,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
     }
 
     boolean profileTransitionInProgress;
+    private boolean profileTransitionAwaitingOpenStart;
     private AnimatorSet profileTransitionAnimator;
     private Runnable profileTransitionStartRunnable;
     private Runnable profileTransitionFinishRunnable;
@@ -11986,6 +12003,8 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
     private boolean profileTransitionHasTitleRect;
     private boolean profileTransitionHasSubtitleRect;
     private boolean profileTransitionHasTimeItemRect;
+    private Integer profileTransitionTimerBackground;
+    private Integer profileTransitionTimerForeground;
     private float profileTransitionTimeItemTargetX;
     private float profileTransitionTimeItemTargetY;
     private boolean profileTransitionTimeItemOffsetInitialized;
@@ -12035,7 +12054,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
      * {@link #backwardAnimationLayout()}.
      */
     private void setProfileTransitionTimeItemPosition(float fallbackX, float fallbackY) {
-        if (profileTransitionUsesFloatingHeader && profileTransitionHasTimeItemRect) {
+        if (profileTransitionHasTimeItemRect) {
             final float progress = Utilities.clamp01(avatarAnimationProgress);
             if (!profileTransitionTimeItemOffsetInitialized || progress <= 0.001f) {
                 profileTransitionTimeItemOffsetInitialized = true;
@@ -12121,6 +12140,8 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
     }
 
     private void captureProfileTransitionAvatarEndpoint() {
+        profileTransitionTimerBackground = null;
+        profileTransitionTimerForeground = null;
         profileTransitionSmallAvatarRoundRadius = -1;
         profileTransitionAvatarY = Float.NaN;
         profileTransitionAvatarSizeDp = 42f;
@@ -12176,6 +12197,11 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                         targetSubtitle, targetContent, profileTransitionSubtitleRect);
             }
             ImageView targetTimeItem = targetContainer.getTimeItem();
+            if (targetTimeItem != null && targetTimeItem.getDrawable() instanceof TimerDrawable) {
+                TimerDrawable sourceTimer = (TimerDrawable) targetTimeItem.getDrawable();
+                profileTransitionTimerBackground = sourceTimer.getBackgroundColor();
+                profileTransitionTimerForeground = sourceTimer.getForegroundColor();
+            }
             if (timeItem != null
                     && targetTimeItem != null
                     && targetTimeItem.getVisibility() == View.VISIBLE
@@ -12207,6 +12233,8 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
     }
 
     private void clearProfileTransitionAvatarEndpoint() {
+        profileTransitionTimerBackground = null;
+        profileTransitionTimerForeground = null;
         profileTransitionSmallAvatarRoundRadius = -1;
         profileTransitionAvatarY = Float.NaN;
         profileTransitionAvatarSizeDp = 42f;
@@ -12311,6 +12339,14 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
     }
 
     private void prepareProfileTransitionStart(boolean isOpen, ActionBar previousActionBar) {
+        profileTransitionAwaitingOpenStart = false;
+        if (fragmentView != null) fragmentView.invalidate();
+        if (timeItem != null) {
+            final float timerAlpha = isOpen && timeItem.getTag() != null ? 1f : 0f;
+            timeItem.setAlpha(timerAlpha);
+            timeItem.setScaleX(timerAlpha * 0.85f);
+            timeItem.setScaleY(timerAlpha * 0.85f);
+        }
         if (previousActionBar != null) {
             // Keep the source's real title/subtitle/drawables on screen throughout
 
@@ -12386,6 +12422,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
     public AnimatorSet onCustomTransitionAnimation(final boolean isOpen, final Runnable callback) {
         finishProfileStatusCrossfades();
         cancelProfileTransitionIfNeeded();
+        profileTransitionAwaitingOpenStart = false;
         profileTransitionUsesFloatingHeader = false;
         if (hasMainTabs) {
             return null;
@@ -12418,7 +12455,9 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             communityItem.setAlpha(1f);
         }
         if (timeItem != null) {
-            timeItem.setAlpha(1.0f);
+            timeItem.setAlpha(0f);
+            timeItem.setScaleX(0f);
+            timeItem.setScaleY(0f);
         }
         if (starFgItem != null) {
             starFgItem.setAlpha(1.0f);
@@ -12447,6 +12486,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
 
         final ChatAvatarContainer sourceAvatarContainer = previousTransitionFragment != null
                 ? previousTransitionFragment.getAvatarContainer() : null;
+        profileTransitionAwaitingOpenStart = isOpen && sourceAvatarContainer != null;
         final boolean fromTopics = previousTransitionFragment instanceof TopicsFragment;
         profileTransitionUsesFloatingHeader = fromTopics
                 || sourceAvatarContainer != null
@@ -12828,6 +12868,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                     || ((org.telegram.ui.ActionBar.ActionBarLayout) parentLayout)
                             .ownsCurrentTransitionAnimation(animatorSet);
             final boolean abandonedTransition = forcedCancel && !layoutOwnsTransition;
+            profileTransitionAwaitingOpenStart = false;
             profileTransitionAnimator = null;
             if (profileTransitionStartRunnable != null) {
                 AndroidUtilities.cancelRunOnUIThread(profileTransitionStartRunnable);
@@ -12926,6 +12967,11 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                 profileTransitionOnlineTextStateCaptured = false;
             }
             clearProfileTransitionAvatarEndpoint();
+            if (timeItem != null) {
+                timeItem.setAlpha(0f);
+                timeItem.setScaleX(0f);
+                timeItem.setScaleY(0f);
+            }
             profileTransitionInProgress = false;
             profileTransitionSingleBackArrow = false;
             profileTransitionUsesFloatingHeader = false;
@@ -19298,6 +19344,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             invalidateScroll = true;
             fragmentView.requestLayout();
         }
+        updateTtlIcon();
         fixLayout();
     }
 

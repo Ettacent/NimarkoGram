@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 5.x.x.
  * It is licensed under GNU GPL v. 2 or later.
@@ -98,6 +100,7 @@ public class DrawerLayoutContainer extends FrameLayout {
 
         setMeasuredDimension(widthSize, heightSize);
 
+        try {
         final int newDisplayWidth = widthSize
             - systemAndCutoutInsets.left
             - systemAndCutoutInsets.right;
@@ -128,12 +131,14 @@ public class DrawerLayoutContainer extends FrameLayout {
             }
             if (child instanceof ActionBarLayout) {
                 ActionBarLayout actionBarLayout = (ActionBarLayout) child;
-                //fix keyboard measuring
                 if (actionBarLayout.storyViewerAttached()) {
                     child.forceLayout();
                 }
             }
             child.measure(contentWidthSpec, contentHeightSpec);
+            }
+        } finally {
+            setMeasuredDimension(widthSize, heightSize);
         }
     }
 

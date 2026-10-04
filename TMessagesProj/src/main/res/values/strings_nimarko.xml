@@ -311,6 +311,8 @@
     <string name="NM_SettingsSummaryChats">Chat list, input, gestures and media</string>
     <string name="NM_SettingsSummaryCamera">Photos, video messages and camera quality</string>
     <string name="NM_CAM_FpsRange">Frame rate (FPS)</string>
+    <string name="NM_CAM_RoundVideoTapFocus">Focus while recording round videos</string>
+    <string name="NM_CAM_RoundVideoTapFocusDesc">Tap an object in the preview to focus on it during recording.</string>
     <string name="NM_SettingsSummaryPrivacy">Hidden items and protected chats</string>
     <string name="NM_SettingsSummaryPlugins">Extensions and modules</string>
     <string name="NM_SettingsSummaryMedia">Media downloads from links</string>

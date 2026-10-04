@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.messenger.camera;
 
 import android.hardware.Camera;
@@ -194,6 +196,7 @@ public class CameraSessionWrapper {
             cameraXSession.focusToRect(focusRect);
         } else if (camera2Session != null) {
             
+            camera2Session.focusToRect(focusRect, meteringRect);
         } else if (camera1Session != null) {
             camera1Session.focusToRect(focusRect, meteringRect);
         }

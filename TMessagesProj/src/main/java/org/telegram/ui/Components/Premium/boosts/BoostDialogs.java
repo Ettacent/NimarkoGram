@@ -1,5 +1,8 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components.Premium.boosts;
 
+import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
 import static org.telegram.messenger.AndroidUtilities.dp;
 import static org.telegram.messenger.AndroidUtilities.replaceTags;
 import static org.telegram.messenger.LocaleController.formatPluralString;
@@ -207,7 +210,7 @@ public class BoostDialogs {
         LinearLayout container = new LinearLayout(context) {
 
             boolean ignoreLayout = false;
-            final TextPaint paint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+            final TextPaint paint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
 
             {
                 setWillNotDraw(false);

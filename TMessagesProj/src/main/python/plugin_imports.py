@@ -1,3 +1,4 @@
+# Modifications Copyright (C) 2026 Ettacent
 """Host-owned plugin entry imports, not a sandbox for arbitrary Python code.
 
 Keep ordinary helper/package resolution intact. Entry files (top-level __id__

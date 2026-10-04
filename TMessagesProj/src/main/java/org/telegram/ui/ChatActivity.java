@@ -76,6 +76,7 @@ import android.text.SpannableStringBuilder;
 import android.text.Spanned;
 import android.text.StaticLayout;
 import android.text.TextPaint;
+import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
 import android.text.TextUtils;
 import android.text.style.CharacterStyle;
 import android.text.style.ClickableSpan;
@@ -46027,9 +46028,9 @@ public class ChatActivity extends BaseFragment implements
                 Paint oldPaint = entry.getValue();
                 Paint newPaint;
                 if (oldPaint instanceof TextPaint) {
-                    newPaint = new TextPaint();
+                    newPaint = new SystemTextPaint(0);
                     newPaint.setTextSize(oldPaint.getTextSize());
-                    newPaint.setTypeface(oldPaint.getTypeface());
+                    ((SystemTextPaint) newPaint).copyTypefaceFrom(oldPaint);
                 } else {
                     newPaint = new Paint();
                 }

@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 2.0.x.
  * It is licensed under GNU GPL v. 2 or later.
@@ -21,6 +23,7 @@ import android.graphics.drawable.Drawable;
 import android.os.Build;
 import android.text.InputFilter;
 import android.text.TextPaint;
+import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.HapticFeedbackConstants;
@@ -114,7 +117,7 @@ public class PhotoAlbumPickerActivity extends BaseFragment implements Notificati
     private SizeNotifierFrameLayout sizeNotifierFrameLayout;
     private View selectedCountView;
     private View shadow;
-    private TextPaint textPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+    private TextPaint textPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
     private RectF rect = new RectF();
     private Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
 
