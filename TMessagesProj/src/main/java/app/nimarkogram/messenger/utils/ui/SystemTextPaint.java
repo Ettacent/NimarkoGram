@@ -10,7 +10,9 @@ public final class SystemTextPaint extends TextPaint {
     private static final WeakHashMap<SystemTextPaint, Boolean> paints = new WeakHashMap<>();
     private static volatile int adjustment;
     private Typeface baseTypeface;
+    private Typeface appliedTypeface;
     private boolean resolvedTypeface;
+    private boolean readingTypeface;
     public static int getWeightAdjustment() {
         return adjustment;
     }
@@ -34,8 +36,23 @@ public final class SystemTextPaint extends TextPaint {
         }
     }
     @Override
+    public Typeface getTypeface() {
+        boolean wasReadingTypeface = readingTypeface;
+        readingTypeface = true;
+        try {
+            return super.getTypeface();
+        } finally {
+            readingTypeface = wasReadingTypeface;
+        }
+    }
+
+    @Override
     public Typeface setTypeface(Typeface typeface) {
-        if (!resolvedTypeface && typeface == getTypeface()) return typeface;
+        if (readingTypeface) {
+            appliedTypeface = typeface;
+            return super.setTypeface(typeface);
+        }
+        if (!resolvedTypeface && typeface == appliedTypeface) return typeface;
         baseTypeface = typeface;
         resolvedTypeface = false;
         return applyTypeface();
@@ -72,7 +89,10 @@ public final class SystemTextPaint extends TextPaint {
         applyTypeface();
     }
     private Typeface applyTypeface() {
-        return super.setTypeface(resolvedTypeface ? baseTypeface : adjusted(baseTypeface));
+        Typeface typeface = resolvedTypeface ? baseTypeface : adjusted(baseTypeface);
+        Typeface result = super.setTypeface(typeface);
+        appliedTypeface = typeface;
+        return result;
     }
     public static void setSpanTypeface(Paint paint, Typeface typeface) {
         paint.setTypeface(paint instanceof SystemTextPaint ? typeface : adjusted(typeface));

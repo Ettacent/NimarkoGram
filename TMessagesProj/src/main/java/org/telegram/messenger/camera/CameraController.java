@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 5.x.x.
  * It is licensed under GNU GPL v. 2 or later.
@@ -69,6 +71,37 @@ public class CameraController implements MediaRecorder.OnInfoListener {
     private ArrayList<Runnable> onFinishCameraInitRunnables = new ArrayList<>();
     ICameraView recordingCurrentCameraView;
 
+    private volatile ViewRecordingRequest viewRecordingRequest;
+    private ViewRecordingRequest preparedViewRecordingRequest;
+    private boolean viewRecordingMode;
+
+    private static class ViewRecordingRequest {
+        final Object session;
+        final File path;
+        final ICameraView view;
+        final VideoTakeCallback onFinished;
+        final Runnable onStarted;
+        final Runnable onRejected;
+        final boolean createThumbnail;
+        final boolean mirror;
+        volatile boolean stopped;
+        boolean accepted;
+        volatile boolean completed;
+        volatile boolean abandoned;
+        boolean finishing;
+
+        ViewRecordingRequest(Object session, File path, ICameraView view, VideoTakeCallback onFinished,
+                             Runnable onStarted, Runnable onRejected, boolean createThumbnail, boolean mirror) {
+            this.session = session;
+            this.path = path;
+            this.view = view;
+            this.onFinished = onFinished;
+            this.onStarted = onStarted;
+            this.onRejected = onRejected;
+            this.createThumbnail = createThumbnail;
+            this.mirror = mirror;
+        }
+    }
     public interface ICameraView {
         void stopRecording();
         boolean startRecording(File file, Runnable runnable);
@@ -640,29 +673,129 @@ public class CameraController implements MediaRecorder.OnInfoListener {
     }
 
     public void recordVideo(final Object sessionObject, final File path, boolean mirror, final VideoTakeCallback callback, final Runnable onVideoStartRecord, ICameraView cameraView, boolean createThumbnail) {
+        recordVideo(sessionObject, path, mirror, callback, onVideoStartRecord, cameraView, createThumbnail, null);
+    }
+
+    private void rollbackViewRecording(ViewRecordingRequest request) {
+        if (preparedViewRecordingRequest != request) {
+            return;
+        }
+        preparedViewRecordingRequest = null;
+        try {
+            if (request.session instanceof CameraSession) {
+                ((CameraSession) request.session).stopVideoRecording();
+            } else if (request.session instanceof Camera2Session) {
+                ((Camera2Session) request.session).setRecordingVideo(false);
+            } else if (request.session instanceof app.nimarkogram.messenger.camera.NimarkoCameraXSurfaceSession) {
+                ((app.nimarkogram.messenger.camera.NimarkoCameraXSurfaceSession) request.session).enableTorch(false);
+            }
+        } catch (Exception e) {
+            FileLog.e(e);
+        }
+    }
+
+    private void rejectViewRecording(ViewRecordingRequest request) {
+        if (viewRecordingRequest != request || request.completed) {
+            return;
+        }
+        request.stopped = true;
+        request.completed = true;
+        recordingCurrentCameraView = null;
+        threadPool.execute(() -> {
+            rollbackViewRecording(request);
+            AndroidUtilities.runOnUIThread(() -> {
+                if (viewRecordingRequest != request) {
+                    return;
+                }
+                viewRecordingRequest = null;
+                if (!request.abandoned && request.onRejected != null) {
+                    request.onRejected.run();
+                }
+            });
+        });
+    }
+
+    private void finishViewRecording(ViewRecordingRequest request) {
+        if (viewRecordingRequest != request || request.completed || request.finishing) {
+            return;
+        }
+        request.finishing = true;
+        request.stopped = true;
+        recordingCurrentCameraView = null;
+        threadPool.execute(() -> {
+            if (preparedViewRecordingRequest == request) {
+                preparedViewRecordingRequest = null;
+            }
+            if (viewRecordingRequest != request || request.completed) {
+                return;
+            }
+            if (request.abandoned) {
+                AndroidUtilities.runOnUIThread(() -> {
+                    request.completed = true;
+                    if (viewRecordingRequest == request) {
+                        viewRecordingRequest = null;
+                    }
+                });
+                return;
+            }
+            finishRecordingVideo(request.path.getAbsolutePath(), request.mirror, request.createThumbnail, (thumb, duration) -> {
+                if (viewRecordingRequest != request || request.completed) {
+                    return;
+                }
+                request.completed = true;
+                viewRecordingRequest = null;
+                if (!request.abandoned && request.onFinished != null) {
+                    request.onFinished.onFinishVideoRecording(thumb, duration);
+                }
+            });
+        });
+    }
+
+    public void recordVideo(final Object sessionObject, final File path, boolean mirror, final VideoTakeCallback callback, final Runnable onVideoStartRecord, ICameraView cameraView, boolean createThumbnail, Runnable onVideoStartRejected) {
+        ViewRecordingRequest previous = viewRecordingRequest;
+        if (previous != null && previous.accepted && !previous.completed) {
+            if (onVideoStartRejected != null) {
+                ApplicationLoader.applicationHandler.post(onVideoStartRejected);
+            }
+            return;
+        }
+        if (previous != null) {
+            previous.stopped = true;
+            previous.abandoned = true;
+            threadPool.execute(() -> rollbackViewRecording(previous));
+        }
+        viewRecordingRequest = null;
+        viewRecordingMode = cameraView != null;
         if (sessionObject == null) {
+            recordingCurrentCameraView = null;
+            if (onVideoStartRejected != null) {
+                ApplicationLoader.applicationHandler.post(onVideoStartRejected);
+            }
             return;
         }
         if (cameraView != null) {
+            final ViewRecordingRequest request = new ViewRecordingRequest(sessionObject, path, cameraView,
+                    callback, onVideoStartRecord, onVideoStartRejected, createThumbnail, mirror);
+            viewRecordingRequest = request;
             recordingCurrentCameraView = cameraView;
-            onVideoTakeCallback = callback;
-            recordedFile = path.getAbsolutePath();
             threadPool.execute(() -> {
+                if (viewRecordingRequest != request || request.stopped) {
+                    return;
+                }
                 try {
+                    preparedViewRecordingRequest = request;
                     if (sessionObject instanceof CameraSession) {
                         CameraSession session = (CameraSession) sessionObject;
                         final CameraInfo info = session.cameraInfo;
                         final Camera camera = info.camera;
-                        if (camera != null) {
-                            try {
+                        if (camera == null) {
+                            AndroidUtilities.runOnUIThread(() -> rejectViewRecording(request));
+                            return;
+                        }
                                 Camera.Parameters params = camera.getParameters();
                                 params.setFlashMode(session.getCurrentFlashMode().equals(Camera.Parameters.FLASH_MODE_ON) ? Camera.Parameters.FLASH_MODE_TORCH : Camera.Parameters.FLASH_MODE_OFF);
                                 camera.setParameters(params);
                                 session.onStartRecord();
-                            } catch (Exception e) {
-                                FileLog.e(e);
-                            }
-                        }
                     } else if (sessionObject instanceof Camera2Session) {
                         Camera2Session session = (Camera2Session) sessionObject;
                         session.setRecordingVideo(true);
@@ -673,13 +806,25 @@ public class CameraController implements MediaRecorder.OnInfoListener {
                                 session.getCurrentFlashMode()));
                     }
                     AndroidUtilities.runOnUIThread(() -> {
-                        cameraView.startRecording(path, () -> finishRecordingVideo(createThumbnail));
-                        if (onVideoStartRecord != null) {
-                            onVideoStartRecord.run();
+                        if (viewRecordingRequest != request || request.stopped || request.completed) {
+                            return;
+                        }
+                        request.accepted = cameraView.startRecording(path, () -> finishViewRecording(request));
+                        if (!request.accepted) {
+                            rejectViewRecording(request);
+                            return;
+                        }
+                        if (viewRecordingRequest != request || request.stopped) {
+                            cameraView.stopRecording();
+                            return;
+                        }
+                        if (request.onStarted != null) {
+                            request.onStarted.run();
                         }
                     });
                 } catch (Exception e) {
                     FileLog.e(e);
+                    AndroidUtilities.runOnUIThread(() -> rejectViewRecording(request));
                 }
             });
 
@@ -749,6 +894,18 @@ public class CameraController implements MediaRecorder.OnInfoListener {
     }
 
     private void finishRecordingVideo(boolean createThumbnail) {
+        final VideoTakeCallback callback = onVideoTakeCallback;
+        finishRecordingVideo(recordedFile, mirrorRecorderVideo, createThumbnail, (thumb, duration) -> {
+            if (onVideoTakeCallback == callback) {
+                onVideoTakeCallback = null;
+                if (callback != null) {
+                    callback.onFinishVideoRecording(thumb, duration);
+                }
+            }
+        });
+    }
+
+    private void finishRecordingVideo(String recordedFile, boolean mirrorRecorderVideo, boolean createThumbnail, VideoTakeCallback callback) {
         MediaMetadataRetriever mediaMetadataRetriever = null;
         long duration = 0;
         try {
@@ -770,9 +927,9 @@ public class CameraController implements MediaRecorder.OnInfoListener {
             }
         }
         final File cacheFile;
-        Bitmap bitmap = null;
-        if (createThumbnail) {
-            bitmap = SendMessagesHelper.createVideoThumbnail(recordedFile, MediaStore.Video.Thumbnails.MINI_KIND);
+        Bitmap bitmap = createThumbnail
+                ? SendMessagesHelper.createVideoThumbnail(recordedFile, MediaStore.Video.Thumbnails.MINI_KIND) : null;
+        if (bitmap != null) {
             if (mirrorRecorderVideo) {
                 Bitmap b = Bitmap.createBitmap(bitmap.getWidth(), bitmap.getHeight(), Bitmap.Config.ARGB_8888);
                 Canvas canvas = new Canvas(b);
@@ -803,7 +960,7 @@ public class CameraController implements MediaRecorder.OnInfoListener {
         final long durationFinal = duration;
         final Bitmap bitmapFinal = bitmap;
         AndroidUtilities.runOnUIThread(() -> {
-            if (onVideoTakeCallback != null) {
+            if (callback != null) {
                 String path = null;
                 if (cacheFile != null) {
                     path = cacheFile.getAbsolutePath();
@@ -811,8 +968,7 @@ public class CameraController implements MediaRecorder.OnInfoListener {
                         ImageLoader.getInstance().putImageToCache(new BitmapDrawable(bitmapFinal), Utilities.MD5(path), false);
                     }
                 }
-                onVideoTakeCallback.onFinishVideoRecording(path, durationFinal);
-                onVideoTakeCallback = null;
+                callback.onFinishVideoRecording(path, durationFinal);
             }
         });
     }
@@ -837,6 +993,29 @@ public class CameraController implements MediaRecorder.OnInfoListener {
     }
 
     public void stopVideoRecording(final Object sessionObject, final boolean abandon, final boolean createThumbnail) {
+        ViewRecordingRequest request = viewRecordingRequest;
+        if (request != null) {
+            Object session = sessionObject instanceof CameraSessionWrapper
+                    ? ((CameraSessionWrapper) sessionObject).getObject() : sessionObject;
+            if (session != null && session != request.session) {
+                return;
+            }
+            request.abandoned |= abandon;
+            if (request.stopped || request.completed) {
+                return;
+            }
+            request.stopped = true;
+            recordingCurrentCameraView = null;
+            if (request.accepted) {
+                request.view.stopRecording();
+            } else {
+                rejectViewRecording(request);
+            }
+            return;
+        }
+        if (viewRecordingMode) {
+            return;
+        }
         if (recordingCurrentCameraView != null) {
             recordingCurrentCameraView.stopRecording();
             recordingCurrentCameraView = null;

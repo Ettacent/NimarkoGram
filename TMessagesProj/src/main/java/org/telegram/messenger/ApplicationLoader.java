@@ -596,8 +596,7 @@ public class ApplicationLoader extends Application {
                 SystemClock.elapsedRealtime() + NG_PINE_HOOK_WAIT_BUDGET_MS;
         boolean pineReady = false;
         markPineInitializationStarted();
-        app.nimarkogram.messenger.NimarkoCrashContext.pine(
-                "initialization", "ApplicationLoader.ensurePineInited");
+        app.nimarkogram.messenger.NimarkoCrashContext.initialization(true, false);
         try {
 
             boolean hiddenApiBypassReady = false;
@@ -663,6 +662,7 @@ public class ApplicationLoader extends Application {
         } finally {
 
             ngPineInited = pineReady;
+            app.nimarkogram.messenger.NimarkoCrashContext.initialization(false, pineReady);
             if (!pineReady) {
                 try {
                     top.canyie.pine.PineConfig.disableHooks = true;

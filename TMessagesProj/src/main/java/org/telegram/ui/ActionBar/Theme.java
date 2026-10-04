@@ -8248,10 +8248,31 @@ public class Theme extends com.exteragram.messenger.utils.ui.LegacyThemeFields {
 
     public static void createCommonMessageResources() {
         synchronized (sync) {
+            TextPaint chat_msgTextPaint = Theme.chat_msgTextPaint;
+            TextPaint chat_msgGameTextPaint = Theme.chat_msgGameTextPaint;
+            TextPaint[] chat_msgTextPaintEmoji = new TextPaint[6];
+            TextPaint chat_msgTextPaintOneEmoji = Theme.chat_msgTextPaintOneEmoji;
+            TextPaint chat_msgTextPaintTwoEmoji = Theme.chat_msgTextPaintTwoEmoji;
+            TextPaint chat_msgTextPaintThreeEmoji = Theme.chat_msgTextPaintThreeEmoji;
+            TextPaint chat_msgBotButtonPaint = Theme.chat_msgBotButtonPaint;
+            TextPaint chat_namePaint = Theme.chat_namePaint;
+            TextPaint chat_replyNamePaint = Theme.chat_replyNamePaint;
+            TextPaint chat_replyTextPaint = Theme.chat_replyTextPaint;
+            TextPaint chat_quoteTextPaint = Theme.chat_quoteTextPaint;
+            TextPaint chat_explanationTextPaint = Theme.chat_explanationTextPaint;
+            TextPaint chat_titleLabelTextPaint = Theme.chat_titleLabelTextPaint;
+            TextPaint chat_topicTextPaint = Theme.chat_topicTextPaint;
+            TextPaint chat_forwardNamePaint = Theme.chat_forwardNamePaint;
+            TextPaint chat_adminPaint = Theme.chat_adminPaint;
+            TextPaint chat_timePaint = Theme.chat_timePaint;
+            TextPaint chat_msgTextCodePaint = Theme.chat_msgTextCodePaint;
+            TextPaint chat_msgTextCode2Paint = Theme.chat_msgTextCode2Paint;
+            TextPaint chat_msgTextCode3Paint = Theme.chat_msgTextCode3Paint;
+            TextPaint chat_msgCodeBgPaint = Theme.chat_msgCodeBgPaint;
+            TextPaint chat_ephemeralPaint = Theme.chat_ephemeralPaint;
             if (chat_msgTextPaint == null) {
                 chat_msgTextPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
                 chat_msgGameTextPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
-                chat_msgTextPaintEmoji = new TextPaint[6];
                 chat_msgTextPaintOneEmoji = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
                 chat_msgTextPaintTwoEmoji = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
                 chat_msgTextPaintThreeEmoji = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
@@ -8269,7 +8290,7 @@ public class Theme extends com.exteragram.messenger.utils.ui.LegacyThemeFields {
                 chat_topicTextPaint.setTypeface(AndroidUtilities.bold());
                 chat_forwardNamePaint = new SystemTextPaint(TextPaint.ANTI_ALIAS_FLAG);
                 chat_adminPaint = new SystemTextPaint(TextPaint.ANTI_ALIAS_FLAG);
-                chat_timePaint = createChatTimePaint(TextPaint.ANTI_ALIAS_FLAG);
+                chat_timePaint = new com.exteragram.messenger.utils.ui.TextPaint(TextPaint.ANTI_ALIAS_FLAG);
                 chat_msgTextCodePaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
                 chat_msgTextCodePaint.setTypeface(Typeface.MONOSPACE);
                 chat_msgTextCode2Paint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
@@ -8305,6 +8326,32 @@ public class Theme extends com.exteragram.messenger.utils.ui.LegacyThemeFields {
             chat_msgTextCodePaint.setTextSize(dp(Math.max(Math.min(10, SharedConfig.fontSize - 1), SharedConfig.fontSize - 2)));
             chat_msgTextCode2Paint.setTextSize(dp(Math.max(Math.min(10, SharedConfig.fontSize - 2), SharedConfig.fontSize - 3)));
             chat_msgTextCode3Paint.setTextSize(dp(Math.max(Math.min(10, SharedConfig.fontSize - 2), SharedConfig.fontSize - 5)));
+            if (Theme.chat_msgTextPaint == null) {
+                com.exteragram.messenger.utils.ui.LegacyThemeFields.chat_timePaint =
+                        (com.exteragram.messenger.utils.ui.TextPaint) chat_timePaint;
+            }
+            Theme.chat_msgGameTextPaint = chat_msgGameTextPaint;
+            Theme.chat_msgTextPaintEmoji = chat_msgTextPaintEmoji;
+            Theme.chat_msgTextPaintOneEmoji = chat_msgTextPaintOneEmoji;
+            Theme.chat_msgTextPaintTwoEmoji = chat_msgTextPaintTwoEmoji;
+            Theme.chat_msgTextPaintThreeEmoji = chat_msgTextPaintThreeEmoji;
+            Theme.chat_msgBotButtonPaint = chat_msgBotButtonPaint;
+            Theme.chat_namePaint = chat_namePaint;
+            Theme.chat_replyNamePaint = chat_replyNamePaint;
+            Theme.chat_replyTextPaint = chat_replyTextPaint;
+            Theme.chat_quoteTextPaint = chat_quoteTextPaint;
+            Theme.chat_explanationTextPaint = chat_explanationTextPaint;
+            Theme.chat_titleLabelTextPaint = chat_titleLabelTextPaint;
+            Theme.chat_topicTextPaint = chat_topicTextPaint;
+            Theme.chat_forwardNamePaint = chat_forwardNamePaint;
+            Theme.chat_adminPaint = chat_adminPaint;
+            Theme.chat_timePaint = chat_timePaint;
+            Theme.chat_msgTextCodePaint = chat_msgTextCodePaint;
+            Theme.chat_msgTextCode2Paint = chat_msgTextCode2Paint;
+            Theme.chat_msgTextCode3Paint = chat_msgTextCode3Paint;
+            Theme.chat_msgCodeBgPaint = chat_msgCodeBgPaint;
+            Theme.chat_ephemeralPaint = chat_ephemeralPaint;
+            Theme.chat_msgTextPaint = chat_msgTextPaint;
         }
     }
 

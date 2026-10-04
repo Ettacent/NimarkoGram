@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Stories.recorder;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -76,7 +78,8 @@ public class RoundVideoRecorder extends FrameLayout {
         cameraView.setScaleY(0f);
         addView(cameraView);
         cameraView.setDelegate(() -> {
-            if (recordingStarted > 0) return;
+            if (recordingStarted > 0 || recordingPending || cancelled) return;
+            recordingPending = true;
             CameraController.getInstance().recordVideo(cameraView.getCameraSessionObject(), file, false, (thumbPath, duration) -> {
                 recordingStopped = System.currentTimeMillis();
                 AndroidUtilities.cancelRunOnUIThread(stopRunnable);
@@ -92,6 +95,10 @@ public class RoundVideoRecorder extends FrameLayout {
                     destroy(false);
                 }
             }, () -> {
+                recordingPending = false;
+                if (cancelled) {
+                    return;
+                }
                 cameraView.animate().scaleX(1f).scaleY(1f).setInterpolator(CubicBezierInterpolator.EASE_OUT_QUINT).setDuration(280).start();
                 recordingStarted = System.currentTimeMillis();
                 invalidate();
@@ -101,7 +108,13 @@ public class RoundVideoRecorder extends FrameLayout {
                 } catch (Exception ignore) {}
 
                 AndroidUtilities.runOnUIThread(stopRunnable, MAX_DURATION);
-            }, cameraView, true);
+            }, cameraView, true, () -> {
+                recordingPending = false;
+                if (!cancelled) {
+                    cancelled = true;
+                    destroy(true);
+                }
+            });
         });
         cameraView.initTexture();
 
@@ -273,6 +286,7 @@ public class RoundVideoRecorder extends FrameLayout {
     }
 
     private boolean cancelled = false;
+    private boolean recordingPending;
     public void cancel() {
         cancelled = true;
         AndroidUtilities.cancelRunOnUIThread(stopRunnable);
@@ -283,6 +297,11 @@ public class RoundVideoRecorder extends FrameLayout {
     private ValueAnimator destroyAnimator;
     private float destroyT;
     public void destroy(boolean instant) {
+        cancelled = true;
+        if (recordingPending) {
+            recordingPending = false;
+            CameraController.getInstance().stopVideoRecording(cameraView.getCameraSessionObject(), true, false);
+        }
         if (onDestroyCallback != null) {
             onDestroyCallback.run();
             onDestroyCallback = null;

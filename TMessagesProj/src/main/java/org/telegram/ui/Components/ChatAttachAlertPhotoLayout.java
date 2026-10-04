@@ -1559,7 +1559,25 @@ public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayou
                 lockAnimationView.setCurrentMove(0);
                 lockAnimationView.setLocked(false);
                 if (!isCameraXBackend()) {
-                    CameraController.getInstance().recordVideo(cameraView.getCameraSessionObject(), outputFile, parentAlert.avatarPicker != 0, onVideoSaved, () -> AndroidUtilities.runOnUIThread(videoRecordRunnable, 1000), (CameraView) cameraView);
+                    CameraController.getInstance().recordVideo(cameraView.getCameraSessionObject(), outputFile, parentAlert.avatarPicker != 0, onVideoSaved, () -> {
+                        if (outputFile == recordingFile && videoRecordRunnable != null && !parentAlert.destroyed) {
+                            AndroidUtilities.runOnUIThread(videoRecordRunnable, 1000);
+                        }
+                    }, (CameraView) cameraView, true, () -> {
+                        if (outputFile != recordingFile) {
+                            return;
+                        }
+                        outputFile = null;
+                        if (recordingFile != null) {
+                            recordingFile.delete();
+                        }
+                        resetRecordState();
+                        shutterButton.setState(ShutterButton.State.DEFAULT, true);
+                        lockAnimationView.animate().cancel();
+                        lockAnimationView.setAlpha(0f);
+                        lockAnimationView.setVisibility(View.GONE);
+                        lockAnimationView.setLocked(false);
+                    });
                 } else {
                     // CameraX path: NimarkoCameraXView.recordVideo() writes to
                     // outputFile via VideoCapture<Recorder> and surfaces a thumb

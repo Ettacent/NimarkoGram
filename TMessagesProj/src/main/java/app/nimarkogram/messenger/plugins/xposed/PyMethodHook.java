@@ -25,6 +25,10 @@ public class PyMethodHook extends XC_MethodHook {
     private final PyObject boundBefore;
     private final PyObject boundAfter;
 
+    public final String diagnosticPluginId() { return pluginId; }
+    public final String diagnosticRuntimeOwner() {
+        return runtimeToken.getGeneration() + ":" + runtimeToken.getInstanceId();
+    }
     public PyMethodHook(String str, PyObject pyObject) {
         this(str, pyObject, PluginsController.getInstance().captureCurrentPluginRuntime());
     }

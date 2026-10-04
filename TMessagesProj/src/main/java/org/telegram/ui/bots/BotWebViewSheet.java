@@ -997,10 +997,7 @@ public class BotWebViewSheet extends Dialog implements NotificationCenter.Notifi
                                 dismissed = true;
                                 setOpen(false);
                                 cleanupSheet(true, true);
-                                if (!superDismissed) {
-                                    BotWebViewSheet.super.dismiss();
-                                    superDismissed = true;
-                                }
+                                dismissWindowOnce();
 
                                 lastFragment.presentFragment(new INavigationLayout.NavigationParams(new ChatActivity(args1)).setRemoveLast(true));
                             }
@@ -2366,6 +2363,7 @@ public class BotWebViewSheet extends Dialog implements NotificationCenter.Notifi
             return;
         }
         superDismissed = false;
+        windowDismissGeneration++;
         startBottomTabsListening();
         activeSheets.add(this);
         scheduleRestoreTransitionFallback(showRestoreGeneration);
@@ -2463,6 +2461,44 @@ public class BotWebViewSheet extends Dialog implements NotificationCenter.Notifi
     }
 
     private boolean superDismissed = false;
+    private int windowDismissGeneration;
+
+    private void dismissWindowOnce() {
+        if (superDismissed) {
+            return;
+        }
+        superDismissed = true;
+        try {
+            super.dismiss();
+        } catch (IllegalArgumentException e) {
+            Window window = getWindow();
+            View decor = window == null ? null : window.peekDecorView();
+            if (decor == null || decor.isAttachedToWindow() || e.getMessage() == null
+                    || !e.getMessage().endsWith("not attached to window manager")) {
+                throw e;
+            }
+            FileLog.e(e);
+        }
+    }
+
+    private Runnable createDismissCompletion(Runnable callback) {
+        final int generation = windowDismissGeneration;
+        return new Runnable() {
+            private boolean completed;
+
+            @Override
+            public void run() {
+                if (completed || generation != windowDismissGeneration) {
+                    return;
+                }
+                completed = true;
+                dismissWindowOnce();
+                if (callback != null) {
+                    callback.run();
+                }
+            }
+        };
+    }
     public void dismiss(boolean intoTabs, Runnable callback) {
         if (dismissed) {
             return;
@@ -2489,15 +2525,7 @@ public class BotWebViewSheet extends Dialog implements NotificationCenter.Notifi
             if (botButtons != null) {
                 botButtons.animate().translationY(botButtons.getTotalHeight()).alpha(0).setDuration(160).setInterpolator(CubicBezierInterpolator.EASE_OUT_QUINT).start();
             }
-            swipeContainer.stickTo(swipeContainer.getHeight() + (botButtons != null ? botButtons.getTotalHeight() : 0) + insets.top + insets.bottom + windowView.measureKeyboardHeight() + (isFullSize() ? dp(200) : 0), true, () -> {
-                if (!superDismissed) {
-                    super.dismiss();
-                    superDismissed = true;
-                }
-                if (callback != null) {
-                    callback.run();
-                }
-            });
+            swipeContainer.stickTo(swipeContainer.getHeight() + (botButtons != null ? botButtons.getTotalHeight() : 0) + insets.top + insets.bottom + windowView.measureKeyboardHeight() + (isFullSize() ? dp(200) : 0), true, createDismissCompletion(callback));
         }
     }
 
@@ -2511,12 +2539,7 @@ public class BotWebViewSheet extends Dialog implements NotificationCenter.Notifi
         if (webViewContainer != null) {
             webViewContainer.destroyWebView();
         }
-        try {
-            super.dismiss();
-        } catch (Exception e) {
-            FileLog.e(e);
-        }
-        superDismissed = true;
+        dismissWindowOnce();
         setOpen(false);
     }
 

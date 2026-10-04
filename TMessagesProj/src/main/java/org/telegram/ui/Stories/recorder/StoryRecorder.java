@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Stories.recorder;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -4167,7 +4169,11 @@ public class StoryRecorder implements NotificationCenter.NotificationCenterDeleg
             if (cameraView == null) {
                 return;
             }
+            final File recordingFile = outputFile;
             CameraController.getInstance().recordVideo(cameraView.getCameraSessionObject(), outputFile, false, (thumbPath, duration) -> {
+                if (outputFile != recordingFile) {
+                    return;
+                }
                 if (recordControl != null) {
                     recordControl.stopRecordingLoading(true);
                 }
@@ -4250,6 +4256,9 @@ public class StoryRecorder implements NotificationCenter.NotificationCenterDeleg
                     }, 0);
                 }
             }, () /* onVideoStart */ -> {
+                if (outputFile != recordingFile || !takingVideo || stoppingTakingVideo) {
+                    return;
+                }
                 whenStarted.run();
 
                 hintTextView.setText(getString(byLongPress ? R.string.StoryHintSwipeToZoom : R.string.StoryHintPinchToZoom), false);
@@ -4259,7 +4268,28 @@ public class StoryRecorder implements NotificationCenter.NotificationCenterDeleg
                 collageListView.setVisible(false, true);
                 videoTimerView.setRecording(true, true);
                 showVideoTimer(true, true);
-            }, cameraView, true);
+            }, cameraView, true, () -> {
+                if (outputFile != recordingFile) {
+                    return;
+                }
+                outputFile = null;
+                if (recordingFile != null) {
+                    recordingFile.delete();
+                }
+                takingVideo = false;
+                stoppingTakingVideo = false;
+                if (qrScanner != null) {
+                    qrScanner.setPaused(false);
+                }
+                flashViews.flashOut();
+                animateRecording(false, true);
+                setAwakeLock(false);
+                videoTimerView.setRecording(false, true);
+                showVideoTimer(false, true);
+                if (recordControl != null) {
+                    recordControl.stopRecordingLoading(true);
+                }
+            });
 
             if (mode != MODE_VIDEO) {
                 mode = MODE_VIDEO;

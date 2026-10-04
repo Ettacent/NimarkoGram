@@ -318,15 +318,65 @@ public class CameraView extends app.nimarkogram.messenger.camera.BaseCameraView 
 
     Runnable onRecordingFinishRunnable;
 
+    private CameraGLThread recordingCameraThread;
+    private long recordingGeneration;
+    private boolean recordingStopRequested;
+    private boolean recordingCompletionPending;
     public boolean startRecording(File path, Runnable onFinished) {
-        cameraSessionRecording = cameraSession[0];
-        cameraThread.startRecording(path);
-        onRecordingFinishRunnable = onFinished;
+        final CameraGLThread thread = cameraThread;
+        if (thread == null || cameraSession[0] == null || recordingCameraThread != null) {
+            return false;
+        }
+        final long generation = ++recordingGeneration;
+        final CameraSessionWrapper[] sessions = cameraSession.clone();
+        final Runnable completion = () -> {
+            if (generation != recordingGeneration || recordingCameraThread != thread || recordingCompletionPending) {
+                return;
+            }
+            recordingCompletionPending = true;
+            CameraController.getInstance().threadPool.execute(() -> {
+                for (CameraSessionWrapper session : sessions) {
+                    if (session != null) {
+                        try {
+                            session.stopVideoRecording();
+                        } catch (Exception e) {
+                            FileLog.e(e);
+                        }
+                    }
+                }
+                AndroidUtilities.runOnUIThread(() -> {
+                    if (generation != recordingGeneration || recordingCameraThread != thread) {
+                        return;
+                    }
+                    recordingCameraThread = null;
+                    cameraSessionRecording = null;
+                    onRecordingFinishRunnable = null;
+                    if (onFinished != null) {
+                        onFinished.run();
+                    }
+                });
+            });
+        };
+        recordingCameraThread = thread;
+        cameraSessionRecording = sessions[0];
+        recordingStopRequested = false;
+        recordingCompletionPending = false;
+        onRecordingFinishRunnable = completion;
+        if (!thread.startRecording(path, completion)) {
+            recordingCameraThread = null;
+            cameraSessionRecording = null;
+            onRecordingFinishRunnable = null;
+            return false;
+        }
         return true;
     }
 
     public void stopRecording() {
-        cameraThread.stopRecording();
+        final CameraGLThread thread = recordingCameraThread;
+        if (thread != null && !recordingStopRequested) {
+            recordingStopRequested = true;
+            thread.stopRecording();
+        }
     }
 
     ValueAnimator flipAnimator;
@@ -1528,7 +1578,7 @@ public class CameraView extends app.nimarkogram.messenger.camera.BaseCameraView 
         private EGLContext eglContext;
         private EGLSurface eglSurface;
         private EGLConfig eglConfig;
-        private boolean initied;
+        private volatile boolean initied;
 
         private SurfaceTexture blurSurfaceTexture;
         private EGLContext eglBlurContext;
@@ -2360,10 +2410,11 @@ public class CameraView extends app.nimarkogram.messenger.camera.BaseCameraView 
                     if (!initied) {
                         return;
                     }
-                    recordFile = (File) inputMessage.obj;
-                    videoEncoder = new VideoRecorder();
+                    RecordingStart start = (RecordingStart) inputMessage.obj;
+                    recordFile = start.path;
+                    videoEncoder = new VideoRecorder(start.onFinished);
                     recording = true;
-                    videoEncoder.startRecording(recordFile,  EGL14.eglGetCurrentContext());
+                    videoEncoder.startRecording(recordFile, EGL14.eglGetCurrentContext(), start.pictureSize, start.worldAngle);
                     break;
                 }
                 case DO_STOP_RECORDING: {
@@ -2524,7 +2575,7 @@ public class CameraView extends app.nimarkogram.messenger.camera.BaseCameraView 
             m4x4[15] = m3x3[8];
         }
 
-        public void shutdown(int send) {
+        public synchronized void shutdown(int send) {
             if (shutdownRequested) {
                 return;
             }
@@ -2568,12 +2619,21 @@ public class CameraView extends app.nimarkogram.messenger.camera.BaseCameraView 
         }
 
         public boolean startRecording(File path) {
+            return !startRecording(path, onRecordingFinishRunnable);
+        }
+
+        public synchronized boolean startRecording(File path, Runnable onFinished) {
             Handler handler = getHandler();
-            if (handler != null) {
-                sendMessage(handler.obtainMessage(DO_START_RECORDING, path), 0);
+            if (handler == null || !initied || shutdownRequested) {
                 return false;
             }
-            return true;
+            CameraSessionWrapper session = cameraSession[0];
+            Size pictureSize = useCameraX && isStory ? getCameraXStoryCaptureSize() : previewSize[0];
+            if (session == null || pictureSize == null) {
+                return false;
+            }
+            return handler.sendMessage(handler.obtainMessage(DO_START_RECORDING,
+                    new RecordingStart(path, onFinished, pictureSize, session.getWorldAngle())));
         }
 
         public void stopRecording() {
@@ -2875,8 +2935,26 @@ public class CameraView extends app.nimarkogram.messenger.camera.BaseCameraView 
 
     }
 
+    private static class RecordingStart {
+        final File path;
+        final Runnable onFinished;
+        final Size pictureSize;
+        final int worldAngle;
+
+        RecordingStart(File path, Runnable onFinished, Size pictureSize, int worldAngle) {
+            this.path = path;
+            this.onFinished = onFinished;
+            this.pictureSize = pictureSize;
+            this.worldAngle = worldAngle;
+        }
+    }
     private class VideoRecorder implements Runnable {
 
+        private final Runnable onFinished;
+
+        VideoRecorder(Runnable onFinished) {
+            this.onFinished = onFinished;
+        }
         private static final String VIDEO_MIME_TYPE = "video/hevc";
         private static final String AUDIO_MIME_TYPE = "audio/mp4a-latm";
         private static final int DEFAULT_FRAME_RATE = 30;
@@ -3041,17 +3119,14 @@ public class CameraView extends app.nimarkogram.messenger.camera.BaseCameraView 
         };
         private String outputMimeType;
 
-        public void startRecording(File outputFile, android.opengl.EGLContext sharedContext) {
+        public void startRecording(File outputFile, android.opengl.EGLContext sharedContext, Size pictureSize, int worldAngle) {
             String model = Build.DEVICE;
             if (model == null) {
                 model = "";
             }
 
-            Size pictureSize;
             int bitrate;
             frameRate = DEFAULT_FRAME_RATE;
-            pictureSize = useCameraX && isStory
-                    ? getCameraXStoryCaptureSize() : previewSize[0];
             long pixels = (long) pictureSize.mHeight * pictureSize.mWidth;
             if (isStory && pixels >= 7_000_000L) {
                 bitrate = 12_000_000;
@@ -3070,7 +3145,7 @@ public class CameraView extends app.nimarkogram.messenger.camera.BaseCameraView 
 
                 videoWidth = Math.min(pictureSize.getWidth(), pictureSize.getHeight());
                 videoHeight = Math.max(pictureSize.getWidth(), pictureSize.getHeight());
-            } else if (cameraSession[0].getWorldAngle() == 90 || cameraSession[0].getWorldAngle() == 270) {
+            } else if (worldAngle == 90 || worldAngle == 270) {
                 videoWidth = pictureSize.getWidth();
                 videoHeight = pictureSize.getHeight();
             } else {
@@ -3489,13 +3564,9 @@ public class CameraView extends app.nimarkogram.messenger.camera.BaseCameraView 
             handler.exit();
 
             AndroidUtilities.runOnUIThread(() -> {
-                if (cameraSession[0] != null) {
-                    cameraSession[0].stopVideoRecording();
+                if (onFinished != null) {
+                    onFinished.run();
                 }
-                if (cameraSession[1] != null) {
-                    cameraSession[1].stopVideoRecording();
-                }
-                onRecordingFinishRunnable.run();
             });
         }
 

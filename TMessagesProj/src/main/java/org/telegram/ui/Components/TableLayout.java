@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components;
 
 import android.content.Context;
@@ -953,7 +955,52 @@ public class TableLayout extends View {
         return result;
     }
 
+    private boolean hasOverflowingGrid(boolean horizontal, int definedCount) {
+        if (definedCount != UNDEFINED && (definedCount < 0 || definedCount == Integer.MAX_VALUE)) {
+            return true;
+        }
+        long totalSpan = 0;
+        int maxStart = 0;
+        for (int i = 0, count = getChildCount(); i < count; i++) {
+            LayoutParams lp = getChildAt(i).getLayoutParams();
+            Spec spec = horizontal ? lp.columnSpec : lp.rowSpec;
+            Interval span = spec.span;
+            long size = (long) span.max - span.min;
+            if ((span.min != UNDEFINED && span.min < 0) || size <= 0
+                    || size >= Integer.MAX_VALUE || span.max == Integer.MAX_VALUE) {
+                return true;
+            }
+            totalSpan += size;
+            if (spec.startDefined && span.min != UNDEFINED) {
+                maxStart = Math.max(maxStart, span.min);
+            }
+            if (totalSpan + maxStart >= Integer.MAX_VALUE) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private void normalizeOverflowingGrid() {
+        if (!hasOverflowingGrid(true, mHorizontalAxis.definedCount)
+                && !hasOverflowingGrid(false, mVerticalAxis.definedCount)) {
+            return;
+        }
+        final int count = getChildCount();
+        for (int i = 0; i < count; i++) {
+            Child child = getChildAt(i);
+            LayoutParams lp = child.getLayoutParams();
+            lp.rowSpec = new Spec(true, new Interval(i, i + 1), lp.rowSpec.alignment, lp.rowSpec.weight);
+            lp.columnSpec = new Spec(true, new Interval(0, 1), lp.columnSpec.alignment, lp.columnSpec.weight);
+            child.rowspan = i;
+        }
+        rowSpans.clear();
+        mHorizontalAxis.definedCount = count == 0 ? 0 : 1;
+        mVerticalAxis.definedCount = count;
+        invalidateStructure();
+    }
     private void consistencyCheck() {
+        normalizeOverflowingGrid();
         if (mLastLayoutParamsHashCode == UNINITIALIZED_HASH) {
             validateLayoutParams();
             mLastLayoutParamsHashCode = computeLayoutParamsHashCode();
@@ -1313,7 +1360,7 @@ public class TableLayout extends View {
         }
 
         public void setCount(int count) {
-            if (count != UNDEFINED && count < getMaxIndex()) {
+            if (!hasOverflowingGrid(horizontal, count) && count != UNDEFINED && count < getMaxIndex()) {
                 handleInvalidParams((horizontal ? "column" : "row") + "Count must be greater than or equal to the maximum of all grid indices (and spans) defined in the LayoutParams of each child");
             }
             this.definedCount = count;

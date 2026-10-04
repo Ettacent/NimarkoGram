@@ -17198,7 +17198,8 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                             if (ssb.length() > 0) ssb.append(" ");
                             ssb.append("XTR ").append(formatStarsAmountShort(stars_balance));
                         }
-                        textCell.setTextAndValueAndIcon(getString(R.string.ChannelStars), ChannelMonetizationLayout.replaceTON(StarsIntroActivity.replaceStarsWithPlain(ssb, .7f), textCell.getTextView().getPaint()), R.drawable.menu_feature_paid, true);
+                        final CharSequence balanceTitle = getString(R.string.ChannelStars);
+                        textCell.setTextAndValueAndIcon(balanceTitle, ChannelMonetizationLayout.replaceTON(StarsIntroActivity.replaceStarsWithPlain(ssb, .7f), textCell.getTextView().getPaint()), shouldAnimateChannelBalance(textCell, balanceTitle), R.drawable.menu_feature_paid, true);
                     } else if (position == botStarsBalanceRow) {
                         final TL_stars.StarsAmount stars_balance = BotStarsController.getInstance(currentAccount).getBotStarsBalance(userId);
                         SpannableStringBuilder ssb = new SpannableStringBuilder();
@@ -18899,6 +18900,13 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             index = visibleSortedUsers.get(index);
         }
         return index >= 0 && index < visibleChatParticipants.size() ? visibleChatParticipants.get(index) : null;
+    }
+
+    private boolean shouldAnimateChannelBalance(TextCell cell, CharSequence title) {
+        return SharedConfig.animationsEnabled() && fragmentOpened && isFragmentOpened
+                && !isPaused && !openAnimationInProgress && !transitionAnimationInProress
+                && cell.isAttachedToWindow() && cell.isLaidOut()
+                && TextUtils.equals(cell.getTextView().getText(), title);
     }
 
     public void updateListAnimated(boolean updateOnlineCount) {

@@ -1045,7 +1045,11 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
                 if (blurredBackground && drawBlur && actionModeColor != 0) {
                     rectTmp.set(0, 0, getMeasuredWidth(), getMeasuredHeight());
                     blurScrimPaint.setColor(actionModeColor);
+                    if (contentView != null) {
                     contentView.drawBlurRect(canvas, 0, rectTmp, blurScrimPaint, true);
+                    } else {
+                        canvas.drawRect(rectTmp, blurScrimPaint);
+                    }
                 }
                 super.dispatchDraw(canvas);
             }
@@ -2571,10 +2575,22 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
     }
 
     public void setDrawBlurBackground(SizeNotifierFrameLayout contentView) {
+        if (this.contentView != null) {
+            this.contentView.blurBehindViews.remove(this);
+            if (actionMode != null) {
+                this.contentView.blurBehindViews.remove(actionMode);
+            }
+        }
         blurredBackground = true;
         this.contentView = contentView;
+        if (contentView != null) {
         contentView.blurBehindViews.add(this);
+            if (actionMode != null && actionMode.isAttachedToWindow()) {
+                contentView.blurBehindViews.add(actionMode);
+            }
+        }
         setBackground(null);
+        invalidate();
     }
 
     private boolean doNotDrawChild;
@@ -2936,7 +2952,9 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
         if (blurredBackground && actionBarColor != Color.TRANSPARENT) {
             rectTmp.set(0, 0, getMeasuredWidth(), getMeasuredHeight());
             blurScrimPaint.setColor(actionBarColor);
-            if (adaptiveBackground) {
+            if (contentView == null) {
+                canvas.drawRect(rectTmp, blurScrimPaint);
+            } else if (adaptiveBackground) {
                 contentView.drawBlurRect(canvas, getY(), rectTmp, blurScrimPaint, true, 1.0f - onTopAnimated);
             } else {
                 contentView.drawBlurRect(canvas, getY(), rectTmp, blurScrimPaint, true);
@@ -3202,7 +3220,11 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
         if (blurredBackground && actionBarColor != Color.TRANSPARENT) {
             rectTmp.set(0, 0, getMeasuredWidth(), getMeasuredHeight());
             blurScrimPaint.setColor(actionBarColor);
+            if (contentView != null) {
             contentView.drawBlurRect(canvas, getY(), rectTmp, blurScrimPaint, true);
+            } else {
+                canvas.drawRect(rectTmp, blurScrimPaint);
+            }
         } else {
             Drawable drawable = getBackground();
             if (drawable != null) {
