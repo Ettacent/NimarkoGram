@@ -10,6 +10,9 @@
 
 package org.telegram.messenger;
 
+import static app.nimarkogram.messenger.NimarkoCrashContext.initializationPhase;
+
+import app.nimarkogram.messenger.NimarkoCrashContext.PineInitPhase;
 import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.app.Application;
@@ -600,6 +603,7 @@ public class ApplicationLoader extends Application {
         try {
 
             boolean hiddenApiBypassReady = false;
+            initializationPhase(PineInitPhase.HIDDEN_API_BEGIN);
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
                 try {
                     hiddenApiBypassReady =
@@ -613,6 +617,8 @@ public class ApplicationLoader extends Application {
                 }
             }
 
+            initializationPhase(PineInitPhase.HIDDEN_API_END);
+            initializationPhase(PineInitPhase.CONFIG_BEGIN);
             top.canyie.pine.PineConfig.sdkLevel = android.os.Build.VERSION.SDK_INT;
             top.canyie.pine.PineConfig.debug = false;
             try {
@@ -624,13 +630,17 @@ public class ApplicationLoader extends Application {
 
             top.canyie.pine.PineConfig.disableHiddenApiPolicy = false;
             top.canyie.pine.PineConfig.disableHiddenApiPolicyForPlatformDomain = false;
+            initializationPhase(PineInitPhase.CONFIG_END);
+            initializationPhase(PineInitPhase.ENGINE_BEGIN);
             top.canyie.pine.Pine.ensureInitialized();
+            initializationPhase(PineInitPhase.ENGINE_END);
             if (!top.canyie.pine.Pine.isInitialized()) {
                 ngPineUnavailableReason = "Pine native initialization did not complete";
                 FileLog.w("nimarko: Pine native initialisation did not complete");
                 return;
             }
 
+            initializationPhase(PineInitPhase.HOOK_MODE_BEGIN);
             try {
                 top.canyie.pine.Pine.setHookMode(top.canyie.pine.Pine.HookMode.REPLACEMENT);
             } catch (Throwable hm) {
@@ -643,6 +653,7 @@ public class ApplicationLoader extends Application {
                         "Pine did not enter replacement hook mode");
             }
 
+            initializationPhase(PineInitPhase.HOOK_MODE_END);
             if (!verifyPineRuntimeHook()) {
                 throw new IllegalStateException("Pine runtime hook smoke test failed");
             }
@@ -713,6 +724,7 @@ public class ApplicationLoader extends Application {
         top.canyie.pine.callback.MethodHook.Unhook constructorUnhook = null;
         boolean passed = false;
         try {
+            initializationPhase(PineInitPhase.STATIC_PREPARE);
             final int staticInput = 0x4E47;
             java.lang.reflect.Method staticProbe = ApplicationLoader.class
                     .getDeclaredMethod("pineRuntimeStaticProbe", int.class);
@@ -748,10 +760,16 @@ public class ApplicationLoader extends Application {
                             }
                         }
                     };
+            initializationPhase(PineInitPhase.STATIC_HOOK_BEGIN);
             staticUnhook = top.canyie.pine.Pine.hook(
                     staticProbe, staticCallback);
+            initializationPhase(PineInitPhase.STATIC_HOOK_END);
+            initializationPhase(PineInitPhase.STATIC_CALL_BEGIN);
             Object staticResult = staticProbe.invoke(null, 1);
 
+            initializationPhase(PineInitPhase.STATIC_CALL_END);
+
+            initializationPhase(PineInitPhase.MIXED_PREPARE);
             Object marker = new Object();
             PineRuntimeProbe receiver = new PineRuntimeProbe();
             java.lang.reflect.Method mixedProbe = PineRuntimeProbe.class
@@ -797,8 +815,11 @@ public class ApplicationLoader extends Application {
                             }
                         }
                     };
+            initializationPhase(PineInitPhase.MIXED_HOOK_BEGIN);
             mixedUnhook = top.canyie.pine.Pine.hook(
                     mixedProbe, mixedCallback);
+            initializationPhase(PineInitPhase.MIXED_HOOK_END);
+            initializationPhase(PineInitPhase.MIXED_CALL_BEGIN);
             Object mixedResult = mixedProbe.invoke(
                     receiver,
                     marker, 1, 2L,
@@ -807,6 +828,9 @@ public class ApplicationLoader extends Application {
                     marker, 7, 8L,
                     9.0d);
 
+            initializationPhase(PineInitPhase.MIXED_CALL_END);
+
+            initializationPhase(PineInitPhase.CONSTRUCTOR_PREPARE);
             java.lang.reflect.Constructor<PineRuntimeProbe> constructor =
                     PineRuntimeProbe.class.getDeclaredConstructor(int.class);
             constructor.setAccessible(true);
@@ -837,10 +861,14 @@ public class ApplicationLoader extends Application {
                             constructorAfter.set(valid);
                         }
                     };
+            initializationPhase(PineInitPhase.CONSTRUCTOR_HOOK_BEGIN);
             constructorUnhook = top.canyie.pine.Pine.hook(
                     constructor, constructorCallback);
+            initializationPhase(PineInitPhase.CONSTRUCTOR_HOOK_END);
+            initializationPhase(PineInitPhase.CONSTRUCTOR_CALL_BEGIN);
             PineRuntimeProbe constructed = constructor.newInstance(1);
 
+            initializationPhase(PineInitPhase.CONSTRUCTOR_CALL_END);
             passed = staticBefore.get()
                     && staticAfter.get()
                     && staticResult instanceof Integer
@@ -858,19 +886,24 @@ public class ApplicationLoader extends Application {
             FileLog.e("nimarko: Pine runtime hook smoke test failed", cause);
         } finally {
             passed &= unhookPineRuntimeProbe(
-                    constructorUnhook, "constructor");
-            passed &= unhookPineRuntimeProbe(mixedUnhook, "mixed");
-            passed &= unhookPineRuntimeProbe(staticUnhook, "static");
+                    constructorUnhook, "constructor", PineInitPhase.CONSTRUCTOR_UNHOOK_BEGIN,
+                    PineInitPhase.CONSTRUCTOR_UNHOOK_END);
+            passed &= unhookPineRuntimeProbe(mixedUnhook, "mixed", PineInitPhase.MIXED_UNHOOK_BEGIN,
+                    PineInitPhase.MIXED_UNHOOK_END);
+            passed &= unhookPineRuntimeProbe(staticUnhook, "static", PineInitPhase.STATIC_UNHOOK_BEGIN,
+                    PineInitPhase.STATIC_UNHOOK_END);
         }
         return passed;
     }
 
     private static boolean unhookPineRuntimeProbe(
             top.canyie.pine.callback.MethodHook.Unhook unhook,
-            String name) {
+            String name, PineInitPhase begin, PineInitPhase end) {
         if (unhook == null) return true;
         try {
+            initializationPhase(begin);
             unhook.unhook();
+            initializationPhase(end);
             return true;
         } catch (Throwable t) {
             FileLog.e("nimarko: Pine " + name

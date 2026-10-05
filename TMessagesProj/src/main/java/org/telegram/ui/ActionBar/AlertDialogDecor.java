@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.ActionBar;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -114,7 +116,7 @@ public class AlertDialogDecor extends AlertDialog {
         ViewCompat.setOnApplyWindowInsetsListener(rootView, (v, insets) -> {
             final Rect rect = new Rect();
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                final Insets r = insets.getInsets(WindowInsetsCompat.Type.ime() | WindowInsetsCompat.Type.systemBars());
+                final Insets r = insets.getInsets(WindowInsetsCompat.Type.ime() | org.telegram.messenger.WindowInsetsCompatibility.systemBars());
                 rect.set(r.left, r.top, r.right, r.bottom);
             } else {
                 rect.set(insets.getStableInsetLeft(), insets.getStableInsetTop(), insets.getStableInsetRight(), insets.getStableInsetBottom());

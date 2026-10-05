@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.community;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -1248,8 +1250,8 @@ public class CommunitySheet extends BottomSheet implements NotificationCenter.No
 
     @NonNull
     private WindowInsetsCompat onApplyWindowInsets(@NonNull View v, @NonNull WindowInsetsCompat insets) {
-        systemAndImeInsets = insets.getInsets(WindowInsetsCompat.Type.systemBars() | WindowInsetsCompat.Type.ime());
-        systemInsets = insets.getInsets(WindowInsetsCompat.Type.systemBars());
+        systemAndImeInsets = insets.getInsets(org.telegram.messenger.WindowInsetsCompatibility.systemBars() | WindowInsetsCompat.Type.ime());
+        systemInsets = insets.getInsets(org.telegram.messenger.WindowInsetsCompatibility.systemBars());
 
         filteredSearchView.setPagesPaddings(systemAndImeInsets.top + dp(56), systemAndImeInsets.bottom);
         communityPageFadeView.invalidate();

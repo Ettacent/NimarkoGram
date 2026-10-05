@@ -1120,7 +1120,7 @@
     <string name="NM_Camera_FaceDetection">Распознавание лиц</string>
     <string name="NM_Camera_FaceDetection_Desc">Подсказать камере находить лица — автоэкспозиция и автофокус будут отдавать им приоритет при записи.</string>
     <string name="NM_Camera_UseHighRange">Высокий диапазон FPS</string>
-    <string name="NM_Camera_UseHighRange_Desc">Показывать диапазоны 30-60 и 60-60 кадров в селекторе FPS. Требуется камера, поддерживающая эти диапазоны.</string>
+    <string name="NM_Camera_UseHighRange_Desc">Показывать режим 30–60 кадров/с. Доступная частота зависит от модуля камеры, разрешения и режима записи.</string>
     <string name="NM_CameraQuality">Качество камеры</string>
     <string name="NM_CenterCameraControlButtons">Центрировать кнопки управления</string>
     <string name="NM_CAM_ControlsSide">Расположение</string>

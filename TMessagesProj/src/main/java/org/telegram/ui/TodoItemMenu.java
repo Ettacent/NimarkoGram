@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -264,7 +266,7 @@ public class TodoItemMenu extends Dialog {
         ViewCompat.setOnApplyWindowInsetsListener(windowView, new OnApplyWindowInsetsListener() {
             @Override
             public @NonNull WindowInsetsCompat onApplyWindowInsets(@NonNull View v, @NonNull WindowInsetsCompat i) {
-                insets = i.getInsetsIgnoringVisibility(WindowInsetsCompat.Type.systemBars());
+                insets = i.getInsetsIgnoringVisibility(org.telegram.messenger.WindowInsetsCompatibility.systemBars());
                 containerView.setPadding(insets.left, insets.top, insets.right, insets.bottom);
                 windowView.requestLayout();
 

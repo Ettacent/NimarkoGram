@@ -1885,7 +1885,7 @@ public class ShareAlert extends BottomSheet implements NotificationCenter.Notifi
     private WindowInsetsCompat onApplyWindowInsets(@NonNull View ignoredV, @NonNull WindowInsetsCompat insets) {
         processLegacyContainerInsets(insets.toWindowInsets());
 
-        final Insets systemInsets = insets.getInsets(WindowInsetsCompat.Type.systemBars());
+        final Insets systemInsets = insets.getInsets(org.telegram.messenger.WindowInsetsCompatibility.systemBars());
         if (!this.systemInsets.equals(systemInsets)) {
             this.systemInsets = systemInsets;
             container.requestLayout();

@@ -34,8 +34,6 @@ import ru.noties.jlatexmath.JLatexMathDrawable;
 
 public class NimarkoLatexHelper {
 
-    private static final Pattern DISPLAY_MATH = Pattern.compile("(?<!\\\\)\\$\\$(.+?)(?<!\\\\)\\$\\$", Pattern.DOTALL);
-    private static final Pattern INLINE_MATH = Pattern.compile("(?<![\\\\$])\\$(?!\\$|\\s)([^$\\r\\n]+?)(?<!\\s)\\$(?!\\$)");
     private static final Pattern PURE_NUMBER = Pattern.compile("^[\\d,.\\s]+$");
     private static final Pattern LATEX_COMMAND = Pattern.compile("\\\\(?:[a-zA-Z]+|[^a-zA-Z\\s])");
     private static final Pattern WORD = Pattern.compile("\\p{L}+");
@@ -47,21 +45,35 @@ public class NimarkoLatexHelper {
 
     private static final int MAX_FORMULAS = 20;
     private static final int MAX_FORMULA_LENGTH = 2000;
+    private static final int MAX_TEXT_LENGTH = 65536;
+    private static final int MAX_CANDIDATES = 128;
     private static final float MIN_TEXT_SIZE_RATIO = 0.7f;
     private static final int MAX_BITMAP_DIMENSION = 4096;
-    private static final long MAX_BITMAP_PIXELS = 2_000_000L;
+    private static final long MAX_BITMAP_PIXELS = 512_000L;
+    private static final long MAX_MESSAGE_PIXELS = 2_000_000L;
 
     private static final Object RENDER_LOCK = new Object();
-    private static final LruCache<String, Bitmap> RENDER_CACHE = new LruCache<>(48);
+    private static final LruCache<String, Bitmap> RENDER_CACHE = new LruCache<String, Bitmap>(8 * 1024 * 1024) {
+        @Override
+        protected int sizeOf(String key, Bitmap bitmap) {
+            return bitmap.getAllocationByteCount();
+        }
+    };
     private static volatile boolean latexInitialized;
     private static volatile boolean latexUnavailable;
 
+    private static final LruCache<String, Boolean> INVALID_FORMULAS = new LruCache<String, Boolean>(65536) {
+        @Override
+        protected int sizeOf(String key, Boolean value) {
+            return Math.max(1, key.length() * 2);
+        }
+    };
     public static CharSequence processLatex(CharSequence text, float textSize, int maxTextWidth, boolean preview) {
         if (!NimarkoConfig.latexRenderingEnabled) {
             removeLatexSpans(text);
             return text;
         }
-        if (text == null || text.length() < 3) return text;
+        if (text == null || text.length() < 3 || text.length() > MAX_TEXT_LENGTH) return text;
 
         String raw = text.toString();
         if (!raw.contains("$")) return text;
@@ -81,29 +93,34 @@ public class NimarkoLatexHelper {
                 removeLatexSpans(ssb);
             }
         } else {
-            ssb = new SpannableStringBuilder(text);
+            ssb = null;
         }
 
-        List<int[]> codeRanges = getCodeRanges(ssb);
+        List<int[]> codeRanges = text instanceof Spanned ? getCodeRanges((Spanned) text) : Collections.emptyList();
 
         List<LatexMatch> matches = findMatches(raw, codeRanges);
 
         if (matches.isEmpty()) return text;
 
+        if (ssb == null) ssb = new SpannableStringBuilder(text);
         int maxW = maxTextWidth > 0 ? maxTextWidth : getFallbackWidth();
 
+        long messagePixels = 0;
         for (LatexMatch m : matches) {
             try {
                 float size = m.display ? textSize * 1.2f : textSize;
                 Drawable drawable = renderFormula(m.formula, size, maxW);
                 if (drawable == null) continue;
 
+                messagePixels += (long) drawable.getBounds().width() * drawable.getBounds().height();
+                if (messagePixels > MAX_MESSAGE_PIXELS) break;
                 LatexSpan span = new LatexSpan(drawable, m.display, preview, textSize, maxW);
                 ssb.setSpan(span, m.start, m.end, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
             } catch (OutOfMemoryError oom) {
-                FileLog.e("NimarkoLatex: OOM: " + m.formula.substring(0, Math.min(50, m.formula.length())));
+                synchronized (RENDER_CACHE) { RENDER_CACHE.evictAll(); }
+                break;
             } catch (Exception e) {
-                FileLog.e("NimarkoLatex: span fail: " + m.formula);
+                FileLog.e("NimarkoLatex: span creation failed");
             }
         }
 
@@ -179,6 +196,12 @@ public class NimarkoLatexHelper {
     }
 
     private static Drawable renderFormula(String formula, float baseSize, int maxWidth) {
+        synchronized (RENDER_LOCK) {
+            return renderFormulaLocked(formula, baseSize, maxWidth);
+        }
+    }
+
+    private static Drawable renderFormulaLocked(String formula, float baseSize, int maxWidth) {
         String cacheKey = formula + '|' + Float.floatToIntBits(baseSize) + '|' + maxWidth;
         synchronized (RENDER_CACHE) {
             Bitmap cached = RENDER_CACHE.get(cacheKey);
@@ -231,6 +254,7 @@ public class NimarkoLatexHelper {
     }
 
     private static JLatexMathDrawable buildDrawable(String formula, float size) {
+        if (INVALID_FORMULAS.get(formula) != null) return null;
         if (!ensureLatexInitialized()) return null;
         try {
             synchronized (RENDER_LOCK) {
@@ -245,7 +269,7 @@ public class NimarkoLatexHelper {
             FileLog.e("NimarkoLatex: renderer unavailable", e);
             return null;
         } catch (RuntimeException e) {
-            FileLog.e("NimarkoLatex: formula render failed", e);
+            INVALID_FORMULAS.put(formula, true);
             return null;
         }
     }
@@ -322,22 +346,64 @@ public class NimarkoLatexHelper {
     }
 
     private static List<LatexMatch> findMatches(String text, List<int[]> codeRanges) {
+        if (text.length() > MAX_TEXT_LENGTH) return Collections.emptyList();
         List<LatexMatch> matches = new ArrayList<>();
-        collectMatches(matches, text, DISPLAY_MATH, true, codeRanges);
-        collectMatches(matches, text, INLINE_MATH, false, codeRanges);
-        if (matches.isEmpty()) return matches;
-
-        Collections.sort(matches, (a, b) -> Integer.compare(a.start, b.start));
-        List<LatexMatch> filtered = new ArrayList<>();
-        int lastEnd = -1;
-        for (LatexMatch match : matches) {
-            if (match.start >= lastEnd) {
-                filtered.add(match);
-                lastEnd = match.end;
+        int candidates = 0;
+        for (int i = 0; i < text.length() && matches.size() < MAX_FORMULAS;) {
+            char c = text.charAt(i);
+            if (c == '`' && !isEscaped(text, i)) {
+                int runEnd = i + 1;
+                while (runEnd < text.length() && text.charAt(runEnd) == '`') runEnd++;
+                int close = text.indexOf(text.substring(i, runEnd), runEnd);
+                i = close < 0 ? text.length() : close + runEnd - i;
+                continue;
             }
-            if (filtered.size() >= MAX_FORMULAS) break;
+            if (c != '$' || isEscaped(text, i)
+                    || i > 0 && (isIdentifierPart(text.charAt(i - 1)) || text.charAt(i - 1) == '.')) {
+                i++;
+                continue;
+            }
+            if (++candidates > MAX_CANDIDATES) break;
+            boolean display = i + 1 < text.length() && text.charAt(i + 1) == '$';
+            int delimiter = display ? 2 : 1;
+            int start = i;
+            int content = i + delimiter;
+            int end = content;
+            int limit = Math.min(text.length(), content + MAX_FORMULA_LENGTH + 1);
+            while (end < limit) {
+                char next = text.charAt(end);
+                if (!display && (next == '\n' || next == '\r')) break;
+                if (next == '$' && !isEscaped(text, end)) break;
+                end++;
+            }
+            boolean closed = end < text.length() && end < limit && text.charAt(end) == '$'
+                    && (!display || end + 1 < text.length() && text.charAt(end + 1) == '$');
+            if (!closed) {
+                i = Math.max(content, end);
+                continue;
+            }
+            i = end + delimiter;
+            if (i < text.length() && (isIdentifierPart(text.charAt(i)) || text.charAt(i) == '$')) continue;
+            if (overlapsCode(start, i, codeRanges) || end == content) continue;
+            String formula = text.substring(content, end);
+            if (!display && (Character.isWhitespace(formula.charAt(0))
+                    || Character.isWhitespace(formula.charAt(formula.length() - 1)))) continue;
+            String trimmed = formula.trim();
+            if (!trimmed.isEmpty() && isLikelyMath(trimmed, display)) {
+                matches.add(new LatexMatch(start, i, trimmed, display));
+            }
         }
-        return filtered;
+        return matches;
+    }
+
+    private static boolean isIdentifierPart(char c) {
+        return Character.isLetterOrDigit(c) || c == '_' || c == '$';
+    }
+
+    private static boolean isEscaped(String text, int index) {
+        int slashes = 0;
+        while (index > 0 && text.charAt(--index) == '\\') slashes++;
+        return (slashes & 1) != 0;
     }
 
     private static boolean isLikelyMath(String formula, boolean display) {
@@ -403,26 +469,12 @@ public class NimarkoLatexHelper {
             if (c == '\\') {
                 escaped = true;
             } else if (c == '{') {
-                depth++;
+                if (++depth > 64) return false;
             } else if (c == '}' && --depth < 0) {
                 return false;
             }
         }
         return depth == 0;
-    }
-
-    private static void collectMatches(List<LatexMatch> out, String text, Pattern pattern,
-                                       boolean display, List<int[]> codeRanges) {
-        Matcher m = pattern.matcher(text);
-        while (m.find()) {
-            if (overlapsCode(m.start(), m.end(), codeRanges)) continue;
-            String formula = m.group(1);
-            if (formula == null || formula.trim().isEmpty()) continue;
-            String trimmed = formula.trim();
-            if (trimmed.length() > MAX_FORMULA_LENGTH) continue;
-            if (!isLikelyMath(trimmed, display)) continue;
-            out.add(new LatexMatch(m.start(), m.end(), trimmed, display));
-        }
     }
 
     private static class LatexMatch {

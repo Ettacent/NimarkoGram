@@ -92,6 +92,8 @@ public class NimarkoCameraXController implements CameraXProviderCoordinator.Owne
     @Nullable private Runnable concurrentCameraInUseFailureRunnable;
     private int boundCameraGeneration;
     private int focusRequestGeneration;
+    private int initialFocusGeneration = -1;
+    private int userFocusGeneration = -1;
     private float[] zoomShortcutCandidates = new float[0];
     private boolean zoomShortcutsReady;
     private volatile float observedTelephotoSwitchRatio = Float.NaN;
@@ -597,21 +599,22 @@ public class NimarkoCameraXController implements CameraXProviderCoordinator.Owne
             boundSelector = selectorOverride != null ? selector : applyExtensionMode(selector);
             Preview.Builder previewBuilder = new Preview.Builder().setTargetRotation(targetRotation);
 
+            final boolean roundVideoPreview = !enableImageCapture;
             if (targetResolution != null) {
-                boolean roundVideoPreview = !enableImageCapture;
                 float targetRatio = Math.max(targetResolution.getWidth(),
                         targetResolution.getHeight()) / (float) Math.max(1,
                         Math.min(targetResolution.getWidth(), targetResolution.getHeight()));
                 int aspectRatio = Math.abs(targetRatio - 4f / 3f)
                         < Math.abs(targetRatio - 16f / 9f)
                         ? AspectRatio.RATIO_4_3 : AspectRatio.RATIO_16_9;
-                boolean preferCaptureRate = !roundVideoPreview
-                        && Math.min(
+                boolean preferCaptureRate = Math.min(
                         targetResolution.getWidth(),
                         targetResolution.getHeight()) <= 1080;
                 previewBuilder.setResolutionSelector(concurrentPreview
                         ? CameraXUtils.buildConcurrentPreviewResolutionSelector(
                                 targetResolution, aspectRatio)
+                        : roundVideoPreview
+                        ? CameraXUtils.buildRoundPreviewResolutionSelector(targetResolution)
                         : CameraXUtils.buildResolutionSelector(
                                 targetResolution, aspectRatio, preferCaptureRate));
             }
@@ -642,11 +645,15 @@ public class NimarkoCameraXController implements CameraXProviderCoordinator.Owne
             }
             observeLensMetadata |= NimarkoConfig.roundVideoTapFocus;
             Camera2Interop.Extender<Preview> previewExtender =
-                    applyEnhancements || startFromUltraWide || observeLensMetadata
+                    roundVideoPreview || applyEnhancements || startFromUltraWide || observeLensMetadata
                             ? new Camera2Interop.Extender<>(previewBuilder) : null;
+            CameraXUtils.applyRoundVideoControls(previewExtender, roundVideoPreview);
             if (applyEnhancements) {
                 CameraXUtils.applyCamera2Controls(provider, boundSelector,
                         previewExtender, false);
+                if (roundVideoPreview) {
+                    CameraXUtils.applyRoundVideoStabilization(provider, boundSelector, previewExtender);
+                }
             }
             if (startFromUltraWide && previewExtender != null
                     && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
@@ -1365,7 +1372,7 @@ public class NimarkoCameraXController implements CameraXProviderCoordinator.Owne
             } else {
                 b = new FocusMeteringAction.Builder(exposurePoint, FocusMeteringAction.FLAG_AE);
             }
-            if (lockAE || lockAF) {
+            if (lockAE || lockAF || !NimarkoConfig.cameraContinuousFocus) {
                 b.disableAutoCancel();
             } else {
                 b.setAutoCancelDuration(5, TimeUnit.SECONDS);
@@ -1373,6 +1380,7 @@ public class NimarkoCameraXController implements CameraXProviderCoordinator.Owne
             Camera camera = boundCamera;
             final int generation = boundCameraGeneration;
             final int requestGeneration = ++focusRequestGeneration;
+            userFocusGeneration = generation;
             ListenableFuture<FocusMeteringResult> result = camera.getCameraControl()
                     .startFocusAndMetering(b.build());
             result.addListener(() -> {
@@ -1404,6 +1412,8 @@ public class NimarkoCameraXController implements CameraXProviderCoordinator.Owne
         if (boundCamera == null) return;
         try {
             boundCamera.getCameraControl().cancelFocusAndMetering();
+            trackControlFuture(CameraXUtils.startConfiguredFocus(boundCamera), boundCamera,
+                    boundCameraGeneration, "CameraX reset focus", null);
         } catch (Throwable ignored) {
         }
     }
@@ -1661,6 +1671,11 @@ public class NimarkoCameraXController implements CameraXProviderCoordinator.Owne
             return;
         }
         try {
+            if (initialFocusGeneration != generation && userFocusGeneration != generation) {
+                initialFocusGeneration = generation;
+                trackControlFuture(CameraXUtils.startConfiguredFocus(camera), camera,
+                        generation, "CameraX initial focus", null);
+            }
             ExposureState exposure = camera.getCameraInfo().getExposureState();
             if (exposure != null && exposure.isExposureCompensationSupported()) {
                 int lower = exposure.getExposureCompensationRange().getLower();

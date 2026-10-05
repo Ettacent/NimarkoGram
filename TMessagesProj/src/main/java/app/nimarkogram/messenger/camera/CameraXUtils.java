@@ -19,6 +19,10 @@ import androidx.camera.camera2.interop.Camera2CameraInfo;
 import androidx.camera.camera2.interop.Camera2Interop;
 import androidx.camera.core.AspectRatio;
 import androidx.camera.core.CameraInfo;
+import androidx.camera.core.Camera;
+import androidx.camera.core.FocusMeteringAction;
+import androidx.camera.core.FocusMeteringResult;
+import androidx.camera.core.SurfaceOrientedMeteringPointFactory;
 import androidx.camera.core.CameraSelector;
 import androidx.camera.core.SessionConfig;
 import androidx.camera.core.UseCase;
@@ -101,7 +105,7 @@ public final class CameraXUtils {
     static float[] applyTelephotoCalibration(float[] candidates, float calibrated, float maximum) {
         float[] result = candidates.clone();
         if (Float.isFinite(calibrated) && calibrated > 1.5f) {
-            float stop = Math.min(maximum, Math.max(2f, Math.round(calibrated)));
+            float stop = Math.min(maximum, Math.max(2f, Math.round(calibrated)) + 1f);
             for (int i = 0; i < result.length; i++) {
                 if (result[i] > 1.5f && result[i] < calibrated) result[i] = stop;
             }
@@ -1064,6 +1068,27 @@ public final class CameraXUtils {
         return builder.build();
     }
 
+    public static ResolutionSelector buildRoundPreviewResolutionSelector(@NonNull Size preferred) {
+        return new ResolutionSelector.Builder()
+                .setAllowedResolutionMode(ResolutionSelector.PREFER_CAPTURE_RATE_OVER_HIGHER_RESOLUTION)
+                .setAspectRatioStrategy(AspectRatioStrategy.RATIO_4_3_FALLBACK_AUTO_STRATEGY)
+                .setResolutionStrategy(new ResolutionStrategy(preferred,
+                        ResolutionStrategy.FALLBACK_RULE_CLOSEST_HIGHER_THEN_LOWER))
+                .setResolutionFilter((sizes, rotation) -> sortRoundPreviewSizes(sizes, preferred))
+                .build();
+    }
+
+    static List<Size> sortRoundPreviewSizes(List<Size> sizes, Size preferred) {
+        int target = Math.min(preferred.getWidth(), preferred.getHeight());
+        ArrayList<Size> sorted = new ArrayList<>(sizes);
+        sorted.sort(Comparator
+                .comparingInt((Size size) ->
+                        Math.min(size.getWidth(), size.getHeight()) >= target ? 0 : 1)
+                .thenComparingInt(size ->
+                        Math.abs(Math.min(size.getWidth(), size.getHeight()) - target))
+                .thenComparingLong(size -> (long) size.getWidth() * size.getHeight()));
+        return sorted;
+    }
     public static ResolutionSelector buildConcurrentPreviewResolutionSelector(
             @NonNull Size preferred, int aspectRatio) {
         final int requestedWidth = Math.max(1, preferred.getWidth());
@@ -1240,6 +1265,20 @@ public final class CameraXUtils {
     }
 
     @SuppressLint({"UnsafeOptInUsageError", "RestrictedApi"})
+    static void applyRoundVideoStabilization(ProcessCameraProvider provider,
+                                             CameraSelector selector,
+                                             Camera2Interop.Extender<?> extender) {
+        if (extender == null || shouldEnablePreviewStabilization(provider, selector)
+                || !shouldEnableVideoStabilization(provider, selector)) return;
+        CameraCapabilities capabilities = getCameraCapabilities(provider, selector);
+        if (capabilities != null && containsMode(capabilities.videoStabilizationModes,
+                CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE_ON)) {
+            extender.setCaptureRequestOption(CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE,
+                    CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE_ON);
+        }
+    }
+
+    @SuppressLint({"UnsafeOptInUsageError", "RestrictedApi"})
     public static void applyCamera2Controls(ProcessCameraProvider provider,
                                             CameraSelector selector,
                                             Camera2Interop.Extender<?> extender,
@@ -1309,6 +1348,24 @@ public final class CameraXUtils {
     }
 
     @Nullable
+    static ListenableFuture<FocusMeteringResult> startConfiguredFocus(Camera camera) {
+        if (NimarkoConfig.cameraContinuousFocus || camera == null) return null;
+        FocusMeteringAction action = new FocusMeteringAction.Builder(
+                new SurfaceOrientedMeteringPointFactory(1f, 1f).createPoint(0.5f, 0.5f),
+                FocusMeteringAction.FLAG_AF).disableAutoCancel().build();
+        if (!camera.getCameraInfo().isFocusMeteringSupported(action)) return null;
+        return camera.getCameraControl().startFocusAndMetering(action);
+    }
+
+    @SuppressLint("UnsafeOptInUsageError")
+    static void applyRoundVideoControls(@Nullable Camera2Interop.Extender<?> extender,
+                                       boolean roundVideo) {
+        if (!roundVideo || extender == null) return;
+        extender.setCaptureRequestOption(CaptureRequest.CONTROL_CAPTURE_INTENT,
+                CaptureRequest.CONTROL_CAPTURE_INTENT_VIDEO_RECORD);
+    }
+
+    @Nullable
     public static Range<Integer> getTargetFpsRange() {
         switch (NimarkoConfig.cameraXFpsRange) {
             case NimarkoConfig.CameraXFpsRange25to30: return new Range<>(25, 30);
@@ -1326,17 +1383,12 @@ public final class CameraXUtils {
     public static Range<Integer> getSupportedTargetFpsRange(ProcessCameraProvider provider,
                                                             CameraSelector selector) {
         Range<Integer> requested = getTargetFpsRange();
-        if (requested == null || provider == null || selector == null) return requested;
+        if (requested == null || provider == null || selector == null) return null;
         try {
             CameraCapabilities capabilities = getCameraCapabilities(provider, selector);
             Range<Integer>[] ranges = capabilities != null ? capabilities.fpsRanges : null;
-            if (ranges == null) return null;
-            for (Range<Integer> r : ranges) {
-                if (r != null && r.getLower().equals(requested.getLower())
-                        && r.getUpper().equals(requested.getUpper())) {
-                    return requested;
-                }
-            }
+            return selectSupportedFpsRange(requested,
+                    ranges == null ? null : java.util.Arrays.asList(ranges));
         } catch (Throwable ignored) {}
         return null;
     }
@@ -1353,9 +1405,28 @@ public final class CameraXUtils {
         }
         CameraCapabilities first = getCameraCapabilities(provider, firstSelector);
         CameraCapabilities second = getCameraCapabilities(provider, secondSelector);
-        return containsRange(first == null ? null : first.fpsRanges, requested)
-                && containsRange(second == null ? null : second.fpsRanges, requested)
-                ? requested : null;
+        if (first == null || second == null || first.fpsRanges == null || second.fpsRanges == null) return null;
+        ArrayList<Range<Integer>> common = new ArrayList<>();
+        for (Range<Integer> range : first.fpsRanges) {
+            if (containsRange(second.fpsRanges, range)) common.add(range);
+        }
+        return selectSupportedFpsRange(requested, common);
+    }
+
+    @Nullable
+    public static Range<Integer> selectSupportedFpsRange(@Nullable Range<Integer> requested,
+                                                 @Nullable Iterable<Range<Integer>> supported) {
+        if (requested == null || supported == null) return null;
+        Range<Integer> best = null;
+        for (Range<Integer> range : supported) {
+            if (range == null || range.getLower() <= 0 || range.getUpper() > requested.getUpper()) continue;
+            if (range.equals(requested)) return range;
+            if (best == null || range.getUpper() > best.getUpper()
+                    || range.getUpper().equals(best.getUpper()) && range.getLower() > best.getLower()) {
+                best = range;
+            }
+        }
+        return best;
     }
 
     private static boolean containsRange(@Nullable Range<Integer>[] ranges,
@@ -1387,14 +1458,7 @@ public final class CameraXUtils {
             SessionConfig probe = new SessionConfig.Builder(useCases).build();
             Set<Range<Integer>> supported =
                     cameraInfo.getSupportedFrameRateRanges(probe);
-            if (supported == null) return null;
-            for (Range<Integer> range : supported) {
-                if (range != null
-                        && requested.getLower().equals(range.getLower())
-                        && requested.getUpper().equals(range.getUpper())) {
-                    return requested;
-                }
-            }
+            return selectSupportedFpsRange(requested, supported);
         } catch (Throwable ignored) {
 
         }

@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Gifts;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -532,7 +534,7 @@ public class GiftMessageBottomSheet extends BottomSheet {
     }
 
     private void checkUi_GiftLayoutPosition() {
-        final int flags = WindowInsetsCompat.Type.systemBars() | WindowInsetsCompat.Type.displayCutout();
+        final int flags = org.telegram.messenger.WindowInsetsCompatibility.systemBars() | WindowInsetsCompat.Type.displayCutout();
         final int topBase = windowInsetsStateHolder.getInsets(flags).top;
         final float top = topBase + dp(36);
         final float bottomBase = windowInsetsStateHolder.getAnimatedMaxBottomInset() + dp(9) + chatInputViewsContainer.getInputBubbleHeight();

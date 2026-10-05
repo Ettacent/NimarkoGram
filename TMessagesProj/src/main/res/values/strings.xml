@@ -11804,7 +11804,7 @@
     <string name="NM_Camera_FaceDetection">Face Detection</string>
     <string name="NM_Camera_FaceDetection_Desc">Hint the camera to detect faces so auto-exposure and auto-focus prioritise them while recording.</string>
     <string name="NM_Camera_UseHighRange">High FPS Range</string>
-    <string name="NM_Camera_UseHighRange_Desc">Expose 30-60 and 60-60 FPS ranges in the FPS selector. Requires a device whose camera advertises those ranges.</string>
+    <string name="NM_Camera_UseHighRange_Desc">Show the 30–60 FPS option. The available frame rate depends on the camera module, resolution and recording mode.</string>
     <string name="NM_CameraQuality">Camera Quality</string>
     <string name="NM_CenterCameraControlButtons">Center control buttons</string>
     <string name="NM_CAM_ControlsSide">Position</string>

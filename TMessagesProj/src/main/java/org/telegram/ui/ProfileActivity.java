@@ -989,8 +989,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
 
         private boolean canAnimateStatus() {
             return bindingProfileStatus && presented && fragmentOpened && !isPaused && !profileLifecycleDestroyed
-                    && !transitionAnimationInProress && !openAnimationInProgress
-                    && !profileTransitionInProgress && !isProfileContentTransitionInProgress() && SharedConfig.animationsEnabled()
+                    && !isProfileContentTransitionInProgress() && SharedConfig.animationsEnabled()
                     && isAttachedToWindow() && isShown() && getWindowVisibility() == VISIBLE
                     && getAlpha() > 0f && getWidth() > 0 && getHeight() > 0;
         }
@@ -7596,7 +7595,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
      */
     private void applyNimarkoBannerForeground(float bannerProgress) {
         bannerProgress = Utilities.clamp01(bannerProgress);
-        float lightProgress = 1f - (1f - Utilities.clamp01(currentExpandAnimatorValue)) * (1f - bannerProgress);
+        float lightProgress = 1f - (1f - getProfileForegroundExpandProgress()) * (1f - bannerProgress);
 
         if (nameTextView[1] != null) {
             int nameColor = peerColor != null && app.nimarkogram.messenger.NimarkoConfig.profileBackgroundColor
@@ -19732,17 +19731,24 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
         }
     }
 
+    private float getProfileForegroundExpandProgress() {
+        if (playProfileAnimation == 1 && (!fragmentOpened || openAnimationInProgress
+                || transitionAnimationInProress || profileTransitionInProgress)) {
+            return isPulledDown ? 1f : 0f;
+        }
+        return Utilities.clamp01(currentExpandAnimatorValue);
+    }
     private float lastOnlineTextViewX;
     private float getOnlineTextViewTranslationXWithOffsets(float onlineX) {
         lastOnlineTextViewX = onlineX;
-        final float expanded = Utilities.clamp01(playProfileAnimation == 2 ? 1 : avatarAnimationProgress >= 1 || playProfileAnimation == 0 ? currentExpandAnimatorValue : 0);
+        final float expanded = getProfileForegroundExpandProgress();
         return onlineX + Math.max(0, (customPhotoOffset + getRatingViewTranslationXOffset()) * expanded);
     }
 
     private float lastOnlineTextViewY;
     private float getOnlineTextViewTranslationYWithOffsets(float onlineY) {
         lastOnlineTextViewY = onlineY;
-        final float expanded = Utilities.clamp01(playProfileAnimation == 2 ? 1 : avatarAnimationProgress >= 1 || playProfileAnimation == 0 ? currentExpandAnimatorValue : 0);
+        final float expanded = getProfileForegroundExpandProgress();
         return onlineY + getRatingViewTranslationYOffset() * (1.0f - expanded);
     }
 
@@ -20826,7 +20832,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
 
     @NonNull
     private WindowInsetsCompat onApplyWindowInsets(@NonNull View v, @NonNull WindowInsetsCompat insets) {
-        navigationBarHeight = insets.getInsets(WindowInsetsCompat.Type.systemBars()).bottom;
+        navigationBarHeight = insets.getInsets(org.telegram.messenger.WindowInsetsCompatibility.systemBars()).bottom;
 
         ViewGroup.MarginLayoutParams lp;
 

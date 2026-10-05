@@ -117,7 +117,7 @@ public class CameraPreferencesActivity extends NimarkoUniversalPreferencesActivi
         items.add(SettingsHelper.asSwitchCG(cameraControlButtonsRow, getString(R.string.NM_CenterCameraControlButtons), getString(R.string.NM_CenterCameraControlButtons_Desc))
                 .setChecked(app.nimarkogram.messenger.NimarkoConfig.centerCameraControlButtons)
         );
-        if (!NimarkoConfig.centerCameraControlButtons && !upstreamRoundCamera2) {
+        if (!NimarkoConfig.centerCameraControlButtons) {
             items.add(UItem.asButton(cameraControlButtonsSideRow, getString(R.string.NM_CAM_ControlsSide),
                     getString(NimarkoConfig.cameraControlButtonsRight
                             ? R.string.NM_ZoomSliderPosition_Right : R.string.NM_ZoomSliderPosition_Left)));

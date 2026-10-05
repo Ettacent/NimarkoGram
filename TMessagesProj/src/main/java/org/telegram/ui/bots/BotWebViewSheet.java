@@ -1373,7 +1373,7 @@ public class BotWebViewSheet extends Dialog implements NotificationCenter.Notifi
             final WindowInsetsCompat insetsCompat = WindowInsetsCompat.toWindowInsetsCompat(insets, v);
             final androidx.core.graphics.Insets navInsets = insetsCompat.getInsets(WindowInsetsCompat.Type.navigationBars());
             this.navInsets.set(navInsets.left, navInsets.top, navInsets.right, navInsets.bottom);
-            final androidx.core.graphics.Insets cutoutInsets = insetsCompat.getInsets(WindowInsetsCompat.Type.displayCutout() | WindowInsetsCompat.Type.systemBars());
+            final androidx.core.graphics.Insets cutoutInsets = insetsCompat.getInsets(WindowInsetsCompat.Type.displayCutout() | org.telegram.messenger.WindowInsetsCompatibility.systemBars());
             this.insets.set(
                 Math.max(cutoutInsets.left, insets.getStableInsetLeft()),
                 Math.max(cutoutInsets.top, insets.getStableInsetTop()),

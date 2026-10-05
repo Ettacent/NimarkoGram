@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 5.x.x.
  * It is licensed under GNU GPL v. 2 or later.
@@ -1484,7 +1486,9 @@ public class DialogsAdapter extends RecyclerListView.SelectionAdapter implements
 
         protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
             int size = itemInternals.size();
-            boolean hasArchive = folderId == 0 && dialogsType == 0 && MessagesController.getInstance(currentAccount).dialogs_dict.get(DialogObject.makeFolderDialogId(1)) != null;
+            boolean hasArchive = folderId == 0 && dialogsType == 0
+                    && !app.nimarkogram.messenger.NimarkoConfig.hideArchiveFromChatsList
+                    && MessagesController.getInstance(currentAccount).dialogs_dict.get(DialogObject.makeFolderDialogId(1)) != null;
             View parent = (View) getParent();
             int height;
             int blurOffset = 0;

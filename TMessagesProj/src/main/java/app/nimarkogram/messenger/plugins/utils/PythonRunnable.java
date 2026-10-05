@@ -7,6 +7,7 @@ import com.chaquo.python.PyObject;
 import android.os.Handler;
 import android.os.Looper;
 import app.nimarkogram.messenger.plugins.PluginsController;
+import app.nimarkogram.messenger.NimarkoCrashContext;
 import app.nimarkogram.messenger.plugins.ui.PluginUiRegistry;
 import org.telegram.messenger.DispatchQueue;
 import org.telegram.messenger.FileLog;
@@ -98,15 +99,24 @@ public final class PythonRunnable implements
                 Looper.myLooper() == Looper.getMainLooper()
                         ? PluginUiRegistry.captureDecorChildren() : null;
         controller.getWatchdog().onPluginExecutionStarted(pluginId);
+        long diagnosticToken = NimarkoCrashContext.beginInvocation();
+        long diagnosticStart = NimarkoCrashContext.invocationStartedMs(diagnosticToken);
+        String diagnosticOwner = diagnosticToken == 0 ? ""
+                : runtimeToken.getGeneration() + ":" + runtimeToken.getInstanceId();
+        NimarkoCrashContext.pythonPhase(diagnosticToken, diagnosticStart,
+                "runnable_enter", "PythonRunnable.run", pluginId, diagnosticOwner);
         try {
             callable.call();
         } catch (Throwable error) {
             
+            NimarkoCrashContext.failure("python_runnable", pluginId, "PythonRunnable.run", error);
             controller.getWatchdog().onPluginExecutionFailed(
                     pluginId, error);
             FileLog.e("NimarkoGram: queued Python callback failed", error);
             rethrowIfFatal(error);
         } finally {
+            NimarkoCrashContext.pythonPhase(diagnosticToken, diagnosticStart,
+                    "runnable_exit", "PythonRunnable.run", pluginId, diagnosticOwner);
             controller.getWatchdog().onPluginExecutionFinished(pluginId);
             if (decorSnapshot != null) {
                 try {

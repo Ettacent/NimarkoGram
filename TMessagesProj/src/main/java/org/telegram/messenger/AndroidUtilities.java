@@ -6953,7 +6953,7 @@ public class AndroidUtilities {
     }
 
     public static Insets getDefaultWindowInsets(WindowInsetsCompat insets, boolean withIme) {
-        final int insetsType = WindowInsetsCompat.Type.systemBars() | WindowInsetsCompat.Type.displayCutout();
+        final int insetsType = org.telegram.messenger.WindowInsetsCompatibility.systemBars() | WindowInsetsCompat.Type.displayCutout();
         final Insets systemInsets = Insets.max(
             insets.getInsetsIgnoringVisibility(insetsType),
             insets.getInsets(insetsType));

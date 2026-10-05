@@ -3215,6 +3215,9 @@ public class RecyclerListView extends RecyclerView implements IBlur3Capture {
         }
     }
 
+    public final void captureContentForBlur(Canvas canvas, RectF position) {
+        captureChildren(canvas, position, SystemClock.uptimeMillis());
+    }
     protected void captureChildren(Canvas canvas, RectF position, long drawingTime) {
         for (int a = 0, N = getItemDecorationCount(); a < N; a++) {
             ItemDecoration itemDecoration = getItemDecorationAt(a);

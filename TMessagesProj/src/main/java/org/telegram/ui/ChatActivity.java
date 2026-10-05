@@ -4958,10 +4958,30 @@ public class ChatActivity extends BaseFragment implements
             private boolean wasPhotoViewerVisible;
             private boolean wasPinchOverlayVisible;
 
+            private float lastPullingDownOffset;
+            private float lastPullingDownProgress;
+            private float lastNextPullingBottomOffset;
+            private ChatActivity lastPullingDownActivity;
             @Override
             public boolean onPreDraw() {
                 final boolean running = chatListItemAnimator != null && chatListItemAnimator.isRunning();
 
+                final float nextBottomOffset = pullingDownAnimateToActivity == null
+                        ? 0 : pullingDownAnimateToActivity.pullingBottomOffset;
+                if (lastPullingDownOffset != pullingDownOffset
+                        || lastPullingDownProgress != pullingDownAnimateProgress
+                        || lastNextPullingBottomOffset != nextBottomOffset
+                        || lastPullingDownActivity != pullingDownAnimateToActivity) {
+                    lastPullingDownOffset = pullingDownOffset;
+                    lastPullingDownProgress = pullingDownAnimateProgress;
+                    lastNextPullingBottomOffset = nextBottomOffset;
+                    lastPullingDownActivity = pullingDownAnimateToActivity;
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && scrollableViewNoiseSuppressor != null) {
+                        scrollableViewNoiseSuppressor.invalidateCapturePositions();
+                    }
+                    invalidateMergedVisibleBlurredPositionsAndSources(
+                            BLUR_INVALIDATE_FLAG_SCROLL | BLUR_INVALIDATE_FLAG_POSITIONS);
+                }
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
                         && glassDrawablesPositionsCount > 0 && contentView != null
                         && contentView.getWidth() > 0 && contentView.getHeight() > 0
@@ -18282,23 +18302,45 @@ public class ChatActivity extends BaseFragment implements
         private void drawListBackdrop(Canvas blurCanvas, RectF position) {
             final long drawingTime = SystemClock.uptimeMillis();
 
-            if (chatListView.hasActiveEdgeEffects()) {
+            if (pullingDownOffset == 0 && chatListView.hasActiveEdgeEffects()) {
                 chatListView.capture(blurCanvas, position);
             } else {
-                chatListView.drawChatBackgroundElements(blurCanvas, position);
+                final int save = blurCanvas.save();
+                final float offset = pullingDownOffset == 0 ? 0 : -pullingDownOffset
+                        - (chatListView.getMeasuredHeight() - pullingDownOffset) * pullingDownAnimateProgress;
+                pullingBackdropPosition.set(position);
+                pullingBackdropPosition.offset(0, -offset);
+                blurCanvas.translate(0, offset);
+                chatListView.drawChatBackgroundElements(blurCanvas, pullingBackdropPosition);
                 for (int i = 0; i < chatListView.getChildCount(); i++) {
                     final View child = chatListView.getChildAt(i);
                     if (child.getVisibility() != View.VISIBLE
-                            || quickRejectChild(child, position)) {
+                            || quickRejectChild(child, pullingBackdropPosition)) {
                         continue;
                     }
 
                     chatListView.drawChild(blurCanvas, child, drawingTime);
                 }
-                chatListView.drawChatForegroundElements(blurCanvas, position);
+                chatListView.drawChatForegroundElements(blurCanvas, pullingBackdropPosition);
+                blurCanvas.restoreToCount(save);
+                if (pullingDownOffset != 0 && pullingDownAnimateToActivity != null
+                        && pullingDownAnimateToActivity.contentView != null
+                        && pullingDownAnimateToActivity.chatListView != null && pullingDownAnimateProgress > 0) {
+                    final float nextOffset = chatListView.getMeasuredHeight() - pullingDownOffset
+                            - (chatListView.getMeasuredHeight() - pullingDownOffset
+                            + pullingDownAnimateToActivity.pullingBottomOffset) * pullingDownAnimateProgress;
+                    final int nextSave = blurCanvas.saveLayerAlpha(position,
+                            (int) (255 * pullingDownAnimateProgress));
+                    blurCanvas.translate(0, nextOffset);
+                    pullingBackdropPosition.set(position);
+                    pullingBackdropPosition.offset(0, -nextOffset);
+                    pullingDownAnimateToActivity.contentView.drawListImpl(blurCanvas, pullingBackdropPosition);
+                    blurCanvas.restoreToCount(nextSave);
+                }
             }
         }
 
+        private final RectF pullingBackdropPosition = new RectF();
         private final RectF blurListPosition = new RectF();
         private final RectF blurPageBounds = new RectF();
 

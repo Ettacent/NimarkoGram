@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components.inset;
 
 import android.view.View;
@@ -88,7 +90,7 @@ public class WindowInsetsStateHolder implements WindowInsetsProvider, WindowInse
     private void setInsets(@Nullable WindowInsetsCompat insets, boolean animated) {
         this.lastInsets = insets;
 
-        final int insetsType = WindowInsetsCompat.Type.systemBars() | WindowInsetsCompat.Type.displayCutout();
+        final int insetsType = org.telegram.messenger.WindowInsetsCompatibility.systemBars() | WindowInsetsCompat.Type.displayCutout();
         final Insets systemInsets = insets != null ? Insets.max(
             insets.getInsets(insetsType),
             insets.getInsetsIgnoringVisibility(insetsType)
@@ -179,10 +181,10 @@ public class WindowInsetsStateHolder implements WindowInsetsProvider, WindowInse
     @Override
     public int getCurrentMaxBottomInset() {
         if (animatedInsetsProvider != null && activeAnimations > 0) {
-            return Math.max(animatedImeInset, Math.max(getInsets(WindowInsetsCompat.Type.ime() | WindowInsetsCompat.Type.systemBars()).bottom, inAppKeyboardHeight));
+            return Math.max(animatedImeInset, Math.max(getInsets(WindowInsetsCompat.Type.ime() | org.telegram.messenger.WindowInsetsCompatibility.systemBars()).bottom, inAppKeyboardHeight));
         }
 
-        return Math.max(getInsets(WindowInsetsCompat.Type.ime() | WindowInsetsCompat.Type.systemBars()).bottom, inAppKeyboardHeight);
+        return Math.max(getInsets(WindowInsetsCompat.Type.ime() | org.telegram.messenger.WindowInsetsCompatibility.systemBars()).bottom, inAppKeyboardHeight);
     }
 
     @Override

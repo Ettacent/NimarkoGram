@@ -5896,7 +5896,7 @@ public class GroupCallActivity extends BottomSheet implements NotificationCenter
 
     @NonNull
     private WindowInsetsCompat onApplyWindowInsets(@NonNull View v, @NonNull WindowInsetsCompat insets) {
-        final Insets systemInsets = insets.getInsets(WindowInsetsCompat.Type.systemBars() | WindowInsetsCompat.Type.displayCutout());
+        final Insets systemInsets = insets.getInsets(org.telegram.messenger.WindowInsetsCompatibility.systemBars() | WindowInsetsCompat.Type.displayCutout());
         final Insets imeInsets = insets.getInsets(WindowInsetsCompat.Type.ime());
 
         final int emojiInsetHeight = callMessageEnterView.isWaitingForKeyboardOpen() || callMessageEnterView.isPopupShowing() ? (callMessageEnterView.getKeyboardHeight()): 0;

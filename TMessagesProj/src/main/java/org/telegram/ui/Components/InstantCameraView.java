@@ -3251,7 +3251,7 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
         cameraFile = null;
     }
 
-    private VideoRecorder videoEncoder;
+    private volatile VideoRecorder videoEncoder;
 
     private Bitmap firstFrameThumb;
     private volatile int surfaceIndex;
@@ -3270,6 +3270,7 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
         private final SurfaceTexture surfaceTexture;
         private final int generation;
         private volatile boolean shutdownRequested;
+        private VideoRecorder ownedEncoder;
         private VideoRecorder shutdownEncoder;
         private volatile SurfaceTexture outputSurfaceToReleaseOnShutdown;
         private EGL10 egl10;
@@ -3597,8 +3598,15 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
                     1.0f, 1.0f, 0
             };
 
-            if (videoEncoder == null) {
-                videoEncoder = new VideoRecorder();
+            synchronized (this) {
+                if (shutdownRequested || cameraThreadGeneration != generation) {
+                    finish();
+                    return false;
+                }
+                if (videoEncoder == null) {
+                    videoEncoder = new VideoRecorder();
+                }
+                ownedEncoder = videoEncoder;
             }
 
             vertexBuffer = ByteBuffer.allocateDirect(verticesData.length * 4).order(ByteOrder.nativeOrder()).asFloatBuffer();
@@ -4334,12 +4342,13 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
                 return;
             }
 
+            final VideoRecorder frameEncoder = ownedEncoder;
+            if (frameEncoder == null || frameEncoder.isStopRequested()) {
+                return;
+            }
             boolean captureFirstFrameThumb = false;
             if (!recording) {
-                if (videoEncoder == null) {
-                    videoEncoder = new VideoRecorder();
-                }
-                if (videoEncoder.started) {
+                if (frameEncoder.started) {
                     if (!useCameraX && !cameraReady && !cameraXSingleSwitchAwaitingBind) {
                         postToUiIfCurrent(() -> {
                             if (!cameraReady && !cameraXSingleSwitchAwaitingBind) {
@@ -4351,7 +4360,10 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
                 } else {
                     captureFirstFrameThumb = true;
                 }
-                videoEncoder.startRecording(cameraFile, EGL14.eglGetCurrentContext());
+                frameEncoder.startRecording(cameraFile, EGL14.eglGetCurrentContext());
+                if (frameEncoder.isStopRequested()) {
+                    return;
+                }
                 recording = true;
                 legacyZoom = 0f; // each new round starts un-zoomed (legacy path)
                 updateFlash();
@@ -4367,18 +4379,17 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
                 rearCrossfade.resetHistory();
             }
 
-            if (videoEncoder != null
-                    && (activeCameraFrame
+            if ((activeCameraFrame
                     || initialWideTimeoutRender && cameraFrameLatched[surfaceIndex])) {
                 copyActiveMatrices(surfaceIndex);
-                videoEncoder.frameAvailable(cameraSurface[surfaceIndex], bothCameras ? surfaceIndex : this.cameraId, System.nanoTime(), this);
-            } else if (videoEncoder != null && recording && useCameraX && !bothCameras
+                frameEncoder.frameAvailable(cameraSurface[surfaceIndex], bothCameras ? surfaceIndex : this.cameraId, System.nanoTime(), this);
+            } else if (recording && useCameraX && !bothCameras
                     && cameraXVideoTransitionActive) {
                 // CameraX stops producing frames while its single-camera graph
                 // is rebound. Animator-driven preview renders must also feed
                 // the encoder, otherwise the visible pre-switch transition is
                 // missing from the actual recorded round video.
-                videoEncoder.transitionFrameAvailable(this.cameraId, this);
+                frameEncoder.transitionFrameAvailable(this.cameraId, this);
             }
 
             GLES20.glViewport(0, 0, Math.max(1, surfaceWidth), Math.max(1, surfaceHeight));
@@ -4461,7 +4472,8 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
             GLES20.glUseProgram(0);
 
             if (compositeRearFrame) rearCrossfade.end(rearLensFrameMix);
-            if (!egl10.eglSwapBuffers(eglDisplay, eglSurface)) {
+            boolean swapped = egl10.eglSwapBuffers(eglDisplay, eglSurface);
+            if (!swapped) {
                 return;
             }
 
@@ -4506,13 +4518,14 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
             }
 
             switch (what) {
-                case DO_RENDER_MESSAGE:
+                case DO_RENDER_MESSAGE: {
                     onDraw(inputMessage.arg1,
                             inputMessage.obj == updateTexBoth
                                     || inputMessage.obj == updateTex1,
                             inputMessage.obj == updateTexBoth
                                     || inputMessage.obj == updateTex2);
                     break;
+                }
                 case DO_SHUTDOWN_MESSAGE: {
                     dualSurfaceSwitching = false;
                     synchronized (InstantCameraView.this) {
@@ -4530,7 +4543,7 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
                             FileLog.e(error);
                         }
                     }
-                    if (recording && (!(inputMessage.obj instanceof SendOptions) || ((SendOptions) inputMessage.obj).ttl != -2) && shutdownEncoder != null) {
+                    if ((!(inputMessage.obj instanceof SendOptions) || ((SendOptions) inputMessage.obj).ttl != -2) && shutdownEncoder != null) {
                         shutdownEncoder.stopRecording(inputMessage.arg1, inputMessage.obj instanceof SendOptions ? (SendOptions) inputMessage.obj : null);
                     }
                     Looper looper = Looper.myLooper();
@@ -4754,7 +4767,7 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
                     return;
                 }
                 shutdownRequested = true;
-                shutdownEncoder = videoEncoder;
+                shutdownEncoder = ownedEncoder;
             }
             nmCancelCameraXDualFrameWatchdog();
             final SendOptions options =
@@ -4832,6 +4845,7 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
     private static final int MSG_PAUSE_RECORDING = 4;
     private static final int MSG_RESUME_RECORDING = 5;
 
+    private static final int MSG_AUDIO_CAPTURE_STOPPED = 6;
     /** Immutable transition values attached to one encoder frame message. */
     private static final class CameraVideoFrameState {
         final Integer cameraId;
@@ -4912,6 +4926,9 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
 
             switch (what) {
                 case MSG_START_RECORDING: {
+                    if (encoder.finishStoppedBeforePreparation()) {
+                        break;
+                    }
                     try {
                         if (BuildVars.LOGS_ENABLED) {
                             FileLog.e("InstantCamera start encoder");
@@ -4927,7 +4944,7 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
                     if (BuildVars.LOGS_ENABLED) {
                         FileLog.e("InstantCamera stop encoder");
                     }
-                    encoder.handleStopRecording(inputMessage.arg1, (SendOptions) inputMessage.obj);
+                    encoder.handleStopRecording(inputMessage.arg1, (SendOptions) inputMessage.obj, inputMessage.arg2 == 1);
                     break;
                 }
                 case MSG_PAUSE_RECORDING: {
@@ -4951,7 +4968,14 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
                     break;
                 }
                 case MSG_AUDIOFRAME_AVAILABLE: {
-                    encoder.handleAudioFrameAvailable((AudioBufferInfo) inputMessage.obj);
+                    AudioBufferInfo buffer = (AudioBufferInfo) inputMessage.obj;
+                    if (buffer.capture == encoder.audioCapture) {
+                        encoder.handleAudioFrameAvailable(buffer);
+                    }
+                    break;
+                }
+                case MSG_AUDIO_CAPTURE_STOPPED: {
+                    encoder.handleAudioCaptureStopped((AudioCapture) inputMessage.obj);
                     break;
                 }
             }
@@ -4981,6 +5005,7 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
     }
 
     public static class AudioBufferInfo {
+        private AudioCapture capture;
         public final static int MAX_SAMPLES = 10;
         public ByteBuffer[] buffer = new ByteBuffer[MAX_SAMPLES];
         public long[] offset = new long[MAX_SAMPLES];
@@ -4994,6 +5019,15 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
                 buffer[i] = ByteBuffer.allocateDirect(2048);
                 buffer[i].order(ByteOrder.nativeOrder());
             }
+        }
+    }
+
+    private static class AudioCapture {
+        final AudioRecord recorder;
+        volatile boolean stopRequested;
+
+        AudioCapture(AudioRecord recorder) {
+            this.recorder = recorder;
         }
     }
 
@@ -5028,6 +5062,7 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
         private MediaCodec videoEncoder;
         private MediaCodec audioEncoder;
 
+        private boolean audioInputEndSignalled;
         private int prependHeaderSize;
         private boolean firstEncode;
         private volatile boolean hasWrittenVideoSample;
@@ -5053,6 +5088,16 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
         public volatile boolean ready;
         private volatile boolean encoderPrepared;
         private volatile boolean running;
+        private boolean startMessageQueued;
+        private boolean stopRequested;
+        private boolean stopMessageQueued;
+        private boolean recorderTerminated;
+        private boolean awaitingAudioStop;
+        private boolean finalizationStarted;
+        private int requestedStopSend;
+        private SendOptions requestedStopOptions;
+        private AudioCapture audioCapture;
+        private boolean resumePreparationPending;
         private volatile int sendWhenDone;
         private volatile SendOptions sendWhenDoneOptions;
         private long skippedTime;
@@ -5107,149 +5152,192 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
         DispatchQueue fileWriteQueue;
 
         private volatile boolean pauseRecorder;
-        private Runnable recorderRunnable = new Runnable() {
+        private Runnable createRecorderRunnable(final AudioCapture capture) {
+            return new Runnable() {
 
-            @RequiresApi(api = Build.VERSION_CODES.N)
-            @Override
-            public void run() {
-                long audioPresentationTimeUs = -1;
-                long audioFramesRead = 0;
-                int readResult;
-                boolean done = false;
-                AudioTimestamp audioTimestamp = new AudioTimestamp();
-                boolean shouldUseTimestamp = Build.VERSION.SDK_INT >= Build.VERSION_CODES.N;
+                @RequiresApi(api = Build.VERSION_CODES.N)
+                @Override
+                public void run() {
+                    long audioPresentationTimeUs = -1;
+                    long audioFramesRead = 0;
+                    int readResult;
+                    boolean done = false;
+                    AudioTimestamp audioTimestamp = new AudioTimestamp();
+                    boolean shouldUseTimestamp = Build.VERSION.SDK_INT >= Build.VERSION_CODES.N;
 
-                while (!done) {
-                    if ((!running || pauseRecorder) && audioRecorder.getRecordingState() != AudioRecord.RECORDSTATE_STOPPED) {
-                        try {
-                            audioRecorder.stop();
-                        } catch (Exception e) {
-                            done = true;
-                        }
-                        if (sendWhenDone == 0) {
-                            break;
-                        }
-                    }
-                    AudioBufferInfo buffer;
-                    if (buffers.isEmpty()) {
-                        try {
-                            buffer = new AudioBufferInfo();
-                        } catch (OutOfMemoryError error) {
-                            System.gc();
-                            buffer = new AudioBufferInfo();
-                        }
-                    } else {
-                        buffer = buffers.poll();
-                    }
-                    buffer.lastWroteBuffer = 0;
-                    buffer.results = AudioBufferInfo.MAX_SAMPLES;
-                    for (int a = 0; a < AudioBufferInfo.MAX_SAMPLES; a++) {
-                        if (audioPresentationTimeUs == -1 && !shouldUseTimestamp) {
-                            audioPresentationTimeUs = System.nanoTime() / 1000;
-                        }
-
-                        ByteBuffer byteBuffer = buffer.buffer[a];
-                        byteBuffer.clear();
-                        readResult = audioRecorder.read(byteBuffer, 2048);
-                        int capturedBytes = readResult;
-                        if (readResult > 0) {
-                            byteBuffer.limit(readResult);
-                            if (audioInputChannels == 2 && audioOutputChannels == 1) {
-                                readResult = app.nimarkogram.messenger.camera.CameraXAudioCapture.downmixStereo16(byteBuffer, readResult);
-                            }
-                        }
-                        if (readResult > 0 && a % 2 == 0) {
-                            byteBuffer.limit(readResult);
-                            double s = 0;
-                            for (int i = 0; i < readResult / 2; i++) {
-                                short p = byteBuffer.getShort();
-                                s += p * p;
-                            }
-                            double amplitude = Math.sqrt(s / readResult / 2);
-                            AndroidUtilities.runOnUIThread(() -> NotificationCenter.getInstance(currentAccount).postNotificationName(NotificationCenter.recordProgressChanged, recordingGuid, amplitude));
-                            byteBuffer.position(0);
-                        }
-                        if (readResult <= 0) {
-                            buffer.results = a;
-                            if (!running) {
-                                buffer.last = true;
-                            }
-                            break;
-                        }
-                        long timestamp;
-                        if (shouldUseTimestamp) {
-                            try {
-
-                                if (audioRecorder.getTimestamp(audioTimestamp, AudioTimestamp.TIMEBASE_MONOTONIC)
-                                        != AudioRecord.SUCCESS) {
-                                    throw new IllegalStateException("AudioRecord timestamp unavailable");
+                    try {
+                        while (!done) {
+                            if (!running || capture.stopRequested) {
+                                if (capture.recorder.getRecordingState() != AudioRecord.RECORDSTATE_STOPPED) {
+                                    try {
+                                        capture.recorder.stop();
+                                    } catch (Exception e) {
+                                        done = true;
+                                    }
                                 }
-                                timestamp = audioInputChannels == 2
-                                        ? app.nimarkogram.messenger.camera.CameraXAudioCapture.bufferTimeUs(
-                                                audioTimestamp.nanoTime, audioTimestamp.framePosition, audioFramesRead, audioSampleRate)
-                                        : audioTimestamp.nanoTime / 1000;
-                            } catch (Exception e) {
-                                FileLog.e(e);
-                                shouldUseTimestamp = false;
-                                timestamp = audioPresentationTimeUs = audioInputChannels == 2 && audioPresentationTimeUs >= 0
-                                        ? audioPresentationTimeUs : System.nanoTime() / 1000;
+                                if (capture.stopRequested || sendWhenDone == 0) {
+                                    break;
+                                }
                             }
-                        } else {
-                            timestamp = audioPresentationTimeUs;
-                        }
-                        buffer.offset[a] = timestamp;
+                            AudioBufferInfo buffer;
+                            if (buffers.isEmpty()) {
+                                try {
+                                    buffer = new AudioBufferInfo();
+                                } catch (OutOfMemoryError error) {
+                                    System.gc();
+                                    buffer = new AudioBufferInfo();
+                                }
+                            } else {
+                                buffer = buffers.poll();
+                            }
+                            buffer.lastWroteBuffer = 0;
+                            buffer.capture = capture;
+                            buffer.results = AudioBufferInfo.MAX_SAMPLES;
+                            for (int a = 0; a < AudioBufferInfo.MAX_SAMPLES; a++) {
+                                if (audioPresentationTimeUs == -1 && !shouldUseTimestamp) {
+                                    audioPresentationTimeUs = System.nanoTime() / 1000;
+                                }
 
-                        buffer.read[a] = readResult;
-                        long bufferDurationUs = app.nimarkogram.messenger.camera.CameraXAudioCapture.durationUs(
-                                capturedBytes, audioSampleRate, audioInputChannels);
-                        audioFramesRead += capturedBytes / (audioInputChannels * 2);
-                        if (!shouldUseTimestamp || audioInputChannels == 2) {
-                            audioPresentationTimeUs = timestamp + bufferDurationUs;
-                        }
-                    }
-                    if (buffer.results >= 0 || buffer.last) {
-                        if (!running && buffer.results < AudioBufferInfo.MAX_SAMPLES) {
-                            done = true;
-                        }
-                        handler.sendMessage(handler.obtainMessage(MSG_AUDIOFRAME_AVAILABLE, buffer));
-                    } else {
-                        if (!running) {
-                            done = true;
-                        } else {
-                            try {
-                                buffers.put(buffer);
-                            } catch (Exception ignore) {
+                                ByteBuffer byteBuffer = buffer.buffer[a];
+                                byteBuffer.clear();
+                                readResult = capture.recorder.read(byteBuffer, 2048);
+                                int capturedBytes = readResult;
+                                if (readResult > 0) {
+                                    byteBuffer.limit(readResult);
+                                    if (audioInputChannels == 2 && audioOutputChannels == 1) {
+                                        readResult = app.nimarkogram.messenger.camera.CameraXAudioCapture.downmixStereo16(byteBuffer, readResult);
+                                    }
+                                }
+                                if (readResult > 0 && a % 2 == 0) {
+                                    byteBuffer.limit(readResult);
+                                    double s = 0;
+                                    for (int i = 0; i < readResult / 2; i++) {
+                                        short p = byteBuffer.getShort();
+                                        s += p * p;
+                                    }
+                                    double amplitude = Math.sqrt(s / readResult / 2);
+                                    AndroidUtilities.runOnUIThread(() -> NotificationCenter.getInstance(currentAccount).postNotificationName(NotificationCenter.recordProgressChanged, recordingGuid, amplitude));
+                                    byteBuffer.position(0);
+                                }
+                                if (readResult <= 0) {
+                                    buffer.results = a;
+                                    if (!running) {
+                                        buffer.last = true;
+                                    }
+                                    break;
+                                }
+                                long timestamp;
+                                if (shouldUseTimestamp) {
+                                    try {
 
+                                        if (capture.recorder.getTimestamp(audioTimestamp, AudioTimestamp.TIMEBASE_MONOTONIC)
+                                                != AudioRecord.SUCCESS) {
+                                            throw new IllegalStateException("AudioRecord timestamp unavailable");
+                                        }
+                                        timestamp = audioInputChannels == 2
+                                                ? app.nimarkogram.messenger.camera.CameraXAudioCapture.bufferTimeUs(
+                                                        audioTimestamp.nanoTime, audioTimestamp.framePosition, audioFramesRead, audioSampleRate)
+                                                : audioTimestamp.nanoTime / 1000;
+                                    } catch (Exception e) {
+                                        FileLog.e(e);
+                                        shouldUseTimestamp = false;
+                                        timestamp = audioPresentationTimeUs = audioInputChannels == 2 && audioPresentationTimeUs >= 0
+                                                ? audioPresentationTimeUs : System.nanoTime() / 1000;
+                                    }
+                                } else {
+                                    timestamp = audioPresentationTimeUs;
+                                }
+                                buffer.offset[a] = timestamp;
+
+                                buffer.read[a] = readResult;
+                                long bufferDurationUs = app.nimarkogram.messenger.camera.CameraXAudioCapture.durationUs(
+                                        capturedBytes, audioSampleRate, audioInputChannels);
+                                audioFramesRead += capturedBytes / (audioInputChannels * 2);
+                                if (!shouldUseTimestamp || audioInputChannels == 2) {
+                                    audioPresentationTimeUs = timestamp + bufferDurationUs;
+                                }
+                            }
+                            if (buffer.results >= 0 || buffer.last) {
+                                if (!running && buffer.results < AudioBufferInfo.MAX_SAMPLES) {
+                                    done = true;
+                                }
+                                handler.sendMessage(handler.obtainMessage(MSG_AUDIOFRAME_AVAILABLE, buffer));
+                            } else {
+                                if (!running) {
+                                    done = true;
+                                } else {
+                                    try {
+                                        buffers.put(buffer);
+                                    } catch (Exception ignore) {
+
+                                    }
+                                }
                             }
                         }
+                    } finally {
+                        try {
+                            capture.recorder.release();
+                        } catch (Exception e) {
+                            FileLog.e(e);
+                        }
+                        handler.sendMessage(handler.obtainMessage(MSG_AUDIO_CAPTURE_STOPPED, capture));
                     }
                 }
+            };
+
+        }
+
+        private void handleAudioCaptureStopped(AudioCapture capture) {
+            final boolean stopping;
+            final boolean resume;
+            synchronized (sync) {
+                if (audioCapture != capture || recorderTerminated) {
+                    return;
+                }
+                audioCapture = null;
+                if (audioRecorder == capture.recorder) {
+                    audioRecorder = null;
+                }
+                stopping = stopRequested || !capture.stopRequested && !pauseRecorder;
+                resume = resumePreparationPending && !stopping;
+                resumePreparationPending = false;
+            }
+            if (stopping) {
+                handleStopRecording(sendWhenDone, sendWhenDoneOptions, true);
+            } else if (resume) {
                 try {
-                    audioRecorder.release();
+                    prepareEncoder(true);
                 } catch (Exception e) {
                     FileLog.e(e);
-                }
-                if (!pauseRecorder) {
-                    handler.sendMessage(handler.obtainMessage(MSG_STOP_RECORDING, sendWhenDone, 0, sendWhenDoneOptions));
+                    handleStartRecordingError();
                 }
             }
-        };
+        }
 
-        private boolean started;
+        private volatile boolean started;
 
         public void startRecording(File outputFile, android.opengl.EGLContext sharedContext) {
-            encoderPrepared = false;
-            if (started && (handler != null && handler.getLooper() != null && handler.getLooper().getThread() != null && handler.getLooper().getThread().isAlive())) {
-                sharedEglContext = sharedContext;
-                handler.sendMessage(handler.obtainMessage(MSG_START_RECORDING, 1, 0));
-            }
+            synchronized (sync) {
+                if (stopRequested || recorderTerminated) {
+                    return;
+                }
+                encoderPrepared = false;
+                if (started) {
+                    if (ready && startMessageQueued) {
+                        sharedEglContext = sharedContext;
+                        handler.sendMessage(handler.obtainMessage(MSG_START_RECORDING, 1, 0));
+                    }
 
-            started = true;
+                    return;
+                }
+                started = true;
             // NG: re-read user's quality choices each recording so settings
             // changes apply on next recording without restart. We pin both
             // resolution AND bitrate locally — the server-side appConfig
             // `round_video_encoding.{diameter,video_bitrate,audio_bitrate}`
             // would otherwise overwrite our preferred values at login.
+                setHeavyOperationsStopped(true);
+            }
             MessagesController mc = MessagesController.getInstance(currentAccount);
             mc.roundVideoSize = app.nimarkogram.messenger.NimarkoConfig.getVideoMessagesResolutionPx(512);
             mc.roundVideoBitrate = app.nimarkogram.messenger.NimarkoConfig.videoMessagesBitrateKbps;
@@ -5257,7 +5345,6 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
             int resolution = mc.roundVideoSize;
             int bitrate = mc.roundVideoBitrate * 1024;
             recordedVideoBitrate = bitrate;
-            setHeavyOperationsStopped(true);
 
             videoFile = outputFile;
             videoWidth = resolution;
@@ -5282,13 +5369,27 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
                 running = true;
                 Thread thread = new Thread(this, "TextureMovieEncoder");
                 thread.setPriority(Thread.MAX_PRIORITY);
-                thread.start();
-                while (!ready) {
+                try {
+                    thread.start();
+                } catch (RuntimeException e) {
+                    FileLog.e(e);
+                    finishRecorderThread();
+                    return;
+                }
+                boolean interrupted = false;
+                while (!ready && !recorderTerminated) {
                     try {
                         sync.wait();
                     } catch (InterruptedException ie) {
                         // ignore
+                        interrupted = true;
                     }
+                }
+                if (interrupted) {
+                    Thread.currentThread().interrupt();
+                }
+                if (recorderTerminated) {
+                    return;
                 }
             }
 
@@ -5304,12 +5405,67 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
                 generateKeyframeThumbsQueue.recycle();
             }
             generateKeyframeThumbsQueue = new DispatchQueue("keyframes_thumb_queue");
-            handler.sendMessage(handler.obtainMessage(MSG_START_RECORDING));
+            synchronized (sync) {
+                if (!recorderTerminated) {
+                    startMessageQueued = handler.sendMessage(handler.obtainMessage(MSG_START_RECORDING));
+                    enqueueStopLocked();
+                }
+            }
         }
 
         public void stopRecording(int send, SendOptions options) {
-            handler.sendMessage(handler.obtainMessage(MSG_STOP_RECORDING, send, 0, options));
+            boolean neverStarted = false;
+            synchronized (sync) {
+                if (recorderTerminated || finalizationStarted) {
+                    return;
+                }
+                if (!stopRequested || send == ENCODER_SEND_CANCEL) {
+                    requestedStopSend = send;
+                    requestedStopOptions = options;
+                }
+                stopRequested = true;
+                if (!started) {
+                    recorderTerminated = true;
+                    neverStarted = true;
+                } else {
+                    enqueueStopLocked();
+                }
+            }
             setHeavyOperationsStopped(false);
+            if (neverStarted) {
+                finishRecorderThread();
+            }
+        }
+
+        private boolean isStopRequested() {
+            synchronized (sync) {
+                return stopRequested || recorderTerminated;
+            }
+        }
+
+        private void enqueueStopLocked() {
+            if (stopRequested && startMessageQueued && ready && !stopMessageQueued && !recorderTerminated) {
+                stopMessageQueued = handler.sendMessage(handler.obtainMessage(
+                        MSG_STOP_RECORDING, requestedStopSend, 0, requestedStopOptions));
+            }
+        }
+
+        private boolean finishStoppedBeforePreparation() {
+            synchronized (sync) {
+                if (recorderTerminated || finalizationStarted) {
+                    return true;
+                }
+                if (!stopRequested) {
+                    return false;
+                }
+                if (encoderPrepared || audioRecorder != null) {
+                    return true;
+                }
+                startupFailed = true;
+                running = false;
+            }
+            handleStopRecording(requestedStopSend, requestedStopOptions, true);
+            return true;
         }
 
         private void setHeavyOperationsStopped(boolean stopped) {
@@ -5330,12 +5486,18 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
 
         public void pause() {
             final Object token = new Object();
-            pausePreviewToken = token;
-            handler.sendMessage(handler.obtainMessage(MSG_PAUSE_RECORDING, token));
-        }
+            synchronized (sync) {
+                if (!ready || !startMessageQueued || stopRequested || recorderTerminated) return;
+                pausePreviewToken = token;
+                handler.sendMessage(handler.obtainMessage(MSG_PAUSE_RECORDING, token));
+            }
 
+        }
         public void resume() {
-            handler.sendMessage(handler.obtainMessage(MSG_RESUME_RECORDING));
+            synchronized (sync) {
+                if (!ready || !startMessageQueued || stopRequested || recorderTerminated) return;
+                handler.sendMessage(handler.obtainMessage(MSG_RESUME_RECORDING));
+            }
         }
 
         long prevTimestamp;
@@ -5362,7 +5524,7 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
 
         private void submitVideoFrame(long timestamp, Integer cameraId, CameraGLThread source) {
             synchronized (sync) {
-                if (!ready || !encoderPrepared || handler == null || !source.isCurrentGeneration()) return;
+                if (!ready || !encoderPrepared || stopRequested || handler == null || !source.isCurrentGeneration()) return;
                 CameraVideoFrameState frameState = captureFrameState(cameraId, source);
                 pendingVideoFrames.add(frameState);
                 if (!handler.sendMessage(handler.obtainMessage(MSG_VIDEOFRAME_AVAILABLE,
@@ -5395,7 +5557,9 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
                 zeroTimeStamps = 0;
             }
 
-            if (cameraId.equals(lastFrameSubmissionCameraId) && timestamp <= prevTimestamp) return;
+            if (cameraId.equals(lastFrameSubmissionCameraId) && timestamp <= prevTimestamp) {
+                return;
+            }
             long now = System.nanoTime();
             // Never wall-clock-throttle real SurfaceTexture frames here.
             // CameraX already negotiates the selected maximum and requestRender
@@ -5430,24 +5594,43 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
 
         @Override
         public void run() {
-            Looper.prepare();
-            synchronized (sync) {
-                handler = new EncoderHandler(this);
-                ready = true;
-                sync.notify();
-            }
             try {
+                Looper.prepare();
+                synchronized (sync) {
+                    handler = new EncoderHandler(this);
+                    ready = true;
+                    sync.notifyAll();
+                }
                 Looper.loop();
             } finally {
-                synchronized (sync) {
-                    ready = false;
-                    encoderPrepared = false;
-                    for (CameraVideoFrameState frameState : pendingVideoFrames) {
-                        if (frameState.snapshot != null) frameState.snapshot.release();
-                    }
-                    pendingVideoFrames.clear();
-                }
+                finishRecorderThread();
             }
+        }
+
+        private void finishRecorderThread() {
+            synchronized (sync) {
+                recorderTerminated = true;
+                ready = false;
+                running = false;
+                encoderPrepared = false;
+                requestedStopOptions = null;
+                sendWhenDoneOptions = null;
+                if (audioCapture != null) {
+                    audioCapture.stopRequested = true;
+                    audioCapture = null;
+                }
+                for (CameraVideoFrameState frameState : pendingVideoFrames) {
+                    if (frameState.snapshot != null) frameState.snapshot.release();
+                }
+                pendingVideoFrames.clear();
+                sync.notifyAll();
+            }
+            setHeavyOperationsStopped(false);
+            AndroidUtilities.runOnUIThread(() -> {
+                if (InstantCameraView.this.videoEncoder == this) {
+                    InstantCameraView.this.videoEncoder = null;
+                }
+            });
         }
 
         private void handleAudioFrameAvailable(AudioBufferInfo input) {
@@ -5573,6 +5756,9 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
                         audioLastDt = time - audioLast;
                         audioLast = time;
                         audioEncoder.queueInputBuffer(inputBufferIndex, 0, inputBuffer.position(), time, isLast ? MediaCodec.BUFFER_FLAG_END_OF_STREAM : 0);
+                        if (isLast) {
+                            audioInputEndSignalled = true;
+                        }
                     }
                 }
             } catch (Throwable e) {
@@ -5935,6 +6121,11 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
 
         private void handlePauseRecording(final Object token) {
             pauseRecorder = true;
+            synchronized (sync) {
+                if (audioCapture != null) {
+                    audioCapture.stopRequested = true;
+                }
+            }
             if (previewFile != null) {
                 previewFile.delete();
                 previewFile = null;
@@ -6100,7 +6291,7 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
 
             startupFailed = true;
             running = false;
-            if (audioRecorder != null) {
+            if (audioRecorder != null && audioCapture == null) {
                 try {
                     audioRecorder.stop();
                 } catch (Exception e) {
@@ -6137,57 +6328,52 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
             }
         }
 
-        private void handleStopRecording(final int send, final SendOptions sendOptions) {
+        private int beginStopHandling(int send, SendOptions options, boolean audioDrained) {
+            synchronized (sync) {
+                if (recorderTerminated || finalizationStarted || awaitingAudioStop && !audioDrained) {
+                    return 0;
+                }
+                if (!stopRequested || startupFailed && send == ENCODER_SEND_CANCEL) {
+                    requestedStopSend = send;
+                    requestedStopOptions = options;
+                }
+                stopRequested = true;
+                sendWhenDone = requestedStopSend;
+                sendWhenDoneOptions = requestedStopOptions;
+                if (audioCapture != null && !audioDrained) {
+                    running = false;
+                    awaitingAudioStop = true;
+                    return 1;
+                }
+                running = false;
+                finalizationStarted = true;
+                return 2;
+            }
+        }
+
+        private void handleStopRecording(int requestedSend, SendOptions requestedOptions, boolean audioDrained) {
+            final int phase = beginStopHandling(requestedSend, requestedOptions, audioDrained);
+            if (phase == 0) {
+                return;
+            }
+            final boolean emptyRecording = videoFirst == -1 && !hasWrittenVideoSample
+                    && phase == 2 && sendWhenDone != ENCODER_SEND_CANCEL;
+            final int send = emptyRecording ? ENCODER_SEND_CANCEL : sendWhenDone;
+            sendWhenDone = send;
+            final SendOptions sendOptions = sendWhenDoneOptions;
             encoderPrepared = false;
 
             setHeavyOperationsStopped(false);
-            final boolean runDone;
-            if (send == ENCODER_SEND_SEND && hasWrittenVideoSample
-                    && (videoEditedInfo == null || !videoEditedInfo.needConvert())
-                    && !delegate.isInScheduleMode()) {
-                runDone = false;
-                if (!sentMedia) {
-                    sentMedia = true;
-                    AndroidUtilities.runOnUIThread(() -> {
-                        videoEditedInfo = new VideoEditedInfo();
-                        videoEditedInfo.startTime = -1;
-                        videoEditedInfo.endTime = -1;
-                        videoEditedInfo.estimatedSize = Math.max(1, size);
-                        videoEditedInfo.roundVideo = true;
-                        videoEditedInfo.file = file;
-                        videoEditedInfo.encryptedFile = encryptedFile;
-                        videoEditedInfo.key = key;
-                        videoEditedInfo.iv = iv;
-                        videoEditedInfo.framerate = frameRate;
-                        videoEditedInfo.resultWidth = videoEditedInfo.originalWidth = videoWidth;
-                        videoEditedInfo.resultHeight = videoEditedInfo.originalHeight = videoHeight;
-                        videoEditedInfo.originalPath = videoFile.getAbsolutePath();
-                        videoEditedInfo.notReadyYet = true;
-                        videoEditedInfo.thumb = firstFrameThumb;
-                        videoEditedInfo.estimatedDuration = recordedTime;
-                        firstFrameThumb = null;
-                        MediaController.PhotoEntry entry = new MediaController.PhotoEntry(0, 0, 0, videoFile.getAbsolutePath(), 0, true, 0, 0, 0);
-                        if (sendOptions != null) {
-                            entry.ttl = sendOptions.ttl;
-                            entry.effectId = sendOptions.effectId;
-                        }
-                        delegate.sendMedia(entry, videoEditedInfo, sendOptions == null || sendOptions.notify, sendOptions != null ? sendOptions.scheduleDate : 0, sendOptions != null ? sendOptions.scheduleRepeatPeriod : 0, false, sendOptions != null ? sendOptions.stars : 0);
-                    });
-                }
-            } else {
-                runDone = true;
-            }
-            if (running && !pauseRecorder) {
+            if (phase == 1) {
                 FileLog.d("InstantCamera handleStopRecording running=false");
-                sendWhenDone = send;
-                sendWhenDoneOptions = sendOptions;
-                running = false;
                 return;
             }
+            boolean drainSucceeded = !startupFailed;
             try {
                 FileLog.d("InstantCamera handleStopRecording drain encoders");
-                if (!startupFailed) drainEncoder(true);
+                if (!startupFailed && send != ENCODER_SEND_CANCEL) drainEncoder(true);
             } catch (Exception e) {
+                drainSucceeded = false;
                 FileLog.e(e);
             }
             releaseEncoder(videoEncoder);
@@ -6250,7 +6436,9 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
                     }
                 }
             }
-            if (send != 2) {
+            final boolean validVideoOutput = drainSucceeded && videoTrackIndex >= 0 && hasWrittenVideoSample
+                    && movieFinalized && videoFile != null && videoFile.exists() && videoFile.length() > 0;
+            if (send != ENCODER_SEND_PLAYER || !validVideoOutput) {
                 if (generateKeyframeThumbsQueue != null) {
                     generateKeyframeThumbsQueue.cleanupQueue();
                     generateKeyframeThumbsQueue.recycle();
@@ -6258,8 +6446,6 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
                 }
             }
             FileLog.d("InstantCamera handleStopRecording send " + send);
-            final boolean validVideoOutput = videoTrackIndex >= 0 && hasWrittenVideoSample
-                    && movieFinalized && videoFile != null && videoFile.exists() && videoFile.length() > 0;
             if (send == ENCODER_SEND_CANCEL || !validVideoOutput) {
                 if (videoFile != null) {
                     FileLoader.getInstance(currentAccount).cancelFileUpload(videoFile.getAbsolutePath(), false);
@@ -6274,22 +6460,25 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
                         videoFile.delete();
                     }
                 } catch (Throwable ignore) {}
-                if (send != ENCODER_SEND_CANCEL) {
+                if (send != ENCODER_SEND_CANCEL || emptyRecording) {
                     FileLog.e("InstantCamera: refusing to send a round video without a valid video track");
                     AndroidUtilities.runOnUIThread(() -> {
+                        MediaController.getInstance().requestRecordAudioFocus(false);
                         NotificationCenter.getInstance(currentAccount).postNotificationName(
                                 NotificationCenter.recordStartError, recordingGuid);
                         startAnimation(false, false);
                     });
                 }
             } else {
-                if (runDone && (send != ENCODER_SEND_SEND || !sentMedia)) {
+                if (send != ENCODER_SEND_SEND || !sentMedia) {
                     sentMedia = true;
                     AndroidUtilities.runOnUIThread(() -> {
                         if (videoEditedInfo == null) {
                             videoEditedInfo = new VideoEditedInfo();
                             videoEditedInfo.startTime = -1;
                             videoEditedInfo.endTime = -1;
+                            videoEditedInfo.roundVideo = true;
+                            videoEditedInfo.estimatedDuration = recordedTime;
                         }
                         if (videoEditedInfo.needConvert()) {
                             file = null;
@@ -6311,6 +6500,12 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
                             FileLoader.getInstance(currentAccount).cancelFileUpload(cameraFile.getAbsolutePath(), false);
                         } else {
                             videoEditedInfo.estimatedSize = Math.max(1, size);
+                            videoEditedInfo.estimatedDuration = recordedTime;
+                        }
+                        videoEditedInfo.notReadyYet = false;
+                        if (firstFrameThumb != null) {
+                            videoEditedInfo.thumb = firstFrameThumb;
+                            firstFrameThumb = null;
                         }
                         videoEditedInfo.roundVideo = true;
                         videoEditedInfo.file = file;
@@ -6396,6 +6591,10 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
                     InstantCameraView.this.videoEncoder = null;
                 }
             });
+        }
+
+        private void handleStopRecording(int send, SendOptions options) {
+            handleStopRecording(send, options, false);
         }
 
         private void setBluetoothScoOn(boolean scoOn) {
@@ -6676,6 +6875,7 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
         }
 
         private void startAudioEncoder() throws Exception {
+            audioInputEndSignalled = false;
             MediaFormat audioFormat = new MediaFormat();
             audioFormat.setString(MediaFormat.KEY_MIME, AUDIO_MIME_TYPE);
             audioFormat.setInteger(MediaFormat.KEY_SAMPLE_RATE, audioSampleRate);
@@ -6688,6 +6888,15 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
         }
 
         private void prepareEncoder(boolean fromPause) {
+            if (finishStoppedBeforePreparation()) {
+                return;
+            }
+            synchronized (sync) {
+                if (fromPause && audioCapture != null) {
+                    resumePreparationPending = true;
+                    return;
+                }
+            }
             setBluetoothScoOn(true);
 
             try {
@@ -6911,10 +7120,14 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
                 }
             }
 
-            Thread thread = new Thread(recorderRunnable);
+            final AudioCapture capture = new AudioCapture(audioRecorder);
+            synchronized (sync) {
+                audioCapture = capture;
+            }
+            Thread thread = new Thread(createRecorderRunnable(capture));
             thread.setPriority(Thread.MAX_PRIORITY);
             AndroidUtilities.runOnUIThread(() -> {
-                if (cancelled || startupFailed || InstantCameraView.this.videoEncoder != this) return;
+                if (cancelled || startupFailed || isStopRequested() || InstantCameraView.this.videoEncoder != this) return;
                 if (!app.nimarkogram.messenger.NimarkoConfig.disableVibration) {
                     try {
                         performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP, HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING);
@@ -6930,7 +7143,14 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
                 NotificationCenter.getInstance(currentAccount).postNotificationName(NotificationCenter.recordStarted, recordingGuid, false);
             });
 
-            thread.start();
+            try {
+                thread.start();
+            } catch (RuntimeException e) {
+                synchronized (sync) {
+                    audioCapture = null;
+                }
+                throw e;
+            }
             encoderPrepared = true;
         }
 
@@ -6950,12 +7170,23 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
             }
         }
 
+        private void queueAudioEndOfStream() {
+            if (audioInputEndSignalled || audioEncoder == null) {
+                return;
+            }
+            int input = audioEncoder.dequeueInputBuffer(0);
+            if (input >= 0) {
+                audioEncoder.queueInputBuffer(input, 0, 0, Math.max(0, audioLast), MediaCodec.BUFFER_FLAG_END_OF_STREAM);
+                audioInputEndSignalled = true;
+            }
+        }
         public void drainEncoder(boolean endOfStream) throws Exception {
             if (endOfStream) {
                 videoEncoder.signalEndOfInputStream();
             }
 
             ByteBuffer[] encoderOutputBuffers = null;
+            long drainDeadline = SystemClock.elapsedRealtime() + 2000;
             while (true) {
                 // At 60 fps the whole producer budget is 16.7 ms. Waiting up
                 // to 10 ms for an output buffer before every EGL submission
@@ -6963,6 +7194,9 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
                 // Drain everything already available without blocking during
                 // recording; EOS still waits because every final sample must
                 // be collected before the muxer is closed.
+                if (endOfStream && SystemClock.elapsedRealtime() >= drainDeadline) {
+                    throw new IllegalStateException("Timed out draining round video encoder");
+                }
                 long dequeueTimeoutUs = endOfStream || frameRate <= DEFAULT_FRAME_RATE
                         ? 10000L : 0L;
                 int encoderStatus = videoEncoder.dequeueOutputBuffer(
@@ -7076,8 +7310,15 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
                 }
             }
 
+            drainDeadline = SystemClock.elapsedRealtime() + 2000;
             while (true) {
-                int encoderStatus = audioEncoder.dequeueOutputBuffer(audioBufferInfo, 0);
+                if (endOfStream) {
+                    if (SystemClock.elapsedRealtime() >= drainDeadline) {
+                        throw new IllegalStateException("Timed out draining round audio encoder");
+                    }
+                    queueAudioEndOfStream();
+                }
+                int encoderStatus = audioEncoder.dequeueOutputBuffer(audioBufferInfo, endOfStream ? 10000 : 0);
                 if (encoderStatus == MediaCodec.INFO_TRY_AGAIN_LATER) {
                     if (!endOfStream || !running && sendWhenDone == ENCODER_SEND_CANCEL || pauseRecorder) {
                         break;

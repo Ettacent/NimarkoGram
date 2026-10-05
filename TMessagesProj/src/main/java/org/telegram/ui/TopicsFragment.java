@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -5245,7 +5247,7 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
 
     @NonNull
     private WindowInsetsCompat onApplyWindowInsets(@NonNull View v, @NonNull WindowInsetsCompat insets) {
-        navigationBarHeight = insets.getInsets(WindowInsetsCompat.Type.systemBars()).bottom;
+        navigationBarHeight = insets.getInsets(org.telegram.messenger.WindowInsetsCompatibility.systemBars()).bottom;
         if (searchContainer != null) {
             searchContainer.setPadding(0, 0, 0, navigationBarHeight);
         }

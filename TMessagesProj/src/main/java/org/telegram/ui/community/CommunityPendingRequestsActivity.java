@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.community;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -216,7 +218,7 @@ public class CommunityPendingRequestsActivity extends BaseFragment implements Fa
 
     @NonNull
     private WindowInsetsCompat onApplyWindowInsets(@NonNull View v, @NonNull WindowInsetsCompat insets) {
-        final int bottom = insets.getInsets(WindowInsetsCompat.Type.systemBars()).bottom;
+        final int bottom = insets.getInsets(org.telegram.messenger.WindowInsetsCompatibility.systemBars()).bottom;
         checkPaddings(bottom);
         return WindowInsetsCompat.CONSUMED;
     }

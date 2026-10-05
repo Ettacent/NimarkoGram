@@ -1057,7 +1057,7 @@
     <string name="NM_Camera_FaceDetection">人臉偵測</string>
     <string name="NM_Camera_FaceDetection_Desc">提示相機偵測人臉，使自動曝光和自動對焦在錄製時優先考慮人臉。</string>
     <string name="NM_Camera_UseHighRange">高 FPS 範圍</string>
-    <string name="NM_Camera_UseHighRange_Desc">在 FPS 選擇器中提供 30-60 和 60-60 FPS 範圍。需要相機宣告支援這些範圍的裝置。</string>
+    <string name="NM_Camera_UseHighRange_Desc">顯示 30–60 幀/秒選項。可用幀率取決於相機模組、解析度和錄製模式。</string>
     <string name="NM_CameraQuality">相機畫質</string>
     <string name="NM_CenterCameraControlButtons">置中控制按鈕</string>
     <string name="NM_CAM_ControlsSide">位置</string>

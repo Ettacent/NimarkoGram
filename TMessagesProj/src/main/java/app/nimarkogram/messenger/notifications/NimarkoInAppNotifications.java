@@ -1093,7 +1093,7 @@ public final class NimarkoInAppNotifications {
             root.getLocationOnScreen(viewportLocation);
             int bottom = viewportLocation[1] + root.getHeight();
             WindowInsetsCompat insets = ViewCompat.getRootWindowInsets(this);
-            int inset = insets == null ? 0 : insets.getInsets(WindowInsetsCompat.Type.ime() | WindowInsetsCompat.Type.systemBars()).bottom;
+            int inset = insets == null ? 0 : insets.getInsets(WindowInsetsCompat.Type.ime() | org.telegram.messenger.WindowInsetsCompatibility.systemBars()).bottom;
             if (viewportWidth != root.getWidth() || viewportHeight != root.getHeight()
                     || viewportTop != viewportLocation[1] || viewportInset != inset) {
                 viewportWidth = root.getWidth();

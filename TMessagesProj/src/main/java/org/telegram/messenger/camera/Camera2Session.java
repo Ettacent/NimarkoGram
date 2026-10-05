@@ -954,25 +954,22 @@ public class Camera2Session {
             Range<Integer>[] ranges = cc.get(CameraCharacteristics.CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES);
             if (ranges == null || ranges.length == 0) return null; // unknown -> play safe
 
-            for (Range<Integer> r : ranges) {
-                if (r != null && r.getLower().equals(requested.getLower()) && r.getUpper().equals(requested.getUpper())) {
-                    return requested;
-                }
-            }
-
-            Range<Integer> best = null;
-            for (Range<Integer> r : ranges) {
-                if (r == null) continue;
-                if (r.getUpper().equals(requested.getUpper())
-                        && r.getLower() <= requested.getLower()) {
-                    if (best == null || r.getLower() < best.getLower()) best = r;
-                }
-            }
-            return best; // may be null -> caller omits the override (HAL default)
+            return app.nimarkogram.messenger.camera.CameraXUtils.selectSupportedFpsRange(
+                    requested, java.util.Arrays.asList(ranges));
         } catch (Throwable t) {
             FileLog.e("Camera2Session nmValidateFpsRange failed", t);
             return null;
         }
+    }
+
+    private static Integer chooseSupportedMode(int[] supportedModes, int... preferredModes) {
+        if (supportedModes == null) return null;
+        for (int preferred : preferredModes) {
+            for (int supported : supportedModes) {
+                if (preferred == supported) return preferred;
+            }
+        }
+        return null;
     }
 
     private static Integer choosePreviewDistortionMode(int[] supportedModes) {
@@ -984,6 +981,19 @@ public class Camera2Session {
             }
         }
         return null;
+    }
+
+    private void applyNoiseReduction(CaptureRequest.Builder builder, boolean stillCapture) {
+        int[] modes = cameraCharacteristics.get(
+                CameraCharacteristics.NOISE_REDUCTION_AVAILABLE_NOISE_REDUCTION_MODES);
+        Integer mode = app.nimarkogram.messenger.NimarkoConfig.cameraNoiseReduction
+                ? chooseSupportedMode(modes, stillCapture
+                        ? CaptureRequest.NOISE_REDUCTION_MODE_HIGH_QUALITY
+                        : CaptureRequest.NOISE_REDUCTION_MODE_FAST,
+                        CaptureRequest.NOISE_REDUCTION_MODE_FAST,
+                        CaptureRequest.NOISE_REDUCTION_MODE_OFF)
+                : chooseSupportedMode(modes, CaptureRequest.NOISE_REDUCTION_MODE_OFF);
+        if (mode != null) builder.set(CaptureRequest.NOISE_REDUCTION_MODE, mode);
     }
 
     private static Integer chooseStabilizationMode(int[] supportedModes, boolean enabled, int on, int off) {
@@ -1018,6 +1028,11 @@ public class Camera2Session {
     }
 
     private void applyStabilizationModes(boolean opticalEnabled, boolean videoEnabled) {
+        applyStabilizationModesTo(captureRequestBuilder, cameraCharacteristics, opticalEnabled, videoEnabled);
+    }
+
+    private static void applyStabilizationModesTo(CaptureRequest.Builder captureRequestBuilder,
+            CameraCharacteristics cameraCharacteristics, boolean opticalEnabled, boolean videoEnabled) {
         if (cameraCharacteristics == null) return;
         List<CaptureRequest.Key<?>> requestKeys = cameraCharacteristics.getAvailableCaptureRequestKeys();
         if (requestKeys == null) return;
@@ -1039,6 +1054,31 @@ public class Camera2Session {
         if (Integer.valueOf(CaptureRequest.LENS_OPTICAL_STABILIZATION_MODE_ON).equals(modes[0])) {
             captureRequestBuilder.set(CaptureRequest.LENS_OPTICAL_STABILIZATION_MODE, modes[0]);
         }
+    }
+
+    public static void applyRoundVideoEnhancements(CaptureRequest.Builder builder,
+                                                   CameraCharacteristics characteristics) {
+        if (characteristics == null) return;
+        applyStabilizationModesTo(builder, characteristics,
+                app.nimarkogram.messenger.NimarkoConfig.cameraOpticalStabilization,
+                app.nimarkogram.messenger.NimarkoConfig.cameraStabilisation);
+        Integer af = chooseSupportedMode(characteristics.get(CameraCharacteristics.CONTROL_AF_AVAILABLE_MODES),
+                app.nimarkogram.messenger.NimarkoConfig.cameraContinuousFocus
+                        ? CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_VIDEO : CaptureRequest.CONTROL_AF_MODE_AUTO,
+                CaptureRequest.CONTROL_AF_MODE_AUTO, CaptureRequest.CONTROL_AF_MODE_OFF);
+        if (af != null) builder.set(CaptureRequest.CONTROL_AF_MODE, af);
+        Integer nr = chooseSupportedMode(characteristics.get(
+                CameraCharacteristics.NOISE_REDUCTION_AVAILABLE_NOISE_REDUCTION_MODES),
+                app.nimarkogram.messenger.NimarkoConfig.cameraNoiseReduction
+                        ? CaptureRequest.NOISE_REDUCTION_MODE_FAST : CaptureRequest.NOISE_REDUCTION_MODE_OFF,
+                CaptureRequest.NOISE_REDUCTION_MODE_OFF);
+        if (nr != null) builder.set(CaptureRequest.NOISE_REDUCTION_MODE, nr);
+        int[] faceModes = characteristics.get(CameraCharacteristics.STATISTICS_INFO_AVAILABLE_FACE_DETECT_MODES);
+        Integer face = app.nimarkogram.messenger.NimarkoConfig.cameraFaceDetection
+                ? chooseSupportedMode(faceModes, CaptureRequest.STATISTICS_FACE_DETECT_MODE_SIMPLE,
+                        CaptureRequest.STATISTICS_FACE_DETECT_MODE_FULL, CaptureRequest.STATISTICS_FACE_DETECT_MODE_OFF)
+                : chooseSupportedMode(faceModes, CaptureRequest.STATISTICS_FACE_DETECT_MODE_OFF);
+        if (face != null) builder.set(CaptureRequest.STATISTICS_FACE_DETECT_MODE, face);
     }
 
     private boolean updateCaptureRequest() {
@@ -1072,7 +1112,7 @@ public class Camera2Session {
 
                     case app.nimarkogram.messenger.NimarkoConfig.CameraXFpsRange60to60: aeFps = new Range<>(30, 60); break;
                     case app.nimarkogram.messenger.NimarkoConfig.CameraXFpsRangeDefault:
-                    default:                                                            aeFps = new Range<>(30, 60); break;
+                    default:                                                            aeFps = null; break;
                 }
 
                 Range<Integer> supportedFps = nmValidateFpsRange(aeFps);
@@ -1088,22 +1128,18 @@ public class Camera2Session {
             } catch (Throwable ignored) {}
 
             try {
-                int af = app.nimarkogram.messenger.NimarkoConfig.cameraContinuousFocus
-                        ? CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_VIDEO
+                int preferredAf = app.nimarkogram.messenger.NimarkoConfig.cameraContinuousFocus
+                        ? (recordingVideo ? CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_VIDEO
+                        : CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE)
                         : CaptureRequest.CONTROL_AF_MODE_AUTO;
-                captureRequestBuilder.set(CaptureRequest.CONTROL_AF_MODE, af);
+                Integer af = chooseSupportedMode(cameraCharacteristics.get(
+                        CameraCharacteristics.CONTROL_AF_AVAILABLE_MODES), preferredAf,
+                        CaptureRequest.CONTROL_AF_MODE_AUTO, CaptureRequest.CONTROL_AF_MODE_OFF);
+                if (af != null) captureRequestBuilder.set(CaptureRequest.CONTROL_AF_MODE, af);
             } catch (Throwable ignored) {}
 
             try {
-                int nr;
-                if (app.nimarkogram.messenger.NimarkoConfig.cameraNoiseReduction) {
-                    nr = recordingVideo
-                            ? CaptureRequest.NOISE_REDUCTION_MODE_HIGH_QUALITY
-                            : CaptureRequest.NOISE_REDUCTION_MODE_FAST;
-                } else {
-                    nr = CaptureRequest.NOISE_REDUCTION_MODE_OFF;
-                }
-                captureRequestBuilder.set(CaptureRequest.NOISE_REDUCTION_MODE, nr);
+                applyNoiseReduction(captureRequestBuilder, false);
             } catch (Throwable ignored) {}
 
             try {
@@ -1118,10 +1154,14 @@ public class Camera2Session {
             } catch (Throwable ignored) {}
 
             try {
-                int fd = app.nimarkogram.messenger.NimarkoConfig.cameraFaceDetection
-                        ? CaptureRequest.STATISTICS_FACE_DETECT_MODE_SIMPLE
-                        : CaptureRequest.STATISTICS_FACE_DETECT_MODE_OFF;
-                captureRequestBuilder.set(CaptureRequest.STATISTICS_FACE_DETECT_MODE, fd);
+                int[] faceModes = cameraCharacteristics.get(
+                        CameraCharacteristics.STATISTICS_INFO_AVAILABLE_FACE_DETECT_MODES);
+                Integer fd = app.nimarkogram.messenger.NimarkoConfig.cameraFaceDetection
+                        ? chooseSupportedMode(faceModes, CaptureRequest.STATISTICS_FACE_DETECT_MODE_SIMPLE,
+                                CaptureRequest.STATISTICS_FACE_DETECT_MODE_FULL,
+                                CaptureRequest.STATISTICS_FACE_DETECT_MODE_OFF)
+                        : chooseSupportedMode(faceModes, CaptureRequest.STATISTICS_FACE_DETECT_MODE_OFF);
+                if (fd != null) captureRequestBuilder.set(CaptureRequest.STATISTICS_FACE_DETECT_MODE, fd);
             } catch (Throwable ignored) {}
 
             if (currentEvIndex != 0) {
@@ -1163,6 +1203,8 @@ public class Camera2Session {
         if (cameraDevice == null || captureSession == null) return false;
         try {
             CaptureRequest.Builder captureRequestBuilder = cameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE);
+            copyPreviewSettings(captureRequestBuilder);
+            applyNoiseReduction(captureRequestBuilder, true);
             final int orientation = getJpegOrientation();
             captureRequestBuilder.set(CaptureRequest.JPEG_ORIENTATION, orientation);
             imageReader.setOnImageAvailableListener(new ImageReader.OnImageAvailableListener() {
@@ -1208,6 +1250,38 @@ public class Camera2Session {
             FileLog.e("Camera2Sessions takePicture error", e);
             return false;
         }
+    }
+
+    private <T> void copyPreviewSetting(CaptureRequest.Builder target, CaptureRequest.Key<T> key) {
+        if (captureRequestBuilder == null) return;
+        T value = captureRequestBuilder.get(key);
+        if (value != null) target.set(key, value);
+    }
+
+    private void copyPreviewSettings(CaptureRequest.Builder target) {
+        copyPreviewSetting(target, CaptureRequest.CONTROL_MODE);
+        copyPreviewSetting(target, CaptureRequest.CONTROL_SCENE_MODE);
+        copyPreviewSetting(target, CaptureRequest.CONTROL_AE_MODE);
+        copyPreviewSetting(target, CaptureRequest.CONTROL_AE_EXPOSURE_COMPENSATION);
+        copyPreviewSetting(target, CaptureRequest.CONTROL_AE_REGIONS);
+        copyPreviewSetting(target, CaptureRequest.CONTROL_AF_MODE);
+        copyPreviewSetting(target, CaptureRequest.CONTROL_AF_REGIONS);
+        copyPreviewSetting(target, CaptureRequest.CONTROL_AWB_MODE);
+        copyPreviewSetting(target, CaptureRequest.CONTROL_AWB_REGIONS);
+        copyPreviewSetting(target, CaptureRequest.LENS_FOCUS_DISTANCE);
+        copyPreviewSetting(target, CaptureRequest.LENS_OPTICAL_STABILIZATION_MODE);
+        copyPreviewSetting(target, CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE);
+        copyPreviewSetting(target, CaptureRequest.STATISTICS_FACE_DETECT_MODE);
+        copyPreviewSetting(target, CaptureRequest.SCALER_CROP_REGION);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            copyPreviewSetting(target, CaptureRequest.CONTROL_ZOOM_RATIO);
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            copyPreviewSetting(target, CaptureRequest.DISTORTION_CORRECTION_MODE);
+        }
+        target.set(CaptureRequest.FLASH_MODE, flashing
+                ? (recordingVideo ? CaptureRequest.FLASH_MODE_TORCH : CaptureRequest.FLASH_MODE_SINGLE)
+                : CaptureRequest.FLASH_MODE_OFF);
     }
 
     public static Size chooseQualityAwareSize(Size[] choices, int viewWidth, int viewHeight, int requestedHeight) {

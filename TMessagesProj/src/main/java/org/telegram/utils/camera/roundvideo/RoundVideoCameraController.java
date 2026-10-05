@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.utils.camera.roundvideo;
 
 import android.Manifest;
@@ -606,6 +608,15 @@ final class RoundVideoCameraController {
                         notifySwitchCompletion = false;
                         awaitingSwitchPreviewFrame = wasSwitch;
                         submitRepeatingRequest();
+                        if (Integer.valueOf(CaptureRequest.CONTROL_AF_MODE_AUTO).equals(
+                                repeatingBuilder.get(CaptureRequest.CONTROL_AF_MODE))) {
+                            repeatingBuilder.set(CaptureRequest.CONTROL_AF_TRIGGER, CaptureRequest.CONTROL_AF_TRIGGER_START);
+                            try {
+                                session.capture(repeatingBuilder.build(), captureCallback, cameraHandler);
+                            } finally {
+                                repeatingBuilder.set(CaptureRequest.CONTROL_AF_TRIGGER, CaptureRequest.CONTROL_AF_TRIGGER_IDLE);
+                            }
+                        }
                         diagnostics.log("capture session configured: facing=" + activeFacing
                                 + ", fpsRange=" + activeFpsRange
                                 + ", elapsedMs=" + elapsedMs(captureSessionRequestedNs)
@@ -780,7 +791,7 @@ final class RoundVideoCameraController {
                 CaptureRequest.CONTROL_CAPTURE_INTENT,
                 CaptureRequest.CONTROL_CAPTURE_INTENT_VIDEO_RECORD
         );
-        setContinuousVideoAf(builder);
+        org.telegram.messenger.camera.Camera2Session.applyRoundVideoEnhancements(builder, characteristics);
         setPreferredFps(builder, logConfiguration);
         applyZoom(builder);
         applyTorch(builder);
@@ -1226,15 +1237,6 @@ final class RoundVideoCameraController {
         return Boolean.TRUE.equals(
                 characteristics.get(CameraCharacteristics.FLASH_INFO_AVAILABLE)
         );
-    }
-
-    private void setContinuousVideoAf(@NonNull CaptureRequest.Builder builder) {
-        int[] modes = characteristics == null
-                ? null
-                : characteristics.get(CameraCharacteristics.CONTROL_AF_AVAILABLE_MODES);
-        if (contains(modes, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_VIDEO)) {
-            builder.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_VIDEO);
-        }
     }
 
     @NonNull

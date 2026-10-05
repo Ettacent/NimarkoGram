@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 5.x.x.
  * It is licensed under GNU GPL v. 2 or later.
@@ -9,9 +11,9 @@
 package org.telegram.messenger;
 
 import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.Iterator;
+import java.util.AbstractMap;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Set;
 
@@ -65,7 +67,7 @@ public class LruCache<T> {
         return null;
     }
 
-    public ArrayList<String> getFilterKeys(String key) {
+    public synchronized ArrayList<String> getFilterKeys(String key) {
         ArrayList<String> arr = mapFilters.get(key);
         if (arr != null) {
             return new ArrayList<>(arr);
@@ -73,11 +75,8 @@ public class LruCache<T> {
         return null;
     }
 
-    public void moveToFront(String key) {
-        T value = map.remove(key);
-        if (value != null) {
-            map.put(key, value);
-        }
+    public synchronized void moveToFront(String key) {
+        map.get(key);
     }
 
     /**
@@ -98,20 +97,20 @@ public class LruCache<T> {
             if (previous != null) {
                 size -= safeSizeOf(key, previous);
             }
-        }
 
-        String[] args = key.split("@");
-        if (args.length > 1) {
-            ArrayList<String> arr = mapFilters.get(args[0]);
-            if (arr == null) {
-                arr = new ArrayList<>();
-                mapFilters.put(args[0], arr);
+            String[] args = key.split("@");
+            if (args.length > 1) {
+                ArrayList<String> arr = mapFilters.get(args[0]);
+                if (arr == null) {
+                    arr = new ArrayList<>();
+                    mapFilters.put(args[0], arr);
+                }
+                if (!arr.contains(args[1])) {
+                    arr.add(args[1]);
+                }
             }
-            if (!arr.contains(args[1])) {
-                arr.add(args[1]);
-            }
-        }
 
+        }
         if (previous != null) {
             entryRemoved(false, key, previous, value);
         }
@@ -125,36 +124,34 @@ public class LruCache<T> {
      *     to evict even 0-sized elements.
      */
     private void trimToSize(int maxSize, String justAdded) {
-        synchronized (this) {
-            Iterator<HashMap.Entry<String, T>> iterator = map.entrySet().iterator();
-            while (iterator.hasNext()) {
-                if (size <= maxSize || map.isEmpty()) {
-                    break;
-                }
-                HashMap.Entry<String, T> entry = iterator.next();
-
-                String key = entry.getKey();
-                if (justAdded != null && justAdded.equals(key)) {
-                    continue;
-                }
-                T value = entry.getValue();
-                size -= safeSizeOf(key, value);
-                iterator.remove();
-
-                String[] args = key.split("@");
-                if (args.length > 1) {
-                    ArrayList<String> arr = mapFilters.get(args[0]);
-                    if (arr != null) {
-                        arr.remove(args[1]);
-                        if (arr.isEmpty()) {
-                            mapFilters.remove(args[0]);
-                        }
+        while (true) {
+            String key = null;
+            T value = null;
+            synchronized (this) {
+                if (size <= maxSize || map.isEmpty()) return;
+                for (Map.Entry<String, T> entry : map.entrySet()) {
+                    if (!entry.getKey().equals(justAdded)) {
+                        key = entry.getKey();
+                        value = entry.getValue();
+                        break;
                     }
                 }
-
-                entryRemoved(true, key, value, null);
+                if (key == null) return;
+                size -= safeSizeOf(key, value);
+                map.remove(key);
+                removeFilterKey(key);
             }
+
+            entryRemoved(true, key, value, null);
         }
+    }
+    private void removeFilterKey(String key) {
+        String[] args = key.split("@");
+        if (args.length < 2) return;
+        ArrayList<String> arr = mapFilters.get(args[0]);
+        if (arr == null) return;
+        arr.remove(args[1]);
+        if (arr.isEmpty()) mapFilters.remove(args[0]);
     }
 
     /**
@@ -172,20 +169,11 @@ public class LruCache<T> {
             previous = map.remove(key);
             if (previous != null) {
                 size -= safeSizeOf(key, previous);
+                removeFilterKey(key);
             }
         }
 
         if (previous != null) {
-            String[] args = key.split("@");
-            if (args.length > 1) {
-                ArrayList<String> arr = mapFilters.get(args[0]);
-                if (arr != null) {
-                    arr.remove(args[1]);
-                    if (arr.isEmpty()) {
-                        mapFilters.remove(args[0]);
-                    }
-                }
-            }
 
             entryRemoved(false, key, previous, null);
         }
@@ -193,7 +181,7 @@ public class LruCache<T> {
         return previous;
     }
     
-    public boolean contains(String key){
+    public synchronized boolean contains(String key){
     	return map.containsKey(key);
     }
 
@@ -259,6 +247,10 @@ public class LruCache<T> {
     }
 
     public synchronized final Set<Map.Entry<String, T>> entrySet() {
-        return map.entrySet();
+        Set<Map.Entry<String, T>> entries = new LinkedHashSet<>();
+        for (Map.Entry<String, T> entry : map.entrySet()) {
+            entries.add(new AbstractMap.SimpleImmutableEntry<>(entry));
+        }
+        return entries;
     }
 }

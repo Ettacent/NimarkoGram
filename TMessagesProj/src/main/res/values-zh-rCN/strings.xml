@@ -1061,7 +1061,7 @@
     <string name="NM_Camera_FaceDetection">人脸检测</string>
     <string name="NM_Camera_FaceDetection_Desc">提示相机检测人脸，使自动曝光和自动对焦在录制时优先考虑人脸。</string>
     <string name="NM_Camera_UseHighRange">高帧率范围</string>
-    <string name="NM_Camera_UseHighRange_Desc">在帧率选择器中提供 30-60 和 60-60 FPS 范围。需要设备相机声明支持这些范围。</string>
+    <string name="NM_Camera_UseHighRange_Desc">显示 30–60 帧/秒选项。可用帧率取决于相机模组、分辨率和录制模式。</string>
     <string name="NM_CameraQuality">相机画质</string>
     <string name="NM_CenterCameraControlButtons">居中控制按钮</string>
     <string name="NM_CAM_ControlsSide">位置</string>

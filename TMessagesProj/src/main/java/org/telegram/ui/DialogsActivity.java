@@ -7990,6 +7990,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
     @Override
     public void onResume() {
         super.onResume();
+        refreshArchivePrivacyLayout();
         if (foldersAtBottom() && !filterTabsBootstrapPending) {
             updateFilterTabsVisibility(true);
         }
@@ -10049,6 +10050,36 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         }
     }
 
+    private boolean lastArchivePrivacyHidden = NimarkoConfig.hideArchiveFromChatsList;
+
+    private void refreshArchivePrivacyLayout() {
+        if (viewPages == null || lastArchivePrivacyHidden == NimarkoConfig.hideArchiveFromChatsList) return;
+        lastArchivePrivacyHidden = NimarkoConfig.hideArchiveFromChatsList;
+        for (ViewPage page : viewPages) {
+            if (page == null || page.listView == null || page.dialogsAdapter == null) continue;
+            if (page.pullForegroundDrawable == null && supportsArchivePull()) {
+                page.pullForegroundDrawable = new PullForegroundDrawable(
+                        LocaleController.getString(R.string.AccSwipeForArchive),
+                        LocaleController.getString(R.string.AccReleaseForArchive)) {
+                    @Override
+                    protected float getViewOffset() {
+                        return page.listView.getViewOffset();
+                    }
+                };
+                page.dialogsAdapter.setArchivedPullDrawable(page.pullForegroundDrawable);
+            }
+            page.listView.updatePullState();
+            if (page.pullForegroundDrawable != null) {
+                page.pullForegroundDrawable.setPullProgress(0f);
+                if (hasHiddenArchive()) page.pullForegroundDrawable.showHidden();
+                else page.pullForegroundDrawable.doNotShow();
+            }
+            page.dialogsAdapter.notifyDataSetChanged();
+            page.listView.requestLayout();
+            page.listView.invalidate();
+        }
+        if (fragmentView != null) fragmentView.requestLayout();
+    }
     private boolean supportsArchivePull() {
         return !NimarkoConfig.hideArchiveFromChatsList
                 && !onlySelect
@@ -11824,6 +11855,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             if (viewPages == null || dialogsListFrozen) {
                 return;
             }
+            refreshArchivePrivacyLayout();
             for (int a = 0; a < viewPages.length; a++) {
                 final ViewPage viewPage = viewPages[a];
                 MessagesController.DialogFilter filter = null;

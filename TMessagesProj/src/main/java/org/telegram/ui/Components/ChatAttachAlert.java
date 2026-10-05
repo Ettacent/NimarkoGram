@@ -1657,7 +1657,7 @@ public class ChatAttachAlert extends BottomSheet implements NotificationCenter.N
                     }
 
                     final int keyboardH = getRootBottomInset(WindowInsetsCompat.Type.ime());
-                    final int bottomInsetWithEmoji = Math.max(getRootBottomInset(WindowInsetsCompat.Type.ime() | WindowInsetsCompat.Type.systemBars()), emojiPadding);
+                    final int bottomInsetWithEmoji = Math.max(getRootBottomInset(WindowInsetsCompat.Type.ime() | org.telegram.messenger.WindowInsetsCompatibility.systemBars()), emojiPadding);
                     final int p2 = Math.max(keyboardH > 0 ? 0 : AndroidUtilities.navigationBarHeight, emojiPadding);
 
                     ignoreLayout = true;

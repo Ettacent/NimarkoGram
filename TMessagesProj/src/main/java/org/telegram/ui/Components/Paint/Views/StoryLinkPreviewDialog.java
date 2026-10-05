@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components.Paint.Views;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -247,7 +249,7 @@ public class StoryLinkPreviewDialog extends Dialog {
                 @Override
                 public WindowInsets onApplyWindowInsets(@NonNull View v, @NonNull WindowInsets insets) {
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                        Insets r = insets.getInsets(WindowInsetsCompat.Type.displayCutout() | WindowInsetsCompat.Type.systemBars());
+                        Insets r = insets.getInsets(WindowInsetsCompat.Type.displayCutout() | org.telegram.messenger.WindowInsetsCompatibility.systemBars());
                         StoryLinkPreviewDialog.this.insets.set(r.left, r.top, r.right, r.bottom);
                     } else {
                         StoryLinkPreviewDialog.this.insets.set(insets.getStableInsetLeft(), insets.getStableInsetTop(), insets.getStableInsetRight(), insets.getStableInsetBottom());

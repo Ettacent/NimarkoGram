@@ -109,6 +109,8 @@ public class NimarkoCameraXView extends BaseCameraView {
     @Nullable private Range<Integer> appliedSessionFpsRange;
     private float baseZoomRatio = 1f;
     private int cameraGeneration;
+    private int initialFocusGeneration = -1;
+    private int userFocusGeneration = -1;
     private int initializationGeneration;
     private boolean destroyed;
     private boolean cameraControlsReady;
@@ -607,6 +609,11 @@ public class NimarkoCameraXView extends BaseCameraView {
         if (boundCamera != camera || generation != cameraGeneration
                 || !cameraControlsReady) return;
         try {
+            if (initialFocusGeneration != generation && userFocusGeneration != generation) {
+                initialFocusGeneration = generation;
+                trackControlFuture(CameraXUtils.startConfiguredFocus(boundCamera),
+                        boundCamera, generation, "CameraX initial focus");
+            }
             ExposureState exposure = boundCamera.getCameraInfo().getExposureState();
             if (exposure != null && exposure.isExposureCompensationSupported()) {
                 int lower = exposure.getExposureCompensationRange().getLower();
@@ -907,13 +914,14 @@ public class NimarkoCameraXView extends BaseCameraView {
                 FocusMeteringAction.Builder actionBuilder = new FocusMeteringAction.Builder(point,
                         FocusMeteringAction.FLAG_AF)
                         .addPoint(exposurePoint, FocusMeteringAction.FLAG_AE);
-                if (forceLock) {
+                if (forceLock || !NimarkoConfig.cameraContinuousFocus) {
                     actionBuilder.disableAutoCancel();
                 } else {
                     actionBuilder.setAutoCancelDuration(5, TimeUnit.SECONDS);
                 }
                 FocusMeteringAction action = actionBuilder.build();
                 final Camera focusCamera = camera;
+                userFocusGeneration = cameraGeneration;
                 focusCamera.getCameraControl().startFocusAndMetering(action);
             } catch (Throwable t) {
                 FileLog.e(t);

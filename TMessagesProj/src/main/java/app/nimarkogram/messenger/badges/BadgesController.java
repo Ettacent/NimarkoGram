@@ -45,12 +45,9 @@ public final class BadgesController {
 
     public final ApiBadgeSource apiBadgeSource = new ApiBadgeSource();
 
-    public static final BadgeDTO DEV_BADGE       = new BadgeDTO(5359407509327085568L, null);
-    public static final BadgeDTO SUPPORTER_BADGE = new BadgeDTO(5391059537102927631L, null);
-    public static final BadgeDTO TRUSTED_BADGE   = new BadgeDTO(5452008215409629764L, null);
-
-    private static final Set<Long> trustedPluginsCache = parseIds(
-            org.telegram.messenger.BuildConfig.NIMARKO_TRUSTED_PLUGIN_IDS);
+    public static final BadgeDTO DEV_BADGE = null;
+    public static final BadgeDTO SUPPORTER_BADGE = null;
+    public static final BadgeDTO TRUSTED_BADGE = null;
 
     private static final String PREFS = "nimarko_badges";
     private static final String KEY_CACHE = "cache_json";
@@ -95,20 +92,6 @@ public final class BadgesController {
     private ScheduledFuture<?> pendingPersist;
 
     private BadgesController() {}
-
-    private static Set<Long> parseIds(String value) {
-        Set<Long> ids = new HashSet<>();
-        if (value == null || value.trim().isEmpty()) {
-            return ids;
-        }
-        for (String part : value.split(",")) {
-            try {
-                ids.add(Long.parseLong(part.trim()));
-            } catch (NumberFormatException ignored) {
-            }
-        }
-        return ids;
-    }
 
     public synchronized void init(Context context) {
         if (initialized) return;
@@ -202,9 +185,6 @@ public final class BadgesController {
             if (e != null && e.getBadge() != null && e.getBadge().getDocumentId() != 0L) {
                 return e.getBadge();
             }
-            if (!isUser && y(id)) {
-                return TRUSTED_BADGE;
-            }
             return null;
         } catch (Throwable t) {
             FileLog.e(t);
@@ -223,17 +203,11 @@ public final class BadgesController {
     }
 
     public BadgeDTO m(TLRPC.User user) {
-        if (user == null) return null;
-        return u(user) ? DEV_BADGE : SUPPORTER_BADGE;
+        return null;
     }
 
     public BadgeDTO l() {
-        try {
-            long me = UserConfig.getInstance(UserConfig.selectedAccount).clientUserId;
-            return w(me) ? DEV_BADGE : SUPPORTER_BADGE;
-        } catch (Throwable ignored) {
-            return SUPPORTER_BADGE;
-        }
+        return null;
     }
 
     public BadgeDTO h() {
@@ -281,7 +255,7 @@ public final class BadgesController {
     }
 
     public boolean y(long id) {
-        return trustedPluginsCache.contains(id);
+        return false;
     }
 
     public boolean z(TLRPC.User user, BadgeDTO badge) {

@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.community;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -458,7 +460,7 @@ public class CommunityEditActivity extends BaseFragment implements ImageUpdater.
 
     @NonNull
     private WindowInsetsCompat onApplyWindowInsets(@NonNull View ignoredV, @NonNull WindowInsetsCompat insets) {
-        Insets systemInsets = insets.getInsets(WindowInsetsCompat.Type.systemBars());
+        Insets systemInsets = insets.getInsets(org.telegram.messenger.WindowInsetsCompatibility.systemBars());
         listView.setPadding(0, systemInsets.top, 0, systemInsets.bottom);
         return WindowInsetsCompat.CONSUMED;
     }

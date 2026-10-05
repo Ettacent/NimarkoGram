@@ -10,6 +10,7 @@ import java.util.ArrayList;
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.Components.AnimatedLinearLayout;
+import org.telegram.ui.Components.RecyclerListView;
 import org.telegram.ui.Components.blur3.capture.IBlur3Capture;
 import org.telegram.ui.Components.blur3.utils.Blur3Utils;
 import org.telegram.ui.Components.blur3.BlurredBackgroundDrawableViewFactory;
@@ -44,7 +45,10 @@ public final class NotificationListGlassSource {
         suppressor.invalidateResultRenderNodes((canvas, position) -> {
             for (View child : contents) {
                 if (!shouldCapture(child, panel)) continue;
-                if (child instanceof IBlur3Capture) {
+                if (child instanceof RecyclerListView) {
+                    Blur3Utils.captureRelativeParent(((RecyclerListView) child)::captureContentForBlur,
+                            canvas, position, child, root, Math.round(child.getAlpha() * 255));
+                } else if (child instanceof IBlur3Capture) {
                     Blur3Utils.captureRelativeParent((IBlur3Capture) child, canvas, position, child, root,
                             Math.round(child.getAlpha() * 255));
                 } else {
