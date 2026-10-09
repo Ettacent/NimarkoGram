@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui;
 
 import android.graphics.Canvas;
@@ -8,6 +10,7 @@ import android.widget.FrameLayout;
 
 import androidx.annotation.Nullable;
 
+import app.nimarkogram.messenger.utils.NimarkoUiAnimationClock;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -412,8 +415,8 @@ public class EmojiAnimationsOverlay implements NotificationCenter.NotificationCe
                 // .invalidate() below would repaint the WHOLE chat + input every frame forever (only cleared by
                 // re-entering the chat). Bound it: drop such an object after a short grace, plus a hard cap for
                 // any other stuck state. Legit effects carry a non-null lottie and drain via isDone in ~1-3 s.
-                long nmNow = System.currentTimeMillis();
-                if (drawingObject.startTime == 0) drawingObject.startTime = nmNow;
+                long nmNow = NimarkoUiAnimationClock.now();
+                if (drawingObject.startTime < 0) drawingObject.startTime = nmNow;
                 long nmElapsed = nmNow - drawingObject.startTime;
                 boolean nmStuck = nmElapsed > 6000L
                         || (drawingObject.genericEffect == null && drawingObject.imageReceiver.getLottieAnimation() == null && nmElapsed > 3000L);
@@ -1155,7 +1158,7 @@ public class EmojiAnimationsOverlay implements NotificationCenter.NotificationCe
         boolean isOut;
         boolean removing;
         float removeProgress;
-        long startTime; // NG: wall-clock of first draw — used to force-remove a stuck (null-lottie) effect
+        long startTime = -1;
         int messageId;
         boolean hasMessageIdentity;
         int messageAccount;

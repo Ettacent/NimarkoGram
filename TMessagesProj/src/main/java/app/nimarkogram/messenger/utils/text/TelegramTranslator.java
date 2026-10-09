@@ -6,6 +6,7 @@
  */
 package app.nimarkogram.messenger.utils.text;
 
+import java.util.concurrent.TimeoutException;
 import android.text.TextUtils;
 
 import org.telegram.messenger.LanguageDetector;
@@ -69,7 +70,7 @@ public class TelegramTranslator extends BaseTranslator {
             });
         }
         if (!waitDetect.await(15, TimeUnit.SECONDS)) {
-            throw new java.util.concurrent.TimeoutException("Language detection timed out");
+            throw new TimeoutException("Language detection timed out");
         }
         if (exception.get() != null) {
             throw exception.get();
@@ -108,7 +109,7 @@ public class TelegramTranslator extends BaseTranslator {
         });
         if (!waitTranslate.await(30, TimeUnit.SECONDS)) {
             ConnectionsManager.getInstance(account).cancelRequest(reqId, true);
-            throw new java.util.concurrent.TimeoutException("Translation request timed out");
+            throw new TimeoutException("Translation request timed out");
         }
         if (exception.get() != null) {
             throw exception.get();

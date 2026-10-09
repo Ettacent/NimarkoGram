@@ -2,6 +2,7 @@
 
 package app.nimarkogram.messenger.infocards.preferences;
 
+import android.content.Context;
 import android.util.SparseArray;
 import android.view.View;
 
@@ -42,7 +43,7 @@ public class InfoCardsPreferencesActivity extends BasePreferencesActivity implem
     }
 
     @Override
-    public View createView(android.content.Context context) {
+    public View createView(Context context) {
         View view = super.createView(context);
         listView.listenReorder(this::onReordered);
         listView.allowReorder(true);

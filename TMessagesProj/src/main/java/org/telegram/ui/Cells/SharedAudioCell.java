@@ -130,6 +130,9 @@ public class SharedAudioCell extends FrameLayout implements DownloadController.F
         radialProgress = new RadialProgress2(this, resourcesProvider);
         radialProgress.setColorKeys(Theme.key_chat_inLoader, Theme.key_chat_inLoaderSelected, Theme.key_chat_inMediaIcon, Theme.key_chat_inMediaIconSelected);
 
+        radialProgress.overlayImageView.setCrossfadeWithOldImage(true);
+        radialProgress.overlayImageView.setForceCrossfade(true);
+        radialProgress.overlayImageView.setCrossfadeDuration(180);
         TAG = DownloadController.getInstance(currentAccount).generateObserverTag();
         setWillNotDraw(false);
 

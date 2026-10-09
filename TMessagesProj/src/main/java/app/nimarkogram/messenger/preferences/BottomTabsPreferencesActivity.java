@@ -2,6 +2,7 @@
 
 package app.nimarkogram.messenger.preferences;
 
+import org.telegram.ui.DialogsActivity;
 import android.os.Handler;
 import android.os.Looper;
 import android.view.View;
@@ -85,7 +86,7 @@ public class BottomTabsPreferencesActivity extends BasePreferencesActivity {
             }
             if (editorCell != null) {
                 items.add(UItem.asCustom(editorCell,
-                        org.telegram.ui.DialogsActivity.MAIN_TABS_HEIGHT_WITH_MARGINS));
+                        DialogsActivity.MAIN_TABS_HEIGHT_WITH_MARGINS));
                 items.add(UItem.asShadow(-3, LocaleController.getString(R.string.NM_BT_EditorFooter)));
             }
 

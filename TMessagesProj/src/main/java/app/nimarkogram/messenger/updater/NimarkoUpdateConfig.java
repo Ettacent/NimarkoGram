@@ -2,6 +2,7 @@
 
 package app.nimarkogram.messenger.updater;
 
+import android.content.Context;
 import android.content.SharedPreferences;
 
 import org.telegram.messenger.ApplicationLoader;
@@ -11,7 +12,7 @@ public final class NimarkoUpdateConfig {
     private NimarkoUpdateConfig() {}
 
     private static SharedPreferences prefs() {
-        return ApplicationLoader.applicationContext.getSharedPreferences("nimarko_update", android.content.Context.MODE_PRIVATE);
+        return ApplicationLoader.applicationContext.getSharedPreferences("nimarko_update", Context.MODE_PRIVATE);
     }
 
     public static boolean getAutoOTA() { return prefs().getBoolean("autoOTA", true); }

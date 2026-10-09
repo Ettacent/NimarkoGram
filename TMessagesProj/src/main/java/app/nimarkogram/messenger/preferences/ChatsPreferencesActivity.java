@@ -11,6 +11,7 @@
 
 package app.nimarkogram.messenger.preferences;
 
+import org.telegram.messenger.NotificationCenter;
 import static org.telegram.messenger.LocaleController.getString;
 
 import android.content.Context;
@@ -373,7 +374,7 @@ public class ChatsPreferencesActivity extends NimarkoUniversalPreferencesActivit
             NimarkoConfig.toggleSortByUnread();
             updateCheckState(view, NimarkoConfig.sortByUnread);
             MessagesController.getInstance(currentAccount).sortDialogs(null);
-            getNotificationCenter().postNotificationName(org.telegram.messenger.NotificationCenter.dialogsNeedReload);
+            getNotificationCenter().postNotificationName(NotificationCenter.dialogsNeedReload);
         } else if (id == unarchiveOnSwipeRow) {
             NimarkoConfig.toggleUnarchiveOnSwipe();
             updateCheckState(view, NimarkoConfig.unarchiveOnSwipe);

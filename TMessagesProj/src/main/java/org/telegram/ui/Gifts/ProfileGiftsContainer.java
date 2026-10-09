@@ -2,6 +2,7 @@
 
 package org.telegram.ui.Gifts;
 
+import app.nimarkogram.messenger.utils.ui.ProfileListPadding;
 import static org.telegram.messenger.AndroidUtilities.dp;
 import static org.telegram.messenger.AndroidUtilities.ilerp;
 import static org.telegram.messenger.AndroidUtilities.lerp;
@@ -169,11 +170,7 @@ public class ProfileGiftsContainer extends FrameLayout implements NotificationCe
             for (View view : pages) {
                 if (view instanceof Page) {
                     Page page = (Page) view;
-                    final int paddingTopOld = page.listView.getPaddingTop();
-                    page.listView.setPadding(dp(9), externalPaddingTop, dp(9), dp(30 + 56));
-                    final int paddingTopNew = page.listView.getPaddingTop();
-                    final int scroll = paddingTopOld - paddingTopNew;
-                    AndroidUtilities.doOnLayout(page.listView, () -> page.listView.scrollBy(0, scroll));
+                    page.profilePadding.apply(dp(9), externalPaddingTop, dp(9), dp(30 + 56));
                 }
             }
 
@@ -184,6 +181,7 @@ public class ProfileGiftsContainer extends FrameLayout implements NotificationCe
 
     public static class Page extends FrameLayout implements NotificationCenter.NotificationCenterDelegate {
 
+        private ProfileListPadding profilePadding;
         private final ProfileGiftsContainer parent;
         private final int currentAccount;
         private final Theme.ResourcesProvider resourcesProvider;
@@ -248,6 +246,7 @@ public class ProfileGiftsContainer extends FrameLayout implements NotificationCe
                     parent.updateTabsY();
                 }
             };
+            profilePadding = new ProfileListPadding(listView);
             listView.adapter.setApplyBackground(false);
             listView.setSelectorType(9);
             listView.setSelectorDrawableColor(0);

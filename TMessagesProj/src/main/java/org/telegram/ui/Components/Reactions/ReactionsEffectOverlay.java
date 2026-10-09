@@ -1,5 +1,8 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components.Reactions;
 
+import app.nimarkogram.messenger.utils.NimarkoAppMotionBlur;
 import android.animation.Animator;
 import android.animation.AnimatorListenerAdapter;
 import android.annotation.SuppressLint;
@@ -805,6 +808,7 @@ public class ReactionsEffectOverlay {
             reactionsEffectOverlay.windowManager = baseFragment.getParentActivity().getWindowManager();
             AndroidUtilities.setPreferredMaxRefreshRate(reactionsEffectOverlay.windowManager, reactionsEffectOverlay.windowView, lp);
             reactionsEffectOverlay.windowManager.addView(reactionsEffectOverlay.windowView, lp);
+            NimarkoAppMotionBlur.attachRoot(reactionsEffectOverlay.windowView);
         } else {
             reactionsEffectOverlay.decorView = (FrameLayout) baseFragment.getParentActivity().getWindow().getDecorView();
             reactionsEffectOverlay.decorView.addView(reactionsEffectOverlay.windowView);

@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 7.x.x.
  * It is licensed under GNU GPL v. 2 or later.
@@ -38,7 +40,7 @@ public class BuildVars {
 
     public static boolean IS_BILLING_UNAVAILABLE = false;
 
-    public static boolean SUPPORTS_PASSKEYS = true;
+    public static boolean SUPPORTS_PASSKEYS = Build.VERSION.SDK_INT >= 28;
 
     static {
         if (ApplicationLoader.applicationContext != null) {

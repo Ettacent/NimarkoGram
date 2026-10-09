@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of tgnet library v. 1.1
  * It is licensed under GNU GPL v. 2 or later.
@@ -19,6 +21,7 @@
 #include <memory>
 #include <string>
 #include <cinttypes>
+#include <utility>
 #include "ConnectionsManager.h"
 #include "FileLog.h"
 #include "EventObject.h"
@@ -193,7 +196,7 @@ void ConnectionsManager::checkPendingTasks() {
         } else {
             count--;
         }
-        task = pendingTasks.front();
+        task = std::move(pendingTasks.front());
         pendingTasks.pop();
         pthread_mutex_unlock(&mutex);
         task();
@@ -308,7 +311,7 @@ void ConnectionsManager::select() {
 
 void ConnectionsManager::scheduleTask(std::function<void()> task) {
     pthread_mutex_lock(&mutex);
-    pendingTasks.push(task);
+    pendingTasks.push(std::move(task));
     pthread_mutex_unlock(&mutex);
     wakeup();
 }

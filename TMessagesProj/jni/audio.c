@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 #include <jni.h>
 #include <ogg/ogg.h>
 #include <stdio.h>
@@ -6,6 +8,9 @@
 #include <time.h>
 #include <opusfile.h>
 #include <math.h>
+#include <pthread.h>
+#include <stdint.h>
+#include <string.h>
 #include "c_utils.h"
 #include "libavformat/avformat.h"
 #include "libavcodec/avcodec.h"
@@ -187,32 +192,37 @@ buf[base + 1]=((val) >> 8) & 0xff; \
 buf[base] = (val) & 0xff; \
 } while(0)
 
-static void comment_init(char **comments, int *length, const char *vendor_string) {
+static int comment_init(char **comments, int *length, const char *vendor_string) {
     // The 'vendor' field should be the actual encoding library used
     size_t vendor_length = strlen(vendor_string);
     int user_comment_list_length = 0;
     size_t len = 8 + 4 + vendor_length + 4;
     char *p = (char *)malloc(len);
+    if (!p) return 0;
     memcpy(p, "OpusTags", 8);
     writeint(p, 8, vendor_length);
     memcpy(p + 12, vendor_string, vendor_length);
     writeint(p, 12 + vendor_length, user_comment_list_length);
     *length = len;
     *comments = p;
+    return 1;
 }
 
-static void comment_pad(char **comments, int* length, size_t amount) {
+static int comment_pad(char **comments, int* length, size_t amount) {
     if (amount > 0) {
         char *p = *comments;
         // Make sure there is at least amount worth of padding free, and round up to the maximum that fits in the current ogg segments
         size_t newlen = (*length + amount + 255) / 255 * 255 - 1;
-        p = realloc(p, newlen);
+        char *replacement = realloc(p, newlen);
+        if (!replacement) return 0;
+        p = replacement;
         for (int32_t i = *length; i < newlen; i++) {
             p[i] = 0;
         }
         *comments = p;
         *length = newlen;
     }
+    return 1;
 }
 
 static int writeOggPage(ogg_page *page, FILE *os) {
@@ -234,7 +244,7 @@ ogg_int32_t _packetId;
 OpusEncoder *_encoder = 0;
 uint8_t *_packet = 0;
 ogg_stream_state os;
-const char *_filePath;
+char *_filePath;
 FILE *_fileOs = 0;
 oe_enc_opt inopt;
 OpusHeader header;
@@ -251,13 +261,18 @@ int size_segments;
 int last_segments;
 int serialno;
 
-void cleanupRecorder() {
+static pthread_mutex_t recorderMutex = PTHREAD_MUTEX_INITIALIZER;
+static int recorderReady;
+static int recorderStreamInitialized;
 
-    if (_fileOs) {
+static void cleanupRecorderLocked() {
+    recorderReady = 0;
+
+    if (recorderStreamInitialized && _fileOs) {
         while (ogg_stream_flush(&os, &og)) {
             writeOggPage(&og, _fileOs);
         }
-    } else {
+    } else if (recorderStreamInitialized) {
         ogg_stream_flush(&os, &og);
     }
     
@@ -266,7 +281,10 @@ void cleanupRecorder() {
         _encoder = 0;
     }
     
-    ogg_stream_clear(&os);
+    if (recorderStreamInitialized) ogg_stream_clear(&os);
+    recorderStreamInitialized = 0;
+    free(inopt.comments);
+    inopt.comments = 0;
     
     if (_packet) {
         free(_packet);
@@ -297,8 +315,8 @@ void cleanupRecorder() {
     memset(&og, 0, sizeof(ogg_page));
 }
 
-int initRecorder(const char *path, opus_int32 sampleRate) {
-    cleanupRecorder();
+static int initRecorderLocked(const char *path, opus_int32 sampleRate) {
+    cleanupRecorderLocked();
 
     coding_rate = sampleRate;
     rate = sampleRate;
@@ -308,14 +326,15 @@ int initRecorder(const char *path, opus_int32 sampleRate) {
         return 0;
     }
 
-    int length = strlen(path);
+    size_t length = strlen(path);
     _filePath = (char*) malloc(length + 1);
+    if (!_filePath) goto fail;
     strcpy(_filePath, path);
 
     _fileOs = fopen(path, "w");
     if (!_fileOs) {
         LOGE("error cannot open file: %s", path);
-        return 0;
+        goto fail;
     }
     
     inopt.rate = rate;
@@ -328,11 +347,11 @@ int initRecorder(const char *path, opus_int32 sampleRate) {
     inopt.channels = 1;
     inopt.skip = 0;
     
-    comment_init(&inopt.comments, &inopt.comments_length, opus_get_version_string());
+    if (!comment_init(&inopt.comments, &inopt.comments_length, opus_get_version_string())) goto fail;
     
     if (rate != coding_rate) {
         LOGE("Invalid rate");
-        return 0;
+        goto fail;
     }
     
     header.channels = 1;
@@ -343,19 +362,20 @@ int initRecorder(const char *path, opus_int32 sampleRate) {
     
     int result = OPUS_OK;
     _encoder = opus_encoder_create(coding_rate, 1, OPUS_APPLICATION_VOIP, &result);
-    if (result != OPUS_OK) {
+    if (result != OPUS_OK || !_encoder) {
         LOGE("Error cannot create encoder: %s", opus_strerror(result));
-        return 0;
+        goto fail;
     }
     
     min_bytes = max_frame_bytes = (1275 * 3 + 7) * header.nb_streams;
     _packet = malloc(max_frame_bytes);
     
+    if (!_packet) goto fail;
     result = opus_encoder_ctl(_encoder, OPUS_SET_BITRATE(bitrate));
     //result = opus_encoder_ctl(_encoder, OPUS_SET_COMPLEXITY(10));
     if (result != OPUS_OK) {
         LOGE("Error OPUS_SET_BITRATE returned: %s", opus_strerror(result));
-        return 0;
+        goto fail;
     }
     
 #ifdef OPUS_SET_LSB_DEPTH
@@ -369,7 +389,7 @@ int initRecorder(const char *path, opus_int32 sampleRate) {
     result = opus_encoder_ctl(_encoder, OPUS_GET_LOOKAHEAD(&lookahead));
     if (result != OPUS_OK) {
         LOGE("Error OPUS_GET_LOOKAHEAD returned: %s", opus_strerror(result));
-        return 0;
+        goto fail;
     }
     
     inopt.skip += lookahead;
@@ -378,9 +398,10 @@ int initRecorder(const char *path, opus_int32 sampleRate) {
     
     if (ogg_stream_init(&os, serialno = rand()) == -1) {
         LOGE("Error: stream init failed");
-        return 0;
+        goto fail;
     }
     
+    recorderStreamInitialized = 1;
     unsigned char header_data[100];
     int packet_size = opus_header_to_packet(&header, header_data, 100);
     op.packet = header_data;
@@ -389,7 +410,7 @@ int initRecorder(const char *path, opus_int32 sampleRate) {
     op.e_o_s = 0;
     op.granulepos = 0;
     op.packetno = 0;
-    ogg_stream_packetin(&os, &op);
+    if (ogg_stream_packetin(&os, &op) != 0) goto fail;
     
     while ((result = ogg_stream_flush(&os, &og))) {
         if (!result) {
@@ -399,20 +420,20 @@ int initRecorder(const char *path, opus_int32 sampleRate) {
         int pageBytesWritten = writeOggPage(&og, _fileOs);
         if (pageBytesWritten != og.header_len + og.body_len) {
             LOGE("Error: failed writing header to output stream");
-            return 0;
+            goto fail;
         }
         bytes_written += pageBytesWritten;
         pages_out++;
     }
     
-    comment_pad(&inopt.comments, &inopt.comments_length, comment_padding);
+    if (!comment_pad(&inopt.comments, &inopt.comments_length, comment_padding)) goto fail;
     op.packet = (unsigned char *)inopt.comments;
     op.bytes = inopt.comments_length;
     op.b_o_s = 0;
     op.e_o_s = 0;
     op.granulepos = 0;
     op.packetno = 1;
-    ogg_stream_packetin(&os, &op);
+    if (ogg_stream_packetin(&os, &op) != 0) goto fail;
     
     while ((result = ogg_stream_flush(&os, &og))) {
         if (result == 0) {
@@ -422,7 +443,7 @@ int initRecorder(const char *path, opus_int32 sampleRate) {
         int writtenPageBytes = writeOggPage(&og, _fileOs);
         if (writtenPageBytes != og.header_len + og.body_len) {
             LOGE("Error: failed writing header to output stream");
-            return 0;
+            goto fail;
         }
         
         bytes_written += writtenPageBytes;
@@ -431,10 +452,18 @@ int initRecorder(const char *path, opus_int32 sampleRate) {
     
     free(inopt.comments);
     
+    inopt.comments = 0;
+    recorderReady = 1;
     return 1;
+fail:
+    cleanupRecorderLocked();
+    return 0;
 }
 
-int writeFrame(uint8_t *framePcmBytes, uint32_t frameByteCount, int end) {
+static int writeFrameLocked(uint8_t *framePcmBytes, uint32_t frameByteCount, int end) {
+    if (!recorderReady || !_encoder || !_packet || !_fileOs || !recorderStreamInitialized
+            || coding_rate <= 0 || (frameByteCount & 1) || frameByteCount > frame_size * 2
+            || (frameByteCount != 0 && !framePcmBytes)) return 0;
     size_t cur_frame_size = frame_size;
     _packetId++;
     
@@ -450,6 +479,7 @@ int writeFrame(uint8_t *framePcmBytes, uint32_t frameByteCount, int end) {
 
         if (nb_samples < cur_frame_size) {
             paddedFrameBytes = malloc(cur_frame_size * 2);
+            if (!paddedFrameBytes) return 0;
             freePaddedFrameBytes = 1;
             memcpy(paddedFrameBytes, framePcmBytes, frameByteCount);
             memset(paddedFrameBytes + nb_samples * 2, 0, cur_frame_size * 2 - nb_samples * 2);
@@ -493,7 +523,7 @@ int writeFrame(uint8_t *framePcmBytes, uint32_t frameByteCount, int end) {
         op.granulepos = ((total_samples * 48000 + rate - 1) / rate) + header.preskip;
     }
     op.packetno = 2 + _packetId;
-    ogg_stream_packetin(&os, &op);
+    if (ogg_stream_packetin(&os, &op) != 0) return 0;
     last_segments += size_segments;
     
     while ((op.e_o_s || (enc_granulepos + (frame_size * 48000 / coding_rate) - last_granulepos > max_ogg_delay) || (last_segments >= 255)) ? ogg_stream_flush_fill(&os, &og, 255 * 255) : ogg_stream_pageout_fill(&os, &og, 255 * 255)) {
@@ -513,9 +543,30 @@ int writeFrame(uint8_t *framePcmBytes, uint32_t frameByteCount, int end) {
     return 1;
 }
 
+void cleanupRecorder() {
+    pthread_mutex_lock(&recorderMutex);
+    cleanupRecorderLocked();
+    pthread_mutex_unlock(&recorderMutex);
+}
+
+int initRecorder(const char *path, opus_int32 sampleRate) {
+    pthread_mutex_lock(&recorderMutex);
+    int result = initRecorderLocked(path, sampleRate);
+    pthread_mutex_unlock(&recorderMutex);
+    return result;
+}
+
+int writeFrame(uint8_t *framePcmBytes, uint32_t frameByteCount, int end) {
+    pthread_mutex_lock(&recorderMutex);
+    int result = writeFrameLocked(framePcmBytes, frameByteCount, end);
+    pthread_mutex_unlock(&recorderMutex);
+    return result;
+}
 JNIEXPORT jint Java_org_telegram_messenger_MediaController_startRecord(JNIEnv *env, jclass class, jstring path, jint sampleRate) {
+    if (!path) return 0;
     const char *pathStr = (*env)->GetStringUTFChars(env, path, 0);
 
+    if (!pathStr) return 0;
     int32_t result = initRecorder(pathStr, sampleRate);
 
     if (pathStr != 0) {
@@ -526,7 +577,13 @@ JNIEXPORT jint Java_org_telegram_messenger_MediaController_startRecord(JNIEnv *e
 }
 
 JNIEXPORT jint Java_org_telegram_messenger_MediaController_writeFrame(JNIEnv *env, jclass class, jobject frame, jint len) {
-    jbyte *frameBytes = (*env)->GetDirectBufferAddress(env, frame);
+    if (len < 0 || (len & 1) || len > frame_size * 2) return 0;
+    jbyte *frameBytes = 0;
+    if (len != 0) {
+        if (!frame || (*env)->GetDirectBufferCapacity(env, frame) < len) return 0;
+        frameBytes = (*env)->GetDirectBufferAddress(env, frame);
+        if (!frameBytes) return 0;
+    }
     return writeFrame((uint8_t *) frameBytes, (uint32_t) len, len / 2 < frame_size);
 }
 
@@ -926,7 +983,8 @@ JNIEXPORT void JNICALL Java_org_telegram_ui_Stories_recorder_FfmpegAudioWaveform
     (*env)->ReleaseStringUTFChars(env, pathJStr, path);
 }
 
-int cropOpusAudio(const char *inputPath, const char *outputPath, float startTimeMs, float endTimeMs) {
+static int cropOpusAudioLocked(const char *inputPath, const char *outputPath, float startTimeMs, float endTimeMs) {
+    if (!inputPath || !outputPath || !isfinite(startTimeMs) || !isfinite(endTimeMs)) return 0;
     int error;
     OggOpusFile *opusFile = op_open_file(inputPath, &error);
     if (!opusFile || error != OPUS_OK) {
@@ -967,7 +1025,7 @@ int cropOpusAudio(const char *inputPath, const char *outputPath, float startTime
         return 0;
     }
 
-    if (!initRecorder(outputPath, rate)) {
+    if (!initRecorderLocked(outputPath, rate)) {
         LOGE("Failed to init recorder");
         op_free(opusFile);
         return 0;
@@ -976,7 +1034,7 @@ int cropOpusAudio(const char *inputPath, const char *outputPath, float startTime
     int16_t *buffer = malloc(sizeof(int16_t) * frame_size * channels);
     if (!buffer) {
         LOGE("Out of memory");
-        cleanupRecorder();
+        cleanupRecorderLocked();
         op_free(opusFile);
         return 0;
     }
@@ -1002,7 +1060,7 @@ int cropOpusAudio(const char *inputPath, const char *outputPath, float startTime
         int end = remaining_samples <= 0;
 
         size_t byte_count = samples_read * sizeof(int16_t);
-        if (!writeFrame((uint8_t *)buffer, byte_count, end)) {
+        if (!writeFrameLocked((uint8_t *)buffer, byte_count, end)) {
             LOGE("Failed to write frame");
             success = 0;
             break;
@@ -1010,7 +1068,7 @@ int cropOpusAudio(const char *inputPath, const char *outputPath, float startTime
     }
 
     free(buffer);
-    cleanupRecorder();
+    cleanupRecorderLocked();
     op_free(opusFile);
 
     return success;
@@ -1034,7 +1092,7 @@ int append_stream(OggOpusFile *of, int16_t* buffer, int channels, int is_last) {
         }
         total_source_samples -= samples_read;
         size_t byte_count = (size_t) samples_read * channels * sizeof(int16_t);
-        if (!writeFrame((uint8_t*) buffer, byte_count, is_last && total_source_samples <= 0)) {
+        if (!writeFrameLocked((uint8_t*) buffer, byte_count, is_last && total_source_samples <= 0)) {
             LOGE("Failed to write encoded frame");
             return 0;
         }
@@ -1042,7 +1100,8 @@ int append_stream(OggOpusFile *of, int16_t* buffer, int channels, int is_last) {
     return 1;
 }
 
-int joinOpusAudios(const char* file1, const char* file2, const char* dest) {
+static int joinOpusAudiosLocked(const char* file1, const char* file2, const char* dest) {
+    if (!file1 || !file2 || !dest) return 0;
     int error;
     OggOpusFile *opusFile1 = op_open_file(file1, &error);
     if (!opusFile1 || error != OPUS_OK) {
@@ -1077,7 +1136,7 @@ int joinOpusAudios(const char* file1, const char* file2, const char* dest) {
     int channels = MIN(head1->channel_count, head2->channel_count);
     opus_int32 rate = 48000;
 
-    if (!initRecorder(dest, rate)) {
+    if (!initRecorderLocked(dest, rate)) {
         LOGE("Failed to init recorder");
         op_free(opusFile1);
         op_free(opusFile2);
@@ -1087,7 +1146,7 @@ int joinOpusAudios(const char* file1, const char* file2, const char* dest) {
     int16_t *buffer = malloc(sizeof(int16_t) * frame_size * channels);
     if (!buffer) {
         LOGE("Out of memory");
-        cleanupRecorder();
+        cleanupRecorderLocked();
         op_free(opusFile1);
         op_free(opusFile2);
         return 0;
@@ -1099,16 +1158,35 @@ int joinOpusAudios(const char* file1, const char* file2, const char* dest) {
     }
 
     free(buffer);
-    cleanupRecorder();
+    cleanupRecorderLocked();
     op_free(opusFile1);
     op_free(opusFile2);
 
     return success;
 }
 
+int cropOpusAudio(const char *inputPath, const char *outputPath, float startTimeMs, float endTimeMs) {
+    pthread_mutex_lock(&recorderMutex);
+    int result = recorderReady ? 0 : cropOpusAudioLocked(inputPath, outputPath, startTimeMs, endTimeMs);
+    pthread_mutex_unlock(&recorderMutex);
+    return result;
+}
+
+int joinOpusAudios(const char *file1, const char *file2, const char *dest) {
+    pthread_mutex_lock(&recorderMutex);
+    int result = recorderReady ? 0 : joinOpusAudiosLocked(file1, file2, dest);
+    pthread_mutex_unlock(&recorderMutex);
+    return result;
+}
 JNIEXPORT jboolean Java_org_telegram_messenger_MediaController_cropOpusFile(JNIEnv *env, jclass class, jstring src, jstring dst, jlong startMs, jlong endMs) {
+    if (!src || !dst) return JNI_FALSE;
     const char* srcStr = (*env)->GetStringUTFChars(env, src, 0);
+    if (!srcStr) return JNI_FALSE;
     const char* dstStr = (*env)->GetStringUTFChars(env, dst, 0);
+    if (!dstStr) {
+        (*env)->ReleaseStringUTFChars(env, src, srcStr);
+        return JNI_FALSE;
+    }
     int result = cropOpusAudio(srcStr, dstStr, startMs, endMs);
     (*env)->ReleaseStringUTFChars(env, src, srcStr);
     (*env)->ReleaseStringUTFChars(env, dst, dstStr);
@@ -1116,9 +1194,20 @@ JNIEXPORT jboolean Java_org_telegram_messenger_MediaController_cropOpusFile(JNIE
 }
 
 JNIEXPORT jboolean Java_org_telegram_messenger_MediaController_joinOpusFiles(JNIEnv* env, jclass class, jstring file1, jstring file2, jstring dest) {
+    if (!file1 || !file2 || !dest) return JNI_FALSE;
     const char* file1Str = (*env)->GetStringUTFChars(env, file1, 0);
+    if (!file1Str) return JNI_FALSE;
     const char* file2Str = (*env)->GetStringUTFChars(env, file2, 0);
+    if (!file2Str) {
+        (*env)->ReleaseStringUTFChars(env, file1, file1Str);
+        return JNI_FALSE;
+    }
     const char* destStr = (*env)->GetStringUTFChars(env, dest, 0);
+    if (!destStr) {
+        (*env)->ReleaseStringUTFChars(env, file2, file2Str);
+        (*env)->ReleaseStringUTFChars(env, file1, file1Str);
+        return JNI_FALSE;
+    }
     int result = joinOpusAudios(file1Str, file2Str, destStr);
     (*env)->ReleaseStringUTFChars(env, file1, file1Str);
     (*env)->ReleaseStringUTFChars(env, file2, file2Str);

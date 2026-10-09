@@ -8270,7 +8270,27 @@ public class Theme extends com.exteragram.messenger.utils.ui.LegacyThemeFields {
             TextPaint chat_msgTextCode3Paint = Theme.chat_msgTextCode3Paint;
             TextPaint chat_msgCodeBgPaint = Theme.chat_msgCodeBgPaint;
             TextPaint chat_ephemeralPaint = Theme.chat_ephemeralPaint;
-            if (chat_msgTextPaint == null) {
+            if (chat_msgTextPaint == null
+                    || chat_msgGameTextPaint == null
+                    || chat_msgTextPaintOneEmoji == null
+                    || chat_msgTextPaintTwoEmoji == null
+                    || chat_msgTextPaintThreeEmoji == null
+                    || chat_msgBotButtonPaint == null
+                    || chat_namePaint == null
+                    || chat_replyNamePaint == null
+                    || chat_replyTextPaint == null
+                    || chat_quoteTextPaint == null
+                    || chat_explanationTextPaint == null
+                    || chat_titleLabelTextPaint == null
+                    || chat_topicTextPaint == null
+                    || chat_forwardNamePaint == null
+                    || chat_adminPaint == null
+                    || chat_timePaint == null
+                    || chat_msgTextCodePaint == null
+                    || chat_msgTextCode2Paint == null
+                    || chat_msgTextCode3Paint == null
+                    || chat_msgCodeBgPaint == null
+                    || chat_ephemeralPaint == null) {
                 chat_msgTextPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
                 chat_msgGameTextPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
                 chat_msgTextPaintOneEmoji = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
@@ -10216,6 +10236,7 @@ public class Theme extends com.exteragram.messenger.utils.ui.LegacyThemeFields {
         switch (type) {
             case 0:
                 chat_status_drawables[0] = new TypingDotsDrawable(true);
+                ((TypingDotsDrawable) chat_status_drawables[0]).setIgnoreAnimationLocks();
                 break;
             case 1:
                 chat_status_drawables[1] = new RecordStatusDrawable(true);

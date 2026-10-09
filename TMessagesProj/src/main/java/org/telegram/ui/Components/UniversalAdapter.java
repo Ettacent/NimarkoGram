@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -662,6 +664,7 @@ public class UniversalAdapter extends AdapterWithDiffUtils {
             UItem.UItemFactory<?> factory = UItem.findFactory(viewType);
             if (factory != null) {
                 factory.bindView(holder.itemView, item, divider, this, listView instanceof UniversalRecyclerView ? (UniversalRecyclerView) listView : null);
+                holder.itemView.setEnabled(item.enabled);
             }
         } else switch (viewType) {
             case VIEW_TYPE_HEADER:

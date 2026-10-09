@@ -2,6 +2,14 @@
 
 package app.nimarkogram.messenger;
 
+import android.content.ClipData;
+import android.content.ClipboardManager;
+import android.content.pm.PackageInfo;
+import android.os.Debug;
+import android.os.SystemClock;
+import android.util.Log;
+import java.lang.reflect.Field;
+import java.util.Map;
 import android.content.Context;
 import android.os.Build;
 import android.os.Environment;
@@ -113,22 +121,22 @@ public final class NimarkoCrashHandler {
                     long free = rt.freeMemory() / mb;
                     pw.println("Heap: used " + (total - free) + "M / " + total + "M (max "
                             + (rt.maxMemory() / mb) + "M), native "
-                            + (android.os.Debug.getNativeHeapAllocatedSize() / mb) + "M");
+                            + (Debug.getNativeHeapAllocatedSize() / mb) + "M");
                 } catch (Throwable ignored) {
                 }
                 if (oom) {
                     try {
                         pw.println();
                         pw.println("=== OOM diagnostics ===");
-                        pw.println("Uptime: " + (android.os.SystemClock.uptimeMillis() / 60000) + " min");
-                        pw.println("GC: count=" + android.os.Debug.getRuntimeStat("art.gc.gc-count")
-                                + ", freed=" + android.os.Debug.getRuntimeStat("art.gc.bytes-freed")
-                                + ", blocking=" + android.os.Debug.getRuntimeStat("art.gc.blocking-gc-count"));
+                        pw.println("Uptime: " + (SystemClock.uptimeMillis() / 60000) + " min");
+                        pw.println("GC: count=" + Debug.getRuntimeStat("art.gc.gc-count")
+                                + ", freed=" + Debug.getRuntimeStat("art.gc.bytes-freed")
+                                + ", blocking=" + Debug.getRuntimeStat("art.gc.blocking-gc-count"));
                         try {
                             Class<?> fr = Class.forName("java.lang.ref.FinalizerReference");
-                            java.lang.reflect.Field head = fr.getDeclaredField("head");
+                            Field head = fr.getDeclaredField("head");
                             head.setAccessible(true);
-                            java.lang.reflect.Field next = fr.getDeclaredField("next");
+                            Field next = fr.getDeclaredField("next");
                             next.setAccessible(true);
                             int n = 0;
                             Object cur = head.get(null);
@@ -142,9 +150,9 @@ public final class NimarkoCrashHandler {
                         }
                         try {
                             StringBuilder sb = new StringBuilder(128);
-                            java.util.Map<String, ?> all = appContext
+                            Map<String, ?> all = appContext
                                     .getSharedPreferences("plugin_settings", 0).getAll();
-                            for (java.util.Map.Entry<String, ?> e : all.entrySet()) {
+                            for (Map.Entry<String, ?> e : all.entrySet()) {
                                 String key = e.getKey();
                                 if (key.startsWith("plugin_enabled_")
                                         && Boolean.TRUE.equals(e.getValue())) {
@@ -191,22 +199,22 @@ public final class NimarkoCrashHandler {
             if (oom) {
                 try {
                     File hp = new File(dir, "oom-" + reportId + ".hprof");
-                    android.os.Debug.dumpHprofData(hp.getAbsolutePath());
-                    android.util.Log.e("nimarko-crash", "hprof dumped: " + hp.getAbsolutePath());
+                    Debug.dumpHprofData(hp.getAbsolutePath());
+                    Log.e("nimarko-crash", "hprof dumped: " + hp.getAbsolutePath());
                 } catch (Throwable ignored) {}
             }
-            android.util.Log.e("nimarko-crash", "report written to " + f.getAbsolutePath());
+            Log.e("nimarko-crash", "report written to " + f.getAbsolutePath());
 
             if (!oom) {
                 String preview = readReportPreview(f, 64 * 1024);
                 if (preview != null) {
-                    android.util.Log.e("nimarko-crash", preview);
+                    Log.e("nimarko-crash", preview);
                     copyToClipboard(preview);
                 }
             }
         } catch (Throwable ignored) {
             try {
-                android.util.Log.e("nimarko-crash", "failed to dump", ignored);
+                Log.e("nimarko-crash", "failed to dump", ignored);
             } catch (Throwable ignored2) {}
         }
     }
@@ -236,10 +244,10 @@ public final class NimarkoCrashHandler {
         try {
             Context context = appContext;
             if (context == null) return;
-            android.content.ClipboardManager cm =
-                    (android.content.ClipboardManager) context.getSystemService(Context.CLIPBOARD_SERVICE);
+            ClipboardManager cm =
+                    (ClipboardManager) context.getSystemService(Context.CLIPBOARD_SERVICE);
             if (cm != null) {
-                cm.setPrimaryClip(android.content.ClipData.newPlainText(
+                cm.setPrimaryClip(ClipData.newPlainText(
                         text.contains("=== NimarkoGram plugin crash ===") ? "NimarkoGram plugin crash" : "NimarkoGram crash", text));
             }
         } catch (Throwable ignored) {}
@@ -292,8 +300,8 @@ public final class NimarkoCrashHandler {
         try {
             Context context = appContext;
             if (context == null) return -1;
-            android.content.pm.PackageInfo pi = context.getPackageManager().getPackageInfo(context.getPackageName(), 0);
-            return android.os.Build.VERSION.SDK_INT >= 28 ? pi.getLongVersionCode() : pi.versionCode;
+            PackageInfo pi = context.getPackageManager().getPackageInfo(context.getPackageName(), 0);
+            return Build.VERSION.SDK_INT >= 28 ? pi.getLongVersionCode() : pi.versionCode;
         } catch (Throwable ignored) {
             return -1;
         }

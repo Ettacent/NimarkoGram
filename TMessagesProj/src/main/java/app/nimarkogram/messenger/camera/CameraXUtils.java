@@ -2,6 +2,10 @@
 
 package app.nimarkogram.messenger.camera;
 
+import android.graphics.Rect;
+import android.hardware.camera2.CameraMetadata;
+import android.util.SizeF;
+import java.util.Arrays;
 import android.annotation.SuppressLint;
 import android.content.Context;
 import android.hardware.camera2.CameraCharacteristics;
@@ -575,11 +579,11 @@ public final class CameraXUtils {
     @SuppressLint("UnsafeOptInUsageError")
     private static float zoomShortcutOpticalScale(CameraInfo info) {
         Camera2CameraInfo camera2 = Camera2CameraInfo.from(info);
-        android.util.SizeF sensor = camera2.getCameraCharacteristic(
+        SizeF sensor = camera2.getCameraCharacteristic(
                 CameraCharacteristics.SENSOR_INFO_PHYSICAL_SIZE);
-        android.util.Size pixels = camera2.getCameraCharacteristic(
+        Size pixels = camera2.getCameraCharacteristic(
                 CameraCharacteristics.SENSOR_INFO_PIXEL_ARRAY_SIZE);
-        android.graphics.Rect active = camera2.getCameraCharacteristic(
+        Rect active = camera2.getCameraCharacteristic(
                 CameraCharacteristics.SENSOR_INFO_ACTIVE_ARRAY_SIZE);
         if (sensor == null || pixels == null || active == null
                 || pixels.getWidth() <= 0 || pixels.getHeight() <= 0
@@ -725,7 +729,7 @@ public final class CameraXUtils {
                         ? CameraSelector.LENS_FACING_FRONT
                         : CameraSelector.LENS_FACING_BACK)
                 .addCameraFilter(cameras -> {
-            java.util.ArrayList<CameraInfo> result = new java.util.ArrayList<>(1);
+            ArrayList<CameraInfo> result = new ArrayList<>(1);
             for (CameraInfo info : cameras) {
                 try {
                     if (cameraId.equals(Camera2CameraInfo.from(info).getCameraId())) result.add(info);
@@ -1244,7 +1248,7 @@ public final class CameraXUtils {
         CameraCapabilities capabilities = getCameraCapabilities(provider, selector);
         return capabilities != null
                 && containsMode(capabilities.videoStabilizationModes,
-                        android.hardware.camera2.CameraMetadata
+                        CameraMetadata
                                 .CONTROL_VIDEO_STABILIZATION_MODE_PREVIEW_STABILIZATION);
     }
 
@@ -1260,7 +1264,7 @@ public final class CameraXUtils {
                         CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE_ON)
                 || Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
                 && containsMode(capabilities.videoStabilizationModes,
-                        android.hardware.camera2.CameraMetadata
+                        CameraMetadata
                                 .CONTROL_VIDEO_STABILIZATION_MODE_PREVIEW_STABILIZATION));
     }
 
@@ -1388,7 +1392,7 @@ public final class CameraXUtils {
             CameraCapabilities capabilities = getCameraCapabilities(provider, selector);
             Range<Integer>[] ranges = capabilities != null ? capabilities.fpsRanges : null;
             return selectSupportedFpsRange(requested,
-                    ranges == null ? null : java.util.Arrays.asList(ranges));
+                    ranges == null ? null : Arrays.asList(ranges));
         } catch (Throwable ignored) {}
         return null;
     }

@@ -75,9 +75,11 @@ import android.view.VelocityTracker;
 import android.view.View;
 import android.view.ViewConfiguration;
 import android.view.ViewGroup;
+import android.view.ViewParent;
 import android.view.ViewTreeObserver;
 import android.view.accessibility.AccessibilityNodeInfo;
 import android.view.animation.Interpolator;
+import android.view.animation.DecelerateInterpolator;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.FrameLayout;
@@ -346,6 +348,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
      */
     private boolean filterTabsBootstrapPending = true;
     private boolean dialogsLifecycleDestroyed;
+    private int dialogsResumeGeneration;
     private final Runnable filterTabsBootstrapTimeout = this::finishFilterTabsBootstrap;
     private int initialSearchType = -1;
 
@@ -413,7 +416,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         boolean updating;
 
         Runnable saveScrollPositionRunnable = () -> {
-            if (!isCurrentViewPage(this)) {
+            if (isPaused || ApplicationLoader.mainInterfacePaused || !isCurrentViewPage(this)) {
                 return;
             }
             if (dialogAppearance != null) dialogAppearance.beforeUpdate();
@@ -452,7 +455,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         };
 
         Runnable updateListRunnable = () -> {
-            if (!isCurrentViewPage(this)) {
+            if (isPaused || ApplicationLoader.mainInterfacePaused || !isCurrentViewPage(this)) {
                 updating = false;
                 return;
             }
@@ -463,6 +466,13 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             listView.invalidate();
         };
 
+        private void cancelPendingListPresentation() {
+            AndroidUtilities.cancelRunOnUIThread(updateListRunnable);
+            updating = false;
+            if (recyclerItemsEnterAnimator != null) {
+                recyclerItemsEnterAnimator.cancel();
+            }
+        }
         @Override
         public void setTranslationY(float translationY) {
             if (getTranslationY() != translationY) {
@@ -473,9 +483,10 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
 
         @Override
         public void setTranslationX(float translationX) {
-            if (getTranslationX() != translationX) {
+            float previousX = getTranslationX();
+            if (previousX != translationX) {
                 super.setTranslationX(translationX);
-                if (tabsAnimationInProgress) {
+                if (tabsAnimationInProgress || startedTracking || maybeStartTracking) {
                     if (viewPages[0] == this) {
                         float scrollProgress = Math.abs(viewPages[0].getTranslationX()) / (float) viewPages[0].getMeasuredWidth();
                         filterTabsView.selectTabWithId(viewPages[1].selectedType, scrollProgress);
@@ -497,7 +508,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         }
 
         public void updateList(boolean animated) {
-            if (isPaused || !isCurrentViewPage(this)) {
+            if (isPaused || ApplicationLoader.mainInterfacePaused || !isCurrentViewPage(this)) {
                 return;
             }
             if (animated) {
@@ -531,6 +542,76 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             }
         }
         return false;
+    }
+
+    private boolean canPresentDialogEntrance(ViewPage page) {
+        if (isPaused || ApplicationLoader.mainInterfacePaused || !ApplicationLoader.isScreenOn
+                || SharedConfig.appLocked || SharedConfig.isWaitingForPasscodeEnter
+                || !SharedConfig.animationsEnabled() || !isCurrentViewPage(page)
+                || page.listView == null || !page.listView.isAttachedToWindow()
+                || !page.listView.isShown() || page.listView.getWindowVisibility() != View.VISIBLE) {
+            return false;
+        }
+        View view = page.listView;
+        while (view != null) {
+            if (view.getAlpha() <= 0f) {
+                return false;
+            }
+            ViewParent parent = view.getParent();
+            view = parent instanceof View ? (View) parent : null;
+        }
+        return true;
+    }
+
+    private final class DialogsItemsEnterAnimator extends RecyclerItemsEnterAnimator {
+        private final ViewPage page;
+        private ViewTreeObserver entranceObserver;
+        private ViewTreeObserver.OnPreDrawListener entranceGuard;
+
+        DialogsItemsEnterAnimator(ViewPage page) {
+            super(page.listView, false);
+            this.page = page;
+        }
+
+        @Override
+        public void showItemsAnimated(int from) {
+            if (!canPresentDialogEntrance(page)) {
+                return;
+            }
+            if (entranceGuard == null) {
+                final int generation = dialogsResumeGeneration;
+                entranceObserver = page.listView.getViewTreeObserver();
+                entranceGuard = new ViewTreeObserver.OnPreDrawListener() {
+                    @Override
+                    public boolean onPreDraw() {
+                        if (entranceGuard != this) {
+                            return true;
+                        }
+                        clearEntranceGuard();
+                        if (generation != dialogsResumeGeneration || !canPresentDialogEntrance(page)) {
+                            cancel();
+                        }
+                        return true;
+                    }
+                };
+                entranceObserver.addOnPreDrawListener(entranceGuard);
+            }
+            super.showItemsAnimated(from);
+        }
+
+        private void clearEntranceGuard() {
+            if (entranceObserver != null && entranceObserver.isAlive() && entranceGuard != null) {
+                entranceObserver.removeOnPreDrawListener(entranceGuard);
+            }
+            entranceObserver = null;
+            entranceGuard = null;
+        }
+
+        @Override
+        public void cancel() {
+            clearEntranceGuard();
+            super.cancel();
+        }
     }
 
     private FragmentSearchField fragmentSearchField;
@@ -3533,8 +3614,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         if (viewPages != null) {
             for (ViewPage viewPage : viewPages) {
                 if (viewPage != null) {
-                    AndroidUtilities.cancelRunOnUIThread(viewPage.updateListRunnable);
-                    viewPage.updating = false;
+                    viewPage.cancelPendingListPresentation();
                 }
             }
         }
@@ -5169,7 +5249,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                 }
             });
             viewPage.swipeController = new SwipeController(viewPage);
-            viewPage.recyclerItemsEnterAnimator = new RecyclerItemsEnterAnimator(viewPage.listView, false);
+            viewPage.recyclerItemsEnterAnimator = new DialogsItemsEnterAnimator(viewPage);
             viewPage.itemTouchhelper = new ItemTouchHelper(viewPage.swipeController);
             viewPage.itemTouchhelper.attachToRecyclerView(viewPage.listView);
 
@@ -7387,11 +7467,11 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         }
         float totalOffset;
         if (hasStories) {
-            totalOffset = scrollYOffset /* * (1f - searchAnimationProgress) */ +
+            totalOffset = scrollYOffset * (1f - searchAnimationProgress) +
                     storiesHeight * (1f - searchAnimationProgress) +
                     searchTabsHeight * searchAnimationProgress + tabsYOffset;
         } else {
-            totalOffset = scrollYOffset +
+            totalOffset = scrollYOffset * (1f - searchAnimationProgress) +
                     searchTabsHeight * searchAnimationProgress + tabsYOffset;
         }
         totalOffset += storiesOverscroll;
@@ -8224,12 +8304,20 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
 
     @Override
     public void onPause() {
+        dialogsResumeGeneration++;
         if (viewPages != null && viewPages.length > 0 && viewPages[0] != null
                 && viewPages[0].dialogsAdapter != null && viewPages[0].listView != null
                 && viewPages[0].layoutManager != null) {
             viewPages[0].listView.captureResumeAnchor();
         }
         super.onPause();
+        if (viewPages != null) {
+            for (ViewPage page : viewPages) {
+                if (page != null) {
+                    page.cancelPendingListPresentation();
+                }
+            }
+        }
         if (storiesBulletin != null) {
             storiesBulletin.hide();
             storiesBulletin = null;
@@ -11762,7 +11850,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
     }
 
     private boolean canFadeDialogAppearance(ViewPage page) {
-        if (isPaused || onlySelect || folderId != 0 || communityId != 0 || searching || searchIsShowed
+        if (!canPresentDialogEntrance(page) || onlySelect || folderId != 0 || communityId != 0 || searching || searchIsShowed
                 || tabsAnimationInProgress || startedTracking || maybeStartTracking || dialogsListFrozen
                 || isAccountSwitchAnimating() || !isCurrentViewPage(page) || page.getVisibility() != View.VISIBLE
                 || !page.isDefaultDialogType() || !page.listView.isAttachedToWindow()
@@ -11779,7 +11867,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
     }
 
     private void reloadViewPageDialogs(ViewPage viewPage, boolean newMessage) {
-        if (viewPage == null || viewPage.getVisibility() != View.VISIBLE) {
+        if (isPaused || ApplicationLoader.mainInterfacePaused || !isCurrentViewPage(viewPage)) {
             return;
         }
         int oldItemCount = viewPage.dialogsAdapter.getCurrentCount();
@@ -11865,8 +11953,10 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                 boolean isUnread = filter != null && (filter.flags & MessagesController.DIALOG_FILTER_FLAG_EXCLUDE_READ) != 0;
                 if (slowedReloadAfterDialogClick && isUnread) {
                     // in unread tab dialogs reload too instantly removes dialog from folder after clicking on it
+                    final int generation = dialogsResumeGeneration;
                     AndroidUtilities.runOnUIThread(() -> {
-                        if (!isCurrentViewPage(viewPage)) {
+                        if (generation != dialogsResumeGeneration || isPaused
+                                || ApplicationLoader.mainInterfacePaused || !isCurrentViewPage(viewPage)) {
                             return;
                         }
                         reloadViewPageDialogs(viewPage, args.length > 0);

@@ -2,6 +2,7 @@
 
 package app.nimarkogram.messenger.wsbypass;
 
+import java.util.Collections;
 import org.telegram.messenger.FileLog;
 
 import java.util.ArrayDeque;
@@ -159,8 +160,8 @@ public final class WebSocketPool {
 
     public void healthScan() {
         
-        Set<Entry> claimedEntries = java.util.Collections.newSetFromMap(new IdentityHashMap<>());
-        Set<Entry> failedEntries = java.util.Collections.newSetFromMap(new IdentityHashMap<>());
+        Set<Entry> claimedEntries = Collections.newSetFromMap(new IdentityHashMap<>());
+        Set<Entry> failedEntries = Collections.newSetFromMap(new IdentityHashMap<>());
         ArrayList<Entry> snapshot = new ArrayList<>();
         synchronized (lock) {
             for (ArrayDeque<Entry> queue : idle.values()) {

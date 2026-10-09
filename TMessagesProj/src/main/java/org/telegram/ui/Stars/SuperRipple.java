@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Stars;
 
 import android.animation.Animator;
@@ -20,6 +22,7 @@ import org.telegram.ui.Components.CubicBezierInterpolator;
 
 import java.util.ArrayList;
 
+import app.nimarkogram.messenger.utils.NimarkoMotionBlurEffect;
 @RequiresApi(api = Build.VERSION_CODES.TIRAMISU)
 public class SuperRipple extends ISuperRipple {
 
@@ -159,7 +162,7 @@ public class SuperRipple extends ISuperRipple {
                 effect = RenderEffect.createRuntimeShaderEffect(shader, "img");
             }
         }
-        view.setRenderEffect(effects.isEmpty() ? null : effect);
+        NimarkoMotionBlurEffect.setBaseEffect(view, effects.isEmpty() ? null : effect);
         if (changed) {
             view.invalidate();
         }

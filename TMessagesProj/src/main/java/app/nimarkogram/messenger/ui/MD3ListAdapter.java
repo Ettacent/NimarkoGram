@@ -118,12 +118,10 @@ public abstract class MD3ListAdapter extends RecyclerListView.SelectionAdapter {
 
     protected MD3ListAdapter() {
         this(null);
-        Log.d("lolkek", "MD3ListAdapter()");
     }
 
     protected MD3ListAdapter(@Nullable Theme.ResourcesProvider resourcesProvider) {
         config.resourcesProvider = resourcesProvider;
-        Log.d("lolkek", "MD3ListAdapter(resourcesProvider)");
     }
 
     @Override

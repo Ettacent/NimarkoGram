@@ -1,6 +1,11 @@
 /* Modifications Copyright (C) 2026 Ettacent */
 
 package app.nimarkogram.messenger.plugins.ui.components;
+import android.content.res.ColorStateList;
+import android.text.Layout;
+import android.text.Spanned;
+import android.text.style.URLSpan;
+import java.util.List;
 import android.animation.Animator;
 import android.animation.AnimatorListenerAdapter;
 import android.animation.ValueAnimator;
@@ -54,6 +59,7 @@ import app.nimarkogram.messenger.NimarkoConfig;
 import app.nimarkogram.messenger.plugins.Plugin;
 import app.nimarkogram.messenger.plugins.PluginsController;
 import app.nimarkogram.messenger.plugins.utils.PluginCrashReports;
+import app.nimarkogram.messenger.utils.NimarkoUiAnimationClock;
 import app.nimarkogram.messenger.utils.text.LocaleUtils;
 
 @SuppressLint({"ViewConstructor"})
@@ -73,6 +79,7 @@ public class PluginCell extends FrameLayout implements NotificationCenter.Notifi
     private boolean loading;
     private float loadingProgress;
     private ValueAnimator loadingAnimator;
+    private Runnable loadingReveal;
     private Plugin plugin;
     private PluginCellDelegate pluginCellDelegate;
     private final TextView pluginNameView;
@@ -134,9 +141,13 @@ public class PluginCell extends FrameLayout implements NotificationCenter.Notifi
                 Path path = new Path();
                 float r = AndroidUtilities.dp(20.0f);
                 path.addRoundRect(new RectF(0.0f, 0.0f, getWidth(), getHeight()), r, r, Path.Direction.CW);
-                canvas.save();
-                canvas.clipPath(path);
-                super.onDraw(canvas);
+                int save = canvas.save();
+                try {
+                    canvas.clipPath(path);
+                    super.onDraw(canvas);
+                } finally {
+                    canvas.restoreToCount(save);
+                }
             }
         };
         imageView.setRoundRadius(AndroidUtilities.dp(20.0f));
@@ -225,19 +236,24 @@ public class PluginCell extends FrameLayout implements NotificationCenter.Notifi
 
         loadingSpinner = new ProgressBar(context);
         loadingSpinner.setIndeterminate(true);
-        loadingSpinner.setIndeterminateTintList(android.content.res.ColorStateList.valueOf(
+        loadingSpinner.setIndeterminateTintList(ColorStateList.valueOf(
                 Theme.getColor(Theme.key_switchTrackChecked)));
         loadingSpinner.setVisibility(View.GONE);
         loadingSpinner.setAlpha(0f);
         loadingSpinner.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_YES);
-        trailingSlot.addView(loadingSpinner, LayoutHelper.createFrame(24, 24, Gravity.CENTER));
+        loadingSpinner.setBackground(Theme.createCircleDrawable(AndroidUtilities.dp(16),
+                Theme.getColor(Theme.key_windowBackgroundWhite)));
+        loadingSpinner.setPadding(AndroidUtilities.dp(2), AndroidUtilities.dp(2),
+                AndroidUtilities.dp(2), AndroidUtilities.dp(2));
+        iconFrame.addView(loadingSpinner, LayoutHelper.createFrame(16, 16, Gravity.END | Gravity.BOTTOM));
     }
 
     public void setLoading(boolean loading) {
         setLoading(loading, true);
     }
     private boolean canAnimateLoading() {
-        return isAttachedToWindow() && isShown() && getWindowVisibility() == View.VISIBLE
+        return isAttachedToWindow() && (isShown() || getParent() == null)
+                && getWindowVisibility() == View.VISIBLE
                 && SharedConfig.animationsEnabled()
                 && (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
                 ? ValueAnimator.areAnimatorsEnabled() : AndroidUtilities.getAnimatorDurationScale() > 0);
@@ -246,8 +262,7 @@ public class PluginCell extends FrameLayout implements NotificationCenter.Notifi
         final boolean changed = this.loading != loading;
         this.loading = loading;
         checkBox.setEnabled(!loading);
-        checkBox.setImportantForAccessibility(loading
-                ? View.IMPORTANT_FOR_ACCESSIBILITY_NO : View.IMPORTANT_FOR_ACCESSIBILITY_YES);
+        checkBox.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_YES);
         loadingSpinner.setImportantForAccessibility(loading
                 ? View.IMPORTANT_FOR_ACCESSIBILITY_YES : View.IMPORTANT_FOR_ACCESSIBILITY_NO);
         if (plugin != null) {
@@ -256,18 +271,44 @@ public class PluginCell extends FrameLayout implements NotificationCenter.Notifi
         }
         final float target = loading ? 1f : 0f;
         if (!animated || !canAnimateLoading()) {
+            cancelLoadingReveal();
             cancelLoadingAnimator();
             applyLoadingProgress(target);
             return;
         }
-        if (!changed && loadingAnimator != null) {
+        if (!changed && (loadingAnimator != null || loadingReveal != null)) {
             return;
         }
+        cancelLoadingReveal();
         cancelLoadingAnimator();
         if (loadingProgress == target) {
             applyLoadingProgress(target);
             return;
         }
+        if (loading && loadingProgress == 0f) {
+            loadingReveal = new Runnable() {
+                @Override
+                public void run() {
+                    if (loadingReveal != this) {
+                        return;
+                    }
+                    loadingReveal = null;
+                    if (PluginCell.this.loading) {
+                        if (canAnimateLoading()) {
+                            animateLoadingProgress(1f);
+                        } else {
+                            applyLoadingProgress(1f);
+                        }
+                    }
+                }
+            };
+            postDelayed(loadingReveal, 120);
+            return;
+        }
+        animateLoadingProgress(target);
+    }
+
+    private void animateLoadingProgress(float target) {
         final ValueAnimator animator = ValueAnimator.ofFloat(loadingProgress, target);
         loadingAnimator = animator;
         animator.setDuration(180);
@@ -287,6 +328,14 @@ public class PluginCell extends FrameLayout implements NotificationCenter.Notifi
             }
         });
         animator.start();
+        NimarkoUiAnimationClock.track(animator);
+    }
+
+    private void cancelLoadingReveal() {
+        if (loadingReveal != null) {
+            removeCallbacks(loadingReveal);
+            loadingReveal = null;
+        }
     }
     private void cancelLoadingAnimator() {
         final ValueAnimator animator = loadingAnimator;
@@ -298,9 +347,9 @@ public class PluginCell extends FrameLayout implements NotificationCenter.Notifi
     private void applyLoadingProgress(float progress) {
         loadingProgress = progress;
         loadingSpinner.setAlpha(progress);
-        checkBox.setAlpha(1f - progress);
+        checkBox.setAlpha(1f);
         loadingSpinner.setVisibility(progress > 0f ? View.VISIBLE : View.GONE);
-        checkBox.setVisibility(progress < 1f ? View.VISIBLE : View.INVISIBLE);
+        checkBox.setVisibility(View.VISIBLE);
     }
 
     public boolean isLoading() {
@@ -334,7 +383,7 @@ public class PluginCell extends FrameLayout implements NotificationCenter.Notifi
                 && isInsideViewRelativeToSelf(checkBox, x, y);
     }
 
-    private boolean isPointOnUrlSpan(android.widget.TextView text, float x, float y) {
+    private boolean isPointOnUrlSpan(TextView text, float x, float y) {
         if (text == null || text.getVisibility() != View.VISIBLE) {
             return false;
         }
@@ -356,9 +405,9 @@ public class PluginCell extends FrameLayout implements NotificationCenter.Notifi
                 || localY > text.getHeight() - text.getPaddingTop() - text.getPaddingBottom()) {
             return false;
         }
-        android.text.Layout layout = text.getLayout();
+        Layout layout = text.getLayout();
         CharSequence cs = text.getText();
-        if (layout == null || !(cs instanceof android.text.Spanned)) {
+        if (layout == null || !(cs instanceof Spanned)) {
             return false;
         }
         int line = layout.getLineForVertical((int) localY);
@@ -367,8 +416,8 @@ public class PluginCell extends FrameLayout implements NotificationCenter.Notifi
         if (localX > layout.getLineRight(line) || localX < layout.getLineLeft(line)) {
             return false;
         }
-        android.text.style.URLSpan[] spans = ((android.text.Spanned) cs)
-                .getSpans(offset, offset, android.text.style.URLSpan.class);
+        URLSpan[] spans = ((Spanned) cs)
+                .getSpans(offset, offset, URLSpan.class);
         return spans != null && spans.length > 0;
     }
 
@@ -472,6 +521,7 @@ public class PluginCell extends FrameLayout implements NotificationCenter.Notifi
            this.imageView.getImageReceiver().setAutoRepeat(2);
            this.imageView.getImageReceiver().setAutoRepeatCount(-1);
         } else {
+            this.imageView.setTag(null);
             this.imageView.setImage((ImageLocation) null, (String) null, (Drawable) null, 0, (Object) null);
         }
         this.pluginNameView.setText(plugin.getName());
@@ -484,7 +534,7 @@ public class PluginCell extends FrameLayout implements NotificationCenter.Notifi
                 .append(LocaleUtils.formatWithUsernames(plugin.getAuthor()));
         this.subtitleView.setText(sub);
 
-        java.util.List<String> reqNames = plugin.getRequirementNames();
+        List<String> reqNames = plugin.getRequirementNames();
         if (!this.compact && reqNames != null && !reqNames.isEmpty()) {
             this.requirementsView.setText("⬢ " + TextUtils.join("  ·  ", reqNames));
             this.requirementsView.setVisibility(View.VISIBLE);

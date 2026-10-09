@@ -1,5 +1,8 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Stories;
 
+import app.nimarkogram.messenger.utils.NimarkoAppMotionBlur;
 import static android.view.WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE;
 
 import android.animation.Animator;
@@ -667,6 +670,7 @@ public class LiveStoryPipOverlay implements NotificationCenter.NotificationCente
         AndroidUtilities.setPreferredMaxRefreshRate(windowManager, contentView, windowLayoutParams);
         windowManager.addView(contentView, windowLayoutParams);
 
+        NimarkoAppMotionBlur.attachRoot(contentView);
         AnimatorSet set = new AnimatorSet();
         set.setDuration(250);
         set.setInterpolator(CubicBezierInterpolator.DEFAULT);
@@ -811,6 +815,7 @@ public class LiveStoryPipOverlay implements NotificationCenter.NotificationCente
 
         windowViewSkipRender = false;
         windowManager.addView(contentView, windowLayoutParams);
+        NimarkoAppMotionBlur.attachRoot(contentView);
         contentView.invalidate();
 
         if (pipTextureView != null) {

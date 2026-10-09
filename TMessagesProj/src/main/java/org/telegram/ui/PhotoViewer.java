@@ -10,6 +10,7 @@
 
 package org.telegram.ui;
 
+import app.nimarkogram.messenger.utils.NimarkoAppMotionBlur;
 import static org.telegram.messenger.AndroidUtilities.dp;
 import static org.telegram.messenger.AndroidUtilities.dpf2;
 import static org.telegram.messenger.AndroidUtilities.lerp;
@@ -9976,6 +9977,7 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
             isVisibleOrAnimating = true;
             WindowManager wm = (WindowManager) parentActivity.getSystemService(Context.WINDOW_SERVICE);
             wm.addView(windowView, windowLayoutParams);
+            NimarkoAppMotionBlur.attachRoot(windowView);
             onShowView();
             if (currentPlaceObject != null && !currentPlaceObject.keepImageReceiverVisible) {
                 currentPlaceObject.imageReceiver.setVisible(false, false);
@@ -18528,6 +18530,7 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
             windowView.setFocusable(false);
             containerView.setFocusable(false);
             wm.addView(windowView, windowLayoutParams);
+            NimarkoAppMotionBlur.attachRoot(windowView);
             onShowView();
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -19330,13 +19333,11 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
                     object.imageReceiver.setAllowStartAnimation(true);
                     object.imageReceiver.startAnimation();
                 };
-                boolean seekDeferred = false;
                 if (textureUploaded) {
                     Bitmap bitmap = animation.getAnimatedBitmap();
                     if (bitmap != null) {
                         if (usedSurfaceView) {
-                            seekDeferred = copyClosingSurfaceFrame(videoSurfaceView, bitmap, animation,
-                                    object.imageReceiver, closeGeneration, seek);
+                            AndroidUtilities.getBitmapFromSurface(videoSurfaceView, bitmap);
                         } else if (videoTextureView != null) {
                             try {
                                 Bitmap src = videoTextureView.getBitmap(bitmap.getWidth(), bitmap.getHeight());
@@ -19351,7 +19352,7 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
                         }
                     }
                 }
-                if (!seekDeferred) seek.run();
+                seek.run();
             }
         }
         if (photoViewerWebView != null) {
@@ -24843,41 +24844,6 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
         }
     }
 
-    private boolean copyClosingSurfaceFrame(SurfaceView surface, Bitmap destination,
-                                            AnimatedFileDrawable animation, ImageReceiver receiver,
-                                            int generation, Runnable seek) {
-        if (surface == null || destination.isRecycled() || Build.VERSION.SDK_INT < Build.VERSION_CODES.N) return false;
-        final Bitmap snapshot;
-        try {
-            snapshot = Bitmap.createBitmap(destination.getWidth(), destination.getHeight(), Bitmap.Config.ARGB_8888);
-        } catch (RuntimeException | OutOfMemoryError error) {
-            return false;
-        }
-        java.util.concurrent.atomic.AtomicBoolean completed = new java.util.concurrent.atomic.AtomicBoolean();
-        Runnable fallback = () -> {
-            if (completed.compareAndSet(false, true)) seek.run();
-        };
-        AndroidUtilities.runOnUIThread(fallback, 200);
-        AndroidUtilities.getBitmapFromSurface(surface, snapshot, (Utilities.Callback<Boolean>) success -> {
-            try {
-                if (!completed.compareAndSet(false, true)) return;
-                AndroidUtilities.cancelRunOnUIThread(fallback);
-                try {
-                    if (success && openGeneration == generation && receiver.getAnimation() == animation
-                            && animation.getAnimatedBitmap() == destination && !destination.isRecycled()) {
-                        new Canvas(destination).drawBitmap(snapshot, 0, 0, null);
-                    }
-                } catch (RuntimeException error) {
-                    FileLog.e(error);
-                } finally {
-                    seek.run();
-                }
-            } finally {
-                snapshot.recycle();
-            }
-        });
-        return true;
-    }
     private View pipPlaceholderView;
     public Runnable pipFirstFrameCallback;
     private TextureView pipTextureView;
@@ -24959,6 +24925,7 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
         if (windowView != null) {
             WindowManager wm = (WindowManager) parentActivity.getSystemService(Context.WINDOW_SERVICE);
             wm.addView(windowView, windowLayoutParams);
+            NimarkoAppMotionBlur.attachRoot(windowView);
             windowView.invalidate();
         }
 

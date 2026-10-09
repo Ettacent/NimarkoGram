@@ -10,6 +10,7 @@
 
 package org.telegram.ui;
 
+import app.nimarkogram.messenger.utils.NimarkoAppMotionBlur;
 import static org.telegram.messenger.AndroidUtilities.dp;
 import static org.telegram.messenger.AndroidUtilities.dpf2;
 
@@ -1570,6 +1571,7 @@ public class SecretMediaViewer implements NotificationCenter.NotificationCenterD
 
         WindowManager wm = (WindowManager) parentActivity.getSystemService(Context.WINDOW_SERVICE);
         wm.addView(windowView, windowLayoutParams);
+        NimarkoAppMotionBlur.attachRoot(windowView);
         secretDeleteTimer.invalidate();
         isVisible = true;
 

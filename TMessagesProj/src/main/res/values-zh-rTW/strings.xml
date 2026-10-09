@@ -1280,4 +1280,6 @@
     <string name="NM_ShowSeconds_Desc" translatable="false">12:34 -&gt; 12:34:56</string>
     <string name="NM_Menu_More">更多操作</string>
     <string name="NM_Menu_Manage">管理</string>
+    <string name="NM_MotionBlur">動態模糊</string>
+    <string name="NM_MotionBlur_Desc">為應用程式介面加入動態模糊，可能會增加 GPU 負載。</string>
 </resources>

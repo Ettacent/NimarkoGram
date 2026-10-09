@@ -2,6 +2,19 @@
 
 package app.nimarkogram.messenger.notifications;
 
+import android.graphics.Color;
+import android.graphics.LinearGradient;
+import android.graphics.Matrix;
+import android.graphics.PorterDuff;
+import android.graphics.PorterDuffXfermode;
+import android.graphics.RectF;
+import android.graphics.Shader;
+import android.view.ViewParent;
+import app.nimarkogram.messenger.api.dto.BadgeDTO;
+import app.nimarkogram.messenger.badges.BadgesController;
+import org.telegram.messenger.ImageLocation;
+import org.telegram.messenger.WindowInsetsCompatibility;
+import org.telegram.ui.ViewPagerActivity;
 import static org.telegram.messenger.AndroidUtilities.dp;
 import static org.telegram.messenger.LocaleController.getString;
 
@@ -42,7 +55,7 @@ import androidx.core.view.WindowInsetsCompat;
 import java.lang.ref.WeakReference;
 import java.util.LinkedHashMap;
 import java.util.concurrent.atomic.AtomicLongArray;
-import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 
@@ -98,7 +111,7 @@ public final class NimarkoInAppNotifications {
                 || fragment.visibleDialog != null && fragment.visibleDialog.isShowing()
                 || root != null && root != fragment && (root.isInPreviewMode() || root.hasShownSheet()
                 || root.visibleDialog != null && root.visibleDialog.isShowing())
-                || root instanceof org.telegram.ui.ViewPagerActivity && ((org.telegram.ui.ViewPagerActivity) root).isPageTransitionRunning()
+                || root instanceof ViewPagerActivity && ((ViewPagerActivity) root).isPageTransitionRunning()
                 || fragment.getParentLayout() != null && (fragment.getParentLayout().isTransitionAnimationInProgress()
                 || fragment.getParentLayout().isSwipeInProgress());
     }
@@ -118,10 +131,11 @@ public final class NimarkoInAppNotifications {
         final AnimatedLinearLayout panel;
         private Paint edgeFadePaint;
         private int contentAlpha = 255;
-        private final android.graphics.RectF contentBounds = new android.graphics.RectF();
-        private final android.graphics.RectF childBounds = new android.graphics.RectF();
-        private final android.graphics.Matrix edgeFadeMatrix = new android.graphics.Matrix();
+        private final RectF contentBounds = new RectF();
+        private final RectF childBounds = new RectF();
+        private final Matrix edgeFadeMatrix = new Matrix();
         boolean directResize;
+        boolean retirementResizePending;
         float retainedCoverage = 1f;
         int retainedCompactHeight;
         float retainedCompactVisibleHeight;
@@ -145,7 +159,8 @@ public final class NimarkoInAppNotifications {
             }
             return height;
         }
-        @Override public boolean isDirectResize() { return directResize; }
+        @Override public boolean isDirectResize() { return directResize && !retirementResizePending; }
+        @Override public void onSizeChangeConsumed() { retirementResizePending = false; }
         @Override public float getLayoutCoverage() {
             if (getChildCount() == 0) return retainedCoverage;
             float coverage = 0f;
@@ -162,7 +177,7 @@ public final class NimarkoInAppNotifications {
             super(panel.getContext());
             this.panel = panel;
             setClipChildren(true);
-            panel.addView(this, new android.widget.LinearLayout.LayoutParams(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
+            panel.addView(this, new LinearLayout.LayoutParams(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
             panel.setPriority(this, -100);
             panel.setTrackChildSize(this);
         }
@@ -173,6 +188,7 @@ public final class NimarkoInAppNotifications {
         void attach(Banner value) {
             value.slot = this;
             directResize = false;
+            retirementResizePending = false;
             retainedCoverage = 1f;
             setMinimumHeight(0);
             addView(value, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, Gravity.TOP | Gravity.CENTER_HORIZONTAL));
@@ -189,6 +205,10 @@ public final class NimarkoInAppNotifications {
                 setMinimumHeight(retainedCoverage == 0f ? 0 : getMeasuredHeight());
             }
             if (value.getParent() == this) removeView(value);
+            if (getChildCount() > 0) {
+                directResize = false;
+                retirementResizePending = true;
+            }
             if (getChildCount() == 0) {
                 if (!animate) {
                     retainedCoverage = 0f;
@@ -237,7 +257,7 @@ public final class NimarkoInAppNotifications {
             return true;
         }
 
-        @Override protected void dispatchDraw(android.graphics.Canvas canvas) {
+        @Override protected void dispatchDraw(Canvas canvas) {
             if (contentAlpha == 0) return;
             int layer = -1;
             if (contentAlpha < 255) {
@@ -267,16 +287,16 @@ public final class NimarkoInAppNotifications {
             return Math.max(0f, Math.min(getHeight(), height + offset));
         }
 
-        @Override protected boolean drawChild(android.graphics.Canvas canvas, View child, long drawingTime) {
+        @Override protected boolean drawChild(Canvas canvas, View child, long drawingTime) {
             Banner value = (Banner) child;
             float visibleHeight = getVisibleCardHeight(child.getHeight(), value.pullOffset);
             if (getWidth() <= 0 || visibleHeight <= 0f) return false;
             float fadeHeight = getEdgeFadeHeight(value.pullOffset);
             if (fadeHeight > 0f && edgeFadePaint == null) {
                 edgeFadePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-                edgeFadePaint.setShader(new android.graphics.LinearGradient(0, 0, 0, 1,
-                        android.graphics.Color.BLACK, android.graphics.Color.TRANSPARENT, android.graphics.Shader.TileMode.CLAMP));
-                edgeFadePaint.setXfermode(new android.graphics.PorterDuffXfermode(android.graphics.PorterDuff.Mode.DST_OUT));
+                edgeFadePaint.setShader(new LinearGradient(0, 0, 0, 1,
+                        Color.BLACK, Color.TRANSPARENT, Shader.TileMode.CLAMP));
+                edgeFadePaint.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.DST_OUT));
             }
             float outset = value.surface.getShadowOutset();
             int layer = fadeHeight > 0f ? canvas.saveLayer(-outset, 0, getWidth() + outset, visibleHeight + outset, null) : -1;
@@ -299,12 +319,14 @@ public final class NimarkoInAppNotifications {
     private NimarkoInAppNotifications() {}
 
     public static final class Delivery {
-        private final AtomicBoolean active = new AtomicBoolean(true);
-        private final AtomicBoolean completed = new AtomicBoolean();
-        public boolean isActive() { return active.get(); }
-        public boolean isComplete() { return completed.get(); }
-        public void cancel() { active.set(false); }
-        public boolean complete() { return completed.compareAndSet(false, true); }
+        private static final int COMPLETE = 1, CANCELED = 2, HANDLED = 4;
+        private final AtomicInteger state = new AtomicInteger();
+        public boolean isActive() { return (state.get() & CANCELED) == 0; }
+        public boolean isComplete() { return (state.get() & COMPLETE) != 0; }
+        public boolean wasHandled() { return (state.get() & HANDLED) != 0; }
+        public void cancel() { state.getAndUpdate(value -> value | CANCELED); }
+        public boolean complete() { return complete(false); }
+        public boolean complete(boolean handled) { return state.compareAndSet(0, COMPLETE | (handled ? HANDLED : 0)); }
     }
 
     private static final class RecentDelivery {
@@ -427,7 +449,7 @@ public final class NimarkoInAppNotifications {
                     }
                     if (now >= deadline + archiveWaitDuration) return;
                     RecentDelivery shown = recent.get(key);
-                    if (shown != null && shown.delivery.isActive() && now - shown.shownAt < 120_000) {
+                    if (shown != null && (shown.delivery.isActive() || shown.delivery.wasHandled()) && now - shown.shownAt < 120_000) {
                         handled = true;
                         return;
                     }
@@ -614,8 +636,8 @@ public final class NimarkoInAppNotifications {
         AvatarDrawable placeholder = new AvatarDrawable();
         if (peer != null) {
             placeholder.setInfo(account, peer);
-            avatar.setImage(org.telegram.messenger.ImageLocation.getForUserOrChat(account, peer,
-                    org.telegram.messenger.ImageLocation.TYPE_SMALL), "50_50", placeholder, 0, peer);
+            avatar.setImage(ImageLocation.getForUserOrChat(account, peer,
+                    ImageLocation.TYPE_SMALL), "50_50", placeholder, 0, peer);
         } else {
             String name = preview && heading != null && !heading.trim().isEmpty()
                     ? heading : getString(R.string.AppName);
@@ -638,7 +660,7 @@ public final class NimarkoInAppNotifications {
         BooleanSupplier navigationRequestCurrent;
         float expansion, downExpansion, downTranslation;
         int collapsedHeight, expandedHeight;
-        int retainedCollapsedHeight, retainedExpandedHeight;
+        int retainedExpandedHeight;
         NotificationTitleView title;
         TextView body, expandedBody;
         BackupImageView avatar;
@@ -741,17 +763,18 @@ public final class NimarkoInAppNotifications {
             title.setIncludeFontPadding(false);
             title.setMaxLines(1);
             title.setEllipsize(TextUtils.TruncateAt.END);
-            title.setGravity(LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT);
+            title.setGravity((LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT) | Gravity.CENTER_VERTICAL);
             title.setTextDirection(LocaleController.isRTL ? View.TEXT_DIRECTION_RTL : View.TEXT_DIRECTION_LTR);
             title.setTypeface(Typeface.DEFAULT_BOLD);
             title.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText));
             text.addView(title);
             refreshTitleBadge();
-            body = label(activity, 14, 2);
+            body = label(activity, 14, 1);
+            body.setSingleLine(true);
             body.setText(preview ? message : getString(R.string.NotificationHiddenMessage));
             body.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteGrayText));
             LinearLayout.LayoutParams bodyParams = new LinearLayout.LayoutParams(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT);
-            bodyParams.topMargin = dp(5);
+            bodyParams.topMargin = dp(3);
             bodies = new FrameLayout(activity);
             bodies.addView(body, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
             expandedBody = label(activity, 14, 8);
@@ -769,33 +792,39 @@ public final class NimarkoInAppNotifications {
                     new org.telegram.ui.Components.MessagePreviewCrossfade(this, this::onCrossfadeFrame);
             int retainedHeight;
 
+            int naturalHeight;
             NotificationTextLayout(LaunchActivity activity) {
                 super(activity);
             }
 
             void capture() {
                 retainedHeight = getHeight();
-                retainedCollapsedHeight = collapsedHeight;
                 retainedExpandedHeight = expandedHeight;
                 crossfade.capture(this::drawContent);
             }
 
             private void onCrossfadeFrame() {
-                if (!crossfade.isRunning()) requestLayout();
+                if (expansion > 0f || !crossfade.isRunning()) {
+                    if (slot != null && banner == Banner.this && !closing && !opening) {
+                        slot.directResize = slot.getChildCount() == 1;
+                    }
+                    requestLayout();
+                }
             }
 
             @Override protected void onMeasure(int widthSpec, int heightSpec) {
                 super.onMeasure(widthSpec, heightSpec);
+                naturalHeight = getMeasuredHeight();
                 if (crossfade.isRunning()) {
                     setMeasuredDimension(getMeasuredWidth(), Math.max(getMeasuredHeight(), retainedHeight));
                 }
             }
 
-            private void drawContent(android.graphics.Canvas canvas) {
+            private void drawContent(Canvas canvas) {
                 super.dispatchDraw(canvas);
             }
 
-            @Override protected void dispatchDraw(android.graphics.Canvas canvas) {
+            @Override protected void dispatchDraw(Canvas canvas) {
                 if (!SharedConfig.animationsEnabled() && crossfade.isRunning()) crossfade.finish();
                 crossfade.draw(canvas, this::drawContent);
             }
@@ -851,7 +880,7 @@ public final class NimarkoInAppNotifications {
             } else {
                 text.crossfade.finish();
             }
-            if (slot != null) slot.directResize = false;
+            if (slot != null) slot.directResize = slot.getChildCount() == 1;
             refreshTitleBadge();
             body.setText(message);
             expandedBody.setText(message);
@@ -877,8 +906,8 @@ public final class NimarkoInAppNotifications {
 
         private boolean titleHasCustomBadge(TLObject peer) {
             if (peer == null) return false;
-            app.nimarkogram.messenger.api.dto.BadgeDTO badge =
-                    app.nimarkogram.messenger.badges.BadgesController.getInstance().i(peer);
+            BadgeDTO badge =
+                    BadgesController.getInstance().i(peer);
             return badge != null && badge.getDocumentId() != 0;
         }
 
@@ -889,8 +918,8 @@ public final class NimarkoInAppNotifications {
 
         private long titleBadgeDocumentId(TLObject peer) {
             if (peer == null) return 0;
-            app.nimarkogram.messenger.api.dto.BadgeDTO badge =
-                    app.nimarkogram.messenger.badges.BadgesController.getInstance().i(peer);
+            BadgeDTO badge =
+                    BadgesController.getInstance().i(peer);
             long documentId = badge != null ? badge.getDocumentId() : 0;
 
             if (NimarkoConfig.disablePremiumStatuses) return documentId;
@@ -969,7 +998,7 @@ public final class NimarkoInAppNotifications {
                     value.append(" · ");
                     appendPerson(value, recipient, recipientId != 0 || recipientStar, recipientBadge);
                 }
-                setGravity(rtl ? Gravity.RIGHT : Gravity.LEFT);
+                setGravity((rtl ? Gravity.RIGHT : Gravity.LEFT) | Gravity.CENTER_VERTICAL);
                 setTextDirection(rtl ? View.TEXT_DIRECTION_RTL : View.TEXT_DIRECTION_LTR);
                 setText(value);
             }
@@ -1078,6 +1107,10 @@ public final class NimarkoInAppNotifications {
             AnimatedLinearLayout next = resolvePanel();
             if (next == null) { hide(); return; }
             if (slot != null && slot.panel == next) return;
+            if (slot != null && slot.panel != next) {
+                removeCurrent();
+                return;
+            }
             moving = true;
             try {
                 if (slot != null) slot.release(this);
@@ -1093,7 +1126,7 @@ public final class NimarkoInAppNotifications {
             root.getLocationOnScreen(viewportLocation);
             int bottom = viewportLocation[1] + root.getHeight();
             WindowInsetsCompat insets = ViewCompat.getRootWindowInsets(this);
-            int inset = insets == null ? 0 : insets.getInsets(WindowInsetsCompat.Type.ime() | org.telegram.messenger.WindowInsetsCompatibility.systemBars()).bottom;
+            int inset = insets == null ? 0 : insets.getInsets(WindowInsetsCompat.Type.ime() | WindowInsetsCompatibility.systemBars()).bottom;
             if (viewportWidth != root.getWidth() || viewportHeight != root.getHeight()
                     || viewportTop != viewportLocation[1] || viewportInset != inset) {
                 viewportWidth = root.getWidth();
@@ -1119,18 +1152,29 @@ public final class NimarkoInAppNotifications {
         @Override protected void onMeasure(int w, int h) {
             int width = Math.min(dp(560), MeasureSpec.getSize(w));
             measuredAvailableHeight = availableHeight();
+            int titleHeight = Math.max(dp(20), title.getLineHeight());
+            setTextSlotHeight(title, titleHeight);
+            setTextSlotHeight(body, body.getLineHeight());
             int bodyLimit = Math.max(dp(34), Math.min(dp(220), measuredAvailableHeight
-                    - getPaddingTop() - getPaddingBottom() - title.getLineHeight() - dp(5)));
+                    - getPaddingTop() - getPaddingBottom() - titleHeight - dp(3)));
             int lines = Math.max(2, Math.min(8, bodyLimit / Math.max(1, expandedBody.getLineHeight())));
             if (expandedBody.getMaxLines() != lines) expandedBody.setMaxLines(lines);
             super.onMeasure(MeasureSpec.makeMeasureSpec(width, MeasureSpec.EXACTLY),
                     MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED));
-            expandedHeight = getMeasuredHeight();
-            collapsedHeight = Math.min(expandedHeight, Math.max(dp(68), getPaddingTop() + getPaddingBottom()
-                    + getCollapsedTextHeight()));
-            if (text.crossfade.isRunning()) {
-                collapsedHeight = Math.max(collapsedHeight, retainedCollapsedHeight);
-                expandedHeight = Math.max(expandedHeight, retainedExpandedHeight);
+            if (!closing && !opening || collapsedHeight <= 0) {
+                expandedHeight = Math.max(getMinimumHeight(), getPaddingTop() + getPaddingBottom()
+                    + Math.max(avatar.getMeasuredHeight(), text.naturalHeight));
+                collapsedHeight = Math.max(getMinimumHeight(), getPaddingTop() + getPaddingBottom()
+                    + Math.max(avatar.getMeasuredHeight(), getCollapsedTextHeight()));
+                expandedHeight = Math.max(collapsedHeight, expandedHeight);
+                if (text.crossfade.isRunning()) {
+                    float progress = text.crossfade.getProgress();
+                    expandedHeight = Math.round(retainedExpandedHeight + (expandedHeight - retainedExpandedHeight) * progress);
+                    expandedHeight = Math.max(collapsedHeight, expandedHeight);
+                }
+                if (preview && expandedBody.getLineCount() > 1) {
+                    expandedHeight = Math.max(expandedHeight, collapsedHeight + dp(1));
+                }
             }
             setMeasuredDimension(getMeasuredWidth(), Math.round(collapsedHeight + (expandedHeight - collapsedHeight) * expansion));
         }
@@ -1149,6 +1193,14 @@ public final class NimarkoInAppNotifications {
             LinearLayout.LayoutParams params = (LinearLayout.LayoutParams) bodies.getLayoutParams();
             return text.getPaddingTop() + title.getMeasuredHeight() + params.topMargin
                     + body.getMeasuredHeight() + params.bottomMargin + text.getPaddingBottom();
+        }
+
+        private void setTextSlotHeight(TextView view, int height) {
+            ViewGroup.LayoutParams params = view.getLayoutParams();
+            if (params.height != height) {
+                params.height = height;
+                view.setLayoutParams(params);
+            }
         }
 
         private void centerCollapsedContent(View child, int contentHeight, int childHeight) {
@@ -1403,7 +1455,7 @@ public final class NimarkoInAppNotifications {
                     velocityTracker = null;
                 }
             }
-            android.view.ViewParent touchParent = getParent();
+            ViewParent touchParent = getParent();
             try {
                 return super.dispatchTouchEvent(e);
             } finally {
@@ -1471,7 +1523,7 @@ public final class NimarkoInAppNotifications {
             return true;
         }
 
-        @Override protected void dispatchDraw(android.graphics.Canvas canvas) {
+        @Override protected void dispatchDraw(Canvas canvas) {
             super.dispatchDraw(canvas);
             if (preview && expandedHeight > collapsedHeight) {
                 handlePaint.setColor(Theme.getColor(Theme.key_windowBackgroundWhiteGrayText));
@@ -1483,7 +1535,7 @@ public final class NimarkoInAppNotifications {
 
         @Override public void onInitializeAccessibilityNodeInfo(AccessibilityNodeInfo info) {
             super.onInitializeAccessibilityNodeInfo(info);
-            if (preview && expandedHeight > collapsedHeight) {
+            if (preview && (expanded || expandedHeight > collapsedHeight)) {
                 info.addAction(expanded ? AccessibilityNodeInfo.AccessibilityAction.ACTION_COLLAPSE
                         : AccessibilityNodeInfo.AccessibilityAction.ACTION_EXPAND);
             }
@@ -1492,8 +1544,8 @@ public final class NimarkoInAppNotifications {
 
         @Override public boolean performAccessibilityAction(int action, Bundle args) {
             if (action == AccessibilityNodeInfo.ACTION_DISMISS) { hide(); return true; }
-            if (preview && expandedHeight > collapsedHeight && (action == AccessibilityNodeInfo.ACTION_EXPAND
-                    || action == AccessibilityNodeInfo.ACTION_COLLAPSE)) {
+            if (preview && (action == AccessibilityNodeInfo.ACTION_EXPAND && expandedHeight > collapsedHeight
+                    || action == AccessibilityNodeInfo.ACTION_COLLAPSE && expanded)) {
                 releaseVelocity = 0;
                 settleExpansion(action == AccessibilityNodeInfo.ACTION_EXPAND);
                 restoreGesture();

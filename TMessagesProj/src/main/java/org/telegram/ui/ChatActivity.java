@@ -521,6 +521,7 @@ public class ChatActivity extends BaseFragment implements
     private ChatActivitySideControlsButtonsLayout sideControlsButtonsLayout;
     private boolean pagedownButtonShowedByScroll;
     private int reactionsMentionCount;
+    private boolean suppressUnreadReactionAnimations;
     private int pollVotesMentionCount;
     public Bulletin messageSeenPrivacyBulletin;
     TextView webBotTitle;
@@ -1392,6 +1393,7 @@ public class ChatActivity extends BaseFragment implements
     public final static int OPTION_WELCOME_REVERT = 116;
 
     private final static int[] allowedNotificationsDuringChatListAnimations = new int[]{
+            NotificationCenter.messagePlayingProgressDidChanged,
             NotificationCenter.messagesRead,
             NotificationCenter.threadMessagesRead,
             NotificationCenter.monoForumMessagesRead,
@@ -1680,7 +1682,8 @@ public class ChatActivity extends BaseFragment implements
 
         @Override
         public PhotoViewer.PlaceProviderObject getPlaceForPhoto(MessageObject messageObject, TLRPC.FileLocation fileLocation, int index, boolean needPreview, boolean closing) {
-            return ChatActivity.this.getPlaceForPhoto(messageObject, fileLocation, index, needPreview, false);
+            PhotoViewer.PlaceProviderObject object = ChatActivity.this.getPlaceForPhoto(messageObject, fileLocation, index, needPreview, false);
+            return object;
         }
 
         @Override
@@ -8325,7 +8328,6 @@ public class ChatActivity extends BaseFragment implements
         chatActivityEnterView = new ChatActivityEnterView(getParentActivity(), contentView, this, chatMode != MODE_EDIT_BUSINESS_LINK, themeDelegate) {
 
             int lastContentViewHeight;
-            int messageEditTextPredrawHeigth;
             int messageEditTextPredrawScrollY;
 
             @Override
@@ -8444,20 +8446,26 @@ public class ChatActivity extends BaseFragment implements
                     }
 
                     if (shouldAnimateEditTextWithBounds) {
-                        float dy = (messageEditTextPredrawHeigth - messageEditText.getMeasuredHeight())
-                                + (messageEditTextPredrawScrollY - messageEditText.getScrollY())
+                        float dy = (messageEditTextPredrawScrollY - messageEditText.getScrollY())
                                 + messageEditText.consumeDeletionScrollDelta();
-                        messageEditText.setOffsetY(messageEditText.getOffsetY() - dy);
-                        ValueAnimator a = ValueAnimator.ofFloat(messageEditText.getOffsetY(), 0);
-                        a.addUpdateListener(animation -> messageEditText.setOffsetY((float) animation.getAnimatedValue()));
                         if (messageEditTextAnimator != null) {
                             messageEditTextAnimator.cancel();
+                            messageEditTextAnimator = null;
                         }
-                        messageEditTextAnimator = a;
-                        a.setDuration(ChatListItemAnimator.DEFAULT_DURATION);
+                        messageEditText.setOffsetY(messageEditText.getOffsetY() - dy);
+                        if (messageEditText.getOffsetY() != 0f) {
+                            ValueAnimator a = ValueAnimator.ofFloat(messageEditText.getOffsetY(), 0);
+                            messageEditTextAnimator = a;
+                            a.addUpdateListener(animation -> {
+                                if (messageEditTextAnimator == animation) {
+                                    messageEditText.setOffsetY((float) animation.getAnimatedValue());
+                                }
+                            });
+                            a.setDuration(ChatListItemAnimator.DEFAULT_DURATION);
 
-                        a.setInterpolator(ChatListItemAnimator.DEFAULT_INTERPOLATOR);
-                        a.start();
+                            a.setInterpolator(ChatListItemAnimator.DEFAULT_INTERPOLATOR);
+                            a.start();
+                        }
                         shouldAnimateEditTextWithBounds = false;
                     }
                     lastContentViewHeight = contentView.getMeasuredHeight();
@@ -8479,7 +8487,6 @@ public class ChatActivity extends BaseFragment implements
                         return;
                     }
                     if (!shouldAnimateEditTextWithBounds) {
-                        messageEditTextPredrawHeigth = messageEditText.getMeasuredHeight();
                         messageEditTextPredrawScrollY = messageEditText.getScrollY();
                         messageEditText.consumeDeletionScrollDelta();
                     }
@@ -8521,6 +8528,7 @@ public class ChatActivity extends BaseFragment implements
                 }
             }
         };
+        chatActivityEnterView.setUseFieldHeightForText(true);
         chatActivityEnterView.setSeparatedComposerLayout(
                 chatMode != MODE_EDIT_BUSINESS_LINK
                         && app.nimarkogram.messenger.NimarkoConfig.iosStyleComposer);
@@ -11343,24 +11351,39 @@ public class ChatActivity extends BaseFragment implements
         if (cell instanceof ChatMessageCell) {
             final ChatMessageCell messageCell = (ChatMessageCell) cell;
             final TLRPC.MessagePeerReaction reaction = messageCell.getMessageObject().getRandomUnreadReaction();
-            if (reaction != null
-                    && (messageCell.reactionsLayoutInBubble
-                            .hasUnreadReactions || reaction.big)) {
-                ReactionsEffectOverlay.show(ChatActivity.this, null, cell, null,0, 0, ReactionsLayoutInBubble.VisibleReaction.fromTL(reaction.reaction), currentAccount, reaction.big ? ReactionsEffectOverlay.LONG_ANIMATION : ReactionsEffectOverlay.SHORT_ANIMATION);
-                ReactionsEffectOverlay.startAnimation();
+            if (reaction != null) {
+                scheduleUnreadReactionAnimation(messageId, messageCell.getMessageObject(), reaction);
             }
             messageCell.markReactionsAsRead();
         } else if (cell instanceof ChatActionCell) {
             final ChatActionCell actionCell = (ChatActionCell) cell;
             final TLRPC.MessagePeerReaction reaction = actionCell.getMessageObject().getRandomUnreadReaction();
-            if (reaction != null
-                    && (actionCell.reactionsLayoutInBubble.hasUnreadReactions
-                            || reaction.big)) {
-                ReactionsEffectOverlay.show(ChatActivity.this, null, cell, null,0, 0, ReactionsLayoutInBubble.VisibleReaction.fromTL(reaction.reaction), currentAccount, reaction.big ? ReactionsEffectOverlay.LONG_ANIMATION : ReactionsEffectOverlay.SHORT_ANIMATION);
-                ReactionsEffectOverlay.startAnimation();
+            if (reaction != null) {
+                scheduleUnreadReactionAnimation(messageId, actionCell.getMessageObject(), reaction);
             }
             actionCell.markReactionsAsRead();
         }
+    }
+
+    private void scheduleUnreadReactionAnimation(int messageId, MessageObject messageObject, TLRPC.MessagePeerReaction reaction) {
+        final int generation = reactionUiGeneration;
+        if (!canShowReactionUi(generation) || suppressUnreadReactionAnimations) {
+            return;
+        }
+        final ReactionsLayoutInBubble.VisibleReaction visibleReaction = ReactionsLayoutInBubble.VisibleReaction.fromTL(reaction.reaction);
+        final int animationType = reaction.big ? ReactionsEffectOverlay.LONG_ANIMATION : ReactionsEffectOverlay.SHORT_ANIMATION;
+        AndroidUtilities.runOnUIThread(() -> {
+            if (!canShowReactionUi(generation) || suppressUnreadReactionAnimations) {
+                return;
+            }
+            BaseCell cell = findMessageCell(messageId, true);
+            if (!(cell instanceof ChatMessageCell && ((ChatMessageCell) cell).getMessageObject() == messageObject
+                    || cell instanceof ChatActionCell && ((ChatActionCell) cell).getMessageObject() == messageObject)) {
+                return;
+            }
+            ReactionsEffectOverlay.show(ChatActivity.this, null, cell, null, 0, 0, visibleReaction, currentAccount, animationType);
+            ReactionsEffectOverlay.startAnimation();
+        }, 200);
     }
 
     private void dimBehindView(View view, boolean enable) {
@@ -17019,7 +17042,7 @@ public class ChatActivity extends BaseFragment implements
                     }
                     if (reactionsMentionCount >= 0) {
                         TLRPC.MessagePeerReaction reaction = messageCell.getMessageObject().getRandomUnreadReaction();
-                        if (reaction != null) {
+                        if (reaction != null && !suppressUnreadReactionAnimations) {
                             ReactionsLayoutInBubble.VisibleReaction visibleReaction =  ReactionsLayoutInBubble.VisibleReaction.fromTL(reaction.reaction);
                             ReactionsEffectOverlay.show(ChatActivity.this, null, messageCell, null, 0, 0, visibleReaction, currentAccount, reaction.big ? ReactionsEffectOverlay.LONG_ANIMATION : ReactionsEffectOverlay.SHORT_ANIMATION);
                             ReactionsEffectOverlay.startAnimation();
@@ -17070,7 +17093,7 @@ public class ChatActivity extends BaseFragment implements
                     }
                     if (reactionsMentionCount >= 0) {
                         TLRPC.MessagePeerReaction reaction = cell.getMessageObject().getRandomUnreadReaction();
-                        if (reaction != null) {
+                        if (reaction != null && !suppressUnreadReactionAnimations) {
                             ReactionsLayoutInBubble.VisibleReaction visibleReaction =  ReactionsLayoutInBubble.VisibleReaction.fromTL(reaction.reaction);
                             ReactionsEffectOverlay.show(ChatActivity.this, null, cell, null, 0, 0, visibleReaction, currentAccount, reaction.big ? ReactionsEffectOverlay.LONG_ANIMATION : ReactionsEffectOverlay.SHORT_ANIMATION);
                             ReactionsEffectOverlay.startAnimation();
@@ -24175,7 +24198,8 @@ public class ChatActivity extends BaseFragment implements
                     if (view instanceof ChatMessageCell) {
                         ChatMessageCell cell = (ChatMessageCell) view;
                         MessageObject playing = cell.getMessageObject();
-                        if (playing != null && playing.getId() == mid) {
+                        if (playing != null && playing.getId() == mid
+                                && MediaController.getInstance().isPlayingMessage(playing)) {
                             MessageObject player = MediaController.getInstance().getPlayingMessageObject();
                             if (player != null && !cell.isDraggingdAnyMusicSeekBar()) {
                                 playing.audioProgress = player.audioProgress;
@@ -25379,9 +25403,7 @@ public class ChatActivity extends BaseFragment implements
                         if (cell != null && reactionsMentionCount > 0) {
                             reactionsMentionCount--;
                             getMessagesStorage().markMessageReactionsAsRead(getDialogId(), getTopicId(), messageId);
-                            AndroidUtilities.runOnUIThread(() -> {
-                                playReactionAnimation(messageId);
-                            }, 200);
+                            playReactionAnimation(messageId);
                         }
                     }
                 }
@@ -28237,6 +28259,7 @@ public class ChatActivity extends BaseFragment implements
 
     @Override
     public void onBecomeFullyVisible() {
+        suppressUnreadReactionAnimations = false;
         isFullyVisible = true;
         super.onBecomeFullyVisible();
         if (deferSavedMessagesPrefetchUntilVisible && isOwnSavedMessagesChat()) {
@@ -28630,6 +28653,7 @@ public class ChatActivity extends BaseFragment implements
                 pendingRequestsDelegate.onBackToScreen();
             }
             updateMessagesVisiblePart(false);
+            suppressUnreadReactionAnimations = false;
             if (refreshAdapterAfterTransition) {
                 scheduleChatAdapterRefresh();
             }
@@ -31031,6 +31055,7 @@ public class ChatActivity extends BaseFragment implements
     public void onResume() {
         super.onResume();
         final boolean deferResumeUi = wasPaused && !isFullyVisible;
+        suppressUnreadReactionAnimations = deferResumeUi;
         LaunchActivity.invalidateNimarkoSecureFlag();
 
         if (actionBar != null && actionBar.backButtonImageView != null) {
@@ -44313,6 +44338,8 @@ public class ChatActivity extends BaseFragment implements
         @Override
         public void invalidateBlur() {
             contentView.invalidateBlur();
+            invalidateMergedVisibleBlurredPositionsAndSources(
+                    BLUR_INVALIDATE_FLAG_SCROLL | BLUR_INVALIDATE_FLAG_POSITIONS);
         }
 
         @Override

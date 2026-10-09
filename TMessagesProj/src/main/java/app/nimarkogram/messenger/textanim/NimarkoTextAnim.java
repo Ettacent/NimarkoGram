@@ -2,6 +2,9 @@
 
 package app.nimarkogram.messenger.textanim;
 
+import android.text.InputType;
+import android.text.method.PasswordTransformationMethod;
+import java.util.Stack;
 import android.content.Context;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
@@ -135,16 +138,16 @@ public final class NimarkoTextAnim {
         }
     }
     private static boolean canAnimateEditor(EditText edit) {
-        if (edit == null || edit.getTransformationMethod() instanceof android.text.method.PasswordTransformationMethod) return false;
+        if (edit == null || edit.getTransformationMethod() instanceof PasswordTransformationMethod) return false;
         int type = edit.getInputType();
-        int inputClass = type & android.text.InputType.TYPE_MASK_CLASS;
-        int variation = type & android.text.InputType.TYPE_MASK_VARIATION;
-        return !(inputClass == android.text.InputType.TYPE_CLASS_TEXT
-                && (variation == android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD
-                || variation == android.text.InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD
-                || variation == android.text.InputType.TYPE_TEXT_VARIATION_WEB_PASSWORD))
-                && !(inputClass == android.text.InputType.TYPE_CLASS_NUMBER
-                && variation == android.text.InputType.TYPE_NUMBER_VARIATION_PASSWORD);
+        int inputClass = type & InputType.TYPE_MASK_CLASS;
+        int variation = type & InputType.TYPE_MASK_VARIATION;
+        return !(inputClass == InputType.TYPE_CLASS_TEXT
+                && (variation == InputType.TYPE_TEXT_VARIATION_PASSWORD
+                || variation == InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD
+                || variation == InputType.TYPE_TEXT_VARIATION_WEB_PASSWORD))
+                && !(inputClass == InputType.TYPE_CLASS_NUMBER
+                && variation == InputType.TYPE_NUMBER_VARIATION_PASSWORD);
     }
 
     public static void beforeEditorDraw(EditText edit) {
@@ -240,7 +243,6 @@ public final class NimarkoTextAnim {
                 hookFocusChanged(target);
                 hookTouchEvent(target);
                 installed = true;
-                FileLog.d("NimarkoTextAnim: installed on " + target.getName());
             } catch (Throwable t) {
                 FileLog.e("NimarkoTextAnim install failed", t);
                 uninstall();
@@ -719,7 +721,7 @@ public final class NimarkoTextAnim {
     }
 
     private static void trimBlurCacheFor(long requestedBytes) {
-        java.util.Iterator<Map.Entry<String, Bitmap>> iterator = blurCache.entrySet().iterator();
+        Iterator<Map.Entry<String, Bitmap>> iterator = blurCache.entrySet().iterator();
         while ((blurCache.size() >= BLUR_CACHE_MAX
                 || blurCacheBytes + requestedBytes > BLUR_CACHE_MAX_BYTES) && iterator.hasNext()) {
             Bitmap bitmap = iterator.next().getValue();
@@ -1116,7 +1118,7 @@ public final class NimarkoTextAnim {
         final Map<Integer, CharData> charStartTimes = new HashMap<>();
         final List<Particle> particles = new ArrayList<>();
         final Map<Integer, List<SpoilerParticle>> spoilerParticles = new HashMap<>();
-        final java.util.Stack<SpoilerParticle> spoilerPool = new java.util.Stack<>();
+        final Stack<SpoilerParticle> spoilerPool = new Stack<>();
     }
 
     private static final class CharData {

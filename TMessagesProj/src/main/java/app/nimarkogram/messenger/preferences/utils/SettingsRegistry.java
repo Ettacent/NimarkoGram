@@ -2,6 +2,7 @@
 
 package app.nimarkogram.messenger.preferences.utils;
 
+import java.util.Iterator;
 import android.text.TextUtils;
 
 import org.telegram.messenger.FileLog;
@@ -173,7 +174,7 @@ public class SettingsRegistry {
             LinkedHashMap<String, Entry> aliases = new LinkedHashMap<>(current.aliases);
             HashMap<Integer, Entry> prepared = new HashMap<>(current.prepared);
             
-            java.util.Iterator<Map.Entry<String, Entry>> iterator = aliases.entrySet().iterator();
+            Iterator<Map.Entry<String, Entry>> iterator = aliases.entrySet().iterator();
             while (iterator.hasNext()) {
                 Map.Entry<String, Entry> candidate = iterator.next();
                 Entry value = candidate.getValue();

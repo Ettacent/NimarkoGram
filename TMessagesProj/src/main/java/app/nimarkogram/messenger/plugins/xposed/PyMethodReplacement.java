@@ -22,6 +22,10 @@ public class PyMethodReplacement extends XC_MethodReplacement {
     
     private final PyObject boundReplace;
 
+    public final String diagnosticPluginId() { return pluginId; }
+    public final String diagnosticRuntimeOwner() {
+        return runtimeToken.getGeneration() + ":" + runtimeToken.getInstanceId();
+    }
     public PyMethodReplacement(String str, PyObject pyObject) {
         this(str, pyObject, PluginsController.getInstance().captureCurrentPluginRuntime());
     }

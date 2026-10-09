@@ -13,6 +13,7 @@ import android.graphics.RectF;
 import android.graphics.Shader;
 import android.os.SystemClock;
 import android.text.TextPaint;
+import app.nimarkogram.messenger.NimarkoConfig;
 import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
 import android.view.View;
 
@@ -62,6 +63,7 @@ public class FlickerLoadingView extends View implements Theme.Colorable {
     public static final int STAR_GIFT_SELECT = 35;
     public static final int STAR_GIFT_SHORTER = 36;
 
+    public static final int GROUP_USERS_TYPE = 37;
     private int gradientWidth;
     private LinearGradient gradient;
     private Paint paint = new Paint();
@@ -154,7 +156,7 @@ public class FlickerLoadingView extends View implements Theme.Colorable {
     }
 
     public int getAdditionalHeight() {
-        return 0;
+        return isSingleCell && getViewType() == GROUP_USERS_TYPE ? Math.max(0, itemsCount - 1) : 0;
     }
 
     @Override
@@ -426,6 +428,34 @@ public class FlickerLoadingView extends View implements Theme.Colorable {
                 }
 
                 h += getCellHeight(getMeasuredWidth());
+                k++;
+                if (isSingleCell && k >= itemsCount) {
+                    break;
+                }
+            }
+        } else if (getViewType() == GROUP_USERS_TYPE) {
+            int k = 0;
+            int avatarSize = dp(46);
+            int avatarLeft = paddingLeft + dp(16);
+            float radius = Math.max(0f, Math.min(avatarSize / 2f, NimarkoConfig.getAvatarCorners(48)));
+            while (h <= getMeasuredHeight()) {
+                int avatarTop = h + dp(6);
+                rectF.set(avatarLeft, avatarTop, avatarLeft + avatarSize, avatarTop + avatarSize);
+                checkRtl(rectF);
+                rectF.sort();
+                canvas.drawRoundRect(rectF, radius, radius, paint);
+
+                rectF.set(paddingLeft + dp(73), h + dp(14), paddingLeft + dp(265), h + dp(22));
+                checkRtl(rectF);
+                rectF.sort();
+                canvas.drawRoundRect(rectF, dp(4), dp(4), paint);
+
+                rectF.set(paddingLeft + dp(73), h + dp(36), paddingLeft + dp(145), h + dp(44));
+                checkRtl(rectF);
+                rectF.sort();
+                canvas.drawRoundRect(rectF, dp(4), dp(4), paint);
+
+                h += getCellHeight(getMeasuredWidth()) + 1;
                 k++;
                 if (isSingleCell && k >= itemsCount) {
                     break;
@@ -976,6 +1006,7 @@ public class FlickerLoadingView extends View implements Theme.Colorable {
             case INVITE_LINKS_TYPE:
                 return dp(66);
             case USERS2_TYPE:
+            case GROUP_USERS_TYPE:
                 return dp(58);
             case CALL_LOG_TYPE:
                 return dp(61);

@@ -11,6 +11,9 @@
 
 package app.nimarkogram.messenger.preferences;
 
+import android.os.Build;
+import app.nimarkogram.messenger.preferences.components.AvatarCornersPreviewCell;
+import app.nimarkogram.messenger.preferences.components.StickerSizeCell;
 import static org.telegram.messenger.LocaleController.getString;
 
 import android.content.Context;
@@ -79,12 +82,13 @@ public class AppearancePreferencesActivity extends NimarkoUniversalPreferencesAc
     private static final int weekdayNearDateRow = 30;
     private static final int enhancedGlassBlurRow = 31;
 
+    private static final int motionBlurRow = 32;
     private static final int foldersRow = 7;
     private static final int bottomTabsRow = 8;
     private static final int messagesAndProfilesRow = 9;
 
-    private app.nimarkogram.messenger.preferences.components.AvatarCornersPreviewCell avatarCornersCell;
-    private app.nimarkogram.messenger.preferences.components.StickerSizeCell stickerSizeCell;
+    private AvatarCornersPreviewCell avatarCornersCell;
+    private StickerSizeCell stickerSizeCell;
 
     public AppearancePreferencesActivity() {
         this(PAGE_OVERVIEW);
@@ -100,7 +104,7 @@ public class AppearancePreferencesActivity extends NimarkoUniversalPreferencesAc
                     foldersRow, bottomTabsRow -> PAGE_NAVIGATION;
             case snowflakesRow, iconPackRow, oneUISwitchesRow, disableDividersRow,
                     glareOnElementsRow, forceBlurRow, mediaGlowRow, chatSnowflakesRow,
-                    enhancedGlassBlurRow -> PAGE_INTERFACE;
+                    enhancedGlassBlurRow, motionBlurRow -> PAGE_INTERFACE;
             case messagesAndProfilesRow, messageSizeRow, iosStyleComposerRow, hideBubbleTailRow,
                     centerChatTitleRow, unreadBadgeRow, customWallpapersRow, hideMuteButtonRow,
                     weekdayNearDateRow -> PAGE_CHAT;
@@ -195,7 +199,7 @@ public class AppearancePreferencesActivity extends NimarkoUniversalPreferencesAc
         items.add(asSettingsValue(oneUISwitchesRow, IconBackgroundColors.GREEN,
                 R.drawable.msg_hybrid, getString(R.string.NM_SwitchStyle), getSwitchStyleValueText()));
         items.add(SettingsHelper.asSwitchCG(disableDividersRow, getString(R.string.AP_DisableDividers))
-                .setChecked(app.nimarkogram.messenger.NimarkoConfig.disableDividers)
+                .setChecked(NimarkoConfig.disableDividers)
         );
     }
 
@@ -203,10 +207,10 @@ public class AppearancePreferencesActivity extends NimarkoUniversalPreferencesAc
         items.add(asSettingsValue(customTitleRow, IconBackgroundColors.ORANGE,
                 R.drawable.msg_jobtitle, getString(R.string.NM_CustomTitle), getCustomTitleValueText()));
         items.add(SettingsHelper.asSwitchCG(centerTitleRow, getString(R.string.AP_CenterTitle))
-                .setChecked(app.nimarkogram.messenger.NimarkoConfig.centerTitle)
+                .setChecked(NimarkoConfig.centerTitle)
         );
         items.add(SettingsHelper.asSwitchCG(hideSearchBar, getString(R.string.AP_HideSearchBar))
-                .setChecked(app.nimarkogram.messenger.NimarkoConfig.hideSearchBar)
+                .setChecked(NimarkoConfig.hideSearchBar)
         );
         items.add(SettingsHelper.asSwitchCG(hideStatusRow, getString(R.string.NM_HideActionBarStatus))
                 .setChecked(NimarkoConfig.hideActionBarStatus));
@@ -247,18 +251,24 @@ public class AppearancePreferencesActivity extends NimarkoUniversalPreferencesAc
     }
 
     private void fillEffects(ArrayList<UItem> items) {
-        if (android.os.Build.VERSION.SDK_INT >= 31) {
+        if (Build.VERSION.SDK_INT >= 31) {
             items.add(SettingsHelper.asSwitchCG(enhancedGlassBlurRow,
                             getString(R.string.NM_EnhancedGlassBlur),
                             getString(R.string.NM_EnhancedGlassBlur_Desc))
                     .setChecked(NimarkoConfig.enhancedGlassBlur));
+        }
+        if (Build.VERSION.SDK_INT >= 31) {
+            items.add(SettingsHelper.asSwitchCG(motionBlurRow,
+                            getString(R.string.NM_MotionBlur),
+                            getString(R.string.NM_MotionBlur_Desc))
+                    .setChecked(NimarkoConfig.motionBlur));
         }
         items.add(SettingsHelper.asSwitchCG(forceBlurRow, getString(R.string.NM_ForceBlur))
                 .setChecked(NimarkoConfig.forceBlur));
         items.add(SettingsHelper.asSwitchCG(glareOnElementsRow,
                         getString(R.string.AP_GlareOnElements),
                         getString(R.string.AP_GlareOnElementsInfo))
-                .setChecked(app.nimarkogram.messenger.NimarkoConfig.glareOnElements)
+                .setChecked(NimarkoConfig.glareOnElements)
         );
         items.add(SettingsHelper.asSwitchCG(mediaGlowRow,
                         getString(R.string.NM_MediaGlow),
@@ -266,14 +276,14 @@ public class AppearancePreferencesActivity extends NimarkoUniversalPreferencesAc
                 .setChecked(NimarkoConfig.mediaGlow)
         );
         items.add(SettingsHelper.asSwitchCG(snowflakesRow, getString(R.string.NM_SnowInHeader))
-                .setChecked(app.nimarkogram.messenger.NimarkoConfig.drawSnowInActionBar));
+                .setChecked(NimarkoConfig.drawSnowInActionBar));
         items.add(SettingsHelper.asSwitchCG(chatSnowflakesRow, getString(R.string.NM_SnowflakesInChat))
                 .setChecked(NimarkoConfig.drawSnowInChat));
     }
 
     private void fillAvatarsAndStickers(ArrayList<UItem> items) {
         if (avatarCornersCell == null) {
-            avatarCornersCell = new app.nimarkogram.messenger.preferences.components.AvatarCornersPreviewCell(getContext(), this);
+            avatarCornersCell = new AvatarCornersPreviewCell(getContext(), this);
         }
         items.add(UItem.asCustom(avatarCornersPreviewRow, avatarCornersCell));
         items.add(SettingsHelper.asSwitchCG(forumAvatarsRow,
@@ -286,7 +296,7 @@ public class AppearancePreferencesActivity extends NimarkoUniversalPreferencesAc
                         getString(R.string.NM_OnlineIndicatorInGroups_Desc))
                 .setChecked(NimarkoConfig.onlineIndicatorInGroups));
         if (stickerSizeCell == null) {
-            stickerSizeCell = new app.nimarkogram.messenger.preferences.components.StickerSizeCell(getContext(), this);
+            stickerSizeCell = new StickerSizeCell(getContext(), this);
         }
         items.add(UItem.asCustom(stickerSizePreviewRow, stickerSizeCell));
         items.add(SettingsHelper.asSwitchCG(hideStickerTimeRow, getString(R.string.NM_TimeOnStick))
@@ -314,7 +324,7 @@ public class AppearancePreferencesActivity extends NimarkoUniversalPreferencesAc
                 getActionBar().prepareCenterTitleAnimation();
             }
             NimarkoConfig.toggleCenterTitle();
-            updateCheckState(view, app.nimarkogram.messenger.NimarkoConfig.centerTitle);
+            updateCheckState(view, NimarkoConfig.centerTitle);
             if (getActionBar() != null) {
                 getActionBar().requestLayout();
             }
@@ -325,22 +335,22 @@ public class AppearancePreferencesActivity extends NimarkoUniversalPreferencesAc
             return;
         } else  if (item.id == hideSearchBar) {
             NimarkoConfig.toggleHideSearchBar();
-            updateCheckState(view, app.nimarkogram.messenger.NimarkoConfig.hideSearchBar);
+            updateCheckState(view, NimarkoConfig.hideSearchBar);
 
             getNotificationCenter().postNotificationName(NotificationCenter.cgUpdateSearchFiledVisibility);
         } else if (item.id == snowflakesRow) {
             NimarkoConfig.toggleDrawSnowInActionBar();
-            updateCheckState(view, app.nimarkogram.messenger.NimarkoConfig.drawSnowInActionBar);
+            updateCheckState(view, NimarkoConfig.drawSnowInActionBar);
 
             showRestartBulletin();
         } else if (item.id == iconPackRow) {
             presentFragment(new IconPackSelectorActivity());   // dedicated screen with live previews
         } else if (item.id == oneUISwitchesRow) {
-            java.util.ArrayList<CharSequence> opts = new java.util.ArrayList<>();
+            ArrayList<CharSequence> opts = new ArrayList<>();
             opts.add(getString(R.string.Default));
             opts.add("One UI");
             opts.add("MD3");
-            app.nimarkogram.messenger.preferences.helpers.PopupHelper.show(opts, getString(R.string.NM_SwitchStyle),
+            PopupHelper.show(opts, getString(R.string.NM_SwitchStyle),
                     NimarkoConfig.switchStyle, getContext(), i -> {
                         NimarkoConfig.setSwitchStyle(i);
                         SettingsHelper.updateButtonValue(view, getSwitchStyleValueText());
@@ -358,7 +368,7 @@ public class AppearancePreferencesActivity extends NimarkoUniversalPreferencesAc
         } else if (item.id == disableDividersRow) {
             NimarkoConfig.toggleDisableDividers();
             item.checked = NimarkoConfig.disableDividers;
-            updateCheckState(view, app.nimarkogram.messenger.NimarkoConfig.disableDividers);
+            updateCheckState(view, NimarkoConfig.disableDividers);
 
             Theme.applyCommonTheme();
             updateItemsAfterToggle();
@@ -387,6 +397,9 @@ public class AppearancePreferencesActivity extends NimarkoUniversalPreferencesAc
             updateCheckState(view, NimarkoConfig.enhancedGlassBlur);
             Theme.applyCommonTheme();
             if (getParentLayout() != null) getParentLayout().rebuildAllFragmentViews(false, false);
+        } else if (item.id == motionBlurRow) {
+            NimarkoConfig.toggleMotionBlur();
+            updateCheckState(view, NimarkoConfig.motionBlur);
         } else if (item.id == hideStatusRow) {
             NimarkoConfig.toggleHideActionBarStatus();
             updateCheckState(view, NimarkoConfig.hideActionBarStatus);
@@ -453,7 +466,7 @@ public class AppearancePreferencesActivity extends NimarkoUniversalPreferencesAc
     }
 
     private String getIconPackValueText()  {
-        return switch (app.nimarkogram.messenger.NimarkoConfig.iconReplacement) {
+        return switch (NimarkoConfig.iconReplacement) {
             case NimarkoConfig.ICON_REPLACE_SOLAR -> getString(R.string.NM_IconPack_SolarTitle);
             case NimarkoConfig.ICON_REPLACE_LIQUID_GLASS -> getString(R.string.NM_IconPack_LiquidTitle);
             case NimarkoConfig.ICON_REPLACE_PLUMPY -> getString(R.string.NM_IconPack_PlumpyTitle);

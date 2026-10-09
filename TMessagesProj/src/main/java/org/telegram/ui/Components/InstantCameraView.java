@@ -117,6 +117,7 @@ import org.telegram.ui.Stories.recorder.StoryEntry;
 import app.nimarkogram.messenger.camera.SlideControlView;
 import app.nimarkogram.messenger.camera.CameraXRoundLensTransition;
 import app.nimarkogram.messenger.NimarkoConfig;
+import app.nimarkogram.messenger.utils.NimarkoMotionBlurEffect;
 import app.nimarkogram.messenger.camera.CameraXLensFrame;
 import app.nimarkogram.messenger.camera.NimarkoCameraXSurfaceSession;
 
@@ -1499,7 +1500,7 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
         textureOverlayView.setScaleX(1f);
         textureOverlayView.setScaleY(1f);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            textureOverlayView.setRenderEffect(null);
+            NimarkoMotionBlurEffect.setBaseEffect(textureOverlayView, null);
         }
         textureOverlayView.invalidate();
         if (lastBitmap == null) {
@@ -1650,6 +1651,7 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
                     }
                     cameraThread = new CameraGLThread(
                             surface, width, height, ++cameraThreadGeneration);
+                    cameraThread.start();
                 }
             }
 
@@ -3270,6 +3272,9 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
         private final SurfaceTexture surfaceTexture;
         private final int generation;
         private volatile boolean shutdownRequested;
+        private Message pendingShutdownMessage;
+        private boolean shutdownSurfacesReturned;
+        private boolean shutdownMessageQueued;
         private VideoRecorder ownedEncoder;
         private VideoRecorder shutdownEncoder;
         private volatile SurfaceTexture outputSurfaceToReleaseOnShutdown;
@@ -3301,6 +3306,7 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
         private final int DO_CAMERA_X_SINGLE_SNAPSHOT = 11;
         private final int DO_RESET_CAMERAX_FRAME_STATE = 12;
 
+        private final int DO_DISPATCH_PENDING_SHUTDOWN = 13;
         private int drawProgram;
         private int vertexMatrixHandle;
         private int textureMatrixHandle;
@@ -3400,7 +3406,7 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
 
         public CameraGLThread(SurfaceTexture surface, int surfaceWidth,
                               int surfaceHeight, int generation) {
-            super("CameraGLThread");
+            super("CameraGLThread", false);
             surfaceTexture = surface;
             this.generation = generation;
 
@@ -4507,12 +4513,18 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
         @Override
         public void run() {
             initied = initGL();
+            Utilities.globalQueue.postRunnable(() -> sendMessage(
+                    Message.obtain(null, DO_DISPATCH_PENDING_SHUTDOWN), 0));
             super.run();
         }
 
         @Override
         public void handleMessage(Message inputMessage) {
             int what = inputMessage.what;
+            if (what == DO_DISPATCH_PENDING_SHUTDOWN) {
+                enqueuePendingShutdown();
+                return;
+            }
             if (shutdownRequested && what != DO_SHUTDOWN_MESSAGE) {
                 return;
             }
@@ -4759,7 +4771,7 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
                              int scheduleRepeatPeriod, int ttl, long effectId,
                              SurfaceTexture outputSurfaceToRelease) {
             synchronized (this) {
-                if (outputSurfaceToRelease != null
+                if (outputSurfaceToRelease == surfaceTexture
                         && outputSurfaceToReleaseOnShutdown == null) {
                     outputSurfaceToReleaseOnShutdown = outputSurfaceToRelease;
                 }
@@ -4768,16 +4780,16 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
                 }
                 shutdownRequested = true;
                 shutdownEncoder = ownedEncoder;
+                pendingShutdownMessage = Message.obtain(null, DO_SHUTDOWN_MESSAGE,
+                        send, 0, new SendOptions(notify, scheduleDate,
+                                scheduleRepeatPeriod, ttl, effectId, 0));
             }
             nmCancelCameraXDualFrameWatchdog();
-            final SendOptions options =
-                    new SendOptions(notify, scheduleDate, scheduleRepeatPeriod, ttl, effectId, 0);
             Runnable enqueueShutdown = () -> {
-                Handler handler = getHandler();
-                if (handler != null) {
-                    sendMessage(handler.obtainMessage(
-                            DO_SHUTDOWN_MESSAGE, send, 0, options), 0);
+                synchronized (this) {
+                    shutdownSurfacesReturned = true;
                 }
+                enqueuePendingShutdown();
             };
             if (useCameraX) {
                 // CameraX owns each supplied Surface until SurfaceRequest's
@@ -4788,6 +4800,18 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
                         InstantCameraView.this, enqueueShutdown);
             } else {
                 enqueueShutdown.run();
+            }
+        }
+
+        private synchronized void enqueuePendingShutdown() {
+            Handler handler = getHandler();
+            if (handler == null || !shutdownSurfacesReturned
+                    || shutdownMessageQueued || pendingShutdownMessage == null) {
+                return;
+            }
+            if (handler.sendMessage(pendingShutdownMessage)) {
+                shutdownMessageQueued = true;
+                pendingShutdownMessage = null;
             }
         }
 
@@ -5016,7 +5040,11 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
 
         public AudioBufferInfo() {
             for (int i = 0; i < MAX_SAMPLES; i++) {
-                buffer[i] = ByteBuffer.allocateDirect(2048);
+                try {
+                    buffer[i] = ByteBuffer.allocateDirect(2048);
+                } catch (OutOfMemoryError nativeAllocationFailure) {
+                    buffer[i] = ByteBuffer.allocate(2048);
+                }
                 buffer[i].order(ByteOrder.nativeOrder());
             }
         }
@@ -5200,7 +5228,11 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
 
                                 ByteBuffer byteBuffer = buffer.buffer[a];
                                 byteBuffer.clear();
-                                readResult = capture.recorder.read(byteBuffer, 2048);
+                                if (byteBuffer.isDirect()) {
+                                    readResult = capture.recorder.read(byteBuffer, 2048);
+                                } else {
+                                    readResult = capture.recorder.read(byteBuffer.array(), byteBuffer.arrayOffset(), 2048);
+                                }
                                 int capturedBytes = readResult;
                                 if (readResult > 0) {
                                     byteBuffer.limit(readResult);
@@ -6775,6 +6807,11 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
          */
         private MediaCodec createConfiguredVideoEncoder() throws Exception {
             MediaCodec candidate = MediaCodec.createEncoderByType(VIDEO_MIME_TYPE);
+            String candidateName = candidate.getName();
+            app.nimarkogram.messenger.NimarkoCrashContext.event(
+                    "media", "video_encoder_created", "InstantCameraView",
+                    "codec=" + candidateName + " size=" + videoWidth + "x" + videoHeight
+                            + " requested_fps=" + frameRate + " bitrate=" + videoBitrate);
             if (!supportsConfiguredFrameRate(candidate)) {
                 FileLog.d("InstantCamera: AVC encoder does not advertise "
                         + videoWidth + "x" + videoHeight + "@" + frameRate
@@ -6801,6 +6838,9 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
                 FileLog.e(
                         "InstantCamera: AVC High Profile rejected, retrying platform profile",
                         preferredError);
+                app.nimarkogram.messenger.NimarkoCrashContext.event(
+                        "media", "video_encoder_profile_fallback", "InstantCameraView",
+                        "codec=" + candidateName + " requested_fps=" + frameRate);
                 candidate = MediaCodec.createEncoderByType(VIDEO_MIME_TYPE);
                 try {
                     candidate.configure(
@@ -6948,6 +6988,12 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
                 if (BuildVars.LOGS_ENABLED) {
                     FileLog.d("InstantCamera initied audio record with channels " + audioRecorder.getChannelCount() + " sample rate = " + audioRecorder.getSampleRate() + " bufferSize = " + bufferSize);
                 }
+                app.nimarkogram.messenger.NimarkoCrashContext.event(
+                        "media", "audio_record_started", "InstantCameraView",
+                        "channels=" + audioRecorder.getChannelCount()
+                                + " sample_rate=" + audioRecorder.getSampleRate()
+                                + " buffer_size=" + bufferSize
+                                + " multi_mic=" + wideMicrophoneCapture);
                 pauseRecorder = false;
 
                 audioBufferInfo = new MediaCodec.BufferInfo();

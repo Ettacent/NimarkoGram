@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 5.x.x.
  * It is licensed under GNU GPL v. 2 or later.
@@ -8,6 +10,7 @@
 
 package org.telegram.ui.Components;
 
+import app.nimarkogram.messenger.utils.NimarkoUiAnimationClock;
 import android.graphics.Canvas;
 import android.graphics.ColorFilter;
 import android.graphics.Paint;
@@ -29,6 +32,7 @@ public class PlayingGameDrawable extends StatusDrawable {
     private int currentAccount = UserConfig.selectedAccount;
 
     private long lastUpdateTime = 0;
+    private int visualEpoch;
     private boolean started = false;
     private RectF rect = new RectF();
     private float progress;
@@ -48,8 +52,10 @@ public class PlayingGameDrawable extends StatusDrawable {
     }
 
     private void update() {
-        long newTime = System.currentTimeMillis();
-        long dt = newTime - lastUpdateTime;
+        long newTime = NimarkoUiAnimationClock.now();
+        int epoch = NimarkoUiAnimationClock.epoch();
+        long dt = epoch == visualEpoch ? Math.max(0L, newTime - lastUpdateTime) : 0L;
+        visualEpoch = epoch;
         lastUpdateTime = newTime;
         if (dt > 50) {
             dt = 50;
@@ -66,7 +72,8 @@ public class PlayingGameDrawable extends StatusDrawable {
     }
 
     public void start() {
-        lastUpdateTime = System.currentTimeMillis();
+        lastUpdateTime = NimarkoUiAnimationClock.now();
+        visualEpoch = NimarkoUiAnimationClock.epoch();
         started = true;
         invalidateSelf();
     }

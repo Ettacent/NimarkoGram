@@ -13,6 +13,8 @@ package org.telegram.messenger;
 import static app.nimarkogram.messenger.NimarkoCrashContext.initializationPhase;
 
 import app.nimarkogram.messenger.NimarkoCrashContext.PineInitPhase;
+import app.nimarkogram.messenger.utils.NimarkoAppMotionBlur;
+import app.nimarkogram.messenger.utils.NimarkoUiAnimationClock;
 import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.app.Application;
@@ -31,6 +33,7 @@ import android.net.NetworkCapabilities;
 import android.net.NetworkInfo;
 import android.os.Build;
 import android.os.Handler;
+import android.os.Looper;
 import android.os.PowerManager;
 import android.os.SystemClock;
 import android.telephony.TelephonyManager;
@@ -409,6 +412,7 @@ public class ApplicationLoader extends Application {
     private static final String NG_PINE_INIT_STARTED_AT = "init_started_at";
     private static final String NG_PINE_INIT_PID = "init_pid";
     private static final String NG_PINE_BLOCKED_SIGNATURE = "blocked_signature";
+    private static boolean ngPineRecoveryPending;
     private static final long NG_PINE_HOOK_WAIT_BUDGET_MS = 30_000L;
     private static volatile boolean ngPineRuntimeGuardInstalled = false;
     private static volatile boolean ngPineRecoveryChecked = false;
@@ -523,10 +527,18 @@ public class ApplicationLoader extends Application {
             String initSignature = preferences.getString(NG_PINE_INIT_SIGNATURE, null);
             long initStartedAt = preferences.getLong(NG_PINE_INIT_STARTED_AT, 0L);
             int initPid = preferences.getInt(NG_PINE_INIT_PID, 0);
-            boolean confirmedNativeInitCrash = signature.equals(initSignature)
-                    && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R
-                    && app.nimarkogram.messenger.plugins.utils.NativeCrashHandler
-                            .lastExitWasLoadCrashAfter(initStartedAt, initPid);
+            app.nimarkogram.messenger.plugins.utils.NativeCrashHandler.LoadCrashEvidence evidence =
+                    app.nimarkogram.messenger.plugins.utils.NativeCrashHandler.LoadCrashEvidence.NO_MATCH;
+            if (signature.equals(initSignature) && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                evidence = app.nimarkogram.messenger.plugins.utils.NativeCrashHandler
+                        .loadCrashEvidence(initStartedAt, initPid);
+            }
+            if (evidence == app.nimarkogram.messenger.plugins.utils.NativeCrashHandler.LoadCrashEvidence.UNKNOWN) {
+                ngPineRecoveryPending = true;
+                return;
+            }
+            boolean confirmedNativeInitCrash = evidence
+                    == app.nimarkogram.messenger.plugins.utils.NativeCrashHandler.LoadCrashEvidence.MATCH;
             if (confirmedNativeInitCrash) {
                 ngPineBlockedByRecovery = true;
                 ngPineUnavailableReason =
@@ -538,18 +550,27 @@ public class ApplicationLoader extends Application {
                 editor.remove(NG_PINE_BLOCKED_SIGNATURE);
             }
         }
-        editor.commit();
+        if (!editor.commit()) {
+            ngPineRecoveryPending = true;
+            return;
+        }
+        ngPineRecoveryPending = false;
         ngPineRecoveryChecked = true;
     }
 
-    private static void markPineInitializationStarted() {
+    private static boolean markPineInitializationStarted() {
         SharedPreferences preferences = pineRuntimePreferences();
-        if (preferences == null) return;
-        preferences.edit()
-                .putString(NG_PINE_INIT_SIGNATURE, pineRuntimeSignature())
-                .putLong(NG_PINE_INIT_STARTED_AT, System.currentTimeMillis())
-                .putInt(NG_PINE_INIT_PID, android.os.Process.myPid())
-                .commit();
+        if (preferences == null) return false;
+        try {
+            return preferences.edit()
+                    .putString(NG_PINE_INIT_SIGNATURE, pineRuntimeSignature())
+                    .putLong(NG_PINE_INIT_STARTED_AT, System.currentTimeMillis())
+                    .putInt(NG_PINE_INIT_PID, android.os.Process.myPid())
+                    .commit();
+        } catch (RuntimeException failure) {
+            FileLog.e(failure);
+            return false;
+        }
     }
 
     private static void clearPineInitializationMarker(boolean initialized) {
@@ -565,14 +586,21 @@ public class ApplicationLoader extends Application {
     }
 
     private static synchronized void installPineRuntimeGuardIfNeeded() {
+        installPineRuntimeGuardIfNeeded(false);
+    }
+
+    private static synchronized void installPineRuntimeGuardIfNeeded(boolean finalAttempt) {
         preparePineRecoveryGuard();
+        if (ngPineRecoveryPending && finalAttempt) preparePineRecoveryGuard();
         boolean unsupportedRuntime = Build.VERSION.SDK_INT > NG_PINE_MAX_TESTED_SDK;
-        if ((!unsupportedRuntime && !ngPineBlockedByRecovery)
+        boolean unavailableHistory = ngPineRecoveryPending && finalAttempt;
+        if ((!unsupportedRuntime && !ngPineBlockedByRecovery && !unavailableHistory)
                 || ngPineRuntimeGuardInstalled) {
             return;
         }
         final String reason = ngPineBlockedByRecovery
                 ? "Pine recovery guard is active for this build"
+                : unavailableHistory ? "Pine initialization deferred: previous exit could not be verified"
                 : "Pine is not validated on Android SDK " + Build.VERSION.SDK_INT;
         try {
             top.canyie.pine.PineConfig.sdkLevel = Build.VERSION.SDK_INT;
@@ -592,13 +620,21 @@ public class ApplicationLoader extends Application {
     }
 
     public static synchronized void ensurePineInited() {
-        installPineRuntimeGuardIfNeeded();
+        installPineRuntimeGuardIfNeeded(true);
         if (ngPineInited || ngPineInitAttempted) return;
         ngPineInitAttempted = true;
         ngPineHookWaitDeadline =
                 SystemClock.elapsedRealtime() + NG_PINE_HOOK_WAIT_BUDGET_MS;
         boolean pineReady = false;
-        markPineInitializationStarted();
+        if (!markPineInitializationStarted()) {
+            ngPineUnavailableReason = "Pine initialization deferred: recovery marker could not be saved";
+            top.canyie.pine.PineConfig.disableHooks = true;
+            top.canyie.pine.PineConfig.libLoader = () -> {
+                throw new IllegalStateException("Pine recovery marker could not be saved");
+            };
+            ngPineReady.countDown();
+            return;
+        }
         app.nimarkogram.messenger.NimarkoCrashContext.initialization(true, false);
         try {
 
@@ -948,6 +984,7 @@ public class ApplicationLoader extends Application {
     @Override
     public void onCreate() {
         applicationLoaderInstance = this;
+        NimarkoAppMotionBlur.install(this);
         try {
             applicationContext = getApplicationContext();
         } catch (Throwable ignore) {
@@ -1049,6 +1086,7 @@ public class ApplicationLoader extends Application {
                 }
             }
         };
+        NimarkoUiAnimationClock.install(ForegroundDetector.getInstance());
         if (BuildConfig.DEBUG_VERSION) {
             new ANRDetector(FileLog::dumpANR);
         }
@@ -1102,6 +1140,10 @@ public class ApplicationLoader extends Application {
     });
 
     public static void startPushService() {
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            Utilities.globalQueue.postRunnable(ApplicationLoader::startPushService);
+            return;
+        }
         SharedPreferences preferences = MessagesController.getGlobalNotificationsSettings();
         boolean enabled;
         if (preferences.contains("pushService")) {
@@ -1116,21 +1158,25 @@ public class ApplicationLoader extends Application {
         if (residentEnabled) {
             enabled = true;
         }
-        if (enabled) {
+        final boolean shouldStart = enabled;
+        final boolean shouldRunForeground = residentEnabled;
+        AndroidUtilities.runOnUIThread(() -> {
             try {
                 Intent svc = new Intent(applicationContext, NotificationsService.class);
 
-                if (residentEnabled) {
-                    applicationContext.startForegroundService(svc);
+                if (shouldStart) {
+                    if (shouldRunForeground) {
+                        applicationContext.startForegroundService(svc);
+                    } else {
+                        applicationContext.startService(svc);
+                    }
                 } else {
-                    applicationContext.startService(svc);
+                    applicationContext.stopService(svc);
                 }
             } catch (Throwable ignore) {
 
             }
-        } else {
-            applicationContext.stopService(new Intent(applicationContext, NotificationsService.class));
-        }
+        });
     }
 
     @Override
@@ -1314,10 +1360,8 @@ public class ApplicationLoader extends Application {
     public static boolean isNetworkOnlineFast() {
         try {
             ensureCurrentNetworkGet(false);
-            if (currentNetworkInfo == null) {
-                return true;
-            }
-            if (currentNetworkInfo.isConnectedOrConnecting() || currentNetworkInfo.isAvailable()) {
+            if (currentNetworkInfo != null
+                    && (currentNetworkInfo.isConnectedOrConnecting() || currentNetworkInfo.isAvailable())) {
                 return true;
             }
 
@@ -1363,14 +1407,8 @@ public class ApplicationLoader extends Application {
     }
 
     public static boolean isNetworkOnline() {
-        boolean result = isNetworkOnlineRealtime();
-        if (BuildVars.DEBUG_PRIVATE_VERSION) {
-            boolean result2 = isNetworkOnlineFast();
-            if (result != result2) {
-                FileLog.d("network online mismatch");
-            }
-        }
-        return result;
+        return Looper.myLooper() == Looper.getMainLooper()
+                ? isNetworkOnlineFast() : isNetworkOnlineRealtime();
     }
 
     public static void startAppCenter(Activity context) {

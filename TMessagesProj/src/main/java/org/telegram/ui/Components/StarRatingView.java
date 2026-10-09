@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -22,6 +24,8 @@ public class StarRatingView extends View {
     private final BadgeLevelDrawable drawable;
     private final Colors colors = new Colors();
 
+    private float parentExpanded;
+    private float bannerProgress;
     private final AnimatedFloat isVisibleAnimator = new AnimatedFloat(this::onUpdateVisibilityFactor, 380, CubicBezierInterpolator.EASE_OUT_QUINT);
     private boolean isVisible;
 
@@ -135,7 +139,20 @@ public class StarRatingView extends View {
     }
 
     public void setParentExpanded(float parentExpanded) {
-        colors.setParentExpanded(parentExpanded);
+        if (this.parentExpanded == parentExpanded) return;
+        this.parentExpanded = parentExpanded;
+        updateForegroundProgress();
+    }
+
+    public void setBannerProgress(float bannerProgress) {
+        bannerProgress = Math.max(0f, Math.min(1f, bannerProgress));
+        if (this.bannerProgress == bannerProgress) return;
+        this.bannerProgress = bannerProgress;
+        updateForegroundProgress();
+    }
+
+    private void updateForegroundProgress() {
+        colors.setParentExpanded(1f - (1f - parentExpanded) * (1f - bannerProgress));
         invalidate();
     }
 

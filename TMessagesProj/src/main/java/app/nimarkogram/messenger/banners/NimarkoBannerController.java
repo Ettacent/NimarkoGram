@@ -2,7 +2,11 @@
 
 package app.nimarkogram.messenger.banners;
 
+import android.graphics.Bitmap;
 import android.text.TextUtils;
+import android.graphics.BitmapFactory;
+import android.media.MediaExtractor;
+import android.media.MediaFormat;
 import android.os.SystemClock;
 import android.util.AtomicFile;
 
@@ -19,8 +23,6 @@ import org.telegram.messenger.FileLog;
 import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.R;
 import org.telegram.messenger.UserConfig;
-import org.telegram.tgnet.ConnectionsManager;
-import org.telegram.tgnet.TLRPC;
 import org.telegram.ui.ActionBar.BaseFragment;
 import org.telegram.ui.Components.BulletinFactory;
 import org.telegram.ui.LaunchActivity;
@@ -28,12 +30,14 @@ import org.telegram.ui.LaunchActivity;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -390,15 +394,11 @@ public final class NimarkoBannerController {
         if (eid == my) {
             if ("approved".equals(myStatus)) {
                 bf = findCachedBanner(k);
-                if (NimarkoBannerRenderer.DBG) NimarkoBannerRenderer.dbg("resolve OWN approved findCachedBanner=" + bf
-                        + " inNoBanner=" + usersNoBanner.contains(k) + " loading=" + loading.containsKey(k));
                 if (bf == null && shouldCheckBanner(k)) {
                     loadBannerAsync(k);
                 }
             } else {
                 String lp = NimarkoBannerConfig.getLocalBannerPath(k.scope.account, k.scope.uid);
-                if (NimarkoBannerRenderer.DBG) NimarkoBannerRenderer.dbg("resolve OWN NOT-approved myStatus=" + myStatus
-                        + " localBannerPath=" + lp);
                 if (!TextUtils.isEmpty(lp)) bf = lp;
             }
         } else {
@@ -576,7 +576,7 @@ public final class NimarkoBannerController {
             String filePrefix = k.scope.fileTag() + "_" + eid;
             String ext = "mp4".equals(info.type) ? ".mp4" : "." + info.type;
             String vtag = TextUtils.isEmpty(info.version) ? "" : "_" + info.version.replaceAll("[^A-Za-z0-9]", "");
-            candidate = new File(cacheFolder, filePrefix + vtag + "_" + java.util.UUID.randomUUID() + ext);
+            candidate = new File(cacheFolder, filePrefix + vtag + "_" + UUID.randomUUID() + ext);
             if (!NimarkoBannerHttp.download(info.url, candidate) || !validDownload(candidate, info.type)) {
                 recordBannerFailure(k, request);
                 return;
@@ -601,7 +601,6 @@ public final class NimarkoBannerController {
             if (previousPath != null) safeRemove(new File(previousPath));
             writeIndexAsync(k.scope);
         } catch (Throwable t) {
-            NimarkoBannerRenderer.dbg("syncBanner EXCEPTION " + eid + " : " + t);
             recordBannerFailure(k, request);
         } finally {
             safeRemove(candidate);
@@ -1097,7 +1096,7 @@ public final class NimarkoBannerController {
                 return;
             }
             File dest = new File(storageDir, "local_banner_" + operationScope.fileTag()
-                    + "_" + java.util.UUID.randomUUID() + ext);
+                    + "_" + UUID.randomUUID() + ext);
             boolean saved = false;
             synchronized (localBannerLock) {
                 if (operationGeneration != localBannerGeneration
@@ -1115,13 +1114,13 @@ public final class NimarkoBannerController {
                 int n;
                 while ((n = in.read(buffer)) > 0) {
                     total += n;
-                    if (total > NimarkoBannerHttp.MAX_SIZE) throw new java.io.IOException("banner too large");
+                    if (total > NimarkoBannerHttp.MAX_SIZE) throw new IOException("banner too large");
                     out.write(buffer, 0, n);
                 }
                 atomic.finishWrite(out);
                 out = null;
                 saved = true;
-            } catch (java.io.IOException | SecurityException t) {
+            } catch (IOException | SecurityException t) {
                 if (out != null) atomic.failWrite(out);
                 FileLog.e("nimarko-banner: local save failed", t);
             } finally {
@@ -1248,15 +1247,15 @@ public final class NimarkoBannerController {
                 && (header[2] & 0xff) == 0xff;
         if (png || jpeg) {
             try {
-                android.graphics.BitmapFactory.Options bounds = new android.graphics.BitmapFactory.Options();
+                BitmapFactory.Options bounds = new BitmapFactory.Options();
                 bounds.inJustDecodeBounds = true;
-                android.graphics.BitmapFactory.decodeFile(file.getAbsolutePath(), bounds);
+                BitmapFactory.decodeFile(file.getAbsolutePath(), bounds);
                 if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null;
-                android.graphics.BitmapFactory.Options decode = new android.graphics.BitmapFactory.Options();
+                BitmapFactory.Options decode = new BitmapFactory.Options();
                 decode.inSampleSize = 1;
                 int max = Math.max(bounds.outWidth, bounds.outHeight);
                 while (max / decode.inSampleSize > 2048) decode.inSampleSize <<= 1;
-                android.graphics.Bitmap bitmap = android.graphics.BitmapFactory.decodeFile(file.getAbsolutePath(), decode);
+                Bitmap bitmap = BitmapFactory.decodeFile(file.getAbsolutePath(), decode);
                 if (bitmap == null) return null;
                 bitmap.recycle();
                 return png ? ".png" : ".jpg";
@@ -1268,11 +1267,11 @@ public final class NimarkoBannerController {
         boolean mp4 = headerSize >= 12 && header[4] == 'f' && header[5] == 't'
                 && header[6] == 'y' && header[7] == 'p';
         if (!mp4) return null;
-        android.media.MediaExtractor extractor = new android.media.MediaExtractor();
+        MediaExtractor extractor = new MediaExtractor();
         try {
             extractor.setDataSource(file.getAbsolutePath());
             for (int i = 0; i < extractor.getTrackCount(); i++) {
-                String mime = extractor.getTrackFormat(i).getString(android.media.MediaFormat.KEY_MIME);
+                String mime = extractor.getTrackFormat(i).getString(MediaFormat.KEY_MIME);
                 if (mime != null && mime.startsWith("video/")) return ".mp4";
             }
         } catch (Throwable ignored) {
@@ -1299,7 +1298,7 @@ public final class NimarkoBannerController {
             if (f == null || !f.exists()) return null;
             if (f.length() <= 0 || f.length() > 256 * 1024L) return null;
             byte[] data = new byte[(int) f.length()];
-            try (java.io.FileInputStream in = new java.io.FileInputStream(f)) {
+            try (FileInputStream in = new FileInputStream(f)) {
                 int off = 0, n;
                 while (off < data.length && (n = in.read(data, off, data.length - off)) > 0) off += n;
             }

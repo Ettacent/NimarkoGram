@@ -2,6 +2,7 @@
 
 package app.nimarkogram.messenger.wsbypass;
 
+import app.nimarkogram.messenger.wsbypass.voip.VoipBypassConfig;
 import android.content.Context;
 import android.content.SharedPreferences;
 
@@ -45,7 +46,7 @@ public final class NimarkoWsBypassConfig {
     }
 
     public static void setEnabled(boolean v) {
-        app.nimarkogram.messenger.wsbypass.voip.VoipBypassConfig.mutateRelayState(() -> {
+        VoipBypassConfig.mutateRelayState(() -> {
             if (enabled == v) return false;
             enabled = v;
             return true;
@@ -63,7 +64,7 @@ public final class NimarkoWsBypassConfig {
     public static boolean suspendOnVpn = prefs().getBoolean("suspend_on_vpn", true);
 
     public static void setSuspendOnVpn(boolean v) {
-        app.nimarkogram.messenger.wsbypass.voip.VoipBypassConfig.mutateRelayState(() -> {
+        VoipBypassConfig.mutateRelayState(() -> {
             if (suspendOnVpn == v) return false;
             suspendOnVpn = v;
             return true;

@@ -97,7 +97,7 @@ public final class NimarkoChatsPasswordHelper {
 
     @Nullable
     public static ArrayList<TLRPC.MessageEntity> checkLockedChatsEntities(@Nullable CharSequence text, long dialogId) {
-        return checkLockedChatsEntities(text, dialogId, org.telegram.messenger.UserConfig.selectedAccount, null);
+        return checkLockedChatsEntities(text, dialogId, UserConfig.selectedAccount, null);
     }
 
     @Nullable
@@ -137,7 +137,7 @@ public final class NimarkoChatsPasswordHelper {
     }
 
     public static int getLockedChatsCount() {
-        return getLockedChatsCount(org.telegram.messenger.UserConfig.selectedAccount);
+        return getLockedChatsCount(UserConfig.selectedAccount);
     }
 
     public static int getLockedChatsCount(int currentAccount) {

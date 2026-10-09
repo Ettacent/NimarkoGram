@@ -2,6 +2,7 @@
 
 package app.nimarkogram.messenger.utils;
 
+import java.util.Locale;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Paint;
@@ -411,7 +412,7 @@ public class NimarkoLatexHelper {
         if (display) return true;
         if (PURE_NUMBER.matcher(formula).matches()) return false;
 
-        String lower = formula.toLowerCase(java.util.Locale.ROOT);
+        String lower = formula.toLowerCase(Locale.ROOT);
         if (lower.contains("://") || lower.contains("www.")) return false;
         if (LATEX_COMMAND.matcher(formula).find()) return true;
 

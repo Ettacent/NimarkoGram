@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 5.x.x.
  * It is licensed under GNU GPL v. 2 or later.
@@ -1331,9 +1333,13 @@ public class MediaDataController extends BaseController {
     public void setPlaceholderImageByIndex(final BackupImageView backupImageView, String setName, final int index, final String filter) {
         TLRPC.TL_inputStickerSetShortName inputStickerSet = new TLRPC.TL_inputStickerSetShortName();
         inputStickerSet.short_name = setName;
-        final String tag = "sticker_" + setName + "_" + index;
+        final String tag = "sticker_" + currentAccount + "_" + setName + "_" + index;
+        final boolean sameSource = tag.equals(backupImageView.getTag());
+        backupImageView.getImageReceiver().setCurrentAccount(currentAccount);
         backupImageView.setTag(tag);
-        backupImageView.setImage((ImageLocation) null, (String) null, (Drawable) null, 0, (Object) null);
+        if (!sameSource) {
+            backupImageView.setImage((ImageLocation) null, (String) null, (Drawable) null, 0, (Object) null);
+        }
         getStickerSet(inputStickerSet, 0, false, stickerSet -> {
             if (!tag.equals(backupImageView.getTag())) return;
             if (stickerSet == null || stickerSet.documents == null || stickerSet.documents.isEmpty()) return;

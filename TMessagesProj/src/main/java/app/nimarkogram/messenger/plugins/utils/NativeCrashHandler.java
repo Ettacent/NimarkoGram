@@ -2,6 +2,9 @@
 
 package app.nimarkogram.messenger.plugins.utils;
 
+import android.app.Application;
+import android.os.SystemClock;
+import android.util.Log;
 import android.app.ActivityManager;
 import android.app.ApplicationExitInfo;
 import android.content.Context;
@@ -33,6 +36,10 @@ public final class NativeCrashHandler {
     private static volatile boolean exitInfoLoaded;
     private static volatile ApplicationExitInfo cachedExitInfo;
 
+    private static int exitInfoAttempts;
+    private static final int MAX_EXIT_INFO_ATTEMPTS = 3;
+
+    public enum LoadCrashEvidence { MATCH, NO_MATCH, UNKNOWN }
     public static void schedulePreviousExitDiagnostics() {
         if (!isSupportedMainProcess()
                 || !DIAGNOSTICS_SCHEDULED.compareAndSet(false, true)) {
@@ -99,6 +106,8 @@ public final class NativeCrashHandler {
             if (exitInfoLoaded) {
                 return cachedExitInfo;
             }
+            if (exitInfoAttempts >= MAX_EXIT_INFO_ATTEMPTS) return null;
+            exitInfoAttempts++;
             ApplicationExitInfo result = null;
             try {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
@@ -109,14 +118,14 @@ public final class NativeCrashHandler {
                         if (am != null) {
                             List<ApplicationExitInfo> infos =
                                     am.getHistoricalProcessExitReasons(
-                                            ctx.getPackageName(), 0, 8);
+                                            ctx.getPackageName(), 0, 0);
                             if (infos != null && !infos.isEmpty()) {
                                 String mainProcess = ctx.getPackageName();
                                 for (ApplicationExitInfo info : infos) {
                                     if (info != null
-                                            && mainProcess.equals(info.getProcessName())) {
+                                            && mainProcess.equals(info.getProcessName())
+                                            && (result == null || info.getTimestamp() > result.getTimestamp())) {
                                         result = info;
-                                        break;
                                     }
                                 }
                             }
@@ -126,7 +135,7 @@ public final class NativeCrashHandler {
             } catch (Throwable ignored) {
             }
             cachedExitInfo = result;
-            exitInfoLoaded = true;
+            exitInfoLoaded = result != null;
             return result;
         }
     }
@@ -139,7 +148,7 @@ public final class NativeCrashHandler {
         if (context == null) {
             return false;
         }
-        String currentProcess = android.app.Application.getProcessName();
+        String currentProcess = Application.getProcessName();
         return currentProcess == null
                 || context.getPackageName().equals(currentProcess);
     }
@@ -186,19 +195,35 @@ public final class NativeCrashHandler {
     }
 
     public static boolean lastExitWasLoadCrashAfter(long loadStartedAtMs, int loadPid) {
-        if (loadStartedAtMs <= 0L || loadPid <= 0 || !isSupportedMainProcess()) return false;
+        return loadCrashEvidence(loadStartedAtMs, loadPid) == LoadCrashEvidence.MATCH;
+    }
+
+    public static LoadCrashEvidence loadCrashEvidence(long loadStartedAtMs, int loadPid) {
+        if (loadStartedAtMs <= 0L || loadPid <= 0) return LoadCrashEvidence.NO_MATCH;
+        if (!isSupportedMainProcess()) return LoadCrashEvidence.UNKNOWN;
         ApplicationExitInfo info = lastExitInfo();
         
+        if (info == null) return LoadCrashEvidence.UNKNOWN;
+        if (info.getTimestamp() < loadStartedAtMs) {
+            synchronized (EXIT_INFO_LOCK) {
+                if (cachedExitInfo == info) {
+                    cachedExitInfo = null;
+                    exitInfoLoaded = false;
+                }
+            }
+            return LoadCrashEvidence.UNKNOWN;
+        }
         if (!isNativeCrashExit(info) || info.getPid() != loadPid
                 || !ApplicationLoader.applicationContext.getPackageName()
-                        .equals(info.getProcessName())) return false;
+                        .equals(info.getProcessName())) return LoadCrashEvidence.NO_MATCH;
         long exitAt = info.getTimestamp();
         long processStartedAtMs = System.currentTimeMillis()
-                - (android.os.SystemClock.elapsedRealtime()
+                - (SystemClock.elapsedRealtime()
                         - android.os.Process.getStartElapsedRealtime());
         return exitAt >= loadStartedAtMs
                 && exitAt < processStartedAtMs
-                && exitAt - loadStartedAtMs <= 10 * 60_000L;
+                && exitAt - loadStartedAtMs <= 10 * 60_000L
+                ? LoadCrashEvidence.MATCH : LoadCrashEvidence.NO_MATCH;
     }
 
     public static boolean conservativePre30LoadCrash(long loadStartedAtMs) {
@@ -250,7 +275,7 @@ public final class NativeCrashHandler {
             }
         } catch (Throwable t) {
             try {
-                android.util.Log.e("nimarko-crash", "failed to write previous-exit report", t);
+                Log.e("nimarko-crash", "failed to write previous-exit report", t);
             } catch (Throwable ignored) {
             }
         }

@@ -31,6 +31,7 @@ import android.graphics.PorterDuffColorFilter;
 import android.graphics.PorterDuffXfermode;
 import android.graphics.RectF;
 import android.graphics.Shader;
+import android.graphics.Typeface;
 import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
@@ -148,6 +149,7 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Stack;
@@ -156,6 +158,7 @@ import me.vkryl.android.animator.BoolAnimator;
 
 import app.nimarkogram.messenger.chats.filters.MessagesFilterHelper;
 
+import app.nimarkogram.messenger.utils.NimarkoUiAnimationClock;
 public class DialogCell extends BaseCell implements StoriesListPlaceProvider.AvatarOverlaysView, Theme.Colorable, AnimatedEmojiSpan.AccountProvider {
 
     @Override
@@ -635,6 +638,19 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
     private boolean countAnimationIncrement;
     private BoolAnimator animatorPollVotesMentionVisible = new BoolAnimator(this, CubicBezierInterpolator.EASE_OUT_QUINT, 320);
     private ValueAnimator countAnimator;
+    private long countAnimationDialogId;
+    private int countAnimationDialogsType;
+    private int countAnimationFolderId;
+    private int countAnimationTarget;
+    private int countAnimationMeasuredWidth;
+    private boolean countAnimationMarkUnread;
+    private boolean countAnimationRtl;
+    private float countAnimationTextSize;
+    private Typeface countAnimationTypeface;
+    private float countAnimationDensity;
+    private float countAnimationTextScaleX;
+    private float countAnimationLetterSpacing;
+    private Locale countAnimationLocale;
     private ValueAnimator reactionsMentionsAnimator;
     private float countChangeProgress = 1f;
     private float reactionsMentionsChangeProgress = 1f;
@@ -790,6 +806,12 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
     }
 
     public void setDialog(TLRPC.Dialog dialog, int type, int folder) {
+        final boolean sameBinding = isDialogCell && !isTopic && !isSavedDialog && customDialog == null
+                && currentDialogId != 0 && currentDialogId == dialog.id
+                && dialogsType == type && folderId == folder
+                && currentDialogCommunityId == (dialog instanceof TLRPC.TL_dialogCommunity ? dialog.community_id : 0)
+                && currentDialogFolderId == (dialog instanceof TLRPC.TL_dialogFolder
+                    ? ((TLRPC.TL_dialogFolder) dialog).folder.id : 0);
         if (currentDialogId != dialog.id) {
             emojiStatus.resetAnimation();
             botVerification.resetAnimation();
@@ -802,7 +824,7 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
             lastStatusDrawableParams = -1;
         }
         currentDialogId = dialog.id;
-        lastDialogChangedTime = System.currentTimeMillis();
+        if (!sameBinding || !isAttachedToWindow()) lastDialogChangedTime = System.currentTimeMillis();
         isDialogCell = true;
         if (dialog instanceof TLRPC.TL_dialogCommunity) {
             currentDialogCommunityId = dialog.community_id;
@@ -825,7 +847,7 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
         }
         folderId = folder;
         messageId = 0;
-        if (update(0, false)) {
+        if (update(0, false, sameBinding)) {
             requestLayout();
         }
         checkOnline();
@@ -972,6 +994,7 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
     @Override
     protected void onDetachedFromWindow() {
         super.onDetachedFromWindow();
+        finishCountAnimation();
         badgeOwnerDrawn = false;
         messagePreviewCrossfade.finish();
         previewPresented = false;
@@ -3451,7 +3474,45 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
         return update(mask, true);
     }
 
+    private boolean canPreserveCountAnimation() {
+        return countAnimator != null && countAnimator.isStarted()
+                && attachedToWindow && isAttachedToWindow() && SharedConfig.animationsEnabled()
+                && isDialogCell && !isTopic && customDialog == null
+                && currentDialogId == countAnimationDialogId
+                && dialogsType == countAnimationDialogsType && folderId == countAnimationFolderId
+                && unreadCount == countAnimationTarget && markUnread == countAnimationMarkUnread
+                && getMeasuredWidth() == countAnimationMeasuredWidth
+                && LocaleController.isRTL == countAnimationRtl
+                && Theme.dialogs_countTextPaint2.getTextSize() == countAnimationTextSize
+                && Theme.dialogs_countTextPaint2.getTypeface() == countAnimationTypeface
+                && AndroidUtilities.density == countAnimationDensity
+                && Theme.dialogs_countTextPaint2.getTextScaleX() == countAnimationTextScaleX
+                && Theme.dialogs_countTextPaint2.getLetterSpacing() == countAnimationLetterSpacing
+                && Locale.getDefault().equals(countAnimationLocale);
+    }
+
+    private void finishCountAnimation() {
+        final ValueAnimator previous = countAnimator;
+        countAnimator = null;
+        if (previous != null) previous.cancel();
+        countChangeProgress = 1f;
+        countOldLayout = null;
+        countAnimationStableLayout = null;
+        countAnimationInLayout = null;
+        invalidate();
+    }
     public boolean update(int mask, boolean animated) {
+        return update(mask, animated, false);
+    }
+
+    private boolean update(int mask, boolean animated, boolean preserveCountAnimation) {
+        final boolean keepCountAnimation = preserveCountAnimation && canPreserveCountAnimation();
+        final boolean previousDrawCount = drawCount;
+        final boolean previousDrawCount2 = drawCount2;
+        final int previousCountWidth = countWidth;
+        final int previousCountLeft = countLeft;
+        final int previousCountTop = countTop;
+        final CharSequence previousCountText = countLayout != null ? countLayout.getText() : null;
         boolean requestLayout = false;
         boolean rebuildLayout = false;
         boolean invalidate = false;
@@ -3812,22 +3873,19 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
             }
 
             if (animated && (oldUnreadCount != unreadCount || oldMarkUnread != markUnread) && (!isDialogCell || (System.currentTimeMillis() - lastDialogChangedTime) > 100)) {
-                if (countAnimator != null) {
-                    countAnimator.cancel();
-                }
+                finishCountAnimation();
                 countAnimator = ValueAnimator.ofFloat(0, 1f);
                 countAnimator.addUpdateListener(valueAnimator -> {
+                    if (countAnimator != valueAnimator) return;
                     countChangeProgress = (float) valueAnimator.getAnimatedValue();
                     invalidate();
                 });
                 countAnimator.addListener(new AnimatorListenerAdapter() {
                     @Override
                     public void onAnimationEnd(Animator animation) {
-                        countChangeProgress = 1f;
-                        countOldLayout = null;
-                        countAnimationStableLayout = null;
-                        countAnimationInLayout = null;
-                        invalidate();
+                        if (countAnimator != animation) return;
+                        countAnimator = null;
+                        finishCountAnimation();
                     }
                 });
                 if ((oldUnreadCount == 0 || markUnread) && !(!markUnread && oldMarkUnread)) {
@@ -3868,7 +3926,21 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
                 countWidthOld = countWidth;
                 countLeftOld = countLeft;
                 countAnimationIncrement = unreadCount > oldUnreadCount;
+                countAnimationDialogId = currentDialogId;
+                countAnimationDialogsType = dialogsType;
+                countAnimationFolderId = folderId;
+                countAnimationTarget = unreadCount;
+                countAnimationMarkUnread = markUnread;
+                countAnimationMeasuredWidth = getMeasuredWidth();
+                countAnimationRtl = LocaleController.isRTL;
+                countAnimationTextSize = Theme.dialogs_countTextPaint2.getTextSize();
+                countAnimationTypeface = Theme.dialogs_countTextPaint2.getTypeface();
+                countAnimationDensity = AndroidUtilities.density;
+                countAnimationTextScaleX = Theme.dialogs_countTextPaint2.getTextScaleX();
+                countAnimationLetterSpacing = Theme.dialogs_countTextPaint2.getLetterSpacing();
+                countAnimationLocale = Locale.getDefault();
                 countAnimator.start();
+                NimarkoUiAnimationClock.track(countAnimator);
             }
 
             animatorPollVotesMentionVisible.setValue(pollVotesMentionCount != 0, animated);
@@ -3928,9 +4000,7 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
 
         if (!animated) {
             dialogMutedProgress = (dialogMuted || drawUnmute) ? 1f : 0f;
-            if (countAnimator != null) {
-                countAnimator.cancel();
-            }
+            if (!keepCountAnimation || !canPreserveCountAnimation()) finishCountAnimation();
         }
        // if (invalidate) {
             invalidate();
@@ -3946,6 +4016,12 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
             }
         }
         updatePremiumBlocked(animated);
+        if (keepCountAnimation && countAnimator != null && (!canPreserveCountAnimation()
+                || drawCount != previousDrawCount || drawCount2 != previousDrawCount2
+                || countWidth != previousCountWidth || countLeft != previousCountLeft || countTop != previousCountTop
+                || !TextUtils.equals(previousCountText, countLayout != null ? countLayout.getText() : null))) {
+            finishCountAnimation();
+        }
         return requestLayout;
     }
 
@@ -6600,18 +6676,17 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
                 typingProgres = printingType == null ? 0f : 1f;
                 waitngNewMessageFroTypingAnimation = false;
             } else {
-                if (!Objects.equals(lastDrawnPrintingType, printingType) || waitngNewMessageFroTypingAnimation) {
-                    if (!waitngNewMessageFroTypingAnimation && printingType == null) {
+                if (!Objects.equals(lastDrawnPrintingType, printingType)) {
+                    if (printingType != null) {
+                        waitngNewMessageFroTypingAnimation = false;
+                        typingProgres = 0f;
+                    } else if (!waitngNewMessageFroTypingAnimation) {
                         waitngNewMessageFroTypingAnimation = true;
                         startWaitingTime = System.currentTimeMillis();
-                    } else if (waitngNewMessageFroTypingAnimation && lastDrawnMessageId != messageHash) {
-                        waitngNewMessageFroTypingAnimation = false;
                     }
-                    if (lastDrawnMessageId != messageHash) {
-                        typingOutToTop = false;
-                    } else {
-                        typingOutToTop = true;
-                    }
+                    typingOutToTop = lastDrawnMessageId == messageHash;
+                } else if (waitngNewMessageFroTypingAnimation && lastDrawnMessageId != messageHash) {
+                    waitngNewMessageFroTypingAnimation = false;
                 }
             }
             if (printingType != null) {

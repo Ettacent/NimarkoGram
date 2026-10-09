@@ -11,6 +11,7 @@
 
 package app.nimarkogram.messenger.preferences;
 
+import java.util.Objects;
 import static org.telegram.messenger.AndroidUtilities.dp;
 import static org.telegram.messenger.LocaleController.getString;
 
@@ -116,7 +117,7 @@ public class MessageFiltersPreferencesActivity extends BaseFragment {
             @Override
             public int getBottomOffset(int tag) { return 0; }
             @Override
-            public int getTopOffset(int tag) { return org.telegram.messenger.AndroidUtilities.statusBarHeight; }
+            public int getTopOffset(int tag) { return AndroidUtilities.statusBarHeight; }
         });
     }
 
@@ -304,7 +305,7 @@ public class MessageFiltersPreferencesActivity extends BaseFragment {
             view -> !(view instanceof ShadowSectionCell
                     || view instanceof FiltersSetupActivity.HintInnerCell
                     || view instanceof GraySectionCell)
-                    && !java.util.Objects.equals(view.getTag(), RecyclerListView.TAG_NOT_SECTION),
+                    && !Objects.equals(view.getTag(), RecyclerListView.TAG_NOT_SECTION),
             dp(12),
             dp(16),
             listView::drawBackgroundRect,

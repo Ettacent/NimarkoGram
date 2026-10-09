@@ -403,6 +403,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
     private FrameLayout avatarContainer2;
     private ProfileActionsView actionsView;
     private MessagesController.SavedMusicList savedMusicList;
+    private long savedMusicHeaderId;
     private ProfileMusicView musicView;
     private AnimatedStatusView animatedStatusView;
     private AvatarImageView avatarImage;
@@ -1539,11 +1540,6 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             }
 
             float alpha = 1.0f;
-            if (animateFromImageReceiver != null && !isReadyForTransition(animateFromImageReceiver)) {
-
-                animateFromImageReceiver = null;
-                crossfadeProgress = 0f;
-            }
             if (animateFromImageReceiver != null) {
                 alpha *= 1.0f - crossfadeProgress;
                 if (crossfadeProgress > 0.0f) {
@@ -1942,6 +1938,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             if (y1 != 0) {
                 if (previousTransitionFragment != null
                         && previousTransitionFragment.getContentView() != null
+                        && SharedConfig.chatBlurEnabled()
                         && !profileTransitionUsesFloatingHeader) {
                     blurBounds.set(0, 0, getMeasuredWidth(), y1);
                     if (previousTransitionFragment.getActionBar() != null && !previousTransitionFragment.getContentView().blurWasDrawn() && previousTransitionFragment.getActionBar().getBackground() == null) {
@@ -2076,6 +2073,9 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             }
             if (musicView != null) {
                 musicView.setBannerProgress(paintedNgBannerForegroundProgress);
+            }
+            if (ratingView != null) {
+                ratingView.setBannerProgress(paintedNgBannerForegroundProgress);
             }
             if (profileTransitionOwnsActionBarColors) {
                 // Banner/media foreground updates run from draw and used to be
@@ -3071,7 +3071,35 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
 
         profileCreatedAccount = currentAccount;
         profileCreated = true;
+        prepareSavedMusicList(false);
         return true;
+    }
+
+    private void prepareSavedMusicList(boolean refresh) {
+        if (!profileCreated || profileLifecycleDestroyed || isFinished || profileCreatedAccount != currentAccount) {
+            savedMusicList = null;
+            savedMusicHeaderId = 0;
+            return;
+        }
+        TLRPC.Document document = userId > 0 && userInfo != null && userInfo.id == userId
+                && (imageUpdater == null || myProfile) ? userInfo.saved_music : null;
+        if (document == null) {
+            savedMusicList = null;
+            savedMusicHeaderId = 0;
+            return;
+        }
+        MessagesController.SavedMusicList active = MediaController.getInstance().currentSavedMusicList;
+        if (active != null && active.currentAccount == currentAccount && active.dialogId == userId
+                && active.getFirstDocument() != null && active.getFirstDocument().id == document.id) {
+            savedMusicList = active;
+            savedMusicHeaderId = document.id;
+            return;
+        }
+        if (!refresh && savedMusicList != null && savedMusicList.currentAccount == currentAccount
+                && savedMusicList.dialogId == userId && savedMusicHeaderId == document.id) return;
+        savedMusicList = new MessagesController.SavedMusicList(currentAccount, userId);
+        savedMusicHeaderId = document.id;
+        savedMusicList.setup(document);
     }
 
     private void setActionsMode() {
@@ -3145,6 +3173,8 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
         }
         delayedProfileOpenLayoutGeneration++;
         profileLifecycleDestroyed = true;
+        savedMusicList = null;
+        savedMusicHeaderId = 0;
         cancelProfileBannerReclaim();
         profileCreated = false;
         profileChatLoadGeneration++;
@@ -4257,6 +4287,9 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
 
             @Override
             protected void dispatchDraw(Canvas canvas) {
+                if (refreshClosingProfileTransitionHeader()) {
+                    backwardAnimationLayout();
+                }
                 if (Build.VERSION.SDK_INT >= 31 && scrollableViewNoiseSuppressor != null) {
                     blur3_InvalidateBlur();
 
@@ -4826,18 +4859,10 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                 musicView.setMusicDocument(userInfo.saved_music);
             }
             musicView.setOnClickListener(v -> {
-                if (savedMusicList == null) {
-                    if (
-                        MediaController.getInstance().currentSavedMusicList != null &&
-                        MediaController.getInstance().currentSavedMusicList.currentAccount == currentAccount &&
-                        MediaController.getInstance().currentSavedMusicList.dialogId == getDialogId()) {
-                        savedMusicList = MediaController.getInstance().currentSavedMusicList;
-                    } else {
-                        savedMusicList = new MessagesController.SavedMusicList(currentAccount, getDialogId());
-                        if (userInfo != null && userInfo.saved_music != null) {
-                            savedMusicList.setup(userInfo.saved_music);
-                        }
-                    }
+                prepareSavedMusicList(false);
+                if (savedMusicList == null) return;
+                if (savedMusicList.totalCount <= 0 && !savedMusicList.loading && !savedMusicList.endReached) {
+                    savedMusicList.load();
                 }
                 if (!savedMusicList.list.isEmpty()) {
                     boolean sameList = false;
@@ -6258,7 +6283,22 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             CanvasButton canvasButton;
 
             @Override
+            protected boolean drawChild(Canvas canvas, View child, long drawingTime) {
+                if (child != nameTextView[1] || !profileTransitionTitleClipActive) {
+                    return super.drawChild(canvas, child, drawingTime);
+                }
+                final int save = canvas.save();
+                try {
+                    canvas.clipRect(profileTransitionTitleClipRect);
+                    return super.drawChild(canvas, child, drawingTime);
+                } finally {
+                    canvas.restoreToCount(save);
+                }
+            }
+
+            @Override
             protected void dispatchDraw(Canvas canvas) {
+                profileTransitionTitleClipActive = calculateProfileTransitionTitleClip(profileTransitionTitleClipRect);
                 super.dispatchDraw(canvas);
                 drawProfileTransitionHeader(canvas);
                 if (hasFallbackPhoto && photoDescriptionProgress != 0 && customAvatarProgress != 1f) {
@@ -7324,9 +7364,21 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             listView.setTopGlowOffset((int) extraHeight);
         }
         updateWriteButtonLayout(false);
-        needLayout(false);
+        updateExtraViews((actionBar.getOccupyStatusBar() ? AndroidUtilities.statusBarHeight : 0)
+                + ActionBar.getCurrentActionBarHeight());
         if (fragmentView != null) {
-            if (requestLayout) fragmentView.requestLayout();
+            if (requestLayout) {
+                fragmentView.requestLayout();
+
+                updateStoriesViewBounds(false);
+                if (listView != null) {
+                    listView.post(() -> {
+                        if (!profileLifecycleDestroyed) {
+                            updateStoriesViewBounds(false);
+                        }
+                    });
+                }
+            }
         }
     }
 
@@ -7672,8 +7724,6 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
         }
         updateEmojiStatusDrawableColor(lightProgress);
 
-        if (ratingView != null) ratingView.setParentExpanded(lightProgress);
-
         if (showStatusButton != null) {
             int normal = Theme.multAlpha(Theme.adaptHSV(actionBarBackgroundColor, +0.18f, -0.1f), 0.5f);
             showStatusButton.setBackgroundColor(ColorUtils.blendARGB(normal, 0x23FFFFFF, lightProgress));
@@ -7846,6 +7896,9 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
         final FrameLayout.LayoutParams params = (FrameLayout.LayoutParams) avatarContainer.getLayoutParams();
         avatarX = listView.getMeasuredWidth() / 2f - (params.width * avatarScale * 0.5f);
         if (openAnimationInProgress) {
+            if (playProfileAnimation == 1) {
+                avatarX = listView.getMeasuredWidth() / 2f - params.width * 0.96f * 0.5f;
+            }
             avatarX = lerp(prevAvatarTranslation, avatarX, avatarAnimationProgress);
         }
         avatarContainer.setTranslationX(avatarX);
@@ -9845,14 +9898,14 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             float targetNameY = minNameY;
             float targetOnlineX = targetNameX;
             float targetOnlineY = minOnlineY;
-            if (a == 0) {
+            if (a == 0 || playProfileAnimation == 1) {
                 if (profileTransitionHasTitleRect) {
                     targetNameX = profileTransitionTitleRect.left - nameTextView[a].getLeft();
                     targetNameY = profileTransitionTitleRect.top - nameTextView[a].getTop();
                 }
                 if (profileTransitionHasSubtitleRect) {
-                    targetOnlineX = profileTransitionSubtitleRect.left - onlineTextView[a].getLeft();
-                    targetOnlineY = profileTransitionSubtitleRect.top - onlineTextView[a].getTop();
+                    targetOnlineX = profileTransitionSubtitleRect.left - onlineTextView[0].getLeft();
+                    targetOnlineY = profileTransitionSubtitleRect.top - onlineTextView[0].getTop();
                 }
             }
 
@@ -9865,6 +9918,10 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             float resolvedOnlineY = lerp(targetOnlineY,
                     backwardInitialValues[9], backwardDiff);
 
+            if (a == 1 && playProfileAnimation == 1 && profileTransitionHasTitleRect) {
+                profileTransitionIncomingTitleOffsetX = nameTextView[a].getScrollingOffset() - getProfileTransitionTitleScrollOffset();
+                nameX += profileTransitionIncomingTitleOffsetX * nameScale;
+            }
             nameTextView[a].setTranslationX(nameX);
             nameTextView[a].setTranslationY(resolvedNameY);
             onlineTextView[a].setTranslationX(onlineX + customPhotoOffset);
@@ -9966,8 +10023,16 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
     private void needLayout(boolean animated) {
         final int newTop = (actionBar.getOccupyStatusBar() ? AndroidUtilities.statusBarHeight : 0) + ActionBar.getCurrentActionBarHeight();
         final float diff = calculateHeaderExtraDiff();
+        final float geometryProgress = openAnimationInProgress && playProfileAnimation == 1
+                ? Utilities.clamp01(avatarAnimationProgress) : diff;
         boolean textMeasured = false;
 
+        refreshClosingProfileTransitionHeader();
+        if (openAnimationInProgress && !isFragmentOpened && playProfileAnimation == 1
+                && previousTransitionFragment != null && previousTransitionFragment.getAvatarContainer() != null) {
+            SimpleTextView sourceTitle = previousTransitionFragment.getAvatarContainer().getTitleTextView();
+            if (sourceTitle != null) profileTransitionTitleScrollOffset = sourceTitle.getScrollingOffset();
+        }
         FrameLayout.LayoutParams layoutParams;
         if (listView != null && !openAnimationInProgress) {
             layoutParams = (FrameLayout.LayoutParams) listView.getLayoutParams();
@@ -10025,9 +10090,12 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                                     + ActionBar.getCurrentActionBarHeight()
                                     - dp(21)
                                     + actionBar.getTranslationY();
-                    avatarY = lerp(profileTransitionAvatarY, expandedAvatarY, diff);
+                    avatarY = lerp(profileTransitionAvatarY, expandedAvatarY, geometryProgress);
                 } else {
-                    avatarY = endNameY;
+                    avatarY = playProfileAnimation == 1
+                            ? lerp(newTop - ActionBar.getCurrentActionBarHeight() / 2f - dp(21) + actionBar.getTranslationY(),
+                                    newTop - dp(21) + actionBar.getTranslationY(), geometryProgress)
+                            : endNameY;
                 }
             }
 
@@ -10373,8 +10441,8 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                 setProfileTransitionTimeItemPosition(
                         avatarContainer.getX() + dp(16) + extra,
                         avatarContainer.getY() + dp(-10) + extra);
-                communityItem.setTranslationX(avatarContainer.getX() + dp(28f) + extra);
-                communityItem.setTranslationY(avatarContainer.getY() + dp(26.5f) + extra);
+                setCommunityTransitionPosition(avatarContainer.getX() + dp(28f) + extra,
+                        avatarContainer.getY() + dp(26.5f) + extra);
                 starBgItem.setTranslationX(avatarContainer.getX() + dp(28) + extra);
                 starBgItem.setTranslationY(avatarContainer.getY() + dp(24) + extra);
                 starFgItem.setTranslationX(avatarContainer.getX() + dp(28) + extra);
@@ -10417,7 +10485,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                 updateCollectibleHint();
             } else if (h <= headerExtraHeight) {
                 if (openAnimationInProgress) {
-                    avatarScale = lerp(profileTransitionAvatarSizeDp, 96, diff) / 100f;
+                    avatarScale = lerp(profileTransitionAvatarSizeDp, 96, geometryProgress) / 100f;
                     pullUpProgress = 0.0f;
                 } else {
                     float intoSize = 24f;
@@ -10442,7 +10510,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                 if (giftsView != null) {
                     giftsView.setCollapseProgress(diff, openAnimationInProgress);
                 }
-                final float nameScale = 1.0f + 0.12f * diff;
+                final float nameScale = 1.0f + 0.12f * geometryProgress;
                 if (expandAnimator == null || !expandAnimator.isRunning()) {
                     avatarContainer.setScaleX(avatarScale);
                     avatarContainer.setScaleY(avatarScale);
@@ -10456,8 +10524,8 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                     setProfileTransitionTimeItemPosition(
                             avatarContainer.getX() + dp(16) + extra,
                             avatarContainer.getY() + dp(-10) + extra);
-                    communityItem.setTranslationX(avatarContainer.getX() + dp(28f) + extra);
-                    communityItem.setTranslationY(avatarContainer.getY() + dp(26.5f) + extra);
+                    setCommunityTransitionPosition(avatarContainer.getX() + dp(28f) + extra,
+                            avatarContainer.getY() + dp(26.5f) + extra);
                     starBgItem.setTranslationX(avatarContainer.getX() + dp(28) + extra);
                     starBgItem.setTranslationY(avatarContainer.getY() + dp(24) + extra);
                     starFgItem.setTranslationX(avatarContainer.getX() + dp(28) + extra);
@@ -10469,6 +10537,19 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                 final float avatarBottom = (float) Math.floor(endNameY) + (avatarContainer.getHeight() * avatarContainer.getScaleY() + dpf2(8)) * (openAnimationInProgress ? avatarAnimationProgress : diff);
                 nameY = avatarBottom + dp(1.3f) + dp(7) * diff + titleAnimationsYDiff * (1f - avatarAnimationProgress);
                 onlineY = avatarBottom + dp(24) + (float) Math.floor(11 * AndroidUtilities.density) * diff;
+                if (openAnimationInProgress && playProfileAnimation == 1) {
+                    float expandedAvatarY = newTop - dp(21) + actionBar.getTranslationY();
+                    float expandedAvatarBottom = (float) Math.floor(expandedAvatarY)
+                            + avatarContainer.getHeight() * 0.96f + dpf2(8);
+                    nameY = expandedAvatarBottom + dp(1.3f) + dp(7);
+                    float minimizedOnlineY = (float) Math.floor(newTop - ActionBar.getCurrentActionBarHeight() / 2f - dp(21)
+                            + actionBar.getTranslationY()) + dp(24);
+                    if (profileTransitionHasSubtitleRect) {
+                        minimizedOnlineY = profileTransitionSubtitleRect.top - onlineTextView[0].getTop();
+                    }
+                    onlineY = lerp(minimizedOnlineY, expandedAvatarBottom + dp(24)
+                            + (float) Math.floor(11 * AndroidUtilities.density), geometryProgress);
+                }
                 final float minimizedX = openAnimationInProgress ? (prevAvatarTranslation - dp(109) + dp(48)) : -dpf2(42 + 4);
 
                 if (showStatusButton != null) {
@@ -10499,14 +10580,24 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                     }
                     float minimizedNameX = minimizedX;
                     float resolvedNameY = nameY;
-                    if (a == 0 && profileTransitionHasTitleRect) {
+                    if (profileTransitionHasTitleRect && (a == 0 || playProfileAnimation == 1)) {
                         minimizedNameX = profileTransitionTitleRect.left - nameTextView[a].getLeft();
                         final float minimizedNameY =
                                 profileTransitionTitleRect.top - nameTextView[a].getTop();
-                        resolvedNameY = AndroidUtilities.lerp(minimizedNameY, nameY, diff);
+                        resolvedNameY = AndroidUtilities.lerp(minimizedNameY, nameY, geometryProgress);
+                    } else if (openAnimationInProgress && playProfileAnimation == 1) {
+                        float minimizedNameY = (float) Math.floor(newTop - ActionBar.getCurrentActionBarHeight() / 2f - dp(21)
+                                + actionBar.getTranslationY()) + dp(1.3f) + titleAnimationsYDiff;
+                        resolvedNameY = lerp(minimizedNameY, nameY, geometryProgress);
                     }
-                    nameX = AndroidUtilities.lerp(minimizedNameX, nameX, diff);
-                    onlineX = AndroidUtilities.lerp(minimizedX, onlineX, diff);
+                    nameX = AndroidUtilities.lerp(minimizedNameX, nameX, geometryProgress);
+                    float minimizedOnlineX = openAnimationInProgress && playProfileAnimation == 1 && profileTransitionHasSubtitleRect
+                            ? profileTransitionSubtitleRect.left - onlineTextView[0].getLeft() : minimizedX;
+                    onlineX = AndroidUtilities.lerp(minimizedOnlineX, onlineX, geometryProgress);
+                    if (a == 1 && openAnimationInProgress && playProfileAnimation == 1 && profileTransitionHasTitleRect) {
+                        profileTransitionIncomingTitleOffsetX = nameTextView[a].getScrollingOffset() - getProfileTransitionTitleScrollOffset();
+                        nameX += profileTransitionIncomingTitleOffsetX * nameScale;
+                    }
 
                     if (expandAnimator == null || !expandAnimator.isRunning()) {
                         nameTextView[a].setTranslationX(nameX);
@@ -11018,10 +11109,11 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             }
         } else if (id == NotificationCenter.userInfoDidLoad) {
             final long uid = (Long) args[0];
-            if (uid == userId) {
+            if (uid == userId && account == currentAccount) {
                 final TLRPC.UserFull cachedInfo = getMessagesController().getUserFull(uid);
                 userInfo = cachedInfo != null ? cachedInfo : (TLRPC.UserFull) args[1];
 
+                prepareSavedMusicList(false);
                 pendingProfileInfoRowsUpdate |= !initialProfileInfoApplied && !fragmentOpened;
                 initialProfileInfoApplied = true;
                 pendingProfileHeaderUpdate = true;
@@ -11197,11 +11289,12 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                 requestProfileRowsUpdate(false, true);
             }
         } else if (id == NotificationCenter.profileMusicUpdated) {
-            if ((long) args[0] == getDialogId() && userId > 0) {
+            if (account == currentAccount && userId > 0 && (long) args[0] == userId) {
                 final TLRPC.UserFull newUserInfo = getMessagesController().getUserFull(userId);
                 if (newUserInfo != null) {
                     userInfo = newUserInfo;
                 }
+                prepareSavedMusicList(true);
                 requestProfileRowsUpdate(false, true);
             }
         } else if (id == NotificationCenter.updatedChatRanks) {
@@ -11765,6 +11858,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
         transitionAnimationInProress = false;
         checkPhotoDescriptionAlpha();
         if (isOpen) {
+            restoreStoryViewAfterProfileTransition();
             flushPendingProfileRowsUpdate();
             if (sharedMediaLayout != null) {
                 sharedMediaLayout.onProfileTransitionFinished();
@@ -11948,8 +12042,17 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
     private float profileTransitionAvatarY = Float.NaN;
     private float profileTransitionAvatarSizeDp = 42f;
     private final RectF profileTransitionTitleRect = new RectF();
+    private float profileTransitionTitleScrollOffset;
+    private float profileTransitionIncomingTitleOffsetX;
     private final android.graphics.Matrix profileTransitionHeaderMatrix = new android.graphics.Matrix();
     private final android.graphics.Matrix profileTransitionParentMatrix = new android.graphics.Matrix();
+    private final android.graphics.Matrix profileTransitionTextLocalMatrix = new android.graphics.Matrix();
+    private final android.graphics.Matrix profileTransitionTextInverseMatrix = new android.graphics.Matrix();
+    private final android.graphics.Matrix profileTransitionTitleClipMatrix = new android.graphics.Matrix();
+    private final RectF profileTransitionTitleSourceClip = new RectF();
+    private final RectF profileTransitionTitleDestinationClip = new RectF();
+    private final RectF profileTransitionTitleClipRect = new RectF();
+    private boolean profileTransitionTitleClipActive;
     private final RectF profileTransitionHeaderBounds = new RectF();
 
     static void profileViewToRoot(View view, android.graphics.Matrix matrix) {
@@ -11983,6 +12086,12 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             return;
         }
         ChatAvatarContainer source = previousTransitionFragment.getAvatarContainer();
+        if (playProfileAnimation == 1 && source != null) {
+            drawProfileTransitionHeaderPart(canvas, source, transitionTitleText, nameTextView[0], true);
+            drawProfileTransitionHeaderPart(canvas, source, transitionOnlineText, onlineTextView[0], false);
+            avatarContainer2.invalidate();
+            return;
+        }
         if (source == null || !profileTransitionMatrix(source, avatarContainer2)) {
             return;
         }
@@ -11997,8 +12106,108 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
         canvas.restoreToCount(save);
         avatarContainer2.invalidate();
     }
+    private boolean profileTransitionTextMatrix(View sourceText, View targetText) {
+        if (sourceText == null || targetText == null || !(sourceText.getParent() instanceof View)
+                || sourceText.getRootView() != targetText.getRootView()) {
+            return false;
+        }
+        View sourceParent = (View) sourceText.getParent();
+        profileTransitionTextLocalMatrix.reset();
+        profileTransitionTextLocalMatrix.preTranslate(sourceText.getLeft() - sourceParent.getScrollX(),
+                sourceText.getTop() - sourceParent.getScrollY());
+        profileTransitionTextLocalMatrix.preConcat(sourceText.getMatrix());
+        if (!profileTransitionTextLocalMatrix.invert(profileTransitionTextInverseMatrix)
+                || !profileTransitionMatrix(targetText, avatarContainer2)) {
+            return false;
+        }
+        profileTransitionHeaderMatrix.preConcat(profileTransitionTextInverseMatrix);
+        return true;
+    }
+
+    private void drawProfileTransitionHeaderPart(Canvas canvas, ChatAvatarContainer source,
+                                                 View sourceText, View targetText, boolean title) {
+        if (!profileTransitionTextMatrix(sourceText, targetText)) {
+            return;
+        }
+        if (title && sourceText instanceof SimpleTextView) {
+            applyProfileTransitionTitleScrollMatrix((SimpleTextView) sourceText);
+        }
+        profileTransitionHeaderBounds.set(0, 0, source.getWidth(), source.getHeight());
+        profileTransitionHeaderBounds.inset(-dp(12), -dp(12));
+        profileTransitionHeaderMatrix.mapRect(profileTransitionHeaderBounds);
+        final int save = canvas.saveLayerAlpha(profileTransitionHeaderBounds,
+                Math.round(255 * Utilities.clamp01(1f - avatarAnimationProgress) * source.getAlpha()));
+        if (title && profileTransitionTitleClipActive) {
+            final int textSave = canvas.save();
+            try {
+                canvas.clipRect(profileTransitionTitleClipRect);
+                canvas.concat(profileTransitionHeaderMatrix);
+                source.drawProfileTransitionText(canvas, sourceText, null, false);
+            } finally {
+                canvas.restoreToCount(textSave);
+            }
+            canvas.concat(profileTransitionHeaderMatrix);
+            source.drawProfileTransitionCommunity(canvas);
+        } else {
+            canvas.concat(profileTransitionHeaderMatrix);
+            source.drawProfileTransitionText(canvas, title ? sourceText : null, title ? null : sourceText);
+        }
+        canvas.restoreToCount(save);
+    }
+
+    private void applyProfileTransitionTitleScrollMatrix(SimpleTextView sourceTitle) {
+        float sourceScroll = sourceTitle.isDirty() ? sourceTitle.getScrollingOffset() : sourceTitle.getLastDrawnScrollingOffset();
+        float incomingDrawScroll = nameTextView[1] == null ? 0 : nameTextView[1].getLastDrawnScrollingOffset();
+        profileTransitionHeaderMatrix.preConcat(profileTransitionTextLocalMatrix);
+        profileTransitionHeaderMatrix.preTranslate(sourceScroll
+                - (incomingDrawScroll - profileTransitionIncomingTitleOffsetX), 0);
+        profileTransitionHeaderMatrix.preConcat(profileTransitionTextInverseMatrix);
+    }
+
+    private boolean calculateProfileTransitionTitleClip(RectF out) {
+        out.setEmpty();
+        if (!profileTransitionInProgress || playProfileAnimation != 1 || transitionTitleText == null
+                || nameTextView[0] == null || nameTextView[1] == null || avatarContainer2 == null
+                || transitionTitleText.getWidth() <= 0 || transitionTitleText.getHeight() <= 0
+                || nameTextView[1].getWidth() <= 0 || nameTextView[1].getHeight() <= 0
+                || !Float.isFinite(avatarAnimationProgress)
+                || !profileTransitionTextMatrix(transitionTitleText, nameTextView[0])) {
+            return false;
+        }
+        applyProfileTransitionTitleScrollMatrix(transitionTitleText);
+        profileTransitionTitleClipMatrix.set(profileTransitionHeaderMatrix);
+        profileTransitionTitleClipMatrix.preConcat(profileTransitionTextLocalMatrix);
+        profileTransitionTitleSourceClip.set(0, 0, transitionTitleText.getWidth(), transitionTitleText.getHeight());
+        profileTransitionTitleClipMatrix.mapRect(profileTransitionTitleSourceClip);
+        if (!profileTransitionMatrix(nameTextView[1], avatarContainer2)) {
+            return false;
+        }
+        profileTransitionTitleDestinationClip.set(0, 0, nameTextView[1].getWidth(), nameTextView[1].getHeight());
+        profileTransitionHeaderMatrix.mapRect(profileTransitionTitleDestinationClip);
+        final float progress = Utilities.clamp01(avatarAnimationProgress);
+        out.set(lerp(profileTransitionTitleSourceClip.left, profileTransitionTitleDestinationClip.left, progress),
+                lerp(profileTransitionTitleSourceClip.top, profileTransitionTitleDestinationClip.top, progress),
+                lerp(profileTransitionTitleSourceClip.right, profileTransitionTitleDestinationClip.right, progress),
+                lerp(profileTransitionTitleSourceClip.bottom, profileTransitionTitleDestinationClip.bottom, progress));
+        if (!Float.isFinite(out.left) || !Float.isFinite(out.top) || !Float.isFinite(out.right)
+                || !Float.isFinite(out.bottom) || out.isEmpty()) {
+            out.setEmpty();
+            return false;
+        }
+        return true;
+    }
+
+    private float getProfileTransitionTitleScrollOffset() {
+        return lerp(profileTransitionTitleScrollOffset,
+                nameTextView[1] == null ? 0 : nameTextView[1].getScrollingOffset(),
+                Utilities.clamp01(avatarAnimationProgress));
+    }
     private final RectF profileTransitionSubtitleRect = new RectF();
     private final RectF profileTransitionTimeItemRect = new RectF();
+    private final RectF profileTransitionAvatarRect = new RectF();
+    private float profileTransitionCommunityX;
+    private float profileTransitionCommunityY;
+    private boolean profileTransitionHasCommunityPosition;
     private boolean profileTransitionHasTitleRect;
     private boolean profileTransitionHasSubtitleRect;
     private boolean profileTransitionHasTimeItemRect;
@@ -12066,6 +12275,17 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
         }
         timeItem.setTranslationX(fallbackX);
         timeItem.setTranslationY(fallbackY);
+    }
+
+    private void setCommunityTransitionPosition(float fallbackX, float fallbackY) {
+        if (profileTransitionHasCommunityPosition && openAnimationInProgress && playProfileAnimation == 1) {
+            float progress = Utilities.clamp01(avatarAnimationProgress);
+            communityItem.setTranslationX(AndroidUtilities.lerp(profileTransitionCommunityX, fallbackX, progress));
+            communityItem.setTranslationY(AndroidUtilities.lerp(profileTransitionCommunityY, fallbackY, progress));
+        } else {
+            communityItem.setTranslationX(fallbackX);
+            communityItem.setTranslationY(fallbackY);
+        }
     }
 
     /**
@@ -12139,6 +12359,8 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
     }
 
     private void captureProfileTransitionAvatarEndpoint() {
+        profileTransitionTitleScrollOffset = 0;
+        profileTransitionIncomingTitleOffsetX = 0;
         profileTransitionTimerBackground = null;
         profileTransitionTimerForeground = null;
         profileTransitionSmallAvatarRoundRadius = -1;
@@ -12180,20 +12402,9 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
 
         SizeNotifierFrameLayout targetContent = previousTransitionFragment.getContentView();
         if (targetContent != null) {
-            RectF targetRect = new RectF();
-            if (ViewPositionWatcher.computeRectInParent(targetAvatar, targetContent, targetRect)) {
-                prevAvatarTranslation = targetRect.left;
-                profileTransitionAvatarY = targetRect.top;
-            }
             SimpleTextView targetTitle = targetContainer.getTitleTextView();
             if (targetTitle != null && targetTitle.getVisibility() == View.VISIBLE) {
-                profileTransitionHasTitleRect = ViewPositionWatcher.computeRectInParent(
-                        targetTitle, targetContent, profileTransitionTitleRect);
-            }
-            View targetSubtitle = targetContainer.getSubtitleTextView();
-            if (targetSubtitle != null && targetSubtitle.getVisibility() == View.VISIBLE) {
-                profileTransitionHasSubtitleRect = ViewPositionWatcher.computeRectInParent(
-                        targetSubtitle, targetContent, profileTransitionSubtitleRect);
+                profileTransitionTitleScrollOffset = targetTitle.getScrollingOffset();
             }
             ImageView targetTimeItem = targetContainer.getTimeItem();
             if (targetTimeItem != null && targetTimeItem.getDrawable() instanceof TimerDrawable) {
@@ -12201,29 +12412,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                 profileTransitionTimerBackground = sourceTimer.getBackgroundColor();
                 profileTransitionTimerForeground = sourceTimer.getForegroundColor();
             }
-            if (timeItem != null
-                    && targetTimeItem != null
-                    && targetTimeItem.getVisibility() == View.VISIBLE
-                    && targetTimeItem.getWidth() > 0
-                    && targetTimeItem.getHeight() > 0
-                    && ViewPositionWatcher.computeRectInParent(
-                            targetTimeItem, targetContent, profileTransitionTimeItemRect)) {
-                // Both ImageViews use CENTER with different asymmetric padding,
-                // and the centred chat item is laid out taller than its measured
-                // 34dp size. Align the transformed drawable centres rather than
-                // the view bounds; bounds-only alignment leaves a visible 5dp
-                // vertical snap at the hand-off.
-                final float targetScaleX = targetTimeItem.getScaleX();
-                final float targetScaleY = targetTimeItem.getScaleY();
-                final float profileScale = 0.85f;
-                profileTransitionTimeItemTargetX = profileTransitionTimeItemRect.left
-                        + getScaledImageContentCenterX(targetTimeItem, targetScaleX)
-                        - getScaledImageContentCenterX(timeItem, profileScale);
-                profileTransitionTimeItemTargetY = profileTransitionTimeItemRect.top
-                        + getScaledImageContentCenterY(targetTimeItem, targetScaleY)
-                        - getScaledImageContentCenterY(timeItem, profileScale);
-                profileTransitionHasTimeItemRect = true;
-            }
+            updateProfileTransitionHeaderGeometry(targetContainer, targetContent);
         }
 
         if (profileTransitionSmallAvatarRoundRadius < 0) {
@@ -12231,7 +12420,78 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
         }
     }
 
+    private boolean refreshClosingProfileTransitionHeader() {
+        if (!profileTransitionInProgress || !openAnimationInProgress || isFragmentOpened
+                || previousTransitionFragment == null || backwardInitialValues == null) {
+            return false;
+        }
+        ChatAvatarContainer targetContainer = previousTransitionFragment.getAvatarContainer();
+        SizeNotifierFrameLayout targetContent = previousTransitionFragment.getContentView();
+        if (targetContainer == null || targetContent == null) {
+            return false;
+        }
+        if (targetContainer.getParent() instanceof ActionBar) {
+            ((ActionBar) targetContainer.getParent()).getChatAvatarOvalCenterInContainer(targetContainer);
+        }
+        targetContainer.syncCenteredAvatarAnchor();
+        updateProfileTransitionHeaderGeometry(targetContainer, targetContent);
+        return true;
+    }
+
+    private void updateProfileTransitionHeaderGeometry(ChatAvatarContainer targetContainer,
+                                                       SizeNotifierFrameLayout targetContent) {
+        BackupImageView targetAvatar = targetContainer.getAvatarImageView();
+        if (targetAvatar != null && ViewPositionWatcher.computeRectInParent(
+                targetAvatar, targetContent, profileTransitionAvatarRect)) {
+            prevAvatarTranslation = profileTransitionAvatarRect.left;
+            profileTransitionAvatarY = profileTransitionAvatarRect.top;
+            if (communityItem != null && communityItem.getTag() != null) {
+                profileTransitionCommunityX = profileTransitionAvatarRect.right - dp(12);
+                profileTransitionCommunityY = profileTransitionAvatarRect.bottom - AndroidUtilities.dpf2(13.67f);
+                profileTransitionHasCommunityPosition = true;
+            }
+        }
+        SimpleTextView targetTitle = targetContainer.getTitleTextView();
+        if (targetTitle != null && targetTitle.getVisibility() == View.VISIBLE) {
+            profileTransitionHasTitleRect = ViewPositionWatcher.computeRectInParent(
+                    targetTitle, targetContent, profileTransitionTitleRect);
+        }
+        View targetSubtitle = targetContainer.getSubtitleTextView();
+        if (targetSubtitle != null && targetSubtitle.getVisibility() == View.VISIBLE) {
+            profileTransitionHasSubtitleRect = ViewPositionWatcher.computeRectInParent(
+                    targetSubtitle, targetContent, profileTransitionSubtitleRect);
+        }
+        ImageView targetTimeItem = targetContainer.getTimeItem();
+        if (timeItem != null
+                && targetTimeItem != null
+                && targetTimeItem.getVisibility() == View.VISIBLE
+                && targetTimeItem.getWidth() > 0
+                && targetTimeItem.getHeight() > 0
+                && ViewPositionWatcher.computeRectInParent(
+                        targetTimeItem, targetContent, profileTransitionTimeItemRect)) {
+                // Both ImageViews use CENTER with different asymmetric padding,
+                // and the centred chat item is laid out taller than its measured
+                // 34dp size. Align the transformed drawable centres rather than
+                // the view bounds; bounds-only alignment leaves a visible 5dp
+                // vertical snap at the hand-off.
+            final float targetScaleX = targetTimeItem.getScaleX();
+            final float targetScaleY = targetTimeItem.getScaleY();
+            final float profileScale = 0.85f;
+            profileTransitionTimeItemTargetX = profileTransitionTimeItemRect.left
+                    + getScaledImageContentCenterX(targetTimeItem, targetScaleX)
+                    - getScaledImageContentCenterX(timeItem, profileScale);
+            profileTransitionTimeItemTargetY = profileTransitionTimeItemRect.top
+                    + getScaledImageContentCenterY(targetTimeItem, targetScaleY)
+                    - getScaledImageContentCenterY(timeItem, profileScale);
+            profileTransitionHasTimeItemRect = true;
+        }
+    }
+
     private void clearProfileTransitionAvatarEndpoint() {
+        profileTransitionTitleClipActive = false;
+        profileTransitionTitleClipRect.setEmpty();
+        profileTransitionTitleScrollOffset = 0;
+        profileTransitionIncomingTitleOffsetX = 0;
         profileTransitionTimerBackground = null;
         profileTransitionTimerForeground = null;
         profileTransitionSmallAvatarRoundRadius = -1;
@@ -12244,6 +12504,9 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
         profileTransitionTitleRect.setEmpty();
         profileTransitionSubtitleRect.setEmpty();
         profileTransitionTimeItemRect.setEmpty();
+        profileTransitionCommunityX = 0f;
+        profileTransitionCommunityY = 0f;
+        profileTransitionHasCommunityPosition = false;
     }
 
     private void captureProfileTransitionOnlineTextState() {
@@ -12376,6 +12639,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             if (targetTitle != null) {
 
                 transitionTitleText = targetTitle;
+                profileTransitionTitleScrollOffset = targetTitle.getScrollingOffset();
                 SizeNotifierFrameLayout targetContent = previousTransitionFragment.getContentView();
                 if (targetContent != null && targetTitle.getVisibility() == View.VISIBLE) {
                     profileTransitionHasTitleRect = ViewPositionWatcher.computeRectInParent(
@@ -12431,6 +12695,10 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
 
         if (!(playProfileAnimation != 0 && allowProfileAnimation && !isPulledDown && !disableProfileAnimation)) {
             return null;
+        }
+
+        if (isOpen && listView != null) {
+            listView.setLayerType(View.LAYER_TYPE_HARDWARE, null);
         }
         final int transitionGeneration = ++profileTransitionGeneration;
         captureProfileTransitionOnlineTextState();
@@ -13113,7 +13381,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
     }
 
     private boolean shouldShowGroupUsersTab() {
-        if (isTopic || currentChat == null
+        if (isTopic || currentChat == null || chatInfo == null
                 || ChatObject.isChannel(currentChat) && !currentChat.megagroup) {
             return false;
         }
@@ -13168,6 +13436,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             ProfileBirthdayEffect.BirthdayEffectFetcher birthdayAssetsFetcher
     ) {
         userInfo = value;
+        prepareSavedMusicList(false);
         if (ratingView != null) {
             ratingView.set(userInfo.stars_rating);
         }
@@ -13274,6 +13543,9 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
     private void updateRowsIds() {
         updateNotifications(false);
 
+        if (sharedMediaLayout != null) {
+            sharedMediaLayout.setGroupUsersTabVisible(shouldShowGroupUsersTab(), getKnownParticipantsCount());
+        }
         boolean hasJoinRow = false;
 
         int prevRowsCount = rowCount;
@@ -13799,7 +14071,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                         addMemberRow = rowCount++;
                     }
                     int count = chatInfo.participants.participants.size();
-                    if (count <= 5) {
+                    if (count <= 5 && !shouldShowGroupUsersTab()) {
                         if (addMemberRow == -1 && actionsView == null) {
                             membersHeaderRow = rowCount++;
                         }
@@ -13849,7 +14121,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                         addMemberRow = rowCount++;
                     }
                     int count = chatInfo.participants.participants.size();
-                    if (count <= 5) {
+                    if (count <= 5 && !shouldShowGroupUsersTab()) {
                         if (addMemberRow == -1 && actionsView == null) {
                             membersHeaderRow = rowCount++;
                         }
@@ -19360,6 +19632,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
         super.onBecomeFullyVisible();
         final boolean refresh = !fullyVisible || refreshGiftsOnReturn;
         synchronizeVisibleHeader();
+        restoreStoryViewAfterProfileTransition();
         if (app.nimarkogram.messenger.banners.NimarkoBannerConfig.enabled) {
             try {
                 app.nimarkogram.messenger.banners.NimarkoBannerRenderer rr = app.nimarkogram.messenger.banners.NimarkoBannerRenderer.getInstance();
@@ -19377,6 +19650,20 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
         if (refresh) {
             refreshVisibleProfile();
         }
+    }
+
+    private void restoreStoryViewAfterProfileTransition() {
+        if (storyView == null || profileLifecycleDestroyed || isPaused) {
+            return;
+        }
+        if (!isFragmentOpened && !fragmentOpened && !fullyVisible) {
+            return;
+        }
+        storyView.setFragmentTransitionProgress(1f);
+        storyView.setExpandProgress(Utilities.clamp01(currentExpandAnimatorValue));
+        storyView.setAlpha(pullUpProgress > 0
+                ? 1.0f - Utilities.clamp01(ilerp(pullUpProgress, 0, 0.5f))
+                : 1.0f);
     }
 
     private void writeButtonSetBackground() {

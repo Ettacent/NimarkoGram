@@ -2,6 +2,8 @@
 
 package app.nimarkogram.messenger.utils;
 
+import java.io.PrintWriter;
+import java.io.StringWriter;
 import com.google.gson.Gson;
 
 import org.telegram.messenger.AndroidUtilities;
@@ -34,8 +36,8 @@ public final class AppUtils {
 
     public static String stackTraceToString(Throwable t) {
         if (t == null) return "";
-        java.io.StringWriter sw = new java.io.StringWriter();
-        t.printStackTrace(new java.io.PrintWriter(sw));
+        StringWriter sw = new StringWriter();
+        t.printStackTrace(new PrintWriter(sw));
         return sw.toString();
     }
 

@@ -34,6 +34,7 @@
 
 package app.nimarkogram.messenger.preferences;
 
+import org.telegram.messenger.NotificationCenter;
 import static org.telegram.messenger.AndroidUtilities.distance;
 import static org.telegram.messenger.AndroidUtilities.dp;
 import static org.telegram.messenger.LocaleController.getString;
@@ -489,8 +490,8 @@ public class MessagesAndProfilesPreferencesActivity extends BaseFragment {
                     // seconds get clipped at the bottom of the bubble until they rebind on scroll.
                     AndroidUtilities.runOnUIThread(() -> {
                         if (parentLayout != null) parentLayout.rebuildAllFragmentViews(true, true);
-                        org.telegram.messenger.NotificationCenter.getGlobalInstance()
-                                .postNotificationName(org.telegram.messenger.NotificationCenter.reloadInterface);
+                        NotificationCenter.getGlobalInstance()
+                                .postNotificationName(NotificationCenter.reloadInterface);
                     }, 220);
                 } else if (position == premiumStatusSwitchRow) {
                     NimarkoConfig.toggleDisablePremiumStatuses();

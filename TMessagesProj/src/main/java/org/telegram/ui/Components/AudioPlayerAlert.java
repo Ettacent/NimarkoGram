@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 5.x.x.
  * It is licensed under GNU GPL v. 2 or later.
@@ -63,6 +65,7 @@ import android.widget.TextView;
 import androidx.annotation.NonNull;
 import androidx.core.content.FileProvider;
 import androidx.core.graphics.ColorUtils;
+import androidx.core.view.OneShotPreDrawListener;
 import androidx.dynamicanimation.animation.FloatValueHolder;
 import androidx.dynamicanimation.animation.SpringAnimation;
 import androidx.dynamicanimation.animation.SpringForce;
@@ -125,10 +128,12 @@ import org.telegram.ui.Stories.recorder.SelectAudioAlert;
 
 import java.io.File;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
 import app.nimarkogram.messenger.NimarkoConfig;
+import app.nimarkogram.messenger.utils.NimarkoUiAnimationClock;
 import app.nimarkogram.messenger.utils.SleepHelper;
 
 public class AudioPlayerAlert extends BottomSheet implements NotificationCenter.NotificationCenterDelegate, DownloadController.FileDownloadProgressListener {
@@ -318,6 +323,52 @@ public class AudioPlayerAlert extends BottomSheet implements NotificationCenter.
             private int lastMeasturedHeight;
             private int lastMeasturedWidth;
 
+            private ValueAnimator listPaddingAnimator;
+            private int listPaddingAnimationTarget = -1;
+            private boolean playlistLaidOut;
+
+            private void cancelListPaddingAnimation() {
+                if (listPaddingAnimator == null) return;
+                ValueAnimator previous = listPaddingAnimator;
+                listPaddingAnimator = null;
+                listPaddingAnimationTarget = -1;
+                previous.removeAllUpdateListeners();
+                previous.removeAllListeners();
+                previous.cancel();
+            }
+
+            private void animateListPaddingTo(int target) {
+                if (!isAttachedToWindow()) return;
+                if (listPaddingAnimator != null && listPaddingAnimationTarget == target) return;
+                cancelListPaddingAnimation();
+                int start = listView.getPaddingTop();
+                if (start == target) return;
+                listPaddingAnimationTarget = target;
+                ValueAnimator animator = ValueAnimator.ofInt(start, target);
+                listPaddingAnimator = animator;
+                animator.setDuration(220L);
+                animator.setInterpolator(CubicBezierInterpolator.EASE_OUT_QUINT);
+                animator.addUpdateListener(valueAnimator -> {
+                    if (listPaddingAnimator != valueAnimator) return;
+                    boolean wasIgnoringLayout = ignoreLayout;
+                    ignoreLayout = false;
+                    try {
+                        listView.setPadding(0, (int) valueAnimator.getAnimatedValue(), 0, listView.getPaddingBottom());
+                    } finally {
+                        ignoreLayout = wasIgnoringLayout;
+                    }
+                });
+                animator.addListener(new AnimatorListenerAdapter() {
+                    @Override
+                    public void onAnimationEnd(Animator animation) {
+                        if (listPaddingAnimator == animation) {
+                            listPaddingAnimator = null;
+                            listPaddingAnimationTarget = -1;
+                        }
+                    }
+                });
+                animator.start();
+            }
             @Override
             public boolean onTouchEvent(MotionEvent e) {
                 return !isDismissed() && super.onTouchEvent(e);
@@ -327,7 +378,8 @@ public class AudioPlayerAlert extends BottomSheet implements NotificationCenter.
             protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
                 int totalHeight = MeasureSpec.getSize(heightMeasureSpec);
                 int w = MeasureSpec.getSize(widthMeasureSpec);
-                if (totalHeight != lastMeasturedHeight || w != lastMeasturedWidth) {
+                boolean boundsChanged = totalHeight != lastMeasturedHeight || w != lastMeasturedWidth;
+                if (boundsChanged) {
                     if (blurredView.getTag() != null) {
                         showAlbumCover(false, false);
                     }
@@ -349,8 +401,12 @@ public class AudioPlayerAlert extends BottomSheet implements NotificationCenter.
                 layoutParams.topMargin = -getPaddingTop();
 
                 int contentSize = dp(179 + (!isMyList() && !noforwards ? 52 : 0));
-                if (playlist.size() > 1) {
-                    contentSize += backgroundPaddingTop + playlist.size() * dp(56);
+                int layoutTrackCount = playlist.size();
+                if (layoutTrackCount > 1) {
+                    contentSize += backgroundPaddingTop + layoutTrackCount * dp(56);
+                }
+                if (isProfilePlaylist && hasPlaylistRows()) {
+                    contentSize = Math.max(contentSize, availableHeight);
                 }
                 int padding;
                 if (searching || keyboardVisible) {
@@ -370,6 +426,17 @@ public class AudioPlayerAlert extends BottomSheet implements NotificationCenter.
                 if (padWithItem) {
                     padding = 0;
                 }
+                int currentPadding = listView.getPaddingTop();
+                if (isProfilePlaylist && playlistLaidOut && !boundsChanged && !padWithItem
+                        && !searching && !keyboardVisible && isAttachedToWindow()
+                        && containerView.getVisibility() == View.VISIBLE
+                        && Math.abs(containerView.getTranslationY()) <= dp(1)
+                        && (listPaddingAnimator != null || Math.abs(currentPadding - padding) > dp(4))) {
+                    animateListPaddingTo(padding);
+                    padding = currentPadding;
+                } else {
+                    cancelListPaddingAnimation();
+                }
                 if (listView.getPaddingTop() != padding) {
                     listView.setPadding(0, padding, 0, searching && keyboardVisible ? 0 : listView.getPaddingBottom());
                 }
@@ -383,6 +450,7 @@ public class AudioPlayerAlert extends BottomSheet implements NotificationCenter.
                 super.onLayout(changed, left, top, right, bottom);
                 updateLayout();
                 updateEmptyViewPosition();
+                playlistLaidOut = true;
             }
 
             @Override
@@ -412,7 +480,7 @@ public class AudioPlayerAlert extends BottomSheet implements NotificationCenter.
 
             @Override
             protected void onDraw(Canvas canvas) {
-                if (playlist.size() <= 1) {
+                if (!hasPlaylistRows()) {
                     shadowDrawable.setBounds(0, getMeasuredHeight() - playerLayout.getMeasuredHeight() - backgroundPaddingTop, getMeasuredWidth(), getMeasuredHeight());
                     shadowDrawable.draw(canvas);
                     if (isProfilePlaylist) {
@@ -490,6 +558,12 @@ public class AudioPlayerAlert extends BottomSheet implements NotificationCenter.
 
             @Override
             protected void onDetachedFromWindow() {
+                cancelListPaddingAnimation();
+                if (listAdapter != null) {
+                    listAdapter.cancelSongReveal();
+                }
+                ignoreLayout = false;
+                playlistLaidOut = false;
                 super.onDetachedFromWindow();
                 Bulletin.removeDelegate(this);
             }
@@ -1162,6 +1236,19 @@ public class AudioPlayerAlert extends BottomSheet implements NotificationCenter.
             boolean ignoreLayout;
 
             @Override
+            public boolean drawChild(Canvas canvas, View child, long drawingTime) {
+                float alpha = child instanceof AudioPlayerCell && listAdapter != null
+                        ? listAdapter.getSongRevealAlpha(((AudioPlayerCell) child).getMessageObject()) : 1f;
+                if (alpha >= 1f) {
+                    return super.drawChild(canvas, child, drawingTime);
+                }
+                int save = canvas.saveLayerAlpha(child.getLeft(), child.getTop(), child.getRight(), child.getBottom(), (int) (255 * alpha));
+                boolean result = super.drawChild(canvas, child, drawingTime);
+                canvas.restoreToCount(save);
+                return result;
+            }
+
+            @Override
             protected void onLayout(boolean changed, int l, int t, int r, int b) {
                 super.onLayout(changed, l, t, r, b);
 
@@ -1335,6 +1422,7 @@ public class AudioPlayerAlert extends BottomSheet implements NotificationCenter.
 
             @Override
             public void onSearchExpand() {
+                listAdapter.cancelSongReveal();
                 searchOpenPosition = layoutManager.findLastVisibleItemPosition();
                 View firstVisView = layoutManager.findViewByPosition(searchOpenPosition);
                 searchOpenOffset = firstVisView == null ? 0 : firstVisView.getTop();
@@ -1419,7 +1507,7 @@ public class AudioPlayerAlert extends BottomSheet implements NotificationCenter.
             itemTouchHelper = new ItemTouchHelper(new ItemTouchHelper.Callback() {
                 @Override
                 public int getMovementFlags(@NonNull RecyclerView recyclerView, @NonNull RecyclerView.ViewHolder viewHolder) {
-                    if (viewHolder.getItemViewType() != 0) {
+                    if (searching || searchWas || viewHolder.getItemViewType() != 0) {
                         return 0;
                     }
                     return makeMovementFlags(ItemTouchHelper.UP | ItemTouchHelper.DOWN, 0);
@@ -1427,15 +1515,22 @@ public class AudioPlayerAlert extends BottomSheet implements NotificationCenter.
 
                 @Override
                 public boolean onMove(@NonNull RecyclerView recyclerView, @NonNull RecyclerView.ViewHolder viewHolder, @NonNull RecyclerView.ViewHolder target) {
+                    if (searching || searchWas || savedMusicList == null) {
+                        return false;
+                    }
                     int fromPosition = viewHolder.getAdapterPosition();
                     int toPosition = target.getAdapterPosition();
-                    if (padWithItem) {
-                        if (fromPosition <= 0 || toPosition <= 0)
+                    int fromIndex = fromPosition - (padWithItem ? 1 : 0);
+                    int toIndex = toPosition - (padWithItem ? 1 : 0);
+                    int count = savedMusicList.list.size();
+                    if (fromIndex < 0 || fromIndex >= count || toIndex < 0 || toIndex >= count) {
                             return false;
-                        savedMusicList.move(fromPosition - 1, toPosition - 1);
-                    } else {
-                        savedMusicList.move(fromPosition, toPosition);
                     }
+                    if (SharedConfig.playOrderReversed) {
+                        fromIndex = count - fromIndex - 1;
+                        toIndex = count - toIndex - 1;
+                    }
+                    savedMusicList.move(fromIndex, toIndex);
                     playlist.clear();
                     playlist.addAll(savedMusicList.list);
                     listAdapter.notifyItemMoved(fromPosition, toPosition);
@@ -1449,6 +1544,11 @@ public class AudioPlayerAlert extends BottomSheet implements NotificationCenter.
 
                 @Override
                 public void onSelectedChanged(RecyclerView.ViewHolder viewHolder, int actionState) {
+                    listAdapter.songDragActive = actionState == ItemTouchHelper.ACTION_STATE_DRAG;
+                    if (listAdapter.songDragActive) {
+                        listAdapter.cancelSongReveal();
+                        listView.invalidate();
+                    }
                     if (viewHolder != null) {
                         listView.hideSelector(false);
                     }
@@ -1514,7 +1614,7 @@ public class AudioPlayerAlert extends BottomSheet implements NotificationCenter.
         if (playerLayout == null) {
             return 0;
         }
-        if (playlist.size() <= 1) {
+        if (!hasPlaylistRows()) {
             return playerLayout.getMeasuredHeight() + backgroundPaddingTop;
         } else {
             int offset = dp(13);
@@ -1569,7 +1669,11 @@ public class AudioPlayerAlert extends BottomSheet implements NotificationCenter.
                     View child = listView.getChildAt(a);
                     if (child instanceof AudioPlayerCell) {
                         if (((AudioPlayerCell) child).getMessageObject() == playingMessageObject) {
-                            if (child.getBottom() <= listView.getMeasuredHeight()) {
+                            float visibleBottom = listView.getMeasuredHeight() - listView.getPaddingBottom();
+                            if (playerLayout.getVisibility() == View.VISIBLE && playerLayout.getMeasuredHeight() > 0) {
+                                visibleBottom = Math.min(visibleBottom, playerLayout.getY() - listView.getTop());
+                            }
+                            if (child.getTop() >= listView.getPaddingTop() && child.getBottom() <= visibleBottom) {
                                 found = true;
                             }
                             break;
@@ -1578,16 +1682,14 @@ public class AudioPlayerAlert extends BottomSheet implements NotificationCenter.
                 }
             }
             if (!found) {
-                int idx = playlist.indexOf(playingMessageObject);
-                if (padWithItem) {
-                    idx++;
-                }
+                ArrayList<MessageObject> rows = searchWas ? listAdapter.searchResult : playlist;
+                int idx = rows.indexOf(playingMessageObject);
                 if (idx >= 0) {
-                    if (SharedConfig.playOrderReversed) {
-                        layoutManager.scrollToPosition(idx);
-                    } else {
-                        layoutManager.scrollToPosition(playlist.size() - idx);
-                    }
+                    boolean directOrder = searchWas || (savedMusicList != null
+                            ? !SharedConfig.playOrderReversed : SharedConfig.playOrderReversed);
+                    int position = directOrder ? idx : rows.size() - idx - 1;
+                    if (padWithItem) position++;
+                    layoutManager.scrollToPosition(position);
                     return true;
                 }
             }
@@ -1932,11 +2034,11 @@ public class AudioPlayerAlert extends BottomSheet implements NotificationCenter.
         } else if (id == NotificationCenter.musicDidLoad) {
             savedMusicList = MediaController.getInstance().currentSavedMusicList;
             playlist = MediaController.getInstance().getPlaylist();
-            listAdapter.notifyDataSetChanged();
+            listAdapter.notifyPlaylistLoaded();
         } else if (id == NotificationCenter.moreMusicDidLoad) {
             savedMusicList = MediaController.getInstance().currentSavedMusicList;
             playlist = MediaController.getInstance().getPlaylist();
-            listAdapter.notifyDataSetChanged();
+            listAdapter.notifyPlaylistLoaded();
             if (SharedConfig.playOrderReversed) {
                 listView.stopScroll();
                 int addedCount = (Integer) args[0];
@@ -2099,6 +2201,9 @@ public class AudioPlayerAlert extends BottomSheet implements NotificationCenter.
 
     @Override
     public void dismiss() {
+        if (listAdapter != null) {
+            listAdapter.cancelSongReveal();
+        }
         super.dismiss();
         NotificationCenter.getInstance(currentAccount).removeObserver(this, NotificationCenter.messagePlayingDidReset);
         NotificationCenter.getInstance(currentAccount).removeObserver(this, NotificationCenter.messagePlayingPlayStateChanged);
@@ -2447,6 +2552,9 @@ public class AudioPlayerAlert extends BottomSheet implements NotificationCenter.
         }
     }
 
+    private boolean hasPlaylistRows() {
+        return playlist != null && (isProfilePlaylist ? !playlist.isEmpty() : playlist.size() > 1);
+    }
     private class ListAdapter extends RecyclerListView.SelectionAdapter {
 
         private Context context;
@@ -2454,13 +2562,24 @@ public class AudioPlayerAlert extends BottomSheet implements NotificationCenter.
         private String searchQuery;
         private Runnable searchRunnable;
 
+        private int searchGeneration;
+        private final HashSet<Long> knownSongIds = new HashSet<>();
+        private final HashSet<Long> revealingSongIds = new HashSet<>();
+        private MessagesController.SavedMusicList songListOwner;
+        private boolean awaitingProfileSongs;
+        private boolean songDragActive;
+        private long songRevealStartedAt = -1;
+        private OneShotPreDrawListener songRevealPreDraw;
         public ListAdapter(Context context) {
             this.context = context;
         }
 
         private boolean listViewIsVisible;
         public void setup() {
-            listViewIsVisible = playlist.size() > 1;
+            songListOwner = savedMusicList;
+            rememberSongIds(knownSongIds);
+            awaitingProfileSongs = isProfilePlaylist && knownSongIds.size() == 1;
+            listViewIsVisible = hasPlaylistRows();
             if (listViewIsVisible) {
                 listView.setVisibility(View.VISIBLE);
                 listView.setTranslationY(0);
@@ -2470,20 +2589,118 @@ public class AudioPlayerAlert extends BottomSheet implements NotificationCenter.
             }
         }
 
+        private long songId(MessageObject message) {
+            TLRPC.Document document = message == null ? null : message.getDocument();
+            return document == null ? 0 : document.id;
+        }
+
+        private void rememberSongIds(HashSet<Long> ids) {
+            ids.clear();
+            if (playlist != null) {
+                for (MessageObject message : playlist) {
+                    long id = songId(message);
+                    if (id != 0) {
+                        ids.add(id);
+                    }
+                }
+            }
+        }
+
+        private void notifyPlaylistLoaded() {
+            if (awaitingProfileSongs && songListOwner == savedMusicList && playlist != null && playlist.size() > 1) {
+                awaitingProfileSongs = false;
+                if (!searching && !searchWas && !songDragActive && !isDismissed() && listView.isAttachedToWindow()
+                        && SharedConfig.animationsEnabled() && !NimarkoUiAnimationClock.isPaused()) {
+                    rememberSongIds(revealingSongIds);
+                    revealingSongIds.removeAll(knownSongIds);
+                    if (!revealingSongIds.isEmpty()) {
+                        songRevealPreDraw = OneShotPreDrawListener.add(listView, () -> {
+                            songRevealPreDraw = null;
+                            if (searching || searchWas || songDragActive || isDismissed() || !listView.isAttachedToWindow()) {
+                                cancelSongReveal();
+                            } else {
+                                songRevealStartedAt = NimarkoUiAnimationClock.now();
+                                listView.invalidate();
+                            }
+                        });
+                    }
+                }
+            } else if (songListOwner != savedMusicList) {
+                awaitingProfileSongs = false;
+                cancelSongReveal();
+            }
+            rememberSongIds(knownSongIds);
+            notifyDataSetChanged();
+        }
+
+        private float getSongRevealAlpha(MessageObject message) {
+            if (revealingSongIds.isEmpty() || songRevealStartedAt < 0) {
+                return 1f;
+            }
+            long elapsed = Math.max(0, NimarkoUiAnimationClock.now() - songRevealStartedAt);
+            if (elapsed >= 200 || searching || searchWas || songDragActive
+                    || songListOwner != savedMusicList || !SharedConfig.animationsEnabled()) {
+                cancelSongReveal();
+                return 1f;
+            }
+            if (!NimarkoUiAnimationClock.isPaused()) {
+                listView.postInvalidateOnAnimation();
+            }
+            return revealingSongIds.contains(songId(message))
+                    ? CubicBezierInterpolator.EASE_OUT.getInterpolation(elapsed / 200f) : 1f;
+        }
+
+        private void cancelSongReveal() {
+            if (songRevealPreDraw != null) {
+                songRevealPreDraw.removeListener();
+                songRevealPreDraw = null;
+            }
+            revealingSongIds.clear();
+            songRevealStartedAt = -1;
+        }
+
+        private void syncSongReveal() {
+            if (!isProfilePlaylist) {
+                return;
+            }
+            HashSet<Long> songIds = new HashSet<>();
+            rememberSongIds(songIds);
+            if (songListOwner != savedMusicList || !knownSongIds.equals(songIds)) {
+                awaitingProfileSongs = false;
+                cancelSongReveal();
+                songListOwner = savedMusicList;
+                knownSongIds.clear();
+                knownSongIds.addAll(songIds);
+            }
+        }
         @Override
         public void notifyDataSetChanged() {
+            syncSongReveal();
             super.notifyDataSetChanged();
-            if ((playlist.size() > 1) != listViewIsVisible) {
-                listViewIsVisible = playlist.size() > 1;
+            if (isProfilePlaylist) {
+                listView.animate().withEndAction(null).cancel();
+                listViewIsVisible = hasPlaylistRows();
+                listView.setTranslationY(0);
+                listView.setAlpha(1f);
+                listView.setVisibility(listViewIsVisible ? View.VISIBLE : View.GONE);
+            } else if (hasPlaylistRows() != listViewIsVisible) {
+                listViewIsVisible = hasPlaylistRows();
                 if (listViewIsVisible) {
+                    boolean sheetIsOpening = Math.abs(containerView.getTranslationY()) > dp(1)
+                            || containerView.getVisibility() != View.VISIBLE;
+                    listView.animate().cancel();
                     listView.setVisibility(View.VISIBLE);
-                    listView.setTranslationY(AndroidUtilities.displaySize.y);
-                    listView.animate()
-                        .translationY(0)
-                        .setUpdateListener(a -> containerView.invalidate())
-                        .setDuration(420)
-                        .setInterpolator(CubicBezierInterpolator.EASE_OUT_QUINT)
-                        .start();
+                    if (sheetIsOpening) {
+                        listView.setTranslationY(0);
+                    } else {
+                        listView.setTranslationY(AndroidUtilities.displaySize.y);
+                        listView.animate()
+                            .translationY(0)
+                            .setUpdateListener(a -> containerView.invalidate())
+                            .setDuration(420)
+                            .setInterpolator(CubicBezierInterpolator.EASE_OUT_QUINT)
+                            .start();
+                    }
                 } else {
                     listView.animate()
                         .translationY(AndroidUtilities.displaySize.y)
@@ -2494,7 +2711,7 @@ public class AudioPlayerAlert extends BottomSheet implements NotificationCenter.
                         .start();
                 }
             }
-            if (playlist.size() > 1) {
+            if (hasPlaylistRows()) {
                 playerLayout.setBackgroundColor(getThemedColor(Theme.key_player_background));
                 playerShadow.setVisibility(View.VISIBLE);
                 listView.setPadding(0, listView.getPaddingTop(), 0, dp(179 + 52));
@@ -2504,6 +2721,7 @@ public class AudioPlayerAlert extends BottomSheet implements NotificationCenter.
                 listView.setPadding(0, listView.getPaddingTop(), 0, 0);
             }
             updateEmptyView();
+            containerView.requestLayout();
         }
 
         @Override
@@ -2511,7 +2729,7 @@ public class AudioPlayerAlert extends BottomSheet implements NotificationCenter.
             if (searchWas) {
                 return (padWithItem ? 1 : 0) + searchResult.size();
             }
-            return playlist.size() > 1 ? (padWithItem ? 1 : 0) + playlist.size() : 0;
+            return hasPlaylistRows() ? (padWithItem ? 1 : 0) + playlist.size() : 0;
         }
 
         @Override
@@ -2590,6 +2808,8 @@ public class AudioPlayerAlert extends BottomSheet implements NotificationCenter.
         }
 
         public void search(final String query) {
+            cancelSongReveal();
+            final int generation = ++searchGeneration;
             if (searchRunnable != null) {
                 Utilities.searchQueue.cancelRunnable(searchRunnable);
                 searchRunnable = null;
@@ -2600,19 +2820,22 @@ public class AudioPlayerAlert extends BottomSheet implements NotificationCenter.
                 notifyDataSetChanged();
             } else {
                 Utilities.searchQueue.postRunnable(searchRunnable = () -> {
-                    searchRunnable = null;
-                    processSearch(query);
+                    processSearch(query, generation);
                 }, 300);
             }
         }
 
-        private void processSearch(final String query) {
+        private void processSearch(final String query, final int generation) {
             AndroidUtilities.runOnUIThread(() -> {
+                if (generation != searchGeneration || !searching || isDismissed()) {
+                    return;
+                }
+                searchRunnable = null;
                 final ArrayList<MessageObject> copy = new ArrayList<>(playlist);
                 Utilities.searchQueue.postRunnable(() -> {
                     String search1 = query.trim().toLowerCase();
                     if (search1.length() == 0) {
-                        updateSearchResults(new ArrayList<>(), query);
+                        updateSearchResults(new ArrayList<>(), query, generation);
                         return;
                     }
                     String search2 = LocaleController.getInstance().getTranslitString(search1);
@@ -2666,14 +2889,14 @@ public class AudioPlayerAlert extends BottomSheet implements NotificationCenter.
                         }
                     }
 
-                    updateSearchResults(resultArray, query);
+                    updateSearchResults(resultArray, query, generation);
                 });
             });
         }
 
-        private void updateSearchResults(final ArrayList<MessageObject> documents, String query) {
+        private void updateSearchResults(final ArrayList<MessageObject> documents, String query, int generation) {
             AndroidUtilities.runOnUIThread(() -> {
-                if (!searching) {
+                if (generation != searchGeneration || !searching || isDismissed()) {
                     return;
                 }
                 searchWas = true;

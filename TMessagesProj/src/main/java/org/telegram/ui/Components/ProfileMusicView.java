@@ -237,9 +237,27 @@ public class ProfileMusicView extends View {
 
     private float currentHeight;
 
+    private float targetPositionY;
+    private float targetHeight;
+    private long lastPositionUpdate;
+    private boolean animateGeometry;
+    private final AnimatedFloat animatedPositionY = new AnimatedFloat(this, 140, CubicBezierInterpolator.EASE_OUT_QUINT);
+    private final AnimatedFloat animatedHeight = new AnimatedFloat(this, 140, CubicBezierInterpolator.EASE_OUT_QUINT);
     public void updatePosition(float y, float newHeight) {
-        currentHeight = newHeight;
-        setTranslationY(y - dp(12));
+        long now = android.os.SystemClock.uptimeMillis();
+        boolean discontinuity = lastPositionUpdate != 0L
+                && now - lastPositionUpdate > 90L
+                && (Math.abs(targetPositionY - y) > dp(3) || Math.abs(targetHeight - newHeight) > dp(3));
+        animateGeometry = discontinuity;
+        targetPositionY = y;
+        targetHeight = newHeight;
+        lastPositionUpdate = now;
+        if (!animateGeometry) {
+            animatedPositionY.force(y);
+            animatedHeight.force(newHeight);
+            currentHeight = newHeight;
+            setTranslationY(y - dp(12));
+        }
         invalidate();
     }
 
@@ -268,7 +286,14 @@ public class ProfileMusicView extends View {
     protected void onDraw(@NonNull Canvas canvas) {
         if (this.author == null || this.title == null) return;
 
-        final float alpha = Utilities.clamp01((currentHeight) / dp(21));
+        final float positionY = animateGeometry ? animatedPositionY.set(targetPositionY) : targetPositionY;
+        currentHeight = animateGeometry ? animatedHeight.set(targetHeight) : targetHeight;
+        setTranslationY(positionY - dp(12));
+        if (animateGeometry && Math.abs(currentHeight - targetHeight) < 0.1f
+                && Math.abs(positionY - targetPositionY) < 0.1f) {
+            animateGeometry = false;
+        }
+        final float alpha = Utilities.clamp01(currentHeight / dp(21));
         final float bannerT = Utilities.clamp01(bannerProgress);
         final float profileT = 1f - bannerT;
         final float scale = bounce.getScale(0.02f);

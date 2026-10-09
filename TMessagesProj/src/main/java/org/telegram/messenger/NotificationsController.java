@@ -4553,7 +4553,7 @@ public class NotificationsController extends BaseController implements Notificat
                     }
                 };
                 if (offerInAppNotification(lastMessageObject, bannerOwner, bannerSession, delivery, handled -> {
-                    if (!delivery.complete()) return;
+                    if (!delivery.complete(handled)) return;
                     notificationsQueue.cancelRunnable(fallback);
                     notificationsQueue.postRunnable(() -> {
                         if (bannerDelivery != bannerDeliveryGeneration

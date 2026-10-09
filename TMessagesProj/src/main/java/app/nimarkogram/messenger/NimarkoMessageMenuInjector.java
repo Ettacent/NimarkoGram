@@ -2,6 +2,11 @@
 
 package app.nimarkogram.messenger;
 
+import app.nimarkogram.messenger.media.NimarkoMediaDownloader;
+import app.nimarkogram.messenger.quotes.NimarkoQuoteCreator;
+import app.nimarkogram.messenger.utils.chats.NimarkoChatActivityHelper;
+import java.io.File;
+import java.util.function.Supplier;
 import org.telegram.messenger.ChatObject;
 import org.telegram.messenger.FileLoader;
 import org.telegram.messenger.LocaleController;
@@ -42,7 +47,7 @@ public final class NimarkoMessageMenuInjector {
         ArrayList<Integer> icons
     ) {
         if (noforwardsOrPaidMedia) return;
-        if (!app.nimarkogram.messenger.quotes.NimarkoQuoteCreator.canCreate(chatActivity, selectedObject, selectedObjectGroup)) return;
+        if (!NimarkoQuoteCreator.canCreate(chatActivity, selectedObject, selectedObjectGroup)) return;
 
         items.add(LocaleController.getString(R.string.NM_QC_Create));
         options.add(OPTION_CREATE_QUOTE);
@@ -101,12 +106,12 @@ public final class NimarkoMessageMenuInjector {
         String attachPath = m.messageOwner.attachPath;
         if (attachPath != null && !attachPath.isEmpty()) {
             try {
-                if (new java.io.File(attachPath).exists()) return true;
+                if (new File(attachPath).exists()) return true;
             } catch (Exception ignore) { /* fall through to FileLoader */ }
         }
 
         try {
-            java.io.File f = FileLoader.getInstance(currentAccount).getPathToMessage(m.messageOwner);
+            File f = FileLoader.getInstance(currentAccount).getPathToMessage(m.messageOwner);
             return f != null && f.exists();
         } catch (Exception ignore) {
             return false;
@@ -215,7 +220,7 @@ public final class NimarkoMessageMenuInjector {
 
         if (NimarkoConfig.showJSON && !NimarkoConfig.showDetails) {
             items.add("JSON");
-            options.add(app.nimarkogram.messenger.utils.chats.NimarkoChatActivityHelper.OPTION_DETAILS);
+            options.add(NimarkoChatActivityHelper.OPTION_DETAILS);
             icons.add(R.drawable.msg_info);
         }
     }
@@ -227,7 +232,7 @@ public final class NimarkoMessageMenuInjector {
     ) {
         if (NimarkoConfig.showDetails) {
             items.add(LocaleController.getString(R.string.NM_MI_Details));
-            options.add(app.nimarkogram.messenger.utils.chats.NimarkoChatActivityHelper.OPTION_DETAILS);
+            options.add(NimarkoChatActivityHelper.OPTION_DETAILS);
             icons.add(R.drawable.msg_info);
         }
     }
@@ -272,7 +277,7 @@ public final class NimarkoMessageMenuInjector {
         if (!hasAnyCaption(selectedObject, selectedObjectGroup)) return;
 
         items.add(LocaleController.getString(R.string.NM_MI_ForwardWoCaption));
-        options.add(app.nimarkogram.messenger.utils.chats.NimarkoChatActivityHelper.OPTION_FORWARD_WO_CAPTION);
+        options.add(NimarkoChatActivityHelper.OPTION_FORWARD_WO_CAPTION);
         icons.add(R.drawable.msg_forward);
     }
 
@@ -297,7 +302,7 @@ public final class NimarkoMessageMenuInjector {
         if (selectedObject.isAnimatedSticker()) return;
 
         items.add(LocaleController.getString(R.string.NM_MI_DownloadSticker));
-        options.add(app.nimarkogram.messenger.utils.chats.NimarkoChatActivityHelper.OPTION_DOWNLOAD_STICKER);
+        options.add(NimarkoChatActivityHelper.OPTION_DOWNLOAD_STICKER);
         icons.add(R.drawable.msg_gallery);
     }
 
@@ -322,7 +327,7 @@ public final class NimarkoMessageMenuInjector {
         if (!hasCustom) return;
 
         items.add(LocaleController.getString(R.string.AccDescrCustomEmoji));
-        options.add(app.nimarkogram.messenger.utils.chats.NimarkoChatActivityHelper.OPTION_GET_CUSTOM_REACTIONS);
+        options.add(NimarkoChatActivityHelper.OPTION_GET_CUSTOM_REACTIONS);
         icons.add(R.drawable.msg_emoji_smiles);
     }
 
@@ -335,10 +340,10 @@ public final class NimarkoMessageMenuInjector {
         if (selectedObject == null) return;
         CharSequence text = selectedObject.messageText;
         if (text == null || text.length() == 0) return;
-        if (!app.nimarkogram.messenger.media.NimarkoMediaDownloader.messageHasSupportedUrl(text)) return;
+        if (!NimarkoMediaDownloader.messageHasSupportedUrl(text)) return;
 
         items.add(LocaleController.getString(R.string.NM_DownloadMedia));
-        options.add(app.nimarkogram.messenger.utils.chats.NimarkoChatActivityHelper.OPTION_NIMARKO_MEDIA_DOWNLOAD);
+        options.add(NimarkoChatActivityHelper.OPTION_NIMARKO_MEDIA_DOWNLOAD);
         icons.add(R.drawable.msg_download);
     }
 
@@ -353,7 +358,7 @@ public final class NimarkoMessageMenuInjector {
     ) {
         if (options == null || items == null || icons == null) return;
 
-        java.util.ArrayList<Integer> toRemove = new java.util.ArrayList<>();
+        ArrayList<Integer> toRemove = new ArrayList<>();
         for (int i = 0; i < options.size(); i++) {
             Integer opt = options.get(i);
             if (opt == null) continue;
@@ -522,11 +527,11 @@ public final class NimarkoMessageMenuInjector {
     private static final class MenuItemConfig {
         final String title;
         final int icon;
-        final java.util.function.Supplier<Boolean> isChecked;
+        final Supplier<Boolean> isChecked;
         final Runnable toggle;
         final boolean divider;
 
-        MenuItemConfig(String title, int icon, java.util.function.Supplier<Boolean> isChecked,
+        MenuItemConfig(String title, int icon, Supplier<Boolean> isChecked,
                        Runnable toggle, boolean divider) {
             this.title = title;
             this.icon = icon;

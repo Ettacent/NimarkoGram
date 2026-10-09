@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This file is part of NimarkoGram for Android.
  * Licensed under GNU GPL v2 or later. See LICENSE.
@@ -6,6 +8,7 @@
 
 package app.nimarkogram.messenger.utils.chats;
 
+import app.nimarkogram.messenger.NimarkoMessageMenuInjector;
 import static org.telegram.messenger.AndroidUtilities.dp;
 import static org.telegram.messenger.LocaleController.getString;
 
@@ -496,7 +499,7 @@ public class NimarkoChatActivityHelper extends BaseController {
                 break;
             case NimarkoConfig.DOUBLE_TAP_ACTION_SAVE:
                 chatActivity.processSelectedOption(
-                        app.nimarkogram.messenger.NimarkoMessageMenuInjector.OPTION_SAVE_MESSAGE_CHAT);
+                        NimarkoMessageMenuInjector.OPTION_SAVE_MESSAGE_CHAT);
                 break;
             case NimarkoConfig.DOUBLE_TAP_ACTION_EDIT:
                 chatActivity.processSelectedOption(ChatActivity.OPTION_EDIT);

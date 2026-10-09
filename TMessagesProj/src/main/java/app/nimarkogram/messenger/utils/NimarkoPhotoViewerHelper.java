@@ -2,6 +2,7 @@
 
 package app.nimarkogram.messenger.utils;
 
+import android.content.Context;
 import static org.telegram.messenger.LocaleController.getString;
 
 import org.telegram.messenger.AndroidUtilities;
@@ -129,7 +130,7 @@ public class NimarkoPhotoViewerHelper {
                                 || actionBarContainer.subtitleTextView.getTag() != this) return;
                         actionBarContainer.subtitleTextView.setOnClickListener(v -> {
                             
-                            android.content.Context ctx = parentFragment.getContext();
+                            Context ctx = parentFragment.getContext();
                             if (ctx == null) return;
                             ArrayList<TLRPC.InputStickerSet> inputSets = new ArrayList<>();
                             inputSets.add(MessageObject.getInputStickerSet(document));
@@ -151,7 +152,7 @@ public class NimarkoPhotoViewerHelper {
                     && actionBarContainer.subtitleTextView.getTag() == this) {
                 actionBarContainer.subtitleTextView.setOnClickListener(v -> {
                     
-                    android.content.Context ctx = parentFragment.getContext();
+                    Context ctx = parentFragment.getContext();
                     if (ctx == null) return;
                     new StickersAlert(
                             ctx,

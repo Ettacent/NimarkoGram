@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components;
 
 import static org.telegram.messenger.AndroidUtilities.lerp;
@@ -23,6 +25,7 @@ public class AnimatedLinearLayout extends LinearLayout {
     public interface IndependentPanel {
         boolean isDirectResize();
         default float getLayoutCoverage() { return 1f; }
+        default void onSizeChangeConsumed() {}
     }
     protected float getSharedBackgroundOffset() {
         float offset = Float.MAX_VALUE;
@@ -180,12 +183,17 @@ public class AnimatedLinearLayout extends LinearLayout {
         boolean sizeChanged = false;
         boolean directResize = false;
         boolean otherSizeChanged = false;
+        boolean otherTrackedSizeChanged = false;
         for (Holder holder : visibleHolders) {
             if (trackedLayout != null) {
                 boolean resized = holder.width != holder.view.getMeasuredWidth() || holder.height != holder.view.getMeasuredHeight();
                 if (holder.trackSize) sizeChanged |= resized;
                 else otherSizeChanged |= resized;
-                if (resized && holder.view instanceof IndependentPanel) directResize |= ((IndependentPanel) holder.view).isDirectResize();
+                boolean direct = holder.view instanceof IndependentPanel && ((IndependentPanel) holder.view).isDirectResize();
+                if (resized) {
+                    directResize |= direct;
+                    otherTrackedSizeChanged |= holder.trackSize && !direct;
+                }
                 holder.width = holder.view.getMeasuredWidth();
                 holder.height = holder.view.getMeasuredHeight();
             }
@@ -195,8 +203,13 @@ public class AnimatedLinearLayout extends LinearLayout {
             listAnimator.reset(visibleHolders, !skipNextAnimation);
         }
         else if (sizeChanged) {
-            if (directResize && !listAnimator.isAnimating()) listAnimator.measureImpl(false);
-            else listAnimator.measure(true);
+            if (directResize && !otherTrackedSizeChanged) {
+                if (listAnimator.isAnimating()) listAnimator.retargetSize();
+                else listAnimator.measureImpl(false);
+            } else listAnimator.measure(true);
+        }
+        for (Holder holder : visibleHolders) {
+            if (holder.view instanceof IndependentPanel) ((IndependentPanel) holder.view).onSizeChangeConsumed();
         }
         if (trackedLayout != null) {
             trackedLayout.clear();

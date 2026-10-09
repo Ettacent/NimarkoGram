@@ -8,6 +8,19 @@
 
 package app.nimarkogram.messenger.icons;
 
+import android.content.Context;
+import android.content.res.ColorStateList;
+import android.content.res.Configuration;
+import android.graphics.Bitmap;
+import android.graphics.Canvas;
+import android.graphics.ColorFilter;
+import android.graphics.drawable.BitmapDrawable;
+import android.util.DisplayMetrics;
+import java.util.Arrays;
+import java.util.HashSet;
+import java.util.Set;
+import org.telegram.messenger.AndroidUtilities;
+import org.telegram.messenger.Utilities;
 import android.annotation.SuppressLint;
 import android.content.res.Resources;
 import android.graphics.drawable.Drawable;
@@ -28,19 +41,20 @@ public class NimarkoIconResources extends Resources {
 
     private static final int CACHE_LIMIT = 300;
 
-    private static final java.util.Set<Integer> RENDER_24DP_ICONS = new java.util.HashSet<>(
-            java.util.Arrays.asList(org.telegram.messenger.R.drawable.group_edit_profile));
+    private static final Set<Integer> RENDER_24DP_ICONS = new HashSet<>(
+            Arrays.asList(org.telegram.messenger.R.drawable.group_edit_profile));
 
-    private static final java.util.Set<Integer> NON_SKINNABLE_DRAWABLES =
-            new java.util.HashSet<>(java.util.Arrays.asList(
+
+    private static final Set<Integer> NON_SKINNABLE_DRAWABLES =
+            new HashSet<>(Arrays.asList(
                     org.telegram.messenger.R.drawable.msg_autodelete_badge2,
                     org.telegram.messenger.R.drawable.msg_autodelete_badge2_solar,
                     org.telegram.messenger.R.drawable.msg_mini_autodelete_empty,
                     org.telegram.messenger.R.drawable.msg_mini_autodelete_empty_solar
             ));
 
-    private static final java.util.Set<Integer> STOCK_COMPOSER_DRAWABLES =
-            new java.util.HashSet<>(java.util.Arrays.asList(
+    private static final Set<Integer> STOCK_COMPOSER_DRAWABLES =
+            new HashSet<>(Arrays.asList(
                     org.telegram.messenger.R.drawable.attach_send,
                     org.telegram.messenger.R.drawable.input_attach,
                     org.telegram.messenger.R.drawable.input_bot1,
@@ -90,7 +104,7 @@ public class NimarkoIconResources extends Resources {
     private volatile int warmedFolderSelection = Integer.MIN_VALUE;
     private static volatile NimarkoIconResources sInstalled;
 
-    private android.graphics.Bitmap backArrowBitmap;
+    private Bitmap backArrowBitmap;
     private boolean backArrowBitmapResolved;
     private final Object backArrowLock = new Object();
 
@@ -104,12 +118,12 @@ public class NimarkoIconResources extends Resources {
         prewarmFolderIconsAsync();
     }
 
-    public static android.graphics.Bitmap activeBackArrowBitmap() {
+    public static Bitmap activeBackArrowBitmap() {
         NimarkoIconResources self = sInstalled;
         return self == null ? null : self.preparedBackArrowBitmap();
     }
 
-    public static Drawable getStockDrawable(android.content.Context context, int id) {
+    public static Drawable getStockDrawable(Context context, int id) {
         final Resources resources = context.getResources();
         final Theme theme = context.getTheme();
         if (resources instanceof NimarkoIconResources) {
@@ -118,13 +132,13 @@ public class NimarkoIconResources extends Resources {
         return resources.getDrawable(id, theme);
     }
 
-    private android.graphics.Bitmap preparedBackArrowBitmap() {
+    private Bitmap preparedBackArrowBitmap() {
         synchronized (backArrowLock) {
             return backArrowBitmapResolved ? backArrowBitmap : null;
         }
     }
 
-    private android.graphics.Bitmap prepareBackArrowBitmap() {
+    private Bitmap prepareBackArrowBitmap() {
         while (true) {
             final ReplacementState state = replacementState;
             synchronized (backArrowLock) {
@@ -136,7 +150,7 @@ public class NimarkoIconResources extends Resources {
                 }
             }
 
-            final android.graphics.Bitmap loaded = loadBackArrowBitmap(state);
+            final Bitmap loaded = loadBackArrowBitmap(state);
             synchronized (backArrowLock) {
                 if (replacementState != state) {
                     if (loaded != null) {
@@ -157,7 +171,7 @@ public class NimarkoIconResources extends Resources {
         }
     }
 
-    private android.graphics.Bitmap loadBackArrowBitmap(ReplacementState state) {
+    private Bitmap loadBackArrowBitmap(ReplacementState state) {
         try {
             final int stockId = org.telegram.messenger.R.drawable.ic_ab_back;
             final int wrappedId = state.replacement.wrap(stockId);
@@ -172,11 +186,11 @@ public class NimarkoIconResources extends Resources {
             int w = d.getIntrinsicWidth();
             int h = d.getIntrinsicHeight();
             if (w <= 0 || h <= 0) {
-                w = h = org.telegram.messenger.AndroidUtilities.dp(24);
+                w = h = AndroidUtilities.dp(24);
             }
-            android.graphics.Bitmap bmp =
-                    android.graphics.Bitmap.createBitmap(w, h, android.graphics.Bitmap.Config.ARGB_8888);
-            android.graphics.Canvas canvas = new android.graphics.Canvas(bmp);
+            Bitmap bmp =
+                    Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
+            Canvas canvas = new Canvas(bmp);
             d.setBounds(0, 0, w, h);
             d.draw(canvas);
             return bmp;
@@ -205,7 +219,7 @@ public class NimarkoIconResources extends Resources {
         prepareBackArrowBitmap();
         prewarmFolderIconsAsync();
         if (onApplied != null) {
-            org.telegram.messenger.AndroidUtilities.runOnUIThread(() -> {
+            AndroidUtilities.runOnUIThread(() -> {
                 if (isReplacementGenerationCurrent(generation)) {
                     onApplied.run();
                 }
@@ -251,7 +265,7 @@ public class NimarkoIconResources extends Resources {
             return;
         }
         try {
-            org.telegram.messenger.Utilities.globalQueue.postRunnable(() -> {
+            Utilities.globalQueue.postRunnable(() -> {
                 if (replacementState == state) {
                     prewarmFolderIconsBlocking();
                 }
@@ -271,7 +285,7 @@ public class NimarkoIconResources extends Resources {
                 return;
             }
             boolean complete = true;
-            for (Integer drawableId : new java.util.HashSet<>(
+            for (Integer drawableId : new HashSet<>(
                     app.nimarkogram.messenger.preferences.folders.helpers
                             .FolderIconHelper.folderIcons.values())) {
                 if (drawableId == null) {
@@ -361,7 +375,7 @@ public class NimarkoIconResources extends Resources {
     private Drawable cached(CacheKey key, Drawable loaded) {
         if (loaded == null) return null;
         if (loaded instanceof NoTintBitmapDrawable) {
-            android.graphics.Bitmap bmp = ((NoTintBitmapDrawable) loaded).getBitmap();
+            Bitmap bmp = ((NoTintBitmapDrawable) loaded).getBitmap();
             if (bmp != null) return new NoTintBitmapDrawable(wrapped, bmp);
             return loaded;
         }
@@ -398,13 +412,13 @@ public class NimarkoIconResources extends Resources {
         final int wrappedId = replacement.wrap(stockId);
         if (wrappedId == stockId) return loadRaw(wrappedId, density, theme);
         final boolean noTint = replacement.isNoTint(stockId);
-        Drawable twin = loadRaw(wrappedId, android.util.DisplayMetrics.DENSITY_XXXHIGH, theme);
-        if (!(twin instanceof android.graphics.drawable.BitmapDrawable)) return twin;
-        android.graphics.Bitmap bmp = ((android.graphics.drawable.BitmapDrawable) twin).getBitmap();
+        Drawable twin = loadRaw(wrappedId, DisplayMetrics.DENSITY_XXXHIGH, theme);
+        if (!(twin instanceof BitmapDrawable)) return twin;
+        Bitmap bmp = ((BitmapDrawable) twin).getBitmap();
         if (bmp == null) return twin;
         if (noTint) twin = new NoTintBitmapDrawable(wrapped, bmp);
 
-        int w = org.telegram.messenger.AndroidUtilities.dp(24f);
+        int w = AndroidUtilities.dp(24f);
         int h = w;
         try {
             Drawable stock = loadRaw(stockId, density, theme);
@@ -414,7 +428,7 @@ public class NimarkoIconResources extends Resources {
             }
         } catch (Throwable ignore) {  }
         if (RENDER_24DP_ICONS.contains(stockId)) {
-            w = h = org.telegram.messenger.AndroidUtilities.dp(24f);
+            w = h = AndroidUtilities.dp(24f);
         }
 
         if (w <= 0 || h <= 0) return twin;
@@ -424,22 +438,24 @@ public class NimarkoIconResources extends Resources {
         int nh = Math.max(1, Math.round(bmp.getHeight() * scale));
         if (nw == bmp.getWidth() && nh == bmp.getHeight()) return twin;
         try {
-            android.graphics.Bitmap scaled =
-                    android.graphics.Bitmap.createScaledBitmap(bmp, nw, nh, true);
-            scaled.setDensity(org.telegram.messenger.AndroidUtilities.displayMetrics.densityDpi);
+            Bitmap scaled =
+                    Bitmap.createScaledBitmap(bmp, nw, nh, true);
+            scaled.setDensity(AndroidUtilities.displayMetrics.densityDpi);
             return noTint ? new NoTintBitmapDrawable(wrapped, scaled)
-                          : new android.graphics.drawable.BitmapDrawable(wrapped, scaled);
+                          : new BitmapDrawable(wrapped, scaled);
         } catch (Throwable t) {
             return twin;
         }
     }
 
-    private static final class NoTintBitmapDrawable extends android.graphics.drawable.BitmapDrawable {
-        NoTintBitmapDrawable(Resources res, android.graphics.Bitmap bmp) { super(res, bmp); }
-        @Override public void setColorFilter(android.graphics.ColorFilter colorFilter) {
+    private static final class NoTintBitmapDrawable extends BitmapDrawable {
+        NoTintBitmapDrawable(Resources res, Bitmap bmp) { super(res, bmp); }
+
+
+        @Override public void setColorFilter(ColorFilter colorFilter) {
             super.setColorFilter(org.telegram.ui.ActionBar.Theme.isCurrentThemeDark() ? null : colorFilter);
         }
-        @Override public void setTintList(android.content.res.ColorStateList tint) {
+        @Override public void setTintList(ColorStateList tint) {
             super.setTintList(org.telegram.ui.ActionBar.Theme.isCurrentThemeDark() ? null : tint);
         }
         @Override public Drawable mutate() { return this; }
@@ -447,7 +463,7 @@ public class NimarkoIconResources extends Resources {
 
 
     @Override
-    public android.content.res.Configuration getConfiguration() {
+    public Configuration getConfiguration() {
         try {
             return wrapped.getConfiguration();
         } catch (Throwable ignored) {

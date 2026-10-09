@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 5.x.x.
  * It is licensed under GNU GPL v. 2 or later.
@@ -1283,9 +1285,13 @@ public final class AnimatedFileDrawable extends BitmapDrawable implements Animat
     }
 
     public void setStartEndTime(long startTime, long endTime) {
-        resetGifLoopBlend();
-        this.startTime = startTime / 1000f;
-        this.endTime = endTime / 1000f;
+        float newStartTime = startTime / 1000f;
+        float newEndTime = endTime / 1000f;
+        if (this.startTime != newStartTime || this.endTime != newEndTime) {
+            resetGifLoopBlend();
+        }
+        this.startTime = newStartTime;
+        this.endTime = newEndTime;
         if (startTime >= 0 && getCurrentProgressMs() < startTime) {
             seekTo(startTime, true);
         }

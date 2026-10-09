@@ -1,5 +1,8 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui;
 
+import app.nimarkogram.messenger.wsbypass.preferences.WlPreferencesActivity;
 import static org.telegram.messenger.LocaleController.formatString;
 import static org.telegram.messenger.LocaleController.getString;
 import static org.telegram.messenger.MessagesController.findUpdatesAndRemove;
@@ -295,6 +298,12 @@ public class LinkManager {
         final String fourth = segments.size() > 3 ? segments.get(3) : null;
         final String fifth  = segments.size() > 4 ? segments.get(4) : null;
 
+        if ("nimarko_wl".equalsIgnoreCase(first)) {
+            if (!(getLastFragment() instanceof WlPreferencesActivity)) {
+                presentFragment(new WlPreferencesActivity());
+            }
+            return true;
+        }
         try {
             app.nimarkogram.messenger.preferences.utils.SettingsRegistry registry =
                     app.nimarkogram.messenger.preferences.utils.SettingsRegistry.getInstance();
@@ -304,13 +313,11 @@ public class LinkManager {
             if (entry != null && entry.fragmentClass != null
                     && BaseFragment.class.isAssignableFrom(entry.fragmentClass)) {
                 BaseFragment target = (BaseFragment) entry.fragmentClass.getDeclaredConstructor().newInstance();
-                presentFragment(target);
                 if (target instanceof app.nimarkogram.messenger.preferences.BasePreferencesActivity) {
-                    final int itemId = entry.itemId;
-                    AndroidUtilities.runOnUIThread(() ->
-                            ((app.nimarkogram.messenger.preferences.BasePreferencesActivity) target)
-                                    .scrollToItem(itemId), 250);
+                    ((app.nimarkogram.messenger.preferences.BasePreferencesActivity) target)
+                            .openAtSetting(entry.itemId);
                 }
+                presentFragment(target);
                 return true;
             }
         } catch (Throwable t) {

@@ -2,6 +2,8 @@
 
 package app.nimarkogram.messenger.camera;
 
+import android.hardware.camera2.CameraMetadata;
+import android.hardware.camera2.CaptureRequest;
 import android.content.Context;
 import android.graphics.SurfaceTexture;
 import android.hardware.Sensor;
@@ -616,27 +618,27 @@ public class NimarkoVideoMessagesHelper {
 
     public static int applyStabilization(CameraCharacteristics chars) {
         if (chars == null) {
-            return android.hardware.camera2.CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE_OFF;
+            return CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE_OFF;
         }
         try {
             int[] modes = chars.get(CameraCharacteristics.CONTROL_AVAILABLE_VIDEO_STABILIZATION_MODES);
             if (modes == null || modes.length == 0) {
-                return android.hardware.camera2.CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE_OFF;
+                return CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE_OFF;
             }
-            int best = android.hardware.camera2.CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE_OFF;
+            int best = CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE_OFF;
             for (int m : modes) {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
-                        && m == android.hardware.camera2.CameraMetadata.CONTROL_VIDEO_STABILIZATION_MODE_PREVIEW_STABILIZATION) {
+                        && m == CameraMetadata.CONTROL_VIDEO_STABILIZATION_MODE_PREVIEW_STABILIZATION) {
                     return m;
                 }
-                if (m == android.hardware.camera2.CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE_ON) {
+                if (m == CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE_ON) {
                     best = m;
                 }
             }
             return best;
         } catch (Throwable t) {
             FileLog.d(TAG + ": applyStabilization failed: " + t.getMessage());
-            return android.hardware.camera2.CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE_OFF;
+            return CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE_OFF;
         }
     }
 

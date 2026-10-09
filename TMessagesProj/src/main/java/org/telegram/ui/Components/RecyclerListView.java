@@ -17,6 +17,7 @@ import static org.telegram.ui.ActionBar.Theme.multAlpha;
 
 import android.animation.Animator;
 import android.animation.AnimatorListenerAdapter;
+import android.animation.ValueAnimator;
 import android.annotation.SuppressLint;
 import android.content.Context;
 import android.content.res.TypedArray;
@@ -40,6 +41,8 @@ import android.text.SpannableStringBuilder;
 import android.text.StaticLayout;
 import android.text.TextPaint;
 import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
+import app.nimarkogram.messenger.NimarkoConfig;
+import app.nimarkogram.messenger.utils.NimarkoContentMotionBlur;
 import android.util.Pair;
 import android.util.SparseIntArray;
 import android.util.StateSet;
@@ -55,6 +58,7 @@ import android.view.accessibility.AccessibilityEvent;
 import android.view.accessibility.AccessibilityNodeInfo;
 import android.widget.FrameLayout;
 
+import android.view.animation.DecelerateInterpolator;
 import androidx.annotation.IntDef;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
@@ -99,7 +103,7 @@ import java.util.List;
 import java.util.Objects;
 
 @SuppressWarnings("JavaReflectionMemberAccess")
-public class RecyclerListView extends RecyclerView implements IBlur3Capture {
+public class RecyclerListView extends RecyclerView implements IBlur3Capture, NimarkoContentMotionBlur.Target {
     public final static int SECTIONS_TYPE_SIMPLE = 0,
             SECTIONS_TYPE_STICKY_HEADERS = 1,
             SECTIONS_TYPE_DATE = 2,
@@ -2718,6 +2722,11 @@ public class RecyclerListView extends RecyclerView implements IBlur3Capture {
     }
 
     @Override
+    public boolean canBlurMotionContent() {
+        return getClipChildren() && getClipToPadding() && NimarkoContentMotionBlur.canUse(this);
+    }
+
+    @Override
     protected void dispatchDraw(@NonNull Canvas canvas) {
         if (itemsEnterAnimator != null) {
             itemsEnterAnimator.dispatchDraw();
@@ -2726,7 +2735,16 @@ public class RecyclerListView extends RecyclerView implements IBlur3Capture {
         if (drawSelection && drawSelectorBehind) {
             drawSelectors2(canvas);
         }
-        super.dispatchDraw(canvas);
+        Canvas motionContent = NimarkoContentMotionBlur.begin(this, canvas);
+        if (motionContent == null) {
+            super.dispatchDraw(canvas);
+        } else {
+            try {
+                super.dispatchDraw(motionContent);
+            } finally {
+                NimarkoContentMotionBlur.end(this, canvas);
+            }
+        }
         if (drawSelection && !drawSelectorBehind) {
             drawSelectors2(canvas);
         }
@@ -3229,21 +3247,38 @@ public class RecyclerListView extends RecyclerView implements IBlur3Capture {
                 capture.capture(canvas, position);
             }
         }
-        for (int i = 0, N = getChildCount(); i < N; i++) {
-            final View child = getChildAt(i);
+        Canvas motionContent = NimarkoContentMotionBlur.begin(this, canvas, true);
+        Canvas contentCanvas = motionContent == null ? canvas : motionContent;
+        Rect captureClip = null;
+        if (motionContent != null) {
+            captureClip = new Rect();
+            motionContent.getClipBounds(captureClip);
+        }
+        try {
+            for (int i = 0, N = getChildCount(); i < N; i++) {
+                final View child = getChildAt(i);
 
-            final float left = child.getX();
-            final float top = child.getY();
-            final float right = left + child.getWidth();
-            final float bottom = top + child.getHeight();
+                final float left = child.getX();
+                final float top = child.getY();
+                final float right = left + child.getWidth();
+                final float bottom = top + child.getHeight();
 
-            if (!position.intersects(left, top, right, bottom)) {
-                continue;
+                if (captureClip == null ? !position.intersects(left, top, right, bottom)
+                        : left >= captureClip.right || right <= captureClip.left
+                        || top >= captureClip.bottom || bottom <= captureClip.top) {
+                    continue;
+                }
+
+                boolean wasIgnoringClipChild = ignoreClipChild;
+                ignoreClipChild = true;
+                try {
+                    drawChild(contentCanvas, child, drawingTime);
+                } finally {
+                    ignoreClipChild = wasIgnoringClipChild;
+                }
             }
-
-            ignoreClipChild = true;
-            drawChild(canvas, child, drawingTime);
-            ignoreClipChild = false;
+        } finally {
+            if (motionContent != null) NimarkoContentMotionBlur.end(this, canvas, true);
         }
     }
 

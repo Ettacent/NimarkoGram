@@ -2,6 +2,7 @@
 
 package app.nimarkogram.messenger.infocards;
 
+import android.view.HapticFeedbackConstants;
 import android.animation.Animator;
 import android.animation.AnimatorListenerAdapter;
 import android.animation.ValueAnimator;
@@ -72,7 +73,7 @@ public class InfoCardStripView extends FrameLayout implements NotificationCenter
             potentialTap = false;
             setCardsPressed(false);
             if (cur.onCardLongClicked()) {
-                performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS);
+                performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
             }
         }
     };
@@ -591,8 +592,8 @@ public class InfoCardStripView extends FrameLayout implements NotificationCenter
                 int cap = commonCardWidth();
                 in.setFixedChipWidth(cap);
                 in.measure(
-                        android.view.View.MeasureSpec.makeMeasureSpec(cap, android.view.View.MeasureSpec.EXACTLY),
-                        android.view.View.MeasureSpec.makeMeasureSpec(sh, android.view.View.MeasureSpec.AT_MOST));
+                        View.MeasureSpec.makeMeasureSpec(cap, View.MeasureSpec.EXACTLY),
+                        View.MeasureSpec.makeMeasureSpec(sh, View.MeasureSpec.AT_MOST));
                 int mw = in.getMeasuredWidth(), mh = in.getMeasuredHeight();
                 mw = Math.min(mw, cap);
                 int top = Math.max(0, (sh - mh) / 2);
@@ -910,8 +911,8 @@ public class InfoCardStripView extends FrameLayout implements NotificationCenter
         super.onConfigurationChanged(newConfig);
         for (BaseInfoCard pill : pills) {
             pill.updateLayoutDirection();
-            android.widget.FrameLayout.LayoutParams lp =
-                    (android.widget.FrameLayout.LayoutParams) pill.getLayoutParams();
+            FrameLayout.LayoutParams lp =
+                    (FrameLayout.LayoutParams) pill.getLayoutParams();
             int gravity = Gravity.CENTER_VERTICAL | (LocaleController.isRTL ? Gravity.LEFT : Gravity.RIGHT);
             if (lp != null && lp.gravity != gravity) {
                 lp.gravity = gravity;

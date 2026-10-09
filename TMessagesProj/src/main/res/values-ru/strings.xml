@@ -1346,4 +1346,6 @@
     <string name="NM_CAM_MultiMicrophone">Мультимикрофонная запись</string>
     <string name="NM_CAM_MultiMicrophoneDesc">Широкий захват звука для голосовых и кружков CameraX. Зависит от устройства.</string>
     <string name="NM_CAM_RoundAudioInfo">Для новых кружков. Работа микрофонов зависит от устройства; при необходимости используется моно.</string>
+    <string name="NM_MotionBlur">Размытие в движении</string>
+    <string name="NM_MotionBlur_Desc">Добавляет размытие движения к интерфейсу приложения. Может увеличить нагрузку на GPU.</string>
 </resources>

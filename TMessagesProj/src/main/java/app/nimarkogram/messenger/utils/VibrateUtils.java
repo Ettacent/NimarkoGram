@@ -2,6 +2,7 @@
 
 package app.nimarkogram.messenger.utils;
 
+import android.media.AudioAttributes;
 import android.content.Context;
 import android.os.Build;
 import android.os.VibrationEffect;
@@ -71,7 +72,7 @@ public final class VibrateUtils {
         }
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                vibrator.vibrate(VibrationEffect.createOneShot(timeMs, VibrationEffect.DEFAULT_AMPLITUDE), (android.media.AudioAttributes) null);
+                vibrator.vibrate(VibrationEffect.createOneShot(timeMs, VibrationEffect.DEFAULT_AMPLITUDE), (AudioAttributes) null);
             } else {
                 vibrator.vibrate(timeMs);
             }

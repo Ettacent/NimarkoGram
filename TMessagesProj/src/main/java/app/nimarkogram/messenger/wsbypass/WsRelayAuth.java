@@ -2,6 +2,17 @@
 
 package app.nimarkogram.messenger.wsbypass;
 
+import android.content.SharedPreferences;
+import android.os.SystemClock;
+import app.nimarkogram.messenger.wsbypass.voip.VoipBypassConfig;
+import java.io.IOException;
+import java.util.Arrays;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
+import org.telegram.messenger.UserConfig;
+import org.telegram.tgnet.ConnectionsManager;
 import android.util.Log;
 
 import org.json.JSONObject;
@@ -37,8 +48,8 @@ public final class WsRelayAuth {
         }
     }
 
-    private static final java.util.concurrent.ConcurrentHashMap<Integer, Credential> cached =
-            new java.util.concurrent.ConcurrentHashMap<>();
+    private static final ConcurrentHashMap<Integer, Credential> cached =
+            new ConcurrentHashMap<>();
     private static final Object lock = new Object();
 
     private static final long ACCEPT_SKEW_S = 15;
@@ -64,16 +75,16 @@ public final class WsRelayAuth {
             this.uid = uid;
         }
     }
-    private static final java.util.concurrent.ConcurrentHashMap<Integer, PrefetchOwner>
-            prefetchOwners = new java.util.concurrent.ConcurrentHashMap<>();
-    private static final java.util.Set<HttpURLConnection> activeConnections =
-            java.util.concurrent.ConcurrentHashMap.newKeySet();
-    private static final java.util.concurrent.atomic.AtomicLong authGeneration =
-            new java.util.concurrent.atomic.AtomicLong();
+    private static final ConcurrentHashMap<Integer, PrefetchOwner>
+            prefetchOwners = new ConcurrentHashMap<>();
+    private static final Set<HttpURLConnection> activeConnections =
+            ConcurrentHashMap.newKeySet();
+    private static final AtomicLong authGeneration =
+            new AtomicLong();
     private static final Object authGenerationLock = new Object();
 
     public static boolean isAuthAllowed() {
-        return app.nimarkogram.messenger.wsbypass.voip.VoipBypassConfig
+        return VoipBypassConfig
                 .isDataBypassRequiredFresh();
     }
 
@@ -105,14 +116,14 @@ public final class WsRelayAuth {
 
     private static int[] candidateAccounts(int preferred) {
         try {
-            if (org.telegram.messenger.UserConfig.getInstance(preferred).isClientActivated()
+            if (UserConfig.getInstance(preferred).isClientActivated()
                     && uidOf(preferred) > 0) return new int[]{preferred};
         } catch (Throwable ignore) {}
         return new int[0];
     }
 
     private static long uidOf(int account) {
-        try { return org.telegram.messenger.UserConfig.getInstance(account).getClientUserId(); }
+        try { return UserConfig.getInstance(account).getClientUserId(); }
         catch (Throwable t) { return 0; }
     }
 
@@ -193,7 +204,7 @@ public final class WsRelayAuth {
             final long ownerUid = uidOf(account);
             if (ownerUid <= 0) return null;
             Long previousDeadline = authDeadlineMs.get();
-            authDeadlineMs.set(android.os.SystemClock.elapsedRealtime() + AUTH_FLOW_BUDGET_MS);
+            authDeadlineMs.set(SystemClock.elapsedRealtime() + AUTH_FLOW_BUDGET_MS);
             try {
                 long now = nowSeconds(account);
                 Credential old = memoryOrDisk(account);
@@ -215,8 +226,8 @@ public final class WsRelayAuth {
                     Credential fresh = fetchCredential(token, status);
                     if (fresh == null && status[0] == 401) {
                         final String rejectedToken = token;
-                        final java.util.concurrent.atomic.AtomicBoolean tokenInvalidated =
-                                new java.util.concurrent.atomic.AtomicBoolean(false);
+                        final AtomicBoolean tokenInvalidated =
+                                new AtomicBoolean(false);
                         if (!permit.runIfEnabled(() -> {
                             String currentToken = backend.cachedToken();
                             if (uidOf(acc) == uid && rejectedToken.equals(currentToken)) {
@@ -233,8 +244,8 @@ public final class WsRelayAuth {
                     }
                     if (fresh != null && fresh.uid == uid) {
                         final Credential credential = fresh;
-                        final java.util.concurrent.atomic.AtomicBoolean committed =
-                                new java.util.concurrent.atomic.AtomicBoolean(false);
+                        final AtomicBoolean committed =
+                                new AtomicBoolean(false);
                         if (permit.runIfEnabled(() -> {
                             if (uidOf(acc) == credential.uid) {
                                 cached.put(acc, credential);
@@ -274,7 +285,7 @@ public final class WsRelayAuth {
 
     private static long nowSeconds(int account) {
         try {
-            int now = org.telegram.tgnet.ConnectionsManager.getInstance(account).getCurrentTime();
+            int now = ConnectionsManager.getInstance(account).getCurrentTime();
             if (now > 0) return now;
         } catch (Throwable ignore) {}
         return System.currentTimeMillis() / 1000L;
@@ -301,7 +312,7 @@ public final class WsRelayAuth {
 
     private static boolean sameCredential(Credential a, Credential b) {
         return a != null && b != null && a.expiry == b.expiry && a.uid == b.uid
-                && java.util.Arrays.equals(a.hmac, b.hmac);
+                && Arrays.equals(a.hmac, b.hmac);
     }
 
     private static NimarkoInlineAuth.Reg httpRegister(long uid) {
@@ -398,7 +409,7 @@ public final class WsRelayAuth {
             String line;
             while ((line = r.readLine()) != null) {
                 if (sb.length() + line.length() > MAX_RESPONSE_CHARS) {
-                    throw new java.io.IOException("auth response too large");
+                    throw new IOException("auth response too large");
                 }
                 sb.append(line);
             }
@@ -409,7 +420,7 @@ public final class WsRelayAuth {
     private static int authRemainingMs() {
         Long deadline = authDeadlineMs.get();
         if (deadline == null) return HTTP_STAGE_TIMEOUT_MS;
-        long remaining = deadline - android.os.SystemClock.elapsedRealtime();
+        long remaining = deadline - SystemClock.elapsedRealtime();
         return remaining <= 0 ? 0 : (int) Math.min(Integer.MAX_VALUE, remaining);
     }
 
@@ -441,11 +452,11 @@ public final class WsRelayAuth {
 
     private static long reconcileAccountLocked(int account) {
         try {
-            android.content.SharedPreferences prefs = NimarkoWsBypassConfig.prefs();
+            SharedPreferences prefs = NimarkoWsBypassConfig.prefs();
             long currentUid = uidOf(account);
             long priorUid = prefs.getLong(PREF_SLOT_UID + account, 0L);
             if (priorUid != currentUid) {
-                android.content.SharedPreferences.Editor editor = prefs.edit();
+                SharedPreferences.Editor editor = prefs.edit();
                 if (priorUid > 0) {
                     editor.remove(credentialKey(priorUid));
                     NimarkoConfig.setWsRelayTokenForUid(priorUid, null);
@@ -466,7 +477,7 @@ public final class WsRelayAuth {
             cancelPendingAuthLocked();
             cached.remove(account);
             try {
-                android.content.SharedPreferences.Editor editor = NimarkoWsBypassConfig.prefs().edit()
+                SharedPreferences.Editor editor = NimarkoWsBypassConfig.prefs().edit()
                         .remove(PREF_SLOT_UID + account).remove(PREF_CRED);
                 if (uid > 0) {
                     editor.remove(credentialKey(uid));
@@ -485,7 +496,7 @@ public final class WsRelayAuth {
 
     private static void saveCredentialToDiskLocked(int account, Credential c) {
         try {
-            android.content.SharedPreferences p = NimarkoWsBypassConfig.prefs();
+            SharedPreferences p = NimarkoWsBypassConfig.prefs();
             long uid = reconcileAccountLocked(account);
             if (c == null || c.hmac == null || uid <= 0 || c.uid != uid) {
                 if (uid > 0) p.edit().remove(credentialKey(uid)).apply();
@@ -498,7 +509,7 @@ public final class WsRelayAuth {
 
     private static Credential loadCredentialFromDisk(int account, long uid) {
         try {
-            android.content.SharedPreferences prefs = NimarkoWsBypassConfig.prefs();
+            SharedPreferences prefs = NimarkoWsBypassConfig.prefs();
             String s = prefs.getString(credentialKey(uid), null);
             boolean legacy = false;
             if (s == null) {

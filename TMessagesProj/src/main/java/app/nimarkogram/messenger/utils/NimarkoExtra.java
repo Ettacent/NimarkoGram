@@ -7,6 +7,10 @@
 
 package app.nimarkogram.messenger.utils;
 
+import android.content.Intent;
+import org.telegram.messenger.UserObject;
+import org.telegram.tgnet.ConnectionsManager;
+import org.telegram.tgnet.tl.TL_account;
 import static org.telegram.messenger.LocaleController.getString;
 
 import android.app.Activity;
@@ -197,12 +201,12 @@ public final class NimarkoExtra {
             int account = UserConfig.selectedAccount;
             TLRPC.UserFull full = MessagesController.getInstance(account).getUserFull(userId);
             if (full == null || full.birthday == null) return;
-            org.telegram.tgnet.tl.TL_account.TL_birthday b = full.birthday;
+            TL_account.TL_birthday b = full.birthday;
             TLRPC.User user = MessagesController.getInstance(account).getUser(userId);
             String title = user != null && user.first_name != null
                     ? "Birthday of " + user.first_name
                     : "Birthday";
-            android.content.Intent intent = new android.content.Intent(android.content.Intent.ACTION_EDIT);
+            Intent intent = new Intent(Intent.ACTION_EDIT);
             intent.setType("vnd.android.cursor.item/event");
             intent.putExtra("title", title);
             intent.putExtra("rrule", "FREQ=YEARLY;BYMONTH=" + b.month + ";BYMONTHDAY=" + b.day);
@@ -213,7 +217,7 @@ public final class NimarkoExtra {
             cal.set(year, b.month - 1, b.day, 10, 0);
             intent.putExtra("endTime", cal.getTimeInMillis());
             intent.putExtra("allDay", false);
-            intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK);
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
             parentActivity.startActivity(intent);
         } catch (Throwable t) {
             FileLog.e(t);
@@ -255,10 +259,10 @@ public final class NimarkoExtra {
             return 0;
         }
 
-        boolean isSelf = org.telegram.messenger.UserObject.isUserSelf(user)
+        boolean isSelf = UserObject.isUserSelf(user)
                 || user.id == UserConfig.getInstance(account).getClientUserId();
         if (isSelf) {
-            int myDc = org.telegram.tgnet.ConnectionsManager.getInstance(account).getCurrentDatacenterId();
+            int myDc = ConnectionsManager.getInstance(account).getCurrentDatacenterId();
             
             if (myDc > 0 && myDc != Integer.MAX_VALUE) {
                 return myDc;

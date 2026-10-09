@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 5.x.x.
  * It is licensed under GNU GPL v. 2 or later.
@@ -40,6 +42,7 @@ import org.telegram.ui.ActionBar.Theme;
 
 import me.vkryl.android.animator.BoolAnimator;
 
+import app.nimarkogram.messenger.utils.NimarkoUiAnimationClock;
 public class Switch extends View {
     private final BoolAnimator animatorIconVisibility = new BoolAnimator(this, CubicBezierInterpolator.EASE_OUT_QUINT, 380L, true);
 
@@ -244,6 +247,7 @@ public class Switch extends View {
     }
 
     private void animateToCheckedState(boolean newCheckedState) {
+        cancelCheckAnimator();
         checkAnimator = ObjectAnimator.ofFloat(this, "progress", newCheckedState ? 1 : 0);
         checkAnimator.setDuration(200);
 
@@ -256,23 +260,30 @@ public class Switch extends View {
         checkAnimator.addListener(new AnimatorListenerAdapter() {
             @Override
             public void onAnimationEnd(Animator animation) {
-                checkAnimator = null;
+                if (checkAnimator == animation) {
+                    checkAnimator = null;
+                }
             }
         });
         checkAnimator.start();
+        NimarkoUiAnimationClock.track(checkAnimator);
     }
 
     private void animateIcon(boolean newCheckedState) {
+        cancelIconAnimator();
         iconAnimator = ObjectAnimator.ofFloat(this, "iconProgress", newCheckedState ? 1 : 0);
         iconAnimator.setDuration(200);
         iconAnimator.setInterpolator(Easings.easeInOutQuad);
         iconAnimator.addListener(new AnimatorListenerAdapter() {
             @Override
             public void onAnimationEnd(Animator animation) {
-                iconAnimator = null;
+                if (iconAnimator == animation) {
+                    iconAnimator = null;
+                }
             }
         });
         iconAnimator.start();
+        NimarkoUiAnimationClock.track(iconAnimator);
     }
 
     @Override

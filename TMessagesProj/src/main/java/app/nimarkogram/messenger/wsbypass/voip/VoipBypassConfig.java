@@ -2,6 +2,8 @@
 
 package app.nimarkogram.messenger.wsbypass.voip;
 
+import app.nimarkogram.messenger.wsbypass.NimarkoVpnDetector;
+import org.telegram.messenger.UserConfig;
 import android.content.SharedPreferences;
 
 import java.net.InetAddress;
@@ -35,7 +37,7 @@ public final class VoipBypassConfig {
     public static final int RELAY_CONTROL_PORT = 8765;
 
     public static String relayHost() {
-        return relayHost(org.telegram.messenger.UserConfig.selectedAccount);
+        return relayHost(UserConfig.selectedAccount);
     }
 
     public static String relayHost(int account) {
@@ -164,8 +166,8 @@ public final class VoipBypassConfig {
     private static boolean vpnSuspendsRelayLocked(boolean freshVpnState) {
         if (!NimarkoWsBypassConfig.suspendOnVpn) return false;
         return freshVpnState
-                ? app.nimarkogram.messenger.wsbypass.NimarkoVpnDetector.isVpnActiveFresh()
-                : app.nimarkogram.messenger.wsbypass.NimarkoVpnDetector.isVpnActive();
+                ? NimarkoVpnDetector.isVpnActiveFresh()
+                : NimarkoVpnDetector.isVpnActive();
     }
 
     private static final String[] TELEGRAM_REFLECTOR_CIDRS = {

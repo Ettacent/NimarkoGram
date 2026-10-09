@@ -1,5 +1,11 @@
 /* Modifications Copyright (C) 2026 Ettacent */
 package app.nimarkogram.messenger;
+import android.content.Context;
+import android.content.res.Resources;
+import android.os.Looper;
+import android.os.SystemClock;
+import java.util.Arrays;
+import org.telegram.messenger.ApplicationLoader;
 import android.os.Build;
 import java.lang.reflect.Method;
 import java.lang.reflect.InvocationTargetException;
@@ -97,6 +103,17 @@ public final class NimarkoCrashContext {
         }
     }
 
+    public static void event(String domain, String stage, String target, String detail) {
+        DiagnosticState state = enterDiagnostic();
+        if (state == null) return;
+        try {
+            if (!admitNormal()) return;
+            emit(domain, null, stage, target, detail, 0, "", false);
+        } catch (Throwable ignored) {
+        } finally {
+            state.busy = false;
+        }
+    }
     public static void failure(String domain, String pluginId, String target, Throwable failure) {
         DiagnosticState state = enterDiagnostic();
         if (state == null) return;
@@ -120,7 +137,7 @@ public final class NimarkoCrashContext {
 
     private static void failureLocked(String domain, String pluginId, String target, Throwable failure) {
         if (emitting) return;
-        long now = android.os.SystemClock.elapsedRealtime();
+        long now = SystemClock.elapsedRealtime();
         int slot = -1;
         for (int i = 0; i < MAX_FAILURES; i++) {
             if (failureKeys[i] == null || now - failureTimes[i] >= FAILURE_WINDOW_MS) {
@@ -143,7 +160,7 @@ public final class NimarkoCrashContext {
         mark(safeDomain, safePlugin, "failure", safeTarget, detail, 0, "", "exact_observation_bounded");
     }
     private static boolean admitNormal() {
-        long now = android.os.SystemClock.elapsedRealtime();
+        long now = SystemClock.elapsedRealtime();
         long next = nextUpdateMs.get();
         return now >= next && nextUpdateMs.compareAndSet(next, now + MIN_UPDATE_INTERVAL_MS);
     }
@@ -152,7 +169,7 @@ public final class NimarkoCrashContext {
         DiagnosticState state = enterDiagnostic();
         if (state == null) return 0L;
         try {
-            long now = android.os.SystemClock.elapsedRealtime();
+            long now = SystemClock.elapsedRealtime();
             long next = nextInvocationMs.get();
             if (now < next || !nextInvocationMs.compareAndSet(next, now + 1000L)) return 0L;
             state.startedMs = now;
@@ -176,7 +193,7 @@ public final class NimarkoCrashContext {
         if (state == null) return;
         try {
             emit("pine", plugin, phase, target,
-                    "elapsed_ms=" + Math.max(0L, android.os.SystemClock.elapsedRealtime() - startedMs),
+                    "elapsed_ms=" + Math.max(0L, SystemClock.elapsedRealtime() - startedMs),
                     token, runtime, false);
         } catch (Throwable ignored) {
         } finally {
@@ -202,7 +219,7 @@ public final class NimarkoCrashContext {
         if (state == null) return;
         try {
             emit("python", plugin, phase, target,
-                    "elapsed_ms=" + Math.max(0L, android.os.SystemClock.elapsedRealtime() - startedMs),
+                    "elapsed_ms=" + Math.max(0L, SystemClock.elapsedRealtime() - startedMs),
                     token, runtime, false);
         } catch (Throwable ignored) {
         } finally {
@@ -214,7 +231,7 @@ public final class NimarkoCrashContext {
         if (!outputLock.tryLock()) return;
         try {
             if (emitting) return;
-            long now = android.os.SystemClock.elapsedRealtime();
+            long now = SystemClock.elapsedRealtime();
             if (anomaly) {
                 if (now - anomalyWindowMs >= FAILURE_WINDOW_MS) {
                     anomalyWindowMs = now;
@@ -255,7 +272,7 @@ public final class NimarkoCrashContext {
             if (emitting) return;
             if (started) {
                 if (pineInitStarted) return;
-                long startedMs = android.os.SystemClock.elapsedRealtime();
+                long startedMs = SystemClock.elapsedRealtime();
                 pineInitStarted = true;
                 pineInitActive = true;
                 pineInitThread = Thread.currentThread().getId();
@@ -279,7 +296,7 @@ public final class NimarkoCrashContext {
                 emitting = true;
                 try {
                     setCustomKey.invoke(crashlytics, "ng_diag_runtime_api", String.valueOf(Build.VERSION.SDK_INT));
-                    setCustomKey.invoke(crashlytics, "ng_diag_runtime_abis", safe(java.util.Arrays.toString(Build.SUPPORTED_ABIS)));
+                    setCustomKey.invoke(crashlytics, "ng_diag_runtime_abis", safe(Arrays.toString(Build.SUPPORTED_ABIS)));
                     setCustomKey.invoke(crashlytics, "ng_diag_runtime_fingerprint", safe(Build.FINGERPRINT));
                 } finally {
                     emitting = false;
@@ -306,7 +323,7 @@ public final class NimarkoCrashContext {
                 if ((pineInitPhases & bit) != 0 || !ensure()) return;
                 pineInitPhases |= bit;
                 String elapsed = String.valueOf(Math.max(0L,
-                        android.os.SystemClock.elapsedRealtime() - pineInitStartedMs));
+                        SystemClock.elapsedRealtime() - pineInitStartedMs));
                 emitting = true;
                 try {
                     setCustomKey.invoke(crashlytics, "ng_pine_init_phase", phase.name());
@@ -336,7 +353,7 @@ public final class NimarkoCrashContext {
         Thread thread = Thread.currentThread();
         String threadId = String.valueOf(thread.getId());
         String nativeTid = String.valueOf(android.os.Process.myTid());
-        String threadName = android.os.Looper.getMainLooper().getThread() == thread ? "main" : "worker";
+        String threadName = Looper.getMainLooper().getThread() == thread ? "main" : "worker";
         String invocation = String.valueOf(token);
         emitting = true;
         try {
@@ -346,7 +363,7 @@ public final class NimarkoCrashContext {
                 diagnosticIdentityWritten = true;
             }
             String snapshot = "observation=" + observation
-                    + " uptime_ms=" + android.os.SystemClock.elapsedRealtime()
+                    + " uptime_ms=" + SystemClock.elapsedRealtime()
                     + " native_tid=" + nativeTid + " java_tid=" + threadId
                     + " invocation=" + invocation + " domain=" + safeDomain
                     + " stage=" + safeStage + " plugin=" + safePlugin
@@ -386,7 +403,7 @@ public final class NimarkoCrashContext {
     }
     private static boolean ensure() {
         if (initialized) return crashlytics != null;
-        long now = android.os.SystemClock.elapsedRealtime();
+        long now = SystemClock.elapsedRealtime();
         if (now < nextInitAttemptMs) return false;
         nextInitAttemptMs = now + INIT_RETRY_INTERVAL_MS;
         initAttempts++;
@@ -413,9 +430,9 @@ public final class NimarkoCrashContext {
     }
     private static String readMappingId() {
         try {
-            android.content.Context context = org.telegram.messenger.ApplicationLoader.applicationContext;
+            Context context = ApplicationLoader.applicationContext;
             if (context == null) return "unavailable";
-            android.content.res.Resources resources = context.getResources();
+            Resources resources = context.getResources();
             int id = resources.getIdentifier("com.google.firebase.crashlytics.mapping_file_id",
                     "string", context.getPackageName());
             if (id != 0) return safe(resources.getString(id));

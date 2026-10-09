@@ -1,5 +1,8 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components.voip;
 
+import app.nimarkogram.messenger.utils.NimarkoAppMotionBlur;
 import android.animation.Animator;
 import android.animation.AnimatorListenerAdapter;
 import android.animation.AnimatorSet;
@@ -162,6 +165,7 @@ public class VoIPPiPView implements VoIPService.StateListener, IPipSourceDelegat
         NotificationCenter.getGlobalInstance().addObserver(instance, NotificationCenter.didEndCall);
         wm.addView(instance.windowView, windowLayoutParams);
 
+        NimarkoAppMotionBlur.attachRoot(instance.windowView);
         instance.currentUserTextureView.renderer.init(VideoCapturerDevice.eglBase.getEglBaseContext(), null);
         instance.callingUserTextureView.renderer.init(VideoCapturerDevice.eglBase.getEglBaseContext(), instance.rendererEvents);
 
@@ -607,6 +611,7 @@ public class VoIPPiPView implements VoIPService.StateListener, IPipSourceDelegat
         this.firstFrameCallback = firstFrameCallback;
         windowManager.addView(windowView, windowLayoutParams);
 
+        NimarkoAppMotionBlur.attachRoot(windowView);
         if (pipTextureView != null) {
             pipTextureView.renderer.release();
             pipTextureView = null;
@@ -810,6 +815,7 @@ public class VoIPPiPView implements VoIPService.StateListener, IPipSourceDelegat
 
                 AndroidUtilities.setPreferredMaxRefreshRate(windowManager, pipViewExpanded.windowView, layoutParams);
                 windowManager.addView(pipViewExpanded.windowView, layoutParams);
+                NimarkoAppMotionBlur.attachRoot(pipViewExpanded.windowView);
                 pipViewExpanded.windowView.setAlpha(1f);
                 pipViewExpanded.windowLayoutParams = layoutParams;
                 pipViewExpanded.windowManager = windowManager;
@@ -908,6 +914,7 @@ public class VoIPPiPView implements VoIPService.StateListener, IPipSourceDelegat
                         instance.windowView.setAlpha(1f);
                         AndroidUtilities.setPreferredMaxRefreshRate(windowManager, instance.windowView, instance.windowLayoutParams);
                         windowManager.addView(instance.windowView, instance.windowLayoutParams);
+                        NimarkoAppMotionBlur.attachRoot(instance.windowView);
                         AndroidUtilities.runOnUIThread(() -> {
                             if (instance == null || expandedInstance == null) {
                                 return;

@@ -6,6 +6,7 @@
  */
 package app.nimarkogram.messenger.utils.text;
 
+import org.telegram.messenger.UserConfig;
 import static org.telegram.messenger.LocaleController.getString;
 
 import android.content.Context;
@@ -61,7 +62,7 @@ public class Translator {
     }
 
     public static String translate(String query, boolean isKeyboard, TranslateCallBack translateCallBack) {
-        return translate(query, isKeyboard, org.telegram.messenger.UserConfig.selectedAccount, translateCallBack);
+        return translate(query, isKeyboard, UserConfig.selectedAccount, translateCallBack);
     }
 
     public static String translate(Object query, boolean isKeyboard, int account, TranslateCallBack translateCallBack) {
@@ -79,7 +80,7 @@ public class Translator {
     }
 
     public static String translate(ArrayList<Object> translations, boolean isKeyboard, MultiTranslateCallBack translateCallBack) {
-        return translate(translations, isKeyboard, org.telegram.messenger.UserConfig.selectedAccount, translateCallBack);
+        return translate(translations, isKeyboard, UserConfig.selectedAccount, translateCallBack);
     }
 
     public static String translate(ArrayList<Object> translations, boolean isKeyboard, int account, MultiTranslateCallBack translateCallBack) {

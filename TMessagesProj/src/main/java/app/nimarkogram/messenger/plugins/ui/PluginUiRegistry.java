@@ -31,7 +31,6 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
-import app.nimarkogram.messenger.plugins.PluginDebugLog;
 import app.nimarkogram.messenger.plugins.PluginsController;
 
 public final class PluginUiRegistry {
@@ -241,8 +240,6 @@ public final class PluginUiRegistry {
         try {
             if (!ready.await(Math.max(1L, timeoutMs),
                     TimeUnit.MILLISECONDS)) {
-                PluginDebugLog.log(
-                        "PLUGIN_UI decor baseline timed out");
                 return null;
             }
         } catch (InterruptedException interrupted) {
@@ -300,7 +297,6 @@ public final class PluginUiRegistry {
         PluginOverlayHost host = runtimeCurrent
                 ? getOrCreateOverlayHost(decor, runtimeToken.getPluginId())
                 : null;
-        int adopted = 0;
         for (View child : additions) {
             if (child.getParent() != decor) {
                 continue;
@@ -316,13 +312,8 @@ public final class PluginUiRegistry {
             if (child.getParent() == host) {
                 put(runtimeToken, child,
                         new OverlayViewEntry(child, host));
-                adopted++;
             }
         }
-        PluginDebugLog.log("PLUGIN_UI decor overlay isolation runtime="
-                + runtimeToken + " discovered=" + additions.size()
-                + " adopted=" + adopted
-                + " current=" + isRuntimeCurrent(runtimeToken));
     }
 
     public static boolean isRuntimeCurrent(
@@ -535,8 +526,6 @@ public final class PluginUiRegistry {
         if (runtimeToken == null) {
             return;
         }
-        PluginDebugLog.log("PLUGIN_UI cleanup request runtime="
-                + runtimeToken + " main=" + isMainThread());
         runOnMain(() -> cleanupOnMain(runtimeToken));
     }
 
@@ -544,8 +533,6 @@ public final class PluginUiRegistry {
         if (pluginId == null || pluginId.isEmpty()) {
             return;
         }
-        PluginDebugLog.log("PLUGIN_UI broad cleanup request plugin="
-                + pluginId + " main=" + isMainThread());
         runOnMain(() -> cleanupPluginOnMain(pluginId));
     }
 
@@ -560,14 +547,10 @@ public final class PluginUiRegistry {
             PluginsController.PluginRuntimeToken runtimeToken) {
         UiBucket bucket = UI_BY_RUNTIME.remove(runtimeToken);
         if (bucket == null || bucket.entries.isEmpty()) {
-            PluginDebugLog.log("PLUGIN_UI cleanup empty runtime="
-                    + runtimeToken);
             return;
         }
         ArrayList<UiEntry> entries = new ArrayList<>(bucket.entries);
         bucket.entries.clear();
-        PluginDebugLog.log("PLUGIN_UI cleanup detached runtime="
-                + runtimeToken + " entries=" + entries.size());
         scheduleTeardown(entries);
     }
 
@@ -586,8 +569,6 @@ public final class PluginUiRegistry {
             entries.addAll(bucket.entries);
             bucket.entries.clear();
         }
-        PluginDebugLog.log("PLUGIN_UI broad cleanup detached plugin="
-                + pluginId + " entries=" + entries.size());
         scheduleTeardown(entries);
     }
 
@@ -595,16 +576,10 @@ public final class PluginUiRegistry {
         if (entries.isEmpty()) {
             return;
         }
-        PluginDebugLog.log("PLUGIN_UI teardown scheduled entries="
-                + entries.size());
         scheduleAfterTraversal(() -> {
-            PluginDebugLog.log("PLUGIN_UI teardown begin entries="
-                    + entries.size());
             for (UiEntry entry : entries) {
                 entry.teardown();
             }
-            PluginDebugLog.log("PLUGIN_UI teardown end entries="
-                    + entries.size());
         });
     }
 

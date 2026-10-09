@@ -13,6 +13,8 @@ public final class SystemTextPaint extends TextPaint {
     private Typeface appliedTypeface;
     private boolean resolvedTypeface;
     private boolean readingTypeface;
+    private boolean applyingTypeface;
+    private int typefaceDepth;
     public static int getWeightAdjustment() {
         return adjustment;
     }
@@ -48,14 +50,22 @@ public final class SystemTextPaint extends TextPaint {
 
     @Override
     public Typeface setTypeface(Typeface typeface) {
-        if (readingTypeface) {
-            appliedTypeface = typeface;
-            return super.setTypeface(typeface);
+        if (typefaceDepth >= 4) {
+            return appliedTypeface != null ? appliedTypeface : typeface;
         }
-        if (!resolvedTypeface && typeface == appliedTypeface) return typeface;
-        baseTypeface = typeface;
-        resolvedTypeface = false;
-        return applyTypeface();
+        typefaceDepth++;
+        try {
+            if (readingTypeface || applyingTypeface) {
+                appliedTypeface = typeface;
+                return super.setTypeface(typeface);
+            }
+            if (!resolvedTypeface && typeface == appliedTypeface) return typeface;
+            baseTypeface = typeface;
+            resolvedTypeface = false;
+            return applyTypeface();
+        } finally {
+            typefaceDepth--;
+        }
     }
     public void copyTypefaceFrom(Paint source) {
         if (source == this) return;
@@ -90,9 +100,14 @@ public final class SystemTextPaint extends TextPaint {
     }
     private Typeface applyTypeface() {
         Typeface typeface = resolvedTypeface ? baseTypeface : adjusted(baseTypeface);
-        Typeface result = super.setTypeface(typeface);
-        appliedTypeface = typeface;
-        return result;
+        applyingTypeface = true;
+        try {
+            Typeface result = super.setTypeface(typeface);
+            appliedTypeface = typeface;
+            return result;
+        } finally {
+            applyingTypeface = false;
+        }
     }
     public static void setSpanTypeface(Paint paint, Typeface typeface) {
         paint.setTypeface(paint instanceof SystemTextPaint ? typeface : adjusted(typeface));

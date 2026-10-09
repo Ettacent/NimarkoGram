@@ -20,6 +20,8 @@ public class AnimatedFileDrawableStream implements FileLoadOperationStream {
     private int currentAccount;
     private volatile boolean canceled;
     private final Object sync = new Object();
+    private boolean restartLoading;
+    private long cancellationGeneration;
     private long lastOffset;
     private volatile boolean waitingForLoad;
     private boolean preview;
@@ -51,6 +53,7 @@ public class AnimatedFileDrawableStream implements FileLoadOperationStream {
     }
 
     public int read(int offset, int readLength) {
+        final long generation;
         synchronized (sync) {
             if (canceled) {
                 debugCanceledCount++;
@@ -60,6 +63,7 @@ public class AnimatedFileDrawableStream implements FileLoadOperationStream {
                 }
                 return 0;
             }
+            generation = cancellationGeneration;
         }
         if (readLength == 0) {
             return 0;
@@ -68,67 +72,104 @@ public class AnimatedFileDrawableStream implements FileLoadOperationStream {
             try {
                 while (availableLength == 0) {
                     final CountDownLatch wakeup = new CountDownLatch(1);
+                    final boolean restart;
                     synchronized (sync) {
-                        if (canceled) return 0;
+                        if (canceled || generation != cancellationGeneration) return 0;
                         countDownLatch = wakeup;
+                        restart = restartLoading;
                     }
-                    long[] result = loadOperation.getDownloadedLengthFromOffset(offset, readLength);
-                    availableLength = result[0];
-                    if (result[2] != 0) {
-                        return 0;
+                    if (restart && !reacquireLoadOperation(offset, generation)) return 0;
+                    final FileLoadOperation operation;
+                    synchronized (sync) {
+                        if (canceled || generation != cancellationGeneration) return 0;
+                        operation = loadOperation;
                     }
-                    if (!finishedLoadingFile && result[1] != 0) {
-                        finishedLoadingFile = true;
-                        finishedFilePath = loadOperation.getCacheFileFinal().getAbsolutePath();
-                    }
-                    if (availableLength == 0 && result[1] != 0) {
-                        return 0;
+                    long[] result = operation.getDownloadedLengthFromOffset(offset, readLength);
+                    synchronized (sync) {
+                        if (canceled || generation != cancellationGeneration) return 0;
+                        availableLength = result[0];
+                        if (result[2] != 0) {
+                            return 0;
+                        }
+                        if (!finishedLoadingFile && result[1] != 0) {
+                            finishedLoadingFile = true;
+                            finishedFilePath = operation.getCacheFileFinal().getAbsolutePath();
+                        }
+                        if (availableLength == 0 && result[1] != 0) {
+                            return 0;
+                        }
                     }
                     if (availableLength == 0) {
                         synchronized (sync) {
-                            if (canceled) {
-                                cancelLoadingInternal();
-                                return 0;
-                            }
+                            if (canceled || generation != cancellationGeneration) return 0;
                         }
-                        if (loadOperation.isPaused() || lastOffset != offset || preview) {
-                            FileLoadOperation loadOperation = FileLoader.getInstance(currentAccount).loadStreamFile(this, document, location, parentObject, offset, preview, loadingPriority, cacheType);
-                            if (this.loadOperation != loadOperation) {
-                                this.loadOperation.removeStreamListener(this);
-                                this.loadOperation = loadOperation;
-                                continue;
-                            }
+                        if (operation.isPaused() || lastOffset != offset || preview) {
+                            if (!reacquireLoadOperation(offset, generation)) return 0;
+                            if (operation != loadOperation) continue;
                             lastOffset = offset + availableLength;
                         }
                         synchronized (sync) {
-                            if (canceled) {
-                                countDownLatch = null;
-                                cancelLoadingInternal();
+                            if (canceled || generation != cancellationGeneration) {
                                 return 0;
                             }
+                            waitingForLoad = true;
                         }
                         if (!preview) {
                             FileLoader.getInstance(currentAccount).setLoadingVideo(document, false, true);
                         }
-                        waitingForLoad = true;
                         try {
                             wakeup.await(1, TimeUnit.SECONDS);
                         } finally {
-                            waitingForLoad = false;
+                            synchronized (sync) {
+                                if (generation == cancellationGeneration) waitingForLoad = false;
+                            }
                         }
                     }
                 }
-                lastOffset = offset + availableLength;
+                synchronized (sync) {
+                    if (canceled || generation != cancellationGeneration) return 0;
+                    lastOffset = offset + availableLength;
+                }
             } catch (Exception e) {
                 FileLog.e(e, false);
                 if (e instanceof InterruptedException) Thread.currentThread().interrupt();
             } finally {
                 synchronized (sync) {
-                    countDownLatch = null;
+                    if (generation == cancellationGeneration) {
+                        countDownLatch = null;
+                        waitingForLoad = false;
+                    }
                 }
-                waitingForLoad = false;
             }
             return (int) availableLength;
+        }
+    }
+
+    private boolean reacquireLoadOperation(int offset, long generation) {
+        synchronized (sync) {
+            if (canceled || generation != cancellationGeneration) return false;
+        }
+        FileLoadOperation replacement = FileLoader.getInstance(currentAccount).loadStreamFile(this, document, location, parentObject, offset, preview, loadingPriority, cacheType, () -> {
+            synchronized (sync) {
+                return !canceled && generation == cancellationGeneration;
+            }
+        });
+        synchronized (sync) {
+            if (canceled || generation != cancellationGeneration) {
+                if (replacement != null && replacement != loadOperation) {
+                    replacement.removeStreamListener(this);
+                }
+                return false;
+            }
+            if (replacement == null) return false;
+            if (replacement != loadOperation) {
+                loadOperation.removeStreamListener(this);
+                loadOperation = replacement;
+                finishedLoadingFile = false;
+                finishedFilePath = null;
+            }
+            restartLoading = false;
+            return true;
         }
     }
 
@@ -137,10 +178,10 @@ public class AnimatedFileDrawableStream implements FileLoadOperationStream {
     }
 
     public void cancel(boolean removeLoading) {
-        if (canceled) {
-            return;
-        }
         synchronized (sync) {
+            if (canceled) return;
+            cancellationGeneration++;
+            waitingForLoad = false;
             if (countDownLatch != null) {
                 countDownLatch.countDown();
                 countDownLatch = null;
@@ -162,6 +203,7 @@ public class AnimatedFileDrawableStream implements FileLoadOperationStream {
     }
 
     private void cancelLoadingInternal() {
+        restartLoading = true;
         FileLoader.getInstance(currentAccount).cancelLoadFile(document);
         if (location != null) {
             FileLoader.getInstance(currentAccount).cancelLoadFile(location.location, "mp4");

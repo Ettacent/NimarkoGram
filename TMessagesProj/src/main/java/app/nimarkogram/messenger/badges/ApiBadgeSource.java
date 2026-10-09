@@ -2,6 +2,10 @@
 
 package app.nimarkogram.messenger.badges;
 
+import org.telegram.messenger.AndroidUtilities;
+import org.telegram.messenger.MessagesController;
+import org.telegram.messenger.NotificationCenter;
+import org.telegram.messenger.UserConfig;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -15,11 +19,11 @@ public final class ApiBadgeSource {
         notifyPending.set(false);
         try {
             
-            int mask = org.telegram.messenger.MessagesController.UPDATE_MASK_EMOJI_STATUS;
-            for (int a = 0; a < org.telegram.messenger.UserConfig.MAX_ACCOUNT_COUNT; a++) {
-                if (org.telegram.messenger.UserConfig.isValidAccount(a)) {
-                    org.telegram.messenger.NotificationCenter.getInstance(a)
-                            .postNotificationName(org.telegram.messenger.NotificationCenter.updateInterfaces, mask);
+            int mask = MessagesController.UPDATE_MASK_EMOJI_STATUS;
+            for (int a = 0; a < UserConfig.MAX_ACCOUNT_COUNT; a++) {
+                if (UserConfig.isValidAccount(a)) {
+                    NotificationCenter.getInstance(a)
+                            .postNotificationName(NotificationCenter.updateInterfaces, mask);
                 }
             }
         } catch (Throwable ignored) {}
@@ -28,7 +32,7 @@ public final class ApiBadgeSource {
     void scheduleNotify() {
         if (!notifyPending.compareAndSet(false, true)) return;
         
-        org.telegram.messenger.AndroidUtilities.runOnUIThread(notifyRunnable, 750);
+        AndroidUtilities.runOnUIThread(notifyRunnable, 750);
     }
 
     public void forceNotify() {

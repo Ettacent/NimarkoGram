@@ -2,6 +2,23 @@
 
 package app.nimarkogram.messenger;
 
+import android.media.MediaRecorder;
+import android.os.Build;
+import app.nimarkogram.messenger.chats.filters.MessagesFilterHelper;
+import app.nimarkogram.messenger.plugins.utils.PluginCrashReports;
+import app.nimarkogram.messenger.security.NimarkoBiometricPrompt;
+import app.nimarkogram.messenger.textanim.NimarkoTextAnim;
+import app.nimarkogram.messenger.utils.LockedChats;
+import app.nimarkogram.messenger.utils.NimarkoAppMotionBlur;
+import java.util.UUID;
+import org.telegram.messenger.BuildVars;
+import org.telegram.messenger.FileLog;
+import org.telegram.messenger.MessagesController;
+import org.telegram.messenger.NotificationCenter;
+import org.telegram.messenger.SharedConfig;
+import org.telegram.messenger.UserConfig;
+import org.telegram.ui.LaunchActivity;
+import org.telegram.ui.PhotoViewer;
 import android.content.SharedPreferences;
 
 import com.google.gson.Gson;
@@ -24,7 +41,7 @@ import java.util.concurrent.locks.ReentrantLock;
 public final class NimarkoConfig {
     public static final String APP_NAME = "NimarkoGram";
 
-    public static final String VERSION_NAME = org.telegram.messenger.BuildVars.BUILD_VERSION_STRING;
+    public static final String VERSION_NAME = BuildVars.BUILD_VERSION_STRING;
     public static final int VERSION_CODE = 1;
 
     public static final long[] TRUSTED_AUTHOR_IDS = new long[0];
@@ -156,7 +173,7 @@ public final class NimarkoConfig {
         return APP_NAME + " " + VERSION_NAME;
     }
 
-    public static boolean pluginsEngine = getPreferences().getBoolean("pluginsEngine", true);
+    public static boolean pluginsEngine = getPreferences().getBoolean("pluginsEngine", false);
     public static void togglePluginsEngine() {
         pluginsEngine = !pluginsEngine;
         getEditor().putBoolean("pluginsEngine", pluginsEngine).apply();
@@ -171,16 +188,16 @@ public final class NimarkoConfig {
     public static volatile boolean pluginsSafeMode = getPreferences().getBoolean("pluginsSafeMode", false);
     public static void togglePluginsSafeMode() {
         if (!pluginsSafeMode) {
-            app.nimarkogram.messenger.plugins.utils.PluginCrashReports.setSafeModeReason("manual");
+            PluginCrashReports.setSafeModeReason("manual");
         }
         setPluginsSafeMode(!pluginsSafeMode);
     }
     public static void setPluginsSafeMode(boolean v) {
         pluginsSafeMode = v;
-        if (!v) app.nimarkogram.messenger.plugins.utils.PluginCrashReports.setSafeModeReason(null);
+        if (!v) PluginCrashReports.setSafeModeReason(null);
         getEditor().putBoolean("pluginsSafeMode", v).commit();
         try {
-            org.telegram.messenger.FileLog.d("nimarko: setPluginsSafeMode = " + v);
+            FileLog.d("nimarko: setPluginsSafeMode = " + v);
         } catch (Throwable ignored) {}
     }
 
@@ -328,7 +345,7 @@ public final class NimarkoConfig {
     public static void toggleMediaGlow() {
         mediaGlow = !mediaGlow;
         getEditor().putBoolean("mediaGlow", mediaGlow).apply();
-        org.telegram.ui.PhotoViewer.onMediaGlowSettingChanged(mediaGlow);
+        PhotoViewer.onMediaGlowSettingChanged(mediaGlow);
     }
 
     public static boolean sortByUnread = getPreferences().getBoolean("sortByUnread", false);
@@ -380,8 +397,8 @@ public final class NimarkoConfig {
     public static String getVoipRelayTokenForUid(long uid) {
         String key = "voipRelayAuthToken_" + uid;
         String token = getPreferences().getString(key, "");
-        long selectedUid = org.telegram.messenger.UserConfig.getInstance(
-                org.telegram.messenger.UserConfig.selectedAccount).getClientUserId();
+        long selectedUid = UserConfig.getInstance(
+                UserConfig.selectedAccount).getClientUserId();
         if (token.isEmpty() && uid == selectedUid && getPreferences().contains("voipRelayAuthToken")) {
             token = getPreferences().getString("voipRelayAuthToken", "");
             getEditor().putString(key, token).remove("voipRelayAuthToken").apply();
@@ -401,8 +418,8 @@ public final class NimarkoConfig {
     public static String getWsRelayTokenForUid(long uid) {
         String key = "wsRelayAuthToken_" + uid;
         String token = getPreferences().getString(key, "");
-        long selectedUid = org.telegram.messenger.UserConfig.getInstance(
-                org.telegram.messenger.UserConfig.selectedAccount).getClientUserId();
+        long selectedUid = UserConfig.getInstance(
+                UserConfig.selectedAccount).getClientUserId();
         if (token.isEmpty() && uid == selectedUid && getPreferences().contains("wsRelayAuthToken")) {
             token = getPreferences().getString("wsRelayAuthToken", "");
             getEditor().putString(key, token).remove("wsRelayAuthToken").apply();
@@ -416,7 +433,7 @@ public final class NimarkoConfig {
     public static String wsInstallId = getPreferences().getString("wsInstallId", "");
     public static synchronized String ensureWsInstallId() {
         if (wsInstallId == null || wsInstallId.isEmpty()) {
-            wsInstallId = java.util.UUID.randomUUID().toString().replace("-", "");
+            wsInstallId = UUID.randomUUID().toString().replace("-", "");
             getEditor().putString("wsInstallId", wsInstallId).apply();
         }
         return wsInstallId;
@@ -610,15 +627,15 @@ public final class NimarkoConfig {
     public static void toggleDisablePremiumStatuses() { disablePremiumStatuses = !disablePremiumStatuses; getEditor().putBoolean("disablePremiumStatuses", disablePremiumStatuses).apply(); }
 
     public static boolean replyBackground = getPreferences().getBoolean("replyBackground",
-            org.telegram.messenger.SharedConfig.getDevicePerformanceClass() >= org.telegram.messenger.SharedConfig.PERFORMANCE_CLASS_AVERAGE);
+            SharedConfig.getDevicePerformanceClass() >= SharedConfig.PERFORMANCE_CLASS_AVERAGE);
     public static void toggleReplyBackground() { replyBackground = !replyBackground; getEditor().putBoolean("replyBackground", replyBackground).apply(); }
 
     public static boolean replyCustomColors = getPreferences().getBoolean("replyCustomColors",
-            org.telegram.messenger.SharedConfig.getDevicePerformanceClass() >= org.telegram.messenger.SharedConfig.PERFORMANCE_CLASS_AVERAGE);
+            SharedConfig.getDevicePerformanceClass() >= SharedConfig.PERFORMANCE_CLASS_AVERAGE);
     public static void toggleReplyCustomColors() { replyCustomColors = !replyCustomColors; getEditor().putBoolean("replyCustomColors", replyCustomColors).apply(); }
 
     public static boolean replyBackgroundEmoji = getPreferences().getBoolean("replyBackgroundEmoji",
-            org.telegram.messenger.SharedConfig.getDevicePerformanceClass() >= org.telegram.messenger.SharedConfig.PERFORMANCE_CLASS_AVERAGE);
+            SharedConfig.getDevicePerformanceClass() >= SharedConfig.PERFORMANCE_CLASS_AVERAGE);
     public static void toggleReplyBackgroundEmoji() { replyBackgroundEmoji = !replyBackgroundEmoji; getEditor().putBoolean("replyBackgroundEmoji", replyBackgroundEmoji).apply(); }
 
     public static boolean profileChannelPreview = getPreferences().getBoolean("profileChannelPreview", true);
@@ -679,7 +696,7 @@ public final class NimarkoConfig {
     public static void toggleHideSendAsChannel() { hideSendAsChannel = !hideSendAsChannel; getEditor().putBoolean("hideSendAsChannel", hideSendAsChannel).apply(); }
 
     public static boolean largePhotos = getPreferences().getBoolean("largePhotos",
-            org.telegram.messenger.SharedConfig.getDevicePerformanceClass() >= org.telegram.messenger.SharedConfig.PERFORMANCE_CLASS_AVERAGE);
+            SharedConfig.getDevicePerformanceClass() >= SharedConfig.PERFORMANCE_CLASS_AVERAGE);
     public static void toggleLargePhotos() { largePhotos = !largePhotos; getEditor().putBoolean("largePhotos", largePhotos).apply(); }
     public static void setLargePhotos(boolean value) { largePhotos = value; getEditor().putBoolean("largePhotos", value).apply(); }
 
@@ -688,7 +705,7 @@ public final class NimarkoConfig {
 
     public static long customSavedMessagesDialogId = getPreferences().getLong("customSavedMessagesDialogId", 0L);
     public static void setCustomSavedMessagesDialogId(long v) {
-        setCustomSavedMessagesDialogId(org.telegram.messenger.UserConfig.selectedAccount, v);
+        setCustomSavedMessagesDialogId(UserConfig.selectedAccount, v);
     }
     public static void setCustomSavedMessagesDialogId(int account, long v) {
         customSavedMessagesDialogId = v;
@@ -700,7 +717,7 @@ public final class NimarkoConfig {
             return getPreferences().getLong(key, 0L);
         }
 
-        if (account == org.telegram.messenger.UserConfig.selectedAccount
+        if (account == UserConfig.selectedAccount
                 && getPreferences().contains("customSavedMessagesDialogId")) {
             long legacy = getPreferences().getLong("customSavedMessagesDialogId", 0L);
             getEditor().putLong(key, legacy).remove("customSavedMessagesDialogId").apply();
@@ -710,7 +727,7 @@ public final class NimarkoConfig {
     }
 
     public static long getEffectiveSavedMessagesDialogId(long selfId) {
-        return getEffectiveSavedMessagesDialogId(org.telegram.messenger.UserConfig.selectedAccount, selfId);
+        return getEffectiveSavedMessagesDialogId(UserConfig.selectedAccount, selfId);
     }
     public static long getEffectiveSavedMessagesDialogId(int account, long selfId) {
         long customId = getCustomSavedMessagesDialogId(account);
@@ -872,9 +889,9 @@ public final class NimarkoConfig {
 
     private static int initCameraXFpsRange() {
         SharedPreferences preferences = getPreferences();
-        int fallback = org.telegram.messenger.SharedConfig
+        int fallback = SharedConfig
                 .getDevicePerformanceClass()
-                >= org.telegram.messenger.SharedConfig
+                >= SharedConfig
                         .PERFORMANCE_CLASS_AVERAGE
                 ? CameraXFpsRange25to30
                 : CameraXFpsRangeDefault;
@@ -1050,11 +1067,11 @@ public final class NimarkoConfig {
     public static void toggleHideArchivedStories() { hideArchivedStories = !hideArchivedStories; getEditor().putBoolean("hideArchivedStories", hideArchivedStories).apply(); }
 
     private static void onPrivacyProtectionChanged() {
-        app.nimarkogram.messenger.utils.LockedChats.notifyProtectionChanged(-1);
+        LockedChats.notifyProtectionChanged(-1);
         try {
-            app.nimarkogram.messenger.security.NimarkoBiometricPrompt.clearVerified();
-            org.telegram.messenger.AndroidUtilities.runOnUIThread(
-                    org.telegram.ui.LaunchActivity::invalidateNimarkoSecureFlag);
+            NimarkoBiometricPrompt.clearVerified();
+            AndroidUtilities.runOnUIThread(
+                    LaunchActivity::invalidateNimarkoSecureFlag);
         } catch (Throwable ignored) {
         }
     }
@@ -1430,35 +1447,35 @@ public final class NimarkoConfig {
     public static void toggleNimarkoTextAnim() {
         nimarkoTextAnim = !nimarkoTextAnim;
         getEditor().putBoolean("nimarkoTextAnim", nimarkoTextAnim).apply();
-        app.nimarkogram.messenger.textanim.NimarkoTextAnim.applySettings();
+        NimarkoTextAnim.applySettings();
     }
 
     public static boolean nimarkoTextAnimAppear = getPreferences().getBoolean("nimarkoTextAnimAppear", true);
     public static void toggleNimarkoTextAnimAppear() {
         nimarkoTextAnimAppear = !nimarkoTextAnimAppear;
         getEditor().putBoolean("nimarkoTextAnimAppear", nimarkoTextAnimAppear).apply();
-        app.nimarkogram.messenger.textanim.NimarkoTextAnim.applySettings();
+        NimarkoTextAnim.applySettings();
     }
 
     public static boolean nimarkoTextAnimCursor = getPreferences().getBoolean("nimarkoTextAnimCursor", true);
     public static void toggleNimarkoTextAnimCursor() {
         nimarkoTextAnimCursor = !nimarkoTextAnimCursor;
         getEditor().putBoolean("nimarkoTextAnimCursor", nimarkoTextAnimCursor).apply();
-        app.nimarkogram.messenger.textanim.NimarkoTextAnim.applySettings();
+        NimarkoTextAnim.applySettings();
     }
 
     public static boolean nimarkoTextAnimDelete = getPreferences().getBoolean("nimarkoTextAnimDelete", true);
     public static void toggleNimarkoTextAnimDelete() {
         nimarkoTextAnimDelete = !nimarkoTextAnimDelete;
         getEditor().putBoolean("nimarkoTextAnimDelete", nimarkoTextAnimDelete).apply();
-        app.nimarkogram.messenger.textanim.NimarkoTextAnim.applySettings();
+        NimarkoTextAnim.applySettings();
     }
 
     public static boolean nimarkoTextAnimSpoiler = getPreferences().getBoolean("nimarkoTextAnimSpoiler", false);
     public static void toggleNimarkoTextAnimSpoiler() {
         nimarkoTextAnimSpoiler = !nimarkoTextAnimSpoiler;
         getEditor().putBoolean("nimarkoTextAnimSpoiler", nimarkoTextAnimSpoiler).apply();
-        app.nimarkogram.messenger.textanim.NimarkoTextAnim.applySettings();
+        NimarkoTextAnim.applySettings();
     }
 
     public static boolean showRPCErrors = getPreferences().getBoolean("showRPCErrors", false);
@@ -1490,10 +1507,10 @@ public final class NimarkoConfig {
             case AUDIO_SOURCE_VOICE_COMMUNICATION:
                 return value;
             case AUDIO_SOURCE_UNPROCESSED:
-                return android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N
+                return Build.VERSION.SDK_INT >= Build.VERSION_CODES.N
                         ? value : AUDIO_SOURCE_DEFAULT;
             case AUDIO_SOURCE_VOICE_PERFORMANCE:
-                return android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q
+                return Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q
                         ? value : AUDIO_SOURCE_DEFAULT;
             default:
                 return AUDIO_SOURCE_DEFAULT;
@@ -1502,19 +1519,19 @@ public final class NimarkoConfig {
 
     public static int getMediaRecorderAudioSource() {
         switch (sanitizeAudioSource(audioSource)) {
-            case AUDIO_SOURCE_MIC: return android.media.MediaRecorder.AudioSource.MIC;
-            case AUDIO_SOURCE_CAMCORDER: return android.media.MediaRecorder.AudioSource.CAMCORDER;
-            case AUDIO_SOURCE_VOICE_RECOGNITION: return android.media.MediaRecorder.AudioSource.VOICE_RECOGNITION;
-            case AUDIO_SOURCE_VOICE_COMMUNICATION: return android.media.MediaRecorder.AudioSource.VOICE_COMMUNICATION;
-            case AUDIO_SOURCE_UNPROCESSED: return android.media.MediaRecorder.AudioSource.UNPROCESSED;
-            case AUDIO_SOURCE_VOICE_PERFORMANCE: return android.media.MediaRecorder.AudioSource.VOICE_PERFORMANCE;
+            case AUDIO_SOURCE_MIC: return MediaRecorder.AudioSource.MIC;
+            case AUDIO_SOURCE_CAMCORDER: return MediaRecorder.AudioSource.CAMCORDER;
+            case AUDIO_SOURCE_VOICE_RECOGNITION: return MediaRecorder.AudioSource.VOICE_RECOGNITION;
+            case AUDIO_SOURCE_VOICE_COMMUNICATION: return MediaRecorder.AudioSource.VOICE_COMMUNICATION;
+            case AUDIO_SOURCE_UNPROCESSED: return MediaRecorder.AudioSource.UNPROCESSED;
+            case AUDIO_SOURCE_VOICE_PERFORMANCE: return MediaRecorder.AudioSource.VOICE_PERFORMANCE;
             case AUDIO_SOURCE_DEFAULT:
-            default: return android.media.MediaRecorder.AudioSource.DEFAULT;
+            default: return MediaRecorder.AudioSource.DEFAULT;
         }
     }
 
     public static boolean jacksonJSON_Provider = getPreferences().getBoolean("jacksonJSON_Provider",
-            android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O);
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.O);
     public static void toggleJacksonJSON_Provider() { jacksonJSON_Provider = !jacksonJSON_Provider; getEditor().putBoolean("jacksonJSON_Provider", jacksonJSON_Provider).apply(); }
 
     public static void setJacksonJSON_Provider(boolean value) { jacksonJSON_Provider = value; getEditor().putBoolean("jacksonJSON_Provider", value).apply(); }
@@ -1702,7 +1719,7 @@ public final class NimarkoConfig {
     public static void setMsgFiltersCollapseAutomatically(boolean v) {
         msgFiltersCollapseAutomatically = v;
         getEditor().putBoolean("msgFiltersCollapseAutomatically", v).apply();
-        app.nimarkogram.messenger.chats.filters.MessagesFilterHelper.INSTANCE.clearRevealedMessages();
+        MessagesFilterHelper.INSTANCE.clearRevealedMessages();
         notifyMessageFiltersChanged();
     }
     public static void toggleMsgFiltersCollapseAutomatically() { setMsgFiltersCollapseAutomatically(!msgFiltersCollapseAutomatically); }
@@ -1713,14 +1730,14 @@ public final class NimarkoConfig {
 
     public static volatile String msgFiltersExcludedChats = "";
     public static void setMsgFiltersExcludedChats(String v) {
-        setMsgFiltersExcludedChats(org.telegram.messenger.UserConfig.selectedAccount, v);
+        setMsgFiltersExcludedChats(UserConfig.selectedAccount, v);
     }
     public static void setMsgFiltersExcludedChats(int account, String v) {
         setMsgFiltersExcludedChats(account, messageFiltersOwnerUid(account), v);
     }
     public static boolean setMsgFiltersExcludedChats(int account, long ownerUid, String v) {
         if (!putIdentityChatList("msgFiltersExcludedChats", account, ownerUid, v)) return false;
-        if (account == org.telegram.messenger.UserConfig.selectedAccount) {
+        if (account == UserConfig.selectedAccount) {
             msgFiltersExcludedChats = v == null ? "" : v;
         }
         notifyMessageFiltersChanged();
@@ -1740,14 +1757,14 @@ public final class NimarkoConfig {
 
     public static volatile String msgFiltersChatWhitelist = "";
     public static void setMsgFiltersChatWhitelist(String v) {
-        setMsgFiltersChatWhitelist(org.telegram.messenger.UserConfig.selectedAccount, v);
+        setMsgFiltersChatWhitelist(UserConfig.selectedAccount, v);
     }
     public static void setMsgFiltersChatWhitelist(int account, String v) {
         setMsgFiltersChatWhitelist(account, messageFiltersOwnerUid(account), v);
     }
     public static boolean setMsgFiltersChatWhitelist(int account, long ownerUid, String v) {
         if (!putIdentityChatList("msgFiltersChatWhitelist", account, ownerUid, v)) return false;
-        if (account == org.telegram.messenger.UserConfig.selectedAccount) {
+        if (account == UserConfig.selectedAccount) {
             msgFiltersChatWhitelist = v == null ? "" : v;
         }
         notifyMessageFiltersChanged();
@@ -1756,14 +1773,14 @@ public final class NimarkoConfig {
 
     public static volatile String msgFiltersChatBlacklist = "";
     public static void setMsgFiltersChatBlacklist(String v) {
-        setMsgFiltersChatBlacklist(org.telegram.messenger.UserConfig.selectedAccount, v);
+        setMsgFiltersChatBlacklist(UserConfig.selectedAccount, v);
     }
     public static void setMsgFiltersChatBlacklist(int account, String v) {
         setMsgFiltersChatBlacklist(account, messageFiltersOwnerUid(account), v);
     }
     public static boolean setMsgFiltersChatBlacklist(int account, long ownerUid, String v) {
         if (!putIdentityChatList("msgFiltersChatBlacklist", account, ownerUid, v)) return false;
-        if (account == org.telegram.messenger.UserConfig.selectedAccount) {
+        if (account == UserConfig.selectedAccount) {
             msgFiltersChatBlacklist = v == null ? "" : v;
         }
         notifyMessageFiltersChanged();
@@ -1795,8 +1812,8 @@ public final class NimarkoConfig {
     }
 
     private static long messageFiltersOwnerUid(int account) {
-        if (account < 0 || account >= org.telegram.messenger.UserConfig.MAX_ACCOUNT_COUNT) return 0L;
-        return org.telegram.messenger.UserConfig.getInstance(account).getClientUserId();
+        if (account < 0 || account >= UserConfig.MAX_ACCOUNT_COUNT) return 0L;
+        return UserConfig.getInstance(account).getClientUserId();
     }
 
     private static String identityChatListKey(String baseKey, int account, long ownerUid) {
@@ -1813,7 +1830,7 @@ public final class NimarkoConfig {
         }
         String migrationKey = baseKey + "_identity_migrated";
         if (!preferences.getBoolean(migrationKey, false)
-                && account == org.telegram.messenger.UserConfig.selectedAccount
+                && account == UserConfig.selectedAccount
                 && preferences.contains(baseKey)) {
             String legacy = preferences.getString(baseKey, "");
             getEditor()
@@ -1839,10 +1856,10 @@ public final class NimarkoConfig {
     }
 
     private static void notifyMessageFiltersChanged() {
-        for (int account = 0; account < org.telegram.messenger.UserConfig.MAX_ACCOUNT_COUNT; account++) {
-            org.telegram.messenger.NotificationCenter.getInstance(account).postNotificationName(
-                    org.telegram.messenger.NotificationCenter.updateInterfaces,
-                    org.telegram.messenger.MessagesController.UPDATE_MASK_MESSAGE_FILTERS);
+        for (int account = 0; account < UserConfig.MAX_ACCOUNT_COUNT; account++) {
+            NotificationCenter.getInstance(account).postNotificationName(
+                    NotificationCenter.updateInterfaces,
+                    MessagesController.UPDATE_MASK_MESSAGE_FILTERS);
         }
     }
 
@@ -1875,30 +1892,30 @@ public final class NimarkoConfig {
     public static boolean isMsgFiltersCollapseAutomatically() { return msgFiltersCollapseAutomatically; }
     public static boolean isMsgFilterTransparentMsg()         { return msgFilterTransparentMsg; }
     public static String  getMsgFiltersExcludedChats() {
-        return getMsgFiltersExcludedChats(org.telegram.messenger.UserConfig.selectedAccount);
+        return getMsgFiltersExcludedChats(UserConfig.selectedAccount);
     }
     public static String getMsgFiltersExcludedChats(int account) {
         String value = getIdentityChatList("msgFiltersExcludedChats", account);
-        if (account == org.telegram.messenger.UserConfig.selectedAccount) msgFiltersExcludedChats = value;
+        if (account == UserConfig.selectedAccount) msgFiltersExcludedChats = value;
         return value;
     }
 
     public static boolean isMsgFiltersUseRegex()              { return msgFiltersUseRegex; }
     public static String  getMsgFiltersRegexPatterns()        { return msgFiltersRegexPatterns; }
     public static String  getMsgFiltersChatWhitelist() {
-        return getMsgFiltersChatWhitelist(org.telegram.messenger.UserConfig.selectedAccount);
+        return getMsgFiltersChatWhitelist(UserConfig.selectedAccount);
     }
     public static String getMsgFiltersChatWhitelist(int account) {
         String value = getIdentityChatList("msgFiltersChatWhitelist", account);
-        if (account == org.telegram.messenger.UserConfig.selectedAccount) msgFiltersChatWhitelist = value;
+        if (account == UserConfig.selectedAccount) msgFiltersChatWhitelist = value;
         return value;
     }
     public static String  getMsgFiltersChatBlacklist() {
-        return getMsgFiltersChatBlacklist(org.telegram.messenger.UserConfig.selectedAccount);
+        return getMsgFiltersChatBlacklist(UserConfig.selectedAccount);
     }
     public static String getMsgFiltersChatBlacklist(int account) {
         String value = getIdentityChatList("msgFiltersChatBlacklist", account);
-        if (account == org.telegram.messenger.UserConfig.selectedAccount) msgFiltersChatBlacklist = value;
+        if (account == UserConfig.selectedAccount) msgFiltersChatBlacklist = value;
         return value;
     }
     public static int     getMsgFiltersLogic()                { return msgFiltersLogic; }
@@ -1956,7 +1973,7 @@ public final class NimarkoConfig {
             return 0;
         }
         return (int) (avatarCorners * (size / 56.0f)
-                * (toPx ? 1 : org.telegram.messenger.AndroidUtilities.density));
+                * (toPx ? 1 : AndroidUtilities.density));
     }
 
     public static int getAvatarCornersForChat(float size, boolean forum) {
@@ -1966,6 +1983,13 @@ public final class NimarkoConfig {
     public static boolean forceBlur = getPreferences().getBoolean("forceBlur", false);
     public static boolean enhancedGlassBlur = getPreferences().getBoolean("enhancedGlassBlur", false);
 
+    public static boolean motionBlur = getPreferences().getBoolean("motionBlur", false);
+
+    public static void toggleMotionBlur() {
+        motionBlur = !motionBlur;
+        getEditor().putBoolean("motionBlur", motionBlur).apply();
+        NimarkoAppMotionBlur.onSettingsChanged();
+    }
     public static void toggleEnhancedGlassBlur() {
         enhancedGlassBlur = !enhancedGlassBlur;
         getEditor().putBoolean("enhancedGlassBlur", enhancedGlassBlur).apply();
@@ -2009,9 +2033,9 @@ public final class NimarkoConfig {
         getEditor().putBoolean("customTitleEnabled", customTitleEnabled)
                 .putString("customTitleText", customTitleText).apply();
 
-        org.telegram.messenger.AndroidUtilities.runOnUIThread(() ->
-                org.telegram.messenger.NotificationCenter.getGlobalInstance()
-                        .postNotificationName(org.telegram.messenger.NotificationCenter.customTitleUpdated));
+        AndroidUtilities.runOnUIThread(() ->
+                NotificationCenter.getGlobalInstance()
+                        .postNotificationName(NotificationCenter.customTitleUpdated));
     }
 
     public static CharSequence resolveMainTitle(CharSequence appName) {

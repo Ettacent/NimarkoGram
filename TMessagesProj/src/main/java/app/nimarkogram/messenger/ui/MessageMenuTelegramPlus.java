@@ -3,6 +3,8 @@
  
 package app.nimarkogram.messenger.ui;
 
+import android.content.Context;
+import org.telegram.messenger.LocaleController;
 import android.animation.ValueAnimator;
 import android.graphics.Canvas;
 import android.graphics.ColorFilter;
@@ -103,7 +105,7 @@ public final class MessageMenuTelegramPlus {
                         params.width = ViewGroup.LayoutParams.WRAP_CONTENT;
                         params.height = AndroidUtilities.dp(40);
                         params.gravity = Gravity.CENTER_VERTICAL
-                                | (org.telegram.messenger.LocaleController.isRTL
+                                | (LocaleController.isRTL
                                 ? Gravity.RIGHT : Gravity.LEFT);
                         icon.setLayoutParams(params);
                     }
@@ -365,7 +367,7 @@ public final class MessageMenuTelegramPlus {
                     params.width = ViewGroup.LayoutParams.WRAP_CONTENT;
                     params.height = AndroidUtilities.dp(40);
                     params.gravity = Gravity.CENTER_VERTICAL
-                            | (org.telegram.messenger.LocaleController.isRTL
+                            | (LocaleController.isRTL
                             ? Gravity.RIGHT : Gravity.LEFT);
                     icon.setLayoutParams(params);
                 }
@@ -474,7 +476,7 @@ public final class MessageMenuTelegramPlus {
         private final int dividerColor;
         private final int accentColor;
 
-        PlusDivider(android.content.Context context, Theme.ResourcesProvider resourcesProvider) {
+        PlusDivider(Context context, Theme.ResourcesProvider resourcesProvider) {
             super(context);
             dividerColor = Theme.multAlpha(
                     Theme.getColor(Theme.key_actionBarDefaultSubmenuSeparator, resourcesProvider),

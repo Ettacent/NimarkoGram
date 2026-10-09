@@ -2,6 +2,7 @@
 
 package app.nimarkogram.messenger.plugins.utils;
 
+import org.telegram.messenger.ApplicationLoader;
 import android.app.Activity;
 import android.content.DialogInterface;
 import android.content.Intent;
@@ -84,7 +85,7 @@ public final class PluginsWatchdog {
     private void tick() {
         try {
             
-            if (org.telegram.messenger.ApplicationLoader.mainInterfacePaused) {
+            if (ApplicationLoader.mainInterfacePaused) {
                 wasBackgrounded = true;
                 return;
             }

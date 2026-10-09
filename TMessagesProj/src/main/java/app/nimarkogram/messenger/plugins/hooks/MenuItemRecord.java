@@ -2,6 +2,7 @@
 
 package app.nimarkogram.messenger.plugins.hooks;
 
+import org.telegram.messenger.FileLog;
 import android.content.Context;
 import android.text.TextUtils;
 import com.chaquo.python.PyObject;
@@ -56,7 +57,7 @@ public class MenuItemRecord {
                 condition = MVEL.compileExpression(this.conditionString);
             } catch (Exception e) {
                 try {
-                    org.telegram.messenger.FileLog.d("nimarko: invalid menu condition for plugin "
+                    FileLog.d("nimarko: invalid menu condition for plugin "
                             + this.pluginId + " condition='" + this.conditionString + "': " + e);
                 } catch (Throwable ignored) {}
             }
@@ -83,7 +84,7 @@ public class MenuItemRecord {
             }
             if (resId == 0) {
                 try {
-                    org.telegram.messenger.FileLog.d("nimarko: plugin menu icon '" + this.iconName + "' not found in drawables");
+                    FileLog.d("nimarko: plugin menu icon '" + this.iconName + "' not found in drawables");
                 } catch (Throwable ignored) {}
             }
         }
@@ -115,7 +116,7 @@ public class MenuItemRecord {
             return result instanceof Boolean ? (Boolean) result : false;
         } catch (Exception e) {
             try {
-                org.telegram.messenger.FileLog.d("nimarko: MenuItemRecord.checkCondition failed for plugin "
+                FileLog.d("nimarko: MenuItemRecord.checkCondition failed for plugin "
                         + this.pluginId + " condition='" + this.conditionString + "': " + e);
             } catch (Throwable ignored) {}
             return false;

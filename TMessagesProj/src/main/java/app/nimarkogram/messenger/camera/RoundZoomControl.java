@@ -11,6 +11,8 @@
 
 package app.nimarkogram.messenger.camera;
 
+import android.graphics.Bitmap;
+import java.text.DecimalFormatSymbols;
 import static org.telegram.messenger.AndroidUtilities.dp;
 
 import android.animation.Animator;
@@ -97,7 +99,7 @@ public final class RoundZoomControl extends View {
     private float fadeLeft = Float.NaN, fadeRight = Float.NaN;
     private float rangeProgress = 1f;
     private ValueAnimator rangeAnimator;
-    private android.graphics.Bitmap oldRangeContent;
+    private Bitmap oldRangeContent;
     private final Paint rangePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint rangeBlendPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Path contentClip = new Path();
@@ -574,7 +576,7 @@ public final class RoundZoomControl extends View {
                 widestDigit = digit;
             }
         }
-        char separator = java.text.DecimalFormatSymbols.getInstance(locale).getDecimalSeparator();
+        char separator = DecimalFormatSymbols.getInstance(locale).getDecimalSeparator();
         String number = formatZoomNumber(maxZoom);
         int dot = number.indexOf(separator);
         int integerDigits = Math.max(2, dot >= 0 ? dot : number.length());
@@ -859,7 +861,7 @@ public final class RoundZoomControl extends View {
                 rulerLabelPaint.setColor(primaryColor);
                 float clearance = Math.min(x - rulerBounds.left, rulerBounds.right - x)
                         - rulerLabelPaint.measureText(label) / 2f;
-                rulerLabelPaint.setAlpha(Math.round(android.graphics.Color.alpha(primaryColor)
+                rulerLabelPaint.setAlpha(Math.round(Color.alpha(primaryColor)
                         * clamp(clearance / dp(8), 0f, 1f)));
                 canvas.drawText(label, x, labelBaseline, rulerLabelPaint);
             }
@@ -1499,11 +1501,11 @@ public final class RoundZoomControl extends View {
         boolean fade = geometryPresented && (session != identity || minZoom != min || maxZoom != max || shortcutsChanged)
                 && isShown() && getAlpha() > .05f && SharedConfig.animationsEnabled()
                 && getWidth() > 0 && getHeight() > 0;
-        android.graphics.Bitmap snapshot = null;
+        Bitmap snapshot = null;
         RectF snapshotSelector = null;
         float snapshotSelectorAlpha = 0f;
         if (fade) {
-            snapshot = android.graphics.Bitmap.createBitmap(getWidth(), getHeight(), android.graphics.Bitmap.Config.ARGB_8888);
+            snapshot = Bitmap.createBitmap(getWidth(), getHeight(), Bitmap.Config.ARGB_8888);
             updateLayoutBounds();
             snapshotSelectorAlpha = updateSelectorBounds();
             snapshotSelector = new RectF(selectorBounds);

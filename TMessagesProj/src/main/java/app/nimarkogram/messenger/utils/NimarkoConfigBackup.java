@@ -2,6 +2,8 @@
 
 package app.nimarkogram.messenger.utils;
 
+import android.system.Os;
+import app.nimarkogram.messenger.plugins.PluginsController;
 import android.content.Context;
 import android.content.SharedPreferences;
 
@@ -238,7 +240,7 @@ public final class NimarkoConfigBackup {
     }
 
     public static String exportJson() throws Exception {
-        return app.nimarkogram.messenger.plugins.PluginsController
+        return PluginsController
                 .withPortablePluginSettingsTransaction(() ->
                         NimarkoConfig.withSettingsTransaction(NimarkoConfigBackup::exportJsonLocked));
     }
@@ -419,7 +421,7 @@ public final class NimarkoConfigBackup {
         boolean pythonReloaded = true;
         if (reloadPythonSettings) {
             try {
-                pythonReloaded = app.nimarkogram.messenger.plugins.PluginsController.reloadPortablePluginSettings();
+                pythonReloaded = PluginsController.reloadPortablePluginSettings();
             } catch (Throwable t) {
                 pythonReloaded = false;
                 FileLog.e("Nimarko config rollback could not reload restored plugin settings", t);
@@ -436,7 +438,7 @@ public final class NimarkoConfigBackup {
 
     public static boolean importJson(String json) {
         try {
-            return app.nimarkogram.messenger.plugins.PluginsController
+            return PluginsController
                     .withPortablePluginSettingsTransaction(() ->
                             NimarkoConfig.withSettingsTransaction(() -> importJsonLocked(json)));
         } catch (RuntimeException e) {
@@ -527,7 +529,7 @@ public final class NimarkoConfigBackup {
             }
             if (version >= 4) {
                 pythonSettingsReloaded = true;
-                if (!app.nimarkogram.messenger.plugins.PluginsController.reloadPortablePluginSettings()) {
+                if (!PluginsController.reloadPortablePluginSettings()) {
                     throw new IllegalStateException("Python plugin settings reload failed");
                 }
             }
@@ -985,7 +987,7 @@ public final class NimarkoConfigBackup {
                 if (original != null) {
                     if (!fileEquals(target, original)) return false;
                     mutationPossible = true;
-                    android.system.Os.rename(target.getAbsolutePath(), rollback.getAbsolutePath());
+                    Os.rename(target.getAbsolutePath(), rollback.getAbsolutePath());
                     targetMoved = !target.exists() && fileEquals(rollback, original);
                     if (!targetMoved) return false;
                 } else if (target.exists()) {
@@ -993,7 +995,7 @@ public final class NimarkoConfigBackup {
                     return false;
                 }
                 mutationPossible = true;
-                android.system.Os.rename(staged.getAbsolutePath(), target.getAbsolutePath());
+                Os.rename(staged.getAbsolutePath(), target.getAbsolutePath());
                 replacementMoved = !staged.exists();
                 replacementInstalled = replacementMoved && fileEquals(target, wanted);
                 return replacementInstalled;
@@ -1010,7 +1012,7 @@ public final class NimarkoConfigBackup {
             if (original != null && rollback != null && rollback.exists()) {
                 try {
                     
-                    android.system.Os.rename(rollback.getAbsolutePath(), target.getAbsolutePath());
+                    Os.rename(rollback.getAbsolutePath(), target.getAbsolutePath());
                     ok &= fileEquals(target, original) && !rollback.exists();
                 } catch (Throwable ignore) {
                     ok = false;

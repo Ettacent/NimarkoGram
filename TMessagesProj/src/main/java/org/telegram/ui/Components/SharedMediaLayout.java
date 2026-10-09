@@ -2,6 +2,7 @@
 
 package org.telegram.ui.Components;
 
+import app.nimarkogram.messenger.utils.ui.ProfileListPadding;
 import static org.telegram.messenger.AndroidUtilities.dp;
 import static org.telegram.messenger.AndroidUtilities.dpf2;
 import static org.telegram.messenger.AndroidUtilities.lerp;
@@ -2771,9 +2772,9 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
                     if (mediaPages != null) {
                         for (MediaPage mp : mediaPages) {
                             if (mp != null && mp.listView != null) {
-                                mp.listView.setPadding(
+                                mp.listView.profilePadding.apply(
                                     mp.listView.getPaddingLeft(),
-                                    getPagePaddingTop(mp.selectedType),
+                                    mp.listView.hintPaddingTop = getPagePaddingTop(mp.selectedType),
                                     mp.listView.getPaddingRight(),
                                     mp.listView.hintPaddingBottom = getPagePaddingBottom(isStoriesView())
                                 );
@@ -3726,7 +3727,7 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
                     } else if (mediaPage.selectedType == TAB_LINKS) {
                         return FlickerLoadingView.LINKS_TYPE;
                     } else if (mediaPage.selectedType == TAB_GROUPUSERS) {
-                        return FlickerLoadingView.USERS2_TYPE;
+                        return FlickerLoadingView.GROUP_USERS_TYPE;
                     } else if (mediaPage.selectedType == TAB_COMMON_GROUPS || mediaPage.selectedType == TAB_RECOMMENDED_CHANNELS) {
                         return FlickerLoadingView.PROFILE_SEARCH_CELL;
                     } else if (mediaPage.selectedType == TAB_SAVED_DIALOGS) {
@@ -3813,16 +3814,13 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
                 if (mediaPages != null) {
                     for (MediaPage page : mediaPages) {
                         if (page != null) {
-                            final int paddingTopOld = page.listView.getPaddingTop();
-                            page.listView.setPadding(
+                            page.listView.profilePadding.apply(
                                 page.listView.getPaddingLeft(),
-                                getPagePaddingTop(page.selectedType),
+                                page.listView.hintPaddingTop = getPagePaddingTop(page.selectedType),
                                 page.listView.getPaddingRight(),
                                 page.listView.hintPaddingBottom = getPagePaddingBottom(isStoriesView())
                             );
-                            final int paddingTopNew = page.listView.getPaddingTop();
-                            final int scroll = paddingTopOld - paddingTopNew;
-                            AndroidUtilities.doOnLayout(page.listView, () -> page.listView.scrollBy(0, scroll));
+                            updateLoadingViewLayout(page);
                         }
                     }
                 }
@@ -3850,6 +3848,12 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
                 }
                 setVisibleHeight(lastVisibleHeight);
             });
+            int initialPlayerHeight = (int) fragmentContextView.getTopPadding();
+            topLayoutPadding = initialPlayerHeight > 0 ? initialPlayerHeight + dp(14) : 0;
+            if (giftsContainer != null) {
+                giftsContainer.setPaddingTop(dp(48)
+                        + (initialPlayerHeight > 0 ? initialPlayerHeight + dp(7) : 0));
+            }
             BlurredBackgroundDrawable filterTabsViewBackground = iBlur3FactoryLiquidGlass.create(scrollSlidingTextTabStrip, BlurredBackgroundProviderImpl.topPanel(resourcesProvider));
             notificationTabsBackground = filterTabsViewBackground;
             filterTabsViewBackground.setRadius(dp(18));
@@ -6878,7 +6882,7 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
                 && ((ProfileActivity) profileActivity).isProfileContentTransitionInProgress();
         for (MediaPage page : mediaPages) {
             if (page != null && page.listView != null && page.listView.getAdapter() == adapter) {
-                page.listView.captureFirstProfileContent();
+                page.listView.captureFirstProfileContent(!parentOwnsFade);
                 if (parentOwnsFade) {
                     page.listView.profileContentFade.markPresented();
                 } else {
@@ -6923,6 +6927,27 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
                     return true;
                 }
                 if (adapter == photoVideoAdapter || adapter == documentsAdapter || adapter == audioAdapter || adapter == voiceAdapter) {
+                    if (finalProgressView != null && finalProgressView.getParent() == null) {
+                        finalListView.addView(finalProgressView);
+                        RecyclerView.LayoutManager layoutManager = finalListView.getLayoutManager();
+                        if (layoutManager != null) {
+                            layoutManager.ignoreView(finalProgressView);
+                            finalProgressView.setAlpha(1f);
+                            ObjectAnimator progressFade = ObjectAnimator.ofFloat(finalProgressView, ALPHA, 1f, 0f);
+                            progressFade.setDuration(220);
+                            progressFade.addListener(new AnimatorListenerAdapter() {
+                                @Override
+                                public void onAnimationEnd(Animator animation) {
+                                    finalProgressView.setAlpha(1f);
+                                    layoutManager.stopIgnoringView(finalProgressView);
+                                    if (finalProgressView.getParent() == finalListView) {
+                                        finalListView.removeView(finalProgressView);
+                                    }
+                                }
+                            });
+                            progressFade.start();
+                        }
+                    }
                     if (addedMesages != null) {
                         int n = finalListView.getChildCount();
                         for (int i = 0; i < n; i++) {
@@ -7131,7 +7156,6 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
         chatUsersUpdatePending = false;
         pendingSortedChatUsers = null;
         pendingChatUsersInfo = null;
-        boolean tabVisibilityChanged = false;
         boolean firstData = false;
         boolean dataChanged = false;
         final ArrayList<Long> oldUserIds = chatUserIds;
@@ -7152,9 +7176,6 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
         }
         if (topicId == 0) {
             chatUsersAdapter.setParticipants(sortedUsers, chatInfo);
-            boolean showUsers = chatUsersAdapter.participants.size() > 5;
-            tabVisibilityChanged = showGroupUsersTab != showUsers;
-            showGroupUsersTab = showUsers;
             int oldCount = oldUserIds.size();
             if (chatInfo != null) {
                 groupUsersExpectedCount = Math.max(groupUsersExpectedCount, chatInfo.participants_count);
@@ -7178,9 +7199,6 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
                     page.listView.captureMemberContent();
                 }
             }
-        }
-        if (tabVisibilityChanged) {
-            updateTabs(true);
         }
         chatUsersAdapter.notifyDataSetChanged();
         for (int a = 0; a < mediaPages.length; a++) {
@@ -7410,9 +7428,11 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
     private boolean profileTransitionActive;
     private boolean profileTransitionOpening;
     private boolean profileOpeningTabsPending;
+    private float profileTransitionTabsBaseTranslationX;
     public void beginProfileTransition(boolean opening, boolean animatePanel) {
         if (scrollSlidingTextTabStrip != null) {
             scrollSlidingTextTabStrip.finishTabsTransition();
+            profileTransitionTabsBaseTranslationX = scrollSlidingTextTabStrip.getTranslationX();
             scrollSlidingTextTabStrip.setAlpha(opening && animatePanel ? 0f : 1f);
         }
         if (topPanelLayout == null) return;
@@ -7426,7 +7446,10 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
         profileTransitionActive = false;
         profileTransitionOpening = false;
         if (topPanelLayout != null) topPanelLayout.setAlpha(1f);
-        if (scrollSlidingTextTabStrip != null) scrollSlidingTextTabStrip.setAlpha(1f);
+        if (scrollSlidingTextTabStrip != null) {
+            scrollSlidingTextTabStrip.setTranslationX(profileTransitionTabsBaseTranslationX);
+            scrollSlidingTextTabStrip.setAlpha(1f);
+        }
     }
 
     public void onProfileTransitionFinished() {
@@ -7657,7 +7680,7 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
             if (hasSavedDialogs) {
                 tabs.add(new Pair<>(TAB_SAVED_DIALOGS, getString(R.string.SavedDialogsTab)));
             }
-            if (showGroupUsersTab || chatUsersAdapter.chatInfo != null) {
+            if (showGroupUsersTab) {
                 tabs.add(new Pair<>(TAB_GROUPUSERS, getString(R.string.GroupMembers)));
             }
             if (hasMedia[0] > 0) {
@@ -8050,8 +8073,7 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
                     mediaPages[a].emptyView.setVisibility(View.INVISIBLE);
                 }
             }
-            final boolean photos = mediaPages[a].selectedType == TAB_PHOTOVIDEO || isAnyStoryPageType(mediaPages[a].selectedType);
-            mediaPages[a].progressView.setLayoutParams(LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT, Gravity.FILL, photos ? 0 : 12, 48 + (photos ? 8 : 12), photos ? 0 : 12, photos ? 0 : 12));
+            updateLoadingViewLayout(mediaPages[a]);
             if (sections) {
                 mediaPages[a].listView.setSections(false);
             } else {
@@ -8069,7 +8091,7 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
                 mediaPages[a].setOutlineProvider(new ViewOutlineProvider() {
                     @Override
                     public void getOutline(View view, Outline outline) {
-                        outline.setRoundRect(0, dp(50), view.getWidth(), view.getHeight() + dp(24), dp(24));
+                        outline.setRoundRect(0, dp(50), view.getWidth(), view.getHeight(), dp(24));
                     }
                 });
                 mediaPages[a].setClipToOutline(true);
@@ -12585,17 +12607,23 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
     protected void onTabScroll(boolean scrolling) {}
 
     public static class InternalListView extends BlurredRecyclerView implements StoriesListPlaceProvider.ClippedView {
+        final ProfileListPadding profilePadding = new ProfileListPadding(this);
         private final ProfileContentFade profileContentFade = new ProfileContentFade();
         private final MessagePreviewCrossfade memberCrossfade = new MessagePreviewCrossfade(this);
         private boolean clipMemberContent;
         private boolean profileContentDrawn;
         private boolean profileContentArrivalHandled;
         void captureFirstProfileContent() {
+            captureFirstProfileContent(true);
+        }
+
+        void captureFirstProfileContent(boolean captureMemberSnapshot) {
             if (profileContentArrivalHandled) return;
             profileContentArrivalHandled = true;
             if (!profileContentDrawn) return;
             profileContentFade.markPresented();
-            if (SharedConfig.animationsEnabled() && getAlpha() > 0f && getChildCount() > 0 && !isComputingLayout()) {
+            if (captureMemberSnapshot && SharedConfig.animationsEnabled()
+                    && getAlpha() > 0f && getChildCount() > 0 && !isComputingLayout()) {
                 captureMemberContent();
             }
         }
@@ -12793,6 +12821,24 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
             (int) (storiesContainer != null && (isStoryAlbumPageType(type) || type == TAB_STORIES) ? storiesContainer.getVisibilityFactor() * dp(40) : 0) +
             (type == TAB_ARCHIVED_STORIES ? dp(64) : 0)
         );
+    }
+
+    private void updateLoadingViewLayout(MediaPage page) {
+        if (page == null || page.progressView == null) return;
+        boolean photos = page.selectedType == TAB_PHOTOVIDEO || isAnyStoryPageType(page.selectedType);
+        int side = photos ? 0 : dp(12);
+        int top = page.selectedType == TAB_GROUPUSERS
+                ? getPagePaddingTop(page.selectedType) + dp(4) : dp(48 + (photos ? 8 : 12));
+        FrameLayout.LayoutParams params = (FrameLayout.LayoutParams) page.progressView.getLayoutParams();
+        if (params == null) {
+            params = new FrameLayout.LayoutParams(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT, Gravity.FILL);
+        } else if (params.leftMargin == side && params.rightMargin == side
+                && params.topMargin == top && params.bottomMargin == side) {
+            return;
+        }
+        params.leftMargin = params.rightMargin = params.bottomMargin = side;
+        params.topMargin = top;
+        page.progressView.setLayoutParams(params);
     }
 
     public static class SharedMediaListView extends InternalListView {

@@ -2,6 +2,9 @@
 
 package app.nimarkogram.messenger.wsbypass;
 
+import app.nimarkogram.messenger.wsbypass.voip.VoipBypassConfig;
+import app.nimarkogram.messenger.wsbypass.voip.VoipRelayAuth;
+import org.telegram.messenger.UserConfig;
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.FileLog;
 import org.telegram.messenger.Utilities;
@@ -75,12 +78,12 @@ public final class NimarkoWsBypassController {
     }
 
     public boolean blockedByVpn() {
-        return app.nimarkogram.messenger.wsbypass.voip.VoipBypassConfig
+        return VoipBypassConfig
                 .isSuspendOnVpnEnabled() && NimarkoVpnDetector.isVpnActive();
     }
 
     private boolean blockedByVpnFresh() {
-        return app.nimarkogram.messenger.wsbypass.voip.VoipBypassConfig
+        return VoipBypassConfig
                 .isSuspendOnVpnEnabled() && NimarkoVpnDetector.isVpnActiveFresh();
     }
 
@@ -95,7 +98,7 @@ public final class NimarkoWsBypassController {
     }
 
     public String getConnectionState() {
-        if (!app.nimarkogram.messenger.wsbypass.voip.VoipBypassConfig
+        if (!VoipBypassConfig
                 .isDataBypassEnabled()) return STATE_OFF;
         if (blockedByVpn()) return STATE_VPN;
         if (running) {
@@ -113,14 +116,14 @@ public final class NimarkoWsBypassController {
     }
 
     public void ensureStarted() {
-        if (!app.nimarkogram.messenger.wsbypass.voip.VoipBypassConfig
+        if (!VoipBypassConfig
                 .isDataBypassEnabled() || enforceVpnSuspensionFresh()) return;
         if (running || starting.get()) return;
         startAsync();
     }
 
     public void ensureStartedSync() {
-        if (!app.nimarkogram.messenger.wsbypass.voip.VoipBypassConfig
+        if (!VoipBypassConfig
                 .isDataBypassEnabled() || enforceVpnSuspensionFresh()) return;
         long token = claimStart();
         if (token == 0L) return;
@@ -154,7 +157,7 @@ public final class NimarkoWsBypassController {
     public void onVpnStateChanged(boolean vpnActive) {
         
         boolean suspend = vpnActive
-                && app.nimarkogram.messenger.wsbypass.voip.VoipBypassConfig
+                && VoipBypassConfig
                 .isSuspendOnVpnEnabled();
         if (suspend) {
             suspendForVpn();
@@ -187,7 +190,7 @@ public final class NimarkoWsBypassController {
             
             if (blockedByVpnFresh()) return;
             try { ProxyApplier.restoreForVpn(); } catch (Throwable ignored) {}
-            if (app.nimarkogram.messenger.wsbypass.voip.VoipBypassConfig
+            if (VoipBypassConfig
                     .isDataBypassEnabled()) {
                 token = claimStartLocked();
             }
@@ -223,9 +226,9 @@ public final class NimarkoWsBypassController {
 
     public void onAppResume() {
         WlAccess.warm();
-        final boolean dataEnabled = app.nimarkogram.messenger.wsbypass.voip.VoipBypassConfig
+        final boolean dataEnabled = VoipBypassConfig
                 .isDataBypassEnabled();
-        final boolean suspendOnVpn = app.nimarkogram.messenger.wsbypass.voip.VoipBypassConfig
+        final boolean suspendOnVpn = VoipBypassConfig
                 .isSuspendOnVpnEnabled();
         if (!dataEnabled && !suspendOnVpn) {
             return;
@@ -238,7 +241,7 @@ public final class NimarkoWsBypassController {
                 
                 NimarkoVpnDetector.recheckNow();
                 WsBypassCore.getInstance().resetResilienceState();
-                if (app.nimarkogram.messenger.wsbypass.voip.VoipBypassConfig
+                if (VoipBypassConfig
                         .isDataBypassEnabled() && !enforceVpnSuspensionFresh()
                         && !running && !starting.get()) {
                     startAsync();
@@ -305,7 +308,7 @@ public final class NimarkoWsBypassController {
                 releaseStartLocked(token);
                 lastError = String.valueOf(startFailure.getMessage());
                 lastStartFailed = true;
-                if (app.nimarkogram.messenger.wsbypass.voip.VoipBypassConfig
+                if (VoipBypassConfig
                         .isDataBypassEnabled() && !blockedByVpn()) {
                     ensureWatchdogLocked();
                 }
@@ -320,7 +323,7 @@ public final class NimarkoWsBypassController {
             if (activeStartToken != token) return;
             try {
                 
-                if (!app.nimarkogram.messenger.wsbypass.voip.VoipBypassConfig
+                if (!VoipBypassConfig
                         .isDataBypassEnabled()) {
                     return; 
                 }
@@ -391,11 +394,11 @@ public final class NimarkoWsBypassController {
                 lastStartFailed = false;
                 lastError = "";
                 try {
-                    int account = org.telegram.messenger.UserConfig.selectedAccount;
+                    int account = UserConfig.selectedAccount;
                     WlAccess.warm();
                     WsRelayAuth.prefetchAsync(account);
-                    if (app.nimarkogram.messenger.wsbypass.voip.VoipBypassConfig.isVoipBypassEnabled()) {
-                        app.nimarkogram.messenger.wsbypass.voip.VoipRelayAuth.prefetchAsync(account);
+                    if (VoipBypassConfig.isVoipBypassEnabled()) {
+                        VoipRelayAuth.prefetchAsync(account);
                     }
                 } catch (Throwable ignored) {}
                 ensureWatchdogLocked();
@@ -462,7 +465,7 @@ public final class NimarkoWsBypassController {
     private void watchdogTick(long generation) {
         synchronized (lifecycleLock) {
             if (generation != watchdogGeneration || watchdogTask == null) return;
-            if (!app.nimarkogram.messenger.wsbypass.voip.VoipBypassConfig
+            if (!VoipBypassConfig
                     .isDataBypassEnabled()) return;
             
             if (blockedByVpnFresh()) {
@@ -505,7 +508,7 @@ public final class NimarkoWsBypassController {
     }
 
     private void restartCoreLocked() {
-        if (!app.nimarkogram.messenger.wsbypass.voip.VoipBypassConfig
+        if (!VoipBypassConfig
                 .isDataBypassEnabled() || activeStartToken != 0L) {
             return;
         }
@@ -535,7 +538,7 @@ public final class NimarkoWsBypassController {
 
     private static void cancelRelayAuthConnections() {
         WsRelayAuth.cancelPendingAuth();
-        app.nimarkogram.messenger.wsbypass.voip.VoipRelayAuth.cancelPendingAuth();
+        VoipRelayAuth.cancelPendingAuth();
     }
 
     private void ensureWatchdogLocked() {

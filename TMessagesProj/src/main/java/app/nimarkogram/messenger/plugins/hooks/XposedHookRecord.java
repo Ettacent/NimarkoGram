@@ -2,6 +2,7 @@
 
 package app.nimarkogram.messenger.plugins.hooks;
 
+import java.lang.reflect.Member;
 import de.robv.android.xposed.XC_MethodHook;
 import org.telegram.messenger.FileLog;
 
@@ -21,7 +22,7 @@ public class XposedHookRecord implements HookRecord {
         this.runtimeToken = runtimeToken;
     }
 
-    public java.lang.reflect.Member getHookedMember() {
+    public Member getHookedMember() {
         try {
             return unhookObject != null ? unhookObject.getHookedMethod() : null;
         } catch (Throwable t) {

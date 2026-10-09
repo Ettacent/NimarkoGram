@@ -2,6 +2,8 @@
 
 package app.nimarkogram.messenger.preferences;
 
+import app.nimarkogram.messenger.preferences.utils.SettingsRegistry;
+import app.nimarkogram.messenger.ui.RestartBulletin;
 import android.content.Context;
 import android.text.TextUtils;
 import android.view.View;
@@ -53,7 +55,9 @@ public abstract class BasePreferencesActivity extends BaseFragment {
     private SettingsSearchHighlight searchHighlight;
     private int listWorkGeneration;
     private Runnable initialSearchScroll;
+    private boolean toggleRowsRefreshPending;
     private final Runnable toggleRowsRefresh = () -> {
+        toggleRowsRefreshPending = false;
         if (listView != null && listView.adapter != null) {
             listView.adapter.update(true);
         }
@@ -107,7 +111,7 @@ public abstract class BasePreferencesActivity extends BaseFragment {
         this.layoutManager = universalRecyclerView.layoutManager;
         frameLayout.addView(this.listView, LayoutHelper.createFrame(-1, -1.0f));
         if (initialSearchItemId != 0) {
-            this.listView.post(initialSearchScroll);
+            initialSearchScroll.run();
         }
         this.fragmentView = frameLayout;
         // drawEdgeNavigationBar() is disabled so the system gesture indicator
@@ -157,7 +161,7 @@ public abstract class BasePreferencesActivity extends BaseFragment {
     }
 
     public boolean onLongClick(UItem uItem, View view, int i, float f, float f2) {
-        String alias = app.nimarkogram.messenger.preferences.utils.SettingsRegistry.getInstance()
+        String alias = SettingsRegistry.getInstance()
                 .getFirstSettingLink(getClass(), uItem);
         if (TextUtils.isEmpty(alias)) return false;
         showCopyLinkOptions(view, "tg://settings/" + alias);
@@ -205,7 +209,9 @@ public abstract class BasePreferencesActivity extends BaseFragment {
         layoutManager.scrollToPositionWithOffset(iFindPositionByItemId, AndroidUtilities.dp(80.0f));
     }
     protected void updateItemsAfterToggle() {
-        toggleRowsRefresh.run();
+        if (toggleRowsRefreshPending || listView == null) return;
+        toggleRowsRefreshPending = true;
+        listView.postOnAnimation(toggleRowsRefresh);
     }
     private void prepareListCallbacks() {
         final int generation = listWorkGeneration;
@@ -221,7 +227,9 @@ public abstract class BasePreferencesActivity extends BaseFragment {
         }
         if (listView != null) {
             listView.removeCallbacks(initialSearchScroll);
+            listView.removeCallbacks(toggleRowsRefresh);
         }
+        toggleRowsRefreshPending = false;
         initialSearchScroll = null;
     }
     @Override
@@ -279,7 +287,7 @@ public abstract class BasePreferencesActivity extends BaseFragment {
      * startup (e.g. systemFonts, springAnimation, snowflakes…).
      */
     public void showRestartBulletin() {
-        app.nimarkogram.messenger.ui.RestartBulletin.show(this);
+        RestartBulletin.show(this);
     }
 
     public void toggleBooleanSettingAndRefresh(UItem uItem, Consumer<Boolean> consumer) {

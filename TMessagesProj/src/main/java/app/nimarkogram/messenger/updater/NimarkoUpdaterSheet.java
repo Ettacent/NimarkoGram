@@ -2,6 +2,7 @@
 
 package app.nimarkogram.messenger.updater;
 
+import java.util.function.BooleanSupplier;
 import static org.telegram.messenger.LocaleController.getString;
 
 import android.content.Context;
@@ -572,7 +573,7 @@ public class NimarkoUpdaterSheet extends BottomSheet implements NimarkoUpdater.D
         if (fragment == null || fragment.getParentActivity() == null || fragment.getContext() == null) {
             return;
         }
-        java.util.function.BooleanSupplier navigation = fragment.captureNavigationRequest();
+        BooleanSupplier navigation = fragment.captureNavigationRequest();
         Utilities.globalQueue.postRunnable(() -> {
             NimarkoUpdater.getCurrentVersionCode();
             NimarkoUpdateConfig.getAutoOTA();

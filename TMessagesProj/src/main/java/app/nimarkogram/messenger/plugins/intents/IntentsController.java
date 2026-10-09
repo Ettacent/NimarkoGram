@@ -2,6 +2,7 @@
 
 package app.nimarkogram.messenger.plugins.intents;
 
+import app.nimarkogram.messenger.plugins.Plugin;
 import android.content.Intent;
 import android.net.Uri;
 import android.text.TextUtils;
@@ -263,7 +264,7 @@ public class IntentsController {
 
     private boolean isPluginActive(String pluginId) {
         try {
-            app.nimarkogram.messenger.plugins.Plugin p =
+            Plugin p =
                     PluginsController.getInstance().plugins.get(pluginId);
             return p != null && p.isEnabled();
         } catch (Throwable t) {

@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components;
 
 import android.content.Context;
@@ -284,6 +286,9 @@ public class EditTextEffects extends EditText {
         return offsetY;
     }
 
+    public float getTextDrawingOffsetY() {
+        return offsetY;
+    }
     private static Boolean allowHackingTextCanvasCache;
     public static boolean allowHackingTextCanvas() {
         if (allowHackingTextCanvasCache == null) {
@@ -307,7 +312,7 @@ public class EditTextEffects extends EditText {
     protected void onDraw(Canvas canvas) {
         canvas.save();
         if (clipToPadding && getScrollY() != 0) {
-            canvas.clipRect(-AndroidUtilities.dp(3), getScrollY() - super.getExtendedPaddingTop() - offsetY, getMeasuredWidth(), getMeasuredHeight() + getScrollY() + super.getExtendedPaddingBottom() - offsetY);
+            canvas.clipRect(-AndroidUtilities.dp(3), getScrollY() - super.getExtendedPaddingTop() - getTextDrawingOffsetY(), getMeasuredWidth(), getMeasuredHeight() + getScrollY() + super.getExtendedPaddingBottom() - getTextDrawingOffsetY());
         }
 
         final int spoilerPaddingLeft = getPaddingLeft();
@@ -363,7 +368,7 @@ public class EditTextEffects extends EditText {
                 canvas.restore();
             }
 
-            rect.set(0, (int) (getScrollY() - super.getExtendedPaddingTop() - offsetY), getWidth(), (int) (getMeasuredHeight() + getScrollY() + super.getExtendedPaddingBottom() - offsetY));
+            rect.set(0, (int) (getScrollY() - super.getExtendedPaddingTop() - getTextDrawingOffsetY()), getWidth(), (int) (getMeasuredHeight() + getScrollY() + super.getExtendedPaddingBottom() - getTextDrawingOffsetY()));
             canvas.save();
             canvas.clipRect(rect);
             canvas.translate(spoilerPaddingLeft, 0);

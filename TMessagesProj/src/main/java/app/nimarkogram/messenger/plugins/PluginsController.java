@@ -2,6 +2,15 @@
 
 package app.nimarkogram.messenger.plugins;
 
+import app.nimarkogram.messenger.banners.NimarkoBannerController;
+import app.nimarkogram.messenger.media.NimarkoMediaController;
+import app.nimarkogram.messenger.plugins.intents.IntentsController;
+import app.nimarkogram.messenger.plugins.ui.PluginUiRegistry;
+import app.nimarkogram.messenger.plugins.utils.PluginsWatchdog;
+import app.nimarkogram.messenger.utils.AppRestartHelper;
+import app.nimarkogram.messenger.wsbypass.WsBypassCore;
+import java.util.Objects;
+import java.util.function.Predicate;
 import android.content.SharedPreferences;
 import android.os.Build;
 import android.os.SystemClock;
@@ -66,8 +75,8 @@ public class PluginsController implements PluginsHooks {
     public static final ConcurrentHashMap<String, PluginsEngine> engines = new ConcurrentHashMap<>();
     private static final DispatchQueue pluginRegistryCleanupQueue =
             new DispatchQueue("pluginRegistryCleanupQueue");
-    private final app.nimarkogram.messenger.plugins.utils.PluginsWatchdog watchdog =
-            new app.nimarkogram.messenger.plugins.utils.PluginsWatchdog(this);
+    private final PluginsWatchdog watchdog =
+            new PluginsWatchdog(this);
     private final Object controllerLifecycleLock = new Object();
     private final ArrayList<Runnable> shutdownCompletionCallbacks =
             new ArrayList<>();
@@ -90,7 +99,7 @@ public class PluginsController implements PluginsHooks {
     private final AtomicLong controllerLifecycleEpoch =
             new AtomicLong(1L);
 
-    public app.nimarkogram.messenger.plugins.utils.PluginsWatchdog getWatchdog() { return watchdog; }
+    public PluginsWatchdog getWatchdog() { return watchdog; }
 
     static {
         
@@ -121,13 +130,13 @@ public class PluginsController implements PluginsHooks {
             if (this == other) return true;
             if (!(other instanceof InterestedPlugin)) return false;
             InterestedPlugin that = (InterestedPlugin) other;
-            return java.util.Objects.equals(pluginId, that.pluginId)
-                    && java.util.Objects.equals(runtimeToken, that.runtimeToken);
+            return Objects.equals(pluginId, that.pluginId)
+                    && Objects.equals(runtimeToken, that.runtimeToken);
         }
 
         @Override
         public int hashCode() {
-            return java.util.Objects.hash(pluginId, runtimeToken);
+            return Objects.hash(pluginId, runtimeToken);
         }
     }
 
@@ -138,11 +147,11 @@ public class PluginsController implements PluginsHooks {
     private volatile boolean hooksCacheDirty = true;
     public SharedPreferences preferences = ApplicationLoader.applicationContext.getSharedPreferences("plugin_settings", 0);
     
-    private final java.util.Set<String> enablingInProgress =
-            java.util.Collections.newSetFromMap(new ConcurrentHashMap<>());
-     
-    private final java.util.Set<String> startupActivations =
-            java.util.Collections.newSetFromMap(new ConcurrentHashMap<>());
+    private final Set<String> enablingInProgress =
+            Collections.newSetFromMap(new ConcurrentHashMap<>());
+
+    private final Set<String> startupActivations =
+            Collections.newSetFromMap(new ConcurrentHashMap<>());
     public static final int RUNTIME_TASK_DROP = 0;
     public static final int RUNTIME_TASK_WAIT = 1;
     public static final int RUNTIME_TASK_RUN = 2;
@@ -177,12 +186,12 @@ public class PluginsController implements PluginsHooks {
             PluginRuntimeToken token = (PluginRuntimeToken) other;
             return generation == token.generation
                     && instanceId == token.instanceId
-                    && java.util.Objects.equals(pluginId, token.pluginId);
+                    && Objects.equals(pluginId, token.pluginId);
         }
 
         @Override
         public int hashCode() {
-            return java.util.Objects.hash(pluginId, generation, instanceId);
+            return Objects.hash(pluginId, generation, instanceId);
         }
 
         @Override
@@ -224,8 +233,20 @@ public class PluginsController implements PluginsHooks {
      
     private final ConcurrentHashMap<PluginRuntimeToken, RuntimeSlot> runtimeSlotsByToken =
             new ConcurrentHashMap<>();
-    private final ThreadLocal<Deque<PluginRuntimeToken>> runtimeScopes =
-            ThreadLocal.withInitial(ArrayDeque::new);
+    private static final int MAX_RETAINED_RUNTIME_SCOPE_DEPTH = 32;
+
+    private static final class RuntimeScopeStack extends ArrayDeque<PluginRuntimeToken> {
+        int peakDepth;
+
+        @Override
+        public void push(PluginRuntimeToken token) {
+            super.push(token);
+            peakDepth = Math.max(peakDepth, size());
+        }
+    }
+
+    private final ThreadLocal<RuntimeScopeStack> runtimeScopes =
+            ThreadLocal.withInitial(RuntimeScopeStack::new);
 
     public static final class PluginInitializationToken {
         final String pluginId;
@@ -250,12 +271,12 @@ public class PluginsController implements PluginsHooks {
             if (!(other instanceof PluginInitializationToken)) return false;
             PluginInitializationToken token = (PluginInitializationToken) other;
             return generation == token.generation
-                    && java.util.Objects.equals(pluginId, token.pluginId);
+                    && Objects.equals(pluginId, token.pluginId);
         }
 
         @Override
         public int hashCode() {
-            return java.util.Objects.hash(pluginId, generation);
+            return Objects.hash(pluginId, generation);
         }
     }
      
@@ -394,19 +415,10 @@ public class PluginsController implements PluginsHooks {
         if (TextUtils.isEmpty(pluginId)) return null;
         synchronized (generationLock(pluginId)) {
             if (!isPluginEnableRequestedLocked(pluginId, generation)) {
-                PluginDebugLog.log("RUNTIME prepare rejected plugin="
-                        + pluginId + " generation=" + generation
-                        + " currentGeneration="
-                        + toggleGenerations.getOrDefault(pluginId, 0)
-                        + " requested="
-                        + pendingToggleState.get(pluginId));
                 return null;
             }
             RuntimeSlot previous = currentRuntimeByPlugin.get(pluginId);
             if (previous != null) {
-                PluginDebugLog.log("RUNTIME prepare revoking previous="
-                        + previous.token + " state=" + previous.state
-                        + " activeCalls=" + previous.activeCalls);
                 revokeRuntimeSlotLocked(previous);
             }
             PluginRuntimeToken token = new PluginRuntimeToken(
@@ -414,7 +426,6 @@ public class PluginsController implements PluginsHooks {
             RuntimeSlot slot = new RuntimeSlot(token);
             currentRuntimeByPlugin.put(pluginId, slot);
             runtimeSlotsByToken.put(token, slot);
-            PluginDebugLog.log("RUNTIME prepared token=" + token);
             return token;
         }
     }
@@ -467,7 +478,7 @@ public class PluginsController implements PluginsHooks {
                 PluginInitializationToken permit = initializationPermit.get();
                 if (permit == null
                         || permit.generation != token.generation
-                        || !java.util.Objects.equals(
+                        || !Objects.equals(
                                 permit.pluginId, token.pluginId)
                         || !isPluginEnableRequestedLocked(
                                 token.pluginId, token.generation)) {
@@ -482,16 +493,16 @@ public class PluginsController implements PluginsHooks {
 
     public void exitPluginRuntime(PluginRuntimeToken token) {
         if (token == null) return;
-        List<Runnable> listeners = Collections.emptyList();
-        Deque<PluginRuntimeToken> stack = runtimeScopes.get();
+        RuntimeScopeStack stack = runtimeScopes.get();
         if (!stack.isEmpty() && token.equals(stack.peek())) {
             stack.pop();
-        } else {
-            stack.removeFirstOccurrence(token);
+        } else if (!stack.removeFirstOccurrence(token)) {
+            return;
         }
-        if (stack.isEmpty()) {
-            runtimeScopes.remove();
+        if (stack.isEmpty() && stack.peakDepth > MAX_RETAINED_RUNTIME_SCOPE_DEPTH) {
+            runtimeScopes.set(new RuntimeScopeStack());
         }
+        List<Runnable> listeners = Collections.emptyList();
         synchronized (generationLock(token.pluginId)) {
             RuntimeSlot slot = runtimeSlotsByToken.get(token);
             if (slot != null && slot.activeCalls > 0) {
@@ -537,15 +548,12 @@ public class PluginsController implements PluginsHooks {
             RuntimeSlot slot = runtimeSlotsByToken.get(token);
             if (slot == null) return;
             if (slot.activeCalls != 0) {
-                PluginDebugLog.log("RUNTIME release rejected busy token="
-                        + token + " activeCalls=" + slot.activeCalls);
                 FileLog.w("nimarko: refusing to release busy runtime " + token
                         + " activeCalls=" + slot.activeCalls);
                 return;
             }
             slot.quiescenceListeners.clear();
             runtimeSlotsByToken.remove(token, slot);
-            PluginDebugLog.log("RUNTIME released token=" + token);
         }
     }
 
@@ -679,14 +687,6 @@ public class PluginsController implements PluginsHooks {
                     || slot.state != RuntimeState.PREPARING
                     || !isPluginEnableRequestedLocked(token.pluginId, token.generation)
                     || plugins.get(token.pluginId) != plugin) {
-                PluginDebugLog.log("RUNTIME commit rejected token=" + token
-                        + " slot=" + (slot != null ? slot.token : null)
-                        + " state=" + (slot != null ? slot.state : null)
-                        + " requested="
-                        + pendingToggleState.get(token.pluginId)
-                        + " currentGeneration="
-                        + toggleGenerations.getOrDefault(
-                                token.pluginId, 0));
                 return false;
             }
             plugin.setError(null);
@@ -698,9 +698,6 @@ public class PluginsController implements PluginsHooks {
             callbacksToActivate =
                     new ArrayList<>(slot.preparingCallbacks);
             slot.preparingCallbacks.clear();
-            PluginDebugLog.log("RUNTIME committed token=" + token
-                    + " callbacksToActivate="
-                    + callbacksToActivate.size());
         }
         for (RuntimeCallbackHolder holder : callbacksToActivate) {
             try {
@@ -722,10 +719,6 @@ public class PluginsController implements PluginsHooks {
         synchronized (generationLock(token.pluginId)) {
             RuntimeSlot slot = runtimeSlotsByToken.get(token);
             if (slot != null && slot.token.equals(token)) {
-                PluginDebugLog.log("RUNTIME revoke token=" + token
-                        + " state=" + slot.state
-                        + " activeCalls=" + slot.activeCalls
-                        + " holders=" + slot.callbackHolders.size());
                 revokeRuntimeSlotLocked(slot);
                 currentRuntimeByPlugin.remove(token.pluginId, slot);
             }
@@ -901,7 +894,7 @@ public class PluginsController implements PluginsHooks {
     public void endPluginInitialization(String pluginId, int generation) {
         PluginInitializationToken permit = initializationPermit.get();
         if (permit != null && permit.generation == generation
-                && java.util.Objects.equals(permit.pluginId, pluginId)) {
+                && Objects.equals(permit.pluginId, pluginId)) {
             initializationPermit.remove();
             finishPluginInitializationPermit(permit);
         }
@@ -909,7 +902,7 @@ public class PluginsController implements PluginsHooks {
 
     public void endPluginInitialization(String pluginId) {
         PluginInitializationToken permit = initializationPermit.get();
-        if (permit != null && java.util.Objects.equals(permit.pluginId, pluginId)) {
+        if (permit != null && Objects.equals(permit.pluginId, pluginId)) {
             initializationPermit.remove();
             finishPluginInitializationPermit(permit);
         }
@@ -943,7 +936,7 @@ public class PluginsController implements PluginsHooks {
         PluginRuntimeToken scoped = stack.peek();
         if (scoped != null) {
             RuntimeSlot slot = currentRuntimeByPlugin.get(pluginId);
-            return java.util.Objects.equals(scoped.pluginId, pluginId)
+            return Objects.equals(scoped.pluginId, pluginId)
                     && slot != null
                     && slot.token.equals(scoped)
                     && slot.state != RuntimeState.REVOKED
@@ -952,7 +945,7 @@ public class PluginsController implements PluginsHooks {
         }
         
         PluginInitializationToken permit = initializationPermit.get();
-        if (permit != null && java.util.Objects.equals(permit.pluginId, pluginId)) {
+        if (permit != null && Objects.equals(permit.pluginId, pluginId)) {
             RuntimeSlot slot = currentRuntimeByPlugin.get(pluginId);
             return slot != null
                     && slot.state != RuntimeState.REVOKED
@@ -1022,9 +1015,6 @@ public class PluginsController implements PluginsHooks {
     }
 
     private final Runnable updateNotificationRunnable = () -> {
-        PluginDebugLog.log("CTRL pluginsUpdated dispatch on UI"
-                + " pending=" + pendingToggleState.size()
-                + " enabling=" + enablingInProgress.size());
         NotificationCenter.getGlobalInstance().postNotificationNameOnUIThread(NotificationCenter.pluginsUpdated);
         NotificationCenter.getGlobalInstance().postNotificationNameOnUIThread(NotificationCenter.pluginMenuItemsUpdated);
     };
@@ -1269,7 +1259,6 @@ public class PluginsController implements PluginsHooks {
     }
 
     public void init(final boolean startWithSafeMode, final Runnable runnable) {
-        FileLog.d("nimarko: PluginsController.init() begin");
         if (!isPluginEngineSupported() || !NimarkoConfig.pluginsEngine) {
             if (runnable != null) {
                 runnable.run();
@@ -1289,7 +1278,7 @@ public class PluginsController implements PluginsHooks {
                     }
                     FileLog.w("nimarko: refusing in-process plugin "
                             + "initialization after failed shutdown");
-                    app.nimarkogram.messenger.utils.AppRestartHelper
+                    AppRestartHelper
                             .triggerRebirth(
                                     ApplicationLoader.applicationContext);
                 });
@@ -1530,7 +1519,7 @@ public class PluginsController implements PluginsHooks {
         }
         FileLog.e("nimarko: plugin engine initialization stopped: " + reason);
         AndroidUtilities.runOnUIThread(() ->
-                app.nimarkogram.messenger.utils.AppRestartHelper
+                AppRestartHelper
                         .triggerRebirth(
                                 ApplicationLoader.applicationContext));
     }
@@ -1574,7 +1563,6 @@ public class PluginsController implements PluginsHooks {
         } catch (Throwable th) {
             FileLog.e("nimarko: watchdog start failed", th);
         }
-        FileLog.d("nimarko: PluginsController.init() end success=" + success);
         for (Runnable completion : completionCallbacks) {
             try {
                 completion.run();
@@ -1692,7 +1680,7 @@ public class PluginsController implements PluginsHooks {
                 new ArrayList<>(currentRuntimeByPlugin.values())) {
             if (slot == null) continue;
             revokePluginRuntime(slot.token);
-            app.nimarkogram.messenger.plugins.intents.IntentsController
+            IntentsController
                     .getInstance()
                     .removeIntentHooksByPluginId(
                             slot.token.getPluginId(), slot.token);
@@ -1731,7 +1719,6 @@ public class PluginsController implements PluginsHooks {
                     new ArrayList<>(shutdownCompletionCallbacks);
             shutdownCompletionCallbacks.clear();
         }
-        FileLog.d("nimarko: PluginsController shutdown complete");
         for (Runnable completion : completionCallbacks) {
             try {
                 completion.run();
@@ -1802,7 +1789,6 @@ public class PluginsController implements PluginsHooks {
     }
 
     public void restart(final boolean startWithSafeMode) {
-        FileLog.d("nimarko: PluginsController.restart(startWithSafeMode=" + startWithSafeMode + ")");
         PluginsEngine pythonEngine = engines.get(
                 PluginsConstants.PYTHON);
         if (pythonEngine instanceof PythonPluginsEngine
@@ -1810,7 +1796,7 @@ public class PluginsController implements PluginsHooks {
                         .requiresProcessRestart()) {
             FileLog.w("nimarko: Python lifecycle is wedged; "
                     + "performing a clean process restart");
-            app.nimarkogram.messenger.utils.AppRestartHelper
+            AppRestartHelper
                     .triggerRebirth(
                             ApplicationLoader.applicationContext);
             return;
@@ -1828,13 +1814,13 @@ public class PluginsController implements PluginsHooks {
                             .requiresProcessRestart())) {
                 FileLog.w("nimarko: Python lifecycle wedged during shutdown; "
                         + "performing a clean process restart");
-                app.nimarkogram.messenger.utils.AppRestartHelper
+                AppRestartHelper
                         .triggerRebirth(
                                 ApplicationLoader.applicationContext);
                 return;
             }
             if (NimarkoConfig.pluginsEngine) {
-                init(startWithSafeMode, () -> FileLog.d("nimarko: PluginsController.restart() complete"));
+                init(startWithSafeMode, null);
             }
         });
     }
@@ -1847,17 +1833,9 @@ public class PluginsController implements PluginsHooks {
     }
 
     public void setPluginEnabled(final String str, final boolean z, final Utilities.Callback<String> callback) {
-        PluginDebugLog.log("CTRL setPluginEnabled request plugin=" + str
-                + " target=" + z
-                + " callback=" + (callback != null)
-                + " thread=" + Thread.currentThread().getName());
         final long requestEpoch;
         synchronized (controllerLifecycleLock) {
             if (shutdownInProgress) {
-                PluginDebugLog.log("CTRL toggle rejected: shutdown plugin="
-                        + str + " target=" + z
-                        + " lifecycleEpoch="
-                        + controllerLifecycleEpoch.get());
                 if (callback != null) {
                     AndroidUtilities.runOnUIThread(
                             () -> callback.run(null));
@@ -1970,16 +1948,6 @@ public class PluginsController implements PluginsHooks {
                 enablingInProgress.add(str);
                 immediateCleanup = null;
             }
-            PluginDebugLog.log("CTRL toggle published plugin=" + str
-                    + " target=" + z
-                    + " generation=" + generation
-                    + " lifecycleEpoch=" + requestEpoch
-                    + " priorPending=" + prior
-                    + " runtime="
-                    + (currentRuntimeByPlugin.get(str) != null
-                            ? currentRuntimeByPlugin.get(str).token : null)
-                    + " cleanup="
-                    + (immediateCleanup != null));
         }
         
         if (!z) {
@@ -1995,32 +1963,16 @@ public class PluginsController implements PluginsHooks {
         
         if (prior != null) {
             
-            PluginDebugLog.log("CTRL toggle coalesced plugin=" + str
-                    + " target=" + z
-                    + " generation=" + generation
-                    + " replacedPending=" + prior);
             FileLog.d("nimarko: coalesced toggle for " + str + " (target=" + z + ")");
             return;
         }
         boolean posted = Utilities.pluginsQueue.postRunnable(
                 () -> runToggleLoop(str, generation, requestEpoch));
-        PluginDebugLog.log("CTRL toggle queued plugin=" + str
-                + " target=" + z
-                + " generation=" + generation
-                + " posted=" + posted
-                + " queueAlive=" + Utilities.pluginsQueue.isAlive());
     }
 
     private void runToggleLoop(
             String str, int scheduledGeneration, long scheduledEpoch) {
-        PluginDebugLog.log("CTRL toggle-loop enter plugin=" + str
-                + " scheduledGeneration=" + scheduledGeneration
-                + " scheduledEpoch=" + scheduledEpoch
-                + " controllerEpoch="
-                + controllerLifecycleEpoch.get());
         if (!isControllerLifecycleCurrent(scheduledEpoch)) {
-            PluginDebugLog.log("CTRL toggle-loop stale lifecycle plugin="
-                    + str + " scheduledEpoch=" + scheduledEpoch);
             return;
         }
         final boolean targetState;
@@ -2031,28 +1983,14 @@ public class PluginsController implements PluginsHooks {
             }
             Boolean target = pendingToggleState.get(str);
             if (target == null) {
-                PluginDebugLog.log("CTRL toggle-loop no pending state plugin="
-                        + str);
                 return;
             }
             targetState = target;
             appliedGeneration = toggleGenerations.getOrDefault(
                     str, scheduledGeneration);
-            RuntimeSlot slot = currentRuntimeByPlugin.get(str);
-            PluginDebugLog.log("CTRL toggle-loop snapshot plugin=" + str
-                    + " target=" + targetState
-                    + " appliedGeneration=" + appliedGeneration
-                    + " runtime=" + (slot != null ? slot.token : null)
-                    + " runtimeState="
-                    + (slot != null ? slot.state : null)
-                    + " activeCalls="
-                    + (slot != null ? slot.activeCalls : 0));
         }
         PluginsEngine pluginEngine = getPluginEngine(str);
         if (pluginEngine == null) {
-            PluginDebugLog.log("CTRL toggle-loop engine missing plugin="
-                    + str + " target=" + targetState
-                    + " generation=" + appliedGeneration);
             List<PendingToggleCallback> callbacks = Collections.emptyList();
             boolean retry = false;
             int retryGeneration = appliedGeneration;
@@ -2069,8 +2007,6 @@ public class PluginsController implements PluginsHooks {
             }
             if (retry) {
                 final int generationToRetry = retryGeneration;
-                PluginDebugLog.log("CTRL toggle-loop retry without engine plugin="
-                        + str + " generation=" + generationToRetry);
                 Utilities.pluginsQueue.postRunnable(
                         () -> runToggleLoop(
                                 str, generationToRetry, scheduledEpoch));
@@ -2084,12 +2020,6 @@ public class PluginsController implements PluginsHooks {
         }
         final AtomicBoolean completionOnce = new AtomicBoolean(false);
         Utilities.Callback<String> engineCompletion = errStr -> {
-            PluginDebugLog.log("CTRL engine callback plugin=" + str
-                    + " applied=" + targetState
-                    + " generation=" + appliedGeneration
-                    + " error=" + (errStr != null)
-                    + " callbackThread="
-                    + Thread.currentThread().getName());
             if (!completionOnce.compareAndSet(false, true)) {
                 FileLog.w("nimarko: duplicate plugin toggle callback ignored for "
                         + str + "@" + appliedGeneration);
@@ -2110,11 +2040,6 @@ public class PluginsController implements PluginsHooks {
                 
                 FileLog.d("nimarko: reconciling toggle for " + str
                         + " (applied=" + targetState + ", latest=" + latest + ")");
-                PluginDebugLog.log("CTRL toggle reconcile plugin=" + str
-                        + " applied=" + targetState
-                        + "@" + appliedGeneration
-                        + " latest=" + latest
-                        + "@" + latestGeneration);
                 Utilities.pluginsQueue.postRunnable(() -> runToggleLoop(
                         str, latestGeneration, scheduledEpoch));
             } else {
@@ -2141,11 +2066,6 @@ public class PluginsController implements PluginsHooks {
             }
         };
         try {
-            PluginDebugLog.log("CTRL engine invoke plugin=" + str
-                    + " target=" + targetState
-                    + " generation=" + appliedGeneration
-                    + " engine="
-                    + pluginEngine.getClass().getSimpleName());
             pluginEngine.setPluginEnabled(
                     str, targetState, appliedGeneration,
                     engineCompletion);
@@ -2516,7 +2436,7 @@ public class PluginsController implements PluginsHooks {
             record.releaseCallback(record.runtimeToken);
             menuItemsDetached = true;
         }
-        app.nimarkogram.messenger.plugins.intents.IntentsController.getInstance()
+        IntentsController.getInstance()
                 .removeIntentHooksByPluginId(str, detachToken);
         
         PluginRuntimeToken delayedCleanupToken = detachToken;
@@ -2540,15 +2460,6 @@ public class PluginsController implements PluginsHooks {
 
     private void finishPluginDeactivation(PluginCleanup cleanup) {
         if (cleanup == null) return;
-        PluginDebugLog.log("CTRL deactivation begin plugin="
-                + cleanup.pluginId
-                + " runtime=" + cleanup.runtimeToken
-                + " quiescence=" + cleanup.quiescenceToken
-                + " hooks=" + cleanup.detachedHooks.size()
-                + " settings=" + cleanup.settingsDetached
-                + " menuItems=" + cleanup.menuItemsDetached
-                + " pythonRegistries="
-                + cleanup.cleanPythonRegistries);
         if (cleanup.settingsDetached) {
             AndroidUtilities.runOnUIThread(() ->
                     NotificationCenter.getGlobalInstance().postNotificationNameOnUIThread(
@@ -2562,10 +2473,10 @@ public class PluginsController implements PluginsHooks {
         }
         if (cleanup.cleanPythonRegistries) {
             if (cleanup.runtimeToken != null) {
-                app.nimarkogram.messenger.plugins.ui.PluginUiRegistry.cleanup(
+                PluginUiRegistry.cleanup(
                         cleanup.runtimeToken);
             } else {
-                app.nimarkogram.messenger.plugins.ui.PluginUiRegistry.cleanupPlugin(
+                PluginUiRegistry.cleanupPlugin(
                         cleanup.pluginId);
             }
         }
@@ -2574,10 +2485,7 @@ public class PluginsController implements PluginsHooks {
         if (Thread.currentThread() == queue) {
             externalCleanup.run();
         } else {
-            boolean posted = queue.postRunnable(externalCleanup);
-            PluginDebugLog.log("CTRL deactivation hook cleanup queued plugin="
-                    + cleanup.pluginId + " posted=" + posted
-                    + " queueAlive=" + queue.isAlive());
+            queue.postRunnable(externalCleanup);
         }
         if (cleanup.cleanPythonRegistries) {
             runWhenPluginRuntimeQuiescent(cleanup.quiescenceToken, () -> {
@@ -2586,9 +2494,6 @@ public class PluginsController implements PluginsHooks {
                         () -> cleanupPythonRegistries(cleanup));
             });
         }
-        PluginDebugLog.log("CTRL deactivation published plugin="
-                + cleanup.pluginId + " runtime="
-                + cleanup.runtimeToken);
     }
 
     private void cleanupDetachedHooks(PluginCleanup cleanup) {
@@ -2648,7 +2553,7 @@ public class PluginsController implements PluginsHooks {
                 return true;
             }
         } catch (Throwable t) {
-            org.telegram.messenger.FileLog.e("nimarko: maybeShowInstallDialog failed", t);
+            FileLog.e("nimarko: maybeShowInstallDialog failed", t);
         }
         return false;
     }
@@ -2663,7 +2568,7 @@ public class PluginsController implements PluginsHooks {
         }
         File file = new File(pluginInstallParams.filePath);
         
-        if (app.nimarkogram.messenger.media.NimarkoMediaController.isNimarkoMediaPluginFile(file)) {
+        if (NimarkoMediaController.isNimarkoMediaPluginFile(file)) {
             BulletinFactory.of(baseFragment)
                     .createSimpleBulletin(R.raw.info,
                             AndroidUtilities.replaceTags(LocaleController.getString(R.string.NM_MediaBuiltIn)))
@@ -2671,7 +2576,7 @@ public class PluginsController implements PluginsHooks {
             return;
         }
         
-        if (app.nimarkogram.messenger.banners.NimarkoBannerController.isBannerPluginFile(file)) {
+        if (NimarkoBannerController.isBannerPluginFile(file)) {
             BulletinFactory.of(baseFragment)
                     .createSimpleBulletin(R.raw.info,
                             AndroidUtilities.replaceTags(LocaleController.getString(R.string.NM_BAN_PluginIntegrated)))
@@ -2679,7 +2584,7 @@ public class PluginsController implements PluginsHooks {
             return;
         }
         
-        if (app.nimarkogram.messenger.wsbypass.WsBypassCore.isWsBypassPluginFile(file)) {
+        if (WsBypassCore.isWsBypassPluginFile(file)) {
             BulletinFactory.of(baseFragment)
                     .createSimpleBulletin(R.raw.info,
                             AndroidUtilities.replaceTags(LocaleController.getString(R.string.NM_WSBypassBuiltIn)))
@@ -2908,7 +2813,7 @@ public class PluginsController implements PluginsHooks {
         addHook(str, new EventHookRecord(str, str2, z, i), "Added event hook '" + str2 + "' for plugin " + str);
     }
 
-    private void removeHook(String str, java.util.function.Predicate<HookRecord> predicate, String str2) {
+    private void removeHook(String str, Predicate<HookRecord> predicate, String str2) {
         if (TextUtils.isEmpty(str)) return;
         final List<HookRecord> toRemove;
         synchronized (generationLock(str)) {
@@ -2928,7 +2833,7 @@ public class PluginsController implements PluginsHooks {
     }
 
     public void removeEventHook(String str, final String str2) {
-        removeHook(str, hookRecord -> (hookRecord instanceof EventHookRecord) && java.util.Objects.equals(((EventHookRecord) hookRecord).getHookName(), str2), "Removed event hook(s) matching name '" + str2 + "' for plugin " + str);
+        removeHook(str, hookRecord -> (hookRecord instanceof EventHookRecord) && Objects.equals(((EventHookRecord) hookRecord).getHookName(), str2), "Removed event hook(s) matching name '" + str2 + "' for plugin " + str);
     }
 
     public void addXposedHook(String str, XC_MethodHook.Unhook unhook) {
@@ -3110,14 +3015,14 @@ public class PluginsController implements PluginsHooks {
         return plugin != null && plugin.isEnabled() && !plugin.hasError();
     }
 
-    public java.util.List<MenuItemRecord> getMenuItemsForLocation(String str, MenuContextBuilder menuContextBuilder) {
+    public List<MenuItemRecord> getMenuItemsForLocation(String str, MenuContextBuilder menuContextBuilder) {
         if (menuContextBuilder == null) {
             return getMenuItemsForLocation(str, new HashMap<>());
         }
         return getMenuItemsForLocation(str, menuContextBuilder.build());
     }
 
-    public java.util.List<MenuItemRecord> getMenuItemsForLocation(String str, Map<String, Object> map) {
+    public List<MenuItemRecord> getMenuItemsForLocation(String str, Map<String, Object> map) {
         if (!isPluginEngineAvailable() || TextUtils.isEmpty(str)) {
             return Collections.emptyList();
         }
@@ -3139,10 +3044,6 @@ public class PluginsController implements PluginsHooks {
     }
 
     void notifyPluginsChanged() {
-        PluginDebugLog.log("CTRL notifyPluginsChanged pending="
-                + pendingToggleState.size()
-                + " enabling=" + enablingInProgress.size()
-                + " runtimes=" + currentRuntimeByPlugin.size());
         AndroidUtilities.cancelRunOnUIThread(this.updateNotificationRunnable);
         AndroidUtilities.runOnUIThread(this.updateNotificationRunnable, 150L);
     }
@@ -3216,7 +3117,7 @@ public class PluginsController implements PluginsHooks {
             long revision = interestedPluginsRevision.get();
             rebuildHooksCacheIfNeeded();
             HashMap<InterestedPlugin, Integer> map = new HashMap<>();
-            java.util.List<EventHookRecord> list2 = this.exactMatchEventHooksCache.get(str);
+            List<EventHookRecord> list2 = this.exactMatchEventHooksCache.get(str);
             if (list2 != null) {
                 for (final EventHookRecord eventHookRecord : list2) {
                     map.merge(
@@ -3267,7 +3168,7 @@ public class PluginsController implements PluginsHooks {
         }
     }
 
-    java.util.List<String> getInterestedPluginIds(String str) {
+    List<String> getInterestedPluginIds(String str) {
         return getInterestedPlugins(str).stream()
                 .map(owner -> owner.pluginId)
                 .collect(Collectors.toList());
@@ -3303,7 +3204,7 @@ public class PluginsController implements PluginsHooks {
     private boolean pluginImplementsHook(String pluginId, String pythonHookName) {
         Plugin p = this.plugins.get(pluginId);
         if (p == null) return false;
-        java.util.Set<String> impl = p.implementedHooks;
+        Set<String> impl = p.implementedHooks;
         if (impl == null) return true;
         return impl.contains(pythonHookName);
     }

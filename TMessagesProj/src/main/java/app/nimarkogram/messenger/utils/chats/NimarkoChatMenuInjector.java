@@ -7,6 +7,7 @@
 
 package app.nimarkogram.messenger.utils.chats;
 
+import org.telegram.messenger.ApplicationLoader;
 import static org.telegram.messenger.LocaleController.getString;
 
 import android.Manifest;
@@ -297,11 +298,11 @@ public final class NimarkoChatMenuInjector {
         }
         
         if (available) {
-            int state = org.telegram.tgnet.ConnectionsManager.getInstance(fragment.getCurrentAccount()).getConnectionState();
-            boolean connected = state == org.telegram.tgnet.ConnectionsManager.ConnectionStateConnected
-                    || state == org.telegram.tgnet.ConnectionsManager.ConnectionStateUpdating;
-            android.content.SharedPreferences prefs = org.telegram.messenger.ApplicationLoader.applicationContext
-                    .getSharedPreferences("mainconfig", android.content.Context.MODE_PRIVATE);
+            int state = ConnectionsManager.getInstance(fragment.getCurrentAccount()).getConnectionState();
+            boolean connected = state == ConnectionsManager.ConnectionStateConnected
+                    || state == ConnectionsManager.ConnectionStateUpdating;
+            SharedPreferences prefs = ApplicationLoader.applicationContext
+                    .getSharedPreferences("mainconfig", Context.MODE_PRIVATE);
             boolean proxyEnabled = prefs.getBoolean("proxy_enabled", false);
             if (proxyEnabled && connected) available = false;
         }

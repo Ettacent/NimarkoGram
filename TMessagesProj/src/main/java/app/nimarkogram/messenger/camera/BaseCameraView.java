@@ -2,6 +2,7 @@
 
 package app.nimarkogram.messenger.camera;
 
+import android.util.AttributeSet;
 import android.content.Context;
 import android.graphics.Bitmap;
 import android.graphics.drawable.Drawable;
@@ -30,11 +31,11 @@ public abstract class BaseCameraView extends FrameLayout {
         super(context);
     }
 
-    public BaseCameraView(Context context, @Nullable android.util.AttributeSet attrs) {
+    public BaseCameraView(Context context, @Nullable AttributeSet attrs) {
         super(context, attrs);
     }
 
-    public BaseCameraView(Context context, @Nullable android.util.AttributeSet attrs, int defStyleAttr) {
+    public BaseCameraView(Context context, @Nullable AttributeSet attrs, int defStyleAttr) {
         super(context, attrs, defStyleAttr);
     }
 

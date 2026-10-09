@@ -1,5 +1,8 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components;
 
+import app.nimarkogram.messenger.utils.NimarkoAppMotionBlur;
 import android.animation.Animator;
 import android.animation.AnimatorListenerAdapter;
 import android.annotation.SuppressLint;
@@ -285,6 +288,7 @@ public class SenderSelectPopup extends ActionBarPopupWindow {
                     }
                     AndroidUtilities.setPreferredMaxRefreshRate(windowManager, bulletinContainer, params);
                     windowManager.addView(bulletinContainer, params);
+                    NimarkoAppMotionBlur.attachRoot(bulletinContainer);
                 }
 
                 if (parentFragment != null) {

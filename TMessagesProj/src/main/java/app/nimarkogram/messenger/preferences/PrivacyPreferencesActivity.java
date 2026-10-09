@@ -2,6 +2,8 @@
 
 package app.nimarkogram.messenger.preferences;
 
+import app.nimarkogram.messenger.utils.LockedChats;
+import org.telegram.messenger.MessagesController;
 import android.content.Context;
 import android.content.Intent;
 import android.os.Build;
@@ -75,7 +77,7 @@ public class PrivacyPreferencesActivity extends BasePreferencesActivity {
                         LocaleController.getString(R.string.NM_PR_AskBioOpenSavedMessages_Desc))
                 .setChecked(NimarkoConfig.askBiometricsToOpenSavedMessages));
         if (NimarkoConfig.askBiometricsToOpenChat) {
-            int count = app.nimarkogram.messenger.utils.LockedChats.count(currentAccount);
+            int count = LockedChats.count(currentAccount);
             items.add(asSettingsValue(ID_LOCKED_CHATS, IconBackgroundColors.GREEN,
                     R.drawable.msg_saved,
                     LocaleController.getString(R.string.NM_PR_LockedChats), String.valueOf(count)));
@@ -130,7 +132,7 @@ public class PrivacyPreferencesActivity extends BasePreferencesActivity {
             applyCheck(item, view, NimarkoConfig.hideProxySponsor);
             for (int account = 0; account < UserConfig.MAX_ACCOUNT_COUNT; account++) {
                 if (UserConfig.getInstance(account).isClientActivated()) {
-                    org.telegram.messenger.MessagesController.getInstance(account).checkPromoInfo(true);
+                    MessagesController.getInstance(account).checkPromoInfo(true);
                 }
             }
         } else if (id == ID_DELETE_ACCOUNT) {

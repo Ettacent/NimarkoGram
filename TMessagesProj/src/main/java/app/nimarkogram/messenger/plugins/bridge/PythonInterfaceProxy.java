@@ -143,14 +143,19 @@ public final class PythonInterfaceProxy implements
         }
 
         String pluginId = runtimeToken.getPluginId();
-        controller.getWatchdog().onPluginExecutionStarted(pluginId);
-        long diagnosticToken = NimarkoCrashContext.beginInvocation();
-        long diagnosticStart = NimarkoCrashContext.invocationStartedMs(diagnosticToken);
-        String diagnosticOwner = diagnosticToken == 0 ? ""
-                : runtimeToken.getGeneration() + ":" + runtimeToken.getInstanceId();
-        NimarkoCrashContext.pythonPhase(diagnosticToken, diagnosticStart,
-                "interface_enter", method.getName(), pluginId, diagnosticOwner);
+        boolean watchdogStarted = false;
+        long diagnosticToken = 0;
+        long diagnosticStart = 0;
+        String diagnosticOwner = "";
         try {
+            controller.getWatchdog().onPluginExecutionStarted(pluginId);
+            watchdogStarted = true;
+            diagnosticToken = NimarkoCrashContext.beginInvocation();
+            diagnosticStart = NimarkoCrashContext.invocationStartedMs(diagnosticToken);
+            diagnosticOwner = diagnosticToken == 0 ? ""
+                    : runtimeToken.getGeneration() + ":" + runtimeToken.getInstanceId();
+            NimarkoCrashContext.pythonPhase(diagnosticToken, diagnosticStart,
+                    "interface_enter", method.getName(), pluginId, diagnosticOwner);
             PyObject result;
             if (method.getDeclaringClass() == DialogsActivity.DialogsActivityDelegate.class
                     && "didSelectDialogs".equals(method.getName())) {
@@ -193,10 +198,18 @@ public final class PythonInterfaceProxy implements
                     + pluginId + ": " + method.getName(), failure);
             return defaultValue(method.getReturnType());
         } finally {
-            NimarkoCrashContext.pythonPhase(diagnosticToken, diagnosticStart,
-                    "interface_exit", method.getName(), pluginId, diagnosticOwner);
-            controller.getWatchdog().onPluginExecutionFinished(pluginId);
-            controller.exitPluginRuntime(runtimeToken);
+            try {
+                try {
+                    NimarkoCrashContext.pythonPhase(diagnosticToken, diagnosticStart,
+                            "interface_exit", method.getName(), pluginId, diagnosticOwner);
+                } finally {
+                    if (watchdogStarted) {
+                        controller.getWatchdog().onPluginExecutionFinished(pluginId);
+                    }
+                }
+            } finally {
+                controller.exitPluginRuntime(runtimeToken);
+            }
         }
     }
 

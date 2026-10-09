@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 5.x.x.
  * It is licensed under GNU GPL v. 2 or later.
@@ -10,6 +12,7 @@ package org.telegram.ui.ActionBar;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
 
+import app.nimarkogram.messenger.utils.NimarkoAppMotionBlur;
 import android.animation.Animator;
 import android.animation.AnimatorListenerAdapter;
 import android.animation.AnimatorSet;
@@ -1642,6 +1645,7 @@ public class BottomSheet extends Dialog implements BaseFragment.AttachedSheet {
     @Override
     protected void onStart() {
         super.onStart();
+        NimarkoAppMotionBlur.attachWindow(getWindow());
     }
 
     public void setUseLightStatusBar(boolean value) {

@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /**
  * This file is part of NimarkoGram for Android.
  * It is licensed under GNU GPL v. 2 or later.
@@ -12,6 +14,7 @@
 
 package app.nimarkogram.messenger.camera;
 
+import android.view.MotionEvent;
 import static org.telegram.messenger.LocaleController.getString;
 
 import android.animation.Animator;
@@ -308,9 +311,9 @@ public class CameraTypeSelector extends LinearLayout {
     }
 
     @Override
-    public boolean dispatchTouchEvent(android.view.MotionEvent ev) {
-        
-        if (ev.getActionMasked() == android.view.MotionEvent.ACTION_DOWN
+    public boolean dispatchTouchEvent(MotionEvent ev) {
+
+        if (ev.getActionMasked() == MotionEvent.ACTION_DOWN
                 && ev.getX() > numberPicker.getLeft() - AndroidUtilities.dp(24)) {
             requestDisallowInterceptTouchEvent(true);
         }

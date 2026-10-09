@@ -2,6 +2,12 @@
 
 package app.nimarkogram.messenger.wsbypass;
 
+import java.io.BufferedReader;
+import java.io.Closeable;
+import java.io.FileReader;
+import java.util.concurrent.SynchronousQueue;
+import java.util.concurrent.ThreadLocalRandom;
+import org.telegram.messenger.UserConfig;
 import org.telegram.messenger.FileLog;
 
 import java.io.File;
@@ -96,46 +102,7 @@ public final class WsBypassCore {
         }
     }
 
-    static volatile boolean DEBUG = false;   
-    static final java.util.concurrent.atomic.AtomicInteger CONN_SEQ = new java.util.concurrent.atomic.AtomicInteger();
-
-    static void decodeMtproto(int connId, String dir, byte[] plain) {
-        if (!DEBUG || plain == null || plain.length < 4) return;
-        try {
-            StringBuilder hex = new StringBuilder();
-            for (int i = 0; i < Math.min(40, plain.length); i++) hex.append(String.format("%02x", plain[i] & 0xFF));
-            
-            long flen = (plain[0] & 0xFFL) | ((plain[1] & 0xFFL) << 8) | ((plain[2] & 0xFFL) << 16) | ((plain[3] & 0xFFL) << 24);
-            String interp;
-            if (flen == 4 && plain.length >= 8) {
-                int err = (plain[4] & 0xFF) | ((plain[5] & 0xFF) << 8) | ((plain[6] & 0xFF) << 16) | ((plain[7] & 0xFF) << 24);
-                interp = "TRANSPORT ERROR code=" + err;
-            } else if (plain.length >= 28) {
-                boolean authZero = true;
-                for (int i = 4; i < 12; i++) if (plain[i] != 0) { authZero = false; break; }
-                if (authZero) {
-                    long cons = (plain[24] & 0xFFL) | ((plain[25] & 0xFFL) << 8) | ((plain[26] & 0xFFL) << 16) | ((plain[27] & 0xFFL) << 24);
-                    String name = cons == 0x05162463L ? "resPQ" : cons == 0xd0e8075cL ? "server_DH_params_ok"
-                            : cons == 0x79cb045dL ? "server_DH_params_fail" : cons == 0x3bcbf734L ? "dh_gen_ok"
-                            : cons == 0xbe7e8ef1L ? "req_pq_multi" : cons == 0xd712e4beL ? "req_DH_params"
-                            : cons == 0xf5045f1fL ? "set_client_DH_params" : String.format("0x%08x", cons);
-                    interp = "UNENCRYPTED auth msg: " + name + " (flen=" + flen + ")";
-                } else {
-                    interp = "ENCRYPTED (auth_key set, flen=" + flen + ") — session active";
-                }
-            } else {
-                interp = "flen=" + flen + " short";
-            }
-            dbg("conn#" + connId + " " + dir + " mtproto: " + interp + " | hex=" + hex);
-        } catch (Throwable ignored) {}
-    }
-
     static volatile boolean SPLIT_UP = false;
-    static void dbg(String msg) {
-        if (!DEBUG) return;
-        try { android.util.Log.i("NMWSBYPASS", msg); } catch (Throwable ignored) {}
-        try { FileLog.d("wsbypass: " + msg); } catch (Throwable ignored) {}
-    }
 
     private static final double WS_FAIL_COOLDOWN_SEC = 30.0;
     private static final double WS_FAIL_COOLDOWN_MAX_SEC = 300.0;
@@ -304,7 +271,7 @@ public final class WsBypassCore {
                 ThreadPoolExecutor pool = new ThreadPoolExecutor(
                         0, MAX_HANDLER_THREADS,
                         60L, TimeUnit.SECONDS,
-                        new java.util.concurrent.SynchronousQueue<Runnable>(),
+                        new SynchronousQueue<Runnable>(),
                         new ThreadFactory() {
                             @Override
                             public Thread newThread(Runnable r) {
@@ -429,7 +396,6 @@ public final class WsBypassCore {
                         } catch (Throwable ignored) {}
                     } catch (Throwable ignored) {}
 
-                    dbg("accept: tgnet connected to local proxy from " + conn.getRemoteSocketAddress());
                     if (!trackIfGenerationCurrent(conn, generation)) {
                         closeQuietly(conn);
                         continue;
@@ -481,11 +447,10 @@ public final class WsBypassCore {
             }
 
             MtprotoHandshake.HandshakeResult hr = MtprotoHandshake.tryHandshake(initPacket, connectionSecret);
-            if (hr == null) { dbg("handshake: FAILED to parse tgnet init (" + initPacket.length + "B) — secret mismatch?"); return; }
+            if (hr == null) { return; }
 
             int dc = hr.dcId;
             boolean isMedia = hr.isMedia;
-            dbg("handshake OK: dc=" + dc + " media=" + isMedia + " protoTag=" + hr.protoTag);
             int relayDcIdx = isMedia ? -dc : dc;
             byte[] relayInit = MtprotoHandshake.generateRelayInit(hr.protoTag, relayDcIdx);
             CryptoCtx ctx = CryptoCtx.build(hr.decPrekeyIv, connectionSecret, relayInit);
@@ -505,15 +470,12 @@ public final class WsBypassCore {
                 ws = connectWsCf(dc, isMedia, Math.min(routeDeadline,
                         System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(WS_RELAY_BUDGET_MS)),
                         generation);
-                dbg("route: CF relay OK (dc=" + dc + ")");
             } catch (Throwable ex) {
-                dbg("route: CF relay FAILED (dc=" + dc + "): " + ex.getClass().getSimpleName() + ": " + ex.getMessage());
                 ws = null;
             }
 
             if (ws == null) {
                 
-                dbg("route: relay unavailable; suppressing direct route (dc=" + dc + ")");
                 return;
             }
 
@@ -541,7 +503,6 @@ public final class WsBypassCore {
                         splitter = null;
                     }
                 }
-                dbg("bridge: started (dc=" + dc + "), relayInit " + relayInit.length + "B sent, splitter=" + (splitter != null));
                 bridgeWs(conn, ws, ctx, splitter, generation);
             } catch (Throwable t) {
                 try { ws.close(); } catch (Throwable ignored) {}
@@ -568,7 +529,7 @@ public final class WsBypassCore {
             }
             String path = DomainPool.relayPathForDc(dc);
             try {
-                return RawWebSocket.connectUntil(WlAccess.HOST, WlAccess.HOST, path,
+                return RawWebSocket.connectUntil(WlAccess.HOST, WlAccess.HOST, WlAccess.PORT, path,
                         WlAccess.headers(grant, "GET", path, null), deadlineNanos,
                         () -> isBridgeGenerationCurrent(generation) && WlAccess.enabled()
                                 && WlAccess.isCurrent(grant));
@@ -584,8 +545,8 @@ public final class WsBypassCore {
         
         final String path = DomainPool.relayPathForDc(dc);
         
-        java.util.Map<String, String> headers = new java.util.HashMap<>();
-        final int authAccount = org.telegram.messenger.UserConfig.selectedAccount;
+        Map<String, String> headers = new HashMap<>();
+        final int authAccount = UserConfig.selectedAccount;
         WsRelayAuth.Credential authCredential = null;
         try { headers.put("X-Install", DomainPool.installId()); } catch (Throwable ignored) {}
         try {
@@ -603,7 +564,6 @@ public final class WsBypassCore {
             long attemptDeadline = Math.min(deadlineNanos,
                     System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(hostBudgetMs));
             attempted++;
-            dbg("connectWsCf: dc=" + dc + " -> " + host + path + " cred=" + headers.containsKey("X-Cred"));
             try {
                 RawWebSocket ws = RawWebSocket.connectUntil(host, host, path, headers,
                         attemptDeadline, () -> isBridgeGenerationCurrent(generation));
@@ -615,13 +575,11 @@ public final class WsBypassCore {
                     try { ws.close(); } catch (Throwable ignored) {}
                     throw new IOException("relay connect cancelled");
                 }
-                dbg("connectWsCf: 101 OK via " + host + path);
                 return ws;
             } catch (IOException ex) {
                 if (!isBridgeGenerationCurrent(generation)) {
                     throw new IOException("relay connect cancelled", ex);
                 }
-                dbg("connectWsCf: " + host + " -> " + ex.getMessage());
                 int status = ex instanceof RawWebSocket.HandshakeException
                         ? ((RawWebSocket.HandshakeException) ex).statusCode : 0;
                 if (!runIfBridgeGenerationCurrent(generation, () -> {
@@ -642,7 +600,6 @@ public final class WsBypassCore {
                 if (!isBridgeGenerationCurrent(generation)) {
                     throw new IOException("relay connect cancelled", t);
                 }
-                dbg("connectWsCf: " + host + " -> " + t.getClass().getSimpleName() + ": " + t.getMessage());
                 last = new IOException(t);
             }
         }
@@ -841,12 +798,6 @@ public final class WsBypassCore {
         }
         try {
         final AtomicBoolean done = new AtomicBoolean(false);
-        final long[] upBytes = {0};   
-        final long[] upSent = {0};    
-        final long[] downBytes = {0};
-        final int connId = CONN_SEQ.incrementAndGet();
-        final boolean[] loggedUp = {false};
-        final boolean[] loggedDown = {false};
         Thread up = new Thread(new Runnable() {
             @Override
             public void run() {
@@ -856,7 +807,6 @@ public final class WsBypassCore {
                     while (!done.get()) {
                         int n = in.read(buf);
                         if (n <= 0) {
-                            dbg("bridge up: client(tgnet) EOF n=" + n + " after up=" + upBytes[0] + "B down=" + downBytes[0] + "B");
                             if (splitter != null) {
                                 try {
                                     List<byte[]> tail = splitter.flush();
@@ -867,10 +817,8 @@ public final class WsBypassCore {
                             }
                             break;
                         }
-                        upBytes[0] += n;
                         byte[] chunk = (n == buf.length) ? buf : Arrays.copyOf(buf, n);
                         byte[] plain = cipherUpdate(ctx.cltDec, chunk);
-                        if (!loggedUp[0]) { loggedUp[0] = true; decodeMtproto(connId, "UP(client->DC)", plain); }
                         byte[] data = cipherUpdate(ctx.tgEnc, plain);
                         if (data == null || data.length == 0) continue;
                         if (splitter != null) {
@@ -882,13 +830,11 @@ public final class WsBypassCore {
                             } else {
                                 ws.send(parts.get(0));
                             }
-                            for (byte[] p : parts) upSent[0] += p.length;
                         } else {
                             ws.send(data);
-                            upSent[0] += data.length;
                         }
                     }
-                } catch (Throwable t) { dbg("bridge up-thread end: " + t.getClass().getSimpleName() + ": " + t.getMessage()); }
+                } catch (Throwable t) { }
                 done.set(true);
             }
         }, "wsbypass-ws-up");
@@ -903,19 +849,11 @@ public final class WsBypassCore {
                     byte[] clientBuffer = new byte[64 * 1024 + 32];
                     while (!done.get()) {
                         byte[] payload = ws.recv();
-                        if (payload == null) { dbg("bridge down: ws.recv returned null (CLOSE)"); break; }
+                        if (payload == null) { break; }
                         if (payload.length == 0) continue;
-                        downBytes[0] += payload.length;
                         plainBuffer = ensureCipherBuffer(ctx.tgDec, payload.length, plainBuffer);
                         int plainLength = cipherUpdateInto(
                                 ctx.tgDec, payload, payload.length, plainBuffer);
-                        if (!loggedDown[0]) {
-                            loggedDown[0] = true;
-                            if (DEBUG) {
-                                decodeMtproto(connId, "DOWN(DC->client)",
-                                        Arrays.copyOf(plainBuffer, plainLength));
-                            }
-                        }
                         clientBuffer = ensureCipherBuffer(ctx.cltEnc, plainLength, clientBuffer);
                         int outputLength = cipherUpdateInto(
                                 ctx.cltEnc, plainBuffer, plainLength, clientBuffer);
@@ -925,7 +863,7 @@ public final class WsBypassCore {
                             markBridgeOk(generation);
                         }
                     }
-                } catch (Throwable t) { dbg("bridge down-thread end: " + t.getClass().getSimpleName() + ": " + t.getMessage()); }
+                } catch (Throwable t) { }
                 done.set(true);
             }
         }, "wsbypass-ws-down");
@@ -934,26 +872,12 @@ public final class WsBypassCore {
         up.start();
         down.start();
         
-        final long startMs = System.currentTimeMillis();
-        long nextLog = startMs + 2000;
         try {
             while (!done.get() && (up.isAlive() || down.isAlive())) {
                 Thread.sleep(50);
-                if (DEBUG && System.currentTimeMillis() >= nextLog) {
-                    int pend = splitter == null ? 0 : splitter.pendingBytes();
-                    dbg("bridge ALIVE dur=" + ((System.currentTimeMillis() - startMs) / 1000.0)
-                            + "s upRead=" + upBytes[0] + "B upSent=" + upSent[0] + "B splitPend=" + pend
-                            + "B down=" + downBytes[0] + "B"
-                            + (upBytes[0] - upSent[0] > 1024 ? "  <-- UP STUCK (read>>sent)" : ""));
-                    nextLog += 2000;
-                }
             }
         } catch (InterruptedException ie) { Thread.currentThread().interrupt(); }
         done.set(true);
-        dbg("bridge CLOSED dur=" + ((System.currentTimeMillis() - startMs) / 1000.0)
-                + "s upRead=" + upBytes[0] + "B upSent=" + upSent[0] + "B down=" + downBytes[0] + "B"
-                + (downBytes[0] == 0 ? "  <-- NO DATA FROM DC" : "")
-                + (upBytes[0] - upSent[0] > 1024 ? "  <-- UP UNSENT (splitter held bytes)" : ""));
         try { ws.close(); } catch (Throwable ignored) {}
         closeQuietly(client);
         try { up.join(500); } catch (InterruptedException ignored) { Thread.currentThread().interrupt(); }
@@ -986,7 +910,7 @@ public final class WsBypassCore {
             int expCap = Math.max(0, Math.min(next - 1, 4));
             double backoff = WS_FAIL_COOLDOWN_SEC * (1L << expCap);
             if (backoff > WS_FAIL_COOLDOWN_MAX_SEC) backoff = WS_FAIL_COOLDOWN_MAX_SEC;
-            backoff *= java.util.concurrent.ThreadLocalRandom.current().nextDouble(0.85, 1.16);
+            backoff *= ThreadLocalRandom.current().nextDouble(0.85, 1.16);
             long deadline = nowElapsedMs() + (long) (backoff * 1000.0);
             failCount.put(dcKey, next);
             failUntilMs.put(dcKey, deadline);
@@ -1040,7 +964,7 @@ public final class WsBypassCore {
             int exp = Math.min(4, Math.max(0, failures - 1));
             long base = Math.min(300_000L, 15_000L * (1L << exp));
             long jittered = (long) (base
-                    * java.util.concurrent.ThreadLocalRandom.current().nextDouble(0.85, 1.16));
+                    * ThreadLocalRandom.current().nextDouble(0.85, 1.16));
             relayFailUntilMs.put(host, nowElapsedMs() + jittered);
         }
     }
@@ -1101,8 +1025,8 @@ public final class WsBypassCore {
                     ((Socket) o).close();
                 } else if (o instanceof RawWebSocket) {
                     ((RawWebSocket) o).close();
-                } else if (o instanceof java.io.Closeable) {
-                    ((java.io.Closeable) o).close();
+                } else if (o instanceof Closeable) {
+                    ((Closeable) o).close();
                 }
             } catch (Throwable ignored) {}
         }
@@ -1166,7 +1090,7 @@ public final class WsBypassCore {
 
     public static boolean isWsBypassPluginFile(File file) {
         if (file == null || !file.exists() || !file.isFile()) return false;
-        try (java.io.BufferedReader r = new java.io.BufferedReader(new java.io.FileReader(file))) {
+        try (BufferedReader r = new BufferedReader(new FileReader(file))) {
             String line;
             int lines = 0;
             while ((line = r.readLine()) != null && lines < 30) {

@@ -39,6 +39,7 @@ public final class BadgesController {
 
     public static final BadgesController INSTANCE = new BadgesController();
 
+    private static final Gson GSON = new Gson();
     public static BadgesController getInstance() {
         return INSTANCE;
     }
@@ -187,7 +188,6 @@ public final class BadgesController {
             }
             return null;
         } catch (Throwable t) {
-            FileLog.e(t);
             return null;
         }
     }
@@ -371,8 +371,6 @@ public final class BadgesController {
         }
         lastRefreshAtMs = now;
         ServerBadgeSnapshot beforeServer = serverBadges;
-        int beforeSize = apiBadgeSource.cache.size() + beforeServer.users.size() + beforeServer.chats.size();
-        int nimarkoCount = 0;
         try {
             
             ApiClient.BadgeFetchResult fetch = ApiClient.fetchNimarkoBadges();
@@ -393,7 +391,6 @@ public final class BadgesController {
                 } else {
                     nextUsers.put(id, entry);
                 }
-                nimarkoCount++;
             }
             
             ServerBadgeSnapshot nextServer = new ServerBadgeSnapshot(
@@ -406,10 +403,6 @@ public final class BadgesController {
                 serverBadges = nextServer;
                 schedulePersistLocked();
             }
-            FileLog.d("nimarko-badges: refresh done — nimarko=" + nimarkoCount
-                    + " cacheBefore=" + beforeSize
-                    + " cacheAfter=" + (apiBadgeSource.cache.size()
-                    + nextServer.users.size() + nextServer.chats.size()));
             
             apiBadgeSource.forceNotify();
         } catch (Throwable t) {
@@ -500,9 +493,9 @@ public final class BadgesController {
             LinkedHashMap<Long, BadgeDTO> chatSnapshot = badgeSnapshot(server.chats);
             SharedPreferences sp = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
             boolean committed = sp.edit()
-                    .putString(KEY_CACHE, new Gson().toJson(pluginSnapshot))
-                    .putString(KEY_SERVER_USER_CACHE, new Gson().toJson(serverUserSnapshot))
-                    .putString(KEY_CHAT_CACHE, new Gson().toJson(chatSnapshot))
+                    .putString(KEY_CACHE, GSON.toJson(pluginSnapshot))
+                    .putString(KEY_SERVER_USER_CACHE, GSON.toJson(serverUserSnapshot))
+                    .putString(KEY_CHAT_CACHE, GSON.toJson(chatSnapshot))
                     .putInt(KEY_STORE_VERSION, STORE_VERSION_SEPARATE_OWNERS)
                     .remove(KEY_API_USERS)
                     .remove(KEY_API_CHATS)
@@ -525,7 +518,7 @@ public final class BadgesController {
 
     private static LinkedHashMap<Long, BadgeDTO> readBadgeMap(String json, Type type) {
         if (TextUtils.isEmpty(json)) return new LinkedHashMap<>();
-        LinkedHashMap<Long, BadgeDTO> map = new Gson().fromJson(json, type);
+        LinkedHashMap<Long, BadgeDTO> map = GSON.fromJson(json, type);
         return map != null ? map : new LinkedHashMap<>();
     }
 

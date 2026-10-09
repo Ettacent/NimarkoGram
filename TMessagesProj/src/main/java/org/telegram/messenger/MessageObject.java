@@ -742,7 +742,13 @@ public class MessageObject {
         if (messageOwner.reactions == null || messageOwner.reactions.recent_reactions == null || messageOwner.reactions.recent_reactions.isEmpty()) {
             return null;
         }
-        return messageOwner.reactions.recent_reactions.get(0);
+        for (int i = 0; i < messageOwner.reactions.recent_reactions.size(); i++) {
+            TLRPC.MessagePeerReaction reaction = messageOwner.reactions.recent_reactions.get(i);
+            if (reaction != null && reaction.unread) {
+                return reaction;
+            }
+        }
+        return null;
     }
 
     public void markPollVotesAsRead() {

@@ -2,6 +2,8 @@
 
 package app.nimarkogram.messenger.preferences;
 
+import app.nimarkogram.messenger.infocards.preferences.InfoCardsPreferencesActivity;
+import app.nimarkogram.messenger.wsbypass.preferences.WsBypassPreferencesActivity;
 import android.os.Build;
 import android.text.TextUtils;
 
@@ -224,9 +226,12 @@ final class NimarkoSettingsSearchIndex {
                 16, R.string.NM_MediaGlow,
                 3, R.string.NM_SnowInHeader,
                 28, R.string.NM_SnowflakesInChat);
-        if (android.os.Build.VERSION.SDK_INT >= 31) {
+        if (Build.VERSION.SDK_INT >= 31) {
             row(entries, guid, SCREEN_APPEARANCE, 31, R.string.NM_EnhancedGlassBlur,
                     R.string.NM_EnhancedGlassBlur_Desc, R.drawable.msg_theme_solar,
+                    R.string.NM_Cat_Appearance, R.string.NM_SettingsSectionInterfaceEffects);
+            row(entries, guid, SCREEN_APPEARANCE, 32, R.string.NM_MotionBlur,
+                    R.string.NM_MotionBlur_Desc, R.drawable.msg_theme_solar,
                     R.string.NM_Cat_Appearance, R.string.NM_SettingsSectionInterfaceEffects);
         }
         row(entries, guid, SCREEN_APPEARANCE, 12, R.string.NM_ForumAvatarsLikeChats,
@@ -612,8 +617,8 @@ final class NimarkoSettingsSearchIndex {
         if (owner instanceof BannerPreferencesActivity) return SCREEN_BANNERS;
         if (owner instanceof DebugPreferencesActivity) return SCREEN_ADVANCED;
         if (owner instanceof RecentEmojisStickersPreferencesActivity) return SCREEN_RECENT;
-        if (owner instanceof app.nimarkogram.messenger.wsbypass.preferences.WsBypassPreferencesActivity) return SCREEN_BYPASS;
-        if (owner instanceof app.nimarkogram.messenger.infocards.preferences.InfoCardsPreferencesActivity) return SCREEN_INFO_CARDS;
+        if (owner instanceof WsBypassPreferencesActivity) return SCREEN_BYPASS;
+        if (owner instanceof InfoCardsPreferencesActivity) return SCREEN_INFO_CARDS;
         return 0;
     }
 

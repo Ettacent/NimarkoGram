@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 5.x.x.
  * It is licensed under GNU GPL v. 2 or later.
@@ -105,6 +107,8 @@ public class AudioPlayerCell extends FrameLayout implements DownloadController.F
         });
 
         radialProgress = new RadialProgress2(this, resourcesProvider);
+        radialProgress.overlayImageView.setForceCrossfade(true);
+        radialProgress.overlayImageView.setCrossfadeDuration(180);
         radialProgress.setColorKeys(Theme.key_chat_inLoader, Theme.key_chat_inLoaderSelected, Theme.key_chat_inMediaIcon, Theme.key_chat_inMediaIconSelected);
         TAG = DownloadController.getInstance(currentAccount).generateObserverTag();
         setFocusable(true);

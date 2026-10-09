@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.messenger;
 
 import static org.telegram.messenger.MessagesController.findUpdatesAndRemove;
@@ -209,8 +211,26 @@ public class BillingController implements PurchasesUpdatedListener, BillingClien
     }
 
     public void launchBillingFlow(Activity activity, AccountInstance accountInstance, TLRPC.InputStorePaymentPurpose paymentPurpose, List<BillingFlowParams.ProductDetailsParams> productDetails, BillingFlowParams.SubscriptionUpdateParams subscriptionUpdateParams, boolean checkedConsume) {
-        if (!isReady() || activity == null) {
+        if (!isReady() || activity == null || activity.isFinishing()
+                || (android.os.Build.VERSION.SDK_INT >= 17 && activity.isDestroyed())) {
             return;
+        }
+        if (productDetails == null || productDetails.isEmpty()) {
+            FileLog.e("BillingController: refusing to launch an empty billing flow");
+            return;
+        }
+        for (BillingFlowParams.ProductDetailsParams params : productDetails) {
+            try {
+                if (params == null || params.zza() == null
+                        || params.zza().getProductId() == null
+                        || params.zza().getProductId().isEmpty()) {
+                    FileLog.e("BillingController: refusing to launch an invalid billing product");
+                    return;
+                }
+            } catch (RuntimeException invalidProduct) {
+                FileLog.e("BillingController: invalid billing product details", invalidProduct);
+                return;
+            }
         }
 
         if ((paymentPurpose instanceof TLRPC.TL_inputStorePaymentGiftPremium || paymentPurpose instanceof TLRPC.TL_inputStorePaymentStarsTopup || paymentPurpose instanceof TLRPC.TL_inputStorePaymentStarsGift) && !checkedConsume) {

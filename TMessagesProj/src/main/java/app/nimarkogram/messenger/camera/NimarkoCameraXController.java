@@ -2,6 +2,13 @@
 
 package app.nimarkogram.messenger.camera;
 
+import android.hardware.camera2.CameraCharacteristics;
+import android.os.Looper;
+import android.view.Surface;
+import androidx.camera.core.CameraInfo;
+import androidx.camera.core.ResolutionInfo;
+import java.util.Locale;
+import org.telegram.messenger.Utilities;
 import android.annotation.SuppressLint;
 import android.content.Context;
 import android.content.SharedPreferences;
@@ -114,8 +121,8 @@ public class NimarkoCameraXController implements CameraXProviderCoordinator.Owne
     private volatile boolean closed;
     private final Object initializationLock = new Object();
     private int initializationGeneration;
-    private int targetRotation = android.view.Surface.ROTATION_0;
-    private int imageCaptureTargetRotation = android.view.Surface.ROTATION_0;
+    private int targetRotation = Surface.ROTATION_0;
+    private int imageCaptureTargetRotation = Surface.ROTATION_0;
     @Nullable private final android.util.Size targetResolution;
     private final boolean enableImageCapture;
     private final boolean deferInitialBind;
@@ -129,7 +136,7 @@ public class NimarkoCameraXController implements CameraXProviderCoordinator.Owne
     private ListenableFuture<Void> torchSubmittedFuture;
     private boolean useConfiguredUltraWide = true;
     @Nullable private Runnable readyCallback;
-    @Nullable private org.telegram.messenger.Utilities.Callback<Throwable> failureCallback;
+    @Nullable private Utilities.Callback<Throwable> failureCallback;
 
     public static final int CAMERA_NONE = 0;
     public static final int CAMERA_NIGHT = 1;
@@ -225,7 +232,7 @@ public class NimarkoCameraXController implements CameraXProviderCoordinator.Owne
     }
 
     public void initCamera(Context context, boolean isInitialFrontface, @Nullable Runnable onReady,
-                           @Nullable org.telegram.messenger.Utilities.Callback<Throwable> onFailure) {
+                           @Nullable Utilities.Callback<Throwable> onFailure) {
         if (context == null) return;
         final int requestGeneration;
         synchronized (initializationLock) {
@@ -269,7 +276,7 @@ public class NimarkoCameraXController implements CameraXProviderCoordinator.Owne
                         reportFailure(t);
                     }
                 }
-            }, androidx.core.content.ContextCompat.getMainExecutor(context));
+            }, ContextCompat.getMainExecutor(context));
         } catch (Throwable t) {
             synchronized (initializationLock) {
                 if (closed || requestGeneration != initializationGeneration) {
@@ -381,7 +388,7 @@ public class NimarkoCameraXController implements CameraXProviderCoordinator.Owne
     }
 
     public void enableTorch(boolean enabled) {
-        if (android.os.Looper.myLooper() != android.os.Looper.getMainLooper()) {
+        if (Looper.myLooper() != Looper.getMainLooper()) {
             AndroidUtilities.runOnUIThread(() -> enableTorch(enabled));
             return;
         }
@@ -390,7 +397,7 @@ public class NimarkoCameraXController implements CameraXProviderCoordinator.Owne
     }
 
     private void applyRequestedTorch() {
-        if (android.os.Looper.myLooper() != android.os.Looper.getMainLooper()) {
+        if (Looper.myLooper() != Looper.getMainLooper()) {
             AndroidUtilities.runOnUIThread(this::applyRequestedTorch);
             return;
         }
@@ -450,11 +457,11 @@ public class NimarkoCameraXController implements CameraXProviderCoordinator.Owne
         if (boundCamera == null) return false;
         try {
 
-            android.util.Range<Integer>[] ranges = androidx.camera.camera2.interop.Camera2CameraInfo
+            Range<Integer>[] ranges = Camera2CameraInfo
                     .from(boundCamera.getCameraInfo())
-                    .getCameraCharacteristic(android.hardware.camera2.CameraCharacteristics.CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES);
+                    .getCameraCharacteristic(CameraCharacteristics.CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES);
             if (ranges == null) return false;
-            for (android.util.Range<Integer> r : ranges) {
+            for (Range<Integer> r : ranges) {
                 if (r != null && r.getUpper() != null && r.getUpper() >= 120) return true;
             }
             return false;
@@ -635,7 +642,7 @@ public class NimarkoCameraXController implements CameraXProviderCoordinator.Owne
             boolean observeLensMetadata = false;
             if (!isFrontface && Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
                 try {
-                    androidx.camera.core.CameraInfo selectedInfo =
+                    CameraInfo selectedInfo =
                             provider.getCameraInfo(boundSelector);
                     observeLensMetadata = selectedInfo != null
                             && selectedInfo.isLogicalMultiCameraSupported();
@@ -658,7 +665,7 @@ public class NimarkoCameraXController implements CameraXProviderCoordinator.Owne
             if (startFromUltraWide && previewExtender != null
                     && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                 try {
-                    androidx.camera.core.CameraInfo info =
+                    CameraInfo info =
                             provider.getCameraInfo(boundSelector);
                     ZoomState zoomState = info == null ? null
                             : info.getZoomState().getValue();
@@ -1018,7 +1025,7 @@ public class NimarkoCameraXController implements CameraXProviderCoordinator.Owne
         while (current != null) {
             if (current instanceof UnsupportedOperationException) {
                 String message = current.getMessage();
-                if (message != null && message.toLowerCase(java.util.Locale.US)
+                if (message != null && message.toLowerCase(Locale.US)
                         .contains("already running")) {
                     return true;
                 }
@@ -1433,7 +1440,7 @@ public class NimarkoCameraXController implements CameraXProviderCoordinator.Owne
     }
 
     public boolean takePicture(final File file, @Nullable Runnable onTake,
-                               @Nullable org.telegram.messenger.Utilities.Callback<Throwable> onError) {
+                               @Nullable Utilities.Callback<Throwable> onError) {
         ImageCapture capture = boundImageCapture;
         if (capture == null || file == null) {
             return false;
@@ -1447,7 +1454,7 @@ public class NimarkoCameraXController implements CameraXProviderCoordinator.Owne
                             .setMetadata(metadata)
                             .build();
             capture.takePicture(options,
-                    androidx.core.content.ContextCompat.getMainExecutor(ApplicationLoader.applicationContext),
+                    ContextCompat.getMainExecutor(ApplicationLoader.applicationContext),
                     new ImageCapture.OnImageSavedCallback() {
                         @Override
                         public void onImageSaved(@NonNull ImageCapture.OutputFileResults outputFileResults) {
@@ -1476,7 +1483,7 @@ public class NimarkoCameraXController implements CameraXProviderCoordinator.Owne
         ImageCapture capture = boundImageCapture;
         if (capture == null) return 0;
         try {
-            androidx.camera.core.ResolutionInfo info = capture.getResolutionInfo();
+            ResolutionInfo info = capture.getResolutionInfo();
             return info == null ? 0 : ((info.getRotationDegrees() % 360) + 360) % 360;
         } catch (Throwable t) {
             return 0;
@@ -1528,7 +1535,7 @@ public class NimarkoCameraXController implements CameraXProviderCoordinator.Owne
             zoomShortcutCandidates = cachedShortcuts;
             zoomShortcutsReady = true;
         }
-        if (cachedShortcuts == null) org.telegram.messenger.Utilities.globalQueue.postRunnable(() -> {
+        if (cachedShortcuts == null) Utilities.globalQueue.postRunnable(() -> {
             float[] discovered;
             try {
                 discovered = CameraXUtils.findZoomShortcutCandidates(

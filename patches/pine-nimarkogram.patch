@@ -1,8 +1,13 @@
 diff --git a/build.gradle b/build.gradle
-index bf6c5d8..79b10fe 100644
+index bf6c5d87d55c33b23466644fc866ed000e3eec2e..c048db0039833fc8d908c5cae8a76d451475881c 100644
 --- a/build.gradle
 +++ b/build.gradle
-@@ -41,7 +41,7 @@ ext {
+@@ -1,3 +1,4 @@
++// Modifications Copyright (C) 2026 Ettacent
+ // Top-level build file where you can add configuration options common to all sub-projects/modules.
+
+ // Load local.properties into gradle
+@@ -41,7 +42,7 @@ ext {
      compileSdk = 34
      minSdk = 19
      targetSdk = 34
@@ -12,26 +17,373 @@ index bf6c5d8..79b10fe 100644
      userOrg = 'canyie'
      groupId = 'top.canyie.pine'
 diff --git a/core/src/main/cpp/CMakeLists.txt b/core/src/main/cpp/CMakeLists.txt
-index 7032ee3..c426485 100644
+index 7032ee3f6851c6b139ca6588326efef166e8c6bd..21e76cfd42300fdc563681b191bbea6ea1f52f06 100644
 --- a/core/src/main/cpp/CMakeLists.txt
 +++ b/core/src/main/cpp/CMakeLists.txt
-@@ -4,7 +4,7 @@ set(CMAKE_CXX_STANDARD 17)
+@@ -1,10 +1,11 @@
++# Modifications Copyright (C) 2026 Ettacent
+ cmake_minimum_required(VERSION 3.4.1)
+
+ set(CMAKE_CXX_STANDARD 17)
  set(CMAKE_POSITION_INDEPENDENT_CODE ON)
- 
+
  set(C_FLAGS "-Wall -Wextra -fvisibility=hidden -fvisibility-inlines-hidden -fno-exceptions -fno-rtti -flto=thin")
 -set(LINKER_FLAGS "-fuse-ld=lld -flto=thin -ffixed-x18 -Wl,--hash-style=both -Wl,--unresolved-symbols=ignore-all")
 +set(LINKER_FLAGS "-fuse-ld=lld -flto=thin -ffixed-x18 -Wl,--hash-style=both -Wl,--unresolved-symbols=ignore-all -Wl,-z,max-page-size=16384 -Wl,-z,common-page-size=16384")
- 
+
  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${C_FLAGS}")
  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${C_FLAGS}")
-diff --git a/core/src/main/java/top/canyie/pine/Pine.java b/core/src/main/java/top/canyie/pine/Pine.java
-index 19be477..cf73ee2 100644
---- a/core/src/main/java/top/canyie/pine/Pine.java
-+++ b/core/src/main/java/top/canyie/pine/Pine.java
-@@ -708,6 +708,21 @@ public final class Pine {
+diff --git a/core/src/main/cpp/android.cpp b/core/src/main/cpp/android.cpp
+index 153311a67e4f0539dec137d5c4c09569f5781603..78b5defbbe1fb09a27c598f14068c7e6b71fcf32 100644
+--- a/core/src/main/cpp/android.cpp
++++ b/core/src/main/cpp/android.cpp
+@@ -1,3 +1,5 @@
++/* Modifications Copyright (C) 2026 Ettacent */
++
+ //
+ // Created by canyie on 2020/3/15.
+ //
+@@ -32,6 +34,10 @@ void (*Android::make_visibly_initialized_)(void*, void*, bool) = nullptr;
+ void* Android::jit_code_cache_ = nullptr;
+ void (*Android::move_obsolete_method_)(void*, void*, void*) = nullptr;
+
++void* Android::heap_ = nullptr;
++void (*Android::increment_disable_moving_gc_)(void*, void*) = nullptr;
++void (*Android::decrement_disable_moving_gc_)(void*, void*) = nullptr;
++
+ void Android::Init(JNIEnv* env, int sdk_version, bool disable_hiddenapi_policy, bool disable_hiddenapi_policy_for_platform) {
+     Android::version = sdk_version;
+     if (UNLIKELY(env->GetJavaVM(&jvm_) != JNI_OK)) {
+@@ -106,11 +112,45 @@ void Android::Init(JNIEnv* env, int sdk_version, bool disable_hiddenapi_policy,
+         }
+
+         InitMembersFromRuntime(jvm_, &art_lib_handle);
++        InitDisableMovingGc(&art_lib_handle);
+     }
+
+     WellKnownClasses::Init(env);
+ }
+
++void Android::InitDisableMovingGc(const ElfImage* handle) {
++    if (version < kL) return;
++
++    increment_disable_moving_gc_ = reinterpret_cast<void (*)(void*, void*)>(handle->GetSymbolAddress(
++            "_ZN3art2gc4Heap24IncrementDisableMovingGCEPNS_6ThreadE", false));
++    decrement_disable_moving_gc_ = reinterpret_cast<void (*)(void*, void*)>(handle->GetSymbolAddress(
++            "_ZN3art2gc4Heap24DecrementDisableMovingGCEPNS_6ThreadE", false));
++    if (UNLIKELY(!increment_disable_moving_gc_ || !decrement_disable_moving_gc_)) {
++        increment_disable_moving_gc_ = nullptr;
++        decrement_disable_moving_gc_ = nullptr;
++        LOGW("Moving-GC backup guard unavailable; using lazy declaring_class sync.");
++        return;
++    }
++
++    void** instance_ptr = static_cast<void**>(handle->GetSymbolAddress(
++            "_ZN3art7Runtime9instance_E", false));
++    void* runtime = instance_ptr ? *instance_ptr : nullptr;
++    auto get_heap = reinterpret_cast<void* (*)(void*)>(handle->GetSymbolAddress(
++            "_ZNK3art7Runtime7GetHeapEv", false));
++    if (!get_heap) {
++        get_heap = reinterpret_cast<void* (*)(void*)>(handle->GetSymbolAddress(
++                "_ZN3art7Runtime7GetHeapEv", false));
++    }
++    if (runtime && get_heap) heap_ = get_heap(runtime);
++    if (UNLIKELY(!heap_)) {
++        increment_disable_moving_gc_ = nullptr;
++        decrement_disable_moving_gc_ = nullptr;
++        LOGW("Moving-GC backup guard has no validated Heap; using lazy declaring_class sync.");
++        return;
++    }
++    LOGI("Moving-GC backup guard enabled (heap=%p).", heap_);
++}
++
+ static int FakeHandleHiddenApi() {
+     return 0;
+ }
+@@ -242,14 +282,8 @@ void Android::InitMembersFromRuntime(JavaVM* jvm, const ElfImage* handle) {
          }
      }
- 
+     if (UNLIKELY(!jvm_offset)) {
+-        LOGW("JavaVM offset mismatches default offsets, trying a linear search");
+-        int offset = Memory::FindOffset(runtime, jvm, 1024, 4);
+-        if (UNLIKELY(offset == -1)) {
+-            LOGE("Failed to find java vm from Runtime");
+-            return;
+-        }
+-        jvm_offset = offset;
+-        LOGW("Found JavaVM in Runtime at %zu", jvm_offset);
++        LOGE("JavaVM offset mismatches known ART layouts; skip runtime member probing");
++        return;
+     }
+     InitClassLinker(runtime, jvm_offset, handle, has_smaller_irt);
+     InitJitCodeCache(runtime, jvm_offset, handle);
+diff --git a/core/src/main/cpp/android.h b/core/src/main/cpp/android.h
+index eff81f7720279d35f55a9af87b47fb1ca025a9c2..ab40c40e95fc3d57be62de0f31efc0a518fca251 100644
+--- a/core/src/main/cpp/android.h
++++ b/core/src/main/cpp/android.h
+@@ -1,3 +1,5 @@
++/* Modifications Copyright (C) 2026 Ettacent */
++
+ //
+ // Created by canyie on 2020/3/15.
+ //
+@@ -74,6 +76,22 @@ namespace pine {
+             }
+         }
+
++        static bool CanDisableMovingGc() {
++            return heap_ && increment_disable_moving_gc_ && decrement_disable_moving_gc_;
++        }
++
++        static void IncrementDisableMovingGc(void* self) {
++            if (LIKELY(CanDisableMovingGc() && self)) {
++                increment_disable_moving_gc_(heap_, self);
++            }
++        }
++
++        static void DecrementDisableMovingGc(void* self) {
++            if (LIKELY(CanDisableMovingGc() && self)) {
++                decrement_disable_moving_gc_(heap_, self);
++            }
++        }
++
+         static void SuspendVM(void* cookie, void* self, const char* cause) {
+             if (suspend_vm) {
+                 suspend_vm();
+@@ -113,6 +131,7 @@ namespace pine {
+         static void InitMembersFromRuntime(JavaVM* jvm, const ElfImage* handle);
+         static void InitClassLinker(void* runtime, size_t java_vm_offset, const ElfImage* handle, bool has_small_irt);
+         static void InitJitCodeCache(void* runtime, size_t java_vm_offset, const ElfImage* handle);
++        static void InitDisableMovingGc(const ElfImage* handle);
+
+         static std::vector<size_t> OffsetOfJavaVm(bool has_small_irt) {
+             std::vector<size_t> offsets;
+@@ -146,6 +165,10 @@ namespace pine {
+
+         static void* jit_code_cache_;
+         static void (*move_obsolete_method_)(void*, void*, void*);
++
++        static void* heap_;
++        static void (*increment_disable_moving_gc_)(void*, void*);
++        static void (*decrement_disable_moving_gc_)(void*, void*);
+         DISALLOW_IMPLICIT_CONSTRUCTORS(Android);
+     };
+
+@@ -162,6 +185,23 @@ namespace pine {
+     private:
+         DISALLOW_COPY_AND_ASSIGN(ScopedSuspendVM);
+     };
++
++    class ScopedDisableMovingGc {
++    public:
++        explicit ScopedDisableMovingGc(void* self)
++                : self_(self), active_(self != nullptr && Android::CanDisableMovingGc()) {
++            if (LIKELY(active_)) Android::IncrementDisableMovingGc(self_);
++        }
++
++        ~ScopedDisableMovingGc() {
++            if (LIKELY(active_)) Android::DecrementDisableMovingGc(self_);
++        }
++
++    private:
++        void* self_;
++        bool active_;
++        DISALLOW_COPY_AND_ASSIGN(ScopedDisableMovingGc);
++    };
+ }
+
+ #endif //PINE_ANDROID_H
+diff --git a/core/src/main/cpp/pine.cpp b/core/src/main/cpp/pine.cpp
+index 4b1cbd3f754192e2650dd857f55e93e54d702cff..9e564b2e430b9d5c224296dcb2152caf399772ff 100644
+--- a/core/src/main/cpp/pine.cpp
++++ b/core/src/main/cpp/pine.cpp
+@@ -1,3 +1,5 @@
++/* Modifications Copyright (C) 2026 Ettacent */
++
+ //
+ // Created by canyie on 2020/2/9.
+ //
+@@ -377,6 +379,7 @@ jboolean Pine_disableProfileSaver0(JNIEnv*, jclass) {
+ }
+
+ jobject Pine_getObject0(JNIEnv* env, jclass, jlong thread, jlong address) {
++    if (UNLIKELY(thread == 0 || address == 0)) return nullptr;
+     return reinterpret_cast<art::Thread*>(thread)->AddLocalRef(env, reinterpret_cast<Object*>(address));
+ }
+
+@@ -394,8 +397,17 @@ void Pine_getArgsArm64(JNIEnv* env, jclass, jlong javaExtras, jlong sp, jboolean
+
+     if (LIKELY(total != 0)) {
+         jboolean* wides = static_cast<jboolean*>(env->GetPrimitiveArrayCritical(typeWides, nullptr));
++        if (UNLIKELY(wides == nullptr)) {
++            free(extras);
++            return;
++        }
+         if (LIKELY(crLength > 0)) {
+             jlong* array = static_cast<jlong*>(env->GetPrimitiveArrayCritical(coreRegisters, nullptr));
++            if (UNLIKELY(array == nullptr)) {
++                env->ReleasePrimitiveArrayCritical(typeWides, wides, JNI_ABORT);
++                free(extras);
++                return;
++            }
+
+             do {
+                 array[0] = reinterpret_cast<jlong>(extras->r1);
+@@ -413,6 +425,11 @@ void Pine_getArgsArm64(JNIEnv* env, jclass, jlong javaExtras, jlong sp, jboolean
+             uintptr_t current_on_stack = static_cast<uintptr_t>(sp + 8/*callee*/);
+
+             jlong* array = static_cast<jlong*>(env->GetPrimitiveArrayCritical(stack, nullptr));
++            if (UNLIKELY(array == nullptr)) {
++                env->ReleasePrimitiveArrayCritical(typeWides, wides, JNI_ABORT);
++                free(extras);
++                return;
++            }
+             for (int i = 0; i < stackLength; ++i) {
+                 array[i] = *reinterpret_cast<jlong*>(current_on_stack);
+                 current_on_stack += wides[i] == JNI_TRUE ? 8 : 4;
+@@ -430,7 +447,7 @@ void Pine_getArgsArm64(JNIEnv* env, jclass, jlong javaExtras, jlong sp, jboolean
+     if (UNLIKELY(fpArrayLength != 0)) {
+         env->SetDoubleArrayRegion(fpRegisters, 0, fpArrayLength, extras->fps);
+     }
+-    delete extras;
++    free(extras);
+ }
+ #elif defined(__arm__)
+ void Pine_getArgsArm32(JNIEnv *env, jclass, jint javaExtras, jint sp,
+@@ -440,6 +457,10 @@ void Pine_getArgsArm32(JNIEnv *env, jclass, jint javaExtras, jint sp,
+     jint stackLength = env->GetArrayLength(stack);
+     if (LIKELY(crLength != 0)) {
+         jint* array = static_cast<jint*>(env->GetPrimitiveArrayCritical(crOut, nullptr));
++        if (UNLIKELY(array == nullptr)) {
++            free(extras);
++            return;
++        }
+
+ #pragma clang diagnostic push
+ #pragma ide diagnostic ignored "OCSimplifyInspection"
+@@ -459,13 +480,17 @@ void Pine_getArgsArm32(JNIEnv *env, jclass, jint javaExtras, jint sp,
+     if (LIKELY(stackLength != 0)) {
+         // get args from stack
+         env->SetIntArrayRegion(stack, 0, stackLength, reinterpret_cast<const jint*>(sp + 4 /*callee*/));
++        if (UNLIKELY(env->ExceptionCheck())) {
++            free(extras);
++            return;
++        }
+     }
+
+     jint fpLength = env->GetArrayLength(fpOut);
+     if (UNLIKELY(fpLength != 0)) {
+         env->SetFloatArrayRegion(fpOut, 0, fpLength, extras->fps);
+     }
+-    delete extras;
++    free(extras);
+ }
+ #elif defined(__i386__)
+ void Pine_getArgsX86(JNIEnv* env, jclass, jint javaExtras, jintArray javaArray, jint ebx) {
+@@ -505,8 +530,34 @@ void Pine_getArgsX86(JNIEnv* env, jclass, jint javaExtras, jintArray javaArray,
+ #endif
+
+ void Pine_syncMethodInfo(JNIEnv* env, jclass, jobject javaOrigin, jobject javaBackup, jboolean skipDeclaringClass) {
++    if (UNLIKELY(javaOrigin == nullptr || javaBackup == nullptr)) {
++        JNIHelper::Throw(env, "java/lang/IllegalArgumentException",
++                "Pine.syncMethodInfo requires non-null origin and backup methods");
++        return;
++    }
+     auto origin = art::ArtMethod::FromReflectedMethod(env, javaOrigin);
++    if (UNLIKELY(env->ExceptionCheck())) return;
++    if (UNLIKELY(origin == nullptr)) {
++        JNIHelper::Throw(env, "java/lang/IllegalArgumentException",
++                "Pine.syncMethodInfo could not resolve origin method");
++        return;
++    }
+     auto backup = art::ArtMethod::FromReflectedMethod(env, javaBackup);
++    if (UNLIKELY(origin == nullptr || backup == nullptr || env->ExceptionCheck())) {
++        if (!env->ExceptionCheck()) {
++            JNIHelper::Throw(env, "java/lang/IllegalArgumentException",
++                    "Pine.syncMethodInfo could not resolve reflected methods");
++        }
++        return;
++    }
++
++    auto thread = art::Thread::Current(env);
++    if (UNLIKELY(env->ExceptionCheck())) return;
++    if (UNLIKELY(thread == nullptr)) {
++        JNIHelper::Throw(env, "java/lang/IllegalStateException", "Current ART thread is unavailable");
++        return;
++    }
++    ScopedDisableMovingGc guard(thread);
+
+     // An ArtMethod is actually an instance of java class "java.lang.reflect.ArtMethod" on pre M
+     // declaring_class is a reference field so the runtime itself will update it if moved by GC
+@@ -546,8 +597,17 @@ void Pine_makeClassesVisiblyInitialized(JNIEnv*, jclass, jlong thread) {
+     Android::MakeInitializedClassesVisiblyInitialized(reinterpret_cast<void*>(thread), true);
+ }
+
+-jlong Pine_cloneExtras(JNIEnv*, jclass, jlong extras) {
+-    return reinterpret_cast<jlong>(reinterpret_cast<Extras*>(extras)->CloneAndUnlock());
++jlong Pine_cloneExtras(JNIEnv* env, jclass, jlong extras) {
++    if (UNLIKELY(extras == 0)) {
++        JNIHelper::Throw(env, "java/lang/IllegalArgumentException", "Pine extras is null");
++        return 0;
++    }
++    auto cloned = reinterpret_cast<Extras*>(extras)->CloneAndUnlock();
++    if (UNLIKELY(cloned == nullptr)) {
++        JNIHelper::Throw(env, "java/lang/OutOfMemoryError", "Cannot clone Pine extras");
++        return 0;
++    }
++    return reinterpret_cast<jlong>(cloned);
+ }
+
+ static const struct {
+diff --git a/core/src/main/cpp/trampoline/extras.h b/core/src/main/cpp/trampoline/extras.h
+index f3e73245b01d099b8f3081757917061a0458ebcf..634d97e45223549e721c4906dab84822aafeb8dd 100644
+--- a/core/src/main/cpp/trampoline/extras.h
++++ b/core/src/main/cpp/trampoline/extras.h
+@@ -1,3 +1,5 @@
++/* Modifications Copyright (C) 2026 Ettacent */
++
+ //
+ // Created by canyie on 2020/3/31.
+ //
+@@ -18,7 +20,7 @@ namespace pine {
+
+         Extras* CloneAndUnlock() {
+             Extras* cloned = static_cast<Extras*>(malloc(sizeof(Extras)));
+-            memcpy(cloned, this, sizeof(Extras));
++            if (LIKELY(cloned != nullptr)) memcpy(cloned, this, sizeof(Extras));
+             ReleaseLock();
+             return cloned;
+         }
+diff --git a/core/src/main/java/top/canyie/pine/Pine.java b/core/src/main/java/top/canyie/pine/Pine.java
+index 19be47783446d210e87e953d209d1c96f82875b4..41c427498a60bb7a4027e03bb25038e849883bd2 100644
+--- a/core/src/main/java/top/canyie/pine/Pine.java
++++ b/core/src/main/java/top/canyie/pine/Pine.java
+@@ -1,3 +1,5 @@
++/* Modifications Copyright (C) 2026 Ettacent */
++
+ package top.canyie.pine;
+
+ import android.os.Build;
+@@ -495,14 +497,11 @@ public final class Pine {
+         // so we need to update them when invoke backup method.
+         Member origin = hookRecord.target;
+         Method backup = hookRecord.backup;
+-        Class<?> declaring = origin.getDeclaringClass();
+         syncMethodInfo(origin, backup, hookRecord.skipUpdateDeclaringClass);
+         // FIXME: GC happens here (you can add Runtime.getRuntime().gc() to test) will crash backup calling
+-        Object result = backup.invoke(thisObject, args);
+         // Explicit use declaring_class object to ensure it has reference on stack
+         // and avoid being moved by gc. (invalid for now)
+-        declaring.getClass();
+-        return result;
++        return backup.invoke(thisObject, args);
+     }
+
+     /**
+@@ -708,6 +707,21 @@ public final class Pine {
+         }
+     }
+
 +    private static Object defaultResultFor(Member target) {
 +        if (target instanceof Method) {
 +            Class<?> ret = ((Method) target).getReturnType();
@@ -50,7 +402,7 @@ index 19be477..cf73ee2 100644
      public static Object handleCall(HookRecord hookRecord, Object thisObject, Object[] args)
              throws Throwable {
          // WARNING: DO NOT print thisObject or args, else the toString() method will be called on it
-@@ -753,6 +768,9 @@ public final class Pine {
+@@ -753,6 +767,9 @@ public final class Pine {
                  callFrame.setResult(callFrame.invokeOriginalMethod());
              } catch (InvocationTargetException e) {
                  callFrame.setThrowable(e.getTargetException());
@@ -59,4 +411,4 @@ index 19be477..cf73ee2 100644
 +                callFrame.setResult(defaultResultFor(hookRecord.target));
              }
          }
- 
+

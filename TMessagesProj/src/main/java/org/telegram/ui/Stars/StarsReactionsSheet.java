@@ -50,6 +50,7 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.core.graphics.ColorUtils;
 
+import app.nimarkogram.messenger.utils.NimarkoUiAnimationClock;
 import com.google.zxing.common.detector.MathUtils;
 
 import org.telegram.messenger.AndroidUtilities;
@@ -1568,7 +1569,7 @@ public class StarsReactionsSheet extends BottomSheet implements NotificationCent
 
         public void removeParticlesOutside() {
             if (type == TYPE_RADIAL_INSIDE) {
-                final long now = System.currentTimeMillis();
+                final long now = NimarkoUiAnimationClock.now();
                 for (int i = 0; i < particles.size(); ++i) {
                     final Particle p = particles.get(i);
                     if (!bounds.contains((int) p.x, (int) p.y)) gen(p, now, firstDraw);
@@ -1584,15 +1585,17 @@ public class StarsReactionsSheet extends BottomSheet implements NotificationCent
             this.speed = speed;
         }
 
-        private long lastInvalidateTime;
-        private long lastTime;
+        private long lastInvalidateTime = -1;
+        private long lastTime = -1;
+        private int lastClockEpoch = -1;
         public boolean process() {
             if (!LiteMode.isEnabled(LiteMode.FLAG_PARTICLES)) {
                 return false;
             }
 
-            final long now = System.currentTimeMillis();
-            final float deltaTime = Math.min(lastTime - now, 16) / 1000f * speed;
+            final long now = NimarkoUiAnimationClock.now();
+            final int clockEpoch = NimarkoUiAnimationClock.epoch();
+            final float deltaTime = (lastTime < 0 || clockEpoch != lastClockEpoch ? 0 : Math.max(0L, Math.min(now - lastTime, 16L))) / 1000f * speed;
             for (int i = 0; i < Math.min(visibleCount, particles.size()); ++i) {
                 final Particle p = particles.get(i);
                 float lifetime = p.lifetime <= 0 ? 2f : (now - p.start) / (float) p.lifetime;
@@ -1606,7 +1609,9 @@ public class StarsReactionsSheet extends BottomSheet implements NotificationCent
             }
             lastTime = now;
 
-            if (lastInvalidateTime == 0 || lastInvalidateTime - now >= 66) {
+            lastClockEpoch = clockEpoch;
+
+            if (lastInvalidateTime < 0 || now - lastInvalidateTime >= 66) {
                 lastInvalidateTime = now;
                 return true;
             }
@@ -1626,7 +1631,7 @@ public class StarsReactionsSheet extends BottomSheet implements NotificationCent
                 batchParticlesBuffer.fillParticleTextureCords(0, 0, b.getWidth(), b.getHeight());
             }
 
-            final long now = System.currentTimeMillis();
+            final long now = NimarkoUiAnimationClock.now();
             for (int a = 0; a < visibleCount; a++) {
                 final Particle p = particles.get(a);
                 final PointF pF = points.get(a);

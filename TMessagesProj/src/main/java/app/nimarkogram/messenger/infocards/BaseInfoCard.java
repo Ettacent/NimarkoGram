@@ -2,6 +2,10 @@
 
 package app.nimarkogram.messenger.infocards;
 
+import android.graphics.PixelFormat;
+import android.text.TextUtils;
+import android.view.ViewGroup;
+import android.view.ViewParent;
 import android.animation.TimeInterpolator;
 import android.content.Context;
 import android.graphics.Canvas;
@@ -220,9 +224,9 @@ public abstract class BaseInfoCard extends FrameLayout {
     }
 
     private void updateAccessibilityDescription() {
-        if (android.text.TextUtils.isEmpty(accessibilityLabel)) {
+        if (TextUtils.isEmpty(accessibilityLabel)) {
             setContentDescription(accessibilityValue);
-        } else if (android.text.TextUtils.isEmpty(accessibilityValue)) {
+        } else if (TextUtils.isEmpty(accessibilityValue)) {
             setContentDescription(accessibilityLabel);
         } else {
             setContentDescription(accessibilityLabel + ": " + accessibilityValue);
@@ -377,11 +381,11 @@ public abstract class BaseInfoCard extends FrameLayout {
         accessibilityValue = text;
         updateAccessibilityDescription();
         if (shouldDeferCarouselData()) {
-            deferredCarouselText = !android.text.TextUtils.equals(textView.getText(), text);
+            deferredCarouselText = !TextUtils.equals(textView.getText(), text);
             return;
         }
         deferredCarouselText = false;
-        if (!android.text.TextUtils.isEmpty(text) && !hasRenderedValue) {
+        if (!TextUtils.isEmpty(text) && !hasRenderedValue) {
             hasRenderedValue = true;
             boolean laidOutColdLoad = animated && isAttachedToWindow() && isLaidOut()
                     && getVisibility() == VISIBLE
@@ -390,7 +394,7 @@ public abstract class BaseInfoCard extends FrameLayout {
             animated = laidOutColdLoad;
         }
         animated &= !renderingInstantly;
-        boolean changed = !android.text.TextUtils.equals(textView.getText(), text);
+        boolean changed = !TextUtils.equals(textView.getText(), text);
         if (!changed) {
             if (renderingInstantly) finishResizeAnimation();
             return;
@@ -469,8 +473,8 @@ public abstract class BaseInfoCard extends FrameLayout {
     }
 
     void updateLayoutDirection() {
-        android.widget.FrameLayout.LayoutParams lp =
-                (android.widget.FrameLayout.LayoutParams) content.getLayoutParams();
+        FrameLayout.LayoutParams lp =
+                (FrameLayout.LayoutParams) content.getLayoutParams();
         int gravity = Gravity.CENTER_VERTICAL | (LocaleController.isRTL ? Gravity.LEFT : Gravity.RIGHT);
         if (lp != null && lp.gravity != gravity) {
             lp.gravity = gravity;
@@ -491,7 +495,7 @@ public abstract class BaseInfoCard extends FrameLayout {
         if (accessibilityValue == null) {
             return;
         }
-        if (!android.text.TextUtils.isEmpty(accessibilityValue)) {
+        if (!TextUtils.isEmpty(accessibilityValue)) {
             hasRenderedValue = true;
         }
         textView.cancelAnimation();
@@ -508,12 +512,12 @@ public abstract class BaseInfoCard extends FrameLayout {
 
     public void setFixedChipWidth(int width) {
         width = Math.max(1, width);
-        android.view.ViewGroup.LayoutParams cardParams = getLayoutParams();
+        ViewGroup.LayoutParams cardParams = getLayoutParams();
         if (cardParams != null && cardParams.width != width) {
             cardParams.width = width;
             setLayoutParams(cardParams);
         }
-        android.view.ViewGroup.LayoutParams contentParams = content.getLayoutParams();
+        ViewGroup.LayoutParams contentParams = content.getLayoutParams();
         if (contentParams.width != LayoutHelper.MATCH_PARENT) {
             contentParams.width = LayoutHelper.MATCH_PARENT;
             content.setLayoutParams(contentParams);
@@ -683,7 +687,7 @@ public abstract class BaseInfoCard extends FrameLayout {
         private int textWidthLimit;
         private int lastAvailableWidth = -1;
         private boolean fitTextToChip;
-        ChipTextView(android.content.Context c, boolean splitByWords, boolean preserveIndex, boolean startFromEnd) {
+        ChipTextView(Context c, boolean splitByWords, boolean preserveIndex, boolean startFromEnd) {
             super(c, splitByWords, preserveIndex, startFromEnd);
         }
 
@@ -700,7 +704,7 @@ public abstract class BaseInfoCard extends FrameLayout {
         public void requestLayout() {
             if (getVisibility() == GONE || !isShown()) {
                 forceLayout();
-                android.view.ViewParent parent = getParent();
+                ViewParent parent = getParent();
                 while (parent instanceof View && !(parent instanceof InfoCardStripView)) {
                     ((View) parent).forceLayout();
                     parent = parent.getParent();
@@ -881,7 +885,7 @@ public abstract class BaseInfoCard extends FrameLayout {
 
         @Override
         public int getOpacity() {
-            return android.graphics.PixelFormat.TRANSLUCENT;
+            return PixelFormat.TRANSLUCENT;
         }
     }
 }

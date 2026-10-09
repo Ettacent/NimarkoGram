@@ -2,6 +2,7 @@
 
 package org.telegram.ui.Stories.recorder;
 
+import app.nimarkogram.messenger.utils.NimarkoAppMotionBlur;
 import static org.telegram.messenger.AndroidUtilities.dp;
 import static org.telegram.messenger.AndroidUtilities.dpf2;
 import static org.telegram.messenger.AndroidUtilities.ilerp;
@@ -510,6 +511,7 @@ public class StoryRecorder implements NotificationCenter.NotificationCenterDeleg
         if (windowManager != null && windowView != null && windowView.getParent() == null) {
             AndroidUtilities.setPreferredMaxRefreshRate(windowManager, windowView, windowLayoutParams);
             windowManager.addView(windowView, windowLayoutParams);
+            NimarkoAppMotionBlur.attachRoot(windowView);
             setupBackDispatcher();
         }
 
@@ -577,6 +579,7 @@ public class StoryRecorder implements NotificationCenter.NotificationCenterDeleg
         if (windowManager != null && windowView != null && windowView.getParent() == null) {
             AndroidUtilities.setPreferredMaxRefreshRate(windowManager, windowView, windowLayoutParams);
             windowManager.addView(windowView, windowLayoutParams);
+            NimarkoAppMotionBlur.attachRoot(windowView);
             setupBackDispatcher();
         }
 
@@ -644,6 +647,7 @@ public class StoryRecorder implements NotificationCenter.NotificationCenterDeleg
         if (windowManager != null && windowView != null && windowView.getParent() == null) {
             AndroidUtilities.setPreferredMaxRefreshRate(windowManager, windowView, windowLayoutParams);
             windowManager.addView(windowView, windowLayoutParams);
+            NimarkoAppMotionBlur.attachRoot(windowView);
             setupBackDispatcher();
         }
 
@@ -709,6 +713,7 @@ public class StoryRecorder implements NotificationCenter.NotificationCenterDeleg
         if (windowManager != null && windowView != null && windowView.getParent() == null) {
             AndroidUtilities.setPreferredMaxRefreshRate(windowManager, windowView, windowLayoutParams);
             windowManager.addView(windowView, windowLayoutParams);
+            NimarkoAppMotionBlur.attachRoot(windowView);
             setupBackDispatcher();
         }
 
@@ -775,6 +780,7 @@ public class StoryRecorder implements NotificationCenter.NotificationCenterDeleg
         if (windowManager != null && windowView != null && windowView.getParent() == null) {
             AndroidUtilities.setPreferredMaxRefreshRate(windowManager, windowView, windowLayoutParams);
             windowManager.addView(windowView, windowLayoutParams);
+            NimarkoAppMotionBlur.attachRoot(windowView);
             setupBackDispatcher();
         }
 

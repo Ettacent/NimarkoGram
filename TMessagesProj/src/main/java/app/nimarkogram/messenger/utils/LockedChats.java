@@ -4,6 +4,10 @@
 
 package app.nimarkogram.messenger.utils;
 
+import app.nimarkogram.messenger.security.NimarkoBiometricPrompt;
+import java.util.HashMap;
+import org.telegram.messenger.AndroidUtilities;
+import org.telegram.messenger.NotificationCenter;
 import android.content.SharedPreferences;
 
 import com.google.gson.Gson;
@@ -24,7 +28,7 @@ public final class LockedChats {
     private static final String LEGACY_ACCOUNT_KEY_PREFIX = "ids_";
     private static final String PREF_KEY_PREFIX = "ids_a";
     private static final String MIGRATION_CLEANED_KEY = "uid_binding_migration_complete";
-    private static final java.util.HashMap<String, HashSet<String>> caches = new java.util.HashMap<>();
+    private static final HashMap<String, HashSet<String>> caches = new HashMap<>();
     private static final HashSet<Integer> loggingOutAccounts = new HashSet<>();
 
     private LockedChats() {}
@@ -159,11 +163,11 @@ public final class LockedChats {
 
     public static void notifyProtectionChanged(int account) {
         final long uid = account >= 0 ? currentUid(account) : 0;
-        org.telegram.messenger.AndroidUtilities.runOnUIThread(() -> {
+        AndroidUtilities.runOnUIThread(() -> {
             if (account >= 0 && currentUid(account) != uid) return;
-            app.nimarkogram.messenger.security.NimarkoBiometricPrompt.onChatProtectionChanged(account);
-            org.telegram.messenger.NotificationCenter.getGlobalInstance().postNotificationNameInternal(
-                    org.telegram.messenger.NotificationCenter.nimarkoChatProtectionChanged, true, account);
+            NimarkoBiometricPrompt.onChatProtectionChanged(account);
+            NotificationCenter.getGlobalInstance().postNotificationNameInternal(
+                    NotificationCenter.nimarkoChatProtectionChanged, true, account);
         });
     }
 

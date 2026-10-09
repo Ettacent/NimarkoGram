@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This file is a part of X-Android
  * Copyright © Vyacheslav Krylov 2014
@@ -19,6 +21,7 @@
 
 package me.vkryl.android.animator;
 
+import app.nimarkogram.messenger.utils.NimarkoUiAnimationClock;
 import android.animation.Animator;
 import android.animation.AnimatorListenerAdapter;
 import android.animation.ValueAnimator;
@@ -224,6 +227,7 @@ public class FactorAnimator {
     animator.addListener(new AnimatorListenerAdapter() {
       @Override
       public void onAnimationStart (Animator animation) {
+        NimarkoUiAnimationClock.track(animation);
         invokeStartRunnable();
       }
 

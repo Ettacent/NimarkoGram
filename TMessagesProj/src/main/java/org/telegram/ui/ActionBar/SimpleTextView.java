@@ -10,6 +10,7 @@
 
 package org.telegram.ui.ActionBar;
 
+import app.nimarkogram.messenger.utils.NimarkoUiAnimationClock;
 import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
 import static org.telegram.messenger.AndroidUtilities.dp;
 
@@ -28,7 +29,6 @@ import android.graphics.Shader;
 import android.graphics.Typeface;
 import android.graphics.drawable.Drawable;
 import android.os.Build;
-import android.os.SystemClock;
 import android.os.Bundle;
 import android.text.Layout;
 import android.text.Spannable;
@@ -70,6 +70,7 @@ public class SimpleTextView extends View implements Drawable.Callback {
     private int gravity = Gravity.LEFT | Gravity.TOP;
     private int maxLines = 1;
     private CharSequence text;
+    private String textContentSnapshot;
     private SpannableStringBuilder spannableStringBuilder;
     private Drawable leftDrawable;
     private Drawable rightDrawable;
@@ -95,8 +96,11 @@ public class SimpleTextView extends View implements Drawable.Callback {
     private boolean textDoesNotFit;
     private float textOverflow;
     private float scrollingOffset;
+    private float lastDrawnScrollingOffset;
     private long lastUpdateTime;
     private int currentScrollDelay;
+    private boolean marqueeResumePending;
+    private long marqueeResumeElapsedMs = MARQUEE_RESUME_DURATION_MS;
     private Paint fadePaint;
     private Paint fadePaintBack;
     private Paint fadeEllpsizePaint;
@@ -126,6 +130,7 @@ public class SimpleTextView extends View implements Drawable.Callback {
     private static final int DIST_BETWEEN_SCROLLING_TEXT = 16;
     private static final int SCROLL_DELAY_MS = 500;
     private static final int SCROLL_SLOWDOWN_PX = 100;
+    private static final int MARQUEE_RESUME_DURATION_MS = 180;
     private int fullLayoutAdditionalWidth;
     private int fullLayoutLeftOffset;
     private float fullLayoutLeftCharactersOffset;
@@ -188,16 +193,52 @@ public class SimpleTextView extends View implements Drawable.Callback {
     protected void onAttachedToWindow() {
         super.onAttachedToWindow();
         attachedToWindow = true;
-        lastUpdateTime = SystemClock.elapsedRealtime();
+        lastUpdateTime = 0;
         emojiStack = AnimatedEmojiSpan.update(emojiCacheType, this, emojiStack, layout);
     }
     @Override
     protected void onWindowVisibilityChanged(int visibility) {
         super.onWindowVisibilityChanged(visibility);
         if (visibility == VISIBLE) {
-            lastUpdateTime = SystemClock.elapsedRealtime();
+            lastUpdateTime = 0;
+            invalidate();
+        } else {
+            pauseScrollAnimation();
+        }
+    }
+
+    private void pauseScrollAnimation() {
+        if (scrollNonFitText && scrollingOffset > 0 && currentScrollDelay <= 0) {
+            marqueeResumePending = true;
+        }
+        lastUpdateTime = 0;
+    }
+
+    @Override
+    public void onWindowFocusChanged(boolean hasWindowFocus) {
+        super.onWindowFocusChanged(hasWindowFocus);
+        if (!hasWindowFocus) {
+            pauseScrollAnimation();
+        } else {
+            lastUpdateTime = 0;
             invalidate();
         }
+    }
+
+    @Override
+    protected void onVisibilityChanged(View changedView, int visibility) {
+        super.onVisibilityChanged(changedView, visibility);
+        if (!isScrollPresentationVisible()) pauseScrollAnimation();
+    }
+
+    private boolean isScrollPresentationVisible() {
+        if (NimarkoUiAnimationClock.isPaused() || !isAttachedToWindow() || !hasWindowFocus()
+                || getWindowVisibility() != VISIBLE || !isShown()) return false;
+        for (View view = this; view != null;
+                view = view.getParent() instanceof View ? (View) view.getParent() : null) {
+            if (view.getVisibility() != VISIBLE || view.getAlpha() <= 0f) return false;
+        }
+        return true;
     }
 
     public void setEmojiCacheType(int cacheType) {
@@ -214,6 +255,7 @@ public class SimpleTextView extends View implements Drawable.Callback {
     protected void onDetachedFromWindow() {
         super.onDetachedFromWindow();
         attachedToWindow = false;
+        pauseScrollAnimation();
         AnimatedEmojiSpan.release(this, emojiStack);
         wasLayout = false;
     }
@@ -410,9 +452,12 @@ public class SimpleTextView extends View implements Drawable.Callback {
      * the view's trailing content edge.  A fitting title keeps the block next
      * to the text; a marquee pins it to the reserved trailing slot.
      */
+    protected int getDrawableContentWidth() {
+        return getMeasuredWidth();
+    }
     private int getOutsideRightDrawablesStartX(int textOffsetX) {
         final int slotsWidth = getOutsideRightDrawablesWidth();
-        final int contentRight = Math.max(0, getMeasuredWidth() - paddingRight);
+        final int contentRight = Math.max(0, getDrawableContentWidth() - paddingRight);
         final int maxStart = Math.max(0, contentRight - slotsWidth);
         if (textDoesNotFit || scrollingOffset != 0) {
             return maxStart;
@@ -521,7 +566,7 @@ public class SimpleTextView extends View implements Drawable.Callback {
                 }
                 if (canHideRightDrawable && rightDrawableWidth != 0 && !rightDrawableOutside) {
                     CharSequence string = TextUtils.ellipsize(text, textPaint, width, TextUtils.TruncateAt.END);
-                    if (!text.equals(string)) {
+                    if (!sameTextCharacters(text, string)) {
                         rightDrawableHidden = true;
                         width += rightDrawableWidth;
                     }
@@ -531,7 +576,7 @@ public class SimpleTextView extends View implements Drawable.Callback {
                     if (!ellipsizeByGradient) {
                         string = TextUtils.ellipsize(string, textPaint, width, TextUtils.TruncateAt.END);
                     }
-                    if (!ellipsizeByGradient && !string.equals(text)) {
+                    if (!ellipsizeByGradient && !sameTextCharacters(string, text)) {
                         fullLayout = StaticLayoutEx.createStaticLayout(text, textPaint, width, getAlignment(), 1.0f, 0.0f, false, TextUtils.TruncateAt.END, width, fullTextMaxLines, false);
                         if (fullLayout != null) {
                             int end = fullLayout.getLineEnd(0);
@@ -629,10 +674,13 @@ public class SimpleTextView extends View implements Drawable.Callback {
     protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
         int width = MeasureSpec.getSize(widthMeasureSpec);
         int height = MeasureSpec.getSize(heightMeasureSpec);
-        if (lastWidth != AndroidUtilities.displaySize.x) {
+        if (AndroidUtilities.displaySize.x > 0 && lastWidth != AndroidUtilities.displaySize.x) {
             lastWidth = AndroidUtilities.displaySize.x;
             scrollingOffset = 0;
+            lastDrawnScrollingOffset = 0f;
             currentScrollDelay = SCROLL_DELAY_MS;
+            marqueeResumePending = false;
+            marqueeResumeElapsedMs = MARQUEE_RESUME_DURATION_MS;
             checkUi_layerType();
         }
         createLayout(width - getPaddingLeft() - getPaddingRight() - minusWidth
@@ -827,11 +875,15 @@ public class SimpleTextView extends View implements Drawable.Callback {
     }
 
     public boolean setText(CharSequence value, boolean force) {
-        if (text == null && value == null || !force && text != null && text.equals(value)) {
+        if (text == null && value == null || !force && text instanceof String
+                && value instanceof String && (text == value || ((String) text).equals((String) value))) {
             return false;
         }
         final boolean sameTextContent = text != null && value != null
-                && TextUtils.equals(text, value);
+                && sameTextCharacters(textContentSnapshot, value);
+        if (!sameTextContent) {
+            textContentSnapshot = snapshotTextCharacters(value);
+        }
         text = value;
         naturalLayout = false;
         // A marquee draws a second copy while scrollingOffset is non-zero.
@@ -841,24 +893,95 @@ public class SimpleTextView extends View implements Drawable.Callback {
         if (!sameTextContent) {
             scrollingOffset = 0;
             currentScrollDelay = SCROLL_DELAY_MS;
+            marqueeResumePending = false;
+            marqueeResumeElapsedMs = MARQUEE_RESUME_DURATION_MS;
+            lastDrawnScrollingOffset = 0f;
         }
-        lastUpdateTime = SystemClock.elapsedRealtime();
+        if (lastUpdateTime != 0) {
+            lastUpdateTime = NimarkoUiAnimationClock.now();
+        }
         recreateLayoutMaybe();
         checkUi_layerType();
         return true;
     }
 
+    private static boolean sameTextCharacters(CharSequence first, CharSequence second) {
+        if (first == second) return true;
+        if (first == null || second == null) return false;
+        int length = first.length();
+        if (length != second.length()) return false;
+        if (first instanceof String && second instanceof String) {
+            return ((String) first).equals((String) second);
+        }
+        for (int i = 0; i < length; i++) {
+            if (first.charAt(i) != second.charAt(i)) return false;
+        }
+        return true;
+    }
+
+    private static String snapshotTextCharacters(CharSequence value) {
+        if (value == null) return null;
+        if (value instanceof String) return (String) value;
+        int length = value.length();
+        char[] characters = new char[length];
+        for (int i = 0; i < length; i++) characters[i] = value.charAt(i);
+        return new String(characters);
+    }
     public void resetScrolling() {
         scrollingOffset = 0;
+        lastDrawnScrollingOffset = 0f;
         currentScrollDelay = SCROLL_DELAY_MS;
-        lastUpdateTime = SystemClock.elapsedRealtime();
+        marqueeResumePending = false;
+        marqueeResumeElapsedMs = MARQUEE_RESUME_DURATION_MS;
+        lastUpdateTime = 0;
         checkUi_layerType();
         invalidate();
     }
 
     public void copyScrolling(SimpleTextView textView) {
         scrollingOffset = textView.scrollingOffset;
+        lastDrawnScrollingOffset = textView.lastDrawnScrollingOffset;
+        currentScrollDelay = textView.currentScrollDelay;
+        lastUpdateTime = textView.lastUpdateTime;
+        marqueeResumePending = textView.marqueeResumePending;
+        marqueeResumeElapsedMs = textView.marqueeResumeElapsedMs;
         checkUi_layerType();
+    }
+
+    public static final class ScrollingState {
+        private final String content;
+        private final float offset;
+        private final int delay;
+        private final int displayWidth;
+        private ScrollingState(SimpleTextView view) {
+            content = snapshotTextCharacters(view.text);
+            offset = view.scrollingOffset;
+            delay = view.currentScrollDelay;
+            displayWidth = view.lastWidth;
+        }
+    }
+
+    public ScrollingState captureScrollingState() { return new ScrollingState(this); }
+
+    public boolean restoreScrollingState(ScrollingState state) {
+        if (state == null || state.content == null || !sameTextCharacters(state.content, text)) return false;
+        scrollingOffset = lastDrawnScrollingOffset = state.offset;
+        currentScrollDelay = state.delay;
+        lastWidth = state.displayWidth;
+        lastUpdateTime = 0L;
+        marqueeResumePending = scrollingOffset > 0f && currentScrollDelay <= 0;
+        marqueeResumeElapsedMs = marqueeResumePending ? 0L : MARQUEE_RESUME_DURATION_MS;
+        checkUi_layerType();
+        invalidate();
+        return true;
+    }
+
+    public float getScrollingOffset() {
+        return scrollingOffset;
+    }
+
+    public float getLastDrawnScrollingOffset() {
+        return lastDrawnScrollingOffset;
     }
 
     public void setDrawablePadding(int value) {
@@ -975,7 +1098,7 @@ public class SimpleTextView extends View implements Drawable.Callback {
             }
             if (canHideRightDrawable && rightDrawableWidth != 0 && !rightDrawableOutside) {
                 CharSequence string = TextUtils.ellipsize(text, textPaint, width, TextUtils.TruncateAt.END);
-                if (!text.equals(string)) {
+                if (!sameTextCharacters(text, string)) {
                     rightDrawableHidden = true;
                     width += rightDrawableWidth;
                 }
@@ -998,6 +1121,10 @@ public class SimpleTextView extends View implements Drawable.Callback {
 
     @Override
     protected void onDraw(Canvas canvas) {
+        if (canvas.isHardwareAccelerated()) {
+            updateScrollAnimation();
+        }
+        lastDrawnScrollingOffset = scrollingOffset;
         super.onDraw(canvas);
         int textOffsetX = 0;
         layoutX = 0;
@@ -1267,7 +1394,6 @@ public class SimpleTextView extends View implements Drawable.Callback {
                 canvas.drawRect(0, 0, fadeEllpsizePaintWidth, getMeasuredHeight(), fadeEllpsizePaint);
                 canvas.restore();
             }
-            updateScrollAnimation();
             Emoji.emojiDrawingUseAlpha = true;
             if (leftDrawableOutside || rightDrawableOutside || ellipsizeByGradient || paddingRight > 0) {
                 canvas.restore();
@@ -1293,7 +1419,7 @@ public class SimpleTextView extends View implements Drawable.Callback {
                 ? getOutsideRightDrawablesStartX(textOffsetX) : 0;
         if (drawOutsideRight) {
             canvas.save();
-            canvas.clipRect(0, 0, getMeasuredWidth(), getMeasuredHeight());
+            canvas.clipRect(0, 0, getDrawableContentWidth(), getMeasuredHeight());
         }
         int outsideRightOffset = 0;
         if (isRightDrawableVisible(rightDrawable) && rightDrawableOutside) {
@@ -1404,11 +1530,20 @@ public class SimpleTextView extends View implements Drawable.Callback {
         if (!scrollNonFitText || !textDoesNotFit && scrollingOffset == 0) {
             return;
         }
-        long newUpdateTime = SystemClock.elapsedRealtime();
-        long dt = Math.max(0, newUpdateTime - lastUpdateTime);
+        if (!isScrollPresentationVisible()) {
+            pauseScrollAnimation();
+            return;
+        }
+        long newUpdateTime = NimarkoUiAnimationClock.now();
+        long dt = lastUpdateTime == 0 ? 0 : Math.max(0, newUpdateTime - lastUpdateTime);
         lastUpdateTime = newUpdateTime;
         if (dt > 17) {
             dt = 17;
+        }
+        if (marqueeResumePending) {
+            marqueeResumePending = false;
+            marqueeResumeElapsedMs = 0;
+            dt = 0;
         }
         if (currentScrollDelay > 0) {
             currentScrollDelay -= dt;
@@ -1423,11 +1558,22 @@ public class SimpleTextView extends View implements Drawable.Callback {
             } else {
                 pixelsPerSecond = PIXELS_PER_SECOND;
             }
-            scrollingOffset += dt / 1000.0f * dp(pixelsPerSecond);
+            float movementMs = dt;
+            if (dt > 0 && marqueeResumeElapsedMs < MARQUEE_RESUME_DURATION_MS) {
+                long rampMs = Math.min(dt, MARQUEE_RESUME_DURATION_MS - marqueeResumeElapsedMs);
+                float start = marqueeResumeElapsedMs / (float) MARQUEE_RESUME_DURATION_MS;
+                float end = (marqueeResumeElapsedMs + rampMs) / (float) MARQUEE_RESUME_DURATION_MS;
+                float startIntegral = start * start * start * (1f - start * .5f);
+                float endIntegral = end * end * end * (1f - end * .5f);
+                movementMs = (endIntegral - startIntegral) * MARQUEE_RESUME_DURATION_MS + dt - rampMs;
+                marqueeResumeElapsedMs += rampMs;
+            }
+            scrollingOffset += movementMs / 1000.0f * dp(pixelsPerSecond);
             lastUpdateTime = newUpdateTime;
             if (scrollingOffset > totalDistance) {
                 scrollingOffset = 0;
                 currentScrollDelay = SCROLL_DELAY_MS;
+                marqueeResumeElapsedMs = MARQUEE_RESUME_DURATION_MS;
             }
             checkUi_layerType();
         }

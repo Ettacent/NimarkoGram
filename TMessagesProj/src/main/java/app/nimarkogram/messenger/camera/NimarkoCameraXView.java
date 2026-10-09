@@ -2,6 +2,13 @@
 
 package app.nimarkogram.messenger.camera;
 
+import android.view.Gravity;
+import android.view.TextureView;
+import androidx.camera.core.ZoomState;
+import androidx.lifecycle.LiveData;
+import androidx.lifecycle.Observer;
+import org.telegram.messenger.camera.CameraSessionWrapper;
+import org.telegram.messenger.camera.CameraView;
 import android.Manifest;
 import android.animation.Animator;
 import android.animation.AnimatorListenerAdapter;
@@ -119,8 +126,8 @@ public class NimarkoCameraXView extends BaseCameraView {
     private final CameraXZoomCoordinator zoomCoordinator =
             new CameraXZoomCoordinator("CameraX view zoom");
 
-    @Nullable private androidx.lifecycle.LiveData<PreviewView.StreamState> streamStateLD;
-    @Nullable private androidx.lifecycle.Observer<PreviewView.StreamState> streamStateObserver;
+    @Nullable private LiveData<PreviewView.StreamState> streamStateLD;
+    @Nullable private Observer<PreviewView.StreamState> streamStateObserver;
 
     @Nullable private VideoCapture<Recorder> videoCapture;
     @Nullable private RecordingSession recordingSession;
@@ -221,7 +228,7 @@ public class NimarkoCameraXView extends BaseCameraView {
         addView(previewView, new FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.MATCH_PARENT,
-                android.view.Gravity.CENTER));
+                Gravity.CENTER));
 
         this.placeholderView = new ImageView(context);
         this.placeholderView.setVisibility(View.GONE);
@@ -281,10 +288,10 @@ public class NimarkoCameraXView extends BaseCameraView {
     @Override public int getOrientation() { return targetRotation < 0 ? 0 : targetRotation; }
 
     @Override @Nullable
-    public org.telegram.messenger.camera.CameraSessionWrapper getCameraSession() { return null; }
+    public CameraSessionWrapper getCameraSession() { return null; }
     @Override @Nullable public Object getCameraSessionObject() { return null; }
 
-    @Override @Nullable public android.view.TextureView getTextureView() { return null; }
+    @Override @Nullable public TextureView getTextureView() { return null; }
 
     @Override public boolean isSameTakePictureOrientation() {
         return displayOrientation == worldOrientation;
@@ -548,7 +555,7 @@ public class NimarkoCameraXView extends BaseCameraView {
     private ListenableFuture<Void> applyInitialZoom(Camera boundCamera, int generation) {
         baseZoomRatio = 1f;
         try {
-            androidx.camera.core.ZoomState zoomState =
+            ZoomState zoomState =
                     boundCamera.getCameraInfo().getZoomState().getValue();
             boolean ultraWide = !frontFacing
                     && NimarkoConfig.startFromUltraWideCam
@@ -761,7 +768,7 @@ public class NimarkoCameraXView extends BaseCameraView {
         Camera boundCamera = camera;
         if (boundCamera == null || !cameraControlsReady) return;
         try {
-            androidx.camera.core.ZoomState state =
+            ZoomState state =
                     boundCamera.getCameraInfo().getZoomState().getValue();
             zoomCoordinator.requestZoomRatio(
                     CameraXUtils.normalizedZoomToRatio(
@@ -775,7 +782,7 @@ public class NimarkoCameraXView extends BaseCameraView {
     public float getZoom() {
         if (camera == null) return 0f;
         try {
-            androidx.camera.core.ZoomState state =
+            ZoomState state =
                     camera.getCameraInfo().getZoomState().getValue();
             if (state == null) return 0f;
             return CameraXUtils.zoomRatioToNormalized(
@@ -1019,7 +1026,7 @@ public class NimarkoCameraXView extends BaseCameraView {
     }
 
     @Nullable
-    public android.util.Size getPreviewSize() {
+    public Size getPreviewSize() {
         if (preview == null) return null;
         try {
             return preview.getResolutionInfo() != null
@@ -1055,7 +1062,7 @@ public class NimarkoCameraXView extends BaseCameraView {
 
     @Override
     public float getTextureHeight(float width, float height) {
-        android.util.Size previewSize = getPreviewSize();
+        Size previewSize = getPreviewSize();
         if (previewSize == null) return height;
         int frameWidth, frameHeight;
         if (worldOrientation == Surface.ROTATION_90 || worldOrientation == Surface.ROTATION_270) {
@@ -1071,7 +1078,7 @@ public class NimarkoCameraXView extends BaseCameraView {
 
     @Override
     protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
-        android.util.Size previewSize = getPreviewSize();
+        Size previewSize = getPreviewSize();
         if (previewSize != null) {
             int frameWidth, frameHeight;
             if (worldOrientation == Surface.ROTATION_90 || worldOrientation == Surface.ROTATION_270) {
@@ -1561,7 +1568,7 @@ public class NimarkoCameraXView extends BaseCameraView {
      * default no-op without a documented reason.
      */
     @Override
-    public void setRecordFile(java.io.File generateVideoPath) {
+    public void setRecordFile(File generateVideoPath) {
 
     }
 
@@ -1571,7 +1578,7 @@ public class NimarkoCameraXView extends BaseCameraView {
     }
 
     @Override
-    public void setDelegate(@Nullable org.telegram.messenger.camera.CameraView.CameraViewDelegate delegate) {
+    public void setDelegate(@Nullable CameraView.CameraViewDelegate delegate) {
         if (delegate == null) { this.readyCallback = null; return; }
         this.readyCallback = delegate::onCameraInit;
     }

@@ -10,6 +10,7 @@
 
 package org.telegram.ui;
 
+import app.nimarkogram.messenger.utils.NimarkoAppMotionBlur;
 import app.nimarkogram.messenger.banners.NimarkoBannerRenderer;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -5897,6 +5898,7 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
                 windowView.setFocusable(false);
                 containerView.setFocusable(false);
                 wm.addView(windowView, windowLayoutParams);
+                NimarkoAppMotionBlur.attachRoot(windowView);
             } catch (Exception e) {
                 FileLog.e(e);
                 return false;

@@ -98,6 +98,7 @@ public class SearchViewPager extends ViewPagerFixed implements FilteredSearchVie
     private static final long SEARCH_EMPTY_REVEAL_DELAY_MS = 110;
     private ArrayList<SearchRow> searchRows;
     private boolean dispatchingSearchDiff;
+    private boolean searchRefreshPosted;
     private ViewTreeObserver.OnPreDrawListener searchResultsEnterListener;
     private boolean searchResultsEntering;
     private boolean searchEmptyRevealReady = true;
@@ -237,9 +238,16 @@ public class SearchViewPager extends ViewPagerFixed implements FilteredSearchVie
             @Override
             public void notifyDataSetChanged() {
                 if (searchListView != null && searchListView.isComputingLayout()) {
-                    searchListView.post(this::notifyDataSetChanged);
+                    if (!searchRefreshPosted) {
+                        searchRefreshPosted = true;
+                        searchListView.post(() -> {
+                            searchRefreshPosted = false;
+                            notifyDataSetChanged();
+                        });
+                    }
                     return;
                 }
+                searchRefreshPosted = false;
                 cancelPendingSearchResultsEntrance();
                 int itemCount = getCurrentItemCount();
                 ArrayList<SearchRow> nextRows = snapshotSearchRows(this);

@@ -2,6 +2,13 @@
 
 package app.nimarkogram.messenger.wsbypass.voip;
 
+import android.os.SystemClock;
+import app.nimarkogram.messenger.wsbypass.NimarkoVpnDetector;
+import app.nimarkogram.messenger.wsbypass.NimarkoWsBypassConfig;
+import app.nimarkogram.messenger.wsbypass.WlAccess;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 import android.util.Log;
 
 import java.net.DatagramPacket;
@@ -21,8 +28,8 @@ public final class VoipBypassCore {
 
     public static final String TAG = "NimarkoVoIP";
 
-    public static volatile boolean DEBUG = false;
-    public static void dlog(String msg) { if (DEBUG) Log.i(TAG, msg); }
+    public static final boolean DEBUG = false;
+    public static void dlog(String msg) {}
 
     private static final int MAGIC = 0xC1;
     
@@ -45,8 +52,8 @@ public final class VoipBypassCore {
         return t;
     });
     private static final long DNS_TTL_MS = 60_000L;
-    private static final java.util.concurrent.ConcurrentHashMap<String, ResolvedRelay> dnsCache =
-            new java.util.concurrent.ConcurrentHashMap<>();
+    private static final ConcurrentHashMap<String, ResolvedRelay> dnsCache =
+            new ConcurrentHashMap<>();
 
     private static final class ResolvedRelay {
         final InetAddress address;
@@ -99,13 +106,13 @@ public final class VoipBypassCore {
         String protocolTarget = VoipBypassConfig.relayProtocolTarget(reflectorIp);
         if (protocolTarget == null) return null;
         
-        if (app.nimarkogram.messenger.wsbypass.NimarkoWsBypassConfig.suspendOnVpn
-                && app.nimarkogram.messenger.wsbypass.NimarkoVpnDetector.isVpnActiveFresh()) {
+        if (NimarkoWsBypassConfig.suspendOnVpn
+                && NimarkoVpnDetector.isVpnActiveFresh()) {
             return null;
         }
-        if (app.nimarkogram.messenger.wsbypass.WlAccess.enabled()) {
+        if (WlAccess.enabled()) {
             Future<RelayEndpoint> pending = executor.submit(() ->
-                    app.nimarkogram.messenger.wsbypass.WlAccess.allocateCall(protocolTarget, reflectorPort, budgetMs));
+                    WlAccess.allocateCall(protocolTarget, reflectorPort, budgetMs));
             try {
                 return pending.get(budgetMs, TimeUnit.MILLISECONDS);
             } catch (InterruptedException e) {
@@ -132,11 +139,11 @@ public final class VoipBypassCore {
         }
 
         final String[] relayHosts = VoipBypassConfig.relayHosts(account);
-        final long deadline = android.os.SystemClock.elapsedRealtime() + budgetMs;
-        final java.util.concurrent.atomic.AtomicBoolean authRejected =
-                new java.util.concurrent.atomic.AtomicBoolean(false);
+        final long deadline = SystemClock.elapsedRealtime() + budgetMs;
+        final AtomicBoolean authRejected =
+                new AtomicBoolean(false);
         for (int i = 0; i < relayHosts.length; i++) {
-            int remaining = (int) (deadline - android.os.SystemClock.elapsedRealtime());
+            int remaining = (int) (deadline - SystemClock.elapsedRealtime());
             if (remaining <= 0) break;
             int attemptBudget = i + 1 < relayHosts.length
                     ? Math.min(PRIMARY_ATTEMPT_MAX_MS, remaining) : remaining;
@@ -151,17 +158,17 @@ public final class VoipBypassCore {
     private RelayEndpoint allocateOnHost(final String relayHost, final int controlPort, final byte[] request,
                                          final String reflectorIp, final int reflectorPort, final int account,
                                          final int budgetMs,
-                                         final java.util.concurrent.atomic.AtomicBoolean authRejected) {
-        
-        final java.util.concurrent.atomic.AtomicReference<DatagramSocket> sockRef = new java.util.concurrent.atomic.AtomicReference<>();
-        final java.util.concurrent.atomic.AtomicBoolean cancelled = new java.util.concurrent.atomic.AtomicBoolean(false);
-        final long deadline = android.os.SystemClock.elapsedRealtime() + budgetMs;
+                                         final AtomicBoolean authRejected) {
+
+        final AtomicReference<DatagramSocket> sockRef = new AtomicReference<>();
+        final AtomicBoolean cancelled = new AtomicBoolean(false);
+        final long deadline = SystemClock.elapsedRealtime() + budgetMs;
         Callable<RelayEndpoint> task = () -> {
             DatagramSocket sock = null;
             try {
                 InetAddress addr = resolveRelay(relayHost, deadline);
                 if (addr == null || cancelled.get() || Thread.currentThread().isInterrupted()) return null;
-                int remaining = (int) (deadline - android.os.SystemClock.elapsedRealtime());
+                int remaining = (int) (deadline - SystemClock.elapsedRealtime());
                 if (remaining <= 0) return null;
                 sock = new DatagramSocket();
                 sockRef.set(sock);
@@ -207,8 +214,6 @@ public final class VoipBypassCore {
                 }
 
                 String exactRelayIp = addr.getHostAddress();
-                dlog("allocateRelay: " + reflectorIp + ":" + reflectorPort
-                        + " → " + exactRelayIp + ":" + allocatedPort);
                 return new RelayEndpoint(exactRelayIp, allocatedPort);
             } finally {
                 if (sock != null) sock.close();
@@ -233,7 +238,7 @@ public final class VoipBypassCore {
     }
 
     private static InetAddress resolveRelay(String host, long deadlineMs) throws Exception {
-        long now = android.os.SystemClock.elapsedRealtime();
+        long now = SystemClock.elapsedRealtime();
         ResolvedRelay cached = dnsCache.get(host);
         if (cached != null && now - cached.resolvedAtMs < DNS_TTL_MS) return cached.address;
         int remaining = (int) (deadlineMs - now);
@@ -247,7 +252,7 @@ public final class VoipBypassCore {
             for (InetAddress address : addresses) {
                 if (address instanceof Inet4Address) { selected = address; break; }
             }
-            dnsCache.put(host, new ResolvedRelay(selected, android.os.SystemClock.elapsedRealtime()));
+            dnsCache.put(host, new ResolvedRelay(selected, SystemClock.elapsedRealtime()));
             return selected;
         } finally {
             future.cancel(true);

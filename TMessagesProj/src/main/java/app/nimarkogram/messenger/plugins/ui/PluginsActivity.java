@@ -2,6 +2,9 @@
 
 package app.nimarkogram.messenger.plugins.ui;
 
+import android.app.Activity;
+import android.system.StructStat;
+import app.nimarkogram.messenger.utils.AppRestartHelper;
 import android.content.Context;
 import android.content.Intent;
 import android.graphics.PorterDuff;
@@ -149,7 +152,7 @@ public class PluginsActivity extends BasePreferencesActivity implements Notifica
             public void onScrollStateChanged(RecyclerView recyclerView, int i) {
                 if (i == 1) {
 
-                    android.app.Activity parent = PluginsActivity.this.getParentActivity();
+                    Activity parent = PluginsActivity.this.getParentActivity();
                     if (parent != null) {
                         AndroidUtilities.hideKeyboard(parent.getCurrentFocus());
                     }
@@ -276,14 +279,14 @@ public class PluginsActivity extends BasePreferencesActivity implements Notifica
             startActivityForResult(Intent.createChooser(intent,
                     LocaleController.getString(R.string.NM_AddPlugin)), REQ_PICK_PLUGIN);
         } catch (Throwable t) {
-            org.telegram.messenger.FileLog.e("nimarko: failed to launch plugin picker", t);
+            FileLog.e("nimarko: failed to launch plugin picker", t);
         }
     }
 
     @Override
     public void onActivityResultFragment(int requestCode, int resultCode, Intent data) {
         super.onActivityResultFragment(requestCode, resultCode, data);
-        if (requestCode != REQ_PICK_PLUGIN || resultCode != android.app.Activity.RESULT_OK || data == null) {
+        if (requestCode != REQ_PICK_PLUGIN || resultCode != Activity.RESULT_OK || data == null) {
             return;
         }
         Uri uri = data.getData();
@@ -508,7 +511,7 @@ public class PluginsActivity extends BasePreferencesActivity implements Notifica
                             outDir.getAbsoluteFile())) {
                 return null;
             }
-            android.system.StructStat stat =
+            StructStat stat =
                     Os.lstat(outDir.getAbsolutePath());
             if ((stat.st_mode & OsConstants.S_IFMT)
                     != OsConstants.S_IFDIR) {
@@ -663,7 +666,7 @@ public class PluginsActivity extends BasePreferencesActivity implements Notifica
                             directory.getCanonicalFile())) {
                 return;
             }
-            android.system.StructStat stat = Os.lstat(
+            StructStat stat = Os.lstat(
                     candidate.getAbsolutePath());
             int type = stat.st_mode & OsConstants.S_IFMT;
             if (type != OsConstants.S_IFREG
@@ -1039,13 +1042,13 @@ public class PluginsActivity extends BasePreferencesActivity implements Notifica
 
         AndroidUtilities.runOnUIThread(() -> {
             try {
-                android.content.Context ctx = getParentActivity();
+                Context ctx = getParentActivity();
                 if (ctx == null) {
-                    ctx = org.telegram.messenger.ApplicationLoader.applicationContext;
+                    ctx = ApplicationLoader.applicationContext;
                 }
-                app.nimarkogram.messenger.utils.AppRestartHelper.triggerRebirth(ctx);
+                AppRestartHelper.triggerRebirth(ctx);
             } catch (Throwable t) {
-                org.telegram.messenger.FileLog.e("nimarko: AppRestartHelper.triggerRebirth failed", t);
+                FileLog.e("nimarko: AppRestartHelper.triggerRebirth failed", t);
                 this.isSwitchingEngineState = false;
             }
         }, 250L);

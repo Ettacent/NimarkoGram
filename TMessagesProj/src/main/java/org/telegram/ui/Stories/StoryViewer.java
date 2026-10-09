@@ -1,5 +1,8 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Stories;
 
+import app.nimarkogram.messenger.utils.NimarkoAppMotionBlur;
 import static android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -1759,6 +1762,7 @@ public class StoryViewer implements NotificationCenter.NotificationCenterDelegat
             AndroidUtilities.setPreferredMaxRefreshRate(windowManager, windowView, windowLayoutParams);
             windowManager.addView(windowView, windowLayoutParams);
 
+            NimarkoAppMotionBlur.attachRoot(windowView);
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 final OnBackInvokedDispatcher dispatcher = windowView.findOnBackInvokedDispatcher();
                 if (dispatcher != null) {
@@ -3389,6 +3393,7 @@ public class StoryViewer implements NotificationCenter.NotificationCenterDelegat
             fragment.getLayoutContainer().addView(windowView);
         } else {
             windowManager.addView(windowView, windowLayoutParams);
+            NimarkoAppMotionBlur.attachRoot(windowView);
         }
 
         if (pipLiveView != null) {

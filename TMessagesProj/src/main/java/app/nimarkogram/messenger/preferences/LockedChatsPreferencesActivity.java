@@ -2,6 +2,8 @@
 
 package app.nimarkogram.messenger.preferences;
 
+import android.text.TextUtils;
+import org.telegram.messenger.MessagesStorage;
 import android.os.Bundle;
 import android.view.View;
 
@@ -113,9 +115,9 @@ public class LockedChatsPreferencesActivity extends BasePreferencesActivity impl
             TLRPC.User u = messagesController.getUser(dialogId);
             if (u != null) {
                 String name = UserObject.getUserName(u);
-                if (!android.text.TextUtils.isEmpty(name)) return name;
+                if (!TextUtils.isEmpty(name)) return name;
                 String username = UserObject.getPublicUsername(u, false);
-                return android.text.TextUtils.isEmpty(username) ? String.valueOf(dialogId) : "@" + username;
+                return TextUtils.isEmpty(username) ? String.valueOf(dialogId) : "@" + username;
             }
         } else {
             TLRPC.Chat c = messagesController.getChat(-dialogId);
@@ -141,7 +143,7 @@ public class LockedChatsPreferencesActivity extends BasePreferencesActivity impl
             picker.setDelegate((fragment, dids, message, param, notify, scheduleDate, scheduleRepeatPeriod, topicsFragment) -> {
                 boolean applied = false;
                 if (dids != null) {
-                    for (org.telegram.messenger.MessagesStorage.TopicKey k : dids) {
+                    for (MessagesStorage.TopicKey k : dids) {
                         if (k != null) {
                             applied |= LockedChats.setLocked(account, ownerUid, k.dialogId, true);
                         }

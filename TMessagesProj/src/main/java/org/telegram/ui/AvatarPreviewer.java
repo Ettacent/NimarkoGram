@@ -1,5 +1,8 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui;
 
+import app.nimarkogram.messenger.utils.NimarkoAppMotionBlur;
 import static org.telegram.messenger.AndroidUtilities.dp;
 
 import android.animation.Animator;
@@ -151,6 +154,7 @@ public class AvatarPreviewer {
             AndroidUtilities.applyEdgeToEdgeLayoutParams(params);
             AndroidUtilities.setPreferredMaxRefreshRate(windowManager, layout, params);
             windowManager.addView(layout, params);
+            NimarkoAppMotionBlur.attachRoot(layout);
             parentContainer.requestDisallowInterceptTouchEvent(true);
             visible = true;
         }

@@ -1,5 +1,8 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components.Reactions;
 
+import app.nimarkogram.messenger.utils.NimarkoAppMotionBlur;
 import static org.telegram.messenger.AndroidUtilities.dp;
 import static org.telegram.ui.Components.ReactionsContainerLayout.TYPE_MESSAGE_EFFECTS;
 import static org.telegram.ui.Components.ReactionsContainerLayout.TYPE_STICKER_SET_EMOJI;
@@ -299,6 +302,7 @@ public class CustomEmojiReactionsWindow {
             windowManager = AndroidUtilities.findActivity(context).getWindowManager();
             AndroidUtilities.setPreferredMaxRefreshRate(windowManager, windowView, lp);
             windowManager.addView(windowView, lp);
+            NimarkoAppMotionBlur.attachRoot(windowView);
         }
 
         this.reactionsContainerLayout = reactionsContainerLayout;

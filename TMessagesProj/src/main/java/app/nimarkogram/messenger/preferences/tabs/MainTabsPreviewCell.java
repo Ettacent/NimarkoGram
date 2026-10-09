@@ -32,6 +32,8 @@
  */
 package app.nimarkogram.messenger.preferences.tabs;
 
+import android.os.Bundle;
+import android.view.MotionEvent;
 import static org.telegram.messenger.AndroidUtilities.dp;
 
 import android.content.ClipData;
@@ -184,7 +186,7 @@ public class MainTabsPreviewCell extends ViewGroup {
         invalidateActiveDrag();
         contentGeneration++;
         
-        this.boundShowSearch = app.nimarkogram.messenger.NimarkoConfig.showSearchInTabs;
+        this.boundShowSearch = NimarkoConfig.showSearchInTabs;
         if (sourceTabs != null) {
             rebuildFromSource();
         } else {
@@ -278,14 +280,14 @@ public class MainTabsPreviewCell extends ViewGroup {
                 }
 
                 @Override
-                public boolean performAccessibilityAction(View host, int action, android.os.Bundle args) {
+                public boolean performAccessibilityAction(View host, int action, Bundle args) {
                     if (action == R.id.acc_action_move_left) return moveVisual(index, -1);
                     if (action == R.id.acc_action_move_right) return moveVisual(index, 1);
                     return super.performAccessibilityAction(host, action, args);
                 }
             });
             tab.setOnTouchListener((v, ev) -> {
-                if (ev.getActionMasked() == android.view.MotionEvent.ACTION_DOWN) {
+                if (ev.getActionMasked() == MotionEvent.ACTION_DOWN) {
                     ViewParent p = getParent();
                     while (p != null) {
                         p.requestDisallowInterceptTouchEvent(true);

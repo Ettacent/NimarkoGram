@@ -2,6 +2,7 @@
 
 package app.nimarkogram.messenger.infocards;
 
+import android.graphics.PixelFormat;
 import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.ColorFilter;
@@ -347,7 +348,7 @@ public class CacheCard extends BaseInfoCard {
 
         @Override
         public int getOpacity() {
-            return android.graphics.PixelFormat.TRANSLUCENT;
+            return PixelFormat.TRANSLUCENT;
         }
 
         @Override

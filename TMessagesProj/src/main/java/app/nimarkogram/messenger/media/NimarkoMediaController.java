@@ -3,6 +3,11 @@
  
 package app.nimarkogram.messenger.media;
 
+import java.io.BufferedReader;
+import java.io.FileReader;
+import java.util.HashMap;
+import java.util.concurrent.Future;
+import java.util.function.BooleanSupplier;
 import android.app.Activity;
 import android.content.Context;
 import android.content.SharedPreferences;
@@ -238,7 +243,7 @@ public final class NimarkoMediaController implements NotificationCenter.Notifica
                 clearInflight(request);
                 return INTERCEPT_BLOCKED;
             }
-            final java.util.function.BooleanSupplier canSelect = () ->
+            final BooleanSupplier canSelect = () ->
                     isRequestIdentityValid(request, account)
                     && !parent.isFinishing() && !parent.isDestroyed()
                     && !fragmentForBulletins.isFinished && !fragmentForBulletins.isPaused()
@@ -561,7 +566,7 @@ public final class NimarkoMediaController implements NotificationCenter.Notifica
 
     private List<String> downloadImagesParallel(RequestContext request, List<String> urls) {
         int count = Math.min(urls.size(), MAX_ALBUM_IMAGES);
-        List<java.util.concurrent.Future<String>> futures = new ArrayList<>(count);
+        List<Future<String>> futures = new ArrayList<>(count);
         String batch = Long.toHexString(System.nanoTime());
         for (int i = 0; i < count; i++) {
             final int idx = i;
@@ -570,7 +575,7 @@ public final class NimarkoMediaController implements NotificationCenter.Notifica
                     NimarkoMediaDownloader.download(url, "album_" + batch + "_" + idx + ".jpg")));
         }
         List<String> out = new ArrayList<>(count);
-        for (java.util.concurrent.Future<String> f : futures) {
+        for (Future<String> f : futures) {
             try {
                 String p = f.get();
                 if (p != null) {
@@ -747,7 +752,7 @@ public final class NimarkoMediaController implements NotificationCenter.Notifica
                 String path = prepared.sourcePath;
                 boolean isFinal = (i == to - 1);
 
-                java.util.HashMap<String, String> sendParams = new java.util.HashMap<>();
+                HashMap<String, String> sendParams = new HashMap<>();
                 sendParams.put("groupId", Long.toString(groupId));
                 if (isFinal) sendParams.put("final", "1");
 
@@ -901,7 +906,7 @@ public final class NimarkoMediaController implements NotificationCenter.Notifica
 
     public static boolean isNimarkoMediaPluginFile(File file) {
         if (file == null || !file.exists() || !file.isFile()) return false;
-        try (java.io.BufferedReader r = new java.io.BufferedReader(new java.io.FileReader(file))) {
+        try (BufferedReader r = new BufferedReader(new FileReader(file))) {
             String line;
             int lines = 0;
             while ((line = r.readLine()) != null && lines < 30) {

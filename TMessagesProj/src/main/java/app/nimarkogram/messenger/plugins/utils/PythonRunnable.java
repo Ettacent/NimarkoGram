@@ -95,17 +95,22 @@ public final class PythonRunnable implements
             return;
         }
         String pluginId = runtimeToken.getPluginId();
-        PluginUiRegistry.DecorChildrenSnapshot decorSnapshot =
-                Looper.myLooper() == Looper.getMainLooper()
-                        ? PluginUiRegistry.captureDecorChildren() : null;
-        controller.getWatchdog().onPluginExecutionStarted(pluginId);
-        long diagnosticToken = NimarkoCrashContext.beginInvocation();
-        long diagnosticStart = NimarkoCrashContext.invocationStartedMs(diagnosticToken);
-        String diagnosticOwner = diagnosticToken == 0 ? ""
-                : runtimeToken.getGeneration() + ":" + runtimeToken.getInstanceId();
-        NimarkoCrashContext.pythonPhase(diagnosticToken, diagnosticStart,
-                "runnable_enter", "PythonRunnable.run", pluginId, diagnosticOwner);
+        PluginUiRegistry.DecorChildrenSnapshot decorSnapshot = null;
+        boolean watchdogStarted = false;
+        long diagnosticToken = 0;
+        long diagnosticStart = 0;
+        String diagnosticOwner = "";
         try {
+            decorSnapshot = Looper.myLooper() == Looper.getMainLooper()
+                    ? PluginUiRegistry.captureDecorChildren() : null;
+            diagnosticToken = NimarkoCrashContext.beginInvocation();
+            diagnosticStart = NimarkoCrashContext.invocationStartedMs(diagnosticToken);
+            diagnosticOwner = diagnosticToken == 0 ? ""
+                    : runtimeToken.getGeneration() + ":" + runtimeToken.getInstanceId();
+            NimarkoCrashContext.pythonPhase(diagnosticToken, diagnosticStart,
+                    "runnable_enter", "PythonRunnable.run", pluginId, diagnosticOwner);
+            controller.getWatchdog().onPluginExecutionStarted(pluginId);
+            watchdogStarted = true;
             callable.call();
         } catch (Throwable error) {
             
@@ -115,23 +120,35 @@ public final class PythonRunnable implements
             FileLog.e("NimarkoGram: queued Python callback failed", error);
             rethrowIfFatal(error);
         } finally {
-            NimarkoCrashContext.pythonPhase(diagnosticToken, diagnosticStart,
-                    "runnable_exit", "PythonRunnable.run", pluginId, diagnosticOwner);
-            controller.getWatchdog().onPluginExecutionFinished(pluginId);
-            if (decorSnapshot != null) {
+            try {
                 try {
-                    PluginUiRegistry.adoptNewDecorChildren(
-                            runtimeToken, decorSnapshot);
-                } catch (Throwable failure) {
-                    FileLog.e(
-                            "NimarkoGram: unable to isolate plugin overlay",
-                            failure);
+                    NimarkoCrashContext.pythonPhase(diagnosticToken, diagnosticStart,
+                            "runnable_exit", "PythonRunnable.run", pluginId, diagnosticOwner);
+                } finally {
+                    try {
+                        if (watchdogStarted) {
+                            controller.getWatchdog().onPluginExecutionFinished(pluginId);
+                        }
+                    } finally {
+                        if (decorSnapshot != null) {
+                            try {
+                                PluginUiRegistry.adoptNewDecorChildren(
+                                        runtimeToken, decorSnapshot);
+                            } catch (Throwable failure) {
+                                FileLog.e("NimarkoGram: unable to isolate plugin overlay", failure);
+                            }
+                        }
+                    }
+                }
+            } finally {
+                try {
+                    controller.exitPluginRuntime(runtimeToken);
+                } finally {
+                    callbackState.complete();
+                    controller.unregisterRuntimeCallbackHolder(
+                            runtimeToken, this);
                 }
             }
-            controller.exitPluginRuntime(runtimeToken);
-            callbackState.complete();
-            controller.unregisterRuntimeCallbackHolder(
-                    runtimeToken, this);
         }
     }
 

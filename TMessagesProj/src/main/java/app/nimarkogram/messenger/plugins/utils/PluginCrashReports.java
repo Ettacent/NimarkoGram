@@ -2,6 +2,7 @@
 
 package app.nimarkogram.messenger.plugins.utils;
 
+import org.telegram.ui.LaunchActivity;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.os.Build;
@@ -270,7 +271,7 @@ public final class PluginCrashReports {
             });
         } catch (RuntimeException ignored) {
             AndroidUtilities.runOnUIThread(() -> {
-                BaseFragment fragment = org.telegram.ui.LaunchActivity.getLastFragment();
+                BaseFragment fragment = LaunchActivity.getLastFragment();
                 if (usable(fragment)) {
                     BulletinFactory.of(fragment).createSimpleBulletin(org.telegram.messenger.R.raw.info,
                             LocaleController.getString(R.string.ErrorOccurred)).show();

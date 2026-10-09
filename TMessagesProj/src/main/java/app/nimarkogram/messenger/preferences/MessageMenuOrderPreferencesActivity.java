@@ -2,6 +2,7 @@
 
 package app.nimarkogram.messenger.preferences;
 
+import androidx.core.graphics.ColorUtils;
 import static org.telegram.messenger.LocaleController.getString;
 
 import android.content.Context;
@@ -373,7 +374,7 @@ public class MessageMenuOrderPreferencesActivity extends BaseFragment {
         @Override
         protected void dispatchDraw(Canvas canvas) {
             if (dragHighlight > 0f) {
-                dragPaint.setColor(androidx.core.graphics.ColorUtils.blendARGB(
+                dragPaint.setColor(ColorUtils.blendARGB(
                         Theme.getColor(Theme.key_windowBackgroundWhite),
                         Theme.getColor(Theme.key_windowBackgroundWhiteBlueText), 0.12f));
                 dragPaint.setAlpha(Math.round(255 * dragHighlight));

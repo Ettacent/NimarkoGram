@@ -2,6 +2,7 @@
 
 package app.nimarkogram.messenger.wsbypass;
 
+import app.nimarkogram.messenger.wsbypass.voip.VoipBypassConfig;
 import android.content.Context;
 import android.net.ConnectivityManager;
 import android.net.Network;
@@ -174,7 +175,7 @@ public final class NimarkoVpnDetector {
 
     private static boolean updateVpnState(boolean now, long expectedLossGeneration,
                                           boolean requireGeneration, boolean notifyController) {
-        return app.nimarkogram.messenger.wsbypass.voip.VoipBypassConfig
+        return VoipBypassConfig
                 .mutateRelayState(() -> {
                     synchronized (VPN_LOSS_LOCK) {
                         if (requireGeneration && expectedLossGeneration != vpnLossGeneration) {

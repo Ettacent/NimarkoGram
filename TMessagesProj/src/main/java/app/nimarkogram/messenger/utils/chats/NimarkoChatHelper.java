@@ -6,6 +6,7 @@
 
 package app.nimarkogram.messenger.utils.chats;
 
+import app.nimarkogram.messenger.utils.AppRestartHelper;
 import static org.telegram.messenger.LocaleController.getString;
 
 import android.app.Activity;
@@ -104,12 +105,12 @@ public class NimarkoChatHelper extends BaseController {
         }
 
         if (url.contains("restart") || url.contains("reboot") || url.contains("nimarko_restart")) {
-            app.nimarkogram.messenger.utils.AppRestartHelper.restartApp(ApplicationLoader.applicationContext);
+            AppRestartHelper.restartApp(ApplicationLoader.applicationContext);
             return true;
         }
 
         if (url.contains("luck") || url.contains("nimarko_luck")) {
-            app.nimarkogram.messenger.utils.AppRestartHelper.killApp();
+            AppRestartHelper.killApp();
             return true;
         }
 

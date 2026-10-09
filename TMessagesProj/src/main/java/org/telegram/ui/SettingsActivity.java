@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -143,6 +145,7 @@ import org.telegram.ui.bots.SetupEmojiStatusSheet;
 import app.nimarkogram.messenger.NimarkoConfig;
 import app.nimarkogram.messenger.utils.AppRestartHelper;
 
+import app.nimarkogram.messenger.utils.NimarkoUiAnimationClock;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -1249,6 +1252,8 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
             this.mini = mini;
             setOrientation(HORIZONTAL);
 
+            setBackground(Theme.createSelectorDrawable(
+                    Theme.getColor(Theme.key_listSelector, resourcesProvider), Theme.RIPPLE_MASK_ALL));
             iconLayout = new FrameLayout(context);
             iconLayout.setBackground(iconBackground = new Background());
 
@@ -1314,43 +1319,131 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
             private final org.telegram.ui.Components.MessagePreviewCrossfade crossfade =
                     new org.telegram.ui.Components.MessagePreviewCrossfade(this, this::onFadeFrame);
             private int transitionStartHeight;
+            private int lastPresentedHeight;
+            private float lastPresentedProgress = 1f;
+            private boolean hasPresented;
+            private boolean capturing;
             SubtitleView(Context context) {
                 super(context);
             }
             private void onFadeFrame() {
+                if (capturing) return;
+                if (!SharedConfig.animationsEnabled() && crossfade.getOutgoingWidth() > 0) {
+                    resetFade();
+                    return;
+                }
+                if (crossfade.isRunning() && !canPresent()) {
+                    capturePresentedBlend();
+                    return;
+                }
                 if (transitionStartHeight != 0) {
-                    if (!crossfade.isRunning()) transitionStartHeight = 0;
+                    if (crossfade.getOutgoingWidth() == 0) transitionStartHeight = 0;
                     requestLayout();
                 }
             }
             void setSubtitle(CharSequence text, boolean animated) {
+                if (!animated || !SharedConfig.animationsEnabled() || !isAttachedToWindow()
+                        || TextUtils.isEmpty(getText()) || TextUtils.isEmpty(text)) {
+                    resetFade();
+                }
                 if (TextUtils.equals(getText(), text)) return;
-                if (animated && SharedConfig.animationsEnabled() && isAttachedToWindow()
-                        && getVisibility() == View.VISIBLE && getWindowVisibility() == View.VISIBLE
-                        && getWidth() > 0 && !TextUtils.isEmpty(getText()) && !TextUtils.isEmpty(text)) {
-                    int height = getHeight();
-                    crossfade.capture(this::drawText);
-                    if (crossfade.isRunning()) transitionStartHeight = height;
+                if (hasPresented && getWidth() > 0 && getHeight() > 0) {
+                    if (crossfade.isRunning() || crossfade.getOutgoingWidth() == 0) {
+                        capturePresentedBlend();
+                    }
                 } else {
-                    crossfade.finish();
+                    resetFade();
                 }
                 setText(text);
             }
+            private void capturePresentedBlend() {
+                capturing = true;
+                try {
+                    crossfade.capture(this::drawText, false, lastPresentedProgress);
+                } finally {
+                    capturing = false;
+                }
+                if (crossfade.getOutgoingWidth() == 0) {
+                    resetFade();
+                    return;
+                }
+                transitionStartHeight = lastPresentedHeight;
+                lastPresentedProgress = 0f;
+                requestLayout();
+            }
+
+            private boolean canPresent() {
+                if (NimarkoUiAnimationClock.isPaused() || !isAttachedToWindow() || getWindowVisibility() != View.VISIBLE
+                        || !isShown() || getWidth() <= 0 || getHeight() <= 0) return false;
+                float alpha = 1f;
+                for (View view = this; view != null;) {
+                    alpha *= view.getAlpha();
+                    if (view.getVisibility() != View.VISIBLE || alpha <= 0f) return false;
+                    android.view.ViewParent parent = view.getParent();
+                    view = parent instanceof View ? (View) parent : null;
+                }
+                return true;
+            }
             void resetFade() {
+                boolean resize = transitionStartHeight != 0;
+                transitionStartHeight = 0;
+                lastPresentedHeight = 0;
+                lastPresentedProgress = 1f;
+                hasPresented = false;
                 crossfade.finish();
+                if (resize) requestLayout();
             }
             boolean isHeightTransitionRunning() {
-                return crossfade.isRunning() && transitionStartHeight > 0;
+                return crossfade.getOutgoingWidth() > 0 && transitionStartHeight > 0;
+            }
+
+            @Override
+            protected void onWindowVisibilityChanged(int visibility) {
+                super.onWindowVisibilityChanged(visibility);
+                if (crossfade != null && crossfade.isRunning() && !canPresent()) {
+                    capturePresentedBlend();
+                }
+            }
+
+            @Override
+            protected void onVisibilityChanged(View changedView, int visibility) {
+                super.onVisibilityChanged(changedView, visibility);
+                if (crossfade != null && crossfade.isRunning() && !canPresent()) {
+                    capturePresentedBlend();
+                }
+            }
+
+            @Override
+            protected void onDetachedFromWindow() {
+                resetFade();
+                super.onDetachedFromWindow();
             }
             private void drawText(Canvas canvas) {
                 super.onDraw(canvas);
             }
             @Override
             protected void onDraw(Canvas canvas) {
+                if (!canvas.isHardwareAccelerated()) {
+                    crossfade.draw(canvas, this::drawText);
+                    return;
+                }
+                if (!SharedConfig.animationsEnabled() && crossfade.getOutgoingWidth() > 0) resetFade();
+                if (!canPresent()) {
+                    if (crossfade.isRunning()) capturePresentedBlend();
+                    crossfade.draw(canvas, this::drawText);
+                    return;
+                }
+                if (crossfade.getOutgoingWidth() > 0 && !crossfade.isRunning()) {
+                    crossfade.start();
+                }
                 crossfade.draw(canvas, this::drawText);
+                lastPresentedProgress = crossfade.getProgress();
+                lastPresentedHeight = getHeight();
+                hasPresented = !TextUtils.isEmpty(getText());
             }
             @Override
             protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
+                if (!SharedConfig.animationsEnabled() && crossfade.getOutgoingWidth() > 0) resetFade();
                 if (isHeightTransitionRunning()) {
                     super.onMeasure(widthMeasureSpec, MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED));
                     int height = Math.round(transitionStartHeight

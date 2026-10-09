@@ -1098,32 +1098,63 @@ public class AndroidUtilities {
 
     @RequiresApi(api = Build.VERSION_CODES.N)
     public static boolean getBitmapFromSurfaceChecked(SurfaceView surfaceView, Bitmap surfaceBitmap) {
-        if (surfaceView == null || !surfaceView.getHolder().getSurface().isValid()) {
+        return getBitmapFromSurfaceSync(surfaceView, null, surfaceBitmap);
+    }
+
+    @RequiresApi(api = Build.VERSION_CODES.N)
+    private static boolean getBitmapFromSurfaceSync(SurfaceView surfaceView, Surface surface, Bitmap surfaceBitmap) {
+        final Bitmap temporaryBitmap;
+        try {
+            if (surfaceView != null) {
+                surface = surfaceView.getHolder().getSurface();
+            }
+            if (surface == null || !surface.isValid() || surfaceBitmap == null || surfaceBitmap.isRecycled() || !surfaceBitmap.isMutable() || Thread.currentThread().isInterrupted()) {
+                return false;
+            }
+            temporaryBitmap = Bitmap.createBitmap(surfaceBitmap.getWidth(), surfaceBitmap.getHeight(), surfaceBitmap.getConfig());
+        } catch (RuntimeException | OutOfMemoryError e) {
             return false;
         }
         CountDownLatch countDownLatch = new CountDownLatch(1);
         final int[] result = {PixelCopy.ERROR_UNKNOWN};
+        final boolean[] abandoned = {false};
+        boolean requested = false;
         try {
-            PixelCopy.request(surfaceView, surfaceBitmap, copyResult -> {
-                result[0] = copyResult;
-                countDownLatch.countDown();
-            }, Utilities.searchQueue.getHandler());
-        } catch (IllegalArgumentException e) {
+            PixelCopy.OnPixelCopyFinishedListener listener = copyResult -> {
+                synchronized (countDownLatch) {
+                    result[0] = copyResult;
+                    countDownLatch.countDown();
+                    if (abandoned[0]) {
+                        temporaryBitmap.recycle();
+                    }
+                }
+            };
+            if (surfaceView != null) {
+                PixelCopy.request(surfaceView, temporaryBitmap, listener, Utilities.searchQueue.getHandler());
+            } else {
+                PixelCopy.request(surface, temporaryBitmap, listener, Utilities.searchQueue.getHandler());
+            }
+            requested = true;
+            if (!countDownLatch.await(200, TimeUnit.MILLISECONDS) || result[0] != PixelCopy.SUCCESS || Thread.currentThread().isInterrupted() || surfaceBitmap.isRecycled() || !surfaceBitmap.isMutable()) {
+                return false;
+            }
+            Paint paint = new Paint();
+            paint.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.SRC));
+            new Canvas(surfaceBitmap).drawBitmap(temporaryBitmap, null, new Rect(0, 0, surfaceBitmap.getWidth(), surfaceBitmap.getHeight()), paint);
+            return true;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
             return false;
-        }
-        boolean interrupted = false;
-        while (true) {
-            try {
-                countDownLatch.await();
-                break;
-            } catch (InterruptedException e) {
-                interrupted = true;
+        } catch (RuntimeException | OutOfMemoryError e) {
+            return false;
+        } finally {
+            synchronized (countDownLatch) {
+                abandoned[0] = true;
+                if (!requested || countDownLatch.getCount() == 0) {
+                    temporaryBitmap.recycle();
+                }
             }
         }
-        if (interrupted) {
-            Thread.currentThread().interrupt();
-        }
-        return result[0] == PixelCopy.SUCCESS;
     }
 
     @RequiresApi(api = Build.VERSION_CODES.N)
@@ -1162,18 +1193,7 @@ public class AndroidUtilities {
 
     @RequiresApi(api = Build.VERSION_CODES.N)
     public static void getBitmapFromSurface(Surface surface, Bitmap surfaceBitmap) {
-        if (surface == null || !surface.isValid()) {
-            return;
-        }
-        CountDownLatch countDownLatch = new CountDownLatch(1);
-        PixelCopy.request(surface, surfaceBitmap, copyResult -> {
-            countDownLatch.countDown();
-        }, Utilities.searchQueue.getHandler());
-        try {
-            countDownLatch.await();
-        } catch (InterruptedException e) {
-            e.printStackTrace();
-        }
+        getBitmapFromSurfaceSync(null, surface, surfaceBitmap);
     }
 
     @RequiresApi(api = Build.VERSION_CODES.O)

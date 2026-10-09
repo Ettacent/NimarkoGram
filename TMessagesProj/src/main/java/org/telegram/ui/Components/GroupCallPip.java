@@ -1,5 +1,8 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components;
 
+import app.nimarkogram.messenger.utils.NimarkoAppMotionBlur;
 import android.animation.Animator;
 import android.animation.AnimatorListenerAdapter;
 import android.animation.AnimatorSet;
@@ -733,6 +736,7 @@ public class GroupCallPip implements NotificationCenter.NotificationCenterDelega
                 WindowManager.LayoutParams.FLAG_DIM_BEHIND;
 
         wm.addView(instance.alertContainer, windowLayoutParams);
+        NimarkoAppMotionBlur.attachRoot(instance.alertContainer);
         instance.alertContainer.setVisibility(View.GONE);
 
         windowLayoutParams = createWindowLayoutParams(context);
@@ -741,16 +745,19 @@ public class GroupCallPip implements NotificationCenter.NotificationCenterDelega
         windowLayoutParams.height = AndroidUtilities.dp(150);
         wm.addView(instance.windowRemoveTooltipView, windowLayoutParams);
 
+        NimarkoAppMotionBlur.attachRoot(instance.windowRemoveTooltipView);
         windowLayoutParams = createWindowLayoutParams(context);
         instance.windowLayoutParams = windowLayoutParams;
         wm.addView(instance.windowView, windowLayoutParams);
 
+        NimarkoAppMotionBlur.attachRoot(instance.windowView);
         windowLayoutParams = createWindowLayoutParams(context);
         windowLayoutParams.gravity = Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL;
         windowLayoutParams.width = AndroidUtilities.dp(100);
         windowLayoutParams.height = AndroidUtilities.dp(150);
         wm.addView(instance.windowRemoveTooltipOverlayView, windowLayoutParams);
 
+        NimarkoAppMotionBlur.attachRoot(instance.windowRemoveTooltipOverlayView);
         instance.windowRemoveTooltipView.setVisibility(View.GONE);
 
         instance.windowView.setScaleX(0.5f);

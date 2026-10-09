@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This file is a part of X-Android
  * Copyright © Vyacheslav Krylov 2014
@@ -341,7 +343,9 @@ public final class ListAnimator<T> implements Iterable<ListAnimator.Entry<T>> {
 
   private boolean foundListChanges;
 
+  private boolean retargetingSize;
   private void onBeforeListChanged () {
+    if (retargetingSize) return;
     if (!foundListChanges) {
       foundListChanges = true;
       stopAnimation(false);
@@ -372,6 +376,16 @@ public final class ListAnimator<T> implements Iterable<ListAnimator.Entry<T>> {
     if (animated) {
       onApplyListChanges();
     }
+  }
+
+  public void retargetSize () {
+    retargetingSize = true;
+    try {
+      measureImpl(true);
+    } finally {
+      retargetingSize = false;
+    }
+    applyAnimation(animator == null ? 1f : animator.getFactor());
   }
 
   public void measureImpl (boolean animated) {

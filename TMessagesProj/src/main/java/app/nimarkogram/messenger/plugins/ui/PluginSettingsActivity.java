@@ -2,6 +2,12 @@
 
 package app.nimarkogram.messenger.plugins.ui;
 
+import android.graphics.Canvas;
+import android.view.ViewGroup;
+import android.widget.FrameLayout;
+import app.nimarkogram.messenger.plugins.models.CustomSetting;
+import java.util.HashMap;
+import org.telegram.ui.LaunchActivity;
 import android.content.Context;
 import android.text.TextUtils;
 import android.view.View;
@@ -67,7 +73,7 @@ public class PluginSettingsActivity extends BasePreferencesActivity implements
     private String targetSettingName;
     private boolean runtimeLossFinishScheduled;
     
-    private final java.util.HashMap<Object, View[]> customViewCache = new java.util.HashMap<>();
+    private final HashMap<Object, View[]> customViewCache = new HashMap<>();
 
     public PluginSettingsActivity(Plugin plugin) {
         this(plugin, null, null, null, null);
@@ -482,8 +488,8 @@ public class PluginSettingsActivity extends BasePreferencesActivity implements
                     }
                     break;
                 case "custom":
-                    app.nimarkogram.messenger.plugins.models.CustomSetting custs =
-                            (app.nimarkogram.messenger.plugins.models.CustomSetting) item;
+                    CustomSetting custs =
+                            (CustomSetting) item;
                     com.chaquo.python.PyObject cvCb = custs.getCreateViewCallback();
                     if (cvCb != null) {
                         try {
@@ -550,11 +556,11 @@ public class PluginSettingsActivity extends BasePreferencesActivity implements
                                 
                                 final View pluginView = v;
                                 View hosted = null;
-                                android.widget.FrameLayout host = null;
+                                FrameLayout host = null;
                                 try {
-                                    host = new android.widget.FrameLayout(vctx) {
+                                    host = new FrameLayout(vctx) {
                                         @Override
-                                        protected boolean drawChild(android.graphics.Canvas c, View child, long dt) {
+                                        protected boolean drawChild(Canvas c, View child, long dt) {
                                             try {
                                                 return super.drawChild(c, child, dt);
                                             } catch (VirtualMachineError
@@ -566,8 +572,8 @@ public class PluginSettingsActivity extends BasePreferencesActivity implements
                                             }
                                         }
                                     };
-                                    android.view.ViewGroup.LayoutParams orig = pluginView.getLayoutParams();
-                                    host.addView(pluginView, new android.widget.FrameLayout.LayoutParams(-1, orig != null ? orig.height : -2));
+                                    ViewGroup.LayoutParams orig = pluginView.getLayoutParams();
+                                    host.addView(pluginView, new FrameLayout.LayoutParams(-1, orig != null ? orig.height : -2));
                                     hosted = host;
                                 } catch (VirtualMachineError
                                         | ThreadDeath
@@ -591,7 +597,7 @@ public class PluginSettingsActivity extends BasePreferencesActivity implements
                                 uItem.settingItem = custs;
                             }
                         } catch (Throwable t) {
-                            org.telegram.messenger.FileLog.e("nimarko: custom setting view failed", t);
+                            FileLog.e("nimarko: custom setting view failed", t);
                         }
                     }
                     break;
@@ -823,7 +829,7 @@ public class PluginSettingsActivity extends BasePreferencesActivity implements
                 FileLog.e("Error executing on_change callback for " + this.plugin.getId() + "/" + str, e);
                 
                 AndroidUtilities.runOnUIThread(() -> {
-                    org.telegram.ui.ActionBar.BaseFragment last = org.telegram.ui.LaunchActivity.getSafeLastFragment();
+                    org.telegram.ui.ActionBar.BaseFragment last = LaunchActivity.getSafeLastFragment();
                     if (last != null) {
                         BulletinFactory.of(last).createErrorBulletin(LocaleController.getString(R.string.PluginCallbackError)).show();
                     }

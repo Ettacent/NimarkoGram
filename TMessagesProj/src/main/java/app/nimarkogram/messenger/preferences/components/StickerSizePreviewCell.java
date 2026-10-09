@@ -3,6 +3,7 @@
  
 package app.nimarkogram.messenger.preferences.components;
 
+import android.view.View;
 import android.annotation.SuppressLint;
 import android.content.Context;
 import android.graphics.Canvas;
@@ -208,8 +209,8 @@ public class StickerSizePreviewCell extends LinearLayout {
         }
         
         requestLayout();
-        if (getParent() instanceof android.view.View) {
-            ((android.view.View) getParent()).requestLayout();
+        if (getParent() instanceof View) {
+            ((View) getParent()).requestLayout();
         }
     }
 

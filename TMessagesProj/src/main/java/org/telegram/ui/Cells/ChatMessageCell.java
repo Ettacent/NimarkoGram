@@ -251,6 +251,7 @@ import org.telegram.ui.Stories.recorder.CaptionContainerView;
 import org.telegram.ui.Stories.recorder.DominantColors;
 
 import java.io.File;
+import java.lang.ref.WeakReference;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -5825,10 +5826,26 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
         toCheckBox.setChecked(fromCheckBox.isChecked(), true);
     }
 
+    private void syncVoicePlaybackProgress() {
+        if (currentMessageObject == null || !currentMessageObject.isVoice() || isDraggingdAnyMusicSeekBar()) {
+            return;
+        }
+        MediaController controller = MediaController.getInstance();
+        if (!controller.isPlayingMessage(currentMessageObject)) {
+            return;
+        }
+        MessageObject playing = controller.getPlayingMessageObject();
+        if (playing != null && playing != currentMessageObject) {
+            currentMessageObject.audioProgress = playing.audioProgress;
+            currentMessageObject.audioProgressSec = playing.audioProgressSec;
+            currentMessageObject.audioPlayerDuration = playing.audioPlayerDuration;
+        }
+    }
     public void updatePlayingMessageProgress() {
         if (currentMessageObject == null) {
             return;
         }
+        syncVoicePlaybackProgress();
         if (videoPlayerRewinder != null && videoPlayerRewinder.rewindCount != 0 && videoPlayerRewinder.rewindByBackSeek) {
             currentMessageObject.audioProgress = videoPlayerRewinder.getVideoProgress();
         }
@@ -7374,7 +7391,9 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
             photoImage.setCrossfadeDuration(messageObject.isRoundVideo() ? 220 : ImageReceiver.DEFAULT_CROSSFADE_DURATION);
             photoImage.setCrossfadeByScale(0);
             photoImage.setCrossfadeOnReady(messageObject.isRoundVideo()
-                    || messageObject.isAnyKindOfSticker() && !messageObject.isDice());
+                    || messageObject.isAnyKindOfSticker() && !messageObject.isDice()
+                    || messageObject.isGif() && messageObject.isOutOwner()
+                    && (messageObject.isSending() || messageObject.wasJustSent));
             photoImage.setGradientBitmap(null);
             photoImage.clearDecorators();
             photoImage.setInvalidateAll(false);
@@ -10886,7 +10905,9 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
                         if (((MessageObject.isGifDocument(document, messageObject.hasValidGroupId()) && messageObject.videoEditedInfo == null) || (!messageObject.isSending() && !messageObject.isEditing())) && (localFile != 0 || FileLoader.getInstance(currentAccount).isLoadingFile(fileName) || autoDownload)) {
                             if (localFile != 1 && !messageObject.needDrawBluredPreview() && (localFile != 0 || messageObject.canStreamVideo() && autoDownload)) {
                                 autoPlayingMedia = true;
-                                if (!messageIdChanged && (!isRoundVideo || photoImage.hasFullyVisibleImage())) {
+                                if (!messageIdChanged && ((!isRoundVideo && !(messageObject.isGif()
+                                        && messageObject.isOutOwner() && (messageObject.isSending() || messageObject.wasJustSent)))
+                                        || photoImage.hasFullyVisibleImage())) {
                                     photoImage.setCrossfadeWithOldImage(true);
                                     photoImage.setCrossfadeDuration(250);
                                 }
@@ -10914,7 +10935,9 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
                                 photoImage.setMediaStartEndTime(currentMessageObject.videoEditedInfo.startTime / 1000, currentMessageObject.videoEditedInfo.endTime / 1000);
                             } else {
                                 if (!messageIdChanged && !currentMessageObject.needDrawBluredPreview()
-                                        && (!isRoundVideo || photoImage.hasFullyVisibleImage())) {
+                                        && ((!isRoundVideo && !(messageObject.isGif()
+                                        && messageObject.isOutOwner() && (messageObject.isSending() || messageObject.wasJustSent)))
+                                        || photoImage.hasFullyVisibleImage())) {
                                     photoImage.setCrossfadeWithOldImage(true);
                                     photoImage.setCrossfadeDuration(250);
                                 }
@@ -11714,7 +11737,7 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
                 seekBar.updateTimestamps(currentMessageObject, null);
             }
 
-            seekBarWaveform.setProgress(0);
+            seekBarWaveform.setProgress(currentMessageObject.audioProgress);
 
             if (currentNameStatusDrawable != null) {
                 currentNameStatusDrawable.play();
@@ -17239,6 +17262,10 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
     public void drawMessageText(Canvas canvas) {
         if (currentMessageObject == null || currentMessageObject.isSponsored()) {
             return;
+        }
+        if (transitionParams.animateExpandedQuotes && delegate != null) {
+
+            delegate.invalidateBlur();
         }
         float textY = this.textY;
         if (transitionParams.animateTextY) {
@@ -24311,6 +24338,10 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
         if (fullyDraw || !reactionsViewportInitialized) {
             return true;
         }
+        if (transitionParams.animateExpandedQuotes) {
+
+            return true;
+        }
         final float progress = transitionParams.animateChange ? transitionParams.animateChangeProgress : 1f;
         if (transitionParams.animateBackgroundBoundsInner) {
             return canvas.getClipBounds(reactionsClipBounds)
@@ -27843,6 +27874,9 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
         if (seekBar != null && seekBar.isDragging()) {
             return true;
         }
+        if (seekBarWaveform != null && seekBarWaveform.isDragging()) {
+            return true;
+        }
         if (currentMessageObject != null && currentMessageObject.isPoll()) {
             if (pollContentDrawable != null && pollContentDrawable.isDraggingSeekBar()) {
                 return true;
@@ -30105,7 +30139,7 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
         if (isPhotoInPinchOverlay()) {
             return false;
         }
-        photoImage.setSkipUpdateFrame(skipFrameUpdate || drawForBlur || drawingGlassBackdrop
+        photoImage.setSkipUpdateFrame(skipFrameUpdate || drawForBlur || drawingPhotoViewerBackdrop
                 || SizeNotifierFrameLayout.drawingBlur
                 || canvas instanceof SizeNotifierFrameLayout.SimplerCanvas);
         float oldAlpha = photoImage.getAlpha();

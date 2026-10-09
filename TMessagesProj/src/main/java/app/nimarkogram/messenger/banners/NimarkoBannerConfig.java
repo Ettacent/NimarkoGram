@@ -3,10 +3,12 @@
  
 package app.nimarkogram.messenger.banners;
 
+import android.content.Context;
 import android.content.SharedPreferences;
 
 import org.telegram.messenger.ApplicationLoader;
 import org.telegram.messenger.AndroidUtilities;
+import org.telegram.messenger.NotificationCenter;
 import org.telegram.messenger.UserConfig;
 
 import java.io.File;
@@ -16,7 +18,7 @@ public final class NimarkoBannerConfig {
     private static final String PREFS = "nimarko_banners";
 
     private static SharedPreferences prefs() {
-        return ApplicationLoader.applicationContext.getSharedPreferences(PREFS, android.content.Context.MODE_PRIVATE);
+        return ApplicationLoader.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
     }
 
     private static SharedPreferences.Editor editor() {
@@ -53,8 +55,8 @@ public final class NimarkoBannerConfig {
         AndroidUtilities.runOnUIThread(() -> {
             NimarkoBannerRenderer renderer = NimarkoBannerRenderer.peek();
             if (renderer != null) renderer.onSettingsChanged();
-            org.telegram.messenger.NotificationCenter.getGlobalInstance().postNotificationName(
-                    org.telegram.messenger.NotificationCenter.nimarkoBannerDisplayChanged);
+            NotificationCenter.getGlobalInstance().postNotificationName(
+                    NotificationCenter.nimarkoBannerDisplayChanged);
         });
     }
 

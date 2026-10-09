@@ -2,6 +2,20 @@
 
 package app.nimarkogram.messenger.updater;
 
+import android.content.pm.PackageInfo;
+import android.content.pm.PackageManager;
+import android.content.pm.Signature;
+import android.view.WindowManager;
+import androidx.core.content.pm.PackageInfoCompat;
+import java.io.ByteArrayOutputStream;
+import java.io.FileInputStream;
+import java.io.IOException;
+import java.security.MessageDigest;
+import java.util.Iterator;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.regex.Pattern;
+import org.telegram.ui.LaunchActivity;
 import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
@@ -52,8 +66,8 @@ public class NimarkoUpdater {
     public static long expectedSizeBytes = 0;   // full APK size from the server, in bytes
     public static String expectedSha256 = null; // hex SHA-256 from the server, may be null on old APIs
     private static final long MAX_APK_BYTES = 512L * 1024L * 1024L;
-    private static final java.util.regex.Pattern SHA256_PATTERN =
-            java.util.regex.Pattern.compile("^[0-9a-fA-F]{64}$");
+    private static final Pattern SHA256_PATTERN =
+            Pattern.compile("^[0-9a-fA-F]{64}$");
 
     public static boolean isApkValid(File file) {
         String wantHash = wantedApkHash();
@@ -91,43 +105,43 @@ public class NimarkoUpdater {
 
     private static String trustedSignerFingerprint(File file) throws Exception {
         Context context = ApplicationLoader.applicationContext;
-        android.content.pm.PackageManager pm = context.getPackageManager();
+        PackageManager pm = context.getPackageManager();
         int flags = Build.VERSION.SDK_INT >= 28
-                ? android.content.pm.PackageManager.GET_SIGNING_CERTIFICATES
-                : android.content.pm.PackageManager.GET_SIGNATURES;
-        android.content.pm.PackageInfo archive = pm.getPackageArchiveInfo(file.getAbsolutePath(), flags);
-        android.content.pm.PackageInfo installed = pm.getPackageInfo(context.getPackageName(), flags);
+                ? PackageManager.GET_SIGNING_CERTIFICATES
+                : PackageManager.GET_SIGNATURES;
+        PackageInfo archive = pm.getPackageArchiveInfo(file.getAbsolutePath(), flags);
+        PackageInfo installed = pm.getPackageInfo(context.getPackageName(), flags);
         if (archive == null || installed == null
                 || !context.getPackageName().equals(archive.packageName)) {
             return null;
         }
-        android.content.pm.Signature[] archiveSignatures = signaturesOf(archive);
-        android.content.pm.Signature[] installedSignatures = signaturesOf(installed);
+        Signature[] archiveSignatures = signaturesOf(archive);
+        Signature[] installedSignatures = signaturesOf(installed);
         if (archiveSignatures.length == 0 || installedSignatures.length == 0) return null;
-        for (android.content.pm.Signature archiveSignature : archiveSignatures) {
-            for (android.content.pm.Signature installedSignature : installedSignatures) {
+        for (Signature archiveSignature : archiveSignatures) {
+            for (Signature installedSignature : installedSignatures) {
                 if (archiveSignature.equals(installedSignature)) return signatureSha256(archiveSignature);
             }
         }
         return null;
     }
 
-    private static String signatureSha256(android.content.pm.Signature signature) throws Exception {
-        java.security.MessageDigest md = java.security.MessageDigest.getInstance("SHA-256");
+    private static String signatureSha256(Signature signature) throws Exception {
+        MessageDigest md = MessageDigest.getInstance("SHA-256");
         byte[] digest = md.digest(signature.toByteArray());
         StringBuilder out = new StringBuilder(digest.length * 2);
         for (byte b : digest) out.append(String.format(Locale.ROOT, "%02x", b & 0xff));
         return out.toString();
     }
 
-    private static android.content.pm.Signature[] signaturesOf(android.content.pm.PackageInfo info) {
+    private static Signature[] signaturesOf(PackageInfo info) {
         if (Build.VERSION.SDK_INT >= 28 && info.signingInfo != null) {
-            android.content.pm.Signature[] signatures = info.signingInfo.hasMultipleSigners()
+            Signature[] signatures = info.signingInfo.hasMultipleSigners()
                     ? info.signingInfo.getApkContentsSigners()
                     : info.signingInfo.getSigningCertificateHistory();
-            return signatures == null ? new android.content.pm.Signature[0] : signatures;
+            return signatures == null ? new Signature[0] : signatures;
         }
-        return info.signatures == null ? new android.content.pm.Signature[0] : info.signatures;
+        return info.signatures == null ? new Signature[0] : info.signatures;
     }
 
     private static final class ValidatedApk {
@@ -178,8 +192,8 @@ public class NimarkoUpdater {
     }
 
     public static String sha256OfFile(File file) {
-        try (InputStream in = new java.io.FileInputStream(file)) {
-            java.security.MessageDigest md = java.security.MessageDigest.getInstance("SHA-256");
+        try (InputStream in = new FileInputStream(file)) {
+            MessageDigest md = MessageDigest.getInstance("SHA-256");
             byte[] buf = new byte[1 << 14];
             int read;
             while ((read = in.read(buf)) != -1) md.update(buf, 0, read);
@@ -203,8 +217,8 @@ public class NimarkoUpdater {
         if (cached > 0) return cached;
         try {
             Context context = ApplicationLoader.applicationContext;
-            android.content.pm.PackageInfo info = context.getPackageManager().getPackageInfo(context.getPackageName(), 0);
-            int installed = (int) androidx.core.content.pm.PackageInfoCompat.getLongVersionCode(info);
+            PackageInfo info = context.getPackageManager().getPackageInfo(context.getPackageName(), 0);
+            int installed = (int) PackageInfoCompat.getLongVersionCode(info);
             if (installed > 0) installedVersionCode = installed;
             return installed;
         } catch (Exception e) {
@@ -278,8 +292,8 @@ public class NimarkoUpdater {
 
     private static boolean launchChecked = false;
 
-    private static final java.util.regex.Pattern VERSION_PATTERN =
-            java.util.regex.Pattern.compile("^[A-Za-z0-9._-]+$");
+    private static final Pattern VERSION_PATTERN =
+            Pattern.compile("^[A-Za-z0-9._-]+$");
 
     private static final int MAX_RESPONSE_BYTES = 64 * 1024;
 
@@ -344,8 +358,8 @@ public class NimarkoUpdater {
                 }
 
                 long responseLength = connection.getContentLengthLong();
-                if (responseLength > MAX_RESPONSE_BYTES) throw new java.io.IOException("response body too large");
-                java.io.ByteArrayOutputStream responseBytes = new java.io.ByteArrayOutputStream(
+                if (responseLength > MAX_RESPONSE_BYTES) throw new IOException("response body too large");
+                ByteArrayOutputStream responseBytes = new ByteArrayOutputStream(
                         responseLength > 0 ? (int) responseLength : 4096);
                 try (InputStream input = connection.getInputStream()) {
                     byte[] buffer = new byte[4096];
@@ -353,7 +367,7 @@ public class NimarkoUpdater {
                     int read;
                     while ((read = input.read(buffer)) != -1) {
                         total += read;
-                        if (total > MAX_RESPONSE_BYTES) throw new java.io.IOException("response body too large");
+                        if (total > MAX_RESPONSE_BYTES) throw new IOException("response body too large");
                         responseBytes.write(buffer, 0, read);
                     }
                 }
@@ -378,17 +392,17 @@ public class NimarkoUpdater {
                 changelog = obj.optString("changelog", "");
                 long sizeBytes = obj.optLong("size", 0);
                 if (sizeBytes < 0 || sizeBytes > MAX_APK_BYTES) {
-                    throw new java.io.IOException("invalid APK size: " + sizeBytes);
+                    throw new IOException("invalid APK size: " + sizeBytes);
                 }
                 expectedSizeBytes = sizeBytes;
                 expectedSha256 = obj.optString("sha256", null);
                 if (expectedSha256 != null && expectedSha256.isEmpty()) expectedSha256 = null;
                 if (expectedSha256 != null && !SHA256_PATTERN.matcher(expectedSha256).matches()) {
-                    throw new java.io.IOException("invalid sha256");
+                    throw new IOException("invalid sha256");
                 }
                 if (expectedSha256 != null) expectedSha256 = expectedSha256.toLowerCase(Locale.ROOT);
                 if (expectedSizeBytes <= 0 && expectedSha256 == null) {
-                    throw new java.io.IOException("update has neither size nor sha256");
+                    throw new IOException("update has neither size nor sha256");
                 }
                 size = sizeBytes > 0 ? AndroidUtilities.formatFileSize(sizeBytes) : "";
                 long dateMs = obj.optLong("date", 0);
@@ -603,7 +617,7 @@ public class NimarkoUpdater {
                 if (append && total > 0) total += offset;   // a Range body's length is the REMAINDER, not the whole file
                 long expectedTotal = expectedSizeBytes > 0 ? expectedSizeBytes : total;
                 if (expectedTotal > MAX_APK_BYTES) {
-                    throw new java.io.IOException("invalid download length: " + expectedTotal);
+                    throw new IOException("invalid download length: " + expectedTotal);
                 }
                 showProgressNotification(context, expectedTotal > 0 ? (int) (offset * 100L / expectedTotal) : 0);
 
@@ -628,7 +642,7 @@ public class NimarkoUpdater {
                         out.write(buf, 0, read);
                         downloaded += read;
                         if ((expectedTotal > 0 && downloaded > expectedTotal) || downloaded > MAX_APK_BYTES) {
-                            throw new java.io.IOException("download exceeded expected length");
+                            throw new IOException("download exceeded expected length");
                         }
                         if (expectedTotal > 0) {
                             dlRealProgress = (int) (downloaded * 100L / expectedTotal);
@@ -645,7 +659,7 @@ public class NimarkoUpdater {
                 }
 
                 if (expectedTotal > 0 && downloaded != expectedTotal) {
-                    throw new java.io.IOException("incomplete download " + downloaded + "/" + expectedTotal);
+                    throw new IOException("incomplete download " + downloaded + "/" + expectedTotal);
                 }
 
                 boolean hashVerified = false;
@@ -653,7 +667,7 @@ public class NimarkoUpdater {
                     String got = sha256OfFile(outFile);
                     if (got == null || !got.equalsIgnoreCase(expectedSha256)) {
                         outFile.delete();
-                        throw new java.io.IOException("sha256 mismatch: expected="
+                        throw new IOException("sha256 mismatch: expected="
                                 + expectedSha256 + " got=" + got);
                     }
                     hashVerified = true;
@@ -666,7 +680,7 @@ public class NimarkoUpdater {
                         || (expectedTotal > 0 && downloaded == expectedTotal);   // completeness already enforced downloaded==expectedTotal above
                 if (!hashVerified && !sizeVerified) {
                     outFile.delete();
-                    throw new java.io.IOException("unverifiable download: no sha256 and size unknown/mismatch");
+                    throw new IOException("unverifiable download: no sha256 and size unknown/mismatch");
                 }
 
                 if (myGeneration != downloadGeneration) {
@@ -676,7 +690,7 @@ public class NimarkoUpdater {
                 String warmHash = wantedApkHash();
                 if (!validateApkFully(outFile, warmHash)) {
                     outFile.delete();
-                    throw new java.io.IOException("APK package/signature validation failed");
+                    throw new IOException("APK package/signature validation failed");
                 }
 
                 synchronized (downloadBindingLock) {
@@ -762,7 +776,7 @@ public class NimarkoUpdater {
 
     private static HttpURLConnection openApkConnection(String link, long rangeStart) throws Exception {
         String current = link;
-        if (!isHttps(current)) throw new java.io.IOException("refusing non-https download url: " + current);
+        if (!isHttps(current)) throw new IOException("refusing non-https download url: " + current);
         for (int i = 0; i < 5; i++) {
             HttpURLConnection c = (HttpURLConnection) new URI(current).toURL().openConnection();
             c.setRequestProperty("User-Agent", "NimarkoGram-OTA");
@@ -776,18 +790,18 @@ public class NimarkoUpdater {
             if (code >= 300 && code < 400) {
                 String loc = c.getHeaderField("Location");
                 c.disconnect();
-                if (loc == null) throw new java.io.IOException("redirect without Location");
+                if (loc == null) throw new IOException("redirect without Location");
                 current = new URI(current).resolve(loc).toString();
-                if (!isHttps(current)) throw new java.io.IOException("refusing non-https redirect target: " + current);
+                if (!isHttps(current)) throw new IOException("refusing non-https redirect target: " + current);
                 continue;
             }
             if (code != 200 && code != 206) {   // 206 = Partial Content (server honoured Range)
                 c.disconnect();
-                throw new java.io.IOException("HTTP " + code);
+                throw new IOException("HTTP " + code);
             }
             return c;
         }
-        throw new java.io.IOException("too many redirects");
+        throw new IOException("too many redirects");
     }
 
     private static void startProgressSmoother(int generation) {
@@ -917,7 +931,7 @@ public class NimarkoUpdater {
     }
 
     private static PendingIntent openUpdateScreenIntent(Context context) {
-        Intent open = new Intent(context, org.telegram.ui.LaunchActivity.class);
+        Intent open = new Intent(context, LaunchActivity.class);
         open.setAction("app.nimarkogram.messenger.OPEN_UPDATE");
         open.putExtra("nm_open_update", true);
         open.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
@@ -1022,7 +1036,7 @@ public class NimarkoUpdater {
             }
             try {
                 AlertsCreator.createApkRestrictedDialog(activity, null).show();
-            } catch (android.view.WindowManager.BadTokenException e) {
+            } catch (WindowManager.BadTokenException e) {
                 FileLog.e(e);
                 showReadyNotification(context, file);
             }
@@ -1186,11 +1200,11 @@ public class NimarkoUpdater {
             this.size = size;
             this.downloadURL = downloadURL;
             this.uploadDate = uploadDate;
-            java.util.Map<String, String> translations = new java.util.LinkedHashMap<>();
+            Map<String, String> translations = new LinkedHashMap<>();
             try {
                 if (changelogsJson != null && !changelogsJson.isEmpty()) {
                     JSONObject json = new JSONObject(changelogsJson);
-                    java.util.Iterator<String> keys = json.keys();
+                    Iterator<String> keys = json.keys();
                     while (keys.hasNext()) {
                         String key = keys.next();
                         Object value = json.opt(key);

@@ -131,8 +131,10 @@ public class PluginsMenuWrapper {
         if (!entered) {
             return;
         }
-        controller.getWatchdog().onPluginExecutionStarted(menuItemRecord.pluginId);
+        boolean watchdogStarted = false;
         try {
+            controller.getWatchdog().onPluginExecutionStarted(menuItemRecord.pluginId);
+            watchdogStarted = true;
             menuItemRecord.onClickCallback.call(this.contextData);
         } catch (Exception e) {
             controller.getWatchdog()
@@ -143,9 +145,14 @@ public class PluginsMenuWrapper {
                     .onPluginExecutionFailed(menuItemRecord.pluginId, failure);
             throw failure;
         } finally {
-            controller.getWatchdog().onPluginExecutionFinished(menuItemRecord.pluginId);
-            if (menuItemRecord.runtimeToken != null) {
-                controller.exitPluginRuntime(menuItemRecord.runtimeToken);
+            try {
+                if (watchdogStarted) {
+                    controller.getWatchdog().onPluginExecutionFinished(menuItemRecord.pluginId);
+                }
+            } finally {
+                if (menuItemRecord.runtimeToken != null) {
+                    controller.exitPluginRuntime(menuItemRecord.runtimeToken);
+                }
             }
         }
     }

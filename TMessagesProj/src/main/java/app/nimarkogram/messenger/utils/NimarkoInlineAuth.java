@@ -2,6 +2,7 @@
 
 package app.nimarkogram.messenger.utils;
 
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.telegram.messenger.FileLog;
 import org.telegram.messenger.UserConfig;
 import org.telegram.tgnet.ConnectionsManager;
@@ -69,8 +70,8 @@ public final class NimarkoInlineAuth {
                 String token = backend.poll(uid, reg.code);
                 if (GIVE_UP.equals(token)) return null;
                 if (token != null) {
-                    java.util.concurrent.atomic.AtomicBoolean committed =
-                            new java.util.concurrent.atomic.AtomicBoolean(false);
+                    AtomicBoolean committed =
+                            new AtomicBoolean(false);
                     if (!enabled.runIfEnabled(() -> {
                         if (accountUid(account) != uid) return;
                         backend.cacheToken(token);

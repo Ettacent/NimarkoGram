@@ -2,6 +2,10 @@
 
 package app.nimarkogram.messenger.wsbypass.preferences;
 
+import app.nimarkogram.messenger.wsbypass.WsRelayAuth;
+import app.nimarkogram.messenger.wsbypass.voip.VoipRelayAuth;
+import org.telegram.messenger.AndroidUtilities;
+import org.telegram.messenger.UserConfig;
 import android.view.View;
 
 import java.util.ArrayList;
@@ -40,7 +44,7 @@ public class WsBypassPreferencesActivity extends BasePreferencesActivity
     private void scheduleStatusPoll() {
         if (statusPollScheduled) return;
         statusPollScheduled = true;
-        org.telegram.messenger.AndroidUtilities.runOnUIThread(statusPoll, 1000);
+        AndroidUtilities.runOnUIThread(statusPoll, 1000);
     }
 
     @Override
@@ -60,11 +64,11 @@ public class WsBypassPreferencesActivity extends BasePreferencesActivity
         super.onResume();
         ctrl.setSettingsReloader(this::reload);
         if (NimarkoWsBypassConfig.enabled) {
-            app.nimarkogram.messenger.wsbypass.WsRelayAuth.prefetchAsync(
-                    org.telegram.messenger.UserConfig.selectedAccount);
+            WsRelayAuth.prefetchAsync(
+                    UserConfig.selectedAccount);
             if (VoipBypassConfig.isVoipBypassEnabled()) {
-                app.nimarkogram.messenger.wsbypass.voip.VoipRelayAuth.prefetchAsync(
-                        org.telegram.messenger.UserConfig.selectedAccount);
+                VoipRelayAuth.prefetchAsync(
+                        UserConfig.selectedAccount);
             }
         }
         reload();
@@ -73,7 +77,7 @@ public class WsBypassPreferencesActivity extends BasePreferencesActivity
     @Override
     public void onFragmentDestroy() {
         ctrl.setSettingsReloader(null);
-        org.telegram.messenger.AndroidUtilities.cancelRunOnUIThread(statusPoll);
+        AndroidUtilities.cancelRunOnUIThread(statusPoll);
         NotificationCenter.getGlobalInstance().removeObserver(this, NotificationCenter.proxySettingsChanged);
         super.onFragmentDestroy();
     }
@@ -183,8 +187,8 @@ public class WsBypassPreferencesActivity extends BasePreferencesActivity
                 VoipBypassConfig.setVoipBypassEnabled(newVal);
                 updateCheckState(view, newVal);
                 if (newVal) {
-                    app.nimarkogram.messenger.wsbypass.voip.VoipRelayAuth.prefetchAsync(
-                            org.telegram.messenger.UserConfig.selectedAccount);
+                    VoipRelayAuth.prefetchAsync(
+                            UserConfig.selectedAccount);
                 }
                 break;
         }

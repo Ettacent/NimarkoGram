@@ -3,6 +3,8 @@
  
 package app.nimarkogram.messenger.media;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
@@ -140,7 +142,7 @@ public final class NimarkoMediaDownloader {
         public String localPath;
         public long localSize;
          
-        public java.util.List<String> images;
+        public List<String> images;
     }
 
     public static final class AuthRegister {
@@ -282,7 +284,7 @@ public final class NimarkoMediaDownloader {
                 out.originalUrl = optString(data, "originalUrl", url);
                 out.fromCache = optBool(data, "fromCache", false);
                 if (data.has("images") && data.get("images").isJsonArray()) {
-                    out.images = new java.util.ArrayList<>();
+                    out.images = new ArrayList<>();
                     for (JsonElement el : data.getAsJsonArray("images")) {
                         if (el != null && el.isJsonPrimitive()) {
                             out.images.add(el.getAsString());

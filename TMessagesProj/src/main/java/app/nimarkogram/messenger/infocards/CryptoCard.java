@@ -2,6 +2,9 @@
 
 package app.nimarkogram.messenger.infocards;
 
+import android.view.Gravity;
+import java.util.Arrays;
+import java.util.HashSet;
 import android.content.Context;
 
 import org.telegram.messenger.AndroidUtilities;
@@ -40,8 +43,8 @@ public class CryptoCard extends BaseInfoCard {
         }
     }
 
-    private static final java.util.HashSet<String> AMBIGUOUS_SYMBOLS =
-            new java.util.HashSet<>(java.util.Arrays.asList("$", "kr", "Fr", "₩"));
+    private static final HashSet<String> AMBIGUOUS_SYMBOLS =
+            new HashSet<>(Arrays.asList("$", "kr", "Fr", "₩"));
 
     private static final HashMap<String, CurrencyInfo> CURRENCIES = new HashMap<>();
     static {
@@ -261,7 +264,7 @@ public class CryptoCard extends BaseInfoCard {
         options.add(R.drawable.msg_retry, LocaleController.getString(R.string.Refresh), () -> onUpdateData(true));
         options.add(R.drawable.msg_settings, LocaleController.getString(R.string.Settings),
                 () -> fragment.presentFragment(new InfoCardsPreferencesActivity()));
-        options.setGravity(LocaleController.isRTL ? android.view.Gravity.LEFT : android.view.Gravity.RIGHT)
+        options.setGravity(LocaleController.isRTL ? Gravity.LEFT : Gravity.RIGHT)
                 .show();
         return true;
     }
@@ -279,7 +282,7 @@ public class CryptoCard extends BaseInfoCard {
                 }
             });
         }
-        picker.setGravity(LocaleController.isRTL ? android.view.Gravity.LEFT : android.view.Gravity.RIGHT)
+        picker.setGravity(LocaleController.isRTL ? Gravity.LEFT : Gravity.RIGHT)
                 .setMaxHeight(AndroidUtilities.dp(320))
                 .show();
     }

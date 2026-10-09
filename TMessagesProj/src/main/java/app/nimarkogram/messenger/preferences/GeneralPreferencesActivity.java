@@ -11,6 +11,10 @@
 
 package app.nimarkogram.messenger.preferences;
 
+import android.content.res.AssetFileDescriptor;
+import app.nimarkogram.messenger.notifications.NimarkoInAppNotifications;
+import java.io.IOException;
+import org.telegram.messenger.UserConfig;
 import static org.telegram.messenger.LocaleController.getString;
 
 import android.app.Activity;
@@ -365,10 +369,10 @@ public class GeneralPreferencesActivity extends NimarkoUniversalPreferencesActiv
             NimarkoConfig.toggleInAppNotifications();
             item.checked = NimarkoConfig.inAppNotifications;
             SettingsHelper.updateCheckState(view, NimarkoConfig.inAppNotifications);
-            app.nimarkogram.messenger.notifications.NimarkoInAppNotifications.dismiss();
+            NimarkoInAppNotifications.dismiss();
             updateItemsAfterToggle();
         } else if (item.id == inAppNotificationsPreviewRow) {
-            app.nimarkogram.messenger.notifications.NimarkoInAppNotifications.preview();
+            NimarkoInAppNotifications.preview();
         } else if (item.id == silenceNonContactsRow) {
             NimarkoConfig.toggleSilenceNonContacts();
             SettingsHelper.updateCheckState(view, NimarkoConfig.silenceNonContacts);
@@ -543,7 +547,7 @@ public class GeneralPreferencesActivity extends NimarkoUniversalPreferencesActiv
                 if (documentId == null) {
                     return;
                 }
-                if (!org.telegram.messenger.UserConfig.getInstance(currentAccount).isPremium()) {
+                if (!UserConfig.getInstance(currentAccount).isPremium()) {
 
                     if (popup[0] != null) {
                         selectReactionDialog = null;
@@ -657,11 +661,11 @@ public class GeneralPreferencesActivity extends NimarkoUniversalPreferencesActiv
             }
         } else if (requestCode == REQ_IMPORT_CONFIG) {
             try (InputStream is = parentActivity.getContentResolver().openInputStream(uri)) {
-                if (is == null) throw new java.io.IOException("Unable to open config");
-                try (android.content.res.AssetFileDescriptor afd = parentActivity.getContentResolver()
+                if (is == null) throw new IOException("Unable to open config");
+                try (AssetFileDescriptor afd = parentActivity.getContentResolver()
                         .openAssetFileDescriptor(uri, "r")) {
                     if (afd != null && afd.getLength() > MAX_CONFIG_IMPORT_BYTES) {
-                        throw new java.io.IOException("Config is too large");
+                        throw new IOException("Config is too large");
                     }
                 }
                 ByteArrayOutputStream bos = new ByteArrayOutputStream(8192);
@@ -670,7 +674,7 @@ public class GeneralPreferencesActivity extends NimarkoUniversalPreferencesActiv
                 int total = 0;
                 while ((n = is.read(buf)) != -1) {
                     if (n > MAX_CONFIG_IMPORT_BYTES - total) {
-                        throw new java.io.IOException("Config is too large");
+                        throw new IOException("Config is too large");
                     }
                     bos.write(buf, 0, n);
                     total += n;

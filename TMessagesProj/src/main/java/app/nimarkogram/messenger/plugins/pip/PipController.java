@@ -2,6 +2,19 @@
 
 package app.nimarkogram.messenger.plugins.pip;
 
+import android.os.Build;
+import android.system.ErrnoException;
+import android.system.Os;
+import android.system.OsConstants;
+import java.io.BufferedInputStream;
+import java.io.FileDescriptor;
+import java.math.BigInteger;
+import java.security.NoSuchAlgorithmException;
+import java.util.Enumeration;
+import java.util.UUID;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipFile;
+import java.util.zip.ZipInputStream;
 import com.google.gson.Gson;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
@@ -737,7 +750,7 @@ public final class PipController {
 
     private static String androidMachineFallback() {
         try {
-            String[] supported = android.os.Build.SUPPORTED_ABIS;
+            String[] supported = Build.SUPPORTED_ABIS;
             if (supported != null && supported.length > 0) {
                 return normalizeMachine(supported[0]);
             }
@@ -1033,10 +1046,10 @@ public final class PipController {
                     output.getFD().sync();
                 }
                 try {
-                    android.system.Os.rename(
+                    Os.rename(
                             staged.getAbsolutePath(),
                             target.getAbsolutePath());
-                } catch (android.system.ErrnoException failure) {
+                } catch (ErrnoException failure) {
                     throw new IOException(
                             "cannot atomically commit registry "
                                     + target,
@@ -1643,19 +1656,19 @@ public final class PipController {
 
     private static void syncDirectory(File directory) {
         if (directory == null) return;
-        java.io.FileDescriptor descriptor = null;
+        FileDescriptor descriptor = null;
         try {
-            descriptor = android.system.Os.open(
+            descriptor = Os.open(
                     directory.getAbsolutePath(),
-                    android.system.OsConstants.O_RDONLY, 0);
-            android.system.Os.fsync(descriptor);
+                    OsConstants.O_RDONLY, 0);
+            Os.fsync(descriptor);
         } catch (Exception failure) {
             FileLog.e("PipController could not fsync registry directory",
                     failure);
         } finally {
             if (descriptor != null) {
                 try {
-                    android.system.Os.close(descriptor);
+                    Os.close(descriptor);
                 } catch (Exception ignored) {
                 }
             }
@@ -1667,12 +1680,12 @@ public final class PipController {
         if (directory == null) {
             throw new IOException("Directory to fsync is missing");
         }
-        java.io.FileDescriptor descriptor = null;
+        FileDescriptor descriptor = null;
         try {
-            descriptor = android.system.Os.open(
+            descriptor = Os.open(
                     directory.getAbsolutePath(),
-                    android.system.OsConstants.O_RDONLY, 0);
-            android.system.Os.fsync(descriptor);
+                    OsConstants.O_RDONLY, 0);
+            Os.fsync(descriptor);
         } catch (Throwable failure) {
             throw new IOException(
                     "Could not fsync directory " + directory,
@@ -1680,7 +1693,7 @@ public final class PipController {
         } finally {
             if (descriptor != null) {
                 try {
-                    android.system.Os.close(descriptor);
+                    Os.close(descriptor);
                 } catch (Throwable ignored) {
                 }
             }
@@ -1706,12 +1719,12 @@ public final class PipController {
             syncDirectoryStrict(artifact);
             return;
         }
-        java.io.FileDescriptor descriptor = null;
+        FileDescriptor descriptor = null;
         try {
-            descriptor = android.system.Os.open(
+            descriptor = Os.open(
                     artifact.getAbsolutePath(),
-                    android.system.OsConstants.O_RDONLY, 0);
-            android.system.Os.fsync(descriptor);
+                    OsConstants.O_RDONLY, 0);
+            Os.fsync(descriptor);
         } catch (Throwable failure) {
             throw new IOException(
                     "Could not fsync dependency stage "
@@ -1719,7 +1732,7 @@ public final class PipController {
         } finally {
             if (descriptor != null) {
                 try {
-                    android.system.Os.close(descriptor);
+                    Os.close(descriptor);
                 } catch (Throwable ignored) {
                 }
             }
@@ -1927,7 +1940,7 @@ public final class PipController {
             boolean targetReady = target.exists();
             if (!targetReady) {
                 try {
-                    android.system.Os.rename(
+                    Os.rename(
                             backup.getAbsolutePath(),
                             target.getAbsolutePath());
                     targetReady = target.exists() && !backup.exists();
@@ -2183,10 +2196,10 @@ public final class PipController {
         if (artifact == null || !artifact.exists()) return "";
         try {
             if (artifact.isFile()) {
-                try (java.util.zip.ZipFile zip = new java.util.zip.ZipFile(artifact)) {
-                    java.util.Enumeration<? extends java.util.zip.ZipEntry> entries = zip.entries();
+                try (ZipFile zip = new ZipFile(artifact)) {
+                    Enumeration<? extends ZipEntry> entries = zip.entries();
                     while (entries.hasMoreElements()) {
-                        java.util.zip.ZipEntry entry = entries.nextElement();
+                        ZipEntry entry = entries.nextElement();
                         if (!entry.isDirectory() && entry.getName().endsWith(".dist-info/METADATA")) {
                             try (InputStream in = zip.getInputStream(entry)) {
                                 return readMetadataName(in);
@@ -2402,10 +2415,10 @@ public final class PipController {
                     out.getFD().sync();
                 }
                 try {
-                    android.system.Os.rename(
+                    Os.rename(
                             staged.getAbsolutePath(),
                             target.getAbsolutePath());
-                } catch (android.system.ErrnoException failure) {
+                } catch (ErrnoException failure) {
                     throw new IOException(
                             "Cannot publish dependency rollback snapshot",
                             failure);
@@ -3068,10 +3081,10 @@ public final class PipController {
                                     + target);
                 }
                 try {
-                    android.system.Os.rename(
+                    Os.rename(
                             backup.getAbsolutePath(),
                             target.getAbsolutePath());
-                } catch (android.system.ErrnoException failure) {
+                } catch (ErrnoException failure) {
                     throw new IOException(
                             "Could not restore dependency artifact "
                                     + target,
@@ -3230,11 +3243,11 @@ public final class PipController {
                 output.flush();
                 output.getFD().sync();
             }
-            android.system.Os.rename(
+            Os.rename(
                     staged.getAbsolutePath(),
                     target.getAbsolutePath());
             syncDirectoryStrict(target.getParentFile());
-        } catch (android.system.ErrnoException failure) {
+        } catch (ErrnoException failure) {
             throw new IOException(
                     "Could not publish dependency artifact journal",
                     failure);
@@ -4703,16 +4716,10 @@ public final class PipController {
         }
         if (activeTransactionId == null
                 && isDependencyInstallNoOp(requirements, pluginId)) {
-            app.nimarkogram.messenger.plugins.PluginDebugLog.log(
-                    "PIP installDependencies no-op pluginId="
-                            + pluginId);
             return Collections.emptyList();
         }
         refreshRuntimeMarkerEnvironment();
         resolverTouched = true;
-        app.nimarkogram.messenger.plugins.PluginDebugLog.log("PIP installDependencies pluginId=" + pluginId
-                + " reqs=" + requirements + " pyVer=" + pythonFullVersion
-                + " machine=" + platformMachine);
         
         cleanupRequired = true;
         
@@ -4768,7 +4775,7 @@ public final class PipController {
         String transactionId =
                 activeTransactionId != null
                         ? activeTransactionId
-                        : java.util.UUID.randomUUID().toString()
+                        : UUID.randomUUID().toString()
                                 .replace("-", "");
         List<StagedReplacement> replacements = new ArrayList<>();
         Map<String, ManagedDistributionRoot> desiredRoots =
@@ -4993,7 +5000,6 @@ public final class PipController {
                 }
             }
         } catch (Throwable t) {
-            app.nimarkogram.messenger.plugins.PluginDebugLog.log("PIP install transaction failed", t);
             IOException artifactRollbackFailure = null;
             if (deferredJournalPublished
                     && !outerArtifactTransaction
@@ -5504,10 +5510,10 @@ public final class PipController {
                                 + target);
             }
             try {
-                android.system.Os.rename(
+                Os.rename(
                         tmp.getAbsolutePath(),
                         target.getAbsolutePath());
-            } catch (android.system.ErrnoException failure) {
+            } catch (ErrnoException failure) {
                 throw new IOException(
                         "rename failed: " + tmp + " -> "
                                 + target,
@@ -5783,17 +5789,17 @@ public final class PipController {
         if (wheel == null || !wheel.isFile()) {
             throw new IOException("Pure wheel artifact is missing");
         }
-        try (java.util.zip.ZipFile zip =
-                new java.util.zip.ZipFile(wheel)) {
-            java.util.zip.ZipEntry metadataEntry = null;
-            java.util.zip.ZipEntry wheelEntry = null;
-            java.util.zip.ZipEntry recordEntry = null;
-            java.util.zip.ZipEntry topLevelEntry = null;
+        try (ZipFile zip =
+                new ZipFile(wheel)) {
+            ZipEntry metadataEntry = null;
+            ZipEntry wheelEntry = null;
+            ZipEntry recordEntry = null;
+            ZipEntry topLevelEntry = null;
             String distInfoPrefix = null;
-            java.util.Enumeration<? extends java.util.zip.ZipEntry>
+            Enumeration<? extends ZipEntry>
                     entries = zip.entries();
             while (entries.hasMoreElements()) {
-                java.util.zip.ZipEntry entry =
+                ZipEntry entry =
                         entries.nextElement();
                 String name = normalizedWheelEntryName(
                         entry.getName());
@@ -6230,18 +6236,18 @@ public final class PipController {
         void commit() throws IOException {
             try {
                 if (target.exists()) {
-                    android.system.Os.rename(
+                    Os.rename(
                             target.getAbsolutePath(),
                             backup.getAbsolutePath());
                     syncDirectoryStrict(target.getParentFile());
                     backedUp = true;
                 }
-                android.system.Os.rename(
+                Os.rename(
                         staged.getAbsolutePath(),
                         target.getAbsolutePath());
                 syncDirectoryStrict(target.getParentFile());
                 committed = true;
-            } catch (android.system.ErrnoException failure) {
+            } catch (ErrnoException failure) {
                 throw new IOException(
                         "cannot atomically commit " + target, failure);
             }
@@ -6344,9 +6350,9 @@ public final class PipController {
         LinkedHashSet<String> outputs =
                 new LinkedHashSet<>();
         long totalBytes = 0;
-        try (java.util.zip.ZipInputStream zis =
-                     new java.util.zip.ZipInputStream(new java.io.BufferedInputStream(new FileInputStream(zip)))) {
-            java.util.zip.ZipEntry e;
+        try (ZipInputStream zis =
+                     new ZipInputStream(new BufferedInputStream(new FileInputStream(zip)))) {
+            ZipEntry e;
             byte[] buf = new byte[16 * 1024];
             while ((e = zis.getNextEntry()) != null) {
                 throwIfCancelled(delegate);
@@ -6626,7 +6632,7 @@ public final class PipController {
             StringBuilder sb = new StringBuilder();
             for (byte b : md.digest()) sb.append(String.format(Locale.US, "%02x", b & 0xFF));
             return sb.toString();
-        } catch (java.security.NoSuchAlgorithmException e) {
+        } catch (NoSuchAlgorithmException e) {
             throw new IOException(e);
         }
     }
@@ -6768,7 +6774,7 @@ public final class PipController {
                     boolean an = a[i].matches("\\d+");
                     boolean bn = b[i].matches("\\d+");
                     int cmp;
-                    if (an && bn) cmp = new java.math.BigInteger(a[i]).compareTo(new java.math.BigInteger(b[i]));
+                    if (an && bn) cmp = new BigInteger(a[i]).compareTo(new BigInteger(b[i]));
                     else if (an != bn) cmp = an ? 1 : -1;
                     else cmp = a[i].compareTo(b[i]);
                     if (cmp != 0) return cmp;

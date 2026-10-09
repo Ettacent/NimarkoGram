@@ -2,6 +2,10 @@
 
 package app.nimarkogram.messenger.camera;
 
+import android.annotation.SuppressLint;
+import android.util.Pair;
+import androidx.camera.core.ImageCapture;
+import org.telegram.messenger.Utilities;
 import android.content.Context;
 import android.graphics.Rect;
 import android.graphics.SurfaceTexture;
@@ -146,7 +150,7 @@ public final class NimarkoCameraXSurfaceSession {
                 this::notifyFailure);
     }
 
-    @android.annotation.SuppressLint({"RestrictedApi", "UnsafeOptInUsageError"})
+    @SuppressLint({"RestrictedApi", "UnsafeOptInUsageError"})
     private void provideSurface(SurfaceRequest request) {
         if (closed) {
             request.willNotProvideSurface();
@@ -550,9 +554,9 @@ public final class NimarkoCameraXSurfaceSession {
             return android.hardware.Camera.Parameters.FLASH_MODE_TORCH;
         }
         switch (controller.getCurrentFlashMode()) {
-            case androidx.camera.core.ImageCapture.FLASH_MODE_ON:
+            case ImageCapture.FLASH_MODE_ON:
                 return android.hardware.Camera.Parameters.FLASH_MODE_ON;
-            case androidx.camera.core.ImageCapture.FLASH_MODE_OFF:
+            case ImageCapture.FLASH_MODE_OFF:
                 return android.hardware.Camera.Parameters.FLASH_MODE_OFF;
             default:
                 return android.hardware.Camera.Parameters.FLASH_MODE_AUTO;
@@ -571,20 +575,20 @@ public final class NimarkoCameraXSurfaceSession {
         }
         int value;
         if (android.hardware.Camera.Parameters.FLASH_MODE_ON.equals(mode)) {
-            value = androidx.camera.core.ImageCapture.FLASH_MODE_ON;
+            value = ImageCapture.FLASH_MODE_ON;
         } else if (android.hardware.Camera.Parameters.FLASH_MODE_OFF.equals(mode)) {
-            value = androidx.camera.core.ImageCapture.FLASH_MODE_OFF;
+            value = ImageCapture.FLASH_MODE_OFF;
         } else {
-            value = androidx.camera.core.ImageCapture.FLASH_MODE_AUTO;
+            value = ImageCapture.FLASH_MODE_AUTO;
         }
         controller.setFlashMode(value);
     }
 
     public String getNextFlashMode() {
         int mode = controller.getCurrentFlashMode();
-        if (mode == androidx.camera.core.ImageCapture.FLASH_MODE_AUTO) {
+        if (mode == ImageCapture.FLASH_MODE_AUTO) {
             return android.hardware.Camera.Parameters.FLASH_MODE_ON;
-        } else if (mode == androidx.camera.core.ImageCapture.FLASH_MODE_ON) {
+        } else if (mode == ImageCapture.FLASH_MODE_ON) {
             return android.hardware.Camera.Parameters.FLASH_MODE_OFF;
         } else {
             return android.hardware.Camera.Parameters.FLASH_MODE_AUTO;
@@ -602,15 +606,15 @@ public final class NimarkoCameraXSurfaceSession {
         }
     }
 
-    public boolean takePicture(java.io.File file,
-                               @Nullable org.telegram.messenger.Utilities.Callback<Integer> callback) {
+    public boolean takePicture(File file,
+                               @Nullable Utilities.Callback<Integer> callback) {
         if (closed) return false;
 
         updateRotation();
         return controller.takePicture(file,
                 () -> {
                     if (callback != null) {
-                        android.util.Pair<Integer, Integer> orientation =
+                        Pair<Integer, Integer> orientation =
                                 AndroidUtilities.getImageOrientationOrNull(file);
                         callback.run(orientation == null ? -1 : orientation.first);
                     }

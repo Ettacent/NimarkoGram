@@ -407,8 +407,6 @@ public class InstallPluginBottomSheet extends BottomSheet {
     }
 
     private void installPlugin(PluginInstallParams params, PluginsController.PluginValidationResult result, BaseFragment fragment, boolean update) {
-        app.nimarkogram.messenger.plugins.PluginDebugLog.log("InstallBtn TAP id=" + (result != null && result.plugin != null ? result.plugin.getId() : "?")
-                + " file=" + (params != null ? params.filePath : "?") + " update=" + update + " installingAlready=" + installing);
         final HostInstallAuthority authority;
         final long callbackLifecycleEpoch;
         final long operationEpoch;
@@ -452,8 +450,6 @@ public class InstallPluginBottomSheet extends BottomSheet {
                             callbackLifecycleEpoch,
                             operationEpoch));
         } catch (Throwable transferFailure) {
-            app.nimarkogram.messenger.plugins.PluginDebugLog.log(
-                    "Install authority transfer failed", transferFailure);
             failInstallTransfer(
                     operationEpoch, fragment, result);
             return;
@@ -479,14 +475,9 @@ public class InstallPluginBottomSheet extends BottomSheet {
         }
         if (!queueConfirmed) {
 
-            app.nimarkogram.messenger.plugins.PluginDebugLog.log(
-                    "Install queue confirmation lost its lifecycle nonce");
             try {
                 authority.revoke();
             } catch (Throwable revokeFailure) {
-                app.nimarkogram.messenger.plugins.PluginDebugLog.log(
-                        "Could not revoke unconfirmed queued install",
-                        revokeFailure);
             }
             finishInstallOperation(operationEpoch);
             return;
@@ -496,9 +487,6 @@ public class InstallPluginBottomSheet extends BottomSheet {
             dismiss();
         } catch (Throwable dismissFailure) {
 
-            app.nimarkogram.messenger.plugins.PluginDebugLog.log(
-                    "Install sheet dismiss failed after queue confirmation",
-                    dismissFailure);
         }
     }
 
@@ -577,9 +565,6 @@ public class InstallPluginBottomSheet extends BottomSheet {
         try {
             dismiss();
         } catch (Throwable dismissFailure) {
-            app.nimarkogram.messenger.plugins.PluginDebugLog.log(
-                    "Could not dismiss rejected install sheet",
-                    dismissFailure);
         }
         if (canShow && PluginUiRegistry.isFragmentUiActive(fragment)) {
             showInstallTransferError(fragment, result);
@@ -647,9 +632,6 @@ public class InstallPluginBottomSheet extends BottomSheet {
             try {
                 authority.revoke();
             } catch (Throwable revokeFailure) {
-                app.nimarkogram.messenger.plugins.PluginDebugLog.log(
-                        "Could not revoke install sheet authority",
-                        revokeFailure);
             }
         }
     }

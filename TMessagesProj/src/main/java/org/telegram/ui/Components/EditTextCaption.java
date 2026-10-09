@@ -164,6 +164,11 @@ public class EditTextCaption extends EditTextBoldCursor implements FloatingToolb
         return delta;
     }
 
+    @Override
+    public float getTextDrawingOffsetY() {
+        return offsetY + deletionScrollOffset;
+    }
+
     public void setCaption(String value) {
         if ((caption == null || caption.length() == 0) && (value == null || value.length() == 0) || caption != null && caption.equals(value)) {
             return;
@@ -964,7 +969,7 @@ public class EditTextCaption extends EditTextBoldCursor implements FloatingToolb
         try {
             final int saveCount = canvas.save();
             try {
-                canvas.translate(0, offsetY + deletionScrollOffset);
+                canvas.translate(0, getTextDrawingOffsetY());
                 super.onDraw(canvas);
                 try {
                     if (captionLayout != null && userNameLength == length()) {
@@ -995,7 +1000,7 @@ public class EditTextCaption extends EditTextBoldCursor implements FloatingToolb
         } finally {
             final int animationSaveCount = canvas.save();
             try {
-                canvas.translate(0, offsetY + deletionScrollOffset);
+                canvas.translate(0, getTextDrawingOffsetY());
                 app.nimarkogram.messenger.textanim.NimarkoTextAnim.afterEditorDraw(this, canvas);
             } finally {
                 canvas.restoreToCount(animationSaveCount);

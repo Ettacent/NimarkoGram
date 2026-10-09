@@ -3,6 +3,7 @@
  
 package app.nimarkogram.messenger.utils;
 
+import java.util.Iterator;
 import android.content.SharedPreferences;
 
 import org.telegram.messenger.ApplicationLoader;
@@ -266,7 +267,7 @@ public final class LastSeenTracker {
 
     private static boolean pruneExpired(Deque<Long> window, long nowSec) {
         boolean changed = false;
-        java.util.Iterator<Long> iterator = window.iterator();
+        Iterator<Long> iterator = window.iterator();
         while (iterator.hasNext()) {
             long sample = iterator.next();
             if (sample <= 0 || sample < nowSec - RETENTION_SEC || sample > nowSec + 5L * 60L) {

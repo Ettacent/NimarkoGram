@@ -159,17 +159,20 @@ public class PyMethodHook extends XC_MethodHook {
                             this.pluginId, pythonFailure);
                     throw pythonFailure;
                 } finally {
-                    controller.getWatchdog().onPluginExecutionFinished(this.pluginId);
                     watchdogStarted = false;
+                    controller.getWatchdog().onPluginExecutionFinished(this.pluginId);
                 }
             } catch (Throwable th) {
                 handleHookError("beforeHookedMethod", th);
                 throw th;
             } finally {
-                if (watchdogStarted) {
-                    controller.getWatchdog().onPluginExecutionFinished(this.pluginId);
+                try {
+                    if (watchdogStarted) {
+                        controller.getWatchdog().onPluginExecutionFinished(this.pluginId);
+                    }
+                } finally {
+                    exitRuntime(controller);
                 }
-                exitRuntime(controller);
             }
         }
     }
@@ -208,17 +211,20 @@ public class PyMethodHook extends XC_MethodHook {
                             this.pluginId, pythonFailure);
                     throw pythonFailure;
                 } finally {
-                    controller.getWatchdog().onPluginExecutionFinished(this.pluginId);
                     watchdogStarted = false;
+                    controller.getWatchdog().onPluginExecutionFinished(this.pluginId);
                 }
             } catch (Throwable th) {
                 handleHookError("afterHookedMethod", th);
                 throw th;
             } finally {
-                if (watchdogStarted) {
-                    controller.getWatchdog().onPluginExecutionFinished(this.pluginId);
+                try {
+                    if (watchdogStarted) {
+                        controller.getWatchdog().onPluginExecutionFinished(this.pluginId);
+                    }
+                } finally {
+                    exitRuntime(controller);
                 }
-                exitRuntime(controller);
             }
         }
     }

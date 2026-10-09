@@ -10,6 +10,7 @@
 
 package org.telegram.ui;
 
+import app.nimarkogram.messenger.utils.NimarkoAppMotionBlur;
 import static org.telegram.messenger.AndroidUtilities.dp;
 import static org.telegram.messenger.LocaleController.getString;
 
@@ -1923,6 +1924,7 @@ public class ContentPreviewViewer {
             wm.addView(windowView, windowLayoutParams);
 
 
+            NimarkoAppMotionBlur.attachRoot(windowView);
             isVisible = true;
             showProgress = 0.0f;
             lastTouchY = -10000;

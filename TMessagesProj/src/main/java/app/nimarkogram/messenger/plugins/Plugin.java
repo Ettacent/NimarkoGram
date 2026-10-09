@@ -2,6 +2,10 @@
 
 package app.nimarkogram.messenger.plugins;
 
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import app.nimarkogram.messenger.plugins.PluginsController;
 import org.telegram.messenger.BuildVars;
 import org.telegram.messenger.LocaleController;
@@ -10,9 +14,9 @@ import org.telegram.messenger.R;
 public class Plugin {
     public transient volatile PluginsController.PluginsEngine cachedEngine;
     
-    public transient volatile java.util.Set<String> implementedHooks;
-    
-    public transient volatile java.util.Map<String, com.chaquo.python.PyObject> boundHooks;
+    public transient volatile Set<String> implementedHooks;
+
+    public transient volatile Map<String, com.chaquo.python.PyObject> boundHooks;
     private String engine;
     private final String id;
     private final String name;
@@ -119,7 +123,7 @@ public class Plugin {
         return this.requirements;
     }
 
-    public java.util.List<String> getRequirements() {
+    public List<String> getRequirements() {
         return getRequirementNames();
     }
 
@@ -127,8 +131,8 @@ public class Plugin {
         this.requirements = (str != null && !str.trim().isEmpty()) ? str.trim() : null;
     }
 
-    public java.util.List<String> getRequirementNames() {
-        java.util.ArrayList<String> out = new java.util.ArrayList<>();
+    public List<String> getRequirementNames() {
+        ArrayList<String> out = new ArrayList<>();
         if (this.requirements == null) return out;
         for (String tok : PythonPluginsEngine.parseRequirements(this.requirements)) {
             String t = tok.trim();

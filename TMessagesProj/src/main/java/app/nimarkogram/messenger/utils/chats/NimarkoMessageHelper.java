@@ -3,6 +3,7 @@
  
 package app.nimarkogram.messenger.utils.chats;
 
+import android.util.Base64;
 import static org.telegram.messenger.LocaleController.getString;
 
 import android.app.DatePickerDialog;
@@ -387,7 +388,7 @@ public class NimarkoMessageHelper extends BaseController {
         try {
             return textDecoder.decode(ByteBuffer.wrap(data)).toString();
         } catch (CharacterCodingException e) {
-            return android.util.Base64.encodeToString(data, android.util.Base64.NO_PADDING | android.util.Base64.NO_WRAP);
+            return Base64.encodeToString(data, Base64.NO_PADDING | Base64.NO_WRAP);
         }
     }
 

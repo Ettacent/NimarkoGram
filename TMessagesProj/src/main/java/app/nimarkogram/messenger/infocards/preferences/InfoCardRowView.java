@@ -2,6 +2,7 @@
 
 package app.nimarkogram.messenger.infocards.preferences;
 
+import android.text.TextUtils;
 import static org.telegram.messenger.AndroidUtilities.dp;
 
 import android.content.Context;
@@ -60,7 +61,7 @@ public class InfoCardRowView extends FrameLayout {
         title = new TextView(context);
         title.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 16);
         title.setMaxLines(1);
-        title.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        title.setEllipsize(TextUtils.TruncateAt.END);
         addView(title, textParams);
 
         switchView = new Switch(context, rp);

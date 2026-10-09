@@ -140,8 +140,10 @@ public final class PythonRequestDelegate implements
             return;
         }
         String pluginId = runtimeToken.getPluginId();
-        controller.getWatchdog().onPluginExecutionStarted(pluginId);
+        boolean watchdogStarted = false;
         try {
+            controller.getWatchdog().onPluginExecutionStarted(pluginId);
+            watchdogStarted = true;
             if (callback.delegateCallback != null) {
                 callback.delegateCallback.run(
                         invocation.response, invocation.error);
@@ -156,11 +158,19 @@ public final class PythonRequestDelegate implements
             FileLog.e("NimarkoGram: plugin request callback failed for "
                     + pluginId, failure);
         } finally {
-            controller.getWatchdog().onPluginExecutionFinished(pluginId);
-            controller.exitPluginRuntime(runtimeToken);
-            callbackState.complete();
-            controller.unregisterRuntimeCallbackHolder(
-                    runtimeToken, this);
+            try {
+                if (watchdogStarted) {
+                    controller.getWatchdog().onPluginExecutionFinished(pluginId);
+                }
+            } finally {
+                try {
+                    controller.exitPluginRuntime(runtimeToken);
+                } finally {
+                    callbackState.complete();
+                    controller.unregisterRuntimeCallbackHolder(
+                            runtimeToken, this);
+                }
+            }
         }
     }
 

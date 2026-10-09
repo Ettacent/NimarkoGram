@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 5.x.x.
  * It is licensed under GNU GPL v. 2 or later.
@@ -25172,7 +25174,7 @@ public class MessagesController extends BaseController implements NotificationCe
 
             final TLRPC.TL_getSavedMusic req = new TLRPC.TL_getSavedMusic();
             req.id = MessagesController.getInstance(currentAccount).getInputUser(dialogId);
-            req.offset = this.list.size();
+            req.offset = totalCount <= 0 ? 0 : this.list.size();
             req.limit = 30;
             ConnectionsManager.getInstance(currentAccount).sendRequest(req, (res, err) -> {
                 final ArrayList<MessageObject> messageObjects = new ArrayList<>();
@@ -25224,11 +25226,12 @@ public class MessagesController extends BaseController implements NotificationCe
         }
 
         public void move(int fromPosition, int toPosition) {
+            if (fromPosition < 0 || fromPosition >= list.size() || toPosition < 0 || toPosition >= list.size() || fromPosition == toPosition) {
+                return;
+            }
             final TLRPC.Document lastFirstDocument = getFirstDocument();
-            final MessageObject toItem = list.get(toPosition);
-            final MessageObject fromItem = list.get(fromPosition);
-            list.set(fromPosition, toItem);
-            list.set(toPosition, fromItem);
+            final MessageObject fromItem = list.remove(fromPosition);
+            list.add(toPosition, fromItem);
             if (getFirstDocument() != lastFirstDocument) {
                 updateFirstMusic();
             }

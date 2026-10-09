@@ -309,8 +309,10 @@ public final class PluginRuntimeDelegate {
             enteredHere = true;
         }
         String pluginId = token.getPluginId();
-        controller.getWatchdog().onPluginExecutionStarted(pluginId);
+        boolean watchdogStarted = false;
         try {
+            controller.getWatchdog().onPluginExecutionStarted(pluginId);
+            watchdogStarted = true;
             callback.run();
             return true;
         } catch (Throwable error) {
@@ -321,9 +323,14 @@ public final class PluginRuntimeDelegate {
                     + pluginId, error);
             return false;
         } finally {
-            controller.getWatchdog().onPluginExecutionFinished(pluginId);
-            if (enteredHere) {
-                controller.exitPluginRuntime(token);
+            try {
+                if (watchdogStarted) {
+                    controller.getWatchdog().onPluginExecutionFinished(pluginId);
+                }
+            } finally {
+                if (enteredHere) {
+                    controller.exitPluginRuntime(token);
+                }
             }
         }
     }
@@ -346,8 +353,10 @@ public final class PluginRuntimeDelegate {
             enteredHere = true;
         }
         String pluginId = token.getPluginId();
-        controller.getWatchdog().onPluginExecutionStarted(pluginId);
+        boolean watchdogStarted = false;
         try {
+            controller.getWatchdog().onPluginExecutionStarted(pluginId);
+            watchdogStarted = true;
             return callback.run();
         } catch (Throwable error) {
             rethrowIfFatal(error);
@@ -357,9 +366,14 @@ public final class PluginRuntimeDelegate {
                     + pluginId, error);
             return staleResult;
         } finally {
-            controller.getWatchdog().onPluginExecutionFinished(pluginId);
-            if (enteredHere) {
-                controller.exitPluginRuntime(token);
+            try {
+                if (watchdogStarted) {
+                    controller.getWatchdog().onPluginExecutionFinished(pluginId);
+                }
+            } finally {
+                if (enteredHere) {
+                    controller.exitPluginRuntime(token);
+                }
             }
         }
     }

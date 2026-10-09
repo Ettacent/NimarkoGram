@@ -2,6 +2,7 @@
 
 package app.nimarkogram.messenger.notifications;
 
+import androidx.recyclerview.widget.RecyclerView;
 import android.graphics.Canvas;
 import android.view.Gravity;
 import android.view.View;
@@ -112,8 +113,8 @@ public final class NotificationInlinePanel extends AnimatedLinearLayout implemen
         listInsets = new NotificationListInset[contents.length];
         scrollInsets = new NotificationScrollInset[contents.length];
         for (int i = 0; i < contents.length; i++) {
-            if (contents[i] instanceof androidx.recyclerview.widget.RecyclerView) {
-                listInsets[i] = new NotificationListInset((androidx.recyclerview.widget.RecyclerView) contents[i]);
+            if (contents[i] instanceof RecyclerView) {
+                listInsets[i] = new NotificationListInset((RecyclerView) contents[i]);
             } else if (contents[i] instanceof ScrollView) {
                 scrollInsets[i] = new NotificationScrollInset((ScrollView) contents[i]);
             }

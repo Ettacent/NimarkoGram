@@ -1281,4 +1281,6 @@
     <string name="NM_CAM_MultiMicrophone">多麦克风录音</string>
     <string name="NM_CAM_MultiMicrophoneDesc">为语音消息和 CameraX 视频消息提供广域拾音，效果取决于设备。</string>
     <string name="NM_CAM_RoundAudioInfo">适用于新视频消息。麦克风支持取决于设备，必要时使用单声道。</string>
+    <string name="NM_MotionBlur">动态模糊</string>
+    <string name="NM_MotionBlur_Desc">为应用界面添加动态模糊，可能会增加 GPU 负载。</string>
 </resources>

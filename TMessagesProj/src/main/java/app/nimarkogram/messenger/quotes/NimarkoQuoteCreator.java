@@ -2,6 +2,7 @@
 
 package app.nimarkogram.messenger.quotes;
 
+import android.text.TextUtils;
 import android.Manifest;
 import android.app.Activity;
 import android.app.ActivityManager;
@@ -1607,7 +1608,7 @@ public final class NimarkoQuoteCreator {
             source.setTypeface(AndroidUtilities.getTypeface(AndroidUtilities.TYPEFACE_ROBOTO_MEDIUM));
             source.setSingleLine(true);
             source.setIncludeFontPadding(false);
-            source.setEllipsize(android.text.TextUtils.TruncateAt.END);
+            source.setEllipsize(TextUtils.TruncateAt.END);
             textColumn.addView(source, new LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT,
                     LinearLayout.LayoutParams.WRAP_CONTENT
@@ -1619,7 +1620,7 @@ public final class NimarkoQuoteCreator {
             details.setTextSize(13);
             details.setSingleLine(true);
             details.setIncludeFontPadding(false);
-            details.setEllipsize(android.text.TextUtils.TruncateAt.END);
+            details.setEllipsize(TextUtils.TruncateAt.END);
             textColumn.addView(details, new LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT,
                     LinearLayout.LayoutParams.WRAP_CONTENT

@@ -2,6 +2,8 @@
 
 package app.nimarkogram.messenger.preferences;
 
+import android.content.res.ColorStateList;
+import android.view.accessibility.AccessibilityEvent;
 import static org.telegram.messenger.LocaleController.getString;
 
 import android.content.Context;
@@ -224,7 +226,7 @@ public class IconPackSelectorActivity extends BaseFragment {
             mask.setCornerRadius(rad);
             mask.setColor(0xffffffff);
             setBackground(new org.telegram.ui.Components.SmoothRippleDrawable(
-                    android.content.res.ColorStateList.valueOf(Theme.getColor(Theme.key_listSelector)), content, mask));
+                    ColorStateList.valueOf(Theme.getColor(Theme.key_listSelector)), content, mask));
             org.telegram.ui.Components.ScaleStateListAnimator.apply(this, 0.02f, 1.5f);   // smooth press-scale
 
             LinearLayout col = new LinearLayout(context);
@@ -283,7 +285,7 @@ public class IconPackSelectorActivity extends BaseFragment {
         void refreshSelected() {
             radio.setChecked(isRowSelected(value), true);
             setSelected(isRowSelected(value));
-            sendAccessibilityEvent(android.view.accessibility.AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED);
+            sendAccessibilityEvent(AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED);
         }
 
         @Override

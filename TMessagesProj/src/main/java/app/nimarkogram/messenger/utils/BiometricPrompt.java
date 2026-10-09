@@ -11,6 +11,8 @@
 
 package app.nimarkogram.messenger.utils;
 
+import java.util.function.BiConsumer;
+import java.util.function.Consumer;
 import static org.telegram.messenger.LocaleController.getString;
 
 import android.app.Activity;
@@ -77,9 +79,9 @@ public class BiometricPrompt {
     }
 
     private static androidx.biometric.BiometricPrompt.AuthenticationCallback createCallback(
-            java.util.function.Consumer<androidx.biometric.BiometricPrompt.AuthenticationResult> onSuccess,
+            Consumer<androidx.biometric.BiometricPrompt.AuthenticationResult> onSuccess,
             Runnable onFailed,
-            java.util.function.BiConsumer<Integer, CharSequence> onError
+            BiConsumer<Integer, CharSequence> onError
     ) {
         return new androidx.biometric.BiometricPrompt.AuthenticationCallback() {
             @Override

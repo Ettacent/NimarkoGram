@@ -47,7 +47,7 @@ public abstract class NimarkoUniversalPreferencesActivity extends UniversalFragm
         ViewCompat.setOnApplyWindowInsetsListener(view, this::onInsetsInternal);
         ViewCompat.requestApplyInsets(view);
         if (initialSearchItemId != 0 && listView != null) {
-            listView.post(initialSearchScroll);
+            initialSearchScroll.run();
         }
         return view;
     }

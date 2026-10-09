@@ -337,6 +337,7 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
     private BottomSheetTabsOverlay bottomSheetTabsOverlay;
     public DrawerLayoutContainer drawerLayoutContainer;
     private PasscodeViewDialog passcodeDialog;
+    private Runnable pendingPasscodeShow;
     private List<PasscodeView> overlayPasscodeViews = new ArrayList<>();
     private TermsOfServiceView termsOfServiceView;
     private BlockingUpdateView blockingUpdateView;
@@ -1504,12 +1505,13 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
                     rightActionBarLayout.addFragmentToStack(chatFragment);
                     a--;
                 }
-                if (passcodeDialog == null || passcodeDialog.passcodeView.getVisibility() != View.VISIBLE) {
+                if (!isPasscodeBlockingContent()) {
                     actionBarLayout.rebuildFragments(INavigationLayout.REBUILD_FLAG_REBUILD_LAST);
                     rightActionBarLayout.rebuildFragments(INavigationLayout.REBUILD_FLAG_REBUILD_LAST);
                 }
             }
-            rightActionBarLayout.getView().setVisibility(rightActionBarLayout.getFragmentStack().isEmpty() ? View.GONE : View.VISIBLE);
+            rightActionBarLayout.getView().setVisibility(rightActionBarLayout.getFragmentStack().isEmpty()
+                    ? View.GONE : isPasscodeBlockingContent() ? View.INVISIBLE : View.VISIBLE);
             backgroundTablet.setVisibility(rightActionBarLayout.getFragmentStack().isEmpty() ? View.VISIBLE : View.GONE);
         } else {
             tabletFullSize = true;
@@ -1527,13 +1529,14 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
                     actionBarLayout.addFragmentToStack(chatFragment);
                     a--;
                 }
-                if (passcodeDialog == null || passcodeDialog.passcodeView.getVisibility() != View.VISIBLE) {
+                if (!isPasscodeBlockingContent()) {
                     actionBarLayout.rebuildFragments(INavigationLayout.REBUILD_FLAG_REBUILD_LAST);
                 }
             }
             rightActionBarLayout.getView().setVisibility(View.GONE);
             backgroundTablet.setVisibility(!actionBarLayout.getFragmentStack().isEmpty() ? View.GONE : View.VISIBLE);
         }
+        if (isPasscodeBlockingContent()) hideContentForPasscode();
     }
 
     private void showUpdateActivity(int account, TLRPC.TL_help_appUpdate update, boolean check) {
@@ -1583,9 +1586,10 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
     public void showPasscodeActivity(boolean fingerprint, boolean animated, int x, int y, Runnable onShow, Runnable onStart) {
         accountSwitchTransition.cancel();
         app.nimarkogram.messenger.notifications.NimarkoInAppNotifications.dismiss();
-        if (drawerLayoutContainer == null || isFinishing()) {
+        if (drawerLayoutContainer == null || finished || isFinishing() || isDestroyed()) {
             return;
         }
+        pendingPasscodeShow = null;
         if (passcodeDialog == null) {
             passcodeDialog = new PasscodeViewDialog(this);
         }
@@ -1606,17 +1610,17 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
         if (messageObject != null && messageObject.isRoundVideo()) {
             MediaController.getInstance().cleanupPlayer(true, true);
         }
-        passcodeDialog.show();
+        SharedConfig.isWaitingForPasscodeEnter = true;
+        try {
+            passcodeDialog.show();
+        } catch (WindowManager.BadTokenException error) {
+            FileLog.e(error);
+            pendingPasscodeShow = () -> showPasscodeActivity(fingerprint, animated, x, y, onShow, onStart);
+            hideContentForPasscode();
+            return;
+        }
         passcodeDialog.passcodeView.onShow(overlayPasscodeViews.isEmpty() && fingerprint, animated, x, y, () -> {
-            actionBarLayout.getView().setVisibility(View.INVISIBLE);
-            if (AndroidUtilities.isTablet()) {
-                if (layersActionBarLayout != null && layersActionBarLayout.getView() != null && layersActionBarLayout.getView().getVisibility() == View.VISIBLE) {
-                    layersActionBarLayout.getView().setVisibility(View.INVISIBLE);
-                }
-                if (rightActionBarLayout != null && rightActionBarLayout.getView() != null) {
-                    rightActionBarLayout.getView().setVisibility(View.INVISIBLE);
-                }
-            }
+            hideContentForPasscode();
             if (onShow != null) {
                 onShow.run();
             }
@@ -1625,8 +1629,8 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
             PasscodeView overlay = overlayPasscodeViews.get(i);
             overlay.onShow(fingerprint && i == overlayPasscodeViews.size() - 1, animated, x, y, null, null);
         }
-        SharedConfig.isWaitingForPasscodeEnter = true;
         PasscodeView.PasscodeViewDelegate delegate = view -> {
+            pendingPasscodeShow = null;
             SharedConfig.isWaitingForPasscodeEnter = false;
             if (passcodeSaveIntent != null) {
                 handleIntent(passcodeSaveIntent, passcodeSaveIntentIsNew, passcodeSaveIntentIsRestore, true, null, false, true);
@@ -1663,6 +1667,35 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
 
     public boolean allowShowFingerprintDialog(PasscodeView passcodeView) {
         return overlayPasscodeViews.isEmpty() && this.passcodeDialog != null ? passcodeView == this.passcodeDialog.passcodeView : overlayPasscodeViews.get(overlayPasscodeViews.size() - 1) == passcodeView;
+    }
+
+    private void hideContentForPasscode() {
+        if (actionBarLayout != null && actionBarLayout.getView() != null) {
+            actionBarLayout.getView().setVisibility(View.INVISIBLE);
+        }
+        if (AndroidUtilities.isTablet()) {
+            if (layersActionBarLayout != null && layersActionBarLayout.getView() != null
+                    && layersActionBarLayout.getView().getVisibility() == View.VISIBLE) {
+                layersActionBarLayout.getView().setVisibility(View.INVISIBLE);
+            }
+            if (rightActionBarLayout != null && rightActionBarLayout.getView() != null
+                    && rightActionBarLayout.getView().getVisibility() != View.GONE) {
+                rightActionBarLayout.getView().setVisibility(View.INVISIBLE);
+            }
+        }
+    }
+
+    private boolean isPasscodeBlockingContent() {
+        return pendingPasscodeShow != null || SharedConfig.appLocked || SharedConfig.isWaitingForPasscodeEnter
+                || passcodeDialog != null && passcodeDialog.passcodeView.getVisibility() == View.VISIBLE;
+    }
+
+    private void resumePendingPasscode() {
+        Runnable pending = pendingPasscodeShow;
+        if (pending == null) return;
+        pendingPasscodeShow = null;
+        if (!finished && !isFinishing() && !isDestroyed()
+                && (SharedConfig.appLocked || SharedConfig.isWaitingForPasscodeEnter)) pending.run();
     }
 
     private boolean handleIntent(Intent intent, boolean isNew, boolean restore, boolean fromPassword) {
@@ -7136,6 +7169,7 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
         }
         finished = true;
 
+        pendingPasscodeShow = null;
         if (observersGroup != null) {
             observersGroup.removeAllObservers();
             observersGroup = null;
@@ -7312,6 +7346,7 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
     public void onWindowFocusChanged(boolean hasFocus) {
         super.onWindowFocusChanged(hasFocus);
         app.nimarkogram.messenger.notifications.NimarkoInAppNotifications.onWindowFocusChanged(this, hasFocus);
+        if (hasFocus) resumePendingPasscode();
         if (hasFocus) resumeInAppNotificationNavigation();
     }
 
@@ -7608,6 +7643,10 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
     @Override
     protected void onResume() {
         super.onResume();
+        if (frameLayout != null) {
+            frameLayout.animate().cancel();
+            frameLayout.setAlpha(1f);
+        }
         app.nimarkogram.messenger.notifications.NimarkoInAppNotifications.onResume(this);
         if (flagSecureReason != null) flagSecureReason.invalidate();
         // NimarkoGram plugin engine event hook.
@@ -7651,7 +7690,7 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
         checkFreeDiscSpace(0);
         MediaController.checkGallery();
         onPasscodeResume();
-        if (passcodeDialog == null || passcodeDialog.passcodeView.getVisibility() != View.VISIBLE) {
+        if (!isPasscodeBlockingContent()) {
             actionBarLayout.onResume();
             if (AndroidUtilities.isTablet()) {
                 if (rightActionBarLayout != null) {
@@ -7671,8 +7710,11 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
                     layersActionBarLayout.dismissDialogs();
                 }
             }
-            passcodeDialog.passcodeView.onResume();
+            hideContentForPasscode();
+            if (passcodeDialog != null && passcodeDialog.isShowing()) {
+                passcodeDialog.passcodeView.onResume();
 
+            }
             for (PasscodeView overlay : overlayPasscodeViews) {
                 overlay.onResume();
             }
@@ -8893,7 +8935,9 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
             AndroidUtilities.cancelRunOnUIThread(lockRunnable);
             lockRunnable = null;
         }
-        if (AndroidUtilities.needShowPasscode(true)) {
+        if (pendingPasscodeShow != null) {
+            resumePendingPasscode();
+        } else if (AndroidUtilities.needShowPasscode(true)) {
             showPasscodeActivity(true, false, -1, -1, null, null);
         }
         if (SharedConfig.lastPauseTime != 0) {

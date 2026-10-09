@@ -3,12 +3,15 @@
 package org.telegram.ui.Components;
 
 import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
+import app.nimarkogram.messenger.utils.NimarkoTextMotionBlur;
+import app.nimarkogram.messenger.utils.NimarkoAppMotionBlur;
 import static org.telegram.messenger.AndroidUtilities.lerp;
 
 import android.animation.Animator;
 import android.animation.AnimatorListenerAdapter;
 import android.animation.TimeInterpolator;
 import android.animation.ValueAnimator;
+import app.nimarkogram.messenger.utils.NimarkoUiAnimationClock;
 import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.Color;
@@ -56,6 +59,7 @@ public class AnimatedTextView extends View {
     public static class AnimatedTextDrawable extends Drawable {
 
         private final TextPaint textPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
+        private final NimarkoTextMotionBlur.Budget motionBlurBudget = new NimarkoTextMotionBlur.Budget();
         private int gravity = 0;
 
         private boolean isRTL = false;
@@ -97,6 +101,7 @@ public class AnimatedTextView extends View {
             int toOppositeIndex;
             float left, width;
 
+            NimarkoTextMotionBlur motionBlur;
             public Part(StaticLayout layout, float offset, int toOppositeIndex) {
                 this.layout = layout;
                 this.toOppositeIndex = toOppositeIndex;
@@ -112,6 +117,10 @@ public class AnimatedTextView extends View {
             }
 
             public void detach() {
+                if (motionBlur != null) {
+                    motionBlur.dispose();
+                    motionBlur = null;
+                }
                 if (emojiHost != null) {
                     AnimatedEmojiSpan.release(emojiHost, emoji);
                     emojiHost = null;
@@ -126,6 +135,53 @@ public class AnimatedTextView extends View {
             }
 
             public void draw(Canvas canvas, float alpha) {
+                if (motionBlur != null && NimarkoTextMotionBlur.isMainThread() && (canvas.isHardwareAccelerated()
+                        || !NimarkoTextMotionBlur.featureEnabled())) motionBlur.reset();
+                drawContent(canvas, alpha);
+            }
+
+            public void drawMoving(Canvas canvas, float alpha, float x, float y, float sx, float sy) {
+                if (!NimarkoTextMotionBlur.isMainThread()
+                        || NimarkoTextMotionBlur.featureEnabled() && !canvas.isHardwareAccelerated()) {
+                    drawContent(canvas, alpha);
+                    return;
+                }
+                Canvas recording = null;
+                boolean enabled = NimarkoTextMotionBlur.enabled(canvas);
+                Drawable.Callback callback = getCallback();
+                if (enabled) {
+                    for (int depth = 0; callback instanceof Drawable && depth < 8; depth++) {
+                        callback = ((Drawable) callback).getCallback();
+                    }
+                }
+                boolean covered = enabled && callback instanceof View
+                        && NimarkoAppMotionBlur.isViewMotionBlurred((View) callback);
+                if (enabled && !covered) {
+                    if (motionBlur == null) motionBlur = new NimarkoTextMotionBlur();
+                    int pad = (int) Math.ceil(10f + (shadowed ? shadowRadius * 3f
+                            + Math.max(Math.abs(shadowDx), Math.abs(shadowDy)) : 0f));
+                    float baselineShift = stableBaseline ? -textPaint.ascent() - layout.getLineBaseline(0) : 0f;
+                    int l = (int) Math.floor(left) - pad;
+                    int top = (int) Math.floor(baselineShift) - pad;
+                    int w = (int) Math.ceil(left + width) + pad - l;
+                    int h = (int) Math.ceil(baselineShift + layout.getHeight()) + pad - top;
+                    recording = motionBlur.begin(canvas, motionBlurBudget, bounds.left + x, bounds.top + y,
+                            sx, sy, width / 2f, layout.getHeight() / 2f, l, top, w, h);
+                } else if (motionBlur != null) {
+                    motionBlur.reset();
+                }
+                if (recording == null) {
+                    drawContent(canvas, alpha);
+                } else {
+                    try {
+                        drawContent(recording, alpha);
+                    } finally {
+                        motionBlur.end(canvas);
+                    }
+                }
+            }
+
+            private void drawContent(Canvas canvas, float alpha) {
                 if (stableBaseline) {
                     canvas.save();
                     canvas.translate(0, -textPaint.ascent() - layout.getLineBaseline(0));
@@ -268,6 +324,7 @@ public class AnimatedTextView extends View {
 
         @Override
         public void draw(@NonNull Canvas canvas) {
+            motionBlurBudget.start();
             final boolean drawEllipsizeGradient = needsEllipsizeGradient();
             if (drawEllipsizeGradient) {
                 AndroidUtilities.rectTmp.set(bounds);
@@ -284,6 +341,7 @@ public class AnimatedTextView extends View {
             if (currentParts != null && oldParts != null && t != 1) {
                 float width = lerp(oldWidth, currentWidth, t);
                 float height = getDrawingHeight(lerp(oldHeight, currentHeight, t));
+                float centerOffset = centerY ? (fullHeight - height) / 2f : 0f;
                 if (centerY) canvas.translate(0, (fullHeight - height) / 2f);
                 for (int i = 0; i < currentParts.length; ++i) {
                     Part current = currentParts[i];
@@ -321,11 +379,14 @@ public class AnimatedTextView extends View {
                         }
                     }
                     canvas.translate(x, y);
+                    float scaleX = 1f, scaleY = 1f;
                     if (j < 0 && scaleAmplitude > 0) {
                         final float s = lerp(1f - scaleAmplitude, 1f, t);
+                        scaleX = s;
+                        scaleY = stableBaseline ? 1f : s;
                         canvas.scale(s, stableBaseline ? 1f : s, current.width / 2f, current.layout.getHeight() / 2f);
                     }
-                    current.draw(canvas, j >= 0 ? 1f : t);
+                    current.drawMoving(canvas, j >= 0 ? 1f : t, x, y + centerOffset, scaleX, scaleY);
                     canvas.restore();
                 }
                 for (int i = 0; i < oldParts.length; ++i) {
@@ -356,11 +417,14 @@ public class AnimatedTextView extends View {
                         }
                     }
                     canvas.translate(x, y);
+                    float scaleX = 1f, scaleY = 1f;
                     if (scaleAmplitude > 0) {
                         final float s = lerp(1f, 1f - scaleAmplitude, t);
+                        scaleX = s;
+                        scaleY = stableBaseline ? 1f : s;
                         canvas.scale(s, stableBaseline ? 1f : s, old.width / 2f, old.layout.getHeight() / 2f);
                     }
-                    old.draw(canvas, 1f - localT);
+                    old.drawMoving(canvas, 1f - localT, x, y + centerOffset, scaleX, scaleY);
                     canvas.restore();
                 }
             } else {
@@ -444,6 +508,7 @@ public class AnimatedTextView extends View {
             }
         }
         private void cancelAnimationInternal() {
+            resetCurrentMotionBlur();
             toSetText = null;
             toSetTextMoveDown = false;
             if (animator != null) {
@@ -513,6 +578,7 @@ public class AnimatedTextView extends View {
                             return;
                         }
                         animator = null;
+                        resetCurrentMotionBlur();
                         clearOldParts();
                         oldText = null;
                         oldWidth = oldHeight = 0;
@@ -540,6 +606,7 @@ public class AnimatedTextView extends View {
                 textAnimator.setDuration(animateDuration);
                 textAnimator.setInterpolator(animateInterpolator);
                 textAnimator.start();
+                NimarkoUiAnimationClock.track(textAnimator);
                 if (animator == textAnimator && widthUpdatedListener != null) {
                     widthUpdatedListener.run();
                 }
@@ -627,6 +694,14 @@ public class AnimatedTextView extends View {
                 }
             }
             oldParts = null;
+        }
+
+        private void resetCurrentMotionBlur() {
+            if (currentParts != null) {
+                for (Part part : currentParts) {
+                    if (part.motionBlur != null) part.motionBlur.reset();
+                }
+            }
         }
 
         private void clearCurrentParts() {

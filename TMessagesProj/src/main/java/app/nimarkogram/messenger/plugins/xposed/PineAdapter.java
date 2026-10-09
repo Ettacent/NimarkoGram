@@ -2,6 +2,8 @@
 
 package app.nimarkogram.messenger.plugins.xposed;
 
+import java.lang.reflect.Constructor;
+import java.lang.reflect.InvocationTargetException;
 import de.robv.android.xposed.XC_MethodHook;
 import de.robv.android.xposed.XC_MethodReplacement;
 import top.canyie.pine.Pine;
@@ -113,9 +115,13 @@ public final class PineAdapter extends MethodHook {
         this.xcHook = xcHook;
         this.diagnosticTarget = member == null ? "unknown" : member.toString();
         this.diagnosticPlugin = xcHook instanceof PyMethodHook
-                ? ((PyMethodHook) xcHook).diagnosticPluginId() : "";
+                ? ((PyMethodHook) xcHook).diagnosticPluginId()
+                : xcHook instanceof PyMethodReplacement
+                ? ((PyMethodReplacement) xcHook).diagnosticPluginId() : "";
         this.diagnosticRuntime = xcHook instanceof PyMethodHook
-                ? ((PyMethodHook) xcHook).diagnosticRuntimeOwner() : "";
+                ? ((PyMethodHook) xcHook).diagnosticRuntimeOwner()
+                : xcHook instanceof PyMethodReplacement
+                ? ((PyMethodReplacement) xcHook).diagnosticRuntimeOwner() : "";
         this.paramTypes = parameterTypesOf(member);
     }
 
@@ -282,7 +288,7 @@ public final class PineAdapter extends MethodHook {
 
     private static Class<?>[] parameterTypesOf(Member m) {
         if (m instanceof Method) return ((Method) m).getParameterTypes();
-        if (m instanceof java.lang.reflect.Constructor) return ((java.lang.reflect.Constructor<?>) m).getParameterTypes();
+        if (m instanceof Constructor) return ((Constructor<?>) m).getParameterTypes();
         return null;
     }
 
@@ -329,7 +335,7 @@ public final class PineAdapter extends MethodHook {
                 }
             } catch (Throwable t) {
                 NimarkoCrashContext.failure("pine_before_callback", diagnosticPlugin, diagnosticTarget,
-                        t instanceof java.lang.reflect.InvocationTargetException && t.getCause() != null
+                        t instanceof InvocationTargetException && t.getCause() != null
                                 ? t.getCause() : t);
                 FileLog.e("nimarko: hook callback threw for " + member, t);
                 callbackFailed = true;
@@ -428,7 +434,7 @@ public final class PineAdapter extends MethodHook {
                 }
             } catch (Throwable t) {
                 NimarkoCrashContext.failure("pine_after_callback", diagnosticPlugin, diagnosticTarget,
-                        t instanceof java.lang.reflect.InvocationTargetException && t.getCause() != null
+                        t instanceof InvocationTargetException && t.getCause() != null
                                 ? t.getCause() : t);
                 FileLog.e("nimarko: afterHookedMethod threw", t);
                 callbackFailed = true;

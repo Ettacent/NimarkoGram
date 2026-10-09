@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.messenger;
 
 import android.content.Context;
@@ -7,6 +9,7 @@ import android.util.Base64;
 import android.util.Log;
 
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 import androidx.annotation.RequiresApi;
 import androidx.credentials.CreateCredentialResponse;
 import androidx.credentials.CreatePublicKeyCredentialRequest;
@@ -19,6 +22,7 @@ import androidx.credentials.GetPublicKeyCredentialOption;
 import androidx.credentials.PrepareGetCredentialResponse;
 import androidx.credentials.exceptions.CreateCredentialCancellationException;
 import androidx.credentials.exceptions.CreateCredentialCustomException;
+import androidx.credentials.exceptions.CreateCredentialException;
 import androidx.credentials.exceptions.CreateCredentialInterruptedException;
 import androidx.credentials.exceptions.CreateCredentialNoCreateOptionException;
 import androidx.credentials.exceptions.GetCredentialCancellationException;
@@ -39,6 +43,7 @@ import org.telegram.ui.LaunchActivity;
 import java.util.Arrays;
 import java.util.concurrent.Executors;
 
+import java.util.concurrent.atomic.AtomicBoolean;
 import kotlin.Result;
 import kotlin.Unit;
 import kotlin.coroutines.Continuation;
@@ -56,10 +61,33 @@ import kotlinx.coroutines.JobCancellationException;
 @RequiresApi(api = 28)
 public class PasskeysController {
 
-    public static void create(Context context, int currentAccount, Utilities.Callback2<TL_account.Passkey, String> done) {
-        if (!BuildVars.SUPPORTS_PASSKEYS) return;
+    @Nullable
+    private static CredentialManager createCredentialManager(Context context) {
+        if (!BuildVars.SUPPORTS_PASSKEYS || Build.VERSION.SDK_INT < 28) {
+            return null;
+        }
+        try {
+            return CredentialManager.create(context);
+        } catch (LinkageError | RuntimeException unavailable) {
 
-        final CredentialManager credentialManager = CredentialManager.create(context);
+            FileLog.e("Passkeys unavailable on this platform", unavailable);
+            return null;
+        }
+    }
+
+    public static void create(Context context, int currentAccount, Utilities.Callback2<TL_account.Passkey, String> callback) {
+        final AtomicBoolean completed = new AtomicBoolean();
+        final Utilities.Callback2<TL_account.Passkey, String> done = (passkey, error) -> {
+            if (completed.compareAndSet(false, true)) {
+                AndroidUtilities.runOnUIThread(() -> callback.run(passkey, error));
+            }
+        };
+
+        final CredentialManager credentialManager = createCredentialManager(context);
+        if (credentialManager == null) {
+            done.run(null, "UNAVAILABLE");
+            return;
+        }
         final AlertDialog progressDialog = new AlertDialog(context, AlertDialog.ALERT_TYPE_SPINNER);
         progressDialog.showDelayed(500);
 
@@ -68,6 +96,7 @@ public class PasskeysController {
             AndroidUtilities::runOnUIThread,
             (res, err) -> {
                 progressDialog.dismiss();
+                if (completed.get()) return;
                 if (err != null) {
                     done.run(null, err.text);
                     return;
@@ -84,11 +113,13 @@ public class PasskeysController {
                     return;
                 }
 
-                final CreatePublicKeyCredentialRequest credentialRequest =
-                    new CreatePublicKeyCredentialRequest(requestJson);
-
+                final CancellationSignal cancellationSignal = new CancellationSignal();
                 try {
-                    credentialManager.createCredential(context, credentialRequest, ktxCallback((res2, err2) -> {
+                    final CreatePublicKeyCredentialRequest credentialRequest =
+                        new CreatePublicKeyCredentialRequest(requestJson);
+
+                    final Utilities.Callback2<CreateCredentialResponse, Throwable> credentialCallback = (res2, err2) -> {
+                        if (completed.get()) return;
                         if (err2 instanceof CreateCredentialCancellationException || err2 instanceof CreateCredentialInterruptedException) {
                             AndroidUtilities.runOnUIThread(() -> {
                                 done.run(null, "CANCELLED");
@@ -151,21 +182,41 @@ public class PasskeysController {
                                 done.run(null, "CANCELLED");
                             });
                         });
-                    }));
-                } catch (Exception e) {
+                    };
+                    credentialManager.createCredentialAsync(context, credentialRequest, cancellationSignal,
+                            context.getMainExecutor(), new CredentialManagerCallback<CreateCredentialResponse, CreateCredentialException>() {
+                                @Override
+                                public void onResult(CreateCredentialResponse response) {
+                                    credentialCallback.run(response, null);
+                                }
+
+                                @Override
+                                public void onError(@NonNull CreateCredentialException error) {
+                                    credentialCallback.run(null, error);
+                                }
+                            });
+                } catch (LinkageError | Exception e) {
                     FileLog.e(e);
-                    AndroidUtilities.runOnUIThread(() -> {
-                        done.run(null, e.getMessage());
-                    });
+                    done.run(null, e instanceof LinkageError ? "UNAVAILABLE" : e.getMessage());
+                    cancellationSignal.cancel();
                 }
             }
         );
     }
 
-    public static Runnable login(Context context, int currentAccount, boolean clickedButton, Utilities.Callback3<Long, TLRPC.auth_Authorization, String> done) {
-        if (!BuildVars.SUPPORTS_PASSKEYS) return null;
+    public static Runnable login(Context context, int currentAccount, boolean clickedButton, Utilities.Callback3<Long, TLRPC.auth_Authorization, String> callback) {
+        final AtomicBoolean completed = new AtomicBoolean();
+        final Utilities.Callback3<Long, TLRPC.auth_Authorization, String> done = (userId, authorization, error) -> {
+            if (completed.compareAndSet(false, true)) {
+                AndroidUtilities.runOnUIThread(() -> callback.run(userId, authorization, error));
+            }
+        };
 
-        final CredentialManager credentialManager = CredentialManager.create(context);
+        final CredentialManager credentialManager = createCredentialManager(context);
+        if (credentialManager == null) {
+            done.run(0L, null, "UNAVAILABLE");
+            return null;
+        }
 
         final boolean[] cancelled = new boolean[1];
         final Runnable[] cancel = new Runnable[1];
@@ -174,7 +225,7 @@ public class PasskeysController {
         req.api_id = BuildVars.APP_ID;
         req.api_hash = BuildVars.APP_HASH;
         final int requestId = ConnectionsManager.getInstance(currentAccount).sendRequestTyped(req, AndroidUtilities::runOnUIThread, (res, err) -> {
-            if (cancelled[0]) return;
+            if (cancelled[0] || completed.get()) return;
             if (err != null) {
                 done.run(0L, null, err.text);
                 return;
@@ -191,17 +242,18 @@ public class PasskeysController {
                 return;
             }
 
-            final GetPublicKeyCredentialOption passkeyOption = new GetPublicKeyCredentialOption(requestJson);
-            final GetCredentialRequest request = new GetCredentialRequest.Builder()
-                    .addCredentialOption(passkeyOption)
-                    .setPreferImmediatelyAvailableCredentials(!clickedButton)
-                    .build();
-
+            final CancellationSignal cancellationSignal = new CancellationSignal();
             try {
-                final CancellationSignal cancellationSignal = new CancellationSignal();
+                final GetPublicKeyCredentialOption passkeyOption = new GetPublicKeyCredentialOption(requestJson);
+                final GetCredentialRequest request = new GetCredentialRequest.Builder()
+                        .addCredentialOption(passkeyOption)
+                        .setPreferImmediatelyAvailableCredentials(!clickedButton)
+                        .build();
+
                 credentialManager.getCredentialAsync(context, request, cancellationSignal, context.getMainExecutor(), new CredentialManagerCallback<GetCredentialResponse, GetCredentialException>() {
                     @Override
                     public void onResult(GetCredentialResponse res2) {
+                        if (completed.get()) return;
                         final Credential credential = res2.getCredential();
 
                         final int datacenterId;
@@ -268,6 +320,7 @@ public class PasskeysController {
 
                     @Override
                     public void onError(@NonNull GetCredentialException err2) {
+                        if (completed.get()) return;
                         if (err2 instanceof NoCredentialException) {
                             done.run(0L, null, "EMPTY");
                         } else if (err2 instanceof GetCredentialCancellationException) {
@@ -281,8 +334,10 @@ public class PasskeysController {
                 });
 
                 cancel[0] = cancellationSignal::cancel;
-            } catch (Exception e) {
-                done.run(0L, null, e.getMessage());
+            } catch (LinkageError | Exception e) {
+                FileLog.e(e);
+                done.run(0L, null, e instanceof LinkageError ? "UNAVAILABLE" : e.getMessage());
+                cancellationSignal.cancel();
             }
 
         }, ConnectionsManager.RequestFlagWithoutLogin);
@@ -291,6 +346,7 @@ public class PasskeysController {
 
         return () -> {
             cancelled[0] = true;
+            done.run(0L, null, "CANCELLED");
             if (cancel[0] != null) {
                 cancel[0].run();
             }

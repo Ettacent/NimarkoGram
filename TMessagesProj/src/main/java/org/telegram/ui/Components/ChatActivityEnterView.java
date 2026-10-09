@@ -3272,6 +3272,7 @@ public class ChatActivityEnterView extends FrameLayout implements
                     // and its glass contour had finished collapsing.
                     animatorInputFieldHeight.animateTo(height);
                 }
+                updateTextFieldHeightOffset();
                 checkUi_TopViewVisibility();
             }
 
@@ -15257,7 +15258,9 @@ public class ChatActivityEnterView extends FrameLayout implements
             if (guid != recordingGuid) {
                 return;
             }
-            if (recordingAudioVideo) {
+            boolean encodingFailed = id == NotificationCenter.recordStartError
+                    && args.length > 1 && Boolean.TRUE.equals(args[1]);
+            if (recordingAudioVideo || encodingFailed) {
                 recordingAudioVideo = false;
                 if (id == NotificationCenter.recordStopped) {
                     Integer reason = (Integer) args[1];
@@ -15281,6 +15284,10 @@ public class ChatActivityEnterView extends FrameLayout implements
                 } else {
                     updateRecordInterface(RECORD_STATE_CANCEL, true);
                 }
+            }
+            if (encodingFailed && parentFragment != null && !parentFragment.isPaused()
+                    && parentFragment.getParentActivity() != null) {
+                BulletinFactory.of(parentFragment).createErrorBulletin(getString(R.string.ErrorOccurred)).show();
             }
         } else if (id == NotificationCenter.recordStarted) {
             int guid = (Integer) args[0];
@@ -15464,6 +15471,9 @@ public class ChatActivityEnterView extends FrameLayout implements
                 updateSlowModeText();
             }
         } else if (id == NotificationCenter.audioRecordTooShort) {
+            if ((Integer) args[0] != recordingGuid) {
+                return;
+            }
             audioToSend = null;
             videoToSendMessageObject = null;
             updateRecordInterface(RECORD_STATE_CANCEL_BY_TIME, true);
@@ -17775,16 +17785,22 @@ public class ChatActivityEnterView extends FrameLayout implements
         if (topAlpha <= 0 && bottomAlpha <= 0) {
             return drawChild.run();
         }
-        canvas.saveLayerAlpha(0, 0, messageEditText.getX() + messageEditText.getMeasuredWidth() + dp(5), messageEditText.getY() + messageEditText.getMeasuredHeight() + dp(2), 0xFF, Canvas.ALL_SAVE_FLAG);
+        final float textTop = messageEditText.getY();
+        final float textBottom = textTop + messageEditText.getMeasuredHeight();
+        final float viewportBottom = textBottom - (useFieldHeightForText ? messageEditText.getTranslationY() : 0f);
+        final float drawingOffset = messageEditText.getTextDrawingOffsetY();
+        final float layerTop = Math.min(0f, textTop + Math.min(useFieldHeightForText ? 0f : animatedTop, drawingOffset));
+        final float layerBottom = Math.max(viewportBottom, textBottom + drawingOffset) + dp(2);
+        canvas.saveLayerAlpha(0, layerTop, messageEditText.getX() + messageEditText.getMeasuredWidth() + dp(5), layerBottom, 0xFF, Canvas.ALL_SAVE_FLAG);
         final boolean result = drawChild.run();
         canvas.save();
 
         if (topAlpha > 0) {
             AndroidUtilities.rectTmp.set(
                     messageEditText.getX() - dp(5),
-                    messageEditText.getY() + animatedTop - 1,
+                    textTop + (useFieldHeightForText ? 0f : animatedTop) - 1,
                     messageEditText.getX() + messageEditText.getMeasuredWidth() + dp(5),
-                    messageEditText.getY() + animatedTop + dp(13)
+                    textTop + (useFieldHeightForText ? 0f : animatedTop) + dp(13)
             );
             clipMatrix.reset();
             clipMatrix.postScale(1f, AndroidUtilities.rectTmp.height() / 16f);
@@ -17797,9 +17813,9 @@ public class ChatActivityEnterView extends FrameLayout implements
         if (bottomAlpha > 0) {
             AndroidUtilities.rectTmp.set(
                     messageEditText.getX() - dp(5),
-                    messageEditText.getY() + messageEditText.getMeasuredHeight() - dp(13 + 2),
+                    viewportBottom - dp(13 + 2),
                     messageEditText.getX() + messageEditText.getMeasuredWidth() + dp(5),
-                    messageEditText.getY() + messageEditText.getMeasuredHeight() + dp(2) + 1
+                    viewportBottom + dp(2) + 1
             );
             clipMatrix.reset();
             clipMatrix.postScale(1f, AndroidUtilities.rectTmp.height() / 16f);
@@ -18027,6 +18043,25 @@ public class ChatActivityEnterView extends FrameLayout implements
     private final BoolAnimator animatorIsBlockedByStreaming = new BoolAnimator(ANIMATOR_ID_BLOCKED_BY_BOT_TYPING, this, CubicBezierInterpolator.EASE_OUT_QUINT, 320);
     private final BoolAnimator animatorEphemeralMessageVisibility = new BoolAnimator(ANIMATOR_ID_EPHEMERAL_MESSAGE_VISIBILITY, this, CubicBezierInterpolator.EASE_OUT_QUINT, 320);
 
+    private boolean useFieldHeightForText;
+
+    public void setUseFieldHeightForText(boolean enabled) {
+        if (useFieldHeightForText == enabled) return;
+        useFieldHeightForText = enabled;
+        if (!enabled && messageEditText != null) messageEditText.setTranslationY(0f);
+        updateTextFieldHeightOffset();
+    }
+
+    private float getTextFieldHeightOffsetY() {
+        return useFieldHeightForText && animatorInputFieldHeight.getFactor() > 0f
+                ? animatorInputFieldHeight.getToFactor() - animatorInputFieldHeight.getFactor() : 0f;
+    }
+
+    private void updateTextFieldHeightOffset() {
+        if (!useFieldHeightForText) return;
+        if (messageEditText != null) messageEditText.setTranslationY(getTextFieldHeightOffsetY());
+        if (messageEditTextContainer != null) messageEditTextContainer.invalidate();
+    }
     @Override
     public void onFactorChanged(int id, float factor, float fraction, FactorAnimator callee) {
         // todo: notificationsLocker.lock(); notificationsLocker.unlock();
@@ -18034,6 +18069,7 @@ public class ChatActivityEnterView extends FrameLayout implements
         if (id == ANIMATOR_ID_INPUT_FIELD_HEIGHT) {
             checkUi_IslandTotalHeight();
             checkUi_TopViewVisibility();
+            updateTextFieldHeightOffset();
         } else if (id == ANIMATOR_ID_TOP_VIEW_VISIBILITY) {
             checkUi_IslandTotalHeight();
             checkUi_TopViewVisibility();

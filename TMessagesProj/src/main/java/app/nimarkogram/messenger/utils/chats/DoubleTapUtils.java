@@ -3,6 +3,10 @@
  
 package app.nimarkogram.messenger.utils.chats;
 
+import java.lang.reflect.Method;
+import java.util.ArrayList;
+import org.telegram.messenger.SendMessagesHelper;
+import org.telegram.messenger.UserConfig;
 import android.view.View;
 
 import app.nimarkogram.messenger.NimarkoConfig;
@@ -181,17 +185,17 @@ public final class DoubleTapUtils {
                 }
                 case NimarkoConfig.DTAP_SAVE: {
                     
-                    long selfId = org.telegram.messenger.UserConfig.getInstance(message.currentAccount).getClientUserId();
+                    long selfId = UserConfig.getInstance(message.currentAccount).getClientUserId();
                     long targetId = NimarkoConfig.getEffectiveSavedMessagesDialogId(message.currentAccount, selfId);
-                    java.util.ArrayList<MessageObject> list = new java.util.ArrayList<>();
+                    ArrayList<MessageObject> list = new ArrayList<>();
                     list.add(message);
-                    org.telegram.messenger.SendMessagesHelper.getInstance(message.currentAccount)
+                    SendMessagesHelper.getInstance(message.currentAccount)
                             .sendMessage(list, targetId, false, false, true, 0, null, -1, 0L);
                     return true;
                 }
                 case NimarkoConfig.DTAP_EDIT: {
                     
-                    java.lang.reflect.Method m = chatActivity.getClass()
+                    Method m = chatActivity.getClass()
                             .getDeclaredMethod("startEditingMessageObject", MessageObject.class);
                     m.setAccessible(true);
                     m.invoke(chatActivity, message);
@@ -200,7 +204,7 @@ public final class DoubleTapUtils {
                 case NimarkoConfig.DTAP_EDIT_OR_REACTION: {
                     
                     if (!message.canEditMessage(null)) return false;
-                    java.lang.reflect.Method m = chatActivity.getClass()
+                    Method m = chatActivity.getClass()
                             .getDeclaredMethod("startEditingMessageObject", MessageObject.class);
                     m.setAccessible(true);
                     m.invoke(chatActivity, message);
@@ -214,7 +218,7 @@ public final class DoubleTapUtils {
                             null,
                             message.currentAccount,
                             "und",
-                            org.telegram.messenger.LocaleController.getInstance().getCurrentLocale().getLanguage(),
+                            LocaleController.getInstance().getCurrentLocale().getLanguage(),
                             message.messageOwner != null ? message.messageOwner.message : "",
                             message.messageOwner != null ? message.messageOwner.entities : null,
                             false,

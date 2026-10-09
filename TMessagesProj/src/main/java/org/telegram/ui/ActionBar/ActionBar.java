@@ -54,6 +54,7 @@ import androidx.annotation.NonNull;
 import androidx.core.graphics.ColorUtils;
 import androidx.recyclerview.widget.RecyclerView;
 
+import app.nimarkogram.messenger.utils.NimarkoUiAnimationClock;
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.NotificationCenter;
@@ -69,6 +70,7 @@ import org.telegram.ui.Components.CubicBezierInterpolator;
 import org.telegram.ui.Components.EllipsizeSpanAnimator;
 import org.telegram.ui.Components.FireworksEffect;
 import org.telegram.ui.Components.LayoutHelper;
+import org.telegram.ui.Components.MessagePreviewCrossfade;
 import org.telegram.ui.Components.SectionsScrollView;
 import org.telegram.ui.Components.SizeNotifierFrameLayout;
 import org.telegram.ui.Components.SnowflakesEffect;
@@ -143,7 +145,9 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
     private Drawable lastRightDrawable;
     private OnClickListener rightDrawableOnClickListener;
     private CharSequence lastOverlayTitle;
+    private int lastOverlayTitleId;
     private Object[] overlayTitleToSet = new Object[3];
+    private boolean overlayTitleGilroy;
     private Runnable lastRunnable;
     private boolean titleOverlayShown;
     private Runnable titleActionRunnable;
@@ -600,7 +604,7 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
         if (titleTextView[i] != null) {
             return;
         }
-        titleTextView[i] = new SimpleTextView(getContext());
+        titleTextView[i] = new OverlayTitleTextView(getContext());
         titleTextView[i].setEllipsizeByGradient(true, LocaleController.isRTL);
         titleTextView[i].setGravity(getTitleGravity());
         if (titleColorToSet != 0) {
@@ -669,6 +673,13 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
 
     private boolean shouldAnimateCenterTitleLayout() {
         return attached && getWindowToken() != null && !isSearchFieldVisible && !titleAnimationRunning;
+    }
+
+    private int getTitlePositioningWidth(SimpleTextView view) {
+        if (view instanceof OverlayTitleTextView && ((OverlayTitleTextView) view).incomingWidth >= 0) {
+            return ((OverlayTitleTextView) view).incomingWidth;
+        }
+        return view != null ? view.getMeasuredWidth() : 0;
     }
 
     private int getTitleGravity() {
@@ -755,7 +766,7 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
             animatedCenterTitleX = getTargetCenterTitleX(width, textLeft, adaptive);
             animatedCenterTitleAvailableWidth = getCenteredTitleAvailableWidth(width, textLeft, adaptive);
         } else {
-            animatedCenterTitleX = textLeft + titleTextView[0].getMeasuredWidth() / 2f;
+            animatedCenterTitleX = textLeft + getTitlePositioningWidth(titleTextView[0]) / 2f;
             animatedCenterTitleAvailableWidth = getLeftAlignedTitleAvailableWidth(width, textLeft);
         }
         centerTitleAnimationTargetX = Integer.MIN_VALUE;
@@ -861,6 +872,7 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
 
     public void setTitle(CharSequence value, Drawable rightDrawable, boolean gilroy) {
         if (titleOverlayShown) {
+            if (!TextUtils.equals(lastTitle, value)) overlayScrollingState = null;
             lastTitle = value;
             lastRightDrawable = rightDrawable;
             return;
@@ -869,6 +881,10 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
             createTitleTextView(0, gilroy);
         }
         if (titleTextView[0] != null) {
+            if (overlayTitleAnimationInProgress && (!TextUtils.equals(titleTextView[0].getText(), value)
+                    || titleTextView[0].getRightDrawable() != rightDrawable)) {
+                prepareOverlayTitleChange();
+            }
             titleTextView[0].setVisibility(value != null && !isSearchFieldVisible ? VISIBLE : INVISIBLE);
             titleTextView[0].setText(lastTitle = value);
             if (attached && lastRightDrawable instanceof AnimatedEmojiDrawable.SwapAnimatedEmojiDrawable) {
@@ -1887,7 +1903,7 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
             targetCenterX = getTargetCenterTitleX(barWidth, textLeft, adaptiveCenter);
             targetCenterWidth = getCenteredTitleAvailableWidth(barWidth, textLeft, adaptiveCenter);
         } else {
-            int naturalWidth = titleTextView[0] != null ? titleTextView[0].getMeasuredWidth() : 0;
+            int naturalWidth = getTitlePositioningWidth(titleTextView[0]);
             targetCenterX = textLeft + naturalWidth / 2;
             targetCenterWidth = getLeftAlignedTitleAvailableWidth(barWidth, textLeft);
         }
@@ -1912,7 +1928,8 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
                     int mw = titleTextView[i].getMeasuredWidth();
                     int titleTop = additionalTop + textTop - titleTextView[i].getPaddingTop();
                     int titleBottom = additionalTop + textTop + titleTextView[i].getTextHeight() - titleTextView[i].getPaddingTop() + titleTextView[i].getPaddingBottom();
-                    int leftX = useCenteredPlacement ? centerX - mw / 2 : textLeft;
+                    int positioningWidth = centerTitleNow ? mw : getTitlePositioningWidth(titleTextView[i]);
+                    int leftX = useCenteredPlacement ? centerX - positioningWidth / 2 : textLeft;
                     titleTextView[i].layout(leftX, titleTop, leftX + mw, titleBottom);
                 }
             }
@@ -2016,6 +2033,7 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
 
     protected void onPause() {
         resumed = false;
+        deferTitlePresentation();
         updateAttachState();
         if (menu != null) {
             menu.hideAllPopupMenus();
@@ -2032,25 +2050,261 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
 
     boolean overlayTitleAnimationInProgress;
 
+    private SimpleTextView.ScrollingState overlayScrollingState;
+    private boolean hasPresentedTitle;
+    private BaseFragment presentedTitleFragment;
+    private int presentedTitleAccount;
+
+    private class OverlayTitleTextView extends SimpleTextView {
+        private boolean capturing;
+        private boolean fadeCentered;
+        private float presentedProgress = 1f;
+        private int incomingWidth = -1;
+        private final MessagePreviewCrossfade crossfade = new MessagePreviewCrossfade(
+                this, this::onFadeFrame, () -> fadeCentered);
+
+        OverlayTitleTextView(Context context) {
+            super(context);
+        }
+
+        private int getIncomingOffsetX() {
+            return incomingWidth >= 0 && shouldCenterTitle() ? getWidth() / 2 - incomingWidth / 2 : 0;
+        }
+
+        private void drawTitle(Canvas canvas) {
+            final int save = canvas.save();
+            try {
+                canvas.translate(getIncomingOffsetX(), 0);
+                super.onDraw(canvas);
+            } finally {
+                canvas.restoreToCount(save);
+            }
+        }
+
+        @Override
+        public boolean onTouchEvent(MotionEvent event) {
+            final int offset = getIncomingOffsetX();
+            if (offset == 0) return super.onTouchEvent(event);
+            final MotionEvent localEvent = MotionEvent.obtain(event);
+            try {
+                localEvent.offsetLocation(-offset, 0);
+                return super.onTouchEvent(localEvent);
+            } finally {
+                localEvent.recycle();
+            }
+        }
+
+        @Override
+        public int getRightDrawableX() {
+            return super.getRightDrawableX() + getIncomingOffsetX();
+        }
+
+        @Override
+        public void invalidateDrawable(Drawable who) {
+            super.invalidateDrawable(who);
+            if (getIncomingOffsetX() != 0) invalidate();
+        }
+
+        @Override
+        protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
+            incomingWidth = -1;
+            super.onMeasure(widthMeasureSpec, heightMeasureSpec);
+            incomingWidth = getMeasuredWidth();
+            int width = Math.max(incomingWidth, crossfade.getOutgoingWidth());
+            if (MeasureSpec.getMode(widthMeasureSpec) != MeasureSpec.UNSPECIFIED) {
+                width = Math.min(width, MeasureSpec.getSize(widthMeasureSpec));
+            }
+            setMeasuredDimension(width, getMeasuredHeight());
+        }
+
+        @Override
+        public int getMaxTextWidth() {
+            final int width = super.getMaxTextWidth();
+            return incomingWidth < 0 ? width : Math.max(0, width - (getMeasuredWidth() - incomingWidth));
+        }
+
+        @Override
+        protected int getDrawableContentWidth() {
+            return incomingWidth >= 0 ? incomingWidth : super.getDrawableContentWidth();
+        }
+
+        private void capture() {
+            if (crossfade.getProgress() == 1f) fadeCentered = shouldCenterTitle();
+            capturing = true;
+            try {
+                crossfade.capture(this::drawTitle, false,
+                        crossfade.isRunning() ? presentedProgress : crossfade.getProgress());
+            } finally {
+                capturing = false;
+            }
+            presentedProgress = crossfade.getProgress();
+            requestLayout();
+            syncTransitionState();
+        }
+
+        private void syncTransitionState() {
+            if (titleTextView[0] == this) {
+                overlayTitleAnimationInProgress = crossfade.getProgress() < 1f;
+            }
+            ActionBar.this.invalidate();
+        }
+
+        private void onFadeFrame() {
+            if (capturing) return;
+            if (crossfade.getProgress() == 1f && !crossfade.isRunning()) {
+                presentedProgress = 1f;
+                requestLayout();
+            }
+            if (crossfade.isRunning() && (!isTitlePresentationVisible() || getAlpha() <= 0f)) {
+                deferPresentation();
+            }
+            syncTransitionState();
+        }
+
+        private void deferPresentation() {
+            if (!hasPresentedTitleIdentity() || !SharedConfig.animationsEnabled()) {
+                crossfade.finish();
+            } else if (crossfade.isRunning()) {
+                capture();
+            }
+        }
+
+        @Override
+        protected void onDraw(Canvas canvas) {
+            if (crossfade.getProgress() < 1f && (!hasPresentedTitleIdentity()
+                    || !SharedConfig.animationsEnabled() || fadeCentered != shouldCenterTitle())) {
+                crossfade.finish();
+            }
+            final boolean presenting = titleTextView[0] == this && parentFragment != null
+                    && canvas.isHardwareAccelerated() && isTitlePresentationVisible() && getAlpha() > 0f;
+            if (presenting && crossfade.getProgress() < 1f && !crossfade.isRunning()) {
+                crossfade.start();
+            }
+            crossfade.draw(canvas, this::drawTitle);
+            if (presenting) {
+                presentedProgress = crossfade.getProgress();
+                hasPresentedTitle = true;
+                presentedTitleFragment = parentFragment;
+                presentedTitleAccount = parentFragment.getCurrentAccount();
+            }
+        }
+
+        @Override
+        protected void onDetachedFromWindow() {
+            crossfade.finish();
+            super.onDetachedFromWindow();
+        }
+    }
+
+    private boolean hasPresentedTitleIdentity() {
+        return hasPresentedTitle && parentFragment == presentedTitleFragment
+                && parentFragment != null && parentFragment.getCurrentAccount() == presentedTitleAccount;
+    }
+
+    private boolean isTitlePresentationVisible() {
+        if (!resumed || NimarkoUiAnimationClock.isPaused() || !isAttachedToWindow()
+                || !isShown() || getWindowVisibility() != VISIBLE
+                || titleTextView[0] == null || titleTextView[0].getVisibility() != VISIBLE
+                || titlesContainer != null && (titlesContainer.getVisibility() != VISIBLE
+                    || titlesContainer.getAlpha() <= 0f)) return false;
+        for (View view = this; view != null;
+                view = view.getParent() instanceof View ? (View) view.getParent() : null) {
+            if (view.getVisibility() != VISIBLE || view.getAlpha() <= 0f) return false;
+        }
+        return true;
+    }
+
+    private void prepareOverlayTitleChange() {
+        if (titleTextView[0] instanceof OverlayTitleTextView) {
+            OverlayTitleTextView view = (OverlayTitleTextView) titleTextView[0];
+            if (hasPresentedTitleIdentity() && SharedConfig.animationsEnabled() && !titleAnimationRunning) {
+                view.capture();
+            } else {
+                view.crossfade.finish();
+            }
+        }
+    }
+
+    private void finishOverlayTitlePresentation() {
+        for (SimpleTextView view : titleTextView) {
+            if (view instanceof OverlayTitleTextView) {
+                ((OverlayTitleTextView) view).crossfade.finish();
+            }
+        }
+        overlayTitleAnimationInProgress = false;
+    }
+
+    private void settleOverlayTitleTransition() {
+        for (SimpleTextView view : titleTextView) {
+            if (view != null) view.animate().setListener(null).setUpdateListener(null).cancel();
+        }
+        if (titleTextView[1] != null) {
+            if (titleTextView[1].getParent() instanceof ViewGroup) {
+                ((ViewGroup) titleTextView[1].getParent()).removeView(titleTextView[1]);
+            }
+            ellipsizeSpanAnimator.removeView(titleTextView[1]);
+            titleTextView[1] = null;
+        }
+        if (titleTextView[0] != null) {
+            titleTextView[0].setAlpha(adaptiveBackgroundHideTitle && titlesContainer == null ? 1f - onTopAnimated : 1f);
+            titleTextView[0].setTranslationX(0f);
+            titleTextView[0].setTranslationY(0f);
+            titleTextView[0].setScaleX(1f);
+            titleTextView[0].setScaleY(1f);
+        }
+        overlayTitleAnimationInProgress = false;
+        titleAnimationRunning = false;
+        titleAnimationGeneration++;
+    }
+
+    @Override
+    protected void onWindowVisibilityChanged(int visibility) {
+        super.onWindowVisibilityChanged(visibility);
+        if (visibility != VISIBLE) deferTitlePresentation();
+    }
+
+    private void deferTitlePresentation() {
+        if (titleTextView[0] instanceof OverlayTitleTextView) {
+            ((OverlayTitleTextView) titleTextView[0]).deferPresentation();
+        }
+    }
     public void setTitleOverlayText(String title, int titleId, Runnable action) {
         setTitleOverlayText(title, titleId, false, action);
     }
 
     public void setTitleOverlayText(String title, int titleId, boolean gilroy, Runnable action) {
-        if (!allowOverlayTitle || parentFragment.parentLayout == null) {
+        if (!allowOverlayTitle || parentFragment == null || parentFragment.parentLayout == null) {
             return;
         }
         overlayTitleToSet[0] = title;
         overlayTitleToSet[1] = titleId;
         overlayTitleToSet[2] = action;
-        if (overlayTitleAnimationInProgress) {
+        overlayTitleGilroy = gilroy;
+        titleActionRunnable = action != null ? action : lastRunnable;
+        final boolean presentationVisible = isTitlePresentationVisible();
+        if (!hasPresentedTitleIdentity()) {
+            overlayScrollingState = null;
+            finishOverlayTitlePresentation();
+        } else if (!SharedConfig.animationsEnabled()) {
+            finishOverlayTitlePresentation();
+        } else if (!presentationVisible) {
+            deferTitlePresentation();
+        }
+        if (TextUtils.equals(lastOverlayTitle, title) && (title == null || lastOverlayTitleId == titleId)) {
             return;
         }
-        if (lastOverlayTitle == null && title == null || (lastOverlayTitle != null && lastOverlayTitle.equals(title))) {
-            return;
+        if (!titleOverlayShown && title != null && titleTextView[0] != null) {
+            overlayScrollingState = titleTextView[0].captureScrollingState();
+        }
+        if (titleAnimationRunning || titleTextView[1] != null) {
+            finishOverlayTitlePresentation();
+            settleOverlayTitleTransition();
+        } else {
+            prepareOverlayTitleChange();
         }
         lastOverlayTitle = title;
 
+        lastOverlayTitleId = titleId;
         if (additionalSubTitleOverlayContainer != null) {
             final CharSequence textToSet;
             if (titleId == R.string.ConnectingToProxyWithDots) {
@@ -2058,7 +2312,7 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
             } else {
                 textToSet = null;
             }
-            additionalSubTitleOverlayContainer.setText(textToSet, true);
+            additionalSubTitleOverlayContainer.setText(textToSet, presentationVisible && SharedConfig.animationsEnabled());
         }
 
         CharSequence textToSet = title != null ? LocaleController.getString(title, titleId) : lastTitle;
@@ -2074,88 +2328,29 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
             }
         }
         titleOverlayShown = title != null;
-        if ((textToSet != null && titleTextView[0] == null) || getMeasuredWidth() == 0 || (titleTextView[0] != null && titleTextView[0].getVisibility() != View.VISIBLE)) {
-            createTitleTextView(0, gilroy);
-            if (supportsHolidayImage) {
-                titleTextView[0].invalidate();
-                invalidate();
-            }
-            titleTextView[0].setText(textToSet);
-            titleTextView[0].setDrawablePadding(dp(4));
-            titleTextView[0].setRightDrawable(rightDrawableToSet);
-            titleTextView[0].setRightDrawableOnClick(rightDrawableOnClickListener);
-            if (rightDrawableToSet instanceof AnimatedEmojiDrawable.SwapAnimatedEmojiDrawable) {
-                ((AnimatedEmojiDrawable.SwapAnimatedEmojiDrawable) rightDrawableToSet).setParentView(titleTextView[0]);
-            }
-            if (ellipsize) {
-                ellipsizeSpanAnimator.addView(titleTextView[0]);
-            } else {
-                ellipsizeSpanAnimator.removeView(titleTextView[0]);
-            }
-        } else if (titleTextView[0] != null) {
-            titleTextView[0].animate().cancel();
-            if (titleTextView[1] != null) {
-                titleTextView[1].animate().cancel();
-            }
-            if (titleTextView[1] == null) {
-                createTitleTextView(1, gilroy);
-            }
-            titleTextView[1].setText(textToSet);
-            titleTextView[1].setDrawablePadding(dp(4));
-            titleTextView[1].setRightDrawable(rightDrawableToSet);
-            titleTextView[1].setRightDrawableOnClick(rightDrawableOnClickListener);
-            if (rightDrawableToSet instanceof AnimatedEmojiDrawable.SwapAnimatedEmojiDrawable) {
-                ((AnimatedEmojiDrawable.SwapAnimatedEmojiDrawable) rightDrawableToSet).setParentView(titleTextView[1]);
-            }
-            if (ellipsize) {
-                ellipsizeSpanAnimator.addView(titleTextView[1]);
-            }
-            overlayTitleAnimationInProgress = true;
-            SimpleTextView tmp = titleTextView[1];
-            titleTextView[1] = titleTextView[0];
-            titleTextView[0] = tmp;
-            final boolean homeStatusCrossfade = parentFragment instanceof org.telegram.ui.DialogsActivity;
-            final int overlayDuration = homeStatusCrossfade ? 300 : 220;
-            titleTextView[0].setAlpha(0);
-            titleTextView[0].setTranslationY(homeStatusCrossfade ? 0 : -dp(20));
-            if (homeStatusCrossfade) {
-                titleTextView[0].setScaleX(1f);
-                titleTextView[0].setScaleY(1f);
-                titleTextView[1].setTranslationY(0);
-                titleTextView[1].setScaleX(1f);
-                titleTextView[1].setScaleY(1f);
-            }
-            titleTextView[0].animate()
-                    .alpha(adaptiveBackgroundHideTitle ? 1.0f - onTopAnimated : 1f)
-                    .translationY(0)
-                    .setInterpolator(homeStatusCrossfade ? CubicBezierInterpolator.EASE_OUT : new android.view.animation.AccelerateDecelerateInterpolator())
-                    .setDuration(overlayDuration).start();
-            ViewPropertyAnimator animator = titleTextView[1].animate()
-                    .alpha(0);
-            if (homeStatusCrossfade) {
-                animator.setInterpolator(CubicBezierInterpolator.EASE_OUT);
-            } else if (subtitleTextView == null) {
-                animator.translationY(dp(20));
-            } else {
-                animator.scaleY(0.7f).scaleX(0.7f);
-            }
-            requestLayout();
-            centerScale = true;
-            animator.setDuration(overlayDuration).setListener(new AnimatorListenerAdapter() {
-                @Override
-                public void onAnimationEnd(Animator animation) {
-                    if (titleTextView[1] != null && titleTextView[1].getParent() != null) {
-                        ViewGroup viewGroup = (ViewGroup) titleTextView[1].getParent();
-                        viewGroup.removeView(titleTextView[1]);
-                    }
-                    ellipsizeSpanAnimator.removeView(titleTextView[1]);
-                    titleTextView[1] = null;
-                    overlayTitleAnimationInProgress = false;
-                    setTitleOverlayText((String) overlayTitleToSet[0], (int) overlayTitleToSet[1], gilroy, (Runnable) overlayTitleToSet[2]);
-                }
-            }).start();
+        createTitleTextView(0, gilroy);
+        Drawable previousDrawable = titleTextView[0].getRightDrawable();
+        if (previousDrawable != rightDrawableToSet && previousDrawable instanceof AnimatedEmojiDrawable.SwapAnimatedEmojiDrawable) {
+            ((AnimatedEmojiDrawable.SwapAnimatedEmojiDrawable) previousDrawable).setParentView(null);
         }
-        titleActionRunnable = action != null ? action : lastRunnable;
+        titleTextView[0].setText(textToSet);
+        titleTextView[0].setDrawablePadding(dp(4));
+        titleTextView[0].setRightDrawable(rightDrawableToSet);
+        titleTextView[0].setRightDrawableOnClick(rightDrawableOnClickListener);
+        if (rightDrawableToSet instanceof AnimatedEmojiDrawable.SwapAnimatedEmojiDrawable) {
+            ((AnimatedEmojiDrawable.SwapAnimatedEmojiDrawable) rightDrawableToSet).setParentView(titleTextView[0]);
+        }
+        if (ellipsize) {
+            ellipsizeSpanAnimator.addView(titleTextView[0]);
+        } else {
+            ellipsizeSpanAnimator.removeView(titleTextView[0]);
+        }
+        if (title == null) {
+            titleTextView[0].restoreScrollingState(overlayScrollingState);
+            overlayScrollingState = null;
+        }
+        requestLayout();
+        invalidate();
     }
 
     public boolean isSearchFieldVisible() {
@@ -2430,6 +2625,7 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
     }
     private boolean updateTitleBehindOverlay(CharSequence title, Drawable rightDrawable) {
         if (!titleOverlayShown && !overlayTitleAnimationInProgress) return false;
+        if (!TextUtils.equals(lastTitle, title)) overlayScrollingState = null;
         lastTitle = title;
         lastRightDrawable = rightDrawable;
         if (!titleOverlayShown) {
@@ -2466,6 +2662,10 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
     @Override
     protected void onDetachedFromWindow() {
         super.onDetachedFromWindow();
+        hasPresentedTitle = false;
+        presentedTitleFragment = null;
+        overlayScrollingState = null;
+        finishOverlayTitlePresentation();
         attached = false;
         resetCenterTitleLayoutAnimation();
         updateAttachState();
@@ -2647,6 +2847,10 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
         }
     }
 
+    public float getChatAvatarContainerWidth(ChatAvatarContainer owner) {
+        return owner == chatAvatarContainer && owner != null
+                ? animatorAvatarContainerWidth.getFactor() : owner != null ? owner.getVisualWidth() : 0f;
+    }
     public void checkAvatarContainerWidth(boolean animated) {
         if (chatAvatarContainer == null) {
             return;
@@ -2663,7 +2867,11 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
         final int width = Math.max(0, Math.min(
                 getMeasuredWidth() - dp(6 + 46 + 6 + 6 + 46 + 6),
                 visualWidth));
-        if (animated) {
+        if (chatAvatarContainer.hasSubtitleWidthTransition()) {
+            final float progress = Utilities.clamp01(chatAvatarContainer.getSubtitleWidthTransitionProgress());
+            final float start = chatAvatarContainer.getSubtitleWidthTransitionStart();
+            animatorAvatarContainerWidth.forceFactor(start + (width - start) * progress);
+        } else if (animated) {
             if (animatorAvatarContainerWidth.getToFactor() != width) {
                 animatorAvatarContainerWidth.animateTo(width);
             }

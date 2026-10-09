@@ -12,6 +12,7 @@ package org.telegram.ui.ActionBar;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
 
+import app.nimarkogram.messenger.utils.NimarkoAppMotionBlur;
 import android.animation.Animator;
 import android.animation.AnimatorListenerAdapter;
 import android.animation.AnimatorSet;
@@ -1406,6 +1407,12 @@ public class AlertDialog extends Dialog implements Drawable.Callback, Notificati
         super.onCreate(savedInstanceState);
         inflateContent(true);
         NotificationCenter.getGlobalInstance().addObserver(this, NotificationCenter.emojiLoaded);
+    }
+
+    @Override
+    protected void onStart() {
+        super.onStart();
+        NimarkoAppMotionBlur.attachWindow(getWindow());
     }
 
     @Override

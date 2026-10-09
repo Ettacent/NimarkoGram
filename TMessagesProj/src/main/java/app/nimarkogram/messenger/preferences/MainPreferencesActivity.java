@@ -2,6 +2,10 @@
 
 package app.nimarkogram.messenger.preferences;
 
+import android.widget.FrameLayout;
+import app.nimarkogram.messenger.infocards.preferences.InfoCardsPreferencesActivity;
+import app.nimarkogram.messenger.updater.NimarkoUpdaterSheet;
+import org.telegram.messenger.browser.Browser;
 import android.content.Context;
 import android.text.TextUtils;
 import android.view.View;
@@ -104,7 +108,7 @@ public class MainPreferencesActivity extends BasePreferencesActivity {
         emptyView = new EmptyTextProgressView(context, null, getResourceProvider());
         emptyView.setText(LocaleController.getString(R.string.NM_SettingsSearchNoResults));
         emptyView.showTextView();
-        ((android.widget.FrameLayout) view).addView(
+        ((FrameLayout) view).addView(
                 emptyView,
                 org.telegram.ui.Components.LayoutHelper.createFrame(
                         org.telegram.ui.Components.LayoutHelper.MATCH_PARENT,
@@ -268,7 +272,7 @@ public class MainPreferencesActivity extends BasePreferencesActivity {
                 fragment = new NimarkoTextAnimPreferencesActivity().openAtSetting(entry.itemId);
                 break;
             case NimarkoSettingsSearchIndex.SCREEN_INFO_CARDS:
-                fragment = new app.nimarkogram.messenger.infocards.preferences.InfoCardsPreferencesActivity()
+                fragment = new InfoCardsPreferencesActivity()
                         .openAtSetting(entry.itemId);
                 break;
             case NimarkoSettingsSearchIndex.SCREEN_ADVANCED:
@@ -299,10 +303,10 @@ public class MainPreferencesActivity extends BasePreferencesActivity {
                 fragment = new RecentEmojisStickersPreferencesActivity().openAtSetting(entry.itemId);
                 break;
             case NimarkoSettingsSearchIndex.ACTION_UPDATES:
-                app.nimarkogram.messenger.updater.NimarkoUpdaterSheet.showAlert(this, false, null);
+                NimarkoUpdaterSheet.showAlert(this, false, null);
                 return;
             case NimarkoSettingsSearchIndex.ACTION_SOURCE:
-                org.telegram.messenger.browser.Browser.openUrl(
+                Browser.openUrl(
                         getParentActivity() != null ? getParentActivity() : getContext(), SOURCE_REPOSITORY_URL);
                 return;
             case NimarkoSettingsSearchIndex.ACTION_RESTART:
@@ -356,13 +360,13 @@ public class MainPreferencesActivity extends BasePreferencesActivity {
                 presentFragment(new WsBypassPreferencesActivity());
                 break;
             case ID_PILLSTACK:
-                presentFragment(new app.nimarkogram.messenger.infocards.preferences.InfoCardsPreferencesActivity());
+                presentFragment(new InfoCardsPreferencesActivity());
                 break;
             case ID_TEXTANIM:
                 presentFragment(new NimarkoTextAnimPreferencesActivity());
                 break;
             case ID_UPDATES:
-                app.nimarkogram.messenger.updater.NimarkoUpdaterSheet.showAlert(this, false, null);
+                NimarkoUpdaterSheet.showAlert(this, false, null);
                 break;
             case ID_DEBUG:
                 presentFragment(new DebugPreferencesActivity());
@@ -374,12 +378,12 @@ public class MainPreferencesActivity extends BasePreferencesActivity {
                 AppRestartHelper.triggerRebirth(getParentActivity() != null ? getParentActivity() : getContext());
                 break;
             case ID_SOURCE_CODE:
-                org.telegram.messenger.browser.Browser.openUrl(
+                Browser.openUrl(
                         getParentActivity() != null ? getParentActivity() : getContext(),
                         SOURCE_REPOSITORY_URL);
                 break;
             case ID_CHERRYGRAM_FORK:
-                org.telegram.messenger.browser.Browser.openUrl(getParentActivity(),
+                Browser.openUrl(getParentActivity(),
                         "https://github.com/arslan4k1390/Cherrygram");
                 break;
             default:

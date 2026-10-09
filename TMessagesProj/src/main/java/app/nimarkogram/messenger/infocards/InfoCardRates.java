@@ -2,6 +2,8 @@
 
 package app.nimarkogram.messenger.infocards;
 
+import android.content.Context;
+import android.content.SharedPreferences;
 import android.util.Log;
 
 import org.json.JSONObject;
@@ -45,8 +47,8 @@ public final class InfoCardRates {
             synchronized (InfoCardRates.class) {
                 if (!persistedLoaded) {
                     try {
-                        android.content.SharedPreferences prefs = ApplicationLoader.applicationContext
-                                .getSharedPreferences(PREFS_NAME, android.content.Context.MODE_PRIVATE);
+                        SharedPreferences prefs = ApplicationLoader.applicationContext
+                                .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
                         String raw = prefs.getString(PREFS_DATA, null);
                         long time = prefs.getLong(PREFS_TIME, 0L);
                         if (raw != null && !raw.isEmpty() && time > 0L) {
@@ -65,7 +67,7 @@ public final class InfoCardRates {
         if (value == null || value.data == null || ApplicationLoader.applicationContext == null) return;
         try {
             ApplicationLoader.applicationContext.getSharedPreferences(
-                            PREFS_NAME, android.content.Context.MODE_PRIVATE)
+                            PREFS_NAME, Context.MODE_PRIVATE)
                     .edit()
                     .putString(PREFS_DATA, value.data.toString())
                     .putLong(PREFS_TIME, value.fetchedAtMs)

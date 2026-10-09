@@ -2,6 +2,10 @@
 
 package app.nimarkogram.messenger.wsbypass;
 
+import android.os.SystemClock;
+import app.nimarkogram.messenger.wsbypass.voip.VoipBypassCore;
+import java.util.concurrent.RejectedExecutionException;
+import org.telegram.messenger.Utilities;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.net.Uri;
@@ -19,6 +23,8 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.net.URI;
+import java.math.BigDecimal;
 import java.security.KeyPairGenerator;
 import java.security.KeyStore;
 import java.security.MessageDigest;
@@ -28,6 +34,7 @@ import java.security.Signature;
 import java.security.spec.ECGenParameterSpec;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Locale;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArraySet;
@@ -45,7 +52,9 @@ import okhttp3.RequestBody;
 import okhttp3.Response;
 
 public final class WlAccess {
-    public static final String HOST = "wl.nimarko.org";
+    public static final String HOST = "bypass.nimarko.org";
+    public static final int PORT = 15435;
+    public static final String ORIGIN = "https://" + HOST + ":" + PORT;
     private static final String PREFIX = "/api/v1/banners/wl";
     private static final int MAX_SCREENSHOT = 8 * 1024 * 1024;
     private static final MediaType JSON = MediaType.parse("application/json; charset=utf-8");
@@ -54,6 +63,7 @@ public final class WlAccess {
     private static final Object AUTH_LOCK = new Object();
     private static final SecureRandom RANDOM = new SecureRandom();
     private static final ConcurrentHashMap<Long, Grant> GRANTS = new ConcurrentHashMap<>();
+    private static final ConcurrentHashMap<Long, Subscription> SUBSCRIPTIONS = new ConcurrentHashMap<>();
     private static final ConcurrentHashMap<Long, Long> EPOCHS = new ConcurrentHashMap<>();
     private static final AtomicBoolean WARMING = new AtomicBoolean();
     private static final CopyOnWriteArraySet<Runnable> LISTENERS = new CopyOnWriteArraySet<>();
@@ -72,12 +82,79 @@ public final class WlAccess {
 
     public interface Callback { void done(String status); }
 
+    public interface CheckoutCallback { void done(String status, Checkout checkout); }
+
+    public static final class Checkout {
+        public final String orderId, confirmationUrl, status, priceVersion;
+        public final long expiresAt, amountCents;
+        Checkout(String orderId, String confirmationUrl, String status, long expiresAt,
+                 long amountCents, String priceVersion) {
+            this.orderId = orderId; this.confirmationUrl = confirmationUrl;
+            this.status = status; this.expiresAt = expiresAt;
+            this.amountCents = amountCents; this.priceVersion = priceVersion;
+        }
+    }
+
+    public static final class Subscription {
+        public final String status, priceVersion;
+        public final long expiresAt, priceCents;
+        Subscription(String status, long expiresAt, long priceCents, String priceVersion) {
+            this.status = status; this.expiresAt = expiresAt;
+            this.priceCents = priceCents; this.priceVersion = priceVersion;
+        }
+    }
+
+    private static long integerCents(JSONObject json, String field) {
+        Object value = json.opt(field);
+        if (!(value instanceof Integer) && !(value instanceof Long)) return -1;
+        long cents = ((Number) value).longValue();
+        return cents > 0 ? cents : -1;
+    }
+
+    private static String priceVersion(JSONObject json) {
+        String version = json.optString("price_version", "").trim();
+        return "null".equals(version) ? "" : version;
+    }
+
+    private static Subscription parseSubscription(JSONObject state, long now) {
+        String status = state.optString("status", "payment_required");
+        long paidExpires = state.optLong("expires_at", 0);
+        if ("approved".equals(status) && paidExpires <= now) status = "expired";
+        if (!"approved".equals(status) && !"payment_required".equals(status)
+                && !"expired".equals(status) && !"blocked".equals(status)) status = "error";
+        return new Subscription(status, paidExpires, integerCents(state, "price_cents"), priceVersion(state));
+    }
+
+    private static long orderAmountCents(JSONObject json) {
+        if (!"RUB".equals(json.optString("currency", "RUB"))) return -1;
+        Object amount = json.opt("amount");
+        if (amount == null || amount == JSONObject.NULL) {
+            long cents = integerCents(json, "amount_cents");
+            return cents > 0 ? cents : integerCents(json, "cents");
+        }
+        if (amount instanceof JSONObject) {
+            JSONObject quote = (JSONObject) amount;
+            if (!"RUB".equals(quote.optString("currency", ""))) return -1;
+            amount = quote.opt("value");
+        } else if (!"RUB".equals(json.optString("currency", "RUB"))) {
+            return -1;
+        }
+        if (!(amount instanceof String) && !(amount instanceof Number)) return -1;
+        try {
+            long cents = new BigDecimal(amount.toString()).movePointRight(2).longValueExact();
+            return cents > 0 ? cents : -1;
+        } catch (Exception ignored) { return -1; }
+    }
     public static final class Grant {
-        final long uid, expires;
+        final long uid, expires, paidUntil;
         final String token;
         final PrivateKey key;
         Grant(long uid, long expires, String token, PrivateKey key) {
+            this(uid, expires, token, key, 0);
+        }
+        Grant(long uid, long expires, String token, PrivateKey key, long paidUntil) {
             this.uid = uid; this.expires = expires; this.token = token; this.key = key;
+            this.paidUntil = paidUntil;
         }
     }
 
@@ -112,10 +189,109 @@ public final class WlAccess {
     private static Grant accountGrant(int account) {
         long owner = uid(account);
         Grant grant = GRANTS.get(owner);
-        return grant != null && grant.expires > ConnectionsManager.getInstance(account).getCurrentTime() + 60
+        return grant != null && Math.min(grant.expires, grant.paidUntil) > ConnectionsManager.getInstance(account).getCurrentTime() + 60L
                 && uid(account) == owner ? grant : null;
     }
     public static boolean hasAccountGrant(int account) { return accountGrant(account) != null; }
+    public static Subscription subscription(int account) { return SUBSCRIPTIONS.get(uid(account)); }
+
+    public static long accountEpoch(int account) { return EPOCHS.getOrDefault(uid(account), 0L); }
+
+    public static long accessExpiresAt(int account) {
+        Grant grant = accountGrant(account);
+        if (grant == null) grant = cached();
+        return grant == null ? 0 : grant.paidUntil;
+    }
+
+    public static int sponsorAccount(int account) {
+        Grant grant = accountGrant(account);
+        if (grant == null) grant = cached();
+        return grant == null ? account : accountFor(grant.uid);
+    }
+
+    public static boolean isCheckoutUrl(String value) {
+        try {
+            if (value == null || value.length() > 4096) return false;
+            URI uri = new URI(value);
+            String host = uri.getHost();
+            if (!"https".equalsIgnoreCase(uri.getScheme()) || host == null
+                    || uri.getRawUserInfo() != null || uri.getRawFragment() != null
+                    || uri.getPort() != -1 && uri.getPort() != 443) return false;
+            host = host.toLowerCase(Locale.ROOT);
+            return host.equals("yoomoney.ru") || host.endsWith(".yoomoney.ru")
+                    || host.equals("yookassa.ru") || host.endsWith(".yookassa.ru");
+        } catch (Exception ignored) { return false; }
+    }
+
+    public static void checkout(int account, CheckoutCallback callback) {
+        requestOrder(account, null, callback);
+    }
+
+    public static void checkOrder(int account, String orderId, CheckoutCallback callback) {
+        requestOrder(account, orderId, callback);
+    }
+
+    private static void finishCheckout(int account, long owner, long epoch, CheckoutCallback callback,
+                                       String status, Checkout checkout) {
+        if (callback == null) return;
+        AndroidUtilities.runOnUIThread(() -> {
+            boolean valid = current(account, owner, epoch);
+            callback.done(valid ? status : "account_changed", valid ? checkout : null);
+        });
+    }
+
+    private static void requestOrder(int account, String orderId, CheckoutCallback callback) {
+        final long owner = uid(account), epoch = EPOCHS.getOrDefault(owner, 0L);
+        Runnable job = () -> {
+            String status = "error";
+            Checkout checkout = null;
+            try {
+                if (!current(account, owner, epoch)) throw new IOException("account_changed");
+                if (orderId != null && (orderId.isEmpty() || orderId.length() > 256))
+                    throw new IOException("invalid_order");
+                String path = orderId == null ? "/billing/orders" : "/billing/orders/" + Uri.encode(orderId);
+                String method = orderId == null ? "POST" : "GET";
+                byte[] body = orderId == null ? bytes(new JSONObject()) : null;
+                String token = bannerToken(account, owner, epoch);
+                JSONObject result;
+                try {
+                    if (!current(account, owner, epoch)) throw new IOException("account_changed");
+                    result = call(path, method, token, body);
+                } catch (ApiError error) {
+                    if (error.code != 401 || !current(account, owner, epoch)) throw error;
+                    NimarkoBannerConfig.setAuthToken(account, owner, "");
+                    token = bannerToken(account, owner, epoch);
+                    if (!current(account, owner, epoch)) throw new IOException("account_changed");
+                    result = call(path, method, token, body);
+                }
+                if (!current(account, owner, epoch)) throw new IOException("account_changed");
+                String id = orderId == null ? result.getString("order_id") : orderId;
+                if (id.isEmpty() || id.length() > 256) throw new IOException("invalid_order");
+                String url = result.optString("confirmation_url", "");
+                if ("null".equals(url)) url = "";
+                if (!url.isEmpty() && !isCheckoutUrl(url)) throw new IOException("invalid_checkout_url");
+                String paymentStatus = result.optString("status", "pending");
+                if ("paid".equals(paymentStatus) || "succeeded".equals(paymentStatus)
+                        || "completed".equals(paymentStatus) || "approved".equals(paymentStatus)) {
+                    status = "completed";
+                } else if ("pending".equals(paymentStatus) || "pending_payment".equals(paymentStatus)
+                        || "creating".equals(paymentStatus) || "creation_unknown".equals(paymentStatus)
+                        || "waiting_for_capture".equals(paymentStatus) || "processing".equals(paymentStatus)
+                        || "payment_required".equals(paymentStatus)) {
+                    status = "pending";
+                } else {
+                    status = "payment_failed";
+                }
+                checkout = new Checkout(id, url, status, result.optLong("expires_at", 0),
+                        orderAmountCents(result), priceVersion(result));
+            } catch (Exception error) { status = accessErrorStatus(account, owner, epoch, error); }
+            finishCheckout(account, owner, epoch, callback, status, checkout);
+        };
+        try { WORK.execute(job); }
+        catch (RejectedExecutionException error) {
+            finishCheckout(account, owner, epoch, callback, "busy", null);
+        }
+    }
     public static void addListener(Runnable listener) { LISTENERS.add(listener); }
     public static void removeListener(Runnable listener) { LISTENERS.remove(listener); }
     private static void notifyChanged() {
@@ -127,7 +303,8 @@ public final class WlAccess {
     }
 
     public static boolean isCurrent(Grant grant) {
-        return grant != null && accountFor(grant.uid) >= 0 && GRANTS.get(grant.uid) == grant;
+        int account = grant == null ? -1 : accountFor(grant.uid);
+        return account >= 0 && accountGrant(account) == grant;
     }
 
     public static void setEnabled(boolean value) {
@@ -140,9 +317,23 @@ public final class WlAccess {
         controller.ensureStarted();
     }
 
+    private static void onGrantRemoved() {
+        AndroidUtilities.runOnUIThread(() -> {
+            if (enabled()) {
+                if (cached() == null) {
+                    setEnabled(false);
+                } else {
+                    NimarkoWsBypassController controller = NimarkoWsBypassController.getInstance();
+                    controller.stop();
+                    controller.ensureStarted();
+                }
+            }
+            notifyChanged();
+        });
+    }
     private static void queue(Runnable job, Callback callback) {
         try { WORK.execute(job); }
-        catch (java.util.concurrent.RejectedExecutionException e) { finish(callback, "busy"); }
+        catch (RejectedExecutionException e) { finish(callback, "busy"); }
     }
 
     private static void finish(Callback callback, String status) {
@@ -160,10 +351,12 @@ public final class WlAccess {
                     String alias = prefs().getString("key_" + owner, "");
                     JSONObject stored = new JSONObject(prefs().getString("grant_" + owner, ""));
                     if (alias.isEmpty() || stored.getLong("uid") != owner
-                            || stored.getLong("expires") <= ConnectionsManager.getInstance(account).getCurrentTime() + 60) continue;
+                            || Math.min(stored.getLong("expires"), stored.optLong("paid_expires_at", 0))
+                            <= ConnectionsManager.getInstance(account).getCurrentTime() + 60L) continue;
                     PrivateKey key = (PrivateKey) keys.getKey(alias, null);
                     if (key == null) continue;
-                    Grant grant = new Grant(owner, stored.getLong("expires"), stored.getString("token"), key);
+                    Grant grant = new Grant(owner, stored.getLong("expires"), stored.getString("token"), key,
+                            stored.getLong("paid_expires_at"));
                     synchronized (LOCK) {
                         if (current(account, owner, epoch) && GRANTS.putIfAbsent(owner, grant) == null) changed = true;
                     }
@@ -174,9 +367,9 @@ public final class WlAccess {
     }
 
     public static void warm() {
-        if (!enabled() || lastWarm != 0 && android.os.SystemClock.elapsedRealtime() - lastWarm < 30_000
+        if (!enabled() || lastWarm != 0 && SystemClock.elapsedRealtime() - lastWarm < 30_000
                 || !WARMING.compareAndSet(false, true)) return;
-        lastWarm = android.os.SystemClock.elapsedRealtime();
+        lastWarm = SystemClock.elapsedRealtime();
         try {
             WORK.execute(() -> {
                 try {
@@ -189,7 +382,7 @@ public final class WlAccess {
                     }
                 } finally { WARMING.set(false); }
             });
-        } catch (java.util.concurrent.RejectedExecutionException e) { WARMING.set(false); }
+        } catch (RejectedExecutionException e) { WARMING.set(false); }
     }
 
     public static void refresh(int account, Callback callback) {
@@ -256,6 +449,14 @@ public final class WlAccess {
     }
 
     private static String refreshNow(int account, long owner, long epoch) throws Exception {
+        try {
+            return refreshAccount(account, owner, epoch);
+        } catch (ApiError error) {
+            return accessErrorStatus(account, owner, epoch, error);
+        }
+    }
+
+    private static String refreshAccount(int account, long owner, long epoch) throws Exception {
         if (!current(account, owner, epoch)) throw new IOException("account_changed");
         String auth = bannerToken(account, owner, epoch);
         JSONObject state;
@@ -268,7 +469,15 @@ public final class WlAccess {
             state = call(PREFIX + "/status", "GET", auth, null);
         }
         if (!current(account, owner, epoch)) throw new IOException("account_changed");
-        String status = state.optString("status", "none");
+        long now = state.optLong("server_time", ConnectionsManager.getInstance(account).getCurrentTime());
+        Subscription subscription = parseSubscription(state, now);
+        String status = subscription.status;
+        long paidExpires = subscription.expiresAt;
+        synchronized (LOCK) {
+            if (!current(account, owner, epoch)) throw new IOException("account_changed");
+            SUBSCRIPTIONS.put(owner, subscription);
+        }
+        if ("blocked".equals(status)) return recordBlocked(account, owner, epoch);
         if (!"approved".equals(status)) {
             boolean changed = false;
             synchronized (LOCK) {
@@ -277,7 +486,7 @@ public final class WlAccess {
                     prefs().edit().remove("grant_" + owner).apply();
                 }
             }
-            if (changed) notifyChanged();
+            if (changed) onGrantRemoved();
             return status;
         }
         KeyStore keys = KeyStore.getInstance("AndroidKeyStore"); keys.load(null);
@@ -301,11 +510,11 @@ public final class WlAccess {
         }
         PrivateKey key = (PrivateKey) keys.getKey(alias, null);
         Grant grant = newKey ? null : GRANTS.get(owner);
-        long now = state.optLong("server_time", ConnectionsManager.getInstance(account).getCurrentTime());
         if (grant == null && !newKey) {
             try {
                 JSONObject old = new JSONObject(prefs().getString("grant_" + owner, ""));
-                if (old.getLong("uid") == owner) grant = new Grant(owner, old.getLong("expires"), old.getString("token"), key);
+                if (old.getLong("uid") == owner && old.optLong("paid_expires_at", 0) > now)
+                    grant = new Grant(owner, old.getLong("expires"), old.getString("token"), key, paidExpires);
             } catch (Exception ignored) { }
         }
         if (grant == null || grant.expires < now + 86400) {
@@ -327,16 +536,24 @@ public final class WlAccess {
             if (issued == null || "verifying".equals(issued.optString("status"))) {
                 throw new IOException("authentication_required");
             }
-            if (!"approved".equals(issued.optString("status")) || issued.getLong("uid") != owner) return "pending";
-            grant = new Grant(owner, issued.getLong("expires"), issued.getString("token"), key);
+            if (!"approved".equals(issued.optString("status")) || issued.getLong("uid") != owner)
+                throw new IOException("authentication_required");
+            issued.put("paid_expires_at", paidExpires);
+            grant = new Grant(owner, issued.getLong("expires"), issued.getString("token"), key, paidExpires);
             synchronized (LOCK) {
                 if (!current(account, owner, epoch)) throw new IOException("account_changed");
                 prefs().edit().putString("grant_" + owner, issued.toString()).apply();
             }
         }
+        if (grant.paidUntil != paidExpires) {
+            grant = new Grant(owner, grant.expires, grant.token, grant.key, paidExpires);
+        }
         boolean changed;
         synchronized (LOCK) {
             if (!current(account, owner, epoch)) throw new IOException("account_changed");
+            prefs().edit().putString("grant_" + owner, new JSONObject()
+                    .put("uid", owner).put("expires", grant.expires).put("token", grant.token)
+                    .put("paid_expires_at", grant.paidUntil).toString()).apply();
             changed = GRANTS.put(owner, grant) != grant;
         }
         if (changed) notifyChanged();
@@ -346,9 +563,9 @@ public final class WlAccess {
     public static Map<String, String> headers(Grant grant, String method, String path, byte[] body) throws IOException {
         try {
             int account = accountFor(grant.uid);
-            if (account < 0 || GRANTS.get(grant.uid) != grant) throw new IOException("account_changed");
+            if (account < 0 || !isCurrent(grant)) throw new IOException("account_changed");
             Map<String, String> out = signedHeaders(grant, ConnectionsManager.getInstance(account).getCurrentTime(), method, path, body);
-            if (accountFor(grant.uid) < 0 || GRANTS.get(grant.uid) != grant) throw new IOException("account_changed");
+            if (!isCurrent(grant)) throw new IOException("account_changed");
             return out;
         } catch (Exception e) { throw new IOException("access_proof_failed", e); }
     }
@@ -387,6 +604,7 @@ public final class WlAccess {
             oldGrant = prefs().getString("grant_" + owner, "");
             EPOCHS.merge(owner, 1L, Long::sum);
             GRANTS.remove(owner);
+            SUBSCRIPTIONS.remove(owner);
             prefs().edit().remove("grant_" + owner).remove("key_" + owner).apply();
         }
         notifyChanged();
@@ -405,7 +623,7 @@ public final class WlAccess {
                 } catch (Exception ignored) { }
                 if (!oldAlias.isEmpty()) keys.deleteEntry(oldAlias);
                 if (proof != null) {
-                    Request.Builder request = new Request.Builder().url("https://" + HOST + PREFIX + "/forget")
+                    Request.Builder request = new Request.Builder().url(ORIGIN + PREFIX + "/forget")
                             .post(RequestBody.create(JSON, EMPTY));
                     for (Map.Entry<String, String> header : proof.entrySet()) request.header(header.getKey(), header.getValue());
                     try (Response response = HTTP.newCall(request.build()).execute()) { }
@@ -413,8 +631,8 @@ public final class WlAccess {
             } catch (Exception ignored) { }
         };
         try { WORK.execute(cleanup); }
-        catch (java.util.concurrent.RejectedExecutionException e) {
-            org.telegram.messenger.Utilities.globalQueue.postRunnable(cleanup);
+        catch (RejectedExecutionException e) {
+            Utilities.globalQueue.postRunnable(cleanup);
         }
         if (enabled()) AndroidUtilities.runOnUIThread(() -> {
             NimarkoWsBypassController.getInstance().stop();
@@ -422,7 +640,7 @@ public final class WlAccess {
         });
     }
 
-    public static void submit(int account, Uri uri, Callback callback) {
+    private static void submit(int account, Uri uri, Callback callback) {
         final long owner = uid(account), epoch = EPOCHS.getOrDefault(owner, 0L);
         queue(() -> {
             String result = "error";
@@ -442,7 +660,7 @@ public final class WlAccess {
                 if (!current(account, owner, epoch)) throw new IOException("account_changed");
                 MultipartBody body = new MultipartBody.Builder().setType(MultipartBody.FORM)
                         .addFormDataPart("file", "screenshot", RequestBody.create(MediaType.parse("application/octet-stream"), data)).build();
-                Request request = new Request.Builder().url("https://" + HOST + PREFIX + "/submit")
+                Request request = new Request.Builder().url(ORIGIN + PREFIX + "/submit")
                         .header("X-Auth-Token", token).post(body).build();
                 try (Response response = HTTP.newCall(request).execute()) {
                     result = read(response).optString("status", "pending");
@@ -452,12 +670,31 @@ public final class WlAccess {
         }, callback);
     }
 
+    private static String recordBlocked(int account, long owner, long epoch) {
+        boolean changed;
+        synchronized (LOCK) {
+            if (!current(account, owner, epoch)) return "account_changed";
+            Subscription previous = SUBSCRIPTIONS.get(owner);
+            SUBSCRIPTIONS.put(owner, new Subscription("blocked", previous == null ? 0 : previous.expiresAt,
+                    previous == null ? -1 : previous.priceCents, previous == null ? "" : previous.priceVersion));
+            changed = GRANTS.remove(owner) != null;
+            prefs().edit().remove("grant_" + owner).apply();
+        }
+        if (changed || enabled() && cached() == null) onGrantRemoved();
+        else notifyChanged();
+        return "blocked";
+    }
+
+    private static String accessErrorStatus(int account, long owner, long epoch, Exception error) {
+        String status = errorStatus(error);
+        return "blocked".equals(status) ? recordBlocked(account, owner, epoch) : status;
+    }
     private static String errorStatus(Exception error) {
         if (error instanceof ApiError) {
             ApiError api = (ApiError) error;
             if (api.code == 429) return "busy";
             if (api.code == 401) return "authentication_required";
-            if (api.detail.equals("blocked")) return "blocked";
+            if (api.code >= 400 && api.code < 500 && api.detail.equals("blocked")) return "blocked";
             if (api.detail.equals("invalid_screenshot")) return "invalid_screenshot";
         }
         if ("file_too_large".equals(error.getMessage())) return "file_too_large";
@@ -466,12 +703,12 @@ public final class WlAccess {
         return "error";
     }
 
-    public static app.nimarkogram.messenger.wsbypass.voip.VoipBypassCore.RelayEndpoint allocateCall(
+    public static VoipBypassCore.RelayEndpoint allocateCall(
             String ip, int port, int budgetMs) throws Exception {
         Grant grant = cached();
         if (grant == null || !enabled()) { warm(); return null; }
         byte[] body = bytes(new JSONObject().put("ip", ip).put("port", port));
-        Request.Builder request = new Request.Builder().url("https://" + HOST + "/calls/allocate")
+        Request.Builder request = new Request.Builder().url(ORIGIN + "/calls/allocate")
                 .post(RequestBody.create(JSON, body));
         for (Map.Entry<String, String> header : headers(grant, "POST", "/calls/allocate", body).entrySet()) {
             request.header(header.getKey(), header.getValue());
@@ -482,14 +719,14 @@ public final class WlAccess {
             if (response.code() == 401 || response.code() == 403) { rejected(grant); return null; }
             JSONObject result = read(response);
             String host = result.getString("host"); int allocatedPort = result.getInt("port");
-            if (!"213.219.212.127".equals(host) || allocatedPort < 24000 || allocatedPort >= 25000
+            if (!"37.18.14.6".equals(host) || allocatedPort < 24000 || allocatedPort >= 25000
                     || !isCurrent(grant) || !enabled()) return null;
-            return new app.nimarkogram.messenger.wsbypass.voip.VoipBypassCore.RelayEndpoint(host, allocatedPort);
+            return new VoipBypassCore.RelayEndpoint(host, allocatedPort);
         }
     }
 
     private static JSONObject call(String path, String method, String auth, byte[] body) throws Exception {
-        Request.Builder builder = new Request.Builder().url("https://" + HOST + path);
+        Request.Builder builder = new Request.Builder().url(ORIGIN + path);
         if (auth != null) builder.header("X-Auth-Token", auth);
         if (method.equals("POST")) builder.post(RequestBody.create(JSON, body == null ? EMPTY : body));
         try (Response response = HTTP.newCall(builder.build()).execute()) { return read(response); }
@@ -509,7 +746,8 @@ public final class WlAccess {
         JSONObject result;
         try { result = new JSONObject(new String(data, StandardCharsets.UTF_8)); }
         catch (Exception e) { result = new JSONObject(); }
-        if (response.code() != 200) throw new ApiError(response.code(), result.optString("detail", "error"));
+        if (response.code() < 200 || response.code() >= 300)
+            throw new ApiError(response.code(), result.optString("detail", "error"));
         return result;
     }
 

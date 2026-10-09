@@ -14,8 +14,9 @@ import androidx.media3.exoplayer.audio.DefaultAudioSink;
 import androidx.media3.exoplayer.audio.DefaultAudioTrackBufferSizeProvider;
 import androidx.media3.exoplayer.audio.ForwardingAudioSink;
 
+import org.telegram.ui.Components.VideoPlayer;
 public final class BannerAudioRenderersFactory extends DefaultRenderersFactory
-        implements org.telegram.ui.Components.VideoPlayer.SourceVolumeController {
+        implements VideoPlayer.SourceVolumeController {
     private volatile float sourceVolume;
     private volatile BannerVolumeProcessor volumeProcessor;
 

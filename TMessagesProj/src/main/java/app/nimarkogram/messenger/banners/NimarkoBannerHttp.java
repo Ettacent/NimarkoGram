@@ -3,6 +3,7 @@
  
 package app.nimarkogram.messenger.banners;
 
+import java.io.FileOutputStream;
 import java.io.File;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -89,17 +90,14 @@ public final class NimarkoBannerHttp {
         BannerInfo out = new BannerInfo();
         try {
             String url = API + "/get/" + eid;
-            NimarkoBannerRenderer.dbg("HTTP getBanner GET " + url);
             Request req = new Request.Builder().url(url).get().build();
             try (Response resp = HTTP.newCall(req).execute()) {
                 out.httpCode = resp.code() == 200 ? -1 : resp.code();
                 if (resp.code() != 200 || resp.body() == null) {
-                    NimarkoBannerRenderer.dbg("HTTP getBanner code=" + resp.code() + " body=" + (resp.body() != null));
                     return out;
                 }
                 String bodyStr = readBodyLimited(resp.body(), MAX_JSON_SIZE);
                 if (bodyStr == null) return out;
-                NimarkoBannerRenderer.dbg("HTTP getBanner 200 body=" + bodyStr);
                 JsonObject d = parse(bodyStr);
                 if (d == null) return out;
                 JsonElement hasBanner = d.get("has_banner");
@@ -120,7 +118,6 @@ public final class NimarkoBannerHttp {
                 return out;
             }
         } catch (Throwable t) {
-            NimarkoBannerRenderer.dbg("HTTP getBanner EXCEPTION : " + t);
             out.httpCode = -1;
             return out;
         }
@@ -244,7 +241,7 @@ public final class NimarkoBannerHttp {
         okhttp3.HttpUrl parsed = okhttp3.HttpUrl.parse(url);
         if (parsed == null || !"https".equalsIgnoreCase(parsed.scheme())) return false;
         AtomicFile atomic = new AtomicFile(dest);
-        java.io.FileOutputStream out = null;
+        FileOutputStream out = null;
         try {
             Request req = new Request.Builder().url(parsed).get().build();
             try (Response resp = HTTP.newCall(req).execute()) {

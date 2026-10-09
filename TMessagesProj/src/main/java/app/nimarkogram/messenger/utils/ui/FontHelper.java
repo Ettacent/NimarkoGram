@@ -166,7 +166,6 @@ public final class FontHelper {
     public static synchronized boolean isMediumWeightSupported() {
         if (mediumWeightSupported == null) {
             mediumWeightSupported = testTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
-            FileLog.d("mediumWeightSupported = " + mediumWeightSupported);
         }
         return mediumWeightSupported;
     }
@@ -174,7 +173,6 @@ public final class FontHelper {
     public static synchronized boolean isItalicSupported() {
         if (italicSupported == null) {
             italicSupported = testTypeface(Typeface.create("sans-serif", Typeface.ITALIC));
-            FileLog.d("italicSupported = " + italicSupported);
         }
         return italicSupported;
     }
@@ -201,10 +199,8 @@ public final class FontHelper {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             File fontFile = getSystemEmojiFontPathV29();
             if (fontFile != null) {
-                FileLog.d("Emoji font found using SystemFonts API: " + fontFile.getAbsolutePath());
                 return fontFile;
             }
-            FileLog.d("SystemFonts API failed to find emoji font, falling back to legacy method.");
         }
         return getSystemEmojiFontPathLegacy();
     }
@@ -254,7 +250,6 @@ public final class FontHelper {
                         if (font.toLowerCase().contains("emoji")) {
                             File file = new File("/system/fonts/" + font);
                             if (file.exists()) {
-                                FileLog.d("emoji font file fonts.xml = " + font);
                                 return file;
                             }
                         }

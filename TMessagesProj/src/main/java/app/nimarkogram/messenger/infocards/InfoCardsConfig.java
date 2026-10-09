@@ -2,6 +2,7 @@
 
 package app.nimarkogram.messenger.infocards;
 
+import java.util.Locale;
 import android.content.Context;
 import android.content.SharedPreferences;
 
@@ -124,7 +125,7 @@ public final class InfoCardsConfig {
     }
     private static String normalizeTargetCurrency(int pillId, String ccy) {
         if (ccy == null || !isTargetCurrencyAllowed(pillId, ccy)) return "AUTO";
-        return ccy.trim().toUpperCase(java.util.Locale.ROOT);
+        return ccy.trim().toUpperCase(Locale.ROOT);
     }
 
     public static boolean isInfiniteScrolling() {

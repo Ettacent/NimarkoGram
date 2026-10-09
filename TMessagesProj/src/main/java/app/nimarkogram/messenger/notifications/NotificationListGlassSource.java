@@ -2,6 +2,7 @@
 
 package app.nimarkogram.messenger.notifications;
 
+import androidx.annotation.RequiresApi;
 import android.graphics.Canvas;
 import android.graphics.RectF;
 import android.view.View;
@@ -17,7 +18,7 @@ import org.telegram.ui.Components.blur3.BlurredBackgroundDrawableViewFactory;
 import org.telegram.ui.Components.blur3.DownscaleScrollableNoiseSuppressor;
 import org.telegram.ui.Components.blur3.source.BlurredBackgroundSourceRenderNode;
 
-@androidx.annotation.RequiresApi(31)
+@RequiresApi(31)
 public final class NotificationListGlassSource {
     private final ViewGroup root;
     private final View[] contents;

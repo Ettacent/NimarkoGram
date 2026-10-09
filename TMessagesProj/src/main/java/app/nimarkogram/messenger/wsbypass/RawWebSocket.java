@@ -2,6 +2,11 @@
 
 package app.nimarkogram.messenger.wsbypass;
 
+import java.io.ByteArrayOutputStream;
+import java.io.Closeable;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.TimeoutException;
 import java.io.BufferedInputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -43,9 +48,6 @@ public final class RawWebSocket {
     private static final int OPCODE_CLOSE  = 0x8;
     private static final int OPCODE_PING   = 0x9;
     private static final int OPCODE_PONG   = 0xA;
-
-    private long rxFrames = 0, rxBytes = 0, rxFragments = 0;
-    private long maxFrame = 0;
 
     private static final int DEFAULT_RCVBUF = 256 * 1024;
     private static final int DEFAULT_SNDBUF = 512 * 1024;
@@ -95,7 +97,7 @@ public final class RawWebSocket {
     }
 
     public static RawWebSocket connect(String connectHost, String sniHost, String path,
-                                       java.util.Map<String, String> extraHeaders, int timeoutSec) throws IOException {
+                                       Map<String, String> extraHeaders, int timeoutSec) throws IOException {
         long timeoutMs = Math.max(1_000L, Math.min(60_000L, (long) timeoutSec * 1000L));
         return connectUntil(connectHost, sniHost, path, extraHeaders,
                 System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMs));
@@ -109,7 +111,19 @@ public final class RawWebSocket {
     static RawWebSocket connectUntil(String connectHost, String sniHost, String path,
                                      Map<String, String> extraHeaders, long deadlineNanos,
                                      ConnectPermit permit) throws IOException {
+        return connectUntil(connectHost, sniHost, 443, path, extraHeaders, deadlineNanos, permit);
+    }
+
+    static RawWebSocket connectUntil(String connectHost, String sniHost, int port, String path,
+                                     Map<String, String> extraHeaders, long deadlineNanos) throws IOException {
+        return connectUntil(connectHost, sniHost, port, path, extraHeaders, deadlineNanos, null);
+    }
+
+    static RawWebSocket connectUntil(String connectHost, String sniHost, int port, String path,
+                                     Map<String, String> extraHeaders, long deadlineNanos,
+                                     ConnectPermit permit) throws IOException {
         checkPermit(permit);
+        if (port < 1 || port > 65535) throw new IOException("invalid websocket port");
         String sni = sniHost == null ? "" : sniHost.trim();
         if (connectHost == null || connectHost.trim().isEmpty() || sni.isEmpty()) {
             throw new IOException("empty websocket host");
@@ -124,9 +138,9 @@ public final class RawWebSocket {
         BufferedInputStream in = null;
         boolean success = false;
         try {
-            raw = openSocket(connectHost.trim(), deadlineNanos, permit);
+            raw = openSocket(connectHost.trim(), port, deadlineNanos, permit);
             checkPermit(permit);
-            wrapped = wrapTls(raw, sni, deadlineNanos, permit);
+            wrapped = wrapTls(raw, sni, port, deadlineNanos, permit);
             raw = null; 
             checkPermit(permit);
             wrapped.setSoTimeout(remainingMillis(deadlineNanos));
@@ -137,7 +151,9 @@ public final class RawWebSocket {
 
             StringBuilder req = new StringBuilder(256);
             req.append("GET ").append(requestPath).append(" HTTP/1.1\r\n");
-            req.append("Host: ").append(sni).append("\r\n");
+            req.append("Host: ").append(sni);
+            if (port != 443) req.append(':').append(port);
+            req.append("\r\n");
             req.append("Upgrade: websocket\r\n");
             req.append("Connection: Upgrade\r\n");
             req.append("Sec-WebSocket-Key: ").append(key).append("\r\n");
@@ -212,7 +228,7 @@ public final class RawWebSocket {
         }
     }
 
-    private static Socket openSocket(String connectHost, long deadlineNanos,
+    private static Socket openSocket(String connectHost, int port, long deadlineNanos,
                                      ConnectPermit permit) throws IOException {
         InetAddress[] addresses = resolveUntil(connectHost, deadlineNanos, permit);
         IOException last = null;
@@ -226,7 +242,7 @@ public final class RawWebSocket {
                     s.setSendBufferSize(DEFAULT_SNDBUF);
                 } catch (Exception ignored) {}
                 try { s.setKeepAlive(true); } catch (Exception ignored) {}
-                s.connect(new InetSocketAddress(address, 443), remainingMillis(deadlineNanos));
+                s.connect(new InetSocketAddress(address, port), remainingMillis(deadlineNanos));
                 checkPermit(permit);
                 s.setSoTimeout(remainingMillis(deadlineNanos));
                 return s;
@@ -240,13 +256,13 @@ public final class RawWebSocket {
         throw new IOException("no address for " + connectHost);
     }
 
-    private static SSLSocket wrapTls(Socket raw, String sni, long deadlineNanos,
+    private static SSLSocket wrapTls(Socket raw, String sni, int port, long deadlineNanos,
                                      ConnectPermit permit) throws IOException {
         checkPermit(permit);
         SSLSocketFactory factory = (SSLSocketFactory) SSLSocketFactory.getDefault();
         SSLSocket ssl;
         try {
-            ssl = (SSLSocket) factory.createSocket(raw, sni, 443, true);
+            ssl = (SSLSocket) factory.createSocket(raw, sni, port, true);
         } catch (IOException | RuntimeException e) {
             closeQuietly(raw);
             throw e;
@@ -400,23 +416,8 @@ public final class RawWebSocket {
                     fragmentedMessageOpen = true;
                     fragmentedMessageBytes = messageBytes;
                 }
-                rxFrames++; rxBytes += payload.length;
-                if (payload.length > maxFrame) maxFrame = payload.length;
-                boolean fragment = (opcode == OPCODE_CONTINUATION) || !fin;
-                if (fragment) rxFragments++;
-                if (WsBypassCore.DEBUG) {
-                    if (fragment) {
-                        WsBypassCore.dbg("recv FRAGMENT: op=" + opcode + " fin=" + fin + " len=" + payload.length
-                                + " (frame#" + rxFrames + ", fragments=" + rxFragments + ", maxFrame=" + maxFrame + "B)"
-                                + "  <-- WAS being dropped; now relayed");
-                    } else if (rxFrames <= 4 || (rxFrames % 200) == 0) {
-                        WsBypassCore.dbg("recv: frame#" + rxFrames + " op=" + opcode + " len=" + payload.length
-                                + " totalRx=" + rxBytes + "B maxFrame=" + maxFrame + "B frags=" + rxFragments);
-                    }
-                }
                 return payload;
             }
-            if (WsBypassCore.DEBUG) WsBypassCore.dbg("recv: UNKNOWN opcode=" + opcode + " fin=" + fin + " len=" + payload.length);
         }
     }
 
@@ -559,7 +560,7 @@ public final class RawWebSocket {
         final Future<InetAddress[]> future;
         try {
             future = DNS_EXECUTOR.submit(() -> InetAddress.getAllByName(host));
-        } catch (java.util.concurrent.RejectedExecutionException saturated) {
+        } catch (RejectedExecutionException saturated) {
             throw new IOException("DNS resolver saturated for " + host, saturated);
         }
         try {
@@ -574,7 +575,7 @@ public final class RawWebSocket {
                         throw new IOException("no address for " + host);
                     }
                     return result;
-                } catch (java.util.concurrent.TimeoutException e) {
+                } catch (TimeoutException e) {
                     if (slice >= remaining) {
                         throw new SocketTimeoutException("DNS timeout for " + host);
                     }
@@ -583,7 +584,7 @@ public final class RawWebSocket {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new IOException("DNS interrupted for " + host, e);
-        } catch (java.util.concurrent.ExecutionException e) {
+        } catch (ExecutionException e) {
             Throwable cause = e.getCause();
             if (cause instanceof IOException) throw (IOException) cause;
             throw new IOException("DNS failed for " + host, cause);
@@ -648,7 +649,7 @@ public final class RawWebSocket {
 
     private static String readLine(InputStream in, int[] totalBytes) throws IOException {
         
-        java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream(128);
+        ByteArrayOutputStream baos = new ByteArrayOutputStream(128);
         while (true) {
             int b = in.read();
             if (b < 0) {
@@ -673,7 +674,7 @@ public final class RawWebSocket {
         return new String(baos.toByteArray(), StandardCharsets.UTF_8);
     }
 
-    private static void closeQuietly(java.io.Closeable c) {
+    private static void closeQuietly(Closeable c) {
         if (c == null) return;
         try { c.close(); } catch (Exception ignored) {}
     }

@@ -4,6 +4,13 @@
 
 package app.nimarkogram.messenger.security;
 
+import app.nimarkogram.messenger.NimarkoConfig;
+import app.nimarkogram.messenger.utils.chats.NimarkoChatsPasswordHelper;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.function.BiConsumer;
+import java.util.function.BooleanSupplier;
+import java.util.function.Consumer;
 import static org.telegram.messenger.LocaleController.getString;
 
 import android.app.Activity;
@@ -47,9 +54,9 @@ public class NimarkoBiometricPrompt {
     }
 
     private static BiometricPrompt.AuthenticationCallback createCallback(
-            java.util.function.Consumer<BiometricPrompt.AuthenticationResult> onSuccess,
+            Consumer<BiometricPrompt.AuthenticationResult> onSuccess,
             Runnable onFailed,
-            java.util.function.BiConsumer<Integer, CharSequence> onError
+            BiConsumer<Integer, CharSequence> onError
     ) {
         return new BiometricPrompt.AuthenticationCallback() {
             @Override
@@ -75,7 +82,7 @@ public class NimarkoBiometricPrompt {
 
     public static void callBiometricPrompt(Activity activity, int account, NimarkoBiometricListener listener) {
         callBiometricPrompt(activity, account,
-                app.nimarkogram.messenger.NimarkoConfig.allowSystemPasscode, listener);
+                NimarkoConfig.allowSystemPasscode, listener);
     }
 
     public static void callBiometricPrompt(Activity activity, int account,
@@ -100,7 +107,7 @@ public class NimarkoBiometricPrompt {
     }
 
     public static void prompt(Activity activity, int account, Runnable successCallback, Runnable failCallback) {
-        prompt(activity, account, app.nimarkogram.messenger.NimarkoConfig.allowSystemPasscode,
+        prompt(activity, account, NimarkoConfig.allowSystemPasscode,
                 successCallback, failCallback);
     }
 
@@ -142,13 +149,13 @@ public class NimarkoBiometricPrompt {
             if (failCallback != null) failCallback.run();
             return;
         }
-        java.util.function.BooleanSupplier required = () -> app.nimarkogram.messenger.utils.chats.NimarkoChatsPasswordHelper
+        BooleanSupplier required = () -> NimarkoChatsPasswordHelper
                 .shouldRequireBiometrics(userId, chatId, encId, account);
         if (!required.getAsBoolean()) {
             if (successCallback != null) successCallback.run();
             return;
         }
-        boolean allowSystem = app.nimarkogram.messenger.NimarkoConfig.allowSystemPasscode;
+        boolean allowSystem = NimarkoConfig.allowSystemPasscode;
         if (!(activity instanceof FragmentActivity) || !canAuthenticate(allowSystem)) {
             if (failCallback != null) failCallback.run();
             return;
@@ -212,7 +219,7 @@ public class NimarkoBiometricPrompt {
     }
 
     public static boolean canAuthenticateConfigured() {
-        return canAuthenticate(app.nimarkogram.messenger.NimarkoConfig.allowSystemPasscode);
+        return canAuthenticate(NimarkoConfig.allowSystemPasscode);
     }
 
     public static boolean canAuthenticate(boolean allowSystem) {
@@ -251,18 +258,18 @@ public class NimarkoBiometricPrompt {
 
     private static final Object AUTH_LOCK = new Object();
     private static final ArrayList<PendingAuth> pendingAuths = new ArrayList<>();
-    private static final java.util.HashSet<Integer> loggingOutAccounts = new java.util.HashSet<>();
+    private static final HashSet<Integer> loggingOutAccounts = new HashSet<>();
 
     private static final class PendingAuth {
         final BiometricPrompt prompt;
         final Activity owner;
         final int account;
         final long ownerUid;
-        final java.util.function.BooleanSupplier required;
+        final BooleanSupplier required;
         boolean terminal;
 
         PendingAuth(BiometricPrompt prompt, Activity owner, int account, long ownerUid,
-                    java.util.function.BooleanSupplier required) {
+                    BooleanSupplier required) {
             this.prompt = prompt;
             this.owner = owner;
             this.account = account;
@@ -296,7 +303,7 @@ public class NimarkoBiometricPrompt {
     }
 
     private static void startPrompt(FragmentActivity activity, int account, boolean allowSystem,
-                                    NimarkoBiometricListener callback, java.util.function.BooleanSupplier required) {
+                                    NimarkoBiometricListener callback, BooleanSupplier required) {
         final long ownerUid = captureOwnerUid(account);
         if (ownerUid <= 0 || !isOwnerLive(activity)) {
             if (callback != null) {
@@ -377,7 +384,7 @@ public class NimarkoBiometricPrompt {
 
         cancelPendingAuthentications();
         startPrompt((FragmentActivity) activity, account,
-                app.nimarkogram.messenger.NimarkoConfig.allowSystemPasscode,
+                NimarkoConfig.allowSystemPasscode,
                 new NimarkoBiometricListener() {
             @Override
             public void onSuccess(BiometricPrompt.AuthenticationResult result) {
@@ -427,8 +434,8 @@ public class NimarkoBiometricPrompt {
         }
     }
 
-    private static final java.util.HashMap<String, Long> recentlyVerified = new java.util.HashMap<>();
-    private static final java.util.HashMap<Integer, Long> verifiedAccountUids = new java.util.HashMap<>();
+    private static final HashMap<String, Long> recentlyVerified = new HashMap<>();
+    private static final HashMap<Integer, Long> verifiedAccountUids = new HashMap<>();
 
     private static String verifyKey(int account, long userId, long chatId, int encId) {
         if (account < 0 || account >= UserConfig.MAX_ACCOUNT_COUNT) return null;
@@ -451,7 +458,7 @@ public class NimarkoBiometricPrompt {
 
     public static boolean isRecentlyVerified(int account, long userId, long chatId, int encId) {
 
-        int ttlSec = app.nimarkogram.messenger.NimarkoConfig.lockedChatsBiometricTtlSec;
+        int ttlSec = NimarkoConfig.lockedChatsBiometricTtlSec;
         long effectiveTtlMs;
         if (ttlSec == 0) {
             effectiveTtlMs = 3_000L;
@@ -500,7 +507,7 @@ public class NimarkoBiometricPrompt {
 
     private static void removeAccountTokensLocked(int account) {
         String prefix = account + ":";
-        java.util.Iterator<String> iterator = recentlyVerified.keySet().iterator();
+        Iterator<String> iterator = recentlyVerified.keySet().iterator();
         while (iterator.hasNext()) if (iterator.next().startsWith(prefix)) iterator.remove();
     }
 
@@ -516,7 +523,7 @@ public class NimarkoBiometricPrompt {
 
     public static void onAppBackgrounded() {
         synchronized (recentlyVerified) {
-            if (app.nimarkogram.messenger.NimarkoConfig.lockedChatsBiometricTtlSec == 0) {
+            if (NimarkoConfig.lockedChatsBiometricTtlSec == 0) {
                 recentlyVerified.clear();
             }
         }

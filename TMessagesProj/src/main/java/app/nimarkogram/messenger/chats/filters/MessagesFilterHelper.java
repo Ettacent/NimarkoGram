@@ -11,6 +11,7 @@
 
 package app.nimarkogram.messenger.chats.filters;
 
+import java.util.Map;
 import android.text.TextUtils;
 
 import org.telegram.messenger.MessageObject;
@@ -213,7 +214,7 @@ public class MessagesFilterHelper {
     private static final int MAX_REVEALED_MESSAGES = 4096;
     private final LinkedHashMap<String, Boolean> revealedMessages = new LinkedHashMap<String, Boolean>(64, .75f, true) {
         @Override
-        protected boolean removeEldestEntry(java.util.Map.Entry<String, Boolean> eldest) {
+        protected boolean removeEldestEntry(Map.Entry<String, Boolean> eldest) {
             return size() > MAX_REVEALED_MESSAGES;
         }
     };

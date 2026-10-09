@@ -1,8 +1,10 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components;
 
 
+import app.nimarkogram.messenger.utils.NimarkoUiAnimationClock;
 import android.animation.TimeInterpolator;
-import android.os.SystemClock;
 import android.view.View;
 
 import androidx.core.graphics.ColorUtils;
@@ -23,6 +25,8 @@ public class AnimatedColor {
     private long transitionStart;
     private int startValue;
 
+    private long lastVisualTime;
+    private int visualEpoch;
     public AnimatedColor() {
         this.parent = null;
         this.firstSet = true;
@@ -122,7 +126,9 @@ public class AnimatedColor {
     }
 
     public int set(int mustBeColor, boolean force) {
-        final long now = SystemClock.elapsedRealtime();
+        final long now = NimarkoUiAnimationClock.now();
+        final boolean paused = NimarkoUiAnimationClock.isPaused();
+        if (!paused) rebaseVisualTime(now);
         if (force || transitionDuration <= 0 || firstSet) {
             value = targetValue = mustBeColor;
             transition = false;
@@ -132,8 +138,9 @@ public class AnimatedColor {
             targetValue = mustBeColor;
             startValue = value;
             transitionStart = now;
+            lastVisualTime = now;
         }
-        if (transition) {
+        if (transition && !paused) {
             final float t = MathUtils.clamp((now - transitionStart - transitionDelay) / (float) transitionDuration, 0, 1);
             if (now - transitionStart >= transitionDelay) {
                 if (transitionInterpolator == null) {
@@ -153,14 +160,25 @@ public class AnimatedColor {
                 }
             }
         }
+        if (!paused) lastVisualTime = now;
         return value;
+    }
+
+    private void rebaseVisualTime(long now) {
+        int epoch = NimarkoUiAnimationClock.epoch();
+        if (transition && lastVisualTime != 0L && epoch != visualEpoch && transitionStart <= lastVisualTime) {
+            transitionStart += Math.max(0L, now - lastVisualTime);
+            lastVisualTime = now;
+        }
+        visualEpoch = epoch;
     }
 
     public float getTransitionProgress() {
         if (!transition) {
             return 0;
         }
-        final long now = SystemClock.elapsedRealtime();
+        final long now = NimarkoUiAnimationClock.isPaused() ? lastVisualTime : NimarkoUiAnimationClock.now();
+        if (!NimarkoUiAnimationClock.isPaused()) rebaseVisualTime(now);
         return MathUtils.clamp((now - transitionStart - transitionDelay) / (float) transitionDuration, 0, 1);
     }
 

@@ -122,10 +122,10 @@ public class BannerPreferencesActivity extends BasePreferencesActivity {
                 LocaleController.getString(R.string.NM_BAN_Enable))
                 .setChecked(NimarkoBannerConfig.enabled));
         if (NimarkoBannerConfig.enabled) {
-            items.add(UItem.asShadow(-2, null));
             fillBannerItems(items);
         }
-        items.add(UItem.asShadow(-3, LocaleController.getString(R.string.NM_BAN_EnableHint)));
+        items.add(SettingsFooterItem.of(-3, NimarkoBannerConfig.enabled
+                ? null : LocaleController.getString(R.string.NM_BAN_EnableHint)));
     }
 
     private void fillBannerItems(ArrayList<UItem> items) {
