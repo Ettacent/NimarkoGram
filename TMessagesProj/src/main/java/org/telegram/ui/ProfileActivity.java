@@ -74,6 +74,7 @@ import android.text.SpannableStringBuilder;
 import android.text.Spanned;
 import android.text.TextPaint;
 import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
+import app.nimarkogram.messenger.utils.NimarkoAppMotionBlur;
 import android.text.TextUtils;
 import android.text.style.CharacterStyle;
 import android.text.style.ClickableSpan;
@@ -2554,7 +2555,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
         }
     }
 
-    private class PagerIndicatorView extends View {
+    private class PagerIndicatorView extends View implements NimarkoAppMotionBlur.Excluded {
 
         private final RectF indicatorRect = new RectF();
 

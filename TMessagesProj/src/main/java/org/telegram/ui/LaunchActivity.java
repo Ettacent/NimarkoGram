@@ -7524,7 +7524,7 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
     protected void onDestroy() {
         pendingInAppNotificationNavigation = null;
         accountSwitchTransition.cancel();
-        app.nimarkogram.messenger.notifications.NimarkoInAppNotifications.onPause(this);
+        app.nimarkogram.messenger.notifications.NimarkoInAppNotifications.onDestroy(this);
         // Invalidate any posted icon-pack cache/rebuild callback before fragment
         // teardown starts; an old activity must never rebuild a replacement stack.
         nmIconReloadGeneration.incrementAndGet();

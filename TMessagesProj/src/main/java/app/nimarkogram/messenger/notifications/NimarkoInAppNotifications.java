@@ -370,10 +370,10 @@ public final class NimarkoInAppNotifications {
 
     public static void onResume(LaunchActivity activity) {
         contentGesture = false;
-        dismiss();
         host = new WeakReference<>(activity);
         focused = activity.hasWindowFocus();
         focusLostAt = -1;
+        dismissForResume();
     }
 
     public static void onPause(LaunchActivity activity) {
@@ -382,8 +382,14 @@ public final class NimarkoInAppNotifications {
             host.clear();
             focused = false;
             focusLostAt = -1;
-            dismiss();
+            generation++;
+            if (banner != null) banner.pauseInteraction();
         }
+    }
+
+    public static void onDestroy(LaunchActivity activity) {
+        onPause(activity);
+        dismiss();
     }
 
     public static void onWindowFocusChanged(LaunchActivity activity, boolean hasFocus) {
@@ -597,6 +603,37 @@ public final class NimarkoInAppNotifications {
     public static void dismiss() {
         generation++;
         removeCurrent();
+    }
+
+    private static void dismissForResume() {
+        generation++;
+        Banner current = banner;
+        if (current != null) {
+            if (!current.closing) {
+                current.hide();
+            } else if (current.pullAnimator == null) {
+                animateRemove(current);
+            }
+        }
+        Banner old = retiringBanner;
+        if (old != null && old != current) animateRemove(old);
+    }
+
+    private static void animateRemove(Banner old) {
+        if (old == null) return;
+        old.closing = true;
+        old.touching = false;
+        old.cancelExpansion();
+        old.cancelContentTransition();
+        old.removeCallbacks(old.watch);
+        old.animate().cancel();
+        old.animate().alpha(0f).translationY(-dp(8)).setDuration(220)
+                .setInterpolator(CubicBezierInterpolator.EASE_BOTH)
+                .withEndAction(() -> {
+                    if (banner == old) banner = null;
+                    if (retiringBanner == old) retiringBanner = null;
+                    remove(old);
+                }).start();
     }
 
     private static void removeCurrent() {
