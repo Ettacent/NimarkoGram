@@ -21,6 +21,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import java.util.concurrent.atomic.AtomicLong;
 import org.telegram.messenger.FileLog;
 
 import app.nimarkogram.messenger.plugins.PluginsController;
@@ -52,6 +53,11 @@ public class IntentsController {
      
     private final AtomicInteger legacyGlobalCount = new AtomicInteger(0);
 
+    private final AtomicLong dispatchSequence = new AtomicLong();
+
+    public long getDispatchSequence() {
+        return dispatchSequence.get();
+    }
     private IntentsController() {}
 
     public String addIntentHook(PyObject filterDict) {
@@ -256,6 +262,7 @@ public class IntentsController {
             matched.add(m);
         }
 
+        dispatchSequence.incrementAndGet();
         PyObject intentsModule = Python.getInstance().getModule("intents");
         PyObject result = intentsModule.callAttr("_dispatch_from_java", intent, matched);
         

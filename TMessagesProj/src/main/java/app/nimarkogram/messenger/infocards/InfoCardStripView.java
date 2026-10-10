@@ -27,6 +27,7 @@ import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.Components.LayoutHelper;
 import org.telegram.ui.Components.blur3.BlurredBackgroundDrawableViewFactory;
 
+import app.nimarkogram.messenger.utils.NimarkoUiAnimationClock;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -118,6 +119,7 @@ public class InfoCardStripView extends FrameLayout implements NotificationCenter
         if (!InfoCardsConfig.isEnabled()) {
             setPendingActiveCard(-1);
             if (!pills.isEmpty()) {
+                for (BaseInfoCard pill : pills) pill.finishResizeAnimation();
                 resetForWindowLifecycle();
                 removeAllViews();
                 pills.clear();
@@ -145,6 +147,9 @@ public class InfoCardStripView extends FrameLayout implements NotificationCenter
     }
 
     public void rebuild() {
+        for (BaseInfoCard pill : pills) {
+            if (pill.isWarmResumePending()) pill.finishResizeAnimation();
+        }
         cancelAnim();
         setTouchActive(false);
         preparedCards.clear();
@@ -329,7 +334,7 @@ public class InfoCardStripView extends FrameLayout implements NotificationCenter
         setCardsPressed(false);
         releaseTracker();
         for (BaseInfoCard pill : pills) {
-            pill.finishResizeAnimation();
+            if (!pill.isWarmResumePending()) pill.finishResizeAnimation();
         }
         applyResting(false);
         requestLayout();
@@ -710,6 +715,7 @@ public class InfoCardStripView extends FrameLayout implements NotificationCenter
             }
         });
         animator.start();
+        NimarkoUiAnimationClock.track(animator);
     }
 
     private void animateSnapBack(final int incomingIdx) {
@@ -742,6 +748,7 @@ public class InfoCardStripView extends FrameLayout implements NotificationCenter
             }
         });
         animator.start();
+        NimarkoUiAnimationClock.track(animator);
     }
 
     private boolean reconcilePendingActiveCard() {
@@ -910,6 +917,11 @@ public class InfoCardStripView extends FrameLayout implements NotificationCenter
     protected void onConfigurationChanged(Configuration newConfig) {
         super.onConfigurationChanged(newConfig);
         for (BaseInfoCard pill : pills) {
+            if (pill.isWarmResumePending()) pill.finishResizeAnimation();
+        }
+
+
+        for (BaseInfoCard pill : pills) {
             pill.updateLayoutDirection();
             FrameLayout.LayoutParams lp =
                     (FrameLayout.LayoutParams) pill.getLayoutParams();
@@ -950,7 +962,15 @@ public class InfoCardStripView extends FrameLayout implements NotificationCenter
         if (visibility == View.VISIBLE) {
             postOnAnimation(resumeActiveCard);
         } else {
+            BaseInfoCard cur = current();
+            if (hasPresentedCard && cur != null && isShown() && visibilityFactor > 0f) {
+                cur.suspendForWarmResume();
+            }
             resetForWindowLifecycle();
+            if (cur != null && cur.isWarmResumePending()) {
+                int targetId = InfoCardsConfig.getLastActiveCardId();
+                setPendingActiveCard(targetId >= 0 ? targetId : cur.getCardId());
+            }
         }
     }
 
@@ -962,6 +982,7 @@ public class InfoCardStripView extends FrameLayout implements NotificationCenter
     }
     @Override
     protected void onDetachedFromWindow() {
+        for (BaseInfoCard pill : pills) pill.finishResizeAnimation();
         super.onDetachedFromWindow();
         removeCallbacks(resumeActiveCard);
         NotificationCenter.getGlobalInstance().removeObserver(this, NotificationCenter.infoCardsLayoutChanged);
@@ -1025,6 +1046,8 @@ public class InfoCardStripView extends FrameLayout implements NotificationCenter
         }
     }
     private boolean resumePendingActiveCard() {
+        BaseInfoCard cur = current();
+        if (cur != null) cur.validateWarmResumeIdentity();
         if (pendingActiveCardId >= 0 && !touchActive && !dragging && animator == null && isHostVisible(1f)) {
             followSharedActiveCard();
         }
@@ -1032,10 +1055,19 @@ public class InfoCardStripView extends FrameLayout implements NotificationCenter
     }
     private void followSharedActiveCard() {
         BaseInfoCard cur = current();
+        if (cur != null) cur.validateWarmResumeIdentity();
         int targetId = InfoCardsConfig.getLastActiveCardId();
         int next = -1;
         for (int i = 0; i < pills.size(); i++) {
             if (pills.get(i).getCardId() == targetId) { next = i; break; }
+        }
+        if (cur != null && cur.isWarmResumePending() && (next < 0 || cur.getCardId() == targetId)
+                && !touchActive && !dragging && animator == null) {
+            if (isHostVisible(1f)) cur.resumeWarmValue();
+            if (cur.isWarmResumePending()) {
+                setPendingActiveCard(next < 0 ? cur.getCardId() : targetId);
+                return;
+            }
         }
         if (next < 0) {
             setPendingActiveCard(-1);

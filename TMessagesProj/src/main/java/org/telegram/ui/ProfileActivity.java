@@ -74,6 +74,7 @@ import android.text.SpannableStringBuilder;
 import android.text.Spanned;
 import android.text.TextPaint;
 import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
+import app.nimarkogram.messenger.utils.NimarkoAppMotionBlur;
 import android.text.TextUtils;
 import android.text.style.CharacterStyle;
 import android.text.style.ClickableSpan;
@@ -983,25 +984,72 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
         private boolean capturing;
         private boolean presented;
 
+        private boolean pendingReveal;
+        private float presentedProgress = 1f;
         ProfileStatusTextView(Context context) {
             super(context);
             incomingPaint.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.ADD));
         }
 
         private boolean canAnimateStatus() {
-            return bindingProfileStatus && presented && fragmentOpened && !isPaused && !profileLifecycleDestroyed
+            return bindingProfileStatus && !isPaused && canRetainStatus();
+        }
+
+        private boolean canRetainStatus() {
+            return presented && fragmentOpened && !profileLifecycleDestroyed
                     && !isProfileContentTransitionInProgress() && SharedConfig.animationsEnabled()
-                    && isAttachedToWindow() && isShown() && getWindowVisibility() == VISIBLE
+                    && isAttachedToWindow() && isShown()
                     && getAlpha() > 0f && getWidth() > 0 && getHeight() > 0;
+        }
+
+
+        private boolean isStatusPresentationVisible() {
+            if (!fragmentOpened || isPaused || profileLifecycleDestroyed || isProfileContentTransitionInProgress()
+                    || !isAttachedToWindow() || !isShown() || !hasWindowFocus()
+                    || getWindowVisibility() != VISIBLE || getWidth() <= 0 || getHeight() <= 0) return false;
+            for (View view = this; view != null;
+                    view = view.getParent() instanceof View ? (View) view.getParent() : null) {
+                if (view.getVisibility() != VISIBLE || view.getAlpha() <= 0f) return false;
+            }
+            return true;
+        }
+
+        private void deferStatusCrossfade() {
+            if (crossfade == null) return;
+            if (!canRetainStatus()) {
+                finishStatusCrossfade();
+                return;
+            }
+            captureStatus();
+        }
+
+        private void pauseStatusCrossfade() {
+            if (!canRetainStatus()) finishStatusCrossfade();
+            else deferStatusCrossfade();
+        }
+
+        @Override
+        public void onWindowFocusChanged(boolean hasFocus) {
+            super.onWindowFocusChanged(hasFocus);
+            if (!hasFocus) deferStatusCrossfade();
+            else if (pendingReveal) invalidate();
+        }
+
+        @Override
+        protected void onWindowVisibilityChanged(int visibility) {
+            super.onWindowVisibilityChanged(visibility);
+            if (visibility != VISIBLE) deferStatusCrossfade();
+            else if (pendingReveal) invalidate();
         }
 
         private boolean captureStatus() {
             Bitmap snapshot = outgoing;
             try {
-                if (snapshot == null || progress != 0f) {
+                if (snapshot == null || presentedProgress != 0f) {
                     snapshot = Bitmap.createBitmap(Math.max(getWidth(), outgoing != null ? outgoing.getWidth() : 0),
                             Math.max(getHeight(), outgoing != null ? outgoing.getHeight() : 0), Bitmap.Config.ARGB_8888);
                     capturing = true;
+                    progress = presentedProgress;
                     try {
                         onDraw(new Canvas(snapshot));
                     } finally {
@@ -1014,21 +1062,40 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             }
             finishStatusCrossfade();
             outgoing = snapshot;
+            progress = presentedProgress = 0f;
+            pendingReveal = outgoing != null;
             return outgoing != null;
         }
 
         private void startStatusCrossfade() {
+            if (outgoing == null || crossfade != null || !canRetainStatus()
+                    || !isStatusPresentationVisible()) return;
+            pendingReveal = false;
             progress = 0f;
             crossfade = ValueAnimator.ofFloat(0f, 1f);
             crossfade.setDuration(300);
             crossfade.setInterpolator(CubicBezierInterpolator.EASE_OUT);
             crossfade.addUpdateListener(animation -> {
+                if (crossfade != animation) return;
+                if (!canRetainStatus()) {
+                    finishStatusCrossfade();
+                    return;
+                }
+                if (!isStatusPresentationVisible()) {
+                    deferStatusCrossfade();
+                    return;
+                }
                 progress = (float) animation.getAnimatedValue();
                 invalidate();
             });
             crossfade.addListener(new AnimatorListenerAdapter() {
                 @Override
                 public void onAnimationEnd(Animator animation) {
+                    if (crossfade != animation) return;
+                    if (!isStatusPresentationVisible()) {
+                        deferStatusCrossfade();
+                        return;
+                    }
                     finishStatusCrossfade();
                 }
             });
@@ -1043,32 +1110,42 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                 crossfade = null;
             }
             outgoing = null;
-            progress = 1f;
+            progress = presentedProgress = 1f;
+            pendingReveal = false;
             invalidate();
         }
 
         @Override
         public boolean setText(CharSequence value, boolean force) {
+            if (crossfade != null && !isStatusPresentationVisible()) deferStatusCrossfade();
             boolean animate = !TextUtils.equals(getText(), value) && canAnimateStatus();
             if (animate) animate = captureStatus();
             boolean changed = super.setText(value, force);
-            if (animate) startStatusCrossfade();
+            if (animate) invalidate();
             return changed;
         }
 
         @Override
         public void setTextColor(int color) {
+            if (crossfade != null && !isStatusPresentationVisible()) deferStatusCrossfade();
             boolean animate = color != getTextColor() && canAnimateStatus();
             if (animate) animate = captureStatus();
             super.setTextColor(color);
-            if (animate) startStatusCrossfade();
+            if (animate) invalidate();
         }
 
         @Override
         protected void onDraw(Canvas canvas) {
-            if (!capturing && isShown() && getAlpha() > 0f) presented = true;
+            if (!capturing) {
+                if (outgoing != null && !canRetainStatus()) finishStatusCrossfade();
+                if (crossfade != null && !isStatusPresentationVisible()) deferStatusCrossfade();
+                if (canvas.isHardwareAccelerated() && isStatusPresentationVisible() && pendingReveal) {
+                    startStatusCrossfade();
+                }
+            }
             if (outgoing == null || progress == 1f) {
                 super.onDraw(canvas);
+                recordStatusPresentation(canvas);
                 return;
             }
             int incomingAlpha = Math.round(255 * progress);
@@ -1089,6 +1166,14 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             } finally {
                 canvas.restoreToCount(layer);
             }
+            recordStatusPresentation(canvas);
+        }
+
+        private void recordStatusPresentation(Canvas canvas) {
+            if (!capturing && canvas.isHardwareAccelerated() && isStatusPresentationVisible()) {
+                presented = true;
+                presentedProgress = progress;
+            }
         }
 
         @Override
@@ -1096,6 +1181,15 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             finishStatusCrossfade();
             presented = false;
             super.onDetachedFromWindow();
+        }
+    }
+
+    private void pauseProfileStatusCrossfades() {
+        if (mediaCounterTextView != null) mediaCounterTextView.finishCounterCrossfade();
+        for (SimpleTextView view : onlineTextView) {
+            if (view instanceof ProfileStatusTextView) {
+                ((ProfileStatusTextView) view).pauseStatusCrossfade();
+            }
         }
     }
 
@@ -1230,6 +1324,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
         private boolean foregroundWaitingForFrame;
         private float foregroundReadyAlpha = 1f;
         private long foregroundReadyTime = -1;
+        private int foregroundReadyEpoch = app.nimarkogram.messenger.utils.NimarkoUiAnimationClock.epoch();
         public boolean drawForeground = true;
         float progressToExpand;
 
@@ -1388,6 +1483,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             foregroundWaitingForFrame = false;
             foregroundReadyAlpha = 1f;
             foregroundReadyTime = -1;
+            foregroundReadyEpoch = app.nimarkogram.messenger.utils.NimarkoUiAnimationClock.epoch();
         }
 
         private float getForegroundReadyAlpha(boolean ready, long now) {
@@ -1401,14 +1497,18 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                 resetForegroundReadiness();
                 return 1f;
             }
+            int epoch = app.nimarkogram.messenger.utils.NimarkoUiAnimationClock.epoch();
             if (foregroundWaitingForFrame) {
                 foregroundWaitingForFrame = false;
                 foregroundReadyTime = now;
             } else if (foregroundReadyAlpha < 1f && foregroundReadyTime >= 0) {
-                foregroundReadyAlpha = Math.min(1f, foregroundReadyAlpha
-                        + Math.max(0L, Math.min(64L, now - foregroundReadyTime)) / 160f);
+                if (!app.nimarkogram.messenger.utils.NimarkoUiAnimationClock.isPaused() && epoch == foregroundReadyEpoch) {
+                    foregroundReadyAlpha = Math.min(1f, foregroundReadyAlpha
+                            + Math.max(0L, Math.min(64L, now - foregroundReadyTime)) / 160f);
+                }
                 foregroundReadyTime = now;
             }
+            foregroundReadyEpoch = epoch;
             if (foregroundReadyAlpha < 1f) invalidate();
             return foregroundReadyAlpha;
         }
@@ -2554,7 +2654,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
         }
     }
 
-    private class PagerIndicatorView extends View {
+    private class PagerIndicatorView extends View implements NimarkoAppMotionBlur.Excluded {
 
         private final RectF indicatorRect = new RectF();
 
@@ -11572,7 +11672,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
     @Override
     public void onPause() {
         finishProfileInfoLayout();
-        finishProfileStatusCrossfades();
+        pauseProfileStatusCrossfades();
         cancelProfileBannerReclaim();
         profileSlideInProgress = false;
         cancelProfileRowsUpdate();

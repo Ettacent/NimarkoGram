@@ -32,6 +32,7 @@ import java.util.WeakHashMap;
 
 public final class NimarkoAppMotionBlur implements ViewTreeObserver.OnPreDrawListener,
         View.OnAttachStateChangeListener {
+    public interface Excluded {}
     private static final int MAX_VIEWS = 512;
     private static final int MAX_LAYERS = 48;
     private static final long MAX_FRAME_GAP_NS = 120_000_000L;
@@ -451,7 +452,9 @@ public final class NimarkoAppMotionBlur implements ViewTreeObserver.OnPreDrawLis
         entry.split = entry.scrolled && view instanceof ViewGroup;
         WeakReference<NimarkoAppMotionBlur> nested = view == rootReference.get() ? null : INSTANCES.get(view);
         NimarkoAppMotionBlur nestedOwner = nested == null ? null : nested.get();
-        entry.excluded = view instanceof SurfaceView || nestedOwner != null && !nestedOwner.detached;
+        entry.excluded = view instanceof SurfaceView
+                || view instanceof Excluded
+                || nestedOwner != null && !nestedOwner.detached;
         entry.split |= entry.excluded;
         if (view instanceof ViewGroup) {
             ViewGroup group = (ViewGroup) view;

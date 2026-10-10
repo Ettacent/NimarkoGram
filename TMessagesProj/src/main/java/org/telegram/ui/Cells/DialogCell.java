@@ -290,6 +290,7 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
     }
 
     public void setForumTopic(TLRPC.TL_forumTopic topic, long dialog_id, MessageObject messageObject, boolean showTopicIconInName, boolean animated) {
+        finishReactionsMentionsAnimation();
         forumTopic = topic;
         isTopic = forumTopic != null;
         if (currentDialogId != dialog_id) {
@@ -335,6 +336,7 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
     }
 
     public void setCurrentDialogId(long dialogId) {
+        if (currentDialogId != dialogId) finishReactionsMentionsAnimation();
         currentDialogId = dialogId;
     }
 
@@ -812,6 +814,7 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
                 && currentDialogCommunityId == (dialog instanceof TLRPC.TL_dialogCommunity ? dialog.community_id : 0)
                 && currentDialogFolderId == (dialog instanceof TLRPC.TL_dialogFolder
                     ? ((TLRPC.TL_dialogFolder) dialog).folder.id : 0);
+        if (!sameBinding || !isAttachedToWindow()) finishReactionsMentionsAnimation();
         if (currentDialogId != dialog.id) {
             emojiStatus.resetAnimation();
             botVerification.resetAnimation();
@@ -861,6 +864,7 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
     }
 
     public void setDialog(CustomDialog dialog) {
+        finishReactionsMentionsAnimation();
         badgeOwnerDrawn = false;
         badgeBoundAccount = -1;
         emojiStatus.resetAnimation();
@@ -925,6 +929,7 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
     }
 
     public void setDialog(long dialog_id, MessageObject messageObject, int date, boolean useMe, boolean animated) {
+        finishReactionsMentionsAnimation();
         if (currentDialogId != dialog_id) {
             emojiStatus.resetAnimation();
             botVerification.resetAnimation();
@@ -952,6 +957,7 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
     }
 
     public void setDialog(long dialog_id, MessageObject messageObject, ArrayList<MessageObject> groupMessageObject, int date, boolean useMe, boolean animated) {
+        finishReactionsMentionsAnimation();
         if (currentDialogId != dialog_id) {
             emojiStatus.resetAnimation();
             botVerification.resetAnimation();
@@ -995,6 +1001,7 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
     protected void onDetachedFromWindow() {
         super.onDetachedFromWindow();
         finishCountAnimation();
+        finishReactionsMentionsAnimation();
         badgeOwnerDrawn = false;
         messagePreviewCrossfade.finish();
         previewPresented = false;
@@ -3501,6 +3508,13 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
         countAnimationInLayout = null;
         invalidate();
     }
+    private void finishReactionsMentionsAnimation() {
+        ValueAnimator previous = reactionsMentionsAnimator;
+        reactionsMentionsAnimator = null;
+        if (previous != null) previous.cancel();
+        reactionsMentionsChangeProgress = 1f;
+        invalidate();
+    }
     public boolean update(int mask, boolean animated) {
         return update(mask, animated, false);
     }
@@ -3945,21 +3959,25 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
 
             animatorPollVotesMentionVisible.setValue(pollVotesMentionCount != 0, animated);
             boolean newHasReactionsMentions = reactionMentionCount != 0;
+            if (!animated && (!preserveCountAnimation || !attachedToWindow || !isAttachedToWindow()
+                    || !SharedConfig.animationsEnabled() || newHasReactionsMentions != oldHasReactionsMentions)) {
+                finishReactionsMentionsAnimation();
+            }
             if (animated && (newHasReactionsMentions != oldHasReactionsMentions)) {
-                if (reactionsMentionsAnimator != null) {
-                    reactionsMentionsAnimator.cancel();
-                }
+                finishReactionsMentionsAnimation();
                 reactionsMentionsChangeProgress = 0;
                 reactionsMentionsAnimator = ValueAnimator.ofFloat(0, 1f);
                 reactionsMentionsAnimator.addUpdateListener(valueAnimator -> {
+                    if (reactionsMentionsAnimator != valueAnimator) return;
                     reactionsMentionsChangeProgress = (float) valueAnimator.getAnimatedValue();
                     invalidate();
                 });
                 reactionsMentionsAnimator.addListener(new AnimatorListenerAdapter() {
                     @Override
                     public void onAnimationEnd(Animator animation) {
-                        reactionsMentionsChangeProgress = 1f;
-                        invalidate();
+                        if (reactionsMentionsAnimator != animation) return;
+                        reactionsMentionsAnimator = null;
+                        finishReactionsMentionsAnimation();
                     }
                 });
                 if (newHasReactionsMentions) {
@@ -3970,6 +3988,7 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
                     reactionsMentionsAnimator.setInterpolator(CubicBezierInterpolator.DEFAULT);
                 }
                 reactionsMentionsAnimator.start();
+                NimarkoUiAnimationClock.track(reactionsMentionsAnimator);
             }
             drawMonoforumAvatar = !isFolderCell() && chat != null && chat.monoforum;
 

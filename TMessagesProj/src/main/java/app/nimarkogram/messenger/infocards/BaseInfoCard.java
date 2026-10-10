@@ -34,6 +34,7 @@ import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.LiteMode;
 import org.telegram.messenger.R;
 import org.telegram.messenger.SharedConfig;
+import org.telegram.messenger.UserConfig;
 import org.telegram.ui.ActionBar.BaseFragment;
 import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.Components.AnimatedTextView;
@@ -49,6 +50,7 @@ import org.telegram.ui.Components.blur3.drawable.color.impl.BlurredBackgroundPro
 import org.telegram.ui.LaunchActivity;
 import app.nimarkogram.messenger.infocards.preferences.InfoCardsPreferencesActivity;
 
+import app.nimarkogram.messenger.utils.NimarkoUiAnimationClock;
 public abstract class BaseInfoCard extends FrameLayout {
 
     protected final Theme.ResourcesProvider resourcesProvider;
@@ -79,6 +81,10 @@ public abstract class BaseInfoCard extends FrameLayout {
     private boolean deferredCarouselText;
     private int deferredCarouselIconRes = -1;
     private Boolean deferredCarouselIconVisibility;
+    private boolean warmResumePending;
+    private int warmResumeAccount;
+    private String warmResumeCurrency;
+    private String warmResumeLocale;
     private int maxChipWidth;
     private int appliedTextMaxWidth;
     private CharSequence accessibilityLabel;
@@ -241,7 +247,7 @@ public abstract class BaseInfoCard extends FrameLayout {
     }
 
     protected void setIcon(int resId) {
-        if (shouldDeferCarouselData()) {
+        if (shouldDeferWarmResumeData() || shouldDeferCarouselData()) {
             deferredCarouselIconRes = resId;
             deferredCarouselIconVisibility = true;
             return;
@@ -363,7 +369,7 @@ public abstract class BaseInfoCard extends FrameLayout {
     }
 
     protected void setIconVisible(boolean visible) {
-        if (shouldDeferCarouselData()) {
+        if (shouldDeferWarmResumeData() || shouldDeferCarouselData()) {
             deferredCarouselIconVisibility = visible;
             return;
         }
@@ -378,9 +384,10 @@ public abstract class BaseInfoCard extends FrameLayout {
     }
 
     protected void setText(CharSequence text, boolean animated) {
+        boolean deferWarmResume = shouldDeferWarmResumeData();
         accessibilityValue = text;
         updateAccessibilityDescription();
-        if (shouldDeferCarouselData()) {
+        if (deferWarmResume || shouldDeferCarouselData()) {
             deferredCarouselText = !TextUtils.equals(textView.getText(), text);
             return;
         }
@@ -427,6 +434,53 @@ public abstract class BaseInfoCard extends FrameLayout {
                 && getParent() instanceof InfoCardStripView
                 && ((InfoCardStripView) getParent()).isLayoutSuppressed();
     }
+    void suspendForWarmResume() {
+        if (warmResumePending || !hasRenderedValue || getVisibility() != VISIBLE) return;
+        warmResumeAccount = UserConfig.selectedAccount;
+        warmResumeCurrency = InfoCardsConfig.getTargetCurrency(getCardId());
+        warmResumeLocale = String.valueOf(LocaleController.getInstance().getCurrentLocale())
+                + ":" + java.util.Locale.getDefault().toLanguageTag();
+        warmResumePending = true;
+        textView.setAnimationPaused(true);
+    }
+
+    private boolean shouldDeferWarmResumeData() {
+        if (!warmResumePending) return false;
+        if (warmResumeAccount != UserConfig.selectedAccount) {
+            finishResizeAnimation();
+            return false;
+        }
+        if (renderingInstantly
+                || !TextUtils.equals(warmResumeCurrency, InfoCardsConfig.getTargetCurrency(getCardId()))
+                || !TextUtils.equals(warmResumeLocale,
+                    String.valueOf(LocaleController.getInstance().getCurrentLocale())
+                            + ":" + java.util.Locale.getDefault().toLanguageTag())) {
+            finishResizeAnimation();
+            return false;
+        }
+        return true;
+    }
+
+    boolean isWarmResumePending() {
+        return warmResumePending;
+    }
+
+    void validateWarmResumeIdentity() {
+        boolean accountChanged = warmResumePending && warmResumeAccount != UserConfig.selectedAccount;
+        shouldDeferWarmResumeData();
+        if (accountChanged) updateDataInstantly();
+    }
+
+    void resumeWarmValue() {
+        validateWarmResumeIdentity();
+        if (!warmResumePending) return;
+        if (NimarkoUiAnimationClock.isPaused()) return;
+        warmResumePending = false;
+        applyDeferredCarouselIcon();
+        deferredCarouselText = false;
+        textView.setText(accessibilityValue, true);
+        textView.setAnimationPaused(false);
+    }
     private void applyDeferredCarouselIcon() {
         int icon = deferredCarouselIconRes;
         Boolean visible = deferredCarouselIconVisibility;
@@ -436,6 +490,10 @@ public abstract class BaseInfoCard extends FrameLayout {
         if (visible != null) setIconVisible(visible);
     }
     void applyDeferredCarouselData() {
+        if (warmResumePending) {
+            if (getVisibility() == GONE) finishResizeAnimation();
+            return;
+        }
         if (shouldDeferCarouselData()) return;
         applyDeferredCarouselIcon();
         if (deferredCarouselText) {
@@ -454,6 +512,15 @@ public abstract class BaseInfoCard extends FrameLayout {
     }
 
     void finishResizeAnimation() {
+        boolean retained = warmResumePending;
+        if (retained && warmResumeAccount != UserConfig.selectedAccount) {
+            accessibilityValue = null;
+            hasRenderedValue = false;
+            deferredCarouselIconRes = -1;
+            deferredCarouselIconVisibility = null;
+            updateAccessibilityDescription();
+        }
+        warmResumePending = false;
         boolean previous = renderingInstantly;
         renderingInstantly = true;
         try {
@@ -465,9 +532,10 @@ public abstract class BaseInfoCard extends FrameLayout {
         if (textView.isAnimating()) {
             textView.cancelAnimation();
         }
-        if (accessibilityValue != null) {
+        if (accessibilityValue != null || retained) {
             textView.setText(accessibilityValue, false, false);
         }
+        textView.setAnimationPaused(false);
         content.requestLayout();
         content.invalidateOutline();
     }

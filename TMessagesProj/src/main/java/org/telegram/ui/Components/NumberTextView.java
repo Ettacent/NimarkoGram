@@ -21,6 +21,7 @@ import android.text.Layout;
 import android.text.StaticLayout;
 import android.text.TextPaint;
 import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
+import app.nimarkogram.messenger.utils.NimarkoUiAnimationClock;
 import android.view.View;
 import android.view.accessibility.AccessibilityNodeInfo;
 
@@ -44,6 +45,29 @@ public class NumberTextView extends View {
     private float textWidth;
     private float oldTextWidth;
 
+    private boolean presented;
+    private boolean hasPendingNumber;
+    private int pendingNumber;
+    private ObjectAnimator windowPausedAnimator;
+    private final NimarkoUiAnimationClock.ResumeGate animationResumeGate = value ->
+            isAttachedToWindow() && getWindowVisibility() == VISIBLE;
+    private CounterView.CounterSnapshot snapshot;
+    private float snapshotTextWidth;
+    private float presentedProgress;
+    private final Runnable resumeNumber = new Runnable() {
+        @Override
+        public void run() {
+            if ((!hasPendingNumber && windowPausedAnimator == null && (snapshot == null || !snapshot.isWindowPaused())) || !isAttachedToWindow() || getWindowVisibility() != VISIBLE) return;
+            if (NimarkoUiAnimationClock.isPaused()) postOnAnimation(this);
+            else {
+                if (snapshot != null) snapshot.resumeWindow();
+                if (windowPausedAnimator == animator && animator != null && animator.isPaused()
+                        && !NimarkoUiAnimationClock.resumeAnimation(animator)) return;
+                windowPausedAnimator = null;
+                invalidate();
+            }
+        }
+    };
     private OnTextWidthProgressChangedListener onTextWidthProgressChangedListener;
 
     public NumberTextView(Context context) {
@@ -76,13 +100,47 @@ public class NumberTextView extends View {
     }
 
     public void setNumber(int number, boolean animated) {
-        if (currentNumber == number && animated) {
+        if (animated && presented && isAttachedToWindow()
+                && (NimarkoUiAnimationClock.isPaused() || getWindowVisibility() != VISIBLE)) {
+            if (!hasPendingNumber && currentNumber != number
+                    && (animator != null || (snapshot != null && snapshot.hasSnapshot()))) {
+                if (snapshot == null) snapshot = new CounterView.CounterSnapshot(this, () -> {
+                    if (onTextWidthProgressChangedListener != null) onTextWidthProgressChangedListener.onTextWidthProgress(oldTextWidth, textWidth, progress);
+                });
+                float saved = progress;
+                progress = presentedProgress;
+                float glyphWidth = Math.max(getTextWidth(), oldLetters.isEmpty() ? 0f : oldTextWidth);
+                if (snapshot.capture(this::drawContent, getMeasuredWidth(), getMeasuredHeight())) {
+                    snapshotTextWidth = glyphWidth;
+                }
+                progress = saved;
+            }
+            boolean returnToSnapshotTarget = hasPendingNumber && animator == null && snapshot != null && snapshot.hasSnapshot();
+            if (hasPendingNumber && currentNumber == number && !returnToSnapshotTarget && snapshot != null) snapshot.finish();
+            pendingNumber = number;
+            hasPendingNumber = currentNumber != number || returnToSnapshotTarget;
+            removeCallbacks(resumeNumber);
+            if (getWindowVisibility() == VISIBLE && (hasPendingNumber || windowPausedAnimator != null
+                    || (snapshot != null && snapshot.isWindowPaused()))) postOnAnimation(resumeNumber);
+            invalidate();
             return;
         }
+        hasPendingNumber = false;
+        removeCallbacks(resumeNumber);
+        if (!isAttachedToWindow()) animated = false;
+        if (NimarkoUiAnimationClock.isPaused() && !presented) animated = false;
+        if (!animated) presented = false;
+        if (currentNumber == number && animated) {
+            if (getWindowVisibility() == VISIBLE && (windowPausedAnimator != null
+                    || (snapshot != null && snapshot.isWindowPaused()))) postOnAnimation(resumeNumber);
+            return;
+        }
+        if (snapshot != null) snapshot.finish();
         if (animator != null) {
             animator.cancel();
             animator = null;
         }
+        windowPausedAnimator = null;
         oldLetters.clear();
         oldLetters.addAll(letters);
         letters.clear();
@@ -129,15 +187,48 @@ public class NumberTextView extends View {
             animator.addListener(new AnimatorListenerAdapter() {
                 @Override
                 public void onAnimationEnd(Animator animation) {
+                    if (animator != animation) return;
                     animator = null;
                     oldLetters.clear();
                 }
             });
             animator.start();
-        } else if (onTextWidthProgressChangedListener != null) {
-            onTextWidthProgressChangedListener.onTextWidthProgress(oldTextWidth, textWidth, progress);
+            NimarkoUiAnimationClock.track(animator, animationResumeGate);
+        } else {
+            oldLetters.clear();
+            if (onTextWidthProgressChangedListener != null) {
+                onTextWidthProgressChangedListener.onTextWidthProgress(oldTextWidth, textWidth, progress);
+            }
         }
         invalidate();
+    }
+
+    @Override
+    protected void onDetachedFromWindow() {
+        super.onDetachedFromWindow();
+        presented = false;
+        if (snapshot != null) snapshot.finish();
+        windowPausedAnimator = null;
+        if (hasPendingNumber) setNumber(pendingNumber, false);
+        removeCallbacks(resumeNumber);
+        ObjectAnimator previous = animator;
+        animator = null;
+        if (previous != null) previous.cancel();
+        oldLetters.clear();
+        setProgress(0);
+    }
+
+    @Override
+    protected void onWindowVisibilityChanged(int visibility) {
+        super.onWindowVisibilityChanged(visibility);
+        if (snapshot != null) snapshot.windowVisibilityChanged(visibility);
+        removeCallbacks(resumeNumber);
+        if (visibility != VISIBLE && animator != null && animator.isStarted()) {
+            windowPausedAnimator = animator;
+            if (!animator.isPaused()) animator.pause();
+        }
+        if (visibility == VISIBLE && (hasPendingNumber || windowPausedAnimator != null
+                || (snapshot != null && snapshot.isWindowPaused()))) postOnAnimation(resumeNumber);
     }
 
     public void setTextSize(int size) {
@@ -164,7 +255,40 @@ public class NumberTextView extends View {
     }
 
     @Override
+    protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
+        super.onMeasure(widthMeasureSpec, heightMeasureSpec);
+        if (snapshot != null) setMeasuredDimension(snapshot.reserveWidth(getMeasuredWidth()), snapshot.reserveHeight(getMeasuredHeight()));
+    }
+
+    @Override
     protected void onDraw(Canvas canvas) {
+        if (canvas.isHardwareAccelerated()) NimarkoUiAnimationClock.resumeOwned(animator);
+        if (hasPendingNumber && canvas.isHardwareAccelerated() && isAttachedToWindow()
+                && !NimarkoUiAnimationClock.isPaused() && getWindowVisibility() == VISIBLE) {
+            CounterView.CounterSnapshot retained = snapshot;
+            snapshot = null;
+            setNumber(pendingNumber, animator == null && (retained == null || !retained.hasSnapshot()));
+            snapshot = retained;
+            if (snapshot != null && snapshot.hasSnapshot()) {
+                requestLayout();
+                if (onTextWidthProgressChangedListener != null) onTextWidthProgressChangedListener.onTextWidthProgress(oldTextWidth, getTextWidth(), progress);
+                snapshot.start();
+            }
+        }
+        if (snapshot != null) {
+            snapshot.setSize(getMeasuredWidth(), getMeasuredHeight());
+            snapshot.draw(canvas, this::drawContent);
+        }
+        else drawContent(canvas);
+        if (canvas.isHardwareAccelerated() && isAttachedToWindow() && getWindowVisibility() == VISIBLE
+                && !NimarkoUiAnimationClock.isPaused()) {
+            presented = true;
+            presentedProgress = progress;
+            if (snapshot != null) snapshot.presented();
+        }
+    }
+
+    private void drawContent(Canvas canvas) {
         if (letters.isEmpty()) {
             return;
         }
@@ -234,7 +358,7 @@ public class NumberTextView extends View {
     }
 
     public float getTextWidth() {
-        return textWidth;
+        return snapshot != null && snapshot.hasSnapshot() ? Math.max(snapshotTextWidth, textWidth) : textWidth;
     }
 
     public interface OnTextWidthProgressChangedListener {

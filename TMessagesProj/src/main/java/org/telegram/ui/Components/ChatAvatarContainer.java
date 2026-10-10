@@ -476,7 +476,7 @@ public class ChatAvatarContainer extends FrameLayout implements FactorAnimator.T
 
         boolean isPresentationVisible() {
             if (NimarkoUiAnimationClock.isPaused() || !isLaidOut() || !isAttachedToWindow()
-                    || !isShown() || getWindowVisibility() != VISIBLE) return false;
+                    || !hasWindowFocus() || !isShown() || getWindowVisibility() != VISIBLE) return false;
             for (View view = this; view != null;
                     view = view.getParent() instanceof View ? (View) view.getParent() : null) {
                 if (view.getVisibility() != VISIBLE || view.getAlpha() <= 0f) return false;
@@ -533,6 +533,15 @@ public class ChatAvatarContainer extends FrameLayout implements FactorAnimator.T
                 deferCrossfade();
             }
         }
+        @Override
+        public void onWindowFocusChanged(boolean hasFocus) {
+            super.onWindowFocusChanged(hasFocus);
+            if (!hasFocus && crossfade != null) {
+                deferCrossfade();
+            } else if (hasFocus && pendingReveal) {
+                invalidate();
+            }
+        }
         void captureSubtitle() {
             if (outgoing != null && presentedProgress == 0f) {
 
@@ -579,6 +588,10 @@ public class ChatAvatarContainer extends FrameLayout implements FactorAnimator.T
                 return;
             }
             if (crossfade != null) return;
+            if (!isPresentationVisible()) {
+                pendingReveal = true;
+                return;
+            }
             pendingReveal = false;
             subtitleTransitionRunning = true;
             progress = 0f;
@@ -2058,7 +2071,7 @@ public class ChatAvatarContainer extends FrameLayout implements FactorAnimator.T
                 || previousRightDrawable2 != titleTextView.getRightDrawable2()) {
             requestLayout();
         }
-        checkActionBar(animated);
+        checkActionBar(animated || subtitleTextView != null && !subtitleHiddenByPreference);
     }
 
     private void applyNimarkoBadge(boolean animated) {
@@ -2581,7 +2594,7 @@ public class ChatAvatarContainer extends FrameLayout implements FactorAnimator.T
             if (!TextUtils.equals(lastSubtitle, newSubtitle)) subtitleScrollingState = null;
             lastSubtitle = newSubtitle;
         }
-        checkActionBar(animated);
+        checkActionBar(animated || subtitleTextView != null && !subtitleHiddenByPreference);
     }
 
     public static CharSequence getChatSubtitle(TLRPC.Chat chat, TLRPC.ChatFull info, int onlineCount) {

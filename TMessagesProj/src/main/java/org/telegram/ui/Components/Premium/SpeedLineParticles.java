@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components.Premium;
 
 import android.graphics.Canvas;
@@ -12,6 +14,7 @@ import org.telegram.ui.ActionBar.Theme;
 
 import java.util.ArrayList;
 
+import app.nimarkogram.messenger.utils.NimarkoUiAnimationClock;
 public class SpeedLineParticles {
 
     public static class Drawable {
@@ -30,7 +33,12 @@ public class SpeedLineParticles {
         public int size1 = 14, size2 = 12, size3 = 10;
         public long minLifeTime = 2000;
         private int lastColor;
-        private final float dt = 1000 / AndroidUtilities.screenRefreshRate;
+        private float dt;
+        private long animationTime;
+        private long prevTime = -1;
+        private int clockEpoch = -1;
+        private boolean wasPaused;
+        private boolean resetPending;
 
         public Drawable(int count) {
             this.count = count;
@@ -57,24 +65,41 @@ public class SpeedLineParticles {
 
 
         public void resetPositions() {
-            long time = System.currentTimeMillis();
+            if (paused || NimarkoUiAnimationClock.isPaused()) {
+                resetPending = true;
+                return;
+            }
+            long time = sampleTime();
             for (int i = 0; i < particles.size(); i++) {
                 particles.get(i).genPosition(time, true);
             }
+            resetPending = false;
+        }
+
+        private long sampleTime() {
+            long now = NimarkoUiAnimationClock.now();
+            int epoch = NimarkoUiAnimationClock.epoch();
+            boolean stopped = paused || NimarkoUiAnimationClock.isPaused();
+            long diff = prevTime < 0 || epoch != clockEpoch || stopped || wasPaused ? 0 : Math.max(0, now - prevTime);
+            animationTime += diff;
+            dt = Math.min(diff, 50);
+            prevTime = now;
+            clockEpoch = epoch;
+            wasPaused = stopped;
+            return animationTime;
         }
 
         public void onDraw(Canvas canvas) {
-            long time = System.currentTimeMillis();
+            long time = sampleTime();
+            if (resetPending && !wasPaused) {
+                resetPositions();
+            }
             for (int i = 0; i < particles.size(); i++) {
                 Drawable.Particle particle = particles.get(i);
-                if (paused) {
-                    particle.draw(canvas, i, pausedTime);
-                } else {
-                    particle.draw(canvas, i, time);
-                }
-                if (time > particle.lifeTime || !screenRect.contains(particle.x, particle.y)) {
+                if (!wasPaused && (time > particle.lifeTime || !screenRect.contains(particle.x, particle.y))) {
                     particle.genPosition(time, false);
                 }
+                particle.draw(canvas, i, time);
             }
             canvas.drawLines(lines, paint);
         }
@@ -90,11 +115,7 @@ public class SpeedLineParticles {
             float inProgress;
 
             public void draw(Canvas canvas, int index,  long time) {
-                lines[4 * index ] = x;
-                lines[4 * index + 1] = y;
-                lines[4 * index + 2] = x + AndroidUtilities.dp(30) * vecX;
-                lines[4 * index + 3] = y + AndroidUtilities.dp(30) * vecY;
-                if (!paused) {
+                if (dt > 0) {
                     float speed = AndroidUtilities.dp(4) * (dt / 660f) * speedScale;
                     x += vecX * speed;
                     y += vecY * speed;
@@ -106,6 +127,10 @@ public class SpeedLineParticles {
                         }
                     }
                 }
+                lines[4 * index ] = x;
+                lines[4 * index + 1] = y;
+                lines[4 * index + 2] = x + AndroidUtilities.dp(30) * vecX;
+                lines[4 * index + 3] = y + AndroidUtilities.dp(30) * vecY;
             }
 
             public void genPosition(long time, boolean reset) {

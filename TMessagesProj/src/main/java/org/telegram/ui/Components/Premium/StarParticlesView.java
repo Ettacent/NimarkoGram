@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components.Premium;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -21,7 +23,6 @@ import android.view.View;
 
 import androidx.core.content.ContextCompat;
 import androidx.core.graphics.ColorUtils;
-import androidx.core.math.MathUtils;
 
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.ApplicationLoader;
@@ -36,6 +37,7 @@ import org.telegram.ui.PremiumPreviewFragment;
 
 import java.util.ArrayList;
 
+import app.nimarkogram.messenger.utils.NimarkoUiAnimationClock;
 public class StarParticlesView extends View {
 
 
@@ -75,6 +77,7 @@ public class StarParticlesView extends View {
         boolean isAllowed = LiteMode.isEnabled(LiteMode.FLAG_PARTICLES);
         if (isLiteModeParticlesAllowed != isAllowed) {
             isLiteModeParticlesAllowed = isAllowed;
+            drawable.prevTime = -1;
             invalidate();
         }
     }
@@ -177,6 +180,7 @@ public class StarParticlesView extends View {
         a2.setDuration(2000);
         animatorSet.playTogether(a1, a2);
         animatorSet.start();
+        NimarkoUiAnimationClock.track(animatorSet);
     }
 
     public static class Drawable {
@@ -206,7 +210,11 @@ public class StarParticlesView extends View {
         public long minLifeTime = 2000;
         public int randLifeTime = 1000;
         private int lastColor;
-        private final float dt = 1000 / AndroidUtilities.screenRefreshRate;
+        private float dt;
+        private long animationTime;
+        private int clockEpoch = -1;
+        private boolean wasPaused;
+        private boolean resetPending;
         public boolean distributionAlgorithm;
         Matrix[] matrices;
         float[][] points;
@@ -475,20 +483,54 @@ public class StarParticlesView extends View {
         }
 
         public void resetPositions() {
-            long time = System.currentTimeMillis();
+            if (paused || NimarkoUiAnimationClock.isPaused() || !LiteMode.isEnabled(LiteMode.FLAG_PARTICLES)) {
+                resetPending = true;
+                return;
+            }
+            long time = sampleTime();
             for (int i = 0; i < particles.size(); i++) {
                 particles.get(i).genPosition(time);
             }
+            resetPending = false;
+        }
+
+        private long sampleTime() {
+            long now = NimarkoUiAnimationClock.now();
+            int epoch = NimarkoUiAnimationClock.epoch();
+            boolean stopped = paused || NimarkoUiAnimationClock.isPaused() || !LiteMode.isEnabled(LiteMode.FLAG_PARTICLES);
+            long pauseAdjustment = 0;
+            for (int i = 0; i < particles.size(); i++) {
+                Particle particle = particles.get(i);
+                pauseAdjustment = Math.max(pauseAdjustment, particle.lifeTime - particle.expiryTime);
+                particle.lifeTime = particle.expiryTime;
+            }
+            long diff = prevTime < 0 || epoch != clockEpoch || stopped || wasPaused ? 0 : Math.max(0, now - prevTime - pauseAdjustment);
+            animationTime += diff;
+            dt = Math.min(diff, 50);
+            prevTime = now;
+            clockEpoch = epoch;
+            wasPaused = stopped;
+            return animationTime;
         }
 
         public void onDraw(Canvas canvas) {
             onDraw(canvas, 1f);
         }
 
-        private long prevTime;
+        private long prevTime = -1;
         public void onDraw(Canvas canvas, float alpha) {
-            long time = System.currentTimeMillis();
-            long diff = MathUtils.clamp(time - prevTime, 4, 50);
+            long time = sampleTime();
+            if (resetPending && !wasPaused) {
+                resetPositions();
+            }
+            for (int i = 0; i < particles.size(); i++) {
+                Particle particle = particles.get(i);
+                if (!wasPaused && ((checkTime && time > particle.expiryTime) || (checkBounds && !rect2.contains(particle.drawingX, particle.drawingY)))) {
+                    particle.genPosition(time);
+                }
+                particle.advance();
+            }
+            float diff = dt;
             if (useRotate) {
                 final float cx = rect.centerX() + centerOffsetX;
                 final float cy = rect.centerY() + centerOffsetY;
@@ -508,29 +550,15 @@ public class StarParticlesView extends View {
 
             for (int i = 0; i < particles.size(); i++) {
                 Particle particle = particles.get(i);
-                if (paused) {
-                    particle.draw(canvas, pausedTime, alpha);
-                } else {
-                    particle.draw(canvas, time, alpha);
-                }
-                if (checkTime) {
-                    if (time > particle.lifeTime) {
-                        particle.genPosition(time);
-                    }
-                }
-                if (checkBounds) {
-                    if (!rect2.contains(particle.drawingX, particle.drawingY)) {
-                        particle.genPosition(time);
-                    }
-                }
+                particle.draw(canvas, time, alpha);
             }
-            prevTime = time;
         }
 
         private int lastParticleI = 0;
         public class Particle {
             public long lifeTime;
 
+            private long expiryTime;
             private int i;
             private float scale = 1f;
             public Particle() {
@@ -554,6 +582,16 @@ public class StarParticlesView extends View {
                 pointsCount[starIndex]++;
             }
 
+            private void advance() {
+                if (dt > 0) {
+                    float speed = dp(4) * (dt / 660f);
+                    speed *= flip[starIndex] ? 4 * Math.min(speedScale, 3.5f) : speedScale;
+                    x += vecX * speed;
+                    y += vecY * speed;
+                    inProgress = Math.min(1f, inProgress + dt / 200);
+                }
+            }
+
             public void draw(Canvas canvas, long time, float alpha) {
                 if (useRotate) {
                     final int c = pointsCount[starIndex];
@@ -575,8 +613,8 @@ public class StarParticlesView extends View {
                         canvas.rotate(randomRotate, stars[starIndex].getWidth() / 2f, stars[starIndex].getHeight() / 2f);
                     }
                     float outProgress = 0f;
-                    if (checkTime && lifeTime - time < 200) {
-                        outProgress = 1f - (lifeTime - time) / 150f;
+                    if (checkTime && expiryTime - time < 200) {
+                        outProgress = 1f - (expiryTime - time) / 150f;
                         outProgress = Utilities.clamp(outProgress, 1f, 0f);
                     }
                     if (inProgress < 1f || GLIconSettingsView.smallStarsSize != 1f) {
@@ -604,23 +642,6 @@ public class StarParticlesView extends View {
                     canvas.drawBitmap(bitmap, -(bitmap.getWidth() >> 1), -(bitmap.getHeight() >> 1), paint);
                     canvas.restore();
                 }
-                if (!paused) {
-                    float speed = dp(4) * (dt / 660f);
-                    if (flip[starIndex]) {
-                        speed *= 4 * Math.min(speedScale, 3.5f);
-                    } else {
-                        speed *= speedScale;
-                    }
-                    x += vecX * speed;
-                    y += vecY * speed;
-
-                    if (inProgress != 1f) {
-                        inProgress += dt / 200;
-                        if (inProgress > 1f) {
-                            inProgress = 1f;
-                        }
-                    }
-                }
             }
 
             private boolean first = true;
@@ -633,6 +654,7 @@ public class StarParticlesView extends View {
                     starIndex = Math.abs(Utilities.fastRandom.nextInt() % stars.length);
                 }
                 lifeTime = time + minLifeTime + Utilities.fastRandom.nextInt(randLifeTime * (flip[starIndex] ? 3 : 1));
+                expiryTime = lifeTime;
                 randomRotate = 0;
                 if (useScale) {
                     scale = .4f + .6f * Utilities.fastRandom.nextFloat();
@@ -735,12 +757,10 @@ public class StarParticlesView extends View {
             return;
         }
         drawable.paused = paused;
+        drawable.prevTime = -1;
         if (paused) {
-            drawable.pausedTime = System.currentTimeMillis();
+            drawable.pausedTime = drawable.animationTime;
         } else {
-            for (int i = 0; i < drawable.particles.size(); i++) {
-                drawable.particles.get(i).lifeTime += System.currentTimeMillis() - drawable.pausedTime;
-            }
             invalidate();
         }
     }

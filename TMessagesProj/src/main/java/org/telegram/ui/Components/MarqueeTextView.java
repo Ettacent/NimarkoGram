@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -8,13 +10,16 @@ import android.graphics.Canvas;
 import android.graphics.LinearGradient;
 import android.graphics.Matrix;
 import android.graphics.Shader;
-import android.os.SystemClock;
+import android.text.TextUtils;
+import android.view.View;
+import android.view.ViewParent;
+import android.view.ViewTreeObserver;
 import android.widget.TextView;
 
 import androidx.annotation.NonNull;
 import androidx.core.math.MathUtils;
 
-import org.telegram.messenger.AndroidUtilities;
+import app.nimarkogram.messenger.utils.NimarkoUiAnimationClock;
 
 @SuppressLint("AppCompatCustomView")
 public class MarqueeTextView extends TextView {
@@ -29,6 +34,19 @@ public class MarqueeTextView extends TextView {
     private boolean marqueeIsStarted;
     private float scrollX;
 
+    private String textSnapshot;
+    private long remainingDelay = 1500;
+    private int clockEpoch = -1;
+    private long resumeElapsed;
+    private boolean warmResume;
+    private Runnable marqueeWakeup;
+    private long delayStartedAt;
+    private int wakeupGeneration;
+    private ViewTreeObserver marqueeObserver;
+    private final ViewTreeObserver.OnPreDrawListener marqueeVisibility = () -> {
+        if (!canAnimate()) suspendMarquee();
+        return true;
+    };
     public MarqueeTextView(Context context) {
         super(context);
     }
@@ -49,11 +67,18 @@ public class MarqueeTextView extends TextView {
 
     @Override
     public void setText(CharSequence text, BufferType type) {
+        final String snapshot = text == null ? "" : text.toString();
+        final boolean changed = !TextUtils.equals(textSnapshot, snapshot);
         super.setText(text, type);
-        stopMarqueeInternal();
+        textSnapshot = snapshot;
+        if (changed) {
+            stopMarqueeInternal();
+        }
+
     }
 
     private void invalidateGradient() {
+        if (originalWidth <= 0) return;
         final float edgeSize = Math.min((float) dp(BORDER_DP) / originalWidth, 0.49f);
         final int color = getCurrentTextColor();
 
@@ -83,11 +108,130 @@ public class MarqueeTextView extends TextView {
 
     private long lastFrameTime;
 
+    private boolean canAnimate() {
+        if (NimarkoUiAnimationClock.isPaused() || !isAttachedToWindow() || !isShown()
+                || getWindowVisibility() != VISIBLE) return false;
+        View view = this;
+        while (view != null) {
+            if (view.getAlpha() <= 0f || view.getVisibility() != VISIBLE) return false;
+            ViewParent parent = view.getParent();
+            view = parent instanceof View ? (View) parent : null;
+        }
+        return true;
+    }
+
+    private void suspendMarquee() {
+        cancelMarqueeWakeup(true);
+        lastFrameTime = 0;
+        warmResume = true;
+        resumeElapsed = 0;
+    }
+
+    private void cancelMarqueeWakeup(boolean preserveDelay) {
+        wakeupGeneration++;
+        if (marqueeWakeup != null) {
+            if (preserveDelay) remainingDelay = Math.max(0L,
+                    remainingDelay - Math.max(0L, NimarkoUiAnimationClock.now() - delayStartedAt));
+            removeCallbacks(marqueeWakeup);
+            marqueeWakeup = null;
+        }
+    }
+
+    private void scheduleMarqueeWakeup() {
+        if (marqueeWakeup != null) return;
+        final int generation = ++wakeupGeneration;
+        delayStartedAt = NimarkoUiAnimationClock.now();
+        marqueeWakeup = () -> {
+            if (generation != wakeupGeneration) return;
+            cancelMarqueeWakeup(true);
+            lastFrameTime = 0;
+            if (canAnimate()) invalidate();
+            else suspendMarquee();
+        };
+        postDelayed(marqueeWakeup, remainingDelay);
+    }
+
+    @Override
+    protected void onDetachedFromWindow() {
+        suspendMarquee();
+        if (marqueeObserver != null && marqueeObserver.isAlive()) {
+            marqueeObserver.removeOnPreDrawListener(marqueeVisibility);
+        }
+        marqueeObserver = null;
+        super.onDetachedFromWindow();
+    }
+
+    @Override
+    protected void onAttachedToWindow() {
+        super.onAttachedToWindow();
+        marqueeObserver = getViewTreeObserver();
+        marqueeObserver.addOnPreDrawListener(marqueeVisibility);
+        suspendMarquee();
+        invalidate();
+    }
+
+    @Override
+    protected void onWindowVisibilityChanged(int visibility) {
+        super.onWindowVisibilityChanged(visibility);
+        suspendMarquee();
+        if (visibility == VISIBLE) invalidate();
+    }
+
+    @Override
+    protected void onVisibilityChanged(View changedView, int visibility) {
+        super.onVisibilityChanged(changedView, visibility);
+        suspendMarquee();
+        if (visibility == VISIBLE) invalidate();
+    }
+
+    private static double warmDistance(long elapsed) {
+        final double t = Math.min(elapsed, 180L) / 180.0;
+        return 180.0 * (t * t * t - .5 * t * t * t * t) + Math.max(0L, elapsed - 180L);
+    }
+
+    private void advanceMarquee(int textWidth, int textMargin) {
+        if (!canAnimate()) {
+            suspendMarquee();
+            return;
+        }
+        final long time = NimarkoUiAnimationClock.now();
+        final int epoch = NimarkoUiAnimationClock.epoch();
+        if (clockEpoch != epoch || marqueeIsStarted && lastFrameTime != 0 && time - lastFrameTime > 120) {
+            suspendMarquee();
+        }
+        clockEpoch = epoch;
+        long dt = lastFrameTime == 0 ? 0 : Math.max(0, time - lastFrameTime);
+        lastFrameTime = time;
+        if (!needMarquee && scrollX == 0f) return;
+        if (!marqueeIsStarted && scrollX == 0f) {
+            if (remainingDelay > 0) {
+                scheduleMarqueeWakeup();
+                return;
+            }
+            dt = 0;
+            marqueeIsStarted = true;
+        }
+        if (warmResume) {
+            final long next = resumeElapsed + dt;
+            scrollX += dp(SPEED_DP) * (float) ((warmDistance(next) - warmDistance(resumeElapsed)) / 1000.0);
+            resumeElapsed = next;
+            if (next >= 180) warmResume = false;
+        } else {
+            scrollX += dp(SPEED_DP) * (dt / 1000f);
+        }
+        if (scrollX > textWidth + textMargin) stopMarqueeInternal();
+        postInvalidateOnAnimation();
+    }
     @Override
     protected void onDraw(@NonNull Canvas canvas) {
         final int textWidth = getMeasuredWidth();
         final int textMargin = dp(MARGIN_DP);
 
+        advanceMarquee(textWidth, textMargin);
+        if (gradient == null || originalWidth <= 0) {
+            super.onDraw(canvas);
+            return;
+        }
         final float shadowVisibility;
         if (scrollX < textWidth) {
             shadowVisibility = MathUtils.clamp(scrollX / dp(BORDER_DP), 0, 1);
@@ -114,51 +258,16 @@ public class MarqueeTextView extends TextView {
             canvas.restore();
         }
 
-        final boolean isFirstFrame = scrollX < 0.0001;
-        final long time = SystemClock.uptimeMillis();
-        final long dt = lastFrameTime != 0 && !isFirstFrame ? Math.min(time - lastFrameTime, 120): 16;
-
-        lastFrameTime = time;
-        if (needMarquee && marqueeIsStarted || !isFirstFrame) {
-            scrollX += dp(SPEED_DP) * ((float) dt / 1000);
-            if (scrollX > textWidth + textMargin) {
-                stopMarqueeInternal();
-            }
-            invalidate();
-        }
-
-        if (needMarquee && !marqueeIsStarted && !marqueeIsPending) {
-            pendingMarqueeInternal();
-        }
-    }
-
-
-
-    private final Runnable startMarquee = this::startMarqueeInternal;
-    private boolean marqueeIsPending;
-
-    private void pendingMarqueeInternal() {
-        if (!marqueeIsPending) {
-            marqueeIsPending = true;
-            AndroidUtilities.runOnUIThread(startMarquee, 1500);
-        }
     }
 
     private void stopMarqueeInternal() {
-        AndroidUtilities.cancelRunOnUIThread(startMarquee);
-        marqueeIsPending = false;
+        cancelMarqueeWakeup(false);
         marqueeIsStarted = false;
         scrollX = 0f;
-    }
-
-    private void startMarqueeInternal() {
-        if (needMarquee) {
-            marqueeIsStarted = true;
-            marqueeIsPending = false;
-            scrollX = 0f;
-            lastFrameTime = SystemClock.uptimeMillis();
-            invalidate();
-        }
+        remainingDelay = 1500;
+        lastFrameTime = 0;
+        warmResume = false;
+        resumeElapsed = 0;
     }
 
 

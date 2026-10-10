@@ -28,7 +28,9 @@ import android.graphics.Paint;
 import android.graphics.Canvas;
 import android.graphics.Rect;
 import android.os.Bundle;
+import android.os.Build;
 import android.os.SystemClock;
+import android.provider.Settings;
 import android.text.BidiFormatter;
 import android.text.SpannableStringBuilder;
 import android.text.Spanned;
@@ -44,6 +46,7 @@ import android.view.ViewConfiguration;
 import android.view.VelocityTracker;
 import android.view.accessibility.AccessibilityNodeInfo;
 import android.view.ViewGroup;
+import android.view.ViewTreeObserver;
 import android.view.WindowInsets;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
@@ -92,6 +95,9 @@ public final class NimarkoInAppNotifications {
     private static volatile WeakReference<LaunchActivity> host = new WeakReference<>(null);
     private static volatile long generation;
     private static volatile boolean focused;
+    private static volatile boolean resumeDismissPending;
+    private static ResumeDismissal resumeDismissal;
+    private static boolean resumeEnterComplete;
     private static long focusLostAt = -1;
     private static Banner banner;
     private static Banner retiringBanner;
@@ -204,7 +210,9 @@ public final class NimarkoInAppNotifications {
                 retainedCompactVisibleHeight = getCompactVisibleHeight();
                 setMinimumHeight(retainedCoverage == 0f ? 0 : getMeasuredHeight());
             }
-            if (value.getParent() == this) removeView(value);
+            if (value.getParent() == this) {
+                removeView(value);
+            }
             if (getChildCount() > 0) {
                 directResize = false;
                 retirementResizePending = true;
@@ -370,19 +378,41 @@ public final class NimarkoInAppNotifications {
 
     public static void onResume(LaunchActivity activity) {
         contentGesture = false;
-        dismiss();
         host = new WeakReference<>(activity);
+        resumeEnterComplete = false;
         focused = activity.hasWindowFocus();
         focusLostAt = -1;
+        pruneRetainedBanners();
+        dismissForResume();
     }
 
     public static void onPause(LaunchActivity activity) {
         contentGesture = false;
         if (host.get() == activity) {
+            cancelResumeDismissal();
+            resumeEnterComplete = false;
+            resumeDismissPending = true;
             host.clear();
             focused = false;
             focusLostAt = -1;
-            dismiss();
+            generation++;
+            if (banner != null) banner.pauseInteraction();
+        }
+    }
+
+    public static void onDestroy(LaunchActivity activity) {
+        if (host.get() != null && host.get() != activity) return;
+        onPause(activity);
+        dismiss();
+    }
+
+    public static void onEnterAnimationComplete(LaunchActivity activity) {
+        if (host.get() != activity || resumeEnterComplete) return;
+        resumeEnterComplete = true;
+        if (resumeDismissal != null) {
+            resumeDismissal.resetEnterWait();
+            resumeDismissal.resetFrame();
+            resumeDismissal.decor.invalidate();
         }
     }
 
@@ -390,12 +420,20 @@ public final class NimarkoInAppNotifications {
         if (host.get() != activity || focused == hasFocus) return;
         focused = hasFocus;
         if (!hasFocus) {
+            if (resumeDismissal != null) {
+                resumeDismissal.resetEnterWait();
+                resumeDismissal.resetFrame();
+            }
             generation++;
             focusLostAt = SystemClock.elapsedRealtime();
             if (banner != null) banner.pauseInteraction();
         } else if (focusLostAt >= 0) {
             if (banner != null) banner.expiresAt += Math.max(0, SystemClock.elapsedRealtime() - focusLostAt);
             focusLostAt = -1;
+        }
+        if (hasFocus && resumeDismissal != null) {
+            resumeDismissal.awaitEnter();
+            resumeDismissal.decor.invalidate();
         }
     }
 
@@ -535,12 +573,18 @@ public final class NimarkoInAppNotifications {
     private static boolean mayRemain(int account, long owner, long dialogId, boolean sample) {
         LaunchActivity activity = host.get();
         if (!isHostVisible() || activity == null || activity.isFinishing() || activity.isDestroyed()
-                || !UserConfig.isValidAccount(account)
+                || !mayKeepContent(account, owner, dialogId, sample)) return false;
+        return true;
+    }
+
+    private static boolean mayKeepContent(int account, long owner, long dialogId, boolean sample) {
+        if (!UserConfig.isValidAccount(account)
                 || !UserConfig.getInstance(account).isClientActivated()
                 || UserConfig.getInstance(account).getClientUserId() != owner) return false;
         if (sample) return true;
         if (!SharedConfig.showNotificationsForAllAccounts && account != UserConfig.selectedAccount) return false;
         if (!MessagesController.getNotificationsSettings(account).getBoolean("EnableInAppPopup", true)) return false;
+        if (NimarkoChatsPasswordHelper.isChatLocked(account, dialogId)) return false;
         if (NimarkoConfig.askBiometricsToOpenArchive) {
             TLRPC.Dialog dialog = MessagesController.getInstance(account).dialogs_dict.get(dialogId);
             if (dialog == null || dialog.folder_id == 1) return false;
@@ -550,12 +594,35 @@ public final class NimarkoInAppNotifications {
                 && ((ChatActivity) fragment).getDialogId() == dialogId);
     }
 
+    private static boolean mayRetain(Banner value) {
+        return value == null || NimarkoConfig.inAppNotifications && !SharedConfig.appLocked
+                && !SharedConfig.isWaitingForPasscodeEnter && !AndroidUtilities.needShowPasscode()
+                && (value.delivery == null || value.delivery.isActive())
+                && isCurrent(value.account, value.owner, value.loginSession)
+                && mayKeepContent(value.account, value.owner, value.dialogId, value.sample)
+                && (value.sample || !value.preview || canPreview(value.account, value.dialogId, value.topicId));
+    }
+
+    private static void pruneRetainedBanners() {
+        if (!mayRetain(banner)) {
+            Banner previous = banner;
+            banner = null;
+            remove(previous);
+        }
+        if (!mayRetain(retiringBanner)) {
+            Banner previous = retiringBanner;
+            retiringBanner = null;
+            remove(previous);
+        }
+    }
     private static boolean show(Banner next) {
         LaunchActivity activity = host.get();
         AnimatedLinearLayout panel = resolvePanel(next);
         if (next.delivery != null && !next.delivery.isActive()
                 || activity == null || panel == null || !isCurrent(next.account, next.owner, next.loginSession)
                 || !allowed(next.account, next.owner, next.dialogId, next.sample)) return false;
+        cancelResumeDismissal();
+        resumeDismissPending = false;
         remove(retiringBanner);
         retiringBanner = banner;
         if (retiringBanner != null) {
@@ -587,7 +654,9 @@ public final class NimarkoInAppNotifications {
             if (banner == next && !next.opening && !next.closing
                     && (next.delivery != null && !next.delivery.isActive()
                     || !isCurrent(next.account, next.owner, next.loginSession)
-                    || !allowed(next.account, next.owner, next.dialogId, next.sample))) removeCurrent();
+                    || !allowed(next.account, next.owner, next.dialogId, next.sample))) {
+                removeCurrent();
+            }
         });
         next.expiresAt = SystemClock.elapsedRealtime() + 5000;
         next.postDelayed(next.watch, 250);
@@ -595,11 +664,284 @@ public final class NimarkoInAppNotifications {
     }
 
     public static void dismiss() {
+        cancelResumeDismissal();
+        resumeDismissPending = false;
         generation++;
         removeCurrent();
     }
 
+    public static Runnable captureCurrentDismissal() {
+        final Banner current = banner;
+        final Banner retiring = retiringBanner;
+        final Delivery delivery = current == null ? null : current.delivery;
+        final int message = current == null ? 0 : current.messageId;
+        final long revision = current == null ? 0 : current.contentRevision;
+        return () -> {
+            if (current != null && banner == current && current.delivery == delivery
+                    && current.messageId == message && current.contentRevision == revision) {
+                banner = null;
+                remove(current);
+            }
+            if (retiring != null && retiringBanner == retiring) {
+                retiringBanner = null;
+                remove(retiring);
+            }
+        };
+    }
+
+    private static void dismissForResume() {
+        cancelResumeDismissal();
+        generation++;
+        LaunchActivity activity = host.get();
+        resumeDismissPending = activity != null && (banner != null || retiringBanner != null);
+        if (!resumeDismissPending) return;
+        resumeDismissal = new ResumeDismissal(activity);
+        resumeDismissal.install();
+    }
+
+    private static void cancelResumeDismissal() {
+        ResumeDismissal previous = resumeDismissal;
+        resumeDismissal = null;
+        if (previous != null) previous.cancel();
+    }
+
+    private static void onBannerContentUpdated(Banner value) {
+        if (resumeDismissal == null || resumeDismissal.current != value) return;
+        cancelResumeDismissal();
+        resumeDismissPending = false;
+    }
+
+    private static void onBannerWindowVisibilityChanged(Banner value, int visibility) {
+        ResumeDismissal pending = resumeDismissal;
+        if (pending == null || pending.current != value && (pending.current != null || pending.retiring != value)) return;
+        if (visibility != View.VISIBLE) {
+            pending.resetEnterWait();
+            pending.resetFrame();
+        } else {
+            pending.awaitEnter();
+            pending.decor.invalidate();
+        }
+    }
+
+    private static boolean resumeDismissalBusy() {
+        return contentGesture || archivePullGestureInProgress()
+                || navigationRunning(LaunchActivity.getLastFragmentIncludeMainTabs());
+    }
+    private static long enterFallbackDelay(LaunchActivity activity) {
+        float scale = 1f;
+        for (String key : new String[]{Settings.Global.WINDOW_ANIMATION_SCALE, Settings.Global.TRANSITION_ANIMATION_SCALE}) {
+            try {
+                float value = Settings.Global.getFloat(activity.getContentResolver(), key, 1f);
+                if (!Float.isNaN(value) && !Float.isInfinite(value)) scale = Math.max(scale, Math.min(10f, value));
+            } catch (RuntimeException ignored) {}
+        }
+        return (long) (1000f * scale);
+    }
+
+    private static final class ResumeDismissal implements ViewTreeObserver.OnPreDrawListener,
+            ViewTreeObserver.OnDrawListener {
+        final WeakReference<LaunchActivity> activity;
+        final View decor;
+        final Banner current = banner;
+        final Banner retiring = retiringBanner;
+        final long enterWaitMillis;
+        ViewTreeObserver observer;
+        Runnable commit;
+        Runnable completion;
+        Runnable enterFallback;
+        int attempt;
+        boolean drawObserved;
+        boolean framePending;
+        boolean enterFallbackReady;
+
+        ResumeDismissal(LaunchActivity activity) {
+            this.activity = new WeakReference<>(activity);
+            decor = activity.getWindow().getDecorView();
+            enterWaitMillis = enterFallbackDelay(activity);
+        }
+
+        boolean owns() {
+            LaunchActivity value = activity.get();
+            return resumeDismissal == this && value != null && host.get() == value
+                    && banner == current && (retiringBanner == retiring || retiringBanner == null);
+        }
+
+        boolean canPresent() {
+            LaunchActivity value = activity.get();
+            return owns() && !value.isFinishing() && !value.isDestroyed() && focused
+                    && isHostVisible() && decor.isAttachedToWindow() && decor.isShown()
+                    && decor.getWindowVisibility() == View.VISIBLE && decor.hasWindowFocus();
+        }
+
+        boolean ready() {
+            return canPresent() && (resumeEnterComplete || enterFallbackReady);
+        }
+
+        void awaitEnter() {
+            if (!canPresent()) {
+                resetEnterWait();
+                if (framePending || completion != null) resetFrame();
+                return;
+            }
+            if (resumeEnterComplete || enterFallbackReady || enterFallback != null) return;
+            enterFallback = new Runnable() {
+                @Override public void run() {
+                    if (enterFallback != this) return;
+                    enterFallback = null;
+                    if (!owns() || !canPresent() || resumeEnterComplete) return;
+                    enterFallbackReady = true;
+                    decor.invalidate();
+                }
+            };
+            AndroidUtilities.runOnUIThread(enterFallback, enterWaitMillis);
+        }
+
+        void resetEnterWait() {
+            if (enterFallback != null) AndroidUtilities.cancelRunOnUIThread(enterFallback);
+            enterFallback = null;
+            enterFallbackReady = false;
+        }
+
+        void install() {
+            observer = decor.getViewTreeObserver();
+            observer.addOnPreDrawListener(this);
+            observer.addOnDrawListener(this);
+            awaitEnter();
+            decor.invalidate();
+        }
+
+        boolean validateContent() {
+            if (mayRetain(current) && mayRetain(retiringBanner == retiring ? retiring : null)) return true;
+            pruneRetainedBanners();
+            if (resumeDismissal == this) cancelResumeDismissal();
+            dismissForResume();
+            return false;
+        }
+
+        @Override public boolean onPreDraw() {
+            if (!owns()) {
+                AndroidUtilities.runOnUIThread(() -> {
+                    if (resumeDismissal == this) {
+                        cancelResumeDismissal();
+                        resumeDismissPending = false;
+                    }
+                });
+                return true;
+            }
+            if (!validateContent()) return false;
+            awaitEnter();
+            if (resumeDismissalBusy()) {
+                if (framePending || completion != null) resetFrame();
+                return true;
+            }
+            if (!ready() || framePending || completion != null) return true;
+            framePending = true;
+            drawObserved = false;
+            int ticket = ++attempt;
+            if (Build.VERSION.SDK_INT >= 29 && decor.isHardwareAccelerated()) {
+                commit = () -> AndroidUtilities.runOnUIThread(() -> committed(ticket));
+                decor.getViewTreeObserver().registerFrameCommitCallback(commit);
+            }
+            return true;
+        }
+
+        @Override public void onDraw() {
+            if (!ready() || !framePending || drawObserved) return;
+            drawObserved = true;
+            if (Build.VERSION.SDK_INT < 29 || !decor.isHardwareAccelerated()) queueCompletion(attempt);
+        }
+
+        void committed(int ticket) {
+            if (!owns() || ticket != attempt) return;
+            commit = null;
+            if (ready() && drawObserved) queueCompletion(ticket);
+            else {
+                resetFrame();
+                decor.invalidate();
+            }
+        }
+
+        void queueCompletion(int ticket) {
+            if (completion != null) return;
+            completion = () -> {
+                if (!owns() || ticket != attempt) return;
+                completion = null;
+                if (!validateContent()) return;
+                if (!ready() || resumeDismissalBusy()) {
+                    resetFrame();
+                    return;
+                }
+                cancelResumeDismissal();
+                resumeDismissPending = false;
+                if (current != null && (current.touching || current.opening || current.expanded)) {
+                    return;
+                }
+                dismissForResumeNow();
+            };
+            decor.postOnAnimation(completion);
+        }
+
+        void resetFrame() {
+            attempt++;
+            framePending = false;
+            drawObserved = false;
+            if (completion != null) decor.removeCallbacks(completion);
+            completion = null;
+            if (commit != null && Build.VERSION.SDK_INT >= 29) {
+                if (observer != null && observer.isAlive()) observer.unregisterFrameCommitCallback(commit);
+                ViewTreeObserver live = decor.getViewTreeObserver();
+                if (live != observer && live.isAlive()) live.unregisterFrameCommitCallback(commit);
+            }
+            commit = null;
+        }
+
+        void cancel() {
+            resetEnterWait();
+            resetFrame();
+            if (observer != null && observer.isAlive()) {
+                observer.removeOnPreDrawListener(this);
+                observer.removeOnDrawListener(this);
+            }
+            ViewTreeObserver live = decor.getViewTreeObserver();
+            if (live != observer && live.isAlive()) {
+                live.removeOnPreDrawListener(this);
+                live.removeOnDrawListener(this);
+            }
+        }
+    }
+
+    private static void dismissForResumeNow() {
+        Banner current = banner;
+        if (current != null) {
+            if (!current.closing) {
+                current.hide();
+            } else if (current.pullAnimator == null) {
+                animateRemove(current);
+            }
+        }
+        Banner old = retiringBanner;
+        if (old != null && old != current) animateRemove(old);
+    }
+
+    private static void animateRemove(Banner old) {
+        if (old == null) return;
+        old.closing = true;
+        old.touching = false;
+        old.cancelExpansion();
+        old.cancelContentTransition();
+        old.removeCallbacks(old.watch);
+        old.animate().cancel();
+        old.animate().alpha(0f).translationY(-dp(8)).setDuration(220)
+                .setInterpolator(CubicBezierInterpolator.EASE_BOTH)
+                .withEndAction(() -> {
+                    if (banner == old) banner = null;
+                    if (retiringBanner == old) retiringBanner = null;
+                    remove(old);
+                }).start();
+    }
     private static void removeCurrent() {
+        cancelResumeDismissal();
+        resumeDismissPending = false;
         Banner old = banner;
         banner = null;
         remove(old);
@@ -610,6 +952,11 @@ public final class NimarkoInAppNotifications {
 
     private static void remove(Banner old) {
         if (old == null) return;
+        if (resumeDismissal != null && (resumeDismissal.current == old
+                || resumeDismissal.current == null && resumeDismissal.retiring == old)) {
+            cancelResumeDismissal();
+            resumeDismissPending = false;
+        }
         old.closing = true;
         old.touching = false;
         old.navigationRequestCurrent = null;
@@ -620,7 +967,9 @@ public final class NimarkoInAppNotifications {
         old.animate().cancel();
         old.animate().withEndAction(null);
         if (old.slot != null) old.slot.release(old);
-        else if (old.getParent() instanceof ViewGroup) ((ViewGroup) old.getParent()).removeView(old);
+        else if (old.getParent() instanceof ViewGroup) {
+            ((ViewGroup) old.getParent()).removeView(old);
+        }
         old.opening = false;
     }
 
@@ -649,6 +998,7 @@ public final class NimarkoInAppNotifications {
     private static final class Banner extends FrameLayout {
         final int account;
         int messageId;
+        long contentRevision;
         final long owner, loginSession, dialogId, topicId;
         final boolean preview, sample;
         Delivery delivery;
@@ -709,7 +1059,23 @@ public final class NimarkoInAppNotifications {
         final int slop;
         final Runnable watch = new Runnable() {
             @Override public void run() {
-                if (banner != Banner.this || closing) return;
+                if (banner != Banner.this || closing) {
+                    return;
+                }
+                if (resumeDismissPending) {
+                    if (!mayRetain(Banner.this) || !NimarkoConfig.inAppNotifications || SharedConfig.appLocked
+                            || SharedConfig.isWaitingForPasscodeEnter || AndroidUtilities.needShowPasscode()) {
+                        removeCurrent();
+                        return;
+                    }
+                    ResumeDismissal pending = resumeDismissal;
+                    if (pending != null && pending.ready() && !resumeDismissalBusy()
+                            && !pending.framePending && pending.completion == null) {
+                        pending.decor.invalidate();
+                    }
+                    postDelayed(this, 250);
+                    return;
+                }
                 if (delivery != null && !delivery.isActive() || !isCurrent(account, owner, loginSession) || !mayRemain(account, owner, dialogId, sample)
                         || !sample && preview && !canPreview(account, dialogId, topicId)) {
 
@@ -862,6 +1228,8 @@ public final class NimarkoInAppNotifications {
             if (this.messageId > 0 && messageId > 0 && messageId < this.messageId
                     && (this.delivery == null || this.delivery.isActive())) return true;
             if (slot == null || !isAttachedToWindow() || slot.panel != resolvePanel()) return false;
+            onBannerContentUpdated(this);
+            contentRevision++;
             this.delivery = delivery;
             this.messageId = messageId;
             avatarHeading = heading;
@@ -1101,12 +1469,18 @@ public final class NimarkoInAppNotifications {
         }
 
         private void followScreen() {
-            if (touching || closing || opening || contentGesture) return;
+            if (touching || closing || opening || contentGesture) {
+                return;
+            }
             BaseFragment fragment = LaunchActivity.getLastFragmentIncludeMainTabs();
-            if (navigationRunning(fragment)) return;
+            if (navigationRunning(fragment)) {
+                return;
+            }
             AnimatedLinearLayout next = resolvePanel();
             if (next == null) { hide(); return; }
-            if (slot != null && slot.panel == next) return;
+            if (slot != null && slot.panel == next) {
+                return;
+            }
             if (slot != null && slot.panel != next) {
                 removeCurrent();
                 return;
@@ -1275,7 +1649,9 @@ public final class NimarkoInAppNotifications {
                 @Override public void onAnimationEnd(Animator animation) {
                     if (pullAnimator != animation) return;
                     pullAnimator = null;
-                    if (completion != null) completion.run();
+                    if (completion != null) {
+                        completion.run();
+                    }
                 }
             });
             animator.start();
@@ -1407,8 +1783,12 @@ public final class NimarkoInAppNotifications {
                 return;
             }
             LaunchActivity activity = host.get();
-            if (sample || activity == null) { removeCurrent(); return; }
-            if (account == UserConfig.selectedAccount) removeCurrent();
+            if (sample || activity == null) {
+                removeCurrent(); return;
+            }
+            if (account == UserConfig.selectedAccount) {
+                removeCurrent();
+            }
             Intent intent = new Intent(activity, LaunchActivity.class).setAction("com.tmessages.openchat")
                     .putExtra("nm_banner_owner", owner).putExtra("nm_banner_session", loginSession)
                     .putExtra("currentAccount", account).putExtra("message_id", Math.max(0, messageId));
@@ -1561,6 +1941,10 @@ public final class NimarkoInAppNotifications {
             surface.attach();
         }
 
+        @Override protected void onWindowVisibilityChanged(int visibility) {
+            super.onWindowVisibilityChanged(visibility);
+            onBannerWindowVisibilityChanged(this, visibility);
+        }
         @Override protected void onDetachedFromWindow() {
             avatar.getImageReceiver().setForceCrossfade(false);
             surface.detach();
@@ -1569,10 +1953,21 @@ public final class NimarkoInAppNotifications {
                 setVisibility(INVISIBLE);
                 if (banner == this) banner = null;
                 if (retiringBanner == this) retiringBanner = null;
+                ResumeDismissal pending = resumeDismissal;
+                if (pending != null && (pending.current == this || pending.current == null && pending.retiring == this)) {
+                    AndroidUtilities.runOnUIThread(() -> {
+                        if (resumeDismissal == pending) {
+                            cancelResumeDismissal();
+                            resumeDismissPending = false;
+                        }
+                    }, 1);
+                }
                 removeCallbacks(watch);
                 Slot previous = slot;
                 AndroidUtilities.runOnUIThread(() -> {
-                    if (previous != null && getParent() == previous) previous.release(this);
+                    if (previous != null && getParent() == previous) {
+                        previous.release(this);
+                    }
                 });
             }
             cancelExpansion();

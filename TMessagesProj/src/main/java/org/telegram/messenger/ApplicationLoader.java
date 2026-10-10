@@ -15,6 +15,7 @@ import static app.nimarkogram.messenger.NimarkoCrashContext.initializationPhase;
 import app.nimarkogram.messenger.NimarkoCrashContext.PineInitPhase;
 import app.nimarkogram.messenger.utils.NimarkoAppMotionBlur;
 import app.nimarkogram.messenger.utils.NimarkoUiAnimationClock;
+import app.nimarkogram.messenger.utils.NimarkoUiAnimationLifecycle;
 import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.app.Application;
@@ -1087,6 +1088,7 @@ public class ApplicationLoader extends Application {
             }
         };
         NimarkoUiAnimationClock.install(ForegroundDetector.getInstance());
+        NimarkoUiAnimationLifecycle.install(this);
         if (BuildConfig.DEBUG_VERSION) {
             new ANRDetector(FileLog::dumpANR);
         }

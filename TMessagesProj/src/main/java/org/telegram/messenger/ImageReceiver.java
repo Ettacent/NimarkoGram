@@ -443,6 +443,7 @@ public class ImageReceiver implements NotificationCenter.NotificationCenterDeleg
     private float currentAlpha;
     private float previousAlpha = 1f;
     private long lastUpdateAlphaTime;
+    private int alphaAnimationEpoch = app.nimarkogram.messenger.utils.NimarkoUiAnimationClock.epoch();
     private byte crossfadeAlpha = 1;
     private boolean manualAlphaAnimator;
     private boolean crossfadeOnReady;
@@ -2466,6 +2467,13 @@ public class ImageReceiver implements NotificationCenter.NotificationCenterDeleg
         if (currentAlpha != 1) {
             if (!skip) {
                 long currentTime = SystemClock.uptimeMillis();
+                int epoch = app.nimarkogram.messenger.utils.NimarkoUiAnimationClock.epoch();
+                if (app.nimarkogram.messenger.utils.NimarkoUiAnimationClock.isPaused() || epoch != alphaAnimationEpoch) {
+                    alphaAnimationEpoch = epoch;
+                    lastUpdateAlphaTime = currentTime;
+                    invalidate();
+                    return;
+                }
                 long dt = lastUpdateAlphaTime == 0 ? 16 : Math.max(0, Math.min(64, currentTime - lastUpdateAlphaTime));
                 lastUpdateAlphaTime = currentTime;
                 if (isRoundVideo && crossfadeOnReady && !crossfadeWithOldImage && !crossfadingWithThumb

@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components.Premium;
 
 import android.graphics.Bitmap;
@@ -16,6 +18,7 @@ import org.telegram.ui.ActionBar.Theme;
 import java.util.ArrayList;
 
 
+import app.nimarkogram.messenger.utils.NimarkoUiAnimationClock;
 public class MatrixParticlesDrawable {
 
     RectF excludeRect = new RectF();
@@ -27,6 +30,20 @@ public class MatrixParticlesDrawable {
     MatrixTextParticle[][] matrixTextParticles;
     Paint paint = new Paint();
 
+    private long animationTime;
+    private long prevTime = -1;
+    private int clockEpoch = -1;
+
+    private long sampleTime() {
+        long now = NimarkoUiAnimationClock.now();
+        int epoch = NimarkoUiAnimationClock.epoch();
+        if (prevTime >= 0 && epoch == clockEpoch && !NimarkoUiAnimationClock.isPaused()) {
+            animationTime += Math.max(0, now - prevTime);
+        }
+        prevTime = now;
+        clockEpoch = epoch;
+        return animationTime;
+    }
     void init() {
         size = AndroidUtilities.dp(16);
         TextPaint textPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG | Paint.LINEAR_TEXT_FLAG);
@@ -48,7 +65,11 @@ public class MatrixParticlesDrawable {
         if (nx == 0 || ny == 0) {
             return;
         }
-        long currentTime = System.currentTimeMillis();
+        long currentTime = sampleTime();
+        boolean paused = NimarkoUiAnimationClock.isPaused();
+        if (paused && (particles == null || particles.length != nx + 1 || matrixTextParticles == null || matrixTextParticles.length != nx + 1 || matrixTextParticles[0].length != ny + 1)) {
+            return;
+        }
         if (particles == null || particles.length != nx + 1) {
             particles = new ArrayList[nx + 1];
             for (int x = 0; x <= nx; x++) {
@@ -75,7 +96,7 @@ public class MatrixParticlesDrawable {
             ArrayList<Particle> list = particles[x];
             for (int i = 0; i < list.size(); i++) {
                 Particle particle = list.get(i);
-                if (currentTime - particle.time > 50) {
+                if (!paused && currentTime - particle.time > 50) {
                     particle.y++;
                     particle.time = currentTime;
                     if (particle.y - particle.len >= ny) {
@@ -147,7 +168,7 @@ public class MatrixParticlesDrawable {
                 paint.setAlpha((int) (p * alpha * 255));
                 canvas.drawBitmap(bitmaps[nextIndex], x, y, paint);
                 paint.setAlpha(255);
-                if (p >= 1) {
+                if (p >= 1 && !NimarkoUiAnimationClock.isPaused()) {
                     index = nextIndex;
                     lastUpdateTime = currentTime;
                     nextIndex = Math.abs(Utilities.fastRandom.nextInt() % 16);

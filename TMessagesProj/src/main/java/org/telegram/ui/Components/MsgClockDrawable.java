@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components;
 
 import android.graphics.Canvas;
@@ -14,20 +16,22 @@ import androidx.core.graphics.ColorUtils;
 
 import org.telegram.messenger.AndroidUtilities;
 
+import app.nimarkogram.messenger.utils.NimarkoUiAnimationClock;
 public class MsgClockDrawable extends Drawable {
 
     private ConstantState constantState;
     private Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private int alpha = 255;
     private int colorAlpha = 255;
-    private long startTime;
+    private long animationTime;
+    private long prevTime = -1;
+    private int clockEpoch = -1;
     private int color;
 
     public MsgClockDrawable() {
         paint.setStyle(Paint.Style.STROKE);
         paint.setStrokeCap(Paint.Cap.ROUND);
         paint.setStrokeWidth(AndroidUtilities.dp(1f));
-        startTime = System.currentTimeMillis();
     }
 
     @Override
@@ -36,17 +40,23 @@ public class MsgClockDrawable extends Drawable {
         int r = Math.min(bounds.width(), bounds.height());
         canvas.drawCircle(bounds.centerX(), bounds.centerY(), (r >> 1) - AndroidUtilities.dp(0.5f), paint);
 
-        long currentTime = System.currentTimeMillis();
+        long currentTime = NimarkoUiAnimationClock.now();
+        int epoch = NimarkoUiAnimationClock.epoch();
+        if (prevTime >= 0 && epoch == clockEpoch && !NimarkoUiAnimationClock.isPaused()) {
+            animationTime += Math.max(0, currentTime - prevTime);
+        }
+        prevTime = currentTime;
+        clockEpoch = epoch;
         float rotateTime = 1500;
         float rotateHourTime = rotateTime * 3;
 
         canvas.save();
-        canvas.rotate(360 * ((currentTime - startTime) % rotateTime) / rotateTime, bounds.centerX(), bounds.centerY());
+        canvas.rotate(360 * (animationTime % rotateTime) / rotateTime, bounds.centerX(), bounds.centerY());
         canvas.drawLine(bounds.centerX(), bounds.centerY(), bounds.centerX(), bounds.centerY() - AndroidUtilities.dp(3), paint);
         canvas.restore();
 
         canvas.save();
-        canvas.rotate(360 * ((currentTime - startTime) % rotateHourTime) / rotateHourTime, bounds.centerX(), bounds.centerY());
+        canvas.rotate(360 * (animationTime % rotateHourTime) / rotateHourTime, bounds.centerX(), bounds.centerY());
         canvas.drawLine(bounds.centerX(), bounds.centerY(), bounds.centerX() + AndroidUtilities.dp(2.3f), bounds.centerY(), paint);
         canvas.restore();
     }

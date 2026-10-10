@@ -14,6 +14,7 @@ import android.animation.ValueAnimator;
 import app.nimarkogram.messenger.utils.NimarkoUiAnimationClock;
 import android.content.Context;
 import android.graphics.Canvas;
+import android.graphics.Bitmap;
 import android.graphics.Color;
 import android.graphics.ColorFilter;
 import android.graphics.LinearGradient;
@@ -37,6 +38,8 @@ import android.util.Log;
 import android.util.Pair;
 import android.view.Gravity;
 import android.view.View;
+import android.view.ViewParent;
+import android.view.ViewTreeObserver;
 import android.view.accessibility.AccessibilityNodeInfo;
 
 import androidx.annotation.NonNull;
@@ -49,6 +52,7 @@ import org.telegram.messenger.AndroidUtilities;
 import org.telegram.ui.ActionBar.Theme;
 
 import java.util.ArrayList;
+import java.lang.ref.WeakReference;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
@@ -200,6 +204,244 @@ public class AnimatedTextView extends View {
         private float t = 0;
         private boolean moveDown = true;
         private ValueAnimator animator;
+        private Bitmap warmTextSnapshot;
+        private float warmTextWidth;
+        private float warmTextLayoutWidth;
+        private CharSequence deferredWarmText;
+        private boolean deferredWarmMoveDown;
+        private WeakReference<View> presentedOwner;
+        private float presentedT, presentedWidth;
+        private final Rect presentedBounds = new Rect();
+        private Part[] presentedParts, presentedOldParts;
+        private float presentedCurrentWidth, presentedOldWidth, presentedCurrentHeight, presentedOldHeight;
+        private boolean presentedRTL;
+        private int presentedTextColor, presentedAlpha;
+        private ColorFilter presentedEmojiFilter;
+        private boolean hasHardwarePresentation;
+        private final Paint warmTextPaint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
+        private final Paint warmBlendPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final PorterDuffXfermode warmBlendMode = new PorterDuffXfermode(PorterDuff.Mode.ADD);
+        private WeakReference<View> animationOwner;
+        private boolean animationPaused;
+        private final NimarkoUiAnimationClock.ResumeGate animationResumeGate = value ->
+                canAnimate() && (value != animator || deferredWarmText == null);
+        private final ArrayList<Animator> visibilityPausedAnimators = new ArrayList<>(3);
+        private boolean animationOwnerDetached;
+        private ViewTreeObserver animationObserver;
+        private final ViewTreeObserver.OnPreDrawListener animationVisibility = () -> {
+            updateAnimationVisibility();
+            return true;
+        };
+        private final View.OnAttachStateChangeListener animationAttachment = new View.OnAttachStateChangeListener() {
+            @Override
+            public void onViewAttachedToWindow(View view) {
+                animationOwnerDetached = false;
+                observeAnimations();
+                updateAnimationVisibility();
+            }
+
+            @Override
+            public void onViewDetachedFromWindow(View view) {
+                final CharSequence latest = deferredWarmText;
+                final boolean moveDown = deferredWarmMoveDown;
+                clearWarmText();
+                animationOwnerDetached = true;
+                if (latest != null) {
+                    setText(latest, false, moveDown);
+                    view.requestLayout();
+                }
+                stopObservingFrames();
+                updateAnimationVisibility();
+            }
+        };
+
+        private boolean canAnimate() {
+            if (animationPaused || NimarkoUiAnimationClock.isPaused() || !isVisible()) return false;
+            if (!(getCallback() instanceof View)) return true;
+            View view = (View) getCallback();
+            if (animationOwnerDetached && animationOwner != null && animationOwner.get() == view) return false;
+            if (!view.isAttachedToWindow() || !view.isShown() || view.getWindowVisibility() != View.VISIBLE) return false;
+            while (view != null) {
+                if (view.getAlpha() <= 0f || view.getVisibility() != View.VISIBLE) return false;
+                ViewParent parent = view.getParent();
+                view = parent instanceof View ? (View) parent : null;
+            }
+            return true;
+        }
+
+        private void stopObservingFrames() {
+            if (animationObserver != null && animationObserver.isAlive()) {
+                animationObserver.removeOnPreDrawListener(animationVisibility);
+            }
+            animationObserver = null;
+        }
+
+        private void observeAnimations() {
+            final View owner = getCallback() instanceof View ? (View) getCallback() : null;
+            final View previous = animationOwner == null ? null : animationOwner.get();
+            if (previous != owner) {
+                final boolean changingOwner = animationOwner != null;
+                final CharSequence latest = changingOwner ? deferredWarmText : null;
+                final boolean moveDown = deferredWarmMoveDown;
+                if (changingOwner) clearWarmText();
+                stopObservingFrames();
+                if (previous != null) previous.removeOnAttachStateChangeListener(animationAttachment);
+                animationOwner = owner == null ? null : new WeakReference<>(owner);
+                animationOwnerDetached = owner != null && !owner.isAttachedToWindow();
+                if (owner != null) owner.addOnAttachStateChangeListener(animationAttachment);
+                if (latest != null) {
+                    setText(latest, false, moveDown);
+                    if (owner != null) owner.requestLayout();
+                    if (animator != null || colorAnimator != null || emojiColorAnimator != null) observeAnimations();
+                    return;
+                }
+            }
+            if (owner != null && owner.isAttachedToWindow() && animationObserver == null) {
+                animationObserver = owner.getViewTreeObserver();
+                animationObserver.addOnPreDrawListener(animationVisibility);
+            }
+        }
+
+        private void updateAnimationVisibility() {
+            if (animationOwner != null && animationOwner.get() != getCallback()) observeAnimations();
+            for (int i = visibilityPausedAnimators.size() - 1; i >= 0; i--) {
+                final Animator paused = visibilityPausedAnimators.get(i);
+                if (paused != animator && paused != colorAnimator && paused != emojiColorAnimator) {
+                    visibilityPausedAnimators.remove(i);
+                }
+            }
+            final boolean visible = canAnimate();
+            updateAnimatorVisibility(animator, visible && deferredWarmText == null);
+            updateAnimatorVisibility(colorAnimator, visible);
+            updateAnimatorVisibility(emojiColorAnimator, visible);
+            if (animator == null && colorAnimator == null && emojiColorAnimator == null && deferredWarmText == null) {
+                stopObservingFrames();
+                final View owner = animationOwner == null ? null : animationOwner.get();
+                if (owner != null) owner.removeOnAttachStateChangeListener(animationAttachment);
+                animationOwner = null;
+            }
+        }
+
+        private void updateAnimatorVisibility(Animator animation, boolean visible) {
+            if (animation == null || !animation.isStarted()) return;
+            if (!visible && !animation.isPaused()) {
+                if (!visibilityPausedAnimators.contains(animation)) visibilityPausedAnimators.add(animation);
+                animation.pause();
+            } else if (visible && visibilityPausedAnimators.remove(animation) && animation.isPaused()) {
+                if (!NimarkoUiAnimationClock.resumeAnimation(animation)) visibilityPausedAnimators.add(animation);
+            } else if (visible) {
+                NimarkoUiAnimationClock.resumeOwned(animation);
+            }
+        }
+
+        private void setAnimationPaused(boolean paused) {
+            animationPaused = paused;
+            updateAnimationVisibility();
+        }
+
+        private void trackAnimation(Animator animation) {
+            if (animation == null) return;
+            NimarkoUiAnimationClock.track(animation, animationResumeGate);
+            observeAnimations();
+            updateAnimationVisibility();
+        }
+
+        private void clearWarmText() {
+            deferredWarmText = null;
+            presentedOwner = null;
+            hasHardwarePresentation = false;
+            presentedParts = presentedOldParts = null;
+            if (warmTextSnapshot != null) {
+                warmTextSnapshot = null;
+            }
+        }
+
+        private boolean deferWarmText(CharSequence text, boolean animated, boolean moveDown) {
+            if (!animated || text == null || !(getCallback() instanceof View)) return false;
+            final View owner = (View) getCallback();
+            if (!owner.isAttachedToWindow() || !hasHardwarePresentation || presentedOwner == null
+                    || presentedOwner.get() != owner || canAnimate() && deferredWarmText == null) return false;
+            toSetText = null;
+            toSetTextMoveDown = false;
+            if (TextUtils.equals(text, currentText) && deferredWarmText == null) {
+                updateAnimationVisibility();
+                return true;
+            }
+            if (warmTextSnapshot == null || deferredWarmText == null) {
+                final int width = presentedBounds.width(), height = presentedBounds.height();
+                if (width <= 0 || height <= 0 || width > 2048 || height > 256 || (long) width * height > 262144) return false;
+                final Bitmap snapshot;
+                try {
+                    snapshot = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
+                } catch (OutOfMemoryError error) {
+                    return false;
+                }
+                final Canvas snapshotCanvas = new Canvas(snapshot);
+                snapshotCanvas.translate(-presentedBounds.left, -presentedBounds.top);
+                final float progress = t;
+                final Rect currentBounds = new Rect(bounds);
+                final Part[] parts = currentParts, previousParts = oldParts;
+                final float widthNow = currentWidth, widthBefore = oldWidth, heightNow = currentHeight, heightBefore = oldHeight;
+                final boolean rtl = isRTL;
+                final int color = textPaint.getColor(), opacity = alpha;
+                final ColorFilter emojiFilter = emojiColorFilter;
+                bounds.set(presentedBounds);
+                currentParts = presentedParts;
+                oldParts = presentedOldParts;
+                currentWidth = presentedCurrentWidth;
+                oldWidth = presentedOldWidth;
+                currentHeight = presentedCurrentHeight;
+                oldHeight = presentedOldHeight;
+                isRTL = presentedRTL;
+                textPaint.setColor(presentedTextColor);
+                alpha = presentedAlpha;
+                emojiColorFilter = presentedEmojiFilter;
+                t = presentedT;
+                try {
+                    draw(snapshotCanvas);
+                } finally {
+                    t = progress;
+                    bounds.set(currentBounds);
+                    currentParts = parts;
+                    oldParts = previousParts;
+                    currentWidth = widthNow;
+                    oldWidth = widthBefore;
+                    currentHeight = heightNow;
+                    oldHeight = heightBefore;
+                    isRTL = rtl;
+                    textPaint.setColor(color);
+                    alpha = opacity;
+                    emojiColorFilter = emojiFilter;
+                }
+                warmTextSnapshot = snapshot;
+                warmTextWidth = presentedWidth;
+                warmTextLayoutWidth = width;
+            }
+            deferredWarmText = TextUtils.stringOrSpannedString(text);
+            deferredWarmMoveDown = moveDown;
+            updateAnimationVisibility();
+            observeAnimations();
+            invalidateSelf();
+            return true;
+        }
+
+        private void revealWarmText() {
+            final CharSequence latest = deferredWarmText;
+            deferredWarmText = null;
+            if (animator != null) {
+                animator.removeAllListeners();
+                animator.removeAllUpdateListeners();
+                animator.cancel();
+                animator = null;
+            }
+            clearOldParts();
+            oldText = null;
+            oldWidth = oldHeight = 0;
+            currentText = latest;
+            rebuildLayouts(overrideFullWidth > 0 ? overrideFullWidth : bounds.width());
+            moveDown = deferredWarmMoveDown;
+            startTextAnimator();
+        }
         private CharSequence toSetText;
         private boolean toSetTextMoveDown;
 
@@ -324,6 +566,46 @@ public class AnimatedTextView extends View {
 
         @Override
         public void draw(@NonNull Canvas canvas) {
+            final boolean hardware = canvas.isHardwareAccelerated();
+            if (hardware && canAnimate() && deferredWarmText != null) revealWarmText();
+            if (warmTextSnapshot != null) {
+                final float progress = deferredWarmText == null ? t : 0f;
+                if (progress > 0f) canvas.saveLayer(bounds.left, bounds.top, bounds.right, bounds.bottom, null, Canvas.ALL_SAVE_FLAG);
+                warmTextPaint.setAlpha(Math.round(255 * (1f - progress)));
+                canvas.drawBitmap(warmTextSnapshot, bounds.left, bounds.top, warmTextPaint);
+                if (progress > 0f) {
+                    warmBlendPaint.setAlpha(Math.round(255 * progress));
+                    warmBlendPaint.setXfermode(warmBlendMode);
+                    canvas.saveLayer(bounds.left, bounds.top, bounds.right, bounds.bottom, warmBlendPaint, Canvas.ALL_SAVE_FLAG);
+                    drawText(canvas);
+                    canvas.restore();
+                    canvas.restore();
+                }
+            } else {
+                drawText(canvas);
+            }
+            if (hardware && canAnimate() && getCallback() instanceof View) {
+                hasHardwarePresentation = true;
+                if (presentedOwner == null || presentedOwner.get() != getCallback()) {
+                    presentedOwner = new WeakReference<>((View) getCallback());
+                }
+                presentedT = t;
+                presentedWidth = getCurrentWidth();
+                presentedBounds.set(bounds);
+                presentedParts = currentParts;
+                presentedOldParts = oldParts;
+                presentedCurrentWidth = currentWidth;
+                presentedOldWidth = oldWidth;
+                presentedCurrentHeight = currentHeight;
+                presentedOldHeight = oldHeight;
+                presentedRTL = isRTL;
+                presentedTextColor = ColorUtils.setAlphaComponent(textPaint.getColor(), alpha);
+                presentedAlpha = alpha;
+                presentedEmojiFilter = emojiColorFilter;
+            }
+        }
+
+        private void drawText(@NonNull Canvas canvas) {
             motionBlurBudget.start();
             final boolean drawEllipsizeGradient = needsEllipsizeGradient();
             if (drawEllipsizeGradient) {
@@ -508,6 +790,7 @@ public class AnimatedTextView extends View {
             }
         }
         private void cancelAnimationInternal() {
+            clearWarmText();
             resetCurrentMotionBlur();
             toSetText = null;
             toSetTextMoveDown = false;
@@ -521,6 +804,7 @@ public class AnimatedTextView extends View {
             oldText = null;
             oldWidth = oldHeight = 0;
             t = 0;
+            updateAnimationVisibility();
         }
 
         public boolean isAnimating() {
@@ -536,6 +820,17 @@ public class AnimatedTextView extends View {
         }
 
         public void setText(CharSequence text, boolean animated, boolean moveDown) {
+            if (deferWarmText(text, animated, moveDown)) return;
+            if (!animated || text == null) clearWarmText();
+            if (!canAnimate()) {
+                toSetText = null;
+                toSetTextMoveDown = false;
+                if (animated && TextUtils.equals(text == null ? "" : text, currentText)) {
+                    updateAnimationVisibility();
+                    return;
+                }
+                animated = false;
+            }
             if (this.currentText == null || text == null) {
                 animated = false;
             }
@@ -562,54 +857,7 @@ public class AnimatedTextView extends View {
                 currentText = text;
                 rebuildLayouts(width);
                 this.moveDown = moveDown;
-                final ValueAnimator textAnimator = ValueAnimator.ofFloat(t = 0f, 1f);
-                animator = textAnimator;
-                textAnimator.addUpdateListener(anm -> {
-                    t = (float) anm.getAnimatedValue();
-                    invalidateSelf();
-                    if (widthUpdatedListener != null) {
-                        widthUpdatedListener.run();
-                    }
-                });
-                textAnimator.addListener(new AnimatorListenerAdapter() {
-                    @Override
-                    public void onAnimationEnd(Animator animation) {
-                        if (animator != animation) {
-                            return;
-                        }
-                        animator = null;
-                        resetCurrentMotionBlur();
-                        clearOldParts();
-                        oldText = null;
-                        oldWidth = oldHeight = 0;
-                        t = 0;
-                        final CharSequence nextText = toSetText;
-                        final boolean nextMoveDown = toSetTextMoveDown;
-                        toSetText = null;
-                        toSetTextMoveDown = false;
-                        final CharSequence finishedText = currentText;
-                        invalidateSelf();
-                        if (widthUpdatedListener != null) {
-                            widthUpdatedListener.run();
-                        }
-                        if (animator != null || currentText != finishedText) {
-                            return;
-                        }
-                        if (nextText != null) {
-                            setText(nextText, true, nextMoveDown);
-                        } else if (onAnimationFinishListener != null) {
-                            onAnimationFinishListener.run();
-                        }
-                    }
-                });
-                textAnimator.setStartDelay(animateDelay);
-                textAnimator.setDuration(animateDuration);
-                textAnimator.setInterpolator(animateInterpolator);
-                textAnimator.start();
-                NimarkoUiAnimationClock.track(textAnimator);
-                if (animator == textAnimator && widthUpdatedListener != null) {
-                    widthUpdatedListener.run();
-                }
+                startTextAnimator();
             } else {
                 cancelAnimationInternal();
                 if (!text.equals(currentText) || currentParts == null || layoutWidth != width) {
@@ -626,6 +874,59 @@ public class AnimatedTextView extends View {
                 if (widthUpdatedListener != null) {
                     widthUpdatedListener.run();
                 }
+            }
+        }
+
+        private void startTextAnimator() {
+            final ValueAnimator textAnimator = ValueAnimator.ofFloat(t = 0f, 1f);
+            animator = textAnimator;
+            textAnimator.addUpdateListener(anm -> {
+                t = (float) anm.getAnimatedValue();
+                invalidateSelf();
+                if (widthUpdatedListener != null) {
+                    widthUpdatedListener.run();
+                }
+            });
+            textAnimator.addListener(new AnimatorListenerAdapter() {
+                @Override
+                public void onAnimationEnd(Animator animation) {
+                    if (animator != animation) {
+                        return;
+                    }
+                    animator = null;
+                    clearWarmText();
+                    updateAnimationVisibility();
+                    resetCurrentMotionBlur();
+                    clearOldParts();
+                    oldText = null;
+                    oldWidth = oldHeight = 0;
+                    t = 0;
+                    final CharSequence nextText = toSetText;
+                    final boolean nextMoveDown = toSetTextMoveDown;
+                    toSetText = null;
+                    toSetTextMoveDown = false;
+                    final CharSequence finishedText = currentText;
+                    invalidateSelf();
+                    if (widthUpdatedListener != null) {
+                        widthUpdatedListener.run();
+                    }
+                    if (animator != null || currentText != finishedText) {
+                        return;
+                    }
+                    if (nextText != null) {
+                        setText(nextText, true, nextMoveDown);
+                    } else if (onAnimationFinishListener != null) {
+                        onAnimationFinishListener.run();
+                    }
+                }
+            });
+            textAnimator.setStartDelay(animateDelay);
+            textAnimator.setDuration(animateDuration);
+            textAnimator.setInterpolator(animateInterpolator);
+            textAnimator.start();
+            trackAnimation(textAnimator);
+            if (animator == textAnimator && widthUpdatedListener != null) {
+                widthUpdatedListener.run();
             }
         }
         private void updateLayoutWidth() {
@@ -718,10 +1019,12 @@ public class AnimatedTextView extends View {
         }
 
         public float getWidth() {
+            if (warmTextSnapshot != null) return deferredWarmText != null ? warmTextLayoutWidth : lerp(warmTextLayoutWidth, currentWidth, t);
             return Math.max(currentWidth, oldWidth);
         }
 
         public float getCurrentWidth() {
+            if (warmTextSnapshot != null) return deferredWarmText != null ? warmTextWidth : lerp(warmTextWidth, currentWidth, t);
             if (currentParts != null && oldParts != null) {
                 return lerp(oldWidth, currentWidth, t);
             }
@@ -734,6 +1037,7 @@ public class AnimatedTextView extends View {
         public float getCurrentWidth(float maxWidth) {
             float limit = Math.max(0, maxWidth);
             float target = Math.min(currentWidth, limit);
+            if (warmTextSnapshot != null) return deferredWarmText != null ? Math.min(warmTextWidth, limit) : lerp(Math.min(warmTextWidth, limit), target, t);
             if (currentParts != null && oldParts != null) {
                 return lerp(Math.min(oldWidth, limit), target, t);
             }
@@ -1142,6 +1446,7 @@ public class AnimatedTextView extends View {
             if (!animated || from == color) {
                 setTextColor(color);
                 invalidateSelf();
+                updateAnimationVisibility();
             } else {
                 final int to = color;
                 colorAnimationTarget = color;
@@ -1158,11 +1463,13 @@ public class AnimatedTextView extends View {
                         }
                         colorAnimator = null;
                         setTextColor(to);
+                        updateAnimationVisibility();
                     }
                 });
                 colorAnimator.setDuration(240);
                 colorAnimator.setInterpolator(CubicBezierInterpolator.EASE_OUT_QUINT);
                 colorAnimator.start();
+                trackAnimation(colorAnimator);
             }
         }
 
@@ -1180,16 +1487,23 @@ public class AnimatedTextView extends View {
         }
 
         private ValueAnimator emojiColorAnimator;
+        private int emojiColorAnimationTarget;
         public void setEmojiColor(int color, boolean animated) {
+            if (animated && emojiColorAnimator != null && emojiColorAnimationTarget == color) return;
             if (emojiColorAnimator != null) {
+                emojiColorAnimator.removeAllListeners();
+                emojiColorAnimator.removeAllUpdateListeners();
                 emojiColorAnimator.cancel();
                 emojiColorAnimator = null;
             }
-            if (!animated) {
+            if (!animated || emojiColor == color) {
                 setEmojiColor(color);
+                invalidateSelf();
+                updateAnimationVisibility();
             } else if (emojiColor != color) {
-                final int from = getTextColor();
+                final int from = emojiColor;
                 final int to = color;
+                emojiColorAnimationTarget = color;
                 emojiColorAnimator = ValueAnimator.ofFloat(0, 1);
                 emojiColorAnimator.addUpdateListener(anm -> {
                     setEmojiColor(ColorUtils.blendARGB(from, to, (float) anm.getAnimatedValue()));
@@ -1198,12 +1512,17 @@ public class AnimatedTextView extends View {
                 emojiColorAnimator.addListener(new AnimatorListenerAdapter() {
                     @Override
                     public void onAnimationEnd(Animator animation) {
-                        setTextColor(to);
+                        if (emojiColorAnimator != animation) return;
+                        emojiColorAnimator = null;
+                        setEmojiColor(to);
+                        invalidateSelf();
+                        updateAnimationVisibility();
                     }
                 });
                 emojiColorAnimator.setDuration(240);
                 emojiColorAnimator.setInterpolator(CubicBezierInterpolator.EASE_OUT_QUINT);
                 emojiColorAnimator.start();
+                trackAnimation(emojiColorAnimator);
             }
         }
 
@@ -1312,11 +1631,25 @@ public class AnimatedTextView extends View {
     protected void onAttachedToWindow() {
         super.onAttachedToWindow();
         drawable.setEmojiAttached(true);
+        drawable.updateAnimationVisibility();
     }
     @Override
     protected void onDetachedFromWindow() {
         drawable.setEmojiAttached(false);
         super.onDetachedFromWindow();
+        drawable.updateAnimationVisibility();
+    }
+
+    @Override
+    protected void onVisibilityChanged(View changedView, int visibility) {
+        super.onVisibilityChanged(changedView, visibility);
+        if (drawable != null) drawable.updateAnimationVisibility();
+    }
+
+    @Override
+    protected void onWindowVisibilityChanged(int visibility) {
+        super.onWindowVisibilityChanged(visibility);
+        if (drawable != null) drawable.updateAnimationVisibility();
     }
 
     private boolean hideBackgroundIfEmpty;
@@ -1409,6 +1742,9 @@ public class AnimatedTextView extends View {
         return drawable.isAnimating();
     }
 
+    public void setAnimationPaused(boolean paused) {
+        drawable.setAnimationPaused(paused);
+    }
     public void setIgnoreRTL(boolean value) {
         drawable.ignoreRTL = value;
     }
@@ -1417,7 +1753,11 @@ public class AnimatedTextView extends View {
     public void setText(CharSequence text, boolean animated, boolean moveDown) {
         animated = !first && animated && text != null;
         first = false;
-        if (animated && !drawable.allowCancel && drawable.isAnimating()) {
+        if (!drawable.canAnimate()) {
+            toSetText = null;
+            toSetMoveDown = false;
+        }
+        if (animated && drawable.canAnimate() && drawable.deferredWarmText == null && !drawable.allowCancel && drawable.isAnimating()) {
             toSetText = TextUtils.equals(text, drawable.getText()) ? null : text;
             toSetMoveDown = moveDown;
             return;

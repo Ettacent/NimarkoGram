@@ -6616,9 +6616,112 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
 
     @Override
     public void onNewIntent(Intent intent) {
-        app.nimarkogram.messenger.notifications.NimarkoInAppNotifications.dismiss();
+        final long launcherReasons = launcherReturnReasons(intent);
+        final boolean deferLauncher = canDeferLauncherReturn(launcherReasons);
+        if (!deferLauncher) app.nimarkogram.messenger.notifications.NimarkoInAppNotifications.dismiss();
         super.onNewIntent(intent);
-        handleIntent(intent, true, false, false, null, true, true);
+        handleNewIntentWithBannerPolicy(intent, null, true, deferLauncher);
+    }
+
+    private static long launcherReturnReasons(Intent intent) {
+        if (intent == null) return 1;
+        long reasons = 0;
+        try {
+            if (!Intent.ACTION_MAIN.equals(intent.getAction())) reasons |= 2;
+            if (!intent.hasCategory(Intent.CATEGORY_LAUNCHER)) reasons |= 4;
+            if (intent.getCategories() == null || intent.getCategories().size() != 1) reasons |= 8;
+            if (intent.getData() != null) reasons |= 16;
+            if (intent.getType() != null) reasons |= 32;
+            if (intent.getSelector() != null) reasons |= 64;
+            if (intent.getClipData() != null) reasons |= 128;
+            int grants = Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                    | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION | Intent.FLAG_GRANT_PREFIX_URI_PERMISSION;
+            if ((intent.getFlags() & grants) != 0) reasons |= 256;
+            Bundle extras = intent.getExtras();
+            if (extras != null) {
+                for (String key : new String[]{"currentAccount", "nm_open_update", "nm_banner_owner", "nm_banner_session",
+                        "chatId", "userId", "encId", "dialogId", "topicId", "message_id", "storyId", "storyDialogIds",
+                        "appWidgetId", "appWidgetType", "botId", "hash", "oauth_url", "group_call_invite_msg_id",
+                        "STICKER_EMOJIS", "IMPORTER", EXTRA_FORCE_NOT_INTERNAL_APPS, EXTRA_FORCE_REQUEST,
+                        EXTRA_ACTION_TOKEN, ShortcutManagerCompat.EXTRA_SHORTCUT_ID, Intent.EXTRA_TEXT,
+                        Intent.EXTRA_STREAM, Intent.EXTRA_SUBJECT}) {
+                    if (extras.containsKey(key)) reasons |= 512;
+                }
+                for (String key : extras.keySet()) {
+                    if (Intent.EXTRA_REFERRER.equals(key)) {
+                        if (!(extras.get(key) instanceof Uri)) reasons |= 2048;
+                    } else if (Intent.EXTRA_REFERRER_NAME.equals(key)) {
+                        if (!(extras.get(key) instanceof String)) reasons |= 2048;
+                    } else reasons |= 1024;
+                }
+            }
+        } catch (RuntimeException malformedIntent) {
+            reasons |= 4096;
+        }
+        return reasons;
+    }
+
+    private boolean canDeferLauncherReturn(long reasons) {
+        return (reasons & ~1024L) == 0 && webviewShareAPIDoneListener == null
+                && !isPasscodeBlockingContent() && !SharedConfig.appLocked
+                && !SharedConfig.isWaitingForPasscodeEnter && !AndroidUtilities.needShowPasscode();
+    }
+
+    private static final class IntentPaneSnapshot {
+        final ActionBarLayout pane;
+        final BaseFragment[] stack;
+        final BaseFragment active;
+        final Dialog dialog;
+        final boolean dialogShowing;
+        final boolean sheet;
+
+        IntentPaneSnapshot(ActionBarLayout pane) {
+            this.pane = pane;
+            stack = pane == null ? null : pane.getFragmentStack().toArray(new BaseFragment[0]);
+            active = pane == null ? null : pane.getLastFragmentIncludeMainTabs();
+            dialog = active == null ? null : active.visibleDialog;
+            dialogShowing = dialog != null && dialog.isShowing();
+            sheet = active != null && active.hasShownSheet();
+        }
+
+        boolean matches(ActionBarLayout value) {
+            if (pane != value) return false;
+            if (value == null) return true;
+            List<BaseFragment> current = value.getFragmentStack();
+            if (current.size() != stack.length || value.getLastFragmentIncludeMainTabs() != active) return false;
+            for (int i = 0; i < stack.length; i++) if (current.get(i) != stack[i]) return false;
+            return active == null || active.visibleDialog == dialog
+                    && (dialog != null && dialog.isShowing()) == dialogShowing && active.hasShownSheet() == sheet;
+        }
+    }
+
+    private void handleNewIntentWithBannerPolicy(Intent intent, Browser.Progress progress,
+                                                boolean openedTelegram, boolean deferLauncher) {
+        if (!deferLauncher) {
+            handleIntent(intent, true, false, false, progress, true, openedTelegram);
+            return;
+        }
+        final Runnable dismissOriginal = app.nimarkogram.messenger.notifications.NimarkoInAppNotifications.captureCurrentDismissal();
+        final int previousAccount = currentAccount;
+        final int selectedAccount = UserConfig.selectedAccount;
+        final Intent savedPasscode = passcodeSaveIntent;
+        final boolean savedPasscodeNew = passcodeSaveIntentIsNew;
+        final boolean savedPasscodeRestore = passcodeSaveIntentIsRestore;
+        final IntentPaneSnapshot main = new IntentPaneSnapshot(actionBarLayout);
+        final IntentPaneSnapshot right = new IntentPaneSnapshot(rightActionBarLayout);
+        final IntentPaneSnapshot layers = new IntentPaneSnapshot(layersActionBarLayout);
+        final app.nimarkogram.messenger.plugins.intents.IntentsController intents =
+                app.nimarkogram.messenger.plugins.intents.IntentsController.getInstance();
+        final long dispatch = intents.getDispatchSequence();
+        final boolean handled = handleIntent(intent, true, false, false, progress, true, openedTelegram);
+        final boolean changed = currentAccount != previousAccount || UserConfig.selectedAccount != selectedAccount
+                || !main.matches(actionBarLayout) || !right.matches(rightActionBarLayout) || !layers.matches(layersActionBarLayout);
+        final boolean security = isPasscodeBlockingContent() || SharedConfig.appLocked || SharedConfig.isWaitingForPasscodeEnter
+                || AndroidUtilities.needShowPasscode() || passcodeSaveIntent != savedPasscode
+                || passcodeSaveIntentIsNew != savedPasscodeNew || passcodeSaveIntentIsRestore != savedPasscodeRestore;
+        final boolean pluginRan = intents.getDispatchSequence() != dispatch;
+        final boolean dismiss = handled || changed || security || pluginRan || webviewShareAPIDoneListener != null;
+        if (dismiss) dismissOriginal.run();
     }
 
     public void openInAppNotification(Intent intent) {
@@ -6741,9 +6844,11 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
     }
 
     public void onNewIntent(Intent intent, Browser.Progress progress) {
-        app.nimarkogram.messenger.notifications.NimarkoInAppNotifications.dismiss();
+        final long launcherReasons = launcherReturnReasons(intent);
+        final boolean deferLauncher = canDeferLauncherReturn(launcherReasons);
+        if (!deferLauncher) app.nimarkogram.messenger.notifications.NimarkoInAppNotifications.dismiss();
         super.onNewIntent(intent);
-        handleIntent(intent, true, false, false, progress, true, false);
+        handleNewIntentWithBannerPolicy(intent, progress, false, deferLauncher);
     }
 
     @Override
@@ -7524,7 +7629,7 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
     protected void onDestroy() {
         pendingInAppNotificationNavigation = null;
         accountSwitchTransition.cancel();
-        app.nimarkogram.messenger.notifications.NimarkoInAppNotifications.onPause(this);
+        app.nimarkogram.messenger.notifications.NimarkoInAppNotifications.onDestroy(this);
         // Invalidate any posted icon-pack cache/rebuild callback before fragment
         // teardown starts; an old activity must never rebuild a replacement stack.
         nmIconReloadGeneration.incrementAndGet();
@@ -7640,6 +7745,11 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
 
     View feedbackView;
 
+    @Override
+    public void onEnterAnimationComplete() {
+        super.onEnterAnimationComplete();
+        app.nimarkogram.messenger.notifications.NimarkoInAppNotifications.onEnterAnimationComplete(this);
+    }
     @Override
     protected void onResume() {
         super.onResume();

@@ -2,6 +2,8 @@
 
 package org.telegram.ui.Components;
 
+import android.animation.Animator;
+import android.animation.AnimatorListenerAdapter;
 import android.animation.ValueAnimator;
 import android.content.Context;
 import android.graphics.Canvas;
@@ -19,6 +21,7 @@ import org.telegram.messenger.AndroidUtilities;
 import org.telegram.ui.ActionBar.Theme;
 
 import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
+import app.nimarkogram.messenger.utils.NimarkoUiAnimationClock;
 public class UnreadCounterTextView extends View {
 
     private int currentCounter;
@@ -47,6 +50,31 @@ public class UnreadCounterTextView extends View {
     int counterColor;
     CharSequence lastText;
 
+    private boolean presented;
+    private CharSequence pendingText;
+    private boolean pendingFromBottom;
+    private ValueAnimator windowPausedAnimator;
+    private final NimarkoUiAnimationClock.ResumeGate animationResumeGate = value ->
+            isAttachedToWindow() && getWindowVisibility() == VISIBLE;
+    private CounterView.CounterSnapshot snapshot;
+    private float presentedProgress = 1f;
+    private String presentedCounterString;
+    private int presentedCircleWidth;
+    private int presentedTextWidth;
+    private final Runnable resumeText = new Runnable() {
+        @Override
+        public void run() {
+            if ((pendingText == null && windowPausedAnimator == null && (snapshot == null || !snapshot.isWindowPaused())) || !isAttachedToWindow() || getWindowVisibility() != VISIBLE) return;
+            if (NimarkoUiAnimationClock.isPaused()) postOnAnimation(this);
+            else {
+                if (snapshot != null) snapshot.resumeWindow();
+                if (windowPausedAnimator == replaceAnimator && replaceAnimator != null && replaceAnimator.isPaused()
+                        && !NimarkoUiAnimationClock.resumeAnimation(replaceAnimator)) return;
+                windowPausedAnimator = null;
+                invalidate();
+            }
+        }
+    };
     int textColorKey = Theme.key_chat_fieldOverlayText;
 
     public UnreadCounterTextView(Context context) {
@@ -59,9 +87,48 @@ public class UnreadCounterTextView extends View {
     }
 
     public void setText(CharSequence text, boolean animatedFromBottom) {
-        if (lastText == text) {
+        if (presented && isAttachedToWindow()
+                && (NimarkoUiAnimationClock.isPaused() || getWindowVisibility() != VISIBLE)) {
+            if (pendingText == null && !android.text.TextUtils.equals(lastText, text)
+                    && (replaceAnimator != null || (snapshot != null && snapshot.hasSnapshot()))) {
+                if (snapshot == null) snapshot = new CounterView.CounterSnapshot(this);
+                float saved = replaceProgress;
+                String savedCounterString = currentCounterString;
+                int savedCircleWidth = circleWidth;
+                int savedTextWidth = textWidth;
+                replaceProgress = presentedProgress;
+                currentCounterString = presentedCounterString;
+                circleWidth = presentedCircleWidth;
+                textWidth = presentedTextWidth;
+                snapshot.capture(this::drawContent, getMeasuredWidth(), getMeasuredHeight());
+                replaceProgress = saved;
+                currentCounterString = savedCounterString;
+                circleWidth = savedCircleWidth;
+                textWidth = savedTextWidth;
+            }
+            boolean returnToSnapshotTarget = pendingText != null && replaceAnimator == null && snapshot != null && snapshot.hasSnapshot();
+            if (pendingText != null && android.text.TextUtils.equals(lastText, text) && !returnToSnapshotTarget && snapshot != null) snapshot.finish();
+            pendingText = android.text.TextUtils.equals(lastText, text) && !returnToSnapshotTarget ? null : android.text.TextUtils.stringOrSpannedString(text);
+            pendingFromBottom = animatedFromBottom;
+            removeCallbacks(resumeText);
+            if (getWindowVisibility() == VISIBLE && (pendingText != null || windowPausedAnimator != null
+                    || (snapshot != null && snapshot.isWindowPaused()))) postOnAnimation(resumeText);
+            invalidate();
             return;
         }
+        pendingText = null;
+        removeCallbacks(resumeText);
+        if (!isAttachedToWindow() || (!presented && NimarkoUiAnimationClock.isPaused())) {
+            setText(text);
+            return;
+        }
+        if (android.text.TextUtils.equals(lastText, text)) {
+            if (getWindowVisibility() == VISIBLE && (windowPausedAnimator != null
+                    || (snapshot != null && snapshot.isWindowPaused()))) postOnAnimation(resumeText);
+            return;
+        }
+        if (snapshot != null) snapshot.finish();
+        finishReplacement();
         lastText = text;
         this.animatedFromBottom = animatedFromBottom;
         textLayoutOut = textLayout;
@@ -74,21 +141,34 @@ public class UnreadCounterTextView extends View {
         invalidate();
 
         if (textLayoutOut != null || iconOut != null) {
-            if (replaceAnimator != null) {
-                replaceAnimator.cancel();
-            }
             replaceProgress = 0;
             replaceAnimator = ValueAnimator.ofFloat(0,1f);
             replaceAnimator.addUpdateListener(animation -> {
+                if (replaceAnimator != animation) return;
                 replaceProgress = (float) animation.getAnimatedValue();
                 invalidate();
             });
+            replaceAnimator.addListener(new AnimatorListenerAdapter() {
+                @Override
+                public void onAnimationEnd(Animator animation) {
+                    if (replaceAnimator != animation) return;
+                    replaceAnimator = null;
+                    finishReplacement();
+                }
+            });
             replaceAnimator.setDuration(150);
             replaceAnimator.start();
+            NimarkoUiAnimationClock.track(replaceAnimator, animationResumeGate);
         }
     }
 
     public void setText(CharSequence text) {
+        if (snapshot != null) snapshot.finish();
+        pendingText = null;
+        removeCallbacks(resumeText);
+        presented = false;
+        windowPausedAnimator = null;
+        finishReplacement();
         lastText = text;
         layoutPaint.setTypeface(AndroidUtilities.bold());
         layoutTextWidth = (int) Math.ceil(layoutPaint.measureText(text, 0, text.length()));
@@ -103,6 +183,11 @@ public class UnreadCounterTextView extends View {
     }
 
     public void setTextInfo(CharSequence text) {
+        if (snapshot != null) snapshot.finish();
+        pendingText = null;
+        removeCallbacks(resumeText);
+        presented = false;
+        finishReplacement();
         layoutPaint.setTypeface(null);
         layoutTextWidth = (int) Math.ceil(layoutPaint.measureText(text, 0, text.length()));
         icon = null;
@@ -112,12 +197,51 @@ public class UnreadCounterTextView extends View {
     }
 
     public void setTextInfo(Drawable icon, CharSequence text) {
+        if (snapshot != null) snapshot.finish();
+        pendingText = null;
+        removeCallbacks(resumeText);
+        presented = false;
+        finishReplacement();
         layoutPaint.setTypeface(null);
         layoutTextWidth = (int) Math.ceil(layoutPaint.measureText(text, 0, text.length()));
         this.icon = icon;
         textLayout = new StaticLayout(text, layoutPaint, layoutTextWidth + 1, Layout.Alignment.ALIGN_NORMAL, 1.0f, 0.0f, true);
         setContentDescription(text);
         invalidate();
+    }
+
+    private void finishReplacement() {
+        windowPausedAnimator = null;
+        ValueAnimator previous = replaceAnimator;
+        replaceAnimator = null;
+        if (previous != null) previous.cancel();
+        replaceProgress = 1f;
+        textLayoutOut = null;
+        iconOut = null;
+        invalidate();
+    }
+
+    @Override
+    protected void onDetachedFromWindow() {
+        super.onDetachedFromWindow();
+        presented = false;
+        if (pendingText != null) setText(pendingText);
+        if (snapshot != null) snapshot.finish();
+        removeCallbacks(resumeText);
+        finishReplacement();
+    }
+
+    @Override
+    protected void onWindowVisibilityChanged(int visibility) {
+        super.onWindowVisibilityChanged(visibility);
+        if (snapshot != null) snapshot.windowVisibilityChanged(visibility);
+        removeCallbacks(resumeText);
+        if (visibility != VISIBLE && replaceAnimator != null && replaceAnimator.isStarted()) {
+            windowPausedAnimator = replaceAnimator;
+            if (!replaceAnimator.isPaused()) replaceAnimator.pause();
+        }
+        if (visibility == VISIBLE && (pendingText != null || windowPausedAnimator != null
+                || (snapshot != null && snapshot.isWindowPaused()))) postOnAnimation(resumeText);
     }
 
     @Override
@@ -174,7 +298,44 @@ public class UnreadCounterTextView extends View {
     }
 
     @Override
+    protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
+        super.onMeasure(widthMeasureSpec, heightMeasureSpec);
+        if (snapshot != null) setMeasuredDimension(snapshot.reserveWidth(getMeasuredWidth()), snapshot.reserveHeight(getMeasuredHeight()));
+    }
+
+    @Override
     protected void onDraw(Canvas canvas) {
+        if (canvas.isHardwareAccelerated()) NimarkoUiAnimationClock.resumeOwned(replaceAnimator);
+        if (pendingText != null && canvas.isHardwareAccelerated() && isAttachedToWindow()
+                && !NimarkoUiAnimationClock.isPaused() && getWindowVisibility() == VISIBLE) {
+            CharSequence latest = pendingText;
+            CounterView.CounterSnapshot retained = snapshot;
+            snapshot = null;
+            if (replaceAnimator == null && (retained == null || !retained.hasSnapshot())) setText(latest, pendingFromBottom);
+            else setText(latest);
+            snapshot = retained;
+            if (snapshot != null && snapshot.hasSnapshot()) {
+                requestLayout();
+                snapshot.start();
+            }
+        }
+        if (snapshot != null) {
+            snapshot.setSize(getMeasuredWidth(), getMeasuredHeight());
+            snapshot.draw(canvas, this::drawContent);
+        }
+        else drawContent(canvas);
+        if (canvas.isHardwareAccelerated() && isAttachedToWindow() && getWindowVisibility() == VISIBLE
+                && !NimarkoUiAnimationClock.isPaused()) {
+            presented = true;
+            presentedProgress = replaceProgress;
+            presentedCounterString = currentCounterString;
+            presentedCircleWidth = circleWidth;
+            presentedTextWidth = textWidth;
+            if (snapshot != null) snapshot.presented();
+        }
+    }
+
+    private void drawContent(Canvas canvas) {
         Layout layout = textLayout;
         int color = Theme.getColor(isEnabled() ? textColorKey : Theme.key_windowBackgroundWhiteGrayText, getResourceProvider());
         if (textColor != color) {

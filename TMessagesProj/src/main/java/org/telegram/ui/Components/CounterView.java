@@ -7,14 +7,18 @@ import android.animation.AnimatorListenerAdapter;
 import android.animation.ValueAnimator;
 import android.content.Context;
 import android.graphics.Canvas;
+import android.graphics.Bitmap;
 import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.RectF;
+import android.graphics.PorterDuff;
+import android.graphics.PorterDuffXfermode;
 import android.text.Layout;
 import android.text.SpannableStringBuilder;
 import android.text.StaticLayout;
 import android.text.TextPaint;
 import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
+import app.nimarkogram.messenger.utils.NimarkoUiAnimationClock;
 import android.text.TextUtils;
 import android.view.Gravity;
 import android.view.View;
@@ -25,6 +29,131 @@ import org.telegram.ui.ActionBar.Theme;
 
 public class CounterView extends View {
 
+    static final class CounterSnapshot {
+        interface Content { void draw(Canvas canvas); }
+        private final View owner;
+        private final NimarkoUiAnimationClock.ResumeGate animationResumeGate;
+        private final Runnable onFinish;
+        private Bitmap bitmap;
+        private final Paint paint = new Paint(Paint.FILTER_BITMAP_FLAG);
+        private final Paint incomingPaint = new Paint();
+        private ValueAnimator animator;
+        private float progress = 1f;
+        private float presentedProgress = 1f;
+        private boolean windowPaused;
+        private int contentWidth;
+        private int contentHeight;
+
+        CounterSnapshot(View owner) { this(owner, null); }
+
+        CounterSnapshot(View owner, Runnable onFinish) {
+            this.owner = owner;
+            animationResumeGate = value -> owner.isAttachedToWindow() && owner.getWindowVisibility() == View.VISIBLE;
+            this.onFinish = onFinish;
+            incomingPaint.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.ADD));
+        }
+
+        boolean capture(Content content, int width, int height) {
+            if (width <= 0 || height <= 0 || width > 2048 || height > 256 || (long) width * height > 262144) return false;
+            Bitmap next;
+            float saved = progress;
+            try {
+                next = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
+                progress = presentedProgress;
+                draw(new Canvas(next), content);
+            } catch (RuntimeException | OutOfMemoryError error) {
+                return false;
+            } finally {
+                progress = saved;
+            }
+            finish();
+            bitmap = next;
+            contentWidth = width;
+            contentHeight = height;
+            progress = presentedProgress = 0f;
+            return true;
+        }
+
+        void start() {
+            if (bitmap == null || animator != null) return;
+            ValueAnimator next = ValueAnimator.ofFloat(0, 1);
+            animator = next;
+            next.setDuration(180);
+            next.addUpdateListener(value -> {
+                if (animator != value) return;
+                progress = (float) value.getAnimatedValue();
+                owner.invalidate();
+            });
+            next.addListener(new AnimatorListenerAdapter() {
+                @Override
+                public void onAnimationEnd(Animator animation) {
+                    if (animator == animation) {
+                        finish();
+                        if (onFinish != null) onFinish.run();
+                    }
+                }
+            });
+            next.start();
+            NimarkoUiAnimationClock.track(next, animationResumeGate);
+        }
+
+        boolean hasSnapshot() { return bitmap != null; }
+        int reserveWidth(int width) { return Math.max(width, bitmap == null ? 0 : bitmap.getWidth()); }
+        int reserveHeight(int height) { return Math.max(height, bitmap == null ? 0 : bitmap.getHeight()); }
+        void setSize(int width, int height) { contentWidth = width; contentHeight = height; }
+        boolean isWindowPaused() { return windowPaused; }
+
+        void windowVisibilityChanged(int visibility) {
+            if (visibility != View.VISIBLE && animator != null && animator.isStarted()) {
+                windowPaused = true;
+                if (!animator.isPaused()) animator.pause();
+            }
+        }
+
+        void resumeWindow() {
+            if (windowPaused && animator != null && animator.isPaused()
+                    && !NimarkoUiAnimationClock.resumeAnimation(animator)) return;
+            windowPaused = false;
+        }
+
+        void draw(Canvas canvas, Content content) {
+            if (canvas.isHardwareAccelerated()) NimarkoUiAnimationClock.resumeOwned(animator);
+            if (bitmap == null) {
+                content.draw(canvas);
+                return;
+            }
+            int alpha = Math.round(255 * progress);
+            int outer = canvas.saveLayer(0, 0, reserveWidth(contentWidth), reserveHeight(contentHeight), null);
+            try {
+                paint.setAlpha(255 - alpha);
+                canvas.drawBitmap(bitmap, 0, 0, paint);
+                if (alpha > 0) {
+                    incomingPaint.setAlpha(alpha);
+                    int incoming = canvas.saveLayer(0, 0, reserveWidth(contentWidth), reserveHeight(contentHeight), incomingPaint);
+                    try {
+                        content.draw(canvas);
+                    } finally {
+                        canvas.restoreToCount(incoming);
+                    }
+                }
+            } finally {
+                canvas.restoreToCount(outer);
+            }
+        }
+
+        void presented() { presentedProgress = progress; }
+
+        void finish() {
+            boolean hadSnapshot = bitmap != null;
+            ValueAnimator previous = animator;
+            animator = null;
+            if (previous != null) previous.cancel();
+            bitmap = null;
+            windowPaused = false;
+            progress = presentedProgress = 1f;
+            if (hadSnapshot) owner.requestLayout();
+        }
+    }
     public CounterDrawable counterDrawable;
     private final Theme.ResourcesProvider resourcesProvider;
 
@@ -39,6 +168,9 @@ public class CounterView extends View {
     @Override
     protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
         super.onMeasure(widthMeasureSpec, heightMeasureSpec);
+        if (counterDrawable.snapshot != null) {
+            setMeasuredDimension(counterDrawable.snapshot.reserveWidth(getMeasuredWidth()), counterDrawable.snapshot.reserveHeight(getMeasuredHeight()));
+        }
         counterDrawable.setSize(getMeasuredHeight(), getMeasuredWidth());
     }
 
@@ -64,6 +196,32 @@ public class CounterView extends View {
 
     public void setCount(int count, boolean animated) {
         counterDrawable.setCount(count, animated);
+    }
+
+    @Override
+    protected void onDetachedFromWindow() {
+        super.onDetachedFromWindow();
+        counterDrawable.presented = false;
+        if (counterDrawable.snapshot != null) counterDrawable.snapshot.finish();
+        counterDrawable.windowPausedAnimator = null;
+        counterDrawable.applyPending(false);
+        removeCallbacks(counterDrawable.resumeCount);
+        counterDrawable.finishAnimation();
+    }
+
+    @Override
+    protected void onWindowVisibilityChanged(int visibility) {
+        super.onWindowVisibilityChanged(visibility);
+        if (counterDrawable == null) return;
+        if (counterDrawable.snapshot != null) counterDrawable.snapshot.windowVisibilityChanged(visibility);
+        removeCallbacks(counterDrawable.resumeCount);
+        if (visibility != VISIBLE && counterDrawable.countAnimator != null
+                && counterDrawable.countAnimator.isStarted()) {
+            counterDrawable.windowPausedAnimator = counterDrawable.countAnimator;
+            if (!counterDrawable.countAnimator.isPaused()) counterDrawable.countAnimator.pause();
+        }
+        if (visibility == VISIBLE && (counterDrawable.pendingText != null || counterDrawable.windowPausedAnimator != null
+                || (counterDrawable.snapshot != null && counterDrawable.snapshot.isWindowPaused()))) postOnAnimation(counterDrawable.resumeCount);
     }
 
     private int getThemedColor(int key) {
@@ -96,6 +254,31 @@ public class CounterView extends View {
         private StaticLayout countAnimationStableLayout;
         private StaticLayout countAnimationInLayout;
 
+        private boolean presented;
+        private CharSequence pendingText;
+        private int pendingCount;
+        private boolean pendingIsText;
+        private ValueAnimator windowPausedAnimator;
+        private final NimarkoUiAnimationClock.ResumeGate animationResumeGate = value -> this.parent == null
+                || this.parent.isAttachedToWindow() && this.parent.getWindowVisibility() == View.VISIBLE;
+        private CounterSnapshot snapshot;
+        private float presentedCountProgress = 1f;
+        private float snapshotTextWidth;
+        private final Runnable resumeCount = new Runnable() {
+            @Override
+            public void run() {
+                if ((pendingText == null && windowPausedAnimator == null && (snapshot == null || !snapshot.isWindowPaused())) || parent == null || !parent.isAttachedToWindow()
+                        || parent.getWindowVisibility() != View.VISIBLE) return;
+                if (NimarkoUiAnimationClock.isPaused()) parent.postOnAnimation(this);
+                else {
+                    if (snapshot != null) snapshot.resumeWindow();
+                    if (windowPausedAnimator == countAnimator && countAnimator != null && countAnimator.isPaused()
+                            && !NimarkoUiAnimationClock.resumeAnimation(countAnimator)) return;
+                    windowPausedAnimator = null;
+                    parent.invalidate();
+                }
+            }
+        };
         private int countWidthOld;
         private int countWidth;
 
@@ -181,12 +364,54 @@ public class CounterView extends View {
         }
 
         public void setText(CharSequence text, boolean animated, int count, boolean isText) {
-            if (TextUtils.equals(text, currentText)) {
+            if (animated && presented && parent != null && parent.isAttachedToWindow()
+                    && parent.getVisibility() == View.VISIBLE
+                    && (NimarkoUiAnimationClock.isPaused() || parent.getWindowVisibility() != View.VISIBLE)) {
+                if (pendingText == null && !(TextUtils.equals(text, currentText) && count == currentCount)
+                        && (countAnimator != null || (snapshot != null && snapshot.hasSnapshot()))) {
+                    if (snapshot == null) snapshot = new CounterSnapshot(parent, () -> {
+                        if (currentCount == 0 && updateVisibility) parent.setVisibility(View.GONE);
+                    });
+                    float saved = countChangeProgress;
+                    snapshotTextWidth = Math.max(countLayoutWidth, countWidthOld);
+                    countChangeProgress = presentedCountProgress;
+                    snapshot.capture(this::drawContent, width, lastH);
+                    countChangeProgress = saved;
+                }
+                boolean returnToSnapshotTarget = pendingText != null && countAnimator == null && snapshot != null && snapshot.hasSnapshot();
+                boolean hadPending = pendingText != null;
+                pendingText = TextUtils.equals(text, currentText) && count == currentCount && !returnToSnapshotTarget ? null : TextUtils.stringOrSpannedString(text);
+                if (hadPending && pendingText == null && snapshot != null) snapshot.finish();
+                pendingCount = count;
+                pendingIsText = isText;
+                if (parent.getWindowVisibility() != View.VISIBLE && countAnimator != null
+                        && countAnimator.isStarted()) {
+                    windowPausedAnimator = countAnimator;
+                    if (!countAnimator.isPaused()) countAnimator.pause();
+                }
+                parent.removeCallbacks(resumeCount);
+                if (parent.getWindowVisibility() == View.VISIBLE && (pendingText != null || windowPausedAnimator != null
+                        || (snapshot != null && snapshot.isWindowPaused()))) parent.postOnAnimation(resumeCount);
+                parent.invalidate();
                 return;
             }
-            if (countAnimator != null) {
-                countAnimator.cancel();
+            pendingText = null;
+            if (parent != null) parent.removeCallbacks(resumeCount);
+            if (parent != null && !parent.isAttachedToWindow()) animated = false;
+            if (NimarkoUiAnimationClock.isPaused() && !presented) animated = false;
+            if (!animated) presented = false;
+            if (TextUtils.equals(text, currentText)) {
+                if (!animated) {
+                    if (snapshot != null) snapshot.finish();
+                    finishAnimation();
+                } else if (parent != null && parent.getWindowVisibility() == View.VISIBLE
+                        && (windowPausedAnimator != null || (snapshot != null && snapshot.isWindowPaused()))) {
+                    parent.postOnAnimation(resumeCount);
+                }
+                return;
             }
+            if (snapshot != null) snapshot.finish();
+            finishAnimation();
             if (count > 0 && updateVisibility && parent != null) {
                 parent.setVisibility(View.VISIBLE);
             }
@@ -214,12 +439,10 @@ public class CounterView extends View {
             CharSequence newStr = text; // getStringOfCCount(count);
 
             if (animated) {
-                if (countAnimator != null) {
-                    countAnimator.cancel();
-                }
                 countChangeProgress = 0f;
                 countAnimator = ValueAnimator.ofFloat(0, 1f);
                 countAnimator.addUpdateListener(valueAnimator -> {
+                    if (countAnimator != valueAnimator) return;
                     countChangeProgress = (float) valueAnimator.getAnimatedValue();
                     if (parent != null) {
                         parent.invalidate();
@@ -228,6 +451,8 @@ public class CounterView extends View {
                 countAnimator.addListener(new AnimatorListenerAdapter() {
                     @Override
                     public void onAnimationEnd(Animator animation) {
+                        if (countAnimator != animation) return;
+                        countAnimator = null;
                         countChangeProgress = 1f;
                         countOldLayout = null;
                         countAnimationStableLayout = null;
@@ -286,7 +511,6 @@ public class CounterView extends View {
                 }
                 countWidthOld = countWidth;
                 countAnimationIncrement = count > currentCount;
-                countAnimator.start();
             }
             if (count > 0) {
                 countWidth = Math.max(AndroidUtilities.dp(12), (int) Math.ceil(textPaint.measureText(newStr.toString())));
@@ -296,13 +520,46 @@ public class CounterView extends View {
 
             currentCount = count;
             currentText = newStr;
+            countAnimator.start();
+            NimarkoUiAnimationClock.track(countAnimator, animationResumeGate);
             if (parent != null) {
                 parent.invalidate();
             }
         }
 
         public int getCurrentWidth() {
-            return (int) Math.ceil(countLayoutWidth);
+            return (int) Math.ceil(snapshot != null && snapshot.hasSnapshot() ? Math.max(countLayoutWidth, snapshotTextWidth) : countLayoutWidth);
+        }
+
+        private void finishAnimation() {
+            windowPausedAnimator = null;
+            ValueAnimator previous = countAnimator;
+            countAnimator = null;
+            if (previous != null) previous.cancel();
+            countChangeProgress = 1f;
+            animationType = -1;
+            countOldLayout = null;
+            countAnimationStableLayout = null;
+            countAnimationInLayout = null;
+            if (parent != null) {
+                if (currentCount == 0 && updateVisibility) parent.setVisibility(View.GONE);
+                parent.invalidate();
+            }
+        }
+
+        private void applyPending(boolean animated) {
+            if (pendingText == null) return;
+            CharSequence latest = pendingText;
+            pendingText = null;
+            CounterSnapshot retained = snapshot;
+            snapshot = null;
+            setText(latest, animated, pendingCount, pendingIsText);
+            snapshot = retained;
+            if (snapshot != null && snapshot.hasSnapshot()) {
+                if (parent != null) parent.requestLayout();
+                if (currentCount == 0 && updateVisibility && parent != null) parent.setVisibility(View.VISIBLE);
+                snapshot.start();
+            }
         }
 
         private String getStringOfCCount(int count) {
@@ -313,6 +570,28 @@ public class CounterView extends View {
         }
 
         public void draw(Canvas canvas) {
+            if (canvas.isHardwareAccelerated()) NimarkoUiAnimationClock.resumeOwned(countAnimator);
+            if (canvas.isHardwareAccelerated() && (windowPausedAnimator != null || (snapshot != null && snapshot.isWindowPaused()))
+                    && !NimarkoUiAnimationClock.isPaused()
+                    && parent != null && parent.isAttachedToWindow() && parent.getWindowVisibility() == View.VISIBLE) resumeCount.run();
+            if (pendingText != null && canvas.isHardwareAccelerated() && !NimarkoUiAnimationClock.isPaused()
+                    && parent != null && parent.isAttachedToWindow()
+                    && parent.getWindowVisibility() == View.VISIBLE) applyPending(countAnimator == null && (snapshot == null || !snapshot.hasSnapshot()));
+            if (snapshot != null) {
+                snapshot.setSize(width, lastH);
+                snapshot.draw(canvas, this::drawContent);
+            }
+            else drawContent(canvas);
+            if (canvas.isHardwareAccelerated() && parent != null && parent.isAttachedToWindow()
+                    && parent.getWindowVisibility() == View.VISIBLE && !NimarkoUiAnimationClock.isPaused()) {
+                presented = true;
+                presentedCountProgress = countChangeProgress;
+                if (snapshot != null) snapshot.presented();
+            }
+        }
+
+        private void drawContent(Canvas canvas) {
+            if (currentCount == 0 && countChangeProgress == 1f) return;
             if (type != TYPE_CHAT_PULLING_DOWN && type != TYPE_CHAT_REACTIONS) {
                 int textColor = getThemedColor(textColorKey);
                 int circleColor = getThemedColor(circleColorKey);
