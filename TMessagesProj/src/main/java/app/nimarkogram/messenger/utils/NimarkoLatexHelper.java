@@ -356,7 +356,7 @@ public class NimarkoLatexHelper {
                 int runEnd = i + 1;
                 while (runEnd < text.length() && text.charAt(runEnd) == '`') runEnd++;
                 int close = text.indexOf(text.substring(i, runEnd), runEnd);
-                i = close < 0 ? text.length() : close + runEnd - i;
+                i = close < 0 ? (runEnd - i >= 3 ? text.length() : runEnd) : close + runEnd - i;
                 continue;
             }
             if (c != '$' || isEscaped(text, i)

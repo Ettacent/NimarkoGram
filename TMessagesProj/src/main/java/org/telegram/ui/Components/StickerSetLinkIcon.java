@@ -104,6 +104,9 @@ public class StickerSetLinkIcon extends Drawable {
                     int i = x + y * N;
                     if (i < 0 || i >= drawables.length) continue;
                     AnimatedEmojiDrawable drawable = drawables[i];
+                    if (drawable != null && drawable.getImageReceiver() != null) {
+                        drawable.getImageReceiver().prepareImageFrameForDraw();
+                    }
                     if (drawable == null || drawable.getImageReceiver() == null || !drawable.getImageReceiver().hasReadyImage()) {
                         waitingForReady[i] = true;
                         readyProgress[i] = 0f;

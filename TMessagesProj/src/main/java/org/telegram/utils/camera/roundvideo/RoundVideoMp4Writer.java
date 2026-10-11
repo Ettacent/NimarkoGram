@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.utils.camera.roundvideo;
 
 import android.media.MediaCodec;
@@ -297,6 +299,7 @@ final class RoundVideoMp4Writer {
         int oldLimit = source.limit();
         try {
             while (start >= 0) {
+                source.limit(oldLimit);
                 int prefix = startCodeLength(source, start, end);
                 int nalStart = start + prefix;
                 int next = findStartCode(source, nalStart, end);

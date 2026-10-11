@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -160,14 +162,14 @@ public class RecordedAudioPlayerView extends View {
 
         byte minBar = Byte.MAX_VALUE, maxBar = Byte.MIN_VALUE;
         for (int i = 0; i < count; ++i) {
-            final byte bar = waveformData == null ? 0 : waveformData[(int) ((float) i / count * waveformData.length)];
+            final byte bar = waveformData == null || waveformData.length == 0 ? 0 : waveformData[(int) ((float) i / count * waveformData.length)];
             minBar = (byte) Math.min(minBar, bar);
             maxBar = (byte) Math.max(maxBar, bar);
         }
 
         waveformPath.rewind();
         for (int i = 0; i < count; ++i) {
-            final byte bar = waveformData == null ? 0 : waveformData[(int) ((float) i / count * waveformData.length)];
+            final byte bar = waveformData == null || waveformData.length == 0 ? 0 : waveformData[(int) ((float) i / count * waveformData.length)];
             final float h = lerp(minHeight, maxHeight, clamp01(ilerp(bar, minBar, maxBar)));
             final float x = i * dp(3);
             AndroidUtilities.rectTmp.set(x, -h / 2f, x + dp(2), h / 2f);

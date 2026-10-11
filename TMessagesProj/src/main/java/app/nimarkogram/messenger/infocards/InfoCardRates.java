@@ -200,7 +200,7 @@ public final class InfoCardRates {
     }
 
     private static boolean isFresh(RateSnapshot value, long now) {
-        return value != null && now - value.fetchedAtMs < MIN_REFETCH_MS;
+        return value != null && now >= value.fetchedAtMs && now - value.fetchedAtMs < MIN_REFETCH_MS;
     }
 
     private static JSONObject doFetch() {

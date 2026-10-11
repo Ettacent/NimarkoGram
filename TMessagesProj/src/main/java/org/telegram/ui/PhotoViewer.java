@@ -19333,11 +19333,17 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
                     object.imageReceiver.setAllowStartAnimation(true);
                     object.imageReceiver.startAnimation();
                 };
+                boolean seekDeferred = false;
                 if (textureUploaded) {
                     Bitmap bitmap = animation.getAnimatedBitmap();
                     if (bitmap != null) {
                         if (usedSurfaceView) {
-                            AndroidUtilities.getBitmapFromSurface(videoSurfaceView, bitmap);
+                            if (isInline) {
+                                AndroidUtilities.getBitmapFromSurface(videoSurfaceView, bitmap);
+                            } else {
+                                seekDeferred = deferClosingSurfaceFrame(videoSurfaceView, bitmap, animation,
+                                        object, closeGeneration, seek, allowStart, start);
+                            }
                         } else if (videoTextureView != null) {
                             try {
                                 Bitmap src = videoTextureView.getBitmap(bitmap.getWidth(), bitmap.getHeight());
@@ -19352,7 +19358,7 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
                         }
                     }
                 }
-                seek.run();
+                if (!seekDeferred) seek.run();
             }
         }
         if (photoViewerWebView != null) {
@@ -19610,7 +19616,7 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
                     if (openGeneration != closeGeneration) {
                         return;
                     }
-                    if (object != null && !object.keepImageReceiverVisible) {
+                    if (object != null && object.imageReceiver != null && !object.keepImageReceiverVisible) {
                         object.imageReceiver.setVisible(false, true);
                     }
                     if (!doneButtonPressed) {
@@ -19699,7 +19705,7 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
                     containerView.setLayerType(View.LAYER_TYPE_HARDWARE, null);
                     closeAnimatorSet = animatorSet;
                     animatorSet.start();
-                    if (object != null) {
+                    if (object != null && object.imageReceiver != null) {
                         object.imageReceiver.setVisible(true, true);
                     }
                 };
@@ -24844,6 +24850,51 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
         }
     }
 
+    private boolean deferClosingSurfaceFrame(SurfaceView surface, Bitmap destination,
+                                             AnimatedFileDrawable animation, PlaceProviderObject place,
+                                             int generation, Runnable seek, boolean[] allowStart, Runnable[] start) {
+        if (surface == null || Build.VERSION.SDK_INT < Build.VERSION_CODES.N
+                || destination == null || destination.isRecycled()) return false;
+        final Bitmap snapshot;
+        try {
+            snapshot = Bitmap.createBitmap(destination.getWidth(), destination.getHeight(), Bitmap.Config.ARGB_8888);
+        } catch (RuntimeException | OutOfMemoryError error) {
+            return false;
+        }
+        final ImageReceiver receiver = place.imageReceiver;
+        final boolean[] completed = { false };
+        final long deadline = SystemClock.uptimeMillis() + 200;
+        allowStart[0] = false;
+        final Runnable finish = () -> {
+            if (completed[0]) return;
+            completed[0] = true;
+            if (openGeneration != generation) return;
+            if (place.imageReceiver == receiver && receiver.getAnimation() == animation) seek.run();
+            allowStart[0] = true;
+            if (start[0] != null) start[0].run();
+        };
+        AndroidUtilities.runOnUIThread(finish, 200);
+        try {
+            AndroidUtilities.getBitmapFromSurface(surface, snapshot, (Utilities.Callback<Boolean>) success -> {
+                try {
+                    if (completed[0]) return;
+                    if (success && SystemClock.uptimeMillis() < deadline
+                            && openGeneration == generation && place.imageReceiver == receiver
+                            && receiver.getAnimation() == animation) {
+                        animation.copyClosingFrame(destination, snapshot);
+                    }
+                } finally {
+                    AndroidUtilities.cancelRunOnUIThread(finish);
+                    finish.run();
+                    snapshot.recycle();
+                }
+            });
+        } catch (RuntimeException | OutOfMemoryError error) {
+            AndroidUtilities.cancelRunOnUIThread(finish);
+            finish.run();
+        }
+        return true;
+    }
     private View pipPlaceholderView;
     public Runnable pipFirstFrameCallback;
     private TextureView pipTextureView;

@@ -50,6 +50,7 @@ public class UnreadCounterTextView extends View {
     int counterColor;
     CharSequence lastText;
 
+    private boolean textInfo;
     private boolean presented;
     private CharSequence pendingText;
     private boolean pendingFromBottom;
@@ -89,7 +90,7 @@ public class UnreadCounterTextView extends View {
     public void setText(CharSequence text, boolean animatedFromBottom) {
         if (presented && isAttachedToWindow()
                 && (NimarkoUiAnimationClock.isPaused() || getWindowVisibility() != VISIBLE)) {
-            if (pendingText == null && !android.text.TextUtils.equals(lastText, text)
+            if (pendingText == null && (textInfo || !android.text.TextUtils.equals(lastText, text))
                     && (replaceAnimator != null || (snapshot != null && snapshot.hasSnapshot()))) {
                 if (snapshot == null) snapshot = new CounterView.CounterSnapshot(this);
                 float saved = replaceProgress;
@@ -107,8 +108,8 @@ public class UnreadCounterTextView extends View {
                 textWidth = savedTextWidth;
             }
             boolean returnToSnapshotTarget = pendingText != null && replaceAnimator == null && snapshot != null && snapshot.hasSnapshot();
-            if (pendingText != null && android.text.TextUtils.equals(lastText, text) && !returnToSnapshotTarget && snapshot != null) snapshot.finish();
-            pendingText = android.text.TextUtils.equals(lastText, text) && !returnToSnapshotTarget ? null : android.text.TextUtils.stringOrSpannedString(text);
+            if (pendingText != null && !textInfo && android.text.TextUtils.equals(lastText, text) && !returnToSnapshotTarget && snapshot != null) snapshot.finish();
+            pendingText = !textInfo && android.text.TextUtils.equals(lastText, text) && !returnToSnapshotTarget ? null : android.text.TextUtils.stringOrSpannedString(text);
             pendingFromBottom = animatedFromBottom;
             removeCallbacks(resumeText);
             if (getWindowVisibility() == VISIBLE && (pendingText != null || windowPausedAnimator != null
@@ -122,7 +123,7 @@ public class UnreadCounterTextView extends View {
             setText(text);
             return;
         }
-        if (android.text.TextUtils.equals(lastText, text)) {
+        if (!textInfo && android.text.TextUtils.equals(lastText, text)) {
             if (getWindowVisibility() == VISIBLE && (windowPausedAnimator != null
                     || (snapshot != null && snapshot.isWindowPaused()))) postOnAnimation(resumeText);
             return;
@@ -130,6 +131,7 @@ public class UnreadCounterTextView extends View {
         if (snapshot != null) snapshot.finish();
         finishReplacement();
         lastText = text;
+        textInfo = false;
         this.animatedFromBottom = animatedFromBottom;
         textLayoutOut = textLayout;
         iconOut = icon;
@@ -170,6 +172,7 @@ public class UnreadCounterTextView extends View {
         windowPausedAnimator = null;
         finishReplacement();
         lastText = text;
+        textInfo = false;
         layoutPaint.setTypeface(AndroidUtilities.bold());
         layoutTextWidth = (int) Math.ceil(layoutPaint.measureText(text, 0, text.length()));
         icon = null;
@@ -179,7 +182,7 @@ public class UnreadCounterTextView extends View {
     }
 
     public CharSequence getText() {
-        return lastText;
+        return pendingText != null ? pendingText : lastText;
     }
 
     public void setTextInfo(CharSequence text) {
@@ -188,6 +191,8 @@ public class UnreadCounterTextView extends View {
         removeCallbacks(resumeText);
         presented = false;
         finishReplacement();
+        lastText = text;
+        textInfo = true;
         layoutPaint.setTypeface(null);
         layoutTextWidth = (int) Math.ceil(layoutPaint.measureText(text, 0, text.length()));
         icon = null;
@@ -202,6 +207,8 @@ public class UnreadCounterTextView extends View {
         removeCallbacks(resumeText);
         presented = false;
         finishReplacement();
+        lastText = text;
+        textInfo = true;
         layoutPaint.setTypeface(null);
         layoutTextWidth = (int) Math.ceil(layoutPaint.measureText(text, 0, text.length()));
         this.icon = icon;
@@ -300,7 +307,9 @@ public class UnreadCounterTextView extends View {
     @Override
     protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
         super.onMeasure(widthMeasureSpec, heightMeasureSpec);
-        if (snapshot != null) setMeasuredDimension(snapshot.reserveWidth(getMeasuredWidth()), snapshot.reserveHeight(getMeasuredHeight()));
+        if (snapshot != null) setMeasuredDimension(
+                resolveSize(snapshot.reserveWidth(getMeasuredWidth()), widthMeasureSpec),
+                resolveSize(snapshot.reserveHeight(getMeasuredHeight()), heightMeasureSpec));
     }
 
     @Override

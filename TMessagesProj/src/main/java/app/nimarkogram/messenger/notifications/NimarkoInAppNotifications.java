@@ -85,14 +85,18 @@ import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.ChatActivity;
 import org.telegram.ui.DialogsActivity;
 import org.telegram.ui.Components.AvatarDrawable;
+import org.telegram.ui.Components.AnimatedEmojiDrawable.SwapAnimatedEmojiDrawable;
 import org.telegram.ui.Components.AnimatedLinearLayout;
 import org.telegram.ui.Components.BackupImageView;
 import org.telegram.ui.Components.CubicBezierInterpolator;
 import org.telegram.ui.Components.LayoutHelper;
+import org.telegram.ui.Components.MessagePreviewCrossfade;
+import org.telegram.ui.Components.Premium.PremiumGradient;
 import org.telegram.ui.LaunchActivity;
 
 public final class NimarkoInAppNotifications {
     private static volatile WeakReference<LaunchActivity> host = new WeakReference<>(null);
+    private static WeakReference<LaunchActivity> lifecycleOwner = new WeakReference<>(null);
     private static volatile long generation;
     private static volatile boolean focused;
     private static volatile boolean resumeDismissPending;
@@ -104,8 +108,22 @@ public final class NimarkoInAppNotifications {
     private static final LinkedHashMap<String, RecentDelivery> recent = new LinkedHashMap<>();
     private static final AtomicLongArray sessions = new AtomicLongArray(UserConfig.MAX_ACCOUNT_COUNT);
     private static boolean contentGesture;
+    private static final int[] resumeFadeRootLocation = new int[2];
+    private static final Rect resumeFadeRetiringBounds = new Rect();
     private static long previewRequest;
 
+    public static void getResumeFadeExclusion(View root, Rect out) {
+        out.setEmpty();
+        if (banner != null && banner.getWindowToken() == root.getWindowToken()
+                && !banner.getGlobalVisibleRect(out)) out.setEmpty();
+        resumeFadeRetiringBounds.setEmpty();
+        if (retiringBanner != null && retiringBanner.getWindowToken() == root.getWindowToken()
+                && retiringBanner.getGlobalVisibleRect(resumeFadeRetiringBounds)) out.union(resumeFadeRetiringBounds);
+        if (out.isEmpty()) return;
+        root.getLocationInWindow(resumeFadeRootLocation);
+        out.offset(-resumeFadeRootLocation[0], -resumeFadeRootLocation[1]);
+        if (!out.intersect(0, 0, root.getWidth(), root.getHeight())) out.setEmpty();
+    }
     public static void onContentTouch(MotionEvent event) {
         if (event.getActionMasked() == MotionEvent.ACTION_DOWN) contentGesture = true;
         else if (event.getActionMasked() == MotionEvent.ACTION_UP || event.getActionMasked() == MotionEvent.ACTION_CANCEL) contentGesture = false;
@@ -379,16 +397,21 @@ public final class NimarkoInAppNotifications {
     public static void onResume(LaunchActivity activity) {
         contentGesture = false;
         host = new WeakReference<>(activity);
+        lifecycleOwner = new WeakReference<>(activity);
         resumeEnterComplete = false;
         focused = activity.hasWindowFocus();
         focusLostAt = -1;
         pruneRetainedBanners();
         dismissForResume();
+        if (banner != null && !banner.closing) {
+            banner.removeCallbacks(banner.watch);
+            banner.postDelayed(banner.watch, 250);
+        }
     }
 
     public static void onPause(LaunchActivity activity) {
-        contentGesture = false;
         if (host.get() == activity) {
+            contentGesture = false;
             cancelResumeDismissal();
             resumeEnterComplete = false;
             resumeDismissPending = true;
@@ -396,13 +419,19 @@ public final class NimarkoInAppNotifications {
             focused = false;
             focusLostAt = -1;
             generation++;
-            if (banner != null) banner.pauseInteraction();
+            if (banner != null) {
+                banner.removeCallbacks(banner.watch);
+                banner.pauseInteraction();
+            }
+            if (retiringBanner != null) retiringBanner.removeCallbacks(retiringBanner.watch);
+            pruneRetainedBanners();
         }
     }
 
     public static void onDestroy(LaunchActivity activity) {
-        if (host.get() != null && host.get() != activity) return;
+        if (activity == null || lifecycleOwner.get() != activity) return;
         onPause(activity);
+        lifecycleOwner.clear();
         dismiss();
     }
 
@@ -1059,6 +1088,7 @@ public final class NimarkoInAppNotifications {
         final int slop;
         final Runnable watch = new Runnable() {
             @Override public void run() {
+                removeCallbacks(this);
                 if (banner != Banner.this || closing) {
                     return;
                 }
@@ -1068,6 +1098,7 @@ public final class NimarkoInAppNotifications {
                         removeCurrent();
                         return;
                     }
+                    if (host.get() == null) return;
                     ResumeDismissal pending = resumeDismissal;
                     if (pending != null && pending.ready() && !resumeDismissalBusy()
                             && !pending.framePending && pending.completion == null) {
@@ -1154,8 +1185,8 @@ public final class NimarkoInAppNotifications {
         }
 
         private final class NotificationTextLayout extends LinearLayout {
-            final org.telegram.ui.Components.MessagePreviewCrossfade crossfade =
-                    new org.telegram.ui.Components.MessagePreviewCrossfade(this, this::onCrossfadeFrame);
+            final MessagePreviewCrossfade crossfade =
+                    new MessagePreviewCrossfade(this, this::onCrossfadeFrame);
             int retainedHeight;
 
             int naturalHeight;
@@ -1302,8 +1333,8 @@ public final class NimarkoInAppNotifications {
         }
 
         private final class NotificationTitleView extends TextView {
-            private final org.telegram.ui.Components.AnimatedEmojiDrawable.SwapAnimatedEmojiDrawable senderBadge;
-            private final org.telegram.ui.Components.AnimatedEmojiDrawable.SwapAnimatedEmojiDrawable recipientBadge;
+            private final SwapAnimatedEmojiDrawable senderBadge;
+            private final SwapAnimatedEmojiDrawable recipientBadge;
             private String senderName, recipientName;
             private long senderDocumentId, recipientDocumentId;
             private boolean senderPremiumStar, recipientPremiumStar;
@@ -1312,8 +1343,8 @@ public final class NimarkoInAppNotifications {
 
             NotificationTitleView(LaunchActivity activity) {
                 super(activity);
-                senderBadge = new org.telegram.ui.Components.AnimatedEmojiDrawable.SwapAnimatedEmojiDrawable(this, dp(18));
-                recipientBadge = new org.telegram.ui.Components.AnimatedEmojiDrawable.SwapAnimatedEmojiDrawable(this, dp(18));
+                senderBadge = new SwapAnimatedEmojiDrawable(this, dp(18));
+                recipientBadge = new SwapAnimatedEmojiDrawable(this, dp(18));
 
                 senderBadge.setCurrentAccount(account);
                 recipientBadge.setCurrentAccount(account);
@@ -1349,12 +1380,12 @@ public final class NimarkoInAppNotifications {
                 boundRtl = rtl;
 
                 if (senderStar) {
-                    senderBadge.set(org.telegram.ui.Components.Premium.PremiumGradient.getInstance().premiumStarDrawableMini, animate);
+                    senderBadge.set(PremiumGradient.getInstance().premiumStarDrawableMini, animate);
                 } else {
                     senderBadge.set(senderId, animate && senderId != 0);
                 }
                 if (recipientStar) {
-                    recipientBadge.set(org.telegram.ui.Components.Premium.PremiumGradient.getInstance().premiumStarDrawableMini, animate);
+                    recipientBadge.set(PremiumGradient.getInstance().premiumStarDrawableMini, animate);
                 } else {
                     recipientBadge.set(recipientId, animate && recipientId != 0);
                 }
@@ -1372,7 +1403,7 @@ public final class NimarkoInAppNotifications {
             }
 
             private void appendPerson(SpannableStringBuilder value, String name, boolean hasBadge,
-                                      org.telegram.ui.Components.AnimatedEmojiDrawable.SwapAnimatedEmojiDrawable badge) {
+                                      SwapAnimatedEmojiDrawable badge) {
                 TextDirectionHeuristic direction = boundRtl ? TextDirectionHeuristics.FIRSTSTRONG_RTL
                         : TextDirectionHeuristics.FIRSTSTRONG_LTR;
                 SpannableStringBuilder person = new SpannableStringBuilder(name);
@@ -1399,10 +1430,10 @@ public final class NimarkoInAppNotifications {
             }
 
             private final class TitleBadgeSpan extends ReplacementSpan {
-                private final org.telegram.ui.Components.AnimatedEmojiDrawable.SwapAnimatedEmojiDrawable badge;
+                private final SwapAnimatedEmojiDrawable badge;
                 private final boolean rtl;
 
-                TitleBadgeSpan(org.telegram.ui.Components.AnimatedEmojiDrawable.SwapAnimatedEmojiDrawable badge, boolean rtl) {
+                TitleBadgeSpan(SwapAnimatedEmojiDrawable badge, boolean rtl) {
                     this.badge = badge;
                     this.rtl = rtl;
                 }
@@ -1727,7 +1758,9 @@ public final class NimarkoInAppNotifications {
             float distance = Math.max(0, getHeight() + pullOffset);
             long duration = releaseVelocity < -dp(100)
                     ? Math.max(100, Math.min(200, Math.round(2000f * distance / -releaseVelocity))) : 180;
-            settlePull(-getHeight(), duration, () -> { if (banner == this) removeCurrent(); });
+            settlePull(-getHeight(), duration, () -> {
+                if (banner == this) removeCurrent();
+            });
         }
 
         void animateOpenChat() {
@@ -1777,7 +1810,9 @@ public final class NimarkoInAppNotifications {
 
         void openChat() {
             if (banner != this) return;
-            if (closing || delivery != null && !delivery.isActive() || !isCurrent(account, owner, loginSession) || !allowed(account, owner, dialogId, sample)) { removeCurrent(); return; }
+            if (closing || delivery != null && !delivery.isActive() || !isCurrent(account, owner, loginSession) || !allowed(account, owner, dialogId, sample)) {
+                removeCurrent(); return;
+            }
             if (!sample && (navigationRequestCurrent == null || !navigationRequestCurrent.getAsBoolean())) {
                 pauseInteraction();
                 return;

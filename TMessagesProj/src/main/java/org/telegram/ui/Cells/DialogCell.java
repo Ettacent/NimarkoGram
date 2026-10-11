@@ -192,6 +192,10 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
     public TLRPC.TL_forumTopic forumTopic;
     public boolean useFromUserAsAvatar;
     private boolean isTopic;
+    private int boundForumAccount = -1;
+    private long boundForumDialogId;
+    private int boundForumTopicId;
+    private boolean boundSearchMessage;
     private boolean twoLinesForName;
     private boolean nameIsEllipsized;
     private Paint topicCounterPaint;
@@ -290,7 +294,15 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
     }
 
     public void setForumTopic(TLRPC.TL_forumTopic topic, long dialog_id, MessageObject messageObject, boolean showTopicIconInName, boolean animated) {
-        finishReactionsMentionsAnimation();
+        boundSearchMessage = false;
+        final boolean sameBinding = topic != null && isTopic && !isDialogCell && customDialog == null
+                && boundForumAccount == currentAccount && boundForumDialogId == dialog_id
+                && boundForumTopicId == topic.id;
+        if (!sameBinding || !animated || !attachedToWindow || !isAttachedToWindow()
+                || !SharedConfig.animationsEnabled()) finishReactionsMentionsAnimation();
+        boundForumAccount = topic == null ? -1 : currentAccount;
+        boundForumDialogId = dialog_id;
+        boundForumTopicId = topic == null ? 0 : topic.id;
         forumTopic = topic;
         isTopic = forumTopic != null;
         if (currentDialogId != dialog_id) {
@@ -336,7 +348,11 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
     }
 
     public void setCurrentDialogId(long dialogId) {
-        if (currentDialogId != dialogId) finishReactionsMentionsAnimation();
+        if (currentDialogId != dialogId) {
+            boundForumAccount = -1;
+            boundSearchMessage = false;
+            finishReactionsMentionsAnimation();
+        }
         currentDialogId = dialogId;
     }
 
@@ -770,6 +786,7 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
         emojiStatusView = new View(context) {
             @Override
             protected void onDraw(@NonNull Canvas canvas) {
+                if (getAlpha() <= 0f || !isBadgePresented()) return;
                 emojiStatus.setBounds(0, 0, getWidth(), getHeight());
                 emojiStatus.draw(canvas);
                 if (emojiStatus.isEmpty()) DialogCell.this.invalidate();
@@ -808,6 +825,8 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
     }
 
     public void setDialog(TLRPC.Dialog dialog, int type, int folder) {
+        boundForumAccount = -1;
+        boundSearchMessage = false;
         final boolean sameBinding = isDialogCell && !isTopic && !isSavedDialog && customDialog == null
                 && currentDialogId != 0 && currentDialogId == dialog.id
                 && dialogsType == type && folderId == folder
@@ -864,6 +883,8 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
     }
 
     public void setDialog(CustomDialog dialog) {
+        boundForumAccount = -1;
+        boundSearchMessage = false;
         finishReactionsMentionsAnimation();
         badgeOwnerDrawn = false;
         badgeBoundAccount = -1;
@@ -929,6 +950,8 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
     }
 
     public void setDialog(long dialog_id, MessageObject messageObject, int date, boolean useMe, boolean animated) {
+        boundForumAccount = -1;
+        boundSearchMessage = true;
         finishReactionsMentionsAnimation();
         if (currentDialogId != dialog_id) {
             emojiStatus.resetAnimation();
@@ -957,6 +980,8 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
     }
 
     public void setDialog(long dialog_id, MessageObject messageObject, ArrayList<MessageObject> groupMessageObject, int date, boolean useMe, boolean animated) {
+        boundForumAccount = -1;
+        boundSearchMessage = true;
         finishReactionsMentionsAnimation();
         if (currentDialogId != dialog_id) {
             emojiStatus.resetAnimation();
@@ -991,6 +1016,16 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
 
     public int getMessageId() {
         return messageId;
+    }
+
+    public int getResumeSnapshotTopicId() {
+        return isTopic && !isDialogCell && forumTopic != null
+                && boundForumAccount == currentAccount && boundForumDialogId == currentDialogId
+                ? boundForumTopicId : 0;
+    }
+
+    public int getResumeSnapshotMessageId() {
+        return !isDialogCell && boundSearchMessage ? messageId : 0;
     }
 
     public void setPreloader(DialogsAdapter.DialogsPreloader preloader) {
@@ -4844,7 +4879,7 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
                 if ((!(useForceThreeLines || SharedConfig.useThreeLinesLayout) || isForumCell()) && hasTags()) {
                     y -= dp(9);
                 }
-                if (botVerification != null) {
+                if (botVerification != null && isBadgePresented()) {
                     botVerification.setBounds(
                         nameLeft - dp(17 + 2),
                         y + dp(-1),
@@ -4940,7 +4975,7 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
                             nameMuteLeft + dp(20),
                             y - dp(4) + dp(22)
                         );
-                        emojiStatus.draw(canvas);
+                        if (isBadgePresented()) emojiStatus.draw(canvas);
                     } else {
                         emojiStatusVisible = true;
                     }

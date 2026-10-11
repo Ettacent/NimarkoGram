@@ -1388,9 +1388,9 @@ public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayou
                         cy2 = cy - dp(48);
                         cy3 = cy + dp(48);
                     } else {
-                    cx2 = cx + dp(80);
-                    cx3 = cx - dp(80);
-                    cy2 = cy3 = cy;
+                        cx2 = cx + dp(80);
+                        cx3 = cx - dp(80);
+                        cy2 = cy3 = cy;
                     }
                 }
 
@@ -2219,7 +2219,9 @@ public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayou
         if (!cameraPhotos.isEmpty()) {
             for (int a = 0, size = cameraPhotos.size(); a < size; a++) {
                 MediaController.PhotoEntry photoEntry = (MediaController.PhotoEntry) cameraPhotos.get(a);
-                new File(photoEntry.path).delete();
+                if (photoEntry.path != null) {
+                    new File(photoEntry.path).delete();
+                }
                 if (photoEntry.imagePath != null) {
                     new File(photoEntry.imagePath).delete();
                 }
@@ -2549,7 +2551,9 @@ public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayou
                 if (cancelTakingPhotos && cameraPhotos.size() == 1) {
                     for (int a = 0, size = cameraPhotos.size(); a < size; a++) {
                         MediaController.PhotoEntry photoEntry = (MediaController.PhotoEntry) cameraPhotos.get(a);
-                        new File(photoEntry.path).delete();
+                        if (photoEntry.path != null) {
+                            new File(photoEntry.path).delete();
+                        }
                         if (photoEntry.imagePath != null) {
                             new File(photoEntry.imagePath).delete();
                         }
@@ -3285,7 +3289,7 @@ public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayou
     }
 
     public void onActivityResultFragment(int requestCode, Intent data, String currentPicturePath) {
-        if (parentAlert.destroyed) {
+        if (parentAlert.destroyed || requestCode == 0 && TextUtils.isEmpty(currentPicturePath)) {
             return;
         }
         mediaFromExternalCamera = true;

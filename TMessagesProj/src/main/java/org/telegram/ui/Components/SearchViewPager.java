@@ -99,6 +99,16 @@ public class SearchViewPager extends ViewPagerFixed implements FilteredSearchVie
     private ArrayList<SearchRow> searchRows;
     private boolean dispatchingSearchDiff;
     private boolean searchRefreshPosted;
+    private boolean searchRefreshPending;
+    private final Runnable searchRefreshRunnable = () -> {
+        if (!searchRefreshPosted) {
+            return;
+        }
+        searchRefreshPosted = false;
+        if (this.attached && searchRefreshPending) {
+            dialogsSearchAdapter.notifyDataSetChanged();
+        }
+    };
     private ViewTreeObserver.OnPreDrawListener searchResultsEnterListener;
     private boolean searchResultsEntering;
     private boolean searchEmptyRevealReady = true;
@@ -238,16 +248,15 @@ public class SearchViewPager extends ViewPagerFixed implements FilteredSearchVie
             @Override
             public void notifyDataSetChanged() {
                 if (searchListView != null && searchListView.isComputingLayout()) {
-                    if (!searchRefreshPosted) {
+                    searchRefreshPending = true;
+                    if (attached && !searchRefreshPosted) {
                         searchRefreshPosted = true;
-                        searchListView.post(() -> {
-                            searchRefreshPosted = false;
-                            notifyDataSetChanged();
-                        });
+                        searchListView.postOnAnimation(searchRefreshRunnable);
                     }
                     return;
                 }
-                searchRefreshPosted = false;
+                cancelPostedSearchRefresh();
+                searchRefreshPending = false;
                 cancelPendingSearchResultsEntrance();
                 int itemCount = getCurrentItemCount();
                 ArrayList<SearchRow> nextRows = snapshotSearchRows(this);
@@ -1731,6 +1740,12 @@ public class SearchViewPager extends ViewPagerFixed implements FilteredSearchVie
     }
     private NotificationCenter.ObserversGroup observersGroup;
 
+    private void cancelPostedSearchRefresh() {
+        if (searchRefreshPosted && searchListView != null) {
+            searchListView.removeCallbacks(searchRefreshRunnable);
+        }
+        searchRefreshPosted = false;
+    }
     @Override
     protected void onAttachedToWindow() {
         super.onAttachedToWindow();
@@ -1747,6 +1762,9 @@ public class SearchViewPager extends ViewPagerFixed implements FilteredSearchVie
             .add(NotificationCenter.storiesListUpdated);
         attached = true;
 
+        if (searchRefreshPending) {
+            dialogsSearchAdapter.notifyDataSetChanged();
+        }
         if (channelsSearchAdapter != null) {
             channelsSearchAdapter.update(false);
         }
@@ -1759,6 +1777,7 @@ public class SearchViewPager extends ViewPagerFixed implements FilteredSearchVie
     protected void onDetachedFromWindow() {
         super.onDetachedFromWindow();
         attached = false;
+        cancelPostedSearchRefresh();
         cancelSearchResultsEntrance();
         cancelSearchEmptyReveal();
         if (observersGroup != null) {

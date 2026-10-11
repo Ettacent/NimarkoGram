@@ -1569,7 +1569,7 @@ public class StarsReactionsSheet extends BottomSheet implements NotificationCent
 
         public void removeParticlesOutside() {
             if (type == TYPE_RADIAL_INSIDE) {
-                final long now = NimarkoUiAnimationClock.now();
+                final long now = particleTime();
                 for (int i = 0; i < particles.size(); ++i) {
                     final Particle p = particles.get(i);
                     if (!bounds.contains((int) p.x, (int) p.y)) gen(p, now, firstDraw);
@@ -1588,13 +1588,28 @@ public class StarsReactionsSheet extends BottomSheet implements NotificationCent
         private long lastInvalidateTime = -1;
         private long lastTime = -1;
         private int lastClockEpoch = -1;
+        private long particleTime() {
+            return lastTime >= 0 && (NimarkoUiAnimationClock.isPaused()
+                    || NimarkoUiAnimationClock.epoch() != lastClockEpoch)
+                    ? lastTime : NimarkoUiAnimationClock.now();
+        }
         public boolean process() {
-            if (!LiteMode.isEnabled(LiteMode.FLAG_PARTICLES)) {
+            if (!LiteMode.isEnabled(LiteMode.FLAG_PARTICLES) || NimarkoUiAnimationClock.isPaused()) {
                 return false;
             }
 
             final long now = NimarkoUiAnimationClock.now();
             final int clockEpoch = NimarkoUiAnimationClock.epoch();
+            if (lastTime >= 0 && clockEpoch != lastClockEpoch) {
+                final long elapsed = Math.max(0L, now - lastTime);
+                for (int i = 0; i < particles.size(); ++i) {
+                    particles.get(i).start += elapsed;
+                }
+                if (lastInvalidateTime >= 0) lastInvalidateTime += elapsed;
+                lastTime = now;
+                lastClockEpoch = clockEpoch;
+                return false;
+            }
             final float deltaTime = (lastTime < 0 || clockEpoch != lastClockEpoch ? 0 : Math.max(0L, Math.min(now - lastTime, 16L))) / 1000f * speed;
             for (int i = 0; i < Math.min(visibleCount, particles.size()); ++i) {
                 final Particle p = particles.get(i);
@@ -1631,7 +1646,7 @@ public class StarsReactionsSheet extends BottomSheet implements NotificationCent
                 batchParticlesBuffer.fillParticleTextureCords(0, 0, b.getWidth(), b.getHeight());
             }
 
-            final long now = NimarkoUiAnimationClock.now();
+            final long now = particleTime();
             for (int a = 0; a < visibleCount; a++) {
                 final Particle p = particles.get(a);
                 final PointF pF = points.get(a);

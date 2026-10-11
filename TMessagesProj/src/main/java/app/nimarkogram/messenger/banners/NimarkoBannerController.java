@@ -613,14 +613,6 @@ public final class NimarkoBannerController {
         }
     }
 
-    private void rmCached(CacheKey k) {
-        synchronized (cacheLock) {
-            if (!isCurrentScope(k.scope)) return;
-            rmCachedUnlocked(k);
-        }
-        writeIndexAsync(k.scope);
-    }
-
     private void rmCachedUnlocked(CacheKey k) {
         String old = cachedBanners.remove(k);
         if (old != null) {

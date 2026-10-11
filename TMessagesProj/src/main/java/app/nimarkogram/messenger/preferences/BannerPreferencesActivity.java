@@ -44,7 +44,6 @@ public class BannerPreferencesActivity extends BasePreferencesActivity {
     private static final int ID_DELETE_LOCAL  = 107;
     private static final int ID_USE_AVATAR    = 108;
     private static final int ID_LITE          = 109;
-    private static final int ID_SOUND_INFO    = 110;
 
     private final NimarkoBannerController ctrl = NimarkoBannerController.getInstance();
     private boolean pickingGlobal;

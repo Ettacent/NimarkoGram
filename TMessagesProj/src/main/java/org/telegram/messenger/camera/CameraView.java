@@ -1252,6 +1252,28 @@ public class CameraView extends app.nimarkogram.messenger.camera.BaseCameraView 
         return new Rect(Math.round(rectF.left), Math.round(rectF.top), Math.round(rectF.right), Math.round(rectF.bottom));
     }
 
+    private Rect calculatePrimaryTapArea(float x, float y, float coefficient) {
+        if (textureView == null || !isLaidOut() || !textureView.isLaidOut()
+                || previewSize[0] == null || cameraSession[0] == null
+                || textureView.getWidth() <= 0 || textureView.getHeight() <= 0) {
+            return null;
+        }
+        Rect visible = new Rect(textureView.getLeft(), textureView.getTop(),
+                textureView.getRight(), textureView.getBottom());
+        if (!visible.intersect(0, 0, getWidth(), getHeight())) return null;
+
+        int areaSize = Math.max(1, (int) (focusAreaSize * coefficient));
+        int width = Math.min(areaSize, visible.width());
+        int height = Math.min(areaSize, visible.height());
+        int left = clamp((int) x - width / 2, visible.left, visible.right - width);
+        int top = clamp((int) y - height / 2, visible.top, visible.bottom - height);
+        RectF rectF = new RectF(left - textureView.getLeft(), top - textureView.getTop(),
+                left + width - textureView.getLeft(), top + height - textureView.getTop());
+        matrix.mapRect(rectF);
+        Rect result = new Rect(Math.round(rectF.left), Math.round(rectF.top),
+                Math.round(rectF.right), Math.round(rectF.bottom));
+        return result.isEmpty() ? null : result;
+    }
     private int clamp(int x, int min, int max) {
         if (x > max) {
             return max;
@@ -1267,8 +1289,9 @@ public class CameraView extends app.nimarkogram.messenger.camera.BaseCameraView 
     }
 
     public void focusToPoint(int i, int x, int y, int vx, int vy, boolean visible) {
-        Rect focusRect = calculateTapArea(x, y, 1f);
-        Rect meteringRect = calculateTapArea(x, y, 1.5f);
+        Rect focusRect = i == 0 ? calculatePrimaryTapArea(x, y, 1f) : calculateTapArea(x, y, 1f);
+        Rect meteringRect = i == 0 ? calculatePrimaryTapArea(x, y, 1.5f) : calculateTapArea(x, y, 1.5f);
+        if (focusRect == null || meteringRect == null) return;
 
         if (cameraSession[i] != null) {
             cameraSession[i].focusToRect(focusRect, meteringRect);

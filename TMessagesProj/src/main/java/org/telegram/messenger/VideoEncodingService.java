@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 5.x.x.
  * It is licensed under GNU GPL v. 2 or later.
@@ -21,6 +23,7 @@ public class VideoEncodingService extends Service implements NotificationCenter.
     private MediaController.VideoConvertMessage currentMessage;
     private static VideoEncodingService instance;
 
+    private boolean stopping;
     int currentAccount;
     String currentPath;
 
@@ -36,13 +39,13 @@ public class VideoEncodingService extends Service implements NotificationCenter.
             } catch (Exception e) {
                 FileLog.e(e);
             }
-        } else if (cancelled) {
+        } else if (cancelled && !instance.stopping) {
             MediaController.VideoConvertMessage messageInController = MediaController.getInstance().getCurrentForegroundConverMessage();
             if (instance.currentMessage != messageInController) {
                 if (messageInController != null) {
                     instance.setCurrentMessage(messageInController);
                 } else {
-                    instance.stopSelf();
+                    instance.stopEncodingService();
                 }
             }
         }
@@ -50,7 +53,7 @@ public class VideoEncodingService extends Service implements NotificationCenter.
 
     public static void stop() {
         if (instance != null) {
-            instance.stopSelf();
+            instance.stopEncodingService();
         }
     }
 
@@ -60,8 +63,11 @@ public class VideoEncodingService extends Service implements NotificationCenter.
 
 
     public void onDestroy() {
+        stopping = true;
         super.onDestroy();
-        instance = null;
+        if (instance == this) {
+            instance = null;
+        }
         try {
             stopForeground(true);
         } catch (Throwable ignore) {
@@ -78,7 +84,25 @@ public class VideoEncodingService extends Service implements NotificationCenter.
     }
 
     @Override
+    public void onTimeout(int startId, int fgsType) {
+        stopEncodingService();
+    }
+
+    private void stopEncodingService() {
+        stopping = true;
+        stopSelf();
+        try {
+            stopForeground(true);
+        } catch (Throwable e) {
+            FileLog.e(e);
+        }
+    }
+
+    @Override
     public void didReceivedNotification(int id, int account, Object... args) {
+        if (stopping || instance != this) {
+            return;
+        }
         if (id == NotificationCenter.fileUploadProgressChanged) {
             String fileName = (String) args[0];
             if (account == currentAccount && currentPath != null && currentPath.equals(fileName)) {
@@ -94,11 +118,14 @@ public class VideoEncodingService extends Service implements NotificationCenter.
             String fileName = (String) args[0];
             if (account == currentAccount && currentPath != null && currentPath.equals(fileName)) {
                 AndroidUtilities.runOnUIThread(() -> {
+                    if (stopping || instance != this) {
+                        return;
+                    }
                     MediaController.VideoConvertMessage message = MediaController.getInstance().getCurrentForegroundConverMessage();
                     if (message != null) {
                         setCurrentMessage(message);
                     } else {
-                        stopSelf();
+                        stopEncodingService();
                     }
                 });
             }
@@ -106,6 +133,9 @@ public class VideoEncodingService extends Service implements NotificationCenter.
     }
 
     private void updateNotification() {
+        if (stopping || instance != this || builder == null) {
+            return;
+        }
         try {
             MediaController.VideoConvertMessage message = MediaController.getInstance().getCurrentForegroundConverMessage();
             if (message == null) {
@@ -119,11 +149,16 @@ public class VideoEncodingService extends Service implements NotificationCenter.
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
+        if (stopping) {
+            stopSelf();
+            return Service.START_NOT_STICKY;
+        }
         if (isRunning()) {
             return Service.START_NOT_STICKY;
         }
         MediaController.VideoConvertMessage videoConvertMessage = MediaController.getInstance().getCurrentForegroundConverMessage();
         if (videoConvertMessage == null) {
+            stopEncodingService();
             return Service.START_NOT_STICKY;
         }
         instance = this;
@@ -141,6 +176,8 @@ public class VideoEncodingService extends Service implements NotificationCenter.
         } catch (Throwable e) {
             //ignore ForegroundServiceStartNotAllowedException
             FileLog.e(e);
+            stopEncodingService();
+            return Service.START_NOT_STICKY;
         }
         AndroidUtilities.runOnUIThread(this::updateNotification);
         return Service.START_NOT_STICKY;
@@ -166,7 +203,7 @@ public class VideoEncodingService extends Service implements NotificationCenter.
     }
 
     private void setCurrentMessage(MediaController.VideoConvertMessage message) {
-        if (currentMessage == message) {
+        if (stopping || currentMessage == message) {
             return;
         }
         if (currentMessage != null) {

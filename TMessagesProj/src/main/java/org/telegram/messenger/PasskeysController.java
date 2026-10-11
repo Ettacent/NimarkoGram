@@ -204,10 +204,50 @@ public class PasskeysController {
         );
     }
 
+    private static final class LoginPhase {
+        private Runnable cancelAction;
+        private AlertDialog dialog;
+        private boolean finished;
+        private boolean cancelled;
+
+        void publishCancel(Runnable action) {
+            if (cancelled) {
+                runCancel(action);
+            } else if (!finished) {
+                cancelAction = action;
+            }
+        }
+
+        void finish(boolean cancel) {
+            if (finished) return;
+            finished = true;
+            cancelled = cancel;
+            Runnable action = cancelAction;
+            cancelAction = null;
+            AlertDialog ownedDialog = dialog;
+            dialog = null;
+            try {
+                if (ownedDialog != null) ownedDialog.dismiss();
+            } finally {
+                if (cancel && action != null) runCancel(action);
+            }
+        }
+
+        private static void runCancel(Runnable action) {
+            try {
+                action.run();
+            } catch (RuntimeException e) {
+                FileLog.e(e);
+            }
+        }
+    }
     public static Runnable login(Context context, int currentAccount, boolean clickedButton, Utilities.Callback3<Long, TLRPC.auth_Authorization, String> callback) {
         final AtomicBoolean completed = new AtomicBoolean();
+        final LoginPhase initialPhase = new LoginPhase();
+        final LoginPhase[] activePhase = { initialPhase };
         final Utilities.Callback3<Long, TLRPC.auth_Authorization, String> done = (userId, authorization, error) -> {
             if (completed.compareAndSet(false, true)) {
+                activePhase[0].finish("CANCELLED".equals(error));
                 AndroidUtilities.runOnUIThread(() -> callback.run(userId, authorization, error));
             }
         };
@@ -218,14 +258,13 @@ public class PasskeysController {
             return null;
         }
 
-        final boolean[] cancelled = new boolean[1];
-        final Runnable[] cancel = new Runnable[1];
 
         final TL_account.initPasskeyLogin req = new TL_account.initPasskeyLogin();
         req.api_id = BuildVars.APP_ID;
         req.api_hash = BuildVars.APP_HASH;
         final int requestId = ConnectionsManager.getInstance(currentAccount).sendRequestTyped(req, AndroidUtilities::runOnUIThread, (res, err) -> {
-            if (cancelled[0] || completed.get()) return;
+            if (completed.get() || initialPhase.finished) return;
+            initialPhase.finish(false);
             if (err != null) {
                 done.run(0L, null, err.text);
                 return;
@@ -243,6 +282,9 @@ public class PasskeysController {
             }
 
             final CancellationSignal cancellationSignal = new CancellationSignal();
+            final LoginPhase credentialPhase = new LoginPhase();
+            activePhase[0] = credentialPhase;
+            credentialPhase.publishCancel(cancellationSignal::cancel);
             try {
                 final GetPublicKeyCredentialOption passkeyOption = new GetPublicKeyCredentialOption(requestJson);
                 final GetCredentialRequest request = new GetCredentialRequest.Builder()
@@ -253,7 +295,8 @@ public class PasskeysController {
                 credentialManager.getCredentialAsync(context, request, cancellationSignal, context.getMainExecutor(), new CredentialManagerCallback<GetCredentialResponse, GetCredentialException>() {
                     @Override
                     public void onResult(GetCredentialResponse res2) {
-                        if (completed.get()) return;
+                        if (completed.get() || credentialPhase.finished) return;
+                        credentialPhase.finish(false);
                         final Credential credential = res2.getCredential();
 
                         final int datacenterId;
@@ -290,8 +333,13 @@ public class PasskeysController {
                         }
 
                         final AlertDialog progressDialog = new AlertDialog(context, AlertDialog.ALERT_TYPE_SPINNER);
+                        final LoginPhase finalPhase = new LoginPhase();
+                        finalPhase.dialog = progressDialog;
+                        activePhase[0] = finalPhase;
+                        progressDialog.setOnCancelListener(d -> done.run(userId, null, "CANCELLED"));
                         progressDialog.showDelayed(500);
 
+                        if (completed.get()) return;
                         if (datacenterId != ConnectionsManager.getInstance(currentAccount).getCurrentDatacenterId()) {
                             final int from_dc_id = ConnectionsManager.getInstance(currentAccount).getCurrentDatacenterId();
                             final long from_auth_key_id = ConnectionsManager.getInstance(currentAccount).getCurrentAuthKeyId();
@@ -304,7 +352,7 @@ public class PasskeysController {
                         }
 
                         final int requestId = ConnectionsManager.getInstance(currentAccount).sendRequestTyped(req2, AndroidUtilities::runOnUIThread, (auth, err3) -> {
-                            progressDialog.dismiss();
+                            if (completed.get()) return;
                             if (err3 != null) {
                                 done.run(userId, null, err3.text);
                             } else {
@@ -312,15 +360,12 @@ public class PasskeysController {
                             }
                         }, datacenterId, ConnectionsManager.RequestFlagWithoutLogin | ConnectionsManager.RequestFlagInvokeAfter);
 
-                        progressDialog.setOnCancelListener(d -> {
-                            ConnectionsManager.getInstance(currentAccount).cancelRequest(requestId, true);
-                            done.run(userId, null, "CANCELLED");
-                        });
+                        finalPhase.publishCancel(() -> ConnectionsManager.getInstance(currentAccount).cancelRequest(requestId, true));
                     }
 
                     @Override
                     public void onError(@NonNull GetCredentialException err2) {
-                        if (completed.get()) return;
+                        if (completed.get() || credentialPhase.finished) return;
                         if (err2 instanceof NoCredentialException) {
                             done.run(0L, null, "EMPTY");
                         } else if (err2 instanceof GetCredentialCancellationException) {
@@ -333,7 +378,6 @@ public class PasskeysController {
                     }
                 });
 
-                cancel[0] = cancellationSignal::cancel;
             } catch (LinkageError | Exception e) {
                 FileLog.e(e);
                 done.run(0L, null, e instanceof LinkageError ? "UNAVAILABLE" : e.getMessage());
@@ -342,15 +386,9 @@ public class PasskeysController {
 
         }, ConnectionsManager.RequestFlagWithoutLogin);
 
-        cancel[0] = () -> ConnectionsManager.getInstance(currentAccount).cancelRequest(requestId, true);
+        initialPhase.publishCancel(() -> ConnectionsManager.getInstance(currentAccount).cancelRequest(requestId, true));
 
-        return () -> {
-            cancelled[0] = true;
-            done.run(0L, null, "CANCELLED");
-            if (cancel[0] != null) {
-                cancel[0].run();
-            }
-        };
+        return () -> AndroidUtilities.runOnUIThread(() -> done.run(0L, null, "CANCELLED"));
     }
 
     public static <T> Continuation<T> ktxCallback(Utilities.Callback2<T, Throwable> done) {

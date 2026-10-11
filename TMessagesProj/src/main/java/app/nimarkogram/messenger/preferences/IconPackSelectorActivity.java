@@ -66,9 +66,6 @@ public class IconPackSelectorActivity extends BaseFragment {
             R.drawable.msg_settings, R.drawable.msg_calls, R.drawable.msg_folders,
             R.drawable.msg_camera, R.drawable.msg_contacts, R.drawable.msg_archive,
     };
-    private static final String[] SAMPLE_NAMES = {
-            "msg_settings", "msg_calls", "msg_folders", "msg_camera", "msg_contacts", "msg_archive",
-    };
 
     @Override
     public View createView(Context context) {

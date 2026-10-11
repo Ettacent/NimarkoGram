@@ -36,4 +36,5 @@
     <string name="NM_WL_PaymentDelayed">付款仍在核实中，请稍后重新打开此页面。</string>
     <string name="NM_WL_PaymentRequired">访问未启用</string>
     <string name="NM_WL_PriceUnknown">价格暂不可用</string>
+    <string name="NM_WL_ActivationPending">订阅已生效。连接尚未就绪，无需重复付款。</string>
 </resources>

@@ -17,12 +17,16 @@ import org.telegram.messenger.ApplicationLoader;
 import org.telegram.messenger.FileLog;
 import org.telegram.messenger.LocaleController;
 
+import org.telegram.messenger.NotificationCenter;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileReader;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 
+import java.util.WeakHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
 public final class FontHelper {
 
     public static final String TYPEFACE_GILROY_EXTRABOLD = "fonts/gilroy_extrabold.ttf";
@@ -40,7 +44,14 @@ public final class FontHelper {
     private static Boolean italicSupported = null;
 
     public static volatile boolean loadSystemEmojiFailed = false;
-    private static Typeface systemEmojiTypeface;
+    private static volatile Typeface systemEmojiTypeface;
+    private static volatile File systemEmojiFontPath;
+    private static volatile boolean systemEmojiLoadComplete;
+    private static final AtomicBoolean systemEmojiLoadStarted = new AtomicBoolean();
+    private static final AtomicBoolean legacySystemEmojiLoadStarted = new AtomicBoolean();
+    private static volatile File legacySystemEmojiFontPath;
+    private static final Object systemEmojiLock = new Object();
+    private static final WeakHashMap<Runnable, Boolean> systemEmojiCallbacks = new WeakHashMap<>();
 
     private FontHelper() {}
 
@@ -196,13 +207,22 @@ public final class FontHelper {
     }
 
     public static File getSystemEmojiFontPath() {
+        getSystemEmojiTypeface();
+        return systemEmojiFontPath;
+    }
+
+    private static File findSystemEmojiFontPath() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            File fontFile = getSystemEmojiFontPathV29();
-            if (fontFile != null) {
-                return fontFile;
+            try {
+                File fontFile = getSystemEmojiFontPathV29();
+                if (fontFile != null) {
+                    return fontFile;
+                }
+            } catch (Exception | LinkageError e) {
+                FileLog.e(e);
             }
         }
-        return getSystemEmojiFontPathLegacy();
+        return findSystemEmojiFontPathLegacy();
     }
 
     @RequiresApi(Build.VERSION_CODES.Q)
@@ -233,6 +253,26 @@ public final class FontHelper {
     }
 
     public static File getSystemEmojiFontPathLegacy() {
+        if (legacySystemEmojiLoadStarted.compareAndSet(false, true)) {
+            try {
+                new Thread(() -> {
+                    try {
+                        android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND);
+                        legacySystemEmojiFontPath = findSystemEmojiFontPathLegacy();
+                    } catch (Throwable e) {
+                        FileLog.e(e);
+                    } finally {
+                        AndroidUtilities.runOnUIThread(() -> NotificationCenter.getGlobalInstance().postNotificationName(NotificationCenter.emojiLoaded));
+                    }
+                }, "system-emoji-legacy-font").start();
+            } catch (Throwable e) {
+                FileLog.e(e);
+            }
+        }
+        return legacySystemEmojiFontPath;
+    }
+
+    private static File findSystemEmojiFontPathLegacy() {
         try (BufferedReader br = new BufferedReader(new FileReader("/system/etc/fonts.xml"))) {
             String line;
             boolean ignored = false;
@@ -267,16 +307,69 @@ public final class FontHelper {
         return null;
     }
 
-    public static synchronized Typeface getSystemEmojiTypeface() {
-        if (!loadSystemEmojiFailed && systemEmojiTypeface == null) {
-            File font = getSystemEmojiFontPath();
-            if (font != null) {
-                systemEmojiTypeface = Typeface.createFromFile(font);
+    public static Typeface getSystemEmojiTypeface() {
+        return getSystemEmojiTypeface(null);
+    }
+    public static Typeface getSystemEmojiTypeface(Runnable onReady) {
+        if (systemEmojiLoadComplete) {
+            return systemEmojiTypeface;
+        }
+        if (onReady != null) {
+            synchronized (systemEmojiLock) {
+                if (!systemEmojiLoadComplete) {
+                    systemEmojiCallbacks.put(onReady, Boolean.TRUE);
+                }
             }
-            if (systemEmojiTypeface == null) {
-                loadSystemEmojiFailed = true;
+        }
+        if (systemEmojiLoadStarted.compareAndSet(false, true)) {
+            try {
+                new Thread(FontHelper::loadSystemEmojiTypeface, "system-emoji-font").start();
+            } catch (Throwable e) {
+                finishSystemEmojiLoad(null, null);
+                FileLog.e(e);
             }
         }
         return systemEmojiTypeface;
+    }
+    private static void loadSystemEmojiTypeface() {
+        File font = null;
+        Typeface typeface = null;
+        try {
+            android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND);
+            font = findSystemEmojiFontPath();
+            if (font != null) {
+                typeface = Typeface.createFromFile(font);
+            }
+        } catch (Throwable e) {
+            FileLog.e(e);
+        } finally {
+            finishSystemEmojiLoad(font, typeface);
+        }
+    }
+
+    private static void finishSystemEmojiLoad(File font, Typeface typeface) {
+        synchronized (systemEmojiLock) {
+            systemEmojiFontPath = font;
+            systemEmojiTypeface = typeface;
+            loadSystemEmojiFailed = typeface == null;
+            systemEmojiLoadComplete = true;
+        }
+        AndroidUtilities.runOnUIThread(() -> {
+            ArrayList<Runnable> callbacks;
+            synchronized (systemEmojiLock) {
+                callbacks = new ArrayList<>(systemEmojiCallbacks.keySet());
+                systemEmojiCallbacks.clear();
+            }
+            for (Runnable callback : callbacks) {
+                if (callback != null) {
+                    try {
+                        callback.run();
+                    } catch (Throwable e) {
+                        FileLog.e(e);
+                    }
+                }
+            }
+            NotificationCenter.getGlobalInstance().postNotificationName(NotificationCenter.emojiLoaded);
+        });
     }
 }

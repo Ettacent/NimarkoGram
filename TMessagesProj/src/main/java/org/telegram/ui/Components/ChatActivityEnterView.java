@@ -56,6 +56,7 @@ import android.os.Bundle;
 import android.os.PowerManager;
 import android.os.SystemClock;
 import android.provider.Settings;
+import android.system.Os;
 import android.text.Editable;
 import android.text.InputFilter;
 import android.text.Layout;
@@ -226,6 +227,7 @@ import org.telegram.ui.iv.RichMessageConvert;
 
 import java.io.File;
 import java.io.FileOutputStream;
+import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -747,6 +749,7 @@ public class ChatActivityEnterView extends FrameLayout implements
     private AnimatorSet runningAnimation2;
     private AnimatorSet runningAnimationAudio;
     private AnimatorSet recordPannelAnimation;
+    private ValueAnimator restoredVoicePreviewAnimator;
     private int runningAnimationType;
     private int recordInterfaceState;
 
@@ -2225,20 +2228,26 @@ public class ChatActivityEnterView extends FrameLayout implements
                 }
             } else if (event.getAction() == MotionEvent.ACTION_UP) {
                 if (pausePressed && pauseRect.contains(x, y)) {
+                    if (!isInVideoMode() && MediaController.getInstance().isTrimmingCurrentRecording()) {
+                        pausePressed = oncePressed = false;
+                        return true;
+                    }
                     if (isInVideoMode()) {
                         if (slideText != null) {
                             slideText.setEnabled(false);
                         }
                         delegate.toggleVideoRecordingPause();
                     } else {
+                        final TLRPC.TL_document expectedRecording = MediaController.getInstance().recordingAudio;
                         final Runnable resume = () -> {
+                            if (expectedRecording == null || MediaController.getInstance().recordingAudio != expectedRecording) return;
                             if (!MediaController.getInstance().isRecordingPaused()) {
                                 MessagesController.getGlobalMainSettings().edit().putInt("voicepausehint", 3).apply();
                             }
                             if (sendButtonVisible) {
                                 calledRecordRunnable = true;
                             }
-                            MediaController.getInstance().toggleRecordingPause(voiceOnce);
+                            MediaController.getInstance().toggleRecordingPause(voiceOnce, expectedRecording);
                             delegate.needStartRecordAudio(0);
                             if (slideText != null) {
                                 slideText.setEnabled(false);
@@ -2250,10 +2259,19 @@ public class ChatActivityEnterView extends FrameLayout implements
                         if (audioTimelineView != null) {
                             audioTimelineView.setPlaying(false);
                         }
-                        if (MediaController.getInstance().isRecordingPaused() && (audioTimelineView.getAudioLeft() > 0.01f || audioTimelineView.getAudioRight() < 0.99f)) {
+                        if (audioTimelineView != null && MediaController.getInstance().isRecordingPaused() && (audioTimelineView.getAudioLeft() > 0.01f || audioTimelineView.getAudioRight() < 0.99f)) {
                             final Runnable trim = () -> {
-                                millisecondsRecorded = audioTimelineView.getAudioRightMs() - audioTimelineView.getAudioLeftMs();
-                                MediaController.getInstance().trimCurrentRecording(audioTimelineView.getAudioLeftMs(), audioTimelineView.getAudioRightMs(), resume);
+                                if (expectedRecording == null || audioToSend != expectedRecording
+                                        || MediaController.getInstance().recordingAudio != expectedRecording) return;
+                                final long startMs = audioTimelineView.getAudioLeftMs();
+                                final long endMs = audioTimelineView.getAudioRightMs();
+                                MediaController.getInstance().trimCurrentRecording(startMs, endMs, () -> {
+                                    resumeTrimmedRecording(expectedRecording, endMs - startMs, resume);
+                                }, () -> {
+                                    if (audioToSend == expectedRecording) {
+                                        BulletinFactory.of(parentFragment).createErrorBulletin(getString(R.string.ErrorOccurred)).show();
+                                    }
+                                });
                             };
                             if (MessagesController.getGlobalMainSettings().getBoolean("trimvoicehint", true)) {
                                 new AlertDialog.Builder(getContext(), resourcesProvider)
@@ -4769,6 +4787,7 @@ public class ChatActivityEnterView extends FrameLayout implements
         audioTimelineView = new RecordedAudioPlayerView(getContext(), resourcesProvider);
         recordedAudioPanel.addView(audioTimelineView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, 32, Gravity.CENTER_VERTICAL | Gravity.LEFT, DEFAULT_HEIGHT, 0, 4, 0));
 
+        updateRecordedAudioTimelineInsets();
         updateFieldRight(lastAttachVisible);
     }
 
@@ -4789,6 +4808,81 @@ public class ChatActivityEnterView extends FrameLayout implements
             params.rightMargin = sideInset;
         }
         reparentComposerControl(recordedAudioPanel, destination, params);
+        updateRecordedAudioTimelineInsets();
+    }
+
+    private void updateRecordedAudioTimelineInsets() {
+        if (audioTimelineView == null) return;
+        FrameLayout.LayoutParams params = (FrameLayout.LayoutParams) audioTimelineView.getLayoutParams();
+        int shift = separatedComposerLayout ? dp(4) : 0;
+        int leftMargin = dp(DEFAULT_HEIGHT) - shift;
+        int rightMargin = separatedComposerLayout
+                ? Math.max(0, (dp(DEFAULT_HEIGHT) - params.height) / 2) + shift
+                : dp(4);
+        if (params.leftMargin != leftMargin || params.rightMargin != rightMargin) {
+            params.leftMargin = leftMargin;
+            params.rightMargin = rightMargin;
+            audioTimelineView.setLayoutParams(params);
+        }
+        if (recordDeleteImageView != null) {
+            FrameLayout.LayoutParams deleteParams = (FrameLayout.LayoutParams) recordDeleteImageView.getLayoutParams();
+            int deleteWidth = isInVideoMode() ? dp(DEFAULT_HEIGHT) : leftMargin;
+            if (deleteParams.width != deleteWidth) {
+                deleteParams.width = deleteWidth;
+                recordDeleteImageView.setLayoutParams(deleteParams);
+            }
+        }
+    }
+
+    private void cancelRestoredVoicePreviewReveal() {
+        ValueAnimator previous = restoredVoicePreviewAnimator;
+        restoredVoicePreviewAnimator = null;
+        if (previous != null) {
+            previous.removeAllUpdateListeners();
+            previous.removeAllListeners();
+            previous.cancel();
+            if (recordedAudioPanel != null) recordedAudioPanel.setAlpha(1f);
+        }
+    }
+
+    private void revealRestoredVoicePreview(boolean alreadyVisible, float previousAlpha) {
+        if (destroyed || isPaused || !isAttachedToWindow() || recordedAudioPanel == null
+                || recordedAudioPanel.getVisibility() != VISIBLE || audioToSend == null
+                || !SharedConfig.animationsEnabled()) {
+            cancelRestoredVoicePreviewReveal();
+            return;
+        }
+        if (alreadyVisible) {
+            recordedAudioPanel.setAlpha(restoredVoicePreviewAnimator == null ? 1f : previousAlpha);
+            return;
+        }
+        cancelRestoredVoicePreviewReveal();
+        final FrameLayout panel = recordedAudioPanel;
+        final String path = audioToSendPath;
+        final ValueAnimator animator = ValueAnimator.ofFloat(0f, 1f);
+        restoredVoicePreviewAnimator = animator;
+        panel.setAlpha(0f);
+        animator.setDuration(220);
+        animator.setInterpolator(CubicBezierInterpolator.DEFAULT);
+        animator.addUpdateListener(value -> {
+            if (restoredVoicePreviewAnimator != animator) return;
+            if (destroyed || isPaused || panel != recordedAudioPanel
+                    || panel.getVisibility() != VISIBLE || audioToSend == null
+                    || !TextUtils.equals(path, audioToSendPath) || !SharedConfig.animationsEnabled()) {
+                cancelRestoredVoicePreviewReveal();
+                return;
+            }
+            panel.setAlpha((float) value.getAnimatedValue());
+        });
+        animator.addListener(new AnimatorListenerAdapter() {
+            @Override
+            public void onAnimationEnd(Animator animation) {
+                if (restoredVoicePreviewAnimator != animator) return;
+                restoredVoicePreviewAnimator = null;
+                panel.setAlpha(1f);
+            }
+        });
+        animator.start();
     }
 
     private void resetRecordedState() {
@@ -7714,6 +7808,8 @@ public class ChatActivityEnterView extends FrameLayout implements
     }
 
     public void onDestroy() {
+        cancelRestoredVoicePreviewReveal();
+        if (audioToSend != null) MediaController.getInstance().cancelRecordingTrim(audioToSend);
         cancelRecordingSenderAnimator();
         stopRecordingSenderRestoreWatch();
         if (messageEditText != null) {
@@ -7859,6 +7955,8 @@ public class ChatActivityEnterView extends FrameLayout implements
     private Runnable hideKeyboardRunnable;
 
     public void onPause() {
+        cancelRestoredVoicePreviewReveal();
+        if (audioToSend != null) MediaController.getInstance().cancelRecordingTrim(audioToSend);
         isPaused = true;
         nmDismissCameraChooser();
         if (senderSelectPopupWindow != null) {
@@ -8235,6 +8333,7 @@ public class ChatActivityEnterView extends FrameLayout implements
             return;
         }
 
+        cancelRestoredVoicePreviewReveal();
         audioToSendPath = null;
         audioToSend = null;
         audioToSendMessageObject = null;
@@ -8485,6 +8584,7 @@ public class ChatActivityEnterView extends FrameLayout implements
     }
 
     private void hideRecordedAudioPanelInternal() {
+        cancelRestoredVoicePreviewReveal();
         audioToSendPath = null;
         audioToSend = null;
         audioToSendMessageObject = null;
@@ -8555,9 +8655,11 @@ public class ChatActivityEnterView extends FrameLayout implements
     }
 
     protected boolean sendMessageInternal(boolean notify, int scheduleDate, int scheduleRepeatPeriod, long payStars, boolean allowConfirm) {
+        if (audioToSend != null && MediaController.getInstance().isTrimmingCurrentRecording()) return false;
         final boolean allowConfirmFinal = allowConfirm && !animatorEphemeralMessageVisibility.getValue();
 
         final Runnable send = () -> {
+            if (audioToSend != null && MediaController.getInstance().isTrimmingCurrentRecording()) return;
             if (slowModeTimer == Integer.MAX_VALUE && !isInScheduleMode()) {
                 if (delegate != null) {
                     delegate.scrollToSendingMessage();
@@ -8601,32 +8703,39 @@ public class ChatActivityEnterView extends FrameLayout implements
                 if (playing != null && playing == audioToSendMessageObject) {
                     MediaController.getInstance().cleanupPlayer(true, true);
                 }
-                MediaController.getInstance().cleanRecording(false);
-                MediaDataController.getInstance(currentAccount).pushDraftVoiceMessage(dialog_id, parentFragment != null && parentFragment.isTopic ? parentFragment.getTopicId() : 0, null);
                 if (audioTimelineView != null && audioTimelineView.needsCut()) {
                     audioTimelineView.setPlaying(false);
-                    final String newAudioToSendPath = audioToSendPath + ".ogg";
-                    if (MediaController.cropOpusFile(audioToSendPath, newAudioToSendPath, audioTimelineView.getAudioLeftMs(), audioTimelineView.getAudioRightMs())) {
-                        try {
-                            new File(audioToSendPath).delete();
-                        } catch (Exception e) {
-                            FileLog.e(e);
+                    File croppedFile = null;
+                    final byte[] waveform;
+                    try {
+                        File sourceFile = new File(audioToSendPath).getAbsoluteFile();
+                        croppedFile = File.createTempFile("voice-cut-", ".ogg", sourceFile.getParentFile());
+                        if (!MediaController.cropOpusFile(audioToSendPath, croppedFile.getAbsolutePath(), audioTimelineView.getAudioLeftMs(), audioTimelineView.getAudioRightMs())
+                                || croppedFile.length() == 0) {
+                            throw new IOException("Unable to crop voice recording");
                         }
-                        try {
-                            new File(newAudioToSendPath).renameTo(new File(audioToSendPath));
-                        } catch (Exception e) {
-                            FileLog.e(e);
-                        }
-                        for (int a = 0; a < audioToSend.attributes.size(); a++) {
-                            TLRPC.DocumentAttribute attribute = audioToSend.attributes.get(a);
-                            if (attribute instanceof TLRPC.TL_documentAttributeAudio) {
-                                attribute.waveform = MediaController.getWaveform(audioToSendPath);
-                                attribute.duration = audioTimelineView.getNewDuration();
-                                break;
-                            }
+                        waveform = MediaController.getWaveform(croppedFile.getAbsolutePath());
+                        Os.rename(croppedFile.getAbsolutePath(), sourceFile.getAbsolutePath());
+                        croppedFile = null;
+                    } catch (Exception e) {
+                        FileLog.e(e);
+                        dismissSendPreviewSent = false;
+                        BulletinFactory.of(parentFragment).createErrorBulletin(getString(R.string.ErrorOccurred)).show();
+                        return;
+                    } finally {
+                        if (croppedFile != null) croppedFile.delete();
+                    }
+                    for (int a = 0; a < audioToSend.attributes.size(); a++) {
+                        TLRPC.DocumentAttribute attribute = audioToSend.attributes.get(a);
+                        if (attribute instanceof TLRPC.TL_documentAttributeAudio) {
+                            attribute.waveform = waveform;
+                            attribute.duration = audioTimelineView.getNewDuration();
+                            break;
                         }
                     }
                 }
+                MediaController.getInstance().cleanRecording(false);
+                MediaDataController.getInstance(currentAccount).pushDraftVoiceMessage(dialog_id, parentFragment != null && parentFragment.isTopic ? parentFragment.getTopicId() : 0, null);
                 SendMessagesHelper.SendMessageParams params = SendMessagesHelper.SendMessageParams.of(audioToSend, null, audioToSendPath, dialog_id, replyingMessageObject, getThreadMessage(), null, null, null, null, notify, scheduleDate, 0, voiceOnce ? 0x7FFFFFFF : 0, null, null, false);
                 params.sendMessageChatArguments = parentFragment != null ? parentFragment.getMessageChatSendParams() : null;
                 params.effect_id = effectId;
@@ -10318,6 +10427,9 @@ public class ChatActivityEnterView extends FrameLayout implements
 
     private int lastRecordState;
     protected void updateRecordInterface(int recordState, boolean animated) {
+        if (recordState != RECORD_STATE_PREPARING || animated) {
+            cancelRestoredVoicePreviewReveal();
+        }
         if (moveToSendStateRunnable != null) {
             AndroidUtilities.cancelRunOnUIThread(moveToSendStateRunnable);
             moveToSendStateRunnable = null;
@@ -10652,6 +10764,7 @@ public class ChatActivityEnterView extends FrameLayout implements
                 runningAnimationAudio.setDuration(150);
             } else if (recordState == RECORD_STATE_PREPARING) {
                 createRecordAudioPanel();
+                updateRecordedAudioTimelineInsets();
                 createRecordCircle();
                 if (slideText != null) {
                     slideText.setEnabled(false);
@@ -10826,6 +10939,7 @@ public class ChatActivityEnterView extends FrameLayout implements
                     emojiButtonAlpha = emojiButtonScale = 0f;
                     updateEmojiButtonParams();
 
+                    audioTimelineView.setAllowDraw(true);
                     isRecordingStateChanged();
                 } else {
                     audioTimelineView.setAllowDraw(false);
@@ -12150,6 +12264,22 @@ public class ChatActivityEnterView extends FrameLayout implements
         if (ignoreChange && delegate != null) {
             delegate.onTextChanged(messageEditText.getText(), true, fromDraft);
         }
+    }
+
+    private void resumeTrimmedRecording(TLRPC.TL_document expectedRecording, long durationMs, Runnable resume) {
+        if (destroyed || audioToSend != expectedRecording) return;
+        byte[] waveform = null;
+        for (TLRPC.DocumentAttribute attribute : expectedRecording.attributes) {
+            if (attribute instanceof TLRPC.TL_documentAttributeAudio) {
+                waveform = attribute.waveform;
+                break;
+            }
+        }
+        millisecondsRecorded = durationMs;
+        if (audioTimelineView != null) {
+            audioTimelineView.init(audioToSendPath, durationMs / 1000.0, waveform, 0f, 1f);
+        }
+        resume.run();
     }
 
     public void setVoiceDraft(MediaDataController.DraftVoice draft) {
@@ -15043,6 +15173,10 @@ public class ChatActivityEnterView extends FrameLayout implements
         return waitingForKeyboardOpen;
     }
 
+    public boolean isKeyboardRestorePending() {
+        return showKeyboardOnResume || waitingForKeyboardOpenAfterAnimation
+                || waitingForKeyboardOpen && !AndroidUtilities.usingHardwareInput && !AndroidUtilities.isInMultiwindow;
+    }
     public void addRecentGif(TLRPC.Document searchImage) {
         MediaDataController.getInstance(currentAccount).addRecentGif(searchImage, (int) (System.currentTimeMillis() / 1000), true);
         if (emojiView != null) {
@@ -15348,9 +15482,13 @@ public class ChatActivityEnterView extends FrameLayout implements
                 updateRecordInterface(RECORD_STATE_PREPARING, true);
                 checkSendButton(false);
             } else {
+                boolean fromDraft = args.length >= 4 && (boolean) args[3];
+                boolean previewAlreadyVisible = fromDraft && audioToSendPath != null
+                        && TextUtils.equals(audioToSendPath, (String) args[2])
+                        && recordedAudioPanel != null && recordedAudioPanel.getVisibility() == VISIBLE;
+                float previousPreviewAlpha = previewAlreadyVisible ? recordedAudioPanel.getAlpha() : 0f;
                 audioToSend = (TLRPC.TL_document) args[1];
                 audioToSendPath = (String) args[2];
-                boolean fromDraft = args.length >= 4 && (boolean) args[3];
                 float left = args.length >= 5 ? (float) args[4] : 0.0f;
                 float right = args.length >= 6 ? (float) args[5] : 1.0f;
                 if (audioToSend != null) {
@@ -15421,6 +15559,9 @@ public class ChatActivityEnterView extends FrameLayout implements
                         }
                     }
                     updateRecordInterface(RECORD_STATE_PREPARING, !fromDraft);
+                    if (fromDraft) {
+                        revealRestoredVoicePreview(previewAlreadyVisible, previousPreviewAlpha);
+                    }
                 } else {
                     if (delegate != null) {
                         delegate.onMessageSend(null, true, 0, 0, 0);
@@ -17080,6 +17221,7 @@ public class ChatActivityEnterView extends FrameLayout implements
     }
 
     public void reset() {
+        cancelRestoredVoicePreviewReveal();
         if (separatedComposerLayout) {
 
             if (runningAnimationAudio != null) {

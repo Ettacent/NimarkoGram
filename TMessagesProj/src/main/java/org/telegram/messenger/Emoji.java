@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 5.x.x.
  * It is licensed under GNU GPL v. 2 or later.
@@ -34,6 +36,7 @@ import org.telegram.ui.Components.AnimatedEmojiSpan;
 import org.telegram.ui.Components.ColoredImageSpan;
 
 import java.io.InputStream;
+import java.lang.ref.WeakReference;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -337,6 +340,15 @@ public class Emoji {
         private boolean drewLoadingPlaceholder;
         private long loadedFadeStart = -1;
 
+        private WeakReference<View> systemEmojiOwner;
+        private final Runnable systemEmojiReady = () -> {
+            invalidateSelf();
+            View owner = systemEmojiOwner == null ? null : systemEmojiOwner.get();
+            systemEmojiOwner = null;
+            if (owner != null) {
+                owner.invalidate();
+            }
+        };
         public SimpleEmojiDrawable(DrawableInfo i, boolean invert) {
             info = i;
             this.invert = invert;
@@ -394,7 +406,10 @@ public class Emoji {
             // NimarkoGram: render system emoji typeface when systemEmoji flag is on.
             if (app.nimarkogram.messenger.NimarkoConfig.systemEmoji) {
                 String emoji = fixEmoji(EmojiData.data[info.page][info.emojiIndex]);
-                textPaint.setTypeface(app.nimarkogram.messenger.utils.ui.FontHelper.getSystemEmojiTypeface());
+                if (fadeOwner != null && (systemEmojiOwner == null || systemEmojiOwner.get() != fadeOwner)) {
+                    systemEmojiOwner = new WeakReference<>(fadeOwner);
+                }
+                textPaint.setTypeface(app.nimarkogram.messenger.utils.ui.FontHelper.getSystemEmojiTypeface(systemEmojiReady));
                 textPaint.setTextSize(b.height() * 0.8f);
                 int previousAlpha = textPaint.getAlpha();
                 textPaint.setAlpha(Math.round(previousAlpha * loadAlpha));

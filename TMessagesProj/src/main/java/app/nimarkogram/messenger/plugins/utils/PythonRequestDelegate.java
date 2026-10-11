@@ -19,6 +19,7 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import app.nimarkogram.messenger.plugins.PluginsController;
 
+import app.nimarkogram.messenger.NimarkoCrashContext;
 public final class PythonRequestDelegate implements
         RequestDelegate, PluginsController.RuntimeCallbackHolder {
 
@@ -48,6 +49,7 @@ public final class PythonRequestDelegate implements
 
     private final OneShotCallbackState<CallbackTarget> callbackState;
     private final PluginsController.PluginRuntimeToken runtimeToken;
+    private final String diagnosticOwner;
     private final AtomicReference<ActivationDispatcher>
             activationDispatcher = new AtomicReference<>();
     private final AtomicReference<Invocation>
@@ -63,6 +65,7 @@ public final class PythonRequestDelegate implements
         this.callbackState = new OneShotCallbackState<>(
                 new CallbackTarget(callback, null));
         this.runtimeToken = runtimeToken;
+        this.diagnosticOwner = runtimeToken.getGeneration() + ":" + runtimeToken.getInstanceId();
         registerExactHolder();
     }
 
@@ -80,6 +83,7 @@ public final class PythonRequestDelegate implements
         this.callbackState = new OneShotCallbackState<>(
                 new CallbackTarget(null, callback));
         this.runtimeToken = runtimeToken;
+        this.diagnosticOwner = runtimeToken.getGeneration() + ":" + runtimeToken.getInstanceId();
         registerExactHolder();
     }
 
@@ -141,9 +145,15 @@ public final class PythonRequestDelegate implements
         }
         String pluginId = runtimeToken.getPluginId();
         boolean watchdogStarted = false;
+        long diagnosticToken = 0;
+        long diagnosticStart = 0;
         try {
             controller.getWatchdog().onPluginExecutionStarted(pluginId);
             watchdogStarted = true;
+            diagnosticToken = NimarkoCrashContext.beginInvocation();
+            diagnosticStart = NimarkoCrashContext.invocationStartedMs(diagnosticToken);
+            NimarkoCrashContext.pythonPhase(diagnosticToken, diagnosticStart,
+                    "request_enter", "PythonRequestDelegate.run", pluginId, diagnosticOwner);
             if (callback.delegateCallback != null) {
                 callback.delegateCallback.run(
                         invocation.response, invocation.error);
@@ -159,16 +169,25 @@ public final class PythonRequestDelegate implements
                     + pluginId, failure);
         } finally {
             try {
-                if (watchdogStarted) {
-                    controller.getWatchdog().onPluginExecutionFinished(pluginId);
+                try {
+                    NimarkoCrashContext.pythonPhase(diagnosticToken, diagnosticStart,
+                            "request_exit", "PythonRequestDelegate.run", pluginId, diagnosticOwner);
+                } finally {
+                    if (watchdogStarted) {
+                        controller.getWatchdog().onPluginExecutionFinished(pluginId);
+                    }
                 }
             } finally {
                 try {
                     controller.exitPluginRuntime(runtimeToken);
                 } finally {
-                    callbackState.complete();
-                    controller.unregisterRuntimeCallbackHolder(
-                            runtimeToken, this);
+                    try {
+                        callbackState.complete();
+                        controller.unregisterRuntimeCallbackHolder(
+                                runtimeToken, this);
+                    } finally {
+                        NimarkoCrashContext.endInvocation(diagnosticToken);
+                    }
                 }
             }
         }

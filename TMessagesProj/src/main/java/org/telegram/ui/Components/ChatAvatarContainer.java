@@ -310,6 +310,7 @@ public class ChatAvatarContainer extends FrameLayout implements FactorAnimator.T
                 this, this::onNameFadeFrame, () -> fadeCentered);
         private boolean pendingNameReveal;
         private boolean hasPresentedTitle;
+        private float presentedNameProgress = 1f;
         private int presentedAccount;
         private long presentedDialogId;
         private long presentedThreadId;
@@ -346,7 +347,8 @@ public class ChatAvatarContainer extends FrameLayout implements FactorAnimator.T
         private void onNameFadeFrame() {
             if (nameCrossfade.isRunning() && !isTitlePresentationVisible()) {
                 if (hasMatchingTitleIdentity()) {
-                    nameCrossfade.capture(this::drawTitle, false);
+                    nameCrossfade.capture(this::drawTitle, false, presentedNameProgress);
+                    presentedNameProgress = nameCrossfade.getProgress();
                     pendingNameReveal = nameCrossfade.getProgress() < 1f;
                 } else {
                     nameCrossfade.finish();
@@ -373,7 +375,8 @@ public class ChatAvatarContainer extends FrameLayout implements FactorAnimator.T
                     clearLargerTextCopies();
                     if (nameCrossfade.getProgress() == 1f) fadeCentered = centerChatTitle;
                     boolean visible = isTitlePresentationVisible();
-                    nameCrossfade.capture(this::drawTitle, visible);
+                    nameCrossfade.capture(this::drawTitle, visible, presentedNameProgress);
+                    presentedNameProgress = nameCrossfade.getProgress();
                     pendingNameReveal = !visible && nameCrossfade.getProgress() < 1f;
                     if (!visible) hasPresentedTitle = false;
                 } else {
@@ -412,6 +415,7 @@ public class ChatAvatarContainer extends FrameLayout implements FactorAnimator.T
                 presentedAccount = currentAccount;
                 presentedDialogId = titleDialogId();
                 presentedThreadId = titleThreadId();
+                presentedNameProgress = nameCrossfade.getProgress();
             }
         }
 
@@ -419,7 +423,8 @@ public class ChatAvatarContainer extends FrameLayout implements FactorAnimator.T
         protected void onWindowVisibilityChanged(int visibility) {
             super.onWindowVisibilityChanged(visibility);
             if (visibility != VISIBLE && nameCrossfade.isRunning()) {
-                nameCrossfade.capture(this::drawTitle, false);
+                nameCrossfade.capture(this::drawTitle, false, presentedNameProgress);
+                presentedNameProgress = nameCrossfade.getProgress();
                 pendingNameReveal = nameCrossfade.getProgress() < 1f;
                 hasPresentedTitle = false;
             }
@@ -3133,7 +3138,7 @@ public class ChatAvatarContainer extends FrameLayout implements FactorAnimator.T
         if (view == null) {
             return 0f;
         }
-            final CharSequence text = view.getText();
+        final CharSequence text = view.getText();
         final float textWidth = TextUtils.isEmpty(text)
                 ? 0f : view.getTextPaint().measureText(text, 0, text.length());
         final float contentWidth = Math.max(0f, textWidth)

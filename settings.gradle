@@ -15,4 +15,5 @@ dependencyResolutionManagement {
 }
 
 gradle.ext.androidxMediaModulePrefix = 'TMessagesProj_Modules:media3:media-'
+apply from: file("gradle/media3-patches.gradle")
 apply from: file("TMessagesProj_Modules/media/core_settings.gradle")

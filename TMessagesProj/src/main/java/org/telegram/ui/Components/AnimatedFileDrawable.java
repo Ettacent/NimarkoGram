@@ -1200,6 +1200,25 @@ public final class AnimatedFileDrawable extends BitmapDrawable implements Animat
         return null;
     }
 
+    @UiThread
+    public boolean copyClosingFrame(Bitmap expected, Bitmap snapshot) {
+        synchronized (frameLock) {
+            if (isRunning || isRecycled || destroyWhenDone || renderingBuffer == null
+                    || renderingBuffer.bitmap != expected || expected == null || expected.isRecycled()
+                    || !expected.isMutable() || snapshot == null || snapshot.isRecycled()
+                    || snapshot.getWidth() != expected.getWidth() || snapshot.getHeight() != expected.getHeight()) {
+                return false;
+            }
+            try {
+                Paint paint = new Paint();
+                paint.setXfermode(SRC_XFERMODE);
+                new Canvas(expected).drawBitmap(snapshot, 0, 0, paint);
+                return true;
+            } catch (RuntimeException e) {
+                return false;
+            }
+        }
+    }
     public void replaceAnimatedBitmap(Bitmap b) {
         synchronized (frameLock) {
             resetGifLoopBlend();

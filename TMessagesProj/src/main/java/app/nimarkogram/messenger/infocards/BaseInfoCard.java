@@ -11,8 +11,10 @@ import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.ColorFilter;
 import android.graphics.LinearGradient;
+import android.graphics.Matrix;
 import android.graphics.Outline;
 import android.graphics.Paint;
+import android.graphics.Path;
 import android.graphics.Rect;
 import android.graphics.RectF;
 import android.graphics.Shader;
@@ -48,6 +50,7 @@ import org.telegram.ui.Components.blur3.drawable.BlurredBackgroundDrawable;
 import org.telegram.ui.Components.blur3.drawable.color.BlurredBackgroundProviderBuilder;
 import org.telegram.ui.Components.blur3.drawable.color.impl.BlurredBackgroundProviderImpl;
 import org.telegram.ui.LaunchActivity;
+import java.util.Locale;
 import app.nimarkogram.messenger.infocards.preferences.InfoCardsPreferencesActivity;
 
 import app.nimarkogram.messenger.utils.NimarkoUiAnimationClock;
@@ -349,6 +352,19 @@ public abstract class BaseInfoCard extends FrameLayout {
     private float getChipCornerRadius() {
         return inlineFolderStyle ? getChipHeight(true) / 2f : AndroidUtilities.dp(CORNER_RADIUS_DP);
     }
+    void appendResumeFadeShape(View root, Path out, Path scratch, Matrix transform) {
+        if (!isShown() || getAlpha() <= 0f || content.getAlpha() <= 0f
+                || content.getWidth() <= 0 || content.getHeight() <= 0
+                || content.getWindowToken() != root.getWindowToken()) return;
+        scratch.rewind();
+        float radius = getChipCornerRadius();
+        scratch.addRoundRect(0, 0, content.getWidth(), content.getHeight(), radius, radius, Path.Direction.CW);
+        transform.reset();
+        content.transformMatrixToGlobal(transform);
+        root.transformMatrixToLocal(transform);
+        scratch.transform(transform);
+        out.addPath(scratch);
+    }
     private static float getInlineSurfaceInset(float height) {
         return Math.max(0, (height - AndroidUtilities.dp(CHIP_HEIGHT_DP)) / 2f);
     }
@@ -439,7 +455,7 @@ public abstract class BaseInfoCard extends FrameLayout {
         warmResumeAccount = UserConfig.selectedAccount;
         warmResumeCurrency = InfoCardsConfig.getTargetCurrency(getCardId());
         warmResumeLocale = String.valueOf(LocaleController.getInstance().getCurrentLocale())
-                + ":" + java.util.Locale.getDefault().toLanguageTag();
+                + ":" + Locale.getDefault().toLanguageTag();
         warmResumePending = true;
         textView.setAnimationPaused(true);
     }
@@ -454,7 +470,7 @@ public abstract class BaseInfoCard extends FrameLayout {
                 || !TextUtils.equals(warmResumeCurrency, InfoCardsConfig.getTargetCurrency(getCardId()))
                 || !TextUtils.equals(warmResumeLocale,
                     String.valueOf(LocaleController.getInstance().getCurrentLocale())
-                            + ":" + java.util.Locale.getDefault().toLanguageTag())) {
+                            + ":" + Locale.getDefault().toLanguageTag())) {
             finishResizeAnimation();
             return false;
         }

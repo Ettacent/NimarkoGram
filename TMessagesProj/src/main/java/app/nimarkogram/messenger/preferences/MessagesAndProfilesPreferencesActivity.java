@@ -157,6 +157,7 @@ public class MessagesAndProfilesPreferencesActivity extends BaseFragment {
         private RecyclerListView listView;
         private RecyclerView.Adapter listAdapter;
 
+        private int pendingSettingHighlight = RecyclerView.NO_POSITION;
         private int selectedColor;
         private long selectedEmoji;
         private ThemePreviewMessagesCell messagesCellPreview;
@@ -240,6 +241,20 @@ public class MessagesAndProfilesPreferencesActivity extends BaseFragment {
                 @Override
                 protected void onLayout(boolean changed, int l, int t, int r, int b) {
                     super.onLayout(changed, l, t, r, b);
+                    if (pendingSettingHighlight != RecyclerView.NO_POSITION) {
+                        final int target = pendingSettingHighlight;
+                        RecyclerView.ViewHolder holder = findViewHolderForAdapterPosition(target);
+                        if (holder != null && !holder.isRemoved() && !holder.isInvalid()) {
+                            pendingSettingHighlight = RecyclerView.NO_POSITION;
+                            highlightRow(() -> target);
+                        }
+                    }
+                }
+
+                @Override
+                protected void onDetachedFromWindow() {
+                    pendingSettingHighlight = RecyclerView.NO_POSITION;
+                    super.onDetachedFromWindow();
                 }
             };
             ((DefaultItemAnimator) listView.getItemAnimator()).setSupportsChangeAnimations(false);
@@ -488,11 +503,8 @@ public class MessagesAndProfilesPreferencesActivity extends BaseFragment {
                     // recreates its cells and re-measures the now-wider HH:mm:ss time; otherwise
                     // already-laid-out back-stack cells keep their stale HH:MM width and the
                     // seconds get clipped at the bottom of the bubble until they rebind on scroll.
-                    AndroidUtilities.runOnUIThread(() -> {
-                        if (parentLayout != null) parentLayout.rebuildAllFragmentViews(true, true);
-                        NotificationCenter.getGlobalInstance()
-                                .postNotificationName(NotificationCenter.reloadInterface);
-                    }, 220);
+                    NotificationCenter.getGlobalInstance()
+                            .postNotificationName(NotificationCenter.reloadInterface);
                 } else if (position == premiumStatusSwitchRow) {
                     NimarkoConfig.toggleDisablePremiumStatuses();
                     setSwitchChecked(view, NimarkoConfig.disablePremiumStatuses);
@@ -803,10 +815,9 @@ public class MessagesAndProfilesPreferencesActivity extends BaseFragment {
                 else if (settingId == SETTING_PROFILE_EMOJI) position = profileEmojiSwitchRow;
             }
             if (position < 0 || listView == null || listView.getLayoutManager() == null) return;
-            final int target = position;
+            pendingSettingHighlight = position;
             ((LinearLayoutManager) listView.getLayoutManager())
-                    .scrollToPositionWithOffset(target, AndroidUtilities.dp(80));
-            listView.highlightRow(() -> target);
+                    .scrollToPositionWithOffset(position, AndroidUtilities.dp(80));
         }
 
         private void updateMessages() {

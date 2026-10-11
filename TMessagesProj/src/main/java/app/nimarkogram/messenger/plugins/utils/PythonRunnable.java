@@ -24,6 +24,7 @@ public final class PythonRunnable implements
 
     private final OneShotCallbackState<PyObject> callbackState;
     private final PluginsController.PluginRuntimeToken runtimeToken;
+    private final String diagnosticOwner;
     private final AtomicReference<ActivationDispatcher>
             activationDispatcher = new AtomicReference<>();
 
@@ -38,6 +39,7 @@ public final class PythonRunnable implements
         }
         this.callbackState = new OneShotCallbackState<>(callback);
         this.runtimeToken = runtimeToken;
+        this.diagnosticOwner = runtimeToken.getGeneration() + ":" + runtimeToken.getInstanceId();
         if (!PluginsController.getInstance()
                 .registerRuntimeCallbackHolder(runtimeToken, this)) {
             callbackState.drop();
@@ -99,14 +101,11 @@ public final class PythonRunnable implements
         boolean watchdogStarted = false;
         long diagnosticToken = 0;
         long diagnosticStart = 0;
-        String diagnosticOwner = "";
         try {
             decorSnapshot = Looper.myLooper() == Looper.getMainLooper()
                     ? PluginUiRegistry.captureDecorChildren() : null;
             diagnosticToken = NimarkoCrashContext.beginInvocation();
             diagnosticStart = NimarkoCrashContext.invocationStartedMs(diagnosticToken);
-            diagnosticOwner = diagnosticToken == 0 ? ""
-                    : runtimeToken.getGeneration() + ":" + runtimeToken.getInstanceId();
             NimarkoCrashContext.pythonPhase(diagnosticToken, diagnosticStart,
                     "runnable_enter", "PythonRunnable.run", pluginId, diagnosticOwner);
             controller.getWatchdog().onPluginExecutionStarted(pluginId);
@@ -144,9 +143,13 @@ public final class PythonRunnable implements
                 try {
                     controller.exitPluginRuntime(runtimeToken);
                 } finally {
-                    callbackState.complete();
-                    controller.unregisterRuntimeCallbackHolder(
-                            runtimeToken, this);
+                    try {
+                        callbackState.complete();
+                        controller.unregisterRuntimeCallbackHolder(
+                                runtimeToken, this);
+                    } finally {
+                        NimarkoCrashContext.endInvocation(diagnosticToken);
+                    }
                 }
             }
         }

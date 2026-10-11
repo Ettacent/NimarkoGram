@@ -36,6 +36,7 @@ public final class NimarkoAppMotionBlur implements ViewTreeObserver.OnPreDrawLis
     private static final int MAX_VIEWS = 512;
     private static final int MAX_LAYERS = 48;
     private static final long MAX_FRAME_GAP_NS = 120_000_000L;
+    private static boolean windowVisibilityUnavailable;
     private static final WeakHashMap<ViewGroup, WeakReference<NimarkoAppMotionBlur>> INSTANCES = new WeakHashMap<>();
     private static final WeakHashMap<View, WeakReference<Entry>> LAYER_OWNERS = new WeakHashMap<>();
     private static final WeakHashMap<Application, Boolean> APPLICATIONS = new WeakHashMap<>();
@@ -87,6 +88,7 @@ public final class NimarkoAppMotionBlur implements ViewTreeObserver.OnPreDrawLis
     private final WeakReference<ViewGroup> rootReference;
     private WeakReference<Activity> ownerReference;
     private final WeakHashMap<View, Entry> snapshots = new WeakHashMap<>();
+    private final WeakHashMap<RecyclerView, ScrollTracker> scrollTrackers = new WeakHashMap<>();
     private final View[] walkViews = new View[MAX_VIEWS];
     private final Entry[] walkEntries = new Entry[MAX_VIEWS];
     private final Entry[] sampledEntries = new Entry[MAX_VIEWS];
@@ -294,6 +296,8 @@ public final class NimarkoAppMotionBlur implements ViewTreeObserver.OnPreDrawLis
         epoch++;
         lastFrameNs = 0L;
         hasMotion = false;
+        for (ScrollTracker tracker : scrollTrackers.values()) tracker.unregister();
+        scrollTrackers.clear();
         for (Entry entry : snapshots.values()) {
             clearEntry(entry);
             entry.motion.reset();
@@ -403,6 +407,14 @@ public final class NimarkoAppMotionBlur implements ViewTreeObserver.OnPreDrawLis
         } finally {
             Arrays.fill(walkViews, null);
             Arrays.fill(walkEntries, null);
+            Iterator<ScrollTracker> iterator = scrollTrackers.values().iterator();
+            while (iterator.hasNext()) {
+                ScrollTracker tracker = iterator.next();
+                if (tracker.frame != frame || !tracker.registered) {
+                    tracker.unregister();
+                    iterator.remove();
+                }
+            }
         }
     }
 
@@ -439,7 +451,12 @@ public final class NimarkoAppMotionBlur implements ViewTreeObserver.OnPreDrawLis
             }
             if (recyclerView.getScrollState() == RecyclerView.SCROLL_STATE_IDLE && !recyclerView.isAnimating()
                     && (entry.left != view.getLeft() || entry.top != view.getTop())
-                    && entry.localMatrix.equals(view.getMatrix())) historyContinuous = false;
+                    && entry.localMatrix.equals(view.getMatrix())) {
+                ScrollTracker tracker = scrollTrackers.get(recyclerView);
+                if (tracker == null || !tracker.registered || tracker.frame != frame
+                        || tracker.consumedX != (long) entry.left - view.getLeft()
+                        || tracker.consumedY != (long) entry.top - view.getTop()) historyContinuous = false;
+            }
         }
         RecyclerView.Adapter previousAdapter = entry.adapter == null ? null : entry.adapter.get();
         if (previousAdapter != adapter) historyContinuous = false;
@@ -456,6 +473,19 @@ public final class NimarkoAppMotionBlur implements ViewTreeObserver.OnPreDrawLis
                 || view instanceof Excluded
                 || nestedOwner != null && !nestedOwner.detached;
         entry.split |= entry.excluded;
+        if (view instanceof RecyclerView && !entry.excluded) {
+            RecyclerView recyclerView = (RecyclerView) view;
+            ScrollTracker tracker = scrollTrackers.get(recyclerView);
+            if (tracker != null && !tracker.registered) {
+                scrollTrackers.remove(recyclerView);
+                tracker = null;
+            }
+            if (tracker == null && scrollTrackers.size() < MAX_VIEWS) {
+                tracker = new ScrollTracker(recyclerView);
+                scrollTrackers.put(recyclerView, tracker);
+            }
+            if (tracker != null) tracker.sample(frame);
+        }
         if (view instanceof ViewGroup) {
             ViewGroup group = (ViewGroup) view;
             int fingerprint = group.getChildCount();
@@ -812,8 +842,13 @@ public final class NimarkoAppMotionBlur implements ViewTreeObserver.OnPreDrawLis
         if (next.isAlive()) {
             observer = next;
             observer.addOnPreDrawListener(this);
-            if (Build.VERSION.SDK_INT >= 34) {
-                visibilityListener = WindowVisibility34.register(observer, this);
+            if (Build.VERSION.SDK_INT >= 34 && !windowVisibilityUnavailable) {
+                try {
+                    visibilityListener = WindowVisibility34.register(observer, this);
+                    windowVisibilityUnavailable = visibilityListener == null;
+                } catch (NoSuchMethodError | NoClassDefFoundError unavailable) {
+                    windowVisibilityUnavailable = true;
+                }
             }
         }
     }
@@ -821,8 +856,12 @@ public final class NimarkoAppMotionBlur implements ViewTreeObserver.OnPreDrawLis
     private void unbindObserver() {
         if (observer != null && observer.isAlive()) {
             observer.removeOnPreDrawListener(this);
-            if (Build.VERSION.SDK_INT >= 34 && visibilityListener != null) {
+        }
+        if (visibilityListener != null) {
+            try {
                 WindowVisibility34.unregister(observer, visibilityListener);
+            } catch (NoSuchMethodError | NoClassDefFoundError unavailable) {
+                windowVisibilityUnavailable = true;
             }
         }
         visibilityListener = null;
@@ -849,16 +888,96 @@ public final class NimarkoAppMotionBlur implements ViewTreeObserver.OnPreDrawLis
         if (Looper.myLooper() != Looper.getMainLooper()) throw new IllegalStateException("Main thread required");
     }
 
-    private static final class WindowVisibility34 {
+    private static final class WindowVisibility34 implements ViewTreeObserver.OnWindowVisibilityChangeListener {
+        private static boolean methodsChecked;
+        private final WeakReference<NimarkoAppMotionBlur> ownerReference;
+
+        private WindowVisibility34(NimarkoAppMotionBlur owner) {
+            ownerReference = new WeakReference<>(owner);
+        }
+
+        @Override
+        public void onWindowVisibilityChanged(int visibility) {
+            NimarkoAppMotionBlur owner = ownerReference.get();
+            if (owner != null) owner.onWindowVisibilityChanged(visibility);
+        }
+
+        @androidx.annotation.DoNotInline
         static Object register(ViewTreeObserver observer, NimarkoAppMotionBlur owner) {
-            ViewTreeObserver.OnWindowVisibilityChangeListener listener = owner::onWindowVisibilityChanged;
+            if (!methodsChecked) {
+                try {
+                    ViewTreeObserver.class.getMethod("addOnWindowVisibilityChangeListener",
+                            ViewTreeObserver.OnWindowVisibilityChangeListener.class);
+                    ViewTreeObserver.class.getMethod("removeOnWindowVisibilityChangeListener",
+                            ViewTreeObserver.OnWindowVisibilityChangeListener.class);
+                } catch (NoSuchMethodException | SecurityException unavailable) {
+                    return null;
+                }
+                methodsChecked = true;
+            }
+            WindowVisibility34 listener = new WindowVisibility34(owner);
             observer.addOnWindowVisibilityChangeListener(listener);
             return listener;
         }
 
+        @androidx.annotation.DoNotInline
         static void unregister(ViewTreeObserver observer, Object listener) {
-            observer.removeOnWindowVisibilityChangeListener(
-                    (ViewTreeObserver.OnWindowVisibilityChangeListener) listener);
+            WindowVisibility34 registration = (WindowVisibility34) listener;
+            registration.ownerReference.clear();
+            if (observer != null && observer.isAlive()) {
+                observer.removeOnWindowVisibilityChangeListener(registration);
+            }
+        }
+    }
+
+    private static final class ScrollTracker extends RecyclerView.OnScrollListener
+            implements View.OnAttachStateChangeListener {
+        final WeakReference<RecyclerView> view;
+        long pendingX;
+        long pendingY;
+        long consumedX;
+        long consumedY;
+        long frame;
+        boolean registered = true;
+
+        ScrollTracker(RecyclerView recyclerView) {
+            view = new WeakReference<>(recyclerView);
+            recyclerView.addOnScrollListener(this);
+            recyclerView.addOnAttachStateChangeListener(this);
+        }
+
+        @Override
+        public void onScrolled(RecyclerView recyclerView, int dx, int dy) {
+            if (!registered) return;
+            pendingX += dx;
+            pendingY += dy;
+        }
+
+        void sample(long frame) {
+            this.frame = frame;
+            consumedX = pendingX;
+            consumedY = pendingY;
+            pendingX = pendingY = 0L;
+        }
+
+        void unregister() {
+            if (!registered) return;
+            registered = false;
+            RecyclerView recyclerView = view.get();
+            if (recyclerView != null) {
+                recyclerView.removeOnScrollListener(this);
+                recyclerView.removeOnAttachStateChangeListener(this);
+            }
+            pendingX = pendingY = consumedX = consumedY = 0L;
+        }
+
+        @Override
+        public void onViewAttachedToWindow(View view) {
+        }
+
+        @Override
+        public void onViewDetachedFromWindow(View view) {
+            unregister();
         }
     }
 

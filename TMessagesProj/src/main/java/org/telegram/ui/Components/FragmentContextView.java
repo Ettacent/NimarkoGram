@@ -929,7 +929,7 @@ public class FragmentContextView extends FrameLayout implements NotificationCent
                     playbackSpeedChanged(false, speed, MediaController.getInstance().getPlaybackSpeed(isMusic));
                 }
             });
-            MessagesController.getGlobalNotificationsSettings().edit().putInt("speedhint", -15).apply();
+            HintsController.Hint.PlaybackSpeedHint.doNotShowAgain();
             return true;
         });
         updatePlaybackButton(false);
@@ -943,7 +943,6 @@ public class FragmentContextView extends FrameLayout implements NotificationCent
         final long now = System.currentTimeMillis();
         if (speedHintView == null && now - lastPlaybackClick > 300) {
             if (HintsController.Hint.PlaybackSpeedHint.show()) {
-                HintsController.Hint.PlaybackSpeedHint.increment();
                 showSpeedHint();
             }
         }
@@ -971,7 +970,12 @@ public class FragmentContextView extends FrameLayout implements NotificationCent
             MarginLayoutParams params = new MarginLayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
             params.rightMargin = dp(3);
             speedHintViewParent.addView(speedHintView, params);
-            speedHintView.showForView(playbackSpeedButton, true);
+            if (speedHintView.showForView(playbackSpeedButton, true)) {
+                HintsController.Hint.PlaybackSpeedHint.increment();
+            } else {
+                speedHintViewParent.removeView(speedHintView);
+                speedHintView = null;
+            }
         }
     }
 

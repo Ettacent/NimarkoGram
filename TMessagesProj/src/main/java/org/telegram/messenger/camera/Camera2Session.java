@@ -629,14 +629,8 @@ public class Camera2Session {
                 sensorY = y;
                 break;
         }
-        Rect active = new Rect(sensorSize);
-        if (!zoomRatioSupported && currentZoom > 1f) {
-            int cx = active.centerX();
-            int cy = active.centerY();
-            int halfW = Math.max(1, Math.round(active.width() * 0.5f / currentZoom));
-            int halfH = Math.max(1, Math.round(active.height() * 0.5f / currentZoom));
-            active.set(cx - halfW, cy - halfH, cx + halfW, cy + halfH);
-        }
+        Rect active = getFocusCrop(captureRequestBuilder);
+        if (active == null) return false;
         int px = active.left + Math.round(sensorX * active.width());
         int py = active.top + Math.round(sensorY * active.height());
         int size = Math.max(32, Math.round(Math.min(active.width(), active.height()) * 0.12f));
@@ -649,51 +643,143 @@ public class Camera2Session {
         return focusToRect(focus, focus);
     }
     public boolean focusToRect(Rect focusRect, Rect meteringRect) {
+        return submitFocusRect(focusRect, meteringRect, false);
+    }
+
+    public boolean focusToNormalizedRect(Rect focusRect, Rect meteringRect) {
+        return submitFocusRect(focusRect, meteringRect, true);
+    }
+
+    private Rect getFocusCrop(CaptureRequest.Builder builder) {
+        Rect active = sensorSize;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && cameraCharacteristics != null
+                && Integer.valueOf(CaptureRequest.DISTORTION_CORRECTION_MODE_OFF).equals(
+                        builder.get(CaptureRequest.DISTORTION_CORRECTION_MODE))) {
+            Rect uncorrected = cameraCharacteristics.get(
+                    CameraCharacteristics.SENSOR_INFO_PRE_CORRECTION_ACTIVE_ARRAY_SIZE);
+            if (uncorrected != null) active = uncorrected;
+        }
+        if (active == null || active.isEmpty()) return null;
+        Rect bounds = new Rect(active);
+        Rect requested = builder.get(CaptureRequest.SCALER_CROP_REGION);
+        if (requested != null && !bounds.intersect(requested)) return null;
+        return bounds;
+    }
+
+    private static Rect clampFocusRect(Rect rect, Rect bounds) {
+        if (rect == null || bounds == null || bounds.isEmpty()
+                || rect.right < rect.left || rect.bottom < rect.top) return null;
+        int left = Math.max(bounds.left, Math.min(bounds.right - 1, rect.left));
+        int top = Math.max(bounds.top, Math.min(bounds.bottom - 1, rect.top));
+        return new Rect(left, top,
+                Math.max(left + 1, Math.min(bounds.right, rect.right)),
+                Math.max(top + 1, Math.min(bounds.bottom, rect.bottom)));
+    }
+
+    private static Rect normalizedFocusRect(Rect rect, Rect bounds) {
+        if (rect == null || bounds == null || bounds.isEmpty()
+                || rect.right < rect.left || rect.bottom < rect.top) return null;
+        return clampFocusRect(new Rect(
+                bounds.left + (int) Math.round((Math.max(-1000, Math.min(1000, rect.left)) + 1000d) * bounds.width() / 2000d),
+                bounds.top + (int) Math.round((Math.max(-1000, Math.min(1000, rect.top)) + 1000d) * bounds.height() / 2000d),
+                bounds.left + (int) Math.round((Math.max(-1000, Math.min(1000, rect.right)) + 1000d) * bounds.width() / 2000d),
+                bounds.top + (int) Math.round((Math.max(-1000, Math.min(1000, rect.bottom)) + 1000d) * bounds.height() / 2000d)), bounds);
+    }
+
+    private boolean supportsFocusRegions(CaptureRequest.Key<?> key, CameraCharacteristics.Key<Integer> countKey) {
+        if (cameraCharacteristics == null) return false;
+        List<CaptureRequest.Key<?>> keys = cameraCharacteristics.getAvailableCaptureRequestKeys();
+        Integer count = cameraCharacteristics.get(countKey);
+        return keys != null && keys.contains(key) && count != null && count > 0;
+    }
+
+    private int focusRequestGeneration;
+
+    private boolean submitFocusRect(Rect focusRect, Rect meteringRect, boolean normalized) {
         if (!isInitiated() || captureSession == null || captureRequestBuilder == null
-                || focusRect == null) {
+                || cameraCharacteristics == null || handler == null || focusRect == null) {
             return false;
         }
         final Rect af = new Rect(focusRect);
         final Rect ae = meteringRect == null ? new Rect(focusRect) : new Rect(meteringRect);
-        handler.post(() -> {
-            if (destroyed || isClosed || cameraDevice == null || captureSession == null) return;
+        List<CaptureRequest.Key<?>> keys = cameraCharacteristics.getAvailableCaptureRequestKeys();
+        final boolean useAf = supportsFocusRegions(CaptureRequest.CONTROL_AF_REGIONS,
+                CameraCharacteristics.CONTROL_MAX_REGIONS_AF)
+                && keys.contains(CaptureRequest.CONTROL_AF_MODE)
+                && keys.contains(CaptureRequest.CONTROL_AF_TRIGGER)
+                && chooseSupportedMode(cameraCharacteristics.get(CameraCharacteristics.CONTROL_AF_AVAILABLE_MODES),
+                        CaptureRequest.CONTROL_AF_MODE_AUTO) != null;
+        final boolean useAe = supportsFocusRegions(CaptureRequest.CONTROL_AE_REGIONS,
+                CameraCharacteristics.CONTROL_MAX_REGIONS_AE);
+        if (!useAf && !useAe) return false;
+        final CameraCaptureSession expectedSession = captureSession;
+        final int sessionGeneration = captureSessionGeneration;
+        return handler.post(() -> {
+            if (destroyed || isClosed || cameraDevice == null || captureSession != expectedSession
+                    || captureSessionGeneration != sessionGeneration) return;
             try {
-                captureRequestBuilder.set(CaptureRequest.CONTROL_AF_MODE,
-                        CaptureRequest.CONTROL_AF_MODE_AUTO);
-                captureRequestBuilder.set(CaptureRequest.CONTROL_AF_REGIONS,
+                final CaptureRequest.Builder builder = captureRequestBuilder;
+                if (builder == null) return;
+                Rect bounds = getFocusCrop(builder);
+                Rect focus = normalized ? normalizedFocusRect(af, bounds) : clampFocusRect(af, bounds);
+                Rect exposure = normalized ? normalizedFocusRect(ae, bounds) : clampFocusRect(ae, bounds);
+                if (useAf && focus == null || useAe && exposure == null) return;
+                final int requestGeneration = ++focusRequestGeneration;
+                if (useAe) {
+                    builder.set(CaptureRequest.CONTROL_AE_REGIONS,
+                            new android.hardware.camera2.params.MeteringRectangle[] {
+                                    new android.hardware.camera2.params.MeteringRectangle(exposure, 1000)
+                            });
+                }
+                if (!useAf) {
+                    expectedSession.setRepeatingRequest(builder.build(), null, handler);
+                    return;
+                }
+                builder.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_AUTO);
+                builder.set(CaptureRequest.CONTROL_AF_REGIONS,
                         new android.hardware.camera2.params.MeteringRectangle[] {
-                                new android.hardware.camera2.params.MeteringRectangle(af, 1000)
+                                new android.hardware.camera2.params.MeteringRectangle(focus, 1000)
                         });
-                captureRequestBuilder.set(CaptureRequest.CONTROL_AE_REGIONS,
-                        new android.hardware.camera2.params.MeteringRectangle[] {
-                                new android.hardware.camera2.params.MeteringRectangle(ae, 1000)
-                        });
-                captureRequestBuilder.set(CaptureRequest.CONTROL_AF_TRIGGER,
-                        CaptureRequest.CONTROL_AF_TRIGGER_START);
-                captureSession.capture(captureRequestBuilder.build(),
+                builder.set(CaptureRequest.CONTROL_AF_TRIGGER, CaptureRequest.CONTROL_AF_TRIGGER_START);
+                try {
+                    expectedSession.capture(builder.build(),
                         new CameraCaptureSession.CaptureCallback() {
                             @Override
                             public void onCaptureCompleted(@NonNull CameraCaptureSession session,
                                                             @NonNull CaptureRequest request,
                                                             @NonNull android.hardware.camera2.TotalCaptureResult result) {
-                                handler.post(() -> {
-                                    if (destroyed || isClosed || captureSession != session) return;
-                                    try {
-                                        captureRequestBuilder.set(CaptureRequest.CONTROL_AF_TRIGGER,
-                                                CaptureRequest.CONTROL_AF_TRIGGER_IDLE);
-                                        captureSession.setRepeatingRequest(captureRequestBuilder.build(),
-                                                null, handler);
-                                    } catch (Throwable t) {
-                                        FileLog.e("Camera2Session focus repeat failed", t);
-                                    }
-                                });
+                                resumeFocusPreview(session, builder, sessionGeneration, requestGeneration);
+                            }
+
+                            @Override
+                            public void onCaptureFailed(@NonNull CameraCaptureSession session,
+                                                        @NonNull CaptureRequest request,
+                                                        @NonNull CaptureFailure failure) {
+                                resumeFocusPreview(session, builder, sessionGeneration, requestGeneration);
                             }
                         }, handler);
+                } finally {
+                    builder.set(CaptureRequest.CONTROL_AF_TRIGGER, CaptureRequest.CONTROL_AF_TRIGGER_IDLE);
+                }
             } catch (Throwable t) {
                 FileLog.e("Camera2Session focus failed", t);
             }
         });
-        return true;
+    }
+
+    private void resumeFocusPreview(CameraCaptureSession session, CaptureRequest.Builder builder,
+                                    int sessionGeneration, int requestGeneration) {
+        handler.post(() -> {
+            if (destroyed || isClosed || captureSession != session || captureRequestBuilder != builder
+                    || captureSessionGeneration != sessionGeneration
+                    || focusRequestGeneration != requestGeneration) return;
+            try {
+                builder.set(CaptureRequest.CONTROL_AF_TRIGGER, CaptureRequest.CONTROL_AF_TRIGGER_IDLE);
+                session.setRepeatingRequest(builder.build(), null, handler);
+            } catch (Throwable t) {
+                FileLog.e("Camera2Session focus repeat failed", t);
+            }
+        });
     }
     public void setZoom(float value) {
         if (!isInitiated()) return;
@@ -1176,8 +1262,8 @@ public class Camera2Session {
                     captureRequestBuilder.set(CaptureRequest.CONTROL_ZOOM_RATIO, currentZoom);
                 } catch (Throwable ignored) {}
             } else if (sensorSize != null && Math.abs(currentZoom - 1f) >= 0.01f) {
-                final int centerX = sensorSize.width() / 2;
-                final int centerY = sensorSize.height() / 2;
+                final int centerX = sensorSize.centerX();
+                final int centerY = sensorSize.centerY();
                 final int deltaX = (int) ((0.5f * sensorSize.width()) / currentZoom);
                 final int deltaY = (int) ((0.5f * sensorSize.height()) / currentZoom);
                 cropRegion.set(

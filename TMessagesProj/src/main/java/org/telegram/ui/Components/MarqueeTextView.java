@@ -196,11 +196,11 @@ public class MarqueeTextView extends TextView {
         }
         final long time = NimarkoUiAnimationClock.now();
         final int epoch = NimarkoUiAnimationClock.epoch();
-        if (clockEpoch != epoch || marqueeIsStarted && lastFrameTime != 0 && time - lastFrameTime > 120) {
+        if (clockEpoch != epoch) {
             suspendMarquee();
         }
         clockEpoch = epoch;
-        long dt = lastFrameTime == 0 ? 0 : Math.max(0, time - lastFrameTime);
+        long dt = lastFrameTime == 0 ? 0 : Math.min(120L, Math.max(0L, time - lastFrameTime));
         lastFrameTime = time;
         if (!needMarquee && scrollX == 0f) return;
         if (!marqueeIsStarted && scrollX == 0f) {

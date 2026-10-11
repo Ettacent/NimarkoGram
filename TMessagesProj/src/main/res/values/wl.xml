@@ -37,4 +37,5 @@
     <string name="NM_WL_PaymentDelayed">Payment is still being verified. Reopen this screen later.</string>
     <string name="NM_WL_PaymentRequired">Access is inactive</string>
     <string name="NM_WL_PriceUnknown">Price unavailable</string>
+    <string name="NM_WL_ActivationPending">Your subscription is active. Connection setup is not complete yet; you do not need to pay again.</string>
 </resources>

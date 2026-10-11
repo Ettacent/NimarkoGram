@@ -488,7 +488,9 @@ public class SimpleTextView extends View implements Drawable.Callback {
                     ? getRightDrawablesWidth() : 0;
             if ((gravity & Gravity.HORIZONTAL_GRAVITY_MASK) == Gravity.CENTER_HORIZONTAL) {
                 offsetX = (width - textWidth - rightDrawableWidth) / 2 - (int) layout.getLineLeft(0);
-                if (ellipsizeByGradient && !scrollNonFitText && textWidth + rightDrawableWidth > width) {
+                if (scrollNonFitText && textWidth + rightDrawableWidth > width - paddingRight) {
+                    offsetX = -(int) layout.getLineLeft(0);
+                } else if (ellipsizeByGradient && !scrollNonFitText && textWidth + rightDrawableWidth > width) {
                     offsetX = (ellipsizeByGradientLeft ? width - textWidth - rightDrawableWidth : 0)
                             - (int) layout.getLineLeft(0);
                 }
@@ -1131,6 +1133,14 @@ public class SimpleTextView extends View implements Drawable.Callback {
         layoutY = 0;
 
         boolean fade = scrollNonFitText && (textDoesNotFit || scrollingOffset != 0);
+        final int scrollingLeft = leftDrawableOutside && leftDrawable != null
+                ? drawablePadding + leftDrawable.getIntrinsicWidth() : 0;
+        final int scrollingRight = Math.max(scrollingLeft, getMaxTextWidth() - paddingRight
+                - getOutsideRightDrawableTextClipInset());
+        if (fade) {
+            canvas.save();
+            canvas.clipRect(scrollingLeft, 0, scrollingRight, getMeasuredHeight());
+        }
         totalWidth = textWidth;
         if (leftDrawable != null && !leftDrawableOutside) {
             int x = (int) -scrollingOffset;
@@ -1219,6 +1229,9 @@ public class SimpleTextView extends View implements Drawable.Callback {
         if (scrollingOffset != 0) {
             if (leftDrawable != null && !leftDrawableOutside) {
                 int x = (int) -scrollingOffset + nextScrollX;
+                if ((gravity & Gravity.HORIZONTAL_GRAVITY_MASK) == Gravity.CENTER_HORIZONTAL) {
+                    x += offsetX;
+                }
                 int y;
                 if ((gravity & Gravity.VERTICAL_GRAVITY_MASK) == Gravity.CENTER_VERTICAL) {
                     y = (getMeasuredHeight() - leftDrawable.getIntrinsicHeight()) / 2 + leftDrawableTopPadding;
@@ -1272,7 +1285,7 @@ public class SimpleTextView extends View implements Drawable.Callback {
         }
 
         if (layout != null) {
-            if (leftDrawableOutside || rightDrawableOutside || ellipsizeByGradient || paddingRight > 0) {
+            if (!fade && (leftDrawableOutside || rightDrawableOutside || ellipsizeByGradient || paddingRight > 0)) {
                 canvas.save();
                 canvas.clipRect(textOffsetX, 0, getMaxTextWidth() - paddingRight
                         - getOutsideRightDrawableTextClipInset(), getMeasuredHeight());
@@ -1375,9 +1388,12 @@ public class SimpleTextView extends View implements Drawable.Callback {
                 } else {
                     fadePaint.setAlpha(255);
                 }
-                canvas.drawRect(textOffsetX, 0, textOffsetX + dp(6), getMeasuredHeight(), fadePaint);
                 canvas.save();
-                canvas.translate(getMaxTextWidth() - paddingRight - dp(6), 0);
+                canvas.translate(scrollingLeft, 0);
+                canvas.drawRect(0, 0, dp(6), getMeasuredHeight(), fadePaint);
+                canvas.restore();
+                canvas.save();
+                canvas.translate(scrollingRight - dp(6), 0);
                 canvas.drawRect(0, 0, 0 + dp(6), getMeasuredHeight(), fadePaintBack);
                 canvas.restore();
             } else if (ellipsizeByGradient && textDoesNotFit && fadeEllpsizePaint != null) {
@@ -1395,9 +1411,13 @@ public class SimpleTextView extends View implements Drawable.Callback {
                 canvas.restore();
             }
             Emoji.emojiDrawingUseAlpha = true;
-            if (leftDrawableOutside || rightDrawableOutside || ellipsizeByGradient || paddingRight > 0) {
+            if (!fade && (leftDrawableOutside || rightDrawableOutside || ellipsizeByGradient || paddingRight > 0)) {
                 canvas.restore();
             }
+        }
+
+        if (fade) {
+            canvas.restore();
         }
 
         if (leftDrawable != null && leftDrawableOutside) {

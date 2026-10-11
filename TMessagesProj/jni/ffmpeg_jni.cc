@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * Copyright (C) 2016 The Android Open Source Project
  *
@@ -103,6 +105,7 @@ static const int VIDEO_DECODER_ERROR_OTHER = -2;
 static const int VIDEO_DECODER_ERROR_READ_FRAME = -3;
 // LINT.ThenChange(../java/androidx/media3/decoder/ffmpeg/ExperimentalFfmpegVideoDecoder.java)
 
+static const int VIDEO_DECODER_END_OF_STREAM = -5;
 static jmethodID growOutputBufferMethod;
 
 /**
@@ -462,6 +465,7 @@ int decodePacket(AVCodecContext* context,
                 av_frame_free(&frame);
                 return AUDIO_DECODER_ERROR_OTHER;
             }
+            outputBuffer += outSize;
         }
 
         result = swr_convert(
@@ -590,6 +594,7 @@ struct JniContext {
     AVCodecContext* codecContext = nullptr;
     SwsContext* swsContext = nullptr;
 
+    bool swsFullRange = false;
     ANativeWindow* native_window = nullptr;
     jobject surface = nullptr;
 
@@ -643,6 +648,18 @@ const int* cvt_colorspace_coefficients(AVColorSpace colorSpace) {
 /**
  * Converts a decoded frame to the requested pixel format and size.
  */
+bool is_full_range(const AVFrame* frame) {
+    switch (static_cast<AVPixelFormat>(frame->format)) {
+        case AV_PIX_FMT_YUVJ420P:
+        case AV_PIX_FMT_YUVJ422P:
+        case AV_PIX_FMT_YUVJ444P:
+        case AV_PIX_FMT_YUVJ440P:
+        case AV_PIX_FMT_YUVJ411P:
+            return true;
+        default:
+            return frame->color_range == AVCOL_RANGE_JPEG;
+    }
+}
 AVFrame* cvt_format(JniContext* jniContext,
                     AVFrame* src,
                     AVPixelFormat dst_format,
@@ -656,6 +673,16 @@ AVFrame* cvt_format(JniContext* jniContext,
     const AVPixelFormat src_format =
             static_cast<AVPixelFormat>(src->format);
 
+    const bool full_range = is_full_range(src);
+    if (jniContext->swsFullRange != full_range) {
+        sws_freeContext(jniContext->swsContext);
+        jniContext->swsContext = nullptr;
+        jniContext->swsFullRange = full_range;
+    }
+
+    double filter_coefficients[] = {0.0, 1.0, 0.0};
+    SwsVector filter_vector = {filter_coefficients, 3};
+    SwsFilter filter = {&filter_vector, nullptr, &filter_vector, nullptr};
     SwsContext* swsContext =
             sws_getCachedContext(
                     jniContext->swsContext,
@@ -666,20 +693,20 @@ AVFrame* cvt_format(JniContext* jniContext,
                     dst_height,
                     dst_format,
                     SWS_BILINEAR,
-                    NULL,
+                    full_range ? &filter : NULL,
                     NULL,
                     NULL);
 
+    jniContext->swsContext = swsContext;
     if (!swsContext) {
         LOGE("Failed to allocate swsContext.");
         return nullptr;
     }
 
-    jniContext->swsContext = swsContext;
 
     // Preserve the decoded frame's matrix/range while changing bit depth/format.
     const int src_range =
-            src->color_range == AVCOL_RANGE_JPEG ? 1 : 0;
+            full_range ? 1 : 0;
     const int* coefficients =
             cvt_colorspace_coefficients(src->colorspace);
 
@@ -689,7 +716,7 @@ AVFrame* cvt_format(JniContext* jniContext,
                     coefficients,
                     src_range,
                     coefficients,
-                    src_range,
+                    0,
                     0,
                     1 << 16,
                     1 << 16);
@@ -716,6 +743,7 @@ AVFrame* cvt_format(JniContext* jniContext,
     dst->height = dst_height;
     dst->format = dst_format;
 
+    dst->color_range = AVCOL_RANGE_MPEG;
     const int alloc_result = av_frame_get_buffer(dst, 0);
     if (alloc_result < 0) {
         logError("av_frame_get_buffer", alloc_result);
@@ -956,31 +984,33 @@ VIDEO_DECODER_FUNC(
 
     if (!jniContext ||
         !jniContext->codecContext ||
-        !encodedData ||
+        (!encodedData && length != 0) ||
         length < 0) {
         LOGE("Invalid context or input buffer.");
         return VIDEO_DECODER_ERROR_OTHER;
     }
 
-    uint8_t* inputBuffer =
-            static_cast<uint8_t*>(
-                    env->GetDirectBufferAddress(encodedData));
-    const jlong inputCapacity =
-            env->GetDirectBufferCapacity(encodedData);
+    AVPacket* packet = nullptr;
+    if (encodedData) {
+        uint8_t* inputBuffer =
+                static_cast<uint8_t*>(
+                        env->GetDirectBufferAddress(encodedData));
+        const jlong inputCapacity =
+                env->GetDirectBufferCapacity(encodedData);
 
-    if (!inputBuffer ||
-        inputCapacity < 0 ||
-        inputCapacity < static_cast<jlong>(length)) {
-        LOGE("Invalid direct input buffer: capacity=%lld length=%d",
-             static_cast<long long>(inputCapacity), length);
-        return VIDEO_DECODER_ERROR_OTHER;
-    }
+        if (!inputBuffer ||
+            inputCapacity < 0 ||
+            inputCapacity < static_cast<jlong>(length)) {
+            LOGE("Invalid direct input buffer: capacity=%lld length=%d",
+                 static_cast<long long>(inputCapacity), length);
+            return VIDEO_DECODER_ERROR_OTHER;
+        }
 
-    AVPacket* packet = av_packet_alloc();
-    if (!packet) {
-        LOGE("Failed to allocate packet.");
-        return VIDEO_DECODER_ERROR_OTHER;
-    }
+        packet = av_packet_alloc();
+        if (!packet) {
+            LOGE("Failed to allocate packet.");
+            return VIDEO_DECODER_ERROR_OTHER;
+        }
 
     // Do not point AVPacket directly at Java memory.
     //
@@ -989,22 +1019,23 @@ VIDEO_DECODER_FUNC(
     // length. FFmpeg parsers may legally read AV_INPUT_BUFFER_PADDING_SIZE bytes
     // past packet->data + packet->size. av_new_packet() allocates that padding
     // and zeroes it.
-    const int allocationResult = av_new_packet(packet, length);
-    if (allocationResult < 0) {
-        logError("av_new_packet", allocationResult);
-        av_packet_free(&packet);
-        return VIDEO_DECODER_ERROR_OTHER;
+        const int allocationResult = av_new_packet(packet, length);
+        if (allocationResult < 0) {
+            logError("av_new_packet", allocationResult);
+            av_packet_free(&packet);
+            return VIDEO_DECODER_ERROR_OTHER;
+        }
+
+        if (length > 0) {
+            std::memcpy(
+                    packet->data,
+                    inputBuffer,
+                    static_cast<size_t>(length));
+        }
+
+        packet->pts = inputTimeUs;
+
     }
-
-    if (length > 0) {
-        std::memcpy(
-                packet->data,
-                inputBuffer,
-                static_cast<size_t>(length));
-    }
-
-    packet->pts = inputTimeUs;
-
     const int result =
             avcodec_send_packet(jniContext->codecContext, packet);
 
@@ -1021,6 +1052,10 @@ VIDEO_DECODER_FUNC(
 
     if (result == AVERROR(EAGAIN)) {
         return VIDEO_DECODER_ERROR_READ_FRAME;
+    }
+
+    if (result == AVERROR_EOF) {
+        return VIDEO_DECODER_END_OF_STREAM;
     }
 
     logError("avcodec_send_packet", result);
@@ -1059,6 +1094,10 @@ VIDEO_DECODER_FUNC(
         return VIDEO_DECODER_ERROR_INVALID_DATA;
     }
 
+    if (receiveResult == AVERROR_EOF) {
+        av_frame_free(&rawFrame);
+        return VIDEO_DECODER_END_OF_STREAM;
+    }
     if (receiveResult != 0) {
         logError("avcodec_receive_frame", receiveResult);
         av_frame_free(&rawFrame);
@@ -1074,7 +1113,7 @@ VIDEO_DECODER_FUNC(
 
     AVFrame* frame = rawFrame;
 
-    if (rawFrame->format != AV_PIX_FMT_YUV420P) {
+    if (rawFrame->format != AV_PIX_FMT_YUV420P || is_full_range(rawFrame)) {
         frame =
                 cvt_format(
                         jniContext,

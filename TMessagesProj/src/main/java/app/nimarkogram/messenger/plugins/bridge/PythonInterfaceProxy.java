@@ -24,6 +24,7 @@ public final class PythonInterfaceProxy implements
         InvocationHandler, PluginUiRegistry.RuntimeOwnedUi {
 
     private final PluginsController.PluginRuntimeToken runtimeToken;
+    private final String diagnosticOwner;
     private final AtomicReference<PyObject> target;
     private final AtomicReference<Object> proxy = new AtomicReference<>();
 
@@ -62,6 +63,7 @@ public final class PythonInterfaceProxy implements
         }
         this.target = new AtomicReference<>(target);
         this.runtimeToken = runtimeToken;
+        this.diagnosticOwner = runtimeToken.getGeneration() + ":" + runtimeToken.getInstanceId();
     }
 
     public static Object create(
@@ -146,14 +148,11 @@ public final class PythonInterfaceProxy implements
         boolean watchdogStarted = false;
         long diagnosticToken = 0;
         long diagnosticStart = 0;
-        String diagnosticOwner = "";
         try {
             controller.getWatchdog().onPluginExecutionStarted(pluginId);
             watchdogStarted = true;
             diagnosticToken = NimarkoCrashContext.beginInvocation();
             diagnosticStart = NimarkoCrashContext.invocationStartedMs(diagnosticToken);
-            diagnosticOwner = diagnosticToken == 0 ? ""
-                    : runtimeToken.getGeneration() + ":" + runtimeToken.getInstanceId();
             NimarkoCrashContext.pythonPhase(diagnosticToken, diagnosticStart,
                     "interface_enter", method.getName(), pluginId, diagnosticOwner);
             PyObject result;
@@ -208,7 +207,11 @@ public final class PythonInterfaceProxy implements
                     }
                 }
             } finally {
-                controller.exitPluginRuntime(runtimeToken);
+                try {
+                    controller.exitPluginRuntime(runtimeToken);
+                } finally {
+                    NimarkoCrashContext.endInvocation(diagnosticToken);
+                }
             }
         }
     }

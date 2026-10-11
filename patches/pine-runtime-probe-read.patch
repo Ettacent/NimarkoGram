@@ -1,0 +1,134 @@
+diff --git a/core/src/main/cpp/android.cpp b/core/src/main/cpp/android.cpp
+--- a/core/src/main/cpp/android.cpp
++++ b/core/src/main/cpp/android.cpp
+@@ -6,6 +6,10 @@
+ #include <string>
+ #include <dlfcn.h>
+ #include <mutex>
++#include <cerrno>
++#include <cstdint>
++#include <fcntl.h>
++#include <limits>
+ #include "android.h"
+ #include "utils/well_known_classes.h"
+ #include "art/art_method.h"
+@@ -15,6 +19,36 @@
+ 
+ using namespace pine;
+ 
++static bool TryReadMemoryWord(const void* base, size_t offset, uintptr_t& value) {
++    value = 0;
++    uintptr_t address = reinterpret_cast<uintptr_t>(base);
++#if defined(__aarch64__)
++    address &= UINT64_C(0x00ffffffffffffff);
++#endif
++    if (!address || offset > UINTPTR_MAX - address) return false;
++    address += offset;
++    if (address % alignof(void*) != 0 || address > UINTPTR_MAX - (sizeof(void*) - 1)
++            || address > static_cast<uint64_t>(std::numeric_limits<off64_t>::max()) - (sizeof(void*) - 1)) return false;
++
++    int saved_errno = errno;
++    int fd = open("/proc/self/mem", O_RDONLY | O_CLOEXEC);
++    uintptr_t word = 0;
++    ssize_t count = fd < 0 ? -1 : pread64(fd, &word, sizeof(word), static_cast<off64_t>(address));
++    if (fd >= 0) close(fd);
++    errno = saved_errno;
++    if (count != static_cast<ssize_t>(sizeof(word))) return false;
++    value = word;
++    return true;
++}
++
++static bool TryReadPointer(const void* base, size_t offset, void*& value) {
++    value = nullptr;
++    uintptr_t word;
++    if (!TryReadMemoryWord(base, offset, word) || !word || word % alignof(void*) != 0) return false;
++    value = reinterpret_cast<void*>(word);
++    return true;
++}
++
+ int Android::version = -1;
+ JavaVM* Android::jvm_ = nullptr;
+ 
+@@ -117,6 +151,7 @@
+ }
+ 
+ void Android::InitDisableMovingGc(const ElfImage* handle) {
++    heap_ = nullptr;
+     if (version < kL) return;
+ 
+     increment_disable_moving_gc_ = reinterpret_cast<void (*)(void*, void*)>(handle->GetSymbolAddress(
+@@ -132,14 +167,16 @@
+ 
+     void** instance_ptr = static_cast<void**>(handle->GetSymbolAddress(
+             "_ZN3art7Runtime9instance_E", false));
+-    void* runtime = instance_ptr ? *instance_ptr : nullptr;
++    void* runtime;
++    TryReadPointer(instance_ptr, 0, runtime);
+     auto get_heap = reinterpret_cast<void* (*)(void*)>(handle->GetSymbolAddress(
+             "_ZNK3art7Runtime7GetHeapEv", false));
+     if (!get_heap) {
+         get_heap = reinterpret_cast<void* (*)(void*)>(handle->GetSymbolAddress(
+                 "_ZN3art7Runtime7GetHeapEv", false));
+     }
+-    if (runtime && get_heap) heap_ = get_heap(runtime);
++    uintptr_t runtime_word;
++    if (runtime && get_heap && TryReadMemoryWord(runtime, 0, runtime_word)) heap_ = get_heap(runtime);
+     if (UNLIKELY(!heap_)) {
+         increment_disable_moving_gc_ = nullptr;
+         decrement_disable_moving_gc_ = nullptr;
+@@ -255,7 +292,7 @@
+     }
+     void** instance_ptr = static_cast<void**>(handle->GetSymbolAddress("_ZN3art7Runtime9instance_E"));
+     void* runtime;
+-    if (UNLIKELY(!instance_ptr || !(runtime = *instance_ptr))) {
++    if (UNLIKELY(!TryReadPointer(instance_ptr, 0, runtime))) {
+         LOGE("Unable to retrieve Runtime.");
+         return;
+     }
+@@ -272,9 +309,8 @@
+     std::vector<size_t> known_offsets = OffsetOfJavaVm(has_smaller_irt);
+     size_t jvm_offset = 0;
+     for (size_t offset : known_offsets) {
+-        auto val = reinterpret_cast<std::unique_ptr<JavaVM>*>(
+-                reinterpret_cast<uintptr_t>(runtime) + offset)->get();
+-        if (val == jvm) {
++        void* val;
++        if (TryReadPointer(runtime, offset, val) && val == jvm) {
+             jvm_offset = offset;
+             break;
+         }
+@@ -306,7 +342,9 @@
+             ? sizeof(void*) * 2
+             : sizeof(std::unique_ptr<void>) + sizeof(void*) * 2;
+ 
+-    void* class_linker = *reinterpret_cast<void**>(reinterpret_cast<uintptr_t>(runtime) + java_vm_offset - kDifference);
++    void* class_linker = nullptr;
++    if (java_vm_offset >= kDifference)
++        TryReadPointer(runtime, java_vm_offset - kDifference, class_linker);
+     SetClassLinker(class_linker);
+ }
+ 
+@@ -331,18 +369,19 @@
+             LOGW("ProfileSaver::instance_ not found. Fallback to clearing jit info.");
+             return;
+         }
+-        void** profile_saver = *symbol;
+-        if (UNLIKELY(profile_saver == nullptr)) {
++        void* profile_saver;
++        if (UNLIKELY(!TryReadPointer(symbol, 0, profile_saver))) {
+             LOGW("ProfileSaver is not initialized, cannot get jit code cache. Fallback to clearing jit info.");
+             return;
+         }
+-        if (UNLIKELY((jit_code_cache_ = *profile_saver) == nullptr)) {
++        if (UNLIKELY(!TryReadPointer(profile_saver, 0, jit_code_cache_))) {
+             LOGE("ProfileSaver is initialized but no jit code cache??? Fallback to clearing jit info.");
+         }
+         return;
+     }
+     constexpr size_t kDifference = sizeof(std::unique_ptr<void>) * 2;
+-    jit_code_cache_ = *reinterpret_cast<void**>(reinterpret_cast<uintptr_t>(runtime) + java_vm_offset + kDifference);
++    if (java_vm_offset > SIZE_MAX - kDifference) return;
++    TryReadPointer(runtime, java_vm_offset + kDifference, jit_code_cache_);
+ }
+ 
+ ALWAYS_INLINE ScopedGCCriticalSection::ScopedGCCriticalSection(void* self, art::GcCause cause,

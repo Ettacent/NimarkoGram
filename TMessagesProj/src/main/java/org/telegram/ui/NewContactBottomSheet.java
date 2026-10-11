@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 5.x.x.
  * It is licensed under GNU GPL v. 2 or later.
@@ -16,6 +18,7 @@ import static org.telegram.messenger.LocaleController.getString;
 import android.Manifest;
 import android.accounts.Account;
 import android.accounts.AccountManager;
+import android.app.Activity;
 import android.content.ContentProviderOperation;
 import android.content.ContentResolver;
 import android.content.Context;
@@ -1000,8 +1003,16 @@ public class NewContactBottomSheet extends BottomSheet implements AdapterView.On
         }
     }
 
+    private boolean canComplete(Activity activity) {
+        return activity != null && !isDismissed() && isShowing()
+            && parentFragment != null && !parentFragment.isFinished
+            && parentFragment.getParentActivity() == activity
+            && AndroidUtilities.findActivity(getContext()) == activity
+            && AndroidUtilities.isActivityRunning(activity);
+    }
     private void doOnDone() {
-        if (donePressed || parentFragment == null || parentFragment.getParentActivity() == null) {
+        final Activity activity = AndroidUtilities.findActivity(getContext());
+        if (donePressed || !canComplete(activity)) {
             return;
         }
         if (firstNameField.getEditText().length() == 0) {
@@ -1031,16 +1042,19 @@ public class NewContactBottomSheet extends BottomSheet implements AdapterView.On
 
         if (checkBox.isChecked()) {
             PermissionRequest.ensurePermission(R.raw.permission_request_contacts, R.string.PermissionNoContactsSaving, Manifest.permission.WRITE_CONTACTS, granted -> {
-                if (granted) {
-                    done();
+                if (granted && canComplete(activity)) {
+                    done(activity);
                 }
             });
         } else {
-            done();
+            done(activity);
         }
     }
 
-    private void done() {
+    private void done(Activity activity) {
+        if (donePressed || !canComplete(activity)) {
+            return;
+        }
 
         donePressed = true;
         showEditDoneProgress(true, true);
@@ -1050,6 +1064,24 @@ public class NewContactBottomSheet extends BottomSheet implements AdapterView.On
         final String lastName = lastNameField.getEditText().getText().toString();
         final String notes = notesField.getVisibility() == View.VISIBLE ? notesField.getEditText().getText().toString() : "";
 
+        if (checkBox.isChecked() && !saveContact(getContext(), phone, firstName, lastName, null, account)) {
+            donePressed = false;
+            if (!canComplete(activity)) {
+                return;
+            }
+            showEditDoneProgress(false, true);
+            new AlertDialog.Builder(activity, resourcesProvider)
+                .setTitle(getString(R.string.AppName))
+                .setMessage(getString(R.string.ErrorOccurred))
+                .setPositiveButton(getString(R.string.OK), null)
+                .show();
+            return;
+        }
+
+        if (!canComplete(activity)) {
+            donePressed = false;
+            return;
+        }
         final TLRPC.TL_contacts_importContacts req = new TLRPC.TL_contacts_importContacts();
         final TLRPC.TL_inputPhoneContact inputPhoneContact = new TLRPC.TL_inputPhoneContact();
         inputPhoneContact.first_name = firstName;
@@ -1064,6 +1096,9 @@ public class NewContactBottomSheet extends BottomSheet implements AdapterView.On
         int reqId = ConnectionsManager.getInstance(currentAccount).sendRequest(req, (response, error) -> {
             final TLRPC.TL_contacts_importedContacts res = (TLRPC.TL_contacts_importedContacts) response;
             AndroidUtilities.runOnUIThread(() -> {
+                if (!canComplete(activity)) {
+                    return;
+                }
                 donePressed = false;
                 if (res != null) {
                     if (!res.users.isEmpty()) {
@@ -1085,9 +1120,6 @@ public class NewContactBottomSheet extends BottomSheet implements AdapterView.On
         }, ConnectionsManager.RequestFlagFailOnServerErrors);
         ConnectionsManager.getInstance(currentAccount).bindRequestToGuid(reqId, classGuid);
 
-        if (checkBox.isChecked()) {
-            saveContact(getContext(), phone, firstName, lastName, null, account);
-        }
     }
 
     @Override
@@ -1340,7 +1372,7 @@ public class NewContactBottomSheet extends BottomSheet implements AdapterView.On
         if (into != null) {
             builder.withValue(ContactsContract.RawContacts.ACCOUNT_TYPE, into.type);
             builder.withValue(ContactsContract.RawContacts.ACCOUNT_NAME, into.name);
-        } else {
+        } else if (Build.VERSION.SDK_INT < 36) {
             builder.withValue(ContactsContract.RawContacts.ACCOUNT_TYPE, (String) null);
             builder.withValue(ContactsContract.RawContacts.ACCOUNT_NAME, (String) null);
         }
@@ -1383,8 +1415,8 @@ public class NewContactBottomSheet extends BottomSheet implements AdapterView.On
             final ContentResolver resolver = context.getContentResolver();
             resolver.applyBatch(ContactsContract.AUTHORITY, ops);
             return true;
-        } catch (RemoteException | OperationApplicationException e) {
-            e.printStackTrace();
+        } catch (RemoteException | OperationApplicationException | RuntimeException e) {
+            FileLog.e(e);
             return false;
         }
     }

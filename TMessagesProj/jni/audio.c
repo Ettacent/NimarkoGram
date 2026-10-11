@@ -983,6 +983,46 @@ JNIEXPORT void JNICALL Java_org_telegram_ui_Stories_recorder_FfmpegAudioWaveform
     (*env)->ReleaseStringUTFChars(env, pathJStr, path);
 }
 
+static int writeOfflinePcmLocked(OggOpusFile *of, int16_t *buffer, int *buffered, opus_int64 remaining) {
+    while (remaining > 0) {
+        int capacity = (int) MIN(frame_size - *buffered, remaining);
+        int samples = op_read(of, buffer + *buffered, capacity, NULL);
+        if (samples <= 0) return 0;
+        remaining -= samples;
+        *buffered += samples;
+        if (*buffered == frame_size) {
+            if (!writeFrameLocked((uint8_t *) buffer, frame_size * sizeof(int16_t), 0)) return 0;
+            *buffered = 0;
+        }
+    }
+    return 1;
+}
+
+static int finishOfflinePcmLocked(int16_t *buffer, int buffered) {
+    if (total_samples + buffered <= 0) return 0;
+    int padding = header.preskip;
+    do {
+        int added = MIN(frame_size - buffered, padding);
+        memset(buffer + buffered, 0, added * sizeof(int16_t));
+        buffered += added;
+        padding -= added;
+        int end = padding == 0;
+        if (end) total_samples -= header.preskip;
+        if (!writeFrameLocked((uint8_t *) buffer, buffered * sizeof(int16_t), end)) return 0;
+        buffered = 0;
+    } while (padding > 0);
+    return 1;
+}
+
+static int isMonoOpusFile(OggOpusFile *of) {
+    int links = op_link_count(of);
+    if (links <= 0) return 0;
+    for (int i = 0; i < links; i++) {
+        const OpusHead *head = op_head(of, i);
+        if (!head || head->channel_count != 1) return 0;
+    }
+    return 1;
+}
 static int cropOpusAudioLocked(const char *inputPath, const char *outputPath, float startTimeMs, float endTimeMs) {
     if (!inputPath || !outputPath || !isfinite(startTimeMs) || !isfinite(endTimeMs)) return 0;
     int error;
@@ -992,14 +1032,12 @@ static int cropOpusAudioLocked(const char *inputPath, const char *outputPath, fl
         return 0;
     }
 
-    const OpusHead *head = op_head(opusFile, -1);
-    if (!head) {
-        LOGE("Failed to read Opus header");
+    if (!isMonoOpusFile(opusFile)) {
+        LOGE("Offline voice editing requires mono Opus input");
         op_free(opusFile);
         return 0;
     }
 
-    int channels = head->channel_count;
     opus_int64 total_source_samples = op_pcm_total(opusFile, -1);
     if (total_source_samples < 0) {
         LOGE("Failed to get source sample count: %lld", (long long) total_source_samples);
@@ -1031,7 +1069,7 @@ static int cropOpusAudioLocked(const char *inputPath, const char *outputPath, fl
         return 0;
     }
 
-    int16_t *buffer = malloc(sizeof(int16_t) * frame_size * channels);
+    int16_t *buffer = malloc(sizeof(int16_t) * frame_size);
     if (!buffer) {
         LOGE("Out of memory");
         cleanupRecorderLocked();
@@ -1039,33 +1077,9 @@ static int cropOpusAudioLocked(const char *inputPath, const char *outputPath, fl
         return 0;
     }
 
-    int success = 1;
-    opus_int64 remaining_samples = crop_length;
-    while (remaining_samples > 0) {
-        int max_samples = (int) MIN(960, remaining_samples / channels);
-        if (max_samples <= 0) {
-            break;
-        }
-        int samples_read = op_read(opusFile, buffer, max_samples * channels, NULL);
-        if (samples_read < 0) {
-            LOGE("Decoding error from op_read(): %d", samples_read);
-            success = 0;
-            break;
-        }
-        if (samples_read == 0) {
-            break;
-        }
-        remaining_samples -= samples_read;
-
-        int end = remaining_samples <= 0;
-
-        size_t byte_count = samples_read * sizeof(int16_t);
-        if (!writeFrameLocked((uint8_t *)buffer, byte_count, end)) {
-            LOGE("Failed to write frame");
-            success = 0;
-            break;
-        }
-    }
+    int buffered = 0;
+    int success = writeOfflinePcmLocked(opusFile, buffer, &buffered, crop_length)
+            && finishOfflinePcmLocked(buffer, buffered);
 
     free(buffer);
     cleanupRecorderLocked();
@@ -1074,30 +1088,14 @@ static int cropOpusAudioLocked(const char *inputPath, const char *outputPath, fl
     return success;
 }
 
-int append_stream(OggOpusFile *of, int16_t* buffer, int channels, int is_last) {
+static int append_stream(OggOpusFile *of, int16_t* buffer, int *buffered) {
     opus_int64 total_source_samples = op_pcm_total(of, -1);
     if (total_source_samples < 0) {
         LOGE("Failed to get source sample count: %lld",(long long) total_source_samples);
         return 0;
     }
 
-    while (total_source_samples > 0) {
-        int samples_read = op_read(of, buffer, frame_size, NULL);
-        if (samples_read < 0) {
-            LOGE("Decoding error from op_read(): %d", samples_read);
-            return 0;
-        }
-        if (samples_read == 0) {
-            break;
-        }
-        total_source_samples -= samples_read;
-        size_t byte_count = (size_t) samples_read * channels * sizeof(int16_t);
-        if (!writeFrameLocked((uint8_t*) buffer, byte_count, is_last && total_source_samples <= 0)) {
-            LOGE("Failed to write encoded frame");
-            return 0;
-        }
-    }
-    return 1;
+    return writeOfflinePcmLocked(of, buffer, buffered, total_source_samples);
 }
 
 static int joinOpusAudiosLocked(const char* file1, const char* file2, const char* dest) {
@@ -1118,22 +1116,12 @@ static int joinOpusAudiosLocked(const char* file1, const char* file2, const char
         return 0;
     }
 
-    const OpusHead *head1 = op_head(opusFile1, -1);
-    if (!head1) {
-        LOGE("Failed to read Opus header");
+    if (!isMonoOpusFile(opusFile1) || !isMonoOpusFile(opusFile2)) {
+        LOGE("Offline voice editing requires mono Opus input");
         op_free(opusFile1);
         op_free(opusFile2);
         return 0;
     }
-    const OpusHead *head2 = op_head(opusFile2, -1);
-    if (!head2) {
-        LOGE("Failed to read Opus header");
-        op_free(opusFile1);
-        op_free(opusFile2);
-        return 0;
-    }
-
-    int channels = MIN(head1->channel_count, head2->channel_count);
     opus_int32 rate = 48000;
 
     if (!initRecorderLocked(dest, rate)) {
@@ -1143,7 +1131,7 @@ static int joinOpusAudiosLocked(const char* file1, const char* file2, const char
         return 0;
     }
 
-    int16_t *buffer = malloc(sizeof(int16_t) * frame_size * channels);
+    int16_t *buffer = malloc(sizeof(int16_t) * frame_size);
     if (!buffer) {
         LOGE("Out of memory");
         cleanupRecorderLocked();
@@ -1152,10 +1140,10 @@ static int joinOpusAudiosLocked(const char* file1, const char* file2, const char
         return 0;
     }
 
-    int success = append_stream(opusFile1, buffer, channels, 0);
-    if (success) {
-        success = append_stream(opusFile2, buffer, channels, 1);
-    }
+    int buffered = 0;
+    int success = append_stream(opusFile1, buffer, &buffered)
+            && append_stream(opusFile2, buffer, &buffered)
+            && finishOfflinePcmLocked(buffer, buffered);
 
     free(buffer);
     cleanupRecorderLocked();

@@ -21,7 +21,6 @@
 
 package me.vkryl.android.animator;
 
-import app.nimarkogram.messenger.utils.NimarkoUiAnimationClock;
 import android.animation.Animator;
 import android.animation.AnimatorListenerAdapter;
 import android.animation.ValueAnimator;
@@ -227,7 +226,6 @@ public class FactorAnimator {
     animator.addListener(new AnimatorListenerAdapter() {
       @Override
       public void onAnimationStart (Animator animation) {
-        NimarkoUiAnimationClock.track(animation);
         invokeStartRunnable();
       }
 

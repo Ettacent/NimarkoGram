@@ -244,11 +244,6 @@ public class PrivacyPreferencesActivity extends BasePreferencesActivity {
                 .show();
     }
 
-    private void refreshItems() {
-        if (listView != null && listView.adapter != null) {
-            listView.adapter.update(true);
-        }
-    }
 
     private void showAuthenticationRequired() {
         BulletinFactory.of(this).createErrorBulletin(

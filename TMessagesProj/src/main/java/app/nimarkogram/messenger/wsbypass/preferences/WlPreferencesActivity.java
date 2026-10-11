@@ -29,8 +29,8 @@ public final class WlPreferencesActivity extends BasePreferencesActivity {
     private int orderAccount;
     private long orderOwner, orderEpoch, startingExpiry;
     private WlAccess.Checkout order;
-    private boolean visible, busy, waitingPayment, paymentConfirmed, activateAfterPayment;
-    private int generation, paymentGeneration, paymentPolls, paymentErrors;
+    private boolean visible, busy, waitingPayment, paymentConfirmed, activateAfterPayment, subscriptionConfirmed;
+    private int generation, paymentGeneration, paymentPolls;
     private String openedUrl = "";
     private String status = "loading";
     private final Runnable accessChanged = this::onAccessChanged;
@@ -51,7 +51,6 @@ public final class WlPreferencesActivity extends BasePreferencesActivity {
         visible = true;
         WlAccess.addListener(accessChanged);
         paymentPolls = 0;
-        paymentErrors = 0;
         if (!busy) refresh();
     }
     private boolean syncAccount() {
@@ -64,6 +63,7 @@ public final class WlPreferencesActivity extends BasePreferencesActivity {
         ownerEpoch = selectedEpoch;
         generation++;
         busy = false;
+        subscriptionConfirmed = false;
         clearPayment();
         status = "loading";
         return true;
@@ -89,6 +89,7 @@ public final class WlPreferencesActivity extends BasePreferencesActivity {
 
     @Override public void onPause() {
         visible = false;
+        subscriptionConfirmed = false;
         generation++;
         busy = false;
         WlAccess.removeListener(accessChanged);
@@ -106,10 +107,10 @@ public final class WlPreferencesActivity extends BasePreferencesActivity {
     }
 
     @Override public void fillItems(ArrayList<UItem> items, UniversalAdapter adapter) {
-        boolean routeEnabled = WlAccess.enabled() && WlAccess.cached() != null;
+        boolean routeEnabled = WlAccess.enabled();
         items.add(UItem.asCheck(ENABLE, text(R.string.NM_WL_Enable), text(R.string.NM_WL_About), true)
                 .setChecked(routeEnabled)
-                .setEnabled(WlAccess.cached() != null));
+                .setEnabled(routeEnabled || WlAccess.cached() != null));
         items.add(UItem.asHeader(text(R.string.NM_WL_Request)));
         items.add(asSettingsLink(STATUS, IconBackgroundColors.BLUE, R.drawable.msg_info,
                 text(R.string.NM_WL_Status), text(statusString())).setEnabled(true));
@@ -129,7 +130,13 @@ public final class WlPreferencesActivity extends BasePreferencesActivity {
                 .setEnabled(false));
         items.add(asPlainSettingsRowWithSubtitle(PRICE, text(R.string.NM_WL_Price),
                 priceString()).setEnabled(false));
-        items.add(UItem.asShadow(text(R.string.NM_WL_SharedAccess)));
+        String explanation = text(R.string.NM_WL_SharedAccess);
+        if (hasConfirmedSubscription() && WlAccess.cached() == null) {
+            String pending = text(R.string.NM_WL_ActivationPending);
+            if ("authentication_required".equals(status)) pending += " " + text(R.string.NM_WL_AuthRequired);
+            explanation = pending + "\n\n" + explanation;
+        }
+        items.add(UItem.asShadow(explanation));
         for (UItem item : items) {
             if (item.id == STATUS || item.id == PAY || item.id == EXPIRY || item.id == PRICE) {
                 int rowAccount = item.id == PRICE
@@ -143,7 +150,7 @@ public final class WlPreferencesActivity extends BasePreferencesActivity {
     @Override public void onClick(UItem item, View view, int position, float x, float y) {
         if (item == null || syncAccount()) { reload(); return; }
         if (item.id == ENABLE) {
-            boolean routeEnabled = WlAccess.enabled() && WlAccess.cached() != null;
+            boolean routeEnabled = WlAccess.enabled();
             if (routeEnabled) {
                 activateAfterPayment = false;
                 WlAccess.setEnabled(false);
@@ -169,7 +176,6 @@ public final class WlPreferencesActivity extends BasePreferencesActivity {
         paymentConfirmed = false;
         waitingPayment = true;
         paymentPolls = 0;
-        paymentErrors = 0;
         openedUrl = "";
         busy = true;
         status = "checkout";
@@ -222,12 +228,10 @@ public final class WlPreferencesActivity extends BasePreferencesActivity {
                 screen.clearPayment();
                 screen.status = state;
             } else if (checkout == null) {
-                screen.paymentErrors++;
                 screen.status = state;
                 if (screen.order == null) screen.clearPayment();
             } else {
                 screen.order = checkout;
-                screen.paymentErrors = 0;
                 if ("completed".equals(state)) {
                     screen.paymentConfirmed = true;
                     screen.refresh();
@@ -273,12 +277,19 @@ public final class WlPreferencesActivity extends BasePreferencesActivity {
             return;
         }
         busy = true;
+        subscriptionConfirmed = false;
         prepareRefreshStatus();
         reload();
         int expected = ++generation;
         long expectedUid = owner;
         WeakReference<WlPreferencesActivity> ref = new WeakReference<>(this);
-        WlAccess.refresh(waitingPayment ? orderAccount : account, state -> {
+        WlAccess.refreshWithSubscription(waitingPayment ? orderAccount : account, subscriptionState -> {
+            WlPreferencesActivity screen = ref.get();
+            if (screen == null || !screen.screenCurrent(expected, expectedUid)) return;
+            screen.subscriptionConfirmed = "approved".equals(subscriptionState);
+            if (screen.hasConfirmedSubscription() && screen.waitingPayment) screen.paymentConfirmed = true;
+            screen.reload();
+        }, state -> {
             WlPreferencesActivity screen = ref.get();
             if (screen == null || !screen.screenCurrent(expected, expectedUid)) return;
             screen.busy = false;
@@ -299,8 +310,7 @@ public final class WlPreferencesActivity extends BasePreferencesActivity {
                 } else {
                     boolean failed = "error".equals(state) || "busy".equals(state)
                             || "authentication_required".equals(state);
-                    if (failed) screen.paymentErrors++;
-                    else { screen.paymentErrors = 0; screen.status = "waiting_payment"; }
+                    if (!failed) screen.status = "waiting_payment";
                 }
             }
             screen.reload();
@@ -312,7 +322,7 @@ public final class WlPreferencesActivity extends BasePreferencesActivity {
         AndroidUtilities.cancelRunOnUIThread(paymentPoll);
         if (!visible || busy || !waitingPayment) return;
         if (paymentPolls >= MAX_PAYMENT_POLLS) {
-            status = "payment_delayed";
+            if (!hasConfirmedSubscription()) status = "payment_delayed";
             reload();
             AndroidUtilities.runOnUIThread(paymentPoll, 60_000L);
         } else {
@@ -330,7 +340,20 @@ public final class WlPreferencesActivity extends BasePreferencesActivity {
         openedUrl = "";
     }
 
+    private boolean hasConfirmedSubscription() {
+        WlAccess.Subscription subscription = WlAccess.subscription(account);
+        return subscriptionConfirmed && UserConfig.selectedAccount == account
+                && UserConfig.getInstance(account).isClientActivated()
+                && UserConfig.getInstance(account).getClientUserId() == owner
+                && WlAccess.accountEpoch(account) == ownerEpoch
+                && subscription != null && "approved".equals(subscription.status)
+                && subscription.expiresAt > 0
+                && (!waitingPayment || orderCurrent() && (paymentConfirmed || subscription.expiresAt > startingExpiry));
+    }
     private int statusString() {
+        if ("blocked".equals(status)) return R.string.NM_WL_Blocked;
+        if ("account_changed".equals(status)) return R.string.NM_WL_AccountChanged;
+        if (hasConfirmedSubscription()) return R.string.NM_WL_Approved;
         if ("checkout".equals(status)) return R.string.NM_WL_Checkout;
         if ("loading".equals(status)) return R.string.NM_WL_Checking;
         if ("completed".equals(status)) return R.string.NM_WL_PaymentCompleted;
@@ -340,8 +363,6 @@ public final class WlPreferencesActivity extends BasePreferencesActivity {
         if ("error".equals(status)) return R.string.NM_WL_Error;
         if ("busy".equals(status)) return R.string.NM_WL_Busy;
         if ("authentication_required".equals(status)) return R.string.NM_WL_AuthRequired;
-        if ("account_changed".equals(status)) return R.string.NM_WL_AccountChanged;
-        if ("blocked".equals(status)) return R.string.NM_WL_Blocked;
         if (WlAccess.cached() != null) return WlAccess.hasAccountGrant(account)
                 ? R.string.NM_WL_Approved : R.string.NM_WL_OtherAccount;
         if ("expired".equals(status)) return R.string.NM_WL_Expired;
@@ -356,8 +377,8 @@ public final class WlPreferencesActivity extends BasePreferencesActivity {
                     ? LocaleController.getInstance().formatCurrencyString(order.amountCents, "RUB")
                     : text(R.string.NM_WL_Checking);
         }
-        if ("error".equals(status) || "busy".equals(status)
-                || "authentication_required".equals(status) || "account_changed".equals(status)) {
+        if (!hasConfirmedSubscription() && ("error".equals(status) || "busy".equals(status)
+                || "authentication_required".equals(status) || "account_changed".equals(status))) {
             return text(R.string.NM_WL_PriceUnknown);
         }
         WlAccess.Subscription plan = WlAccess.subscription(WlAccess.sponsorAccount(account));

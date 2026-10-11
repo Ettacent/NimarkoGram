@@ -1938,6 +1938,8 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         private int updateAnchorOffset;
         private int updateAnchorInset;
         private int updateAnchorPendingOffset;
+        private boolean updateAnchorFixedTop;
+        private int updateAnchorTop;
         private ResumeAnchor[] pausedResumeAnchors;
         private boolean pausedResumeAtStart;
         private boolean hasPausedResumeAnchor;
@@ -1947,26 +1949,29 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         private final class ResumeAnchor {
             final long dialogId;
             final int position;
-            final int offset;
             final int top;
 
             ResumeAnchor(DialogCell cell, int position) {
                 dialogId = cell.getDialogId();
                 this.position = position;
                 top = cell.getTop();
-                offset = top - getPaddingTop();
             }
         }
 
         private void captureResumeAnchor() {
+            final int scrollState = getScrollState();
+            if (scrollState == RecyclerView.SCROLL_STATE_SETTLING) {
+                stopScroll();
+            }
             final DialogsAdapter adapter = parentPage.dialogsAdapter;
             final int firstChat = parentPage.dialogsType == DIALOGS_TYPE_DEFAULT && hasHiddenArchive()
                     && parentPage.archivePullViewState == ARCHIVE_ITEM_STATE_HIDDEN ? 1 : 0;
             final View firstChatView = parentPage.layoutManager.findViewByPosition(firstChat);
             final boolean atStart = !firstLayout && firstChatView != null
+                    && getScrollState() == RecyclerView.SCROLL_STATE_IDLE
                     && firstChatView.getTop() >= getPaddingTop() + (int) scrollYOffset - dp(1);
             final ResumeAnchor[] anchors = new ResumeAnchor[2];
-            if (!atStart && !firstLayout && getScrollState() != RecyclerView.SCROLL_STATE_DRAGGING) {
+            if (!atStart && !firstLayout && getScrollState() == RecyclerView.SCROLL_STATE_IDLE) {
                 for (int i = 0; i < getChildCount(); i++) {
                     View child = getChildAt(i);
                     if (!(child instanceof DialogCell) || child.getBottom() <= getPaddingTop() + scrollYOffset) {
@@ -1999,6 +2004,18 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             pausedResumeAtStart = atStart;
             pausedResumeAnchors = anchors;
             hasPausedResumeAnchor = atStart || anchors[0] != null;
+        }
+
+        private void restoreResumeAnchor(int position, int top) {
+            restoreUpdateAnchor(position, top - getPaddingTop());
+            updateAnchorFixedTop = true;
+            updateAnchorTop = top;
+        }
+
+        private void applyResumeAnchorPadding() {
+            if (restoringUpdateAnchor && updateAnchorFixedTop) {
+                applyUpdateAnchor(updateAnchorTop - getPaddingTop());
+            }
         }
 
         private void refreshDialogsOnResume() {
@@ -2038,11 +2055,12 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                 }
             }
             if (best != null) {
-                restoreUpdateAnchor(bestPosition, best.offset);
+                restoreResumeAnchor(bestPosition, best.top);
             }
         }
 
         private void restoreUpdateAnchor(int position, int offset) {
+            updateAnchorFixedTop = false;
             updateAnchorPosition = position;
             updateAnchorOffset = offset;
             updateAnchorInset = lastNotificationInset;
@@ -2417,7 +2435,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             if (restoringUpdateAnchor && !parentPage.layoutManager.hasPendingScrollPosition(updateAnchorPosition, updateAnchorPendingOffset)) {
                 restoringUpdateAnchor = false;
             }
-            if (restoringUpdateAnchor) {
+            if (restoringUpdateAnchor && !updateAnchorFixedTop) {
                 int firstChat = parentPage.dialogsType == DIALOGS_TYPE_DEFAULT && hasHiddenArchive()
                         && parentPage.archivePullViewState == ARCHIVE_ITEM_STATE_HIDDEN ? 1 : 0;
                 View startView = parentPage.layoutManager.findViewByPosition(firstChat);
@@ -2514,6 +2532,9 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                 }
                 firstLayout = false;
             }
+            ignoreLayout = true;
+            applyResumeAnchorPadding();
+            ignoreLayout = false;
             super.onMeasure(widthSpec, heightSpec);
             if (!onlySelect) {
                 if (appliedPaddingTop != t && viewPages != null && viewPages.length > 1 && !startedTracking && (tabsAnimation == null || !tabsAnimation.isRunning()) && !tabsAnimationInProgress && (filterTabsView == null || !filterTabsView.isAnimatingIndicator())) {
@@ -15988,6 +16009,9 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         return filterTabsView;
     }
 
+    public View getFloatingHomeInfoCards() {
+        return useInlineHomeInfoCards() ? null : homeInfoCards;
+    }
     private boolean isBlur3Enabled() {
         return Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
                 && scrollableViewNoiseSuppressor != null

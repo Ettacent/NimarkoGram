@@ -194,6 +194,12 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
     private boolean requestingPermissions;
     private File cameraFile;
 
+    private volatile RecordingDelivery recordingDelivery = new RecordingDelivery();
+
+    private static final class RecordingDelivery {
+        volatile boolean cancelled;
+        boolean handedOff;
+    }
     private Object pausePreviewToken;
     private long recordStartTime;
 
@@ -1201,6 +1207,11 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
     }
 
     public void destroy(boolean async) {
+        destroy(async, false);
+    }
+
+    private void destroy(boolean async, boolean preserveDelivery) {
+        if (!preserveDelivery) recordingDelivery.cancelled = true;
         stopRoundZoomSpring();
         ++cameraCoverGeneration;
         pausePreviewToken = null;
@@ -1454,7 +1465,7 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
             }
         } else if (videoEncoder != null) {
             videoEncoder.resume();
-            hideCamera(false);
+            hideCamera(false, true);
             if (videoPlayer != null) {
                 videoPlayer.releasePlayer(true);
                 videoPlayer = null;
@@ -1477,6 +1488,7 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
         if (textureView != null) {
             return;
         }
+        if (!fromPaused) recordingDelivery = new RecordingDelivery();
         roundZoomAwaitingInitialValue = !fromPaused;
         final int coverGeneration = ++cameraCoverGeneration;
         pausePreviewToken = null;
@@ -1926,6 +1938,7 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
             MediaController.PhotoEntry entry = new MediaController.PhotoEntry(0, 0, 0, cameraFile.getAbsolutePath(), 0, true, 0, 0, 0);
             entry.ttl = ttl;
             entry.effectId = effectId;
+            recordingDelivery.handedOff = true;
             delegate.sendMedia(entry, videoEditedInfo, notify, scheduleDate, scheduleRepeatPeriod, false, stars);
             if (scheduleDate != 0) {
                 startAnimation(false, false);
@@ -1985,6 +1998,7 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
     }
 
     public void cancel(boolean byGesture) {
+        recordingDelivery.cancelled = true;
         ++cameraCoverGeneration;
         pausePreviewToken = null;
         cancelCameraXVideoTransitions();
@@ -2018,8 +2032,10 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
             if (BuildVars.LOGS_ENABLED) {
                 FileLog.e("delete camera file by cancel");
             }
-            cameraFile.delete();
-            AutoDeleteMediaTask.unlockFile(cameraFile);
+            if (!recordingDelivery.handedOff) {
+                cameraFile.delete();
+                AutoDeleteMediaTask.unlockFile(cameraFile);
+            }
             cameraFile = null;
         }
         MediaController.getInstance().requestRecordAudioFocus(false);
@@ -2040,7 +2056,11 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
     }
 
     public void hideCamera(boolean async) {
-        destroy(async);
+        hideCamera(async, false);
+    }
+
+    private void hideCamera(boolean async, boolean preserveDelivery) {
+        destroy(async, preserveDelivery);
         cameraContainer.setTranslationX(0);
         textureOverlayView.setTranslationX(0);
         animationTranslationY = 0;
@@ -4999,7 +5019,12 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
                     break;
                 }
                 case MSG_AUDIO_CAPTURE_STOPPED: {
-                    encoder.handleAudioCaptureStopped((AudioCapture) inputMessage.obj);
+                    AudioCapture capture = (AudioCapture) inputMessage.obj;
+                    if (capture.readError < 0) {
+                        encoder.handleAudioCaptureFailed(capture);
+                    } else {
+                        encoder.handleAudioCaptureStopped(capture);
+                    }
                     break;
                 }
             }
@@ -5054,12 +5079,36 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
         final AudioRecord recorder;
         volatile boolean stopRequested;
 
+        int readError;
         AudioCapture(AudioRecord recorder) {
             this.recorder = recorder;
         }
     }
 
     private class VideoRecorder implements Runnable {
+        private final RecordingDelivery delivery = recordingDelivery;
+        private boolean deliveryDiscarded;
+
+        private boolean canDeliverRecording() {
+            return recordingDelivery == delivery && !delivery.cancelled;
+        }
+
+        private void discardUndeliveredRecording() {
+            if (delivery.handedOff || deliveryDiscarded) return;
+            deliveryDiscarded = true;
+            if (videoFile != null) {
+                FileLoader.getInstance(currentAccount).cancelFileUpload(videoFile.getAbsolutePath(), false);
+                videoFile.delete();
+                AutoDeleteMediaTask.unlockFile(videoFile);
+            }
+            if (fileToWrite != null && fileToWrite != videoFile) fileToWrite.delete();
+            if (generateKeyframeThumbsQueue != null) {
+                generateKeyframeThumbsQueue.cleanupQueue();
+                generateKeyframeThumbsQueue.recycle();
+                generateKeyframeThumbsQueue = null;
+            }
+            if (recordingDelivery == delivery) MediaController.getInstance().requestRecordAudioFocus(false);
+        }
         private final CameraXFrameCrossfade rearCrossfade = new CameraXFrameCrossfade();
 
         private static final String VIDEO_MIME_TYPE = "video/avc";
@@ -5253,6 +5302,14 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
                                 }
                                 if (readResult <= 0) {
                                     buffer.results = a;
+                                    if (readResult < 0) {
+                                        synchronized (sync) {
+                                            if (running && !stopRequested && !capture.stopRequested && !pauseRecorder) {
+                                                capture.readError = readResult;
+                                            }
+                                        }
+                                        done = true;
+                                    }
                                     if (!running) {
                                         buffer.last = true;
                                     }
@@ -5289,6 +5346,9 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
                                     audioPresentationTimeUs = timestamp + bufferDurationUs;
                                 }
                             }
+                            if (capture.readError < 0) {
+                                break;
+                            }
                             if (buffer.results >= 0 || buffer.last) {
                                 if (!running && buffer.results < AudioBufferInfo.MAX_SAMPLES) {
                                     done = true;
@@ -5317,6 +5377,18 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
                 }
             };
 
+        }
+
+        private void handleAudioCaptureFailed(AudioCapture capture) {
+            synchronized (sync) {
+                if (audioCapture != capture || recorderTerminated) {
+                    return;
+                }
+                awaitingAudioStop = false;
+            }
+            FileLog.e("InstantCamera: AudioRecord read failed: " + capture.readError);
+            handleStartRecordingError();
+            handleAudioCaptureStopped(capture);
         }
 
         private void handleAudioCaptureStopped(AudioCapture capture) {
@@ -5446,6 +5518,7 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
         }
 
         public void stopRecording(int send, SendOptions options) {
+            if (send == ENCODER_SEND_CANCEL) delivery.cancelled = true;
             boolean neverStarted = false;
             synchronized (sync) {
                 if (recorderTerminated || finalizationStarted) {
@@ -6495,16 +6568,21 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
                 if (send != ENCODER_SEND_CANCEL || emptyRecording) {
                     FileLog.e("InstantCamera: refusing to send a round video without a valid video track");
                     AndroidUtilities.runOnUIThread(() -> {
+                        if (!canDeliverRecording()) return;
                         MediaController.getInstance().requestRecordAudioFocus(false);
                         NotificationCenter.getInstance(currentAccount).postNotificationName(
                                 NotificationCenter.recordStartError, recordingGuid);
-                        startAnimation(false, false);
+                        if (canDeliverRecording()) startAnimation(false, false);
                     });
                 }
             } else {
                 if (send != ENCODER_SEND_SEND || !sentMedia) {
                     sentMedia = true;
                     AndroidUtilities.runOnUIThread(() -> {
+                        if (!canDeliverRecording()) {
+                            discardUndeliveredRecording();
+                            return;
+                        }
                         if (videoEditedInfo == null) {
                             videoEditedInfo = new VideoEditedInfo();
                             videoEditedInfo.startTime = -1;
@@ -6552,14 +6630,22 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
                         if (send == ENCODER_SEND_SEND) {
                             if (delegate.isInScheduleMode()) {
                                 AlertsCreator.createScheduleDatePickerDialog(delegate.getParentActivity(), delegate.getDialogId(), (notify, scheduleDate, scheduleRepeatPeriod) -> {
+                                    if (!canDeliverRecording() || delivery.handedOff) {
+                                        discardUndeliveredRecording();
+                                        return;
+                                    }
                                     MediaController.PhotoEntry entry = new MediaController.PhotoEntry(0, 0, 0, videoFile.getAbsolutePath(), 0, true, 0, 0, 0);
                                     if (sendOptions != null) {
                                         entry.ttl = sendOptions.ttl;
                                         entry.effectId = sendOptions.effectId;
                                     }
+                                    delivery.handedOff = true;
                                     delegate.sendMedia(entry, info, notify || sendOptions == null || sendOptions.notify, scheduleDate != 0 ? scheduleDate : sendOptions != null ? sendOptions.scheduleDate : 0, scheduleRepeatPeriod != 0 ? scheduleRepeatPeriod : sendOptions != null ? sendOptions.scheduleRepeatPeriod : 0, false, sendOptions != null ? sendOptions.stars : 0);
-                                    startAnimation(false, false);
+                                    if (canDeliverRecording()) startAnimation(false, false);
                                 }, () -> {
+                                    if (!canDeliverRecording() || delivery.handedOff) return;
+                                    delivery.cancelled = true;
+                                    discardUndeliveredRecording();
                                     startAnimation(false, false);
                                 }, resourcesProvider);
                             } else {
@@ -6568,24 +6654,37 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
                                     entry.ttl = sendOptions.ttl;
                                     entry.effectId = sendOptions.effectId;
                                 }
+                                if (!canDeliverRecording()) {
+                                    discardUndeliveredRecording();
+                                    return;
+                                }
+                                delivery.handedOff = true;
                                 delegate.sendMedia(entry, info, sendOptions == null || sendOptions.notify, sendOptions != null ? sendOptions.scheduleDate : 0, sendOptions != null ? sendOptions.scheduleRepeatPeriod : 0, false, sendOptions != null ? sendOptions.stars : 0);
                             }
-                            videoEditedInfo = null;
+                            if (recordingDelivery == delivery) videoEditedInfo = null;
                         } else {
                             setupVideoPlayer(videoFile);
+                            if (!canDeliverRecording()) {
+                                discardUndeliveredRecording();
+                                return;
+                            }
                             info.estimatedDuration = recordedTime;
                             NotificationCenter.getInstance(currentAccount).postNotificationName(NotificationCenter.audioDidSent, recordingGuid, info, videoFile.getAbsolutePath(), keyframeThumbs);
                         }
                     });
                 }
                 AndroidUtilities.runOnUIThread(() -> {
-                    if (sentMedia && videoEditedInfo != null) {
+                    if (!canDeliverRecording() && !delivery.handedOff) {
+                        discardUndeliveredRecording();
+                        return;
+                    }
+                    if (canDeliverRecording() && sentMedia && videoEditedInfo != null) {
                         videoEditedInfo.notReadyYet = false;
                     }
                     if (send != ENCODER_SEND_CANCEL && validVideoOutput) {
                         didWriteData(videoFile, 0, true);
                     }
-                    MediaController.getInstance().requestRecordAudioFocus(false);
+                    if (recordingDelivery == delivery) MediaController.getInstance().requestRecordAudioFocus(false);
                 });
             }
             if (overlayHelper != null) {

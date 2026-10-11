@@ -28,6 +28,7 @@ public class AnimatedFloat {
 
     private long lastVisualTime;
     private int visualEpoch;
+    private final Runnable resumeInvalidation = this::invalidateOnResume;
     public AnimatedFloat() {
         this.parent = null;
         this.firstSet = true;
@@ -167,6 +168,8 @@ public class AnimatedFloat {
     }
 
     public float getValue() {
+        NimarkoUiAnimationClock.setResumeCallback(resumeInvalidation,
+                transition && (parent != null || invalidate != null));
         if (NimarkoUiAnimationClock.isPaused()) return value;
         final long now = NimarkoUiAnimationClock.now();
         rebaseVisualTime(now);
@@ -181,6 +184,7 @@ public class AnimatedFloat {
             }
             if (t >= 1f) {
                 transition = false;
+                NimarkoUiAnimationClock.setResumeCallback(resumeInvalidation, false);
             } else {
                 if (parent != null) {
                     parent.invalidate();
@@ -192,6 +196,16 @@ public class AnimatedFloat {
         }
         lastVisualTime = now;
         return value;
+    }
+
+    private void invalidateOnResume() {
+        if (!transition) return;
+        if (parent != null) {
+            if (!parent.isAttachedToWindow() || !parent.isShown()
+                    || parent.getWindowVisibility() != View.VISIBLE) return;
+            parent.invalidate();
+        }
+        if (invalidate != null) invalidate.run();
     }
 
     private void rebaseVisualTime(long now) {
@@ -242,9 +256,13 @@ public class AnimatedFloat {
 
     public void setParent(View parent) {
         this.parent = parent;
+        NimarkoUiAnimationClock.setResumeCallback(resumeInvalidation,
+                transition && (parent != null || invalidate != null));
     }
 
     public void setInvalidate(Runnable invalidate) {
         this.invalidate = invalidate;
+        NimarkoUiAnimationClock.setResumeCallback(resumeInvalidation,
+                transition && (parent != null || invalidate != null));
     }
 }

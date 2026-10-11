@@ -37,4 +37,5 @@
     <string name="NM_WL_PaymentDelayed">Оплата ещё проверяется. Откройте этот экран позже.</string>
     <string name="NM_WL_PaymentRequired">Доступ не активирован</string>
     <string name="NM_WL_PriceUnknown">Цена недоступна</string>
+    <string name="NM_WL_ActivationPending">Подписка активна. Подключение ещё не подтверждено; повторная оплата не нужна.</string>
 </resources>

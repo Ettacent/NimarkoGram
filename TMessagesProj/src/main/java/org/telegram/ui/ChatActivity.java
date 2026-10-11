@@ -2447,6 +2447,11 @@ public class ChatActivity extends BaseFragment implements
 
         @Override
         public void onTextChanged(final CharSequence text, boolean bigChange, boolean fromDraft) {
+            if (!fromDraft && !paused) {
+                if (getParentActivity() instanceof LaunchActivity) {
+                    ((LaunchActivity) getParentActivity()).onUserInteraction();
+                }
+            }
             MediaController.getInstance().setInputFieldHasText(!TextUtils.isEmpty(text) || chatActivityEnterView.isEditingMessage());
             if (mentionContainer != null && mentionContainer.getAdapter() != null) {
                 mentionContainer.getAdapter().searchUsernameOrHashtag(text, chatActivityEnterView.getCursorPosition(), messages, false, false);
@@ -23927,6 +23932,9 @@ public class ChatActivity extends BaseFragment implements
         } else if (id == NotificationCenter.removeAllMessagesFromDialog) {
             long did = (Long) args[0];
             if (dialog_id == did) {
+                if (getParentActivity() instanceof LaunchActivity) {
+                    ((LaunchActivity) getParentActivity()).cancelAppResumeFade();
+                }
                 setFilterMessages(false);
                 if (threadMessageId != 0) {
                     if (forwardEndReached[0]) {
@@ -27443,6 +27451,16 @@ public class ChatActivity extends BaseFragment implements
             }
         } else if (channelId != 0) {
             return;
+        }
+        if (getParentActivity() instanceof LaunchActivity) {
+            for (Integer mid : markAsDeletedMessages) {
+                MessageObject deleted = chatAdapter != null && chatAdapter.isFiltered
+                        ? filteredMessagesDict.get(mid) : messagesDict[loadIndex].get(mid);
+                if (deleted != null) {
+                    ((LaunchActivity) getParentActivity()).cancelAppResumeFade();
+                    break;
+                }
+            }
         }
         if (replyingMessageObject != null && markAsDeletedMessages.contains(replyingMessageObject.getId())) {
             replyingMessageObject = null;

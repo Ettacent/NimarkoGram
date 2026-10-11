@@ -248,7 +248,7 @@ public class ProfileMusicView extends View {
         boolean discontinuity = lastPositionUpdate != 0L
                 && now - lastPositionUpdate > 90L
                 && (Math.abs(targetPositionY - y) > dp(3) || Math.abs(targetHeight - newHeight) > dp(3));
-        animateGeometry = discontinuity;
+        animateGeometry = discontinuity || animateGeometry && targetPositionY == y && targetHeight == newHeight;
         targetPositionY = y;
         targetHeight = newHeight;
         lastPositionUpdate = now;

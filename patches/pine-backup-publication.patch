@@ -1,0 +1,97 @@
+--- a/core/src/main/java/top/canyie/pine/Pine.java
++++ b/core/src/main/java/top/canyie/pine/Pine.java
+@@ -370,14 +370,14 @@
+         if (hookRecord.bridge == null)
+             throw new AssertionError("Cannot find bridge method for " + method);
+ 
+-        Method backup = hook0(thread, declaring, hookRecord, method, hookRecord.bridge, isInlineHook,
+-                jni, proxy);
+-
+-        if (backup == null)
+-            throw new RuntimeException("Failed to hook method " + method);
+-
+-        backup.setAccessible(true);
+-        hookRecord.backup = backup;
++        synchronized (hookRecord) {
++            Method backup = hook0(thread, declaring, hookRecord, method, hookRecord.bridge, isInlineHook,
++                    jni, proxy);
++            if (backup == null)
++                throw new RuntimeException("Failed to hook method " + method);
++            backup.setAccessible(true);
++            hookRecord.backup = backup;
++        }
+     }
+ 
+     public static Method hookReplace(HookRecord hookRecord, Method replacement, Method backup,
+@@ -431,14 +431,14 @@
+         hookRecord.bridge = replacement;
+         hookRecord.skipUpdateDeclaringClass = true;
+ 
+-        backup = hookReplace0(thread, declaring, hookRecord, method, replacement, backup,
+-                isInlineHook, jni, proxy);
+-
+-        if (backup == null)
+-            throw new RuntimeException("Failed to hook method " + method);
+-
+-        backup.setAccessible(true);
+-        return hookRecord.backup = backup;
++        synchronized (hookRecord) {
++            backup = hookReplace0(thread, declaring, hookRecord, method, replacement, backup,
++                    isInlineHook, jni, proxy);
++            if (backup == null)
++                throw new RuntimeException("Failed to hook method " + method);
++            backup.setAccessible(true);
++            return hookRecord.backup = backup;
++        }
+     }
+ 
+     private static void resolve(Method method) {
+@@ -495,9 +495,14 @@
+         // so we need to update them when invoke backup method.
+         Member origin = hookRecord.target;
+         Method backup = hookRecord.backup;
++        if (backup == null) {
++            synchronized (hookRecord) {
++                backup = hookRecord.backup;
++            }
++        }
+         syncMethodInfo(origin, backup, hookRecord.skipUpdateDeclaringClass);
+         // FIXME: GC happens here (you can add Runtime.getRuntime().gc() to test) will crash backup calling
+         // Explicit use declaring_class object to ensure it has reference on stack
+         // and avoid being moved by gc. (invalid for now)
+         return backup.invoke(thisObject, args);
+     }
+@@ -549,14 +554,19 @@
+         }
+ 
+         if (hookRecord.backup == null) {
+-            // Pending, we need to make the declaring class initialized
+-            // the backup will be set in FixupStaticTrampolines or MarkClassInitialized
+-            // I think we don't need makeClassesVisiblyInitialized here
+-            assert method instanceof Method;
+-            resolve((Method) method);
++            boolean pending;
++            synchronized (hookRecord) {
++                pending = hookRecord.backup == null;
++            }
++            if (pending && method instanceof Method && Modifier.isStatic(method.getModifiers())) {
++                // Pending, we need to make the declaring class initialized
++                // the backup will be set in FixupStaticTrampolines or MarkClassInitialized
++                // I think we don't need makeClassesVisiblyInitialized here
++                resolve((Method) method);
+ //            if (PineConfig.sdkLevel >= Build.VERSION_CODES.R) {
+ //                makeClassesVisiblyInitialized(currentArtThread0());
+ //            }
++            }
+         }
+ 
+         return callBackupMethod(hookRecord, thisObject, args);
+@@ -952,7 +962,7 @@
+         public final Member target;
+         public final long artMethod;
+         public Method bridge;
+-        public Method backup;
++        public volatile Method backup;
+         public long trampoline;
+         public boolean isStatic;
+         public int paramNumber;

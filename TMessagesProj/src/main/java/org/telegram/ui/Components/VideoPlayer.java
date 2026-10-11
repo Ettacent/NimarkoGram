@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 5.x.x.
  * It is licensed under GNU GPL v. 2 or later.
@@ -1619,6 +1621,7 @@ public class VideoPlayer implements Player.Listener, VideoListener, AnalyticsLis
     public void setVolume(float volume) {
         if (customRenderersFactory instanceof SourceVolumeController) {
             ((SourceVolumeController) customRenderersFactory).setSourceVolume(volume);
+            maybeNotifyPlayingWithAudio();
             return;
         }
         if (customRenderersFactory != null) {
@@ -2135,7 +2138,10 @@ public class VideoPlayer implements Player.Listener, VideoListener, AnalyticsLis
     }
     private void maybeNotifyPlayingWithAudio() {
         final boolean playingAudio = !released && !playbackFinishing && shouldPauseOther
-                && (hasPlayingAudio(player) || mixedAudio && hasPlayingAudio(audioPlayer));
+                && (hasPlayingAudio(player)
+                    && (!(customRenderersFactory instanceof SourceVolumeController)
+                        || ((SourceVolumeController) customRenderersFactory).getSourceVolume() > 0f)
+                    || mixedAudio && hasPlayingAudio(audioPlayer));
         final boolean notify = playingAudio && !playingAudioNotified;
         playingAudioNotified = playingAudio;
         if (notify) {

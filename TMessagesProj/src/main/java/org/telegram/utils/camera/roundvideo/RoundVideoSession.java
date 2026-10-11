@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.utils.camera.roundvideo;
 
 import android.content.Context;
@@ -795,7 +797,10 @@ public final class RoundVideoSession {
         requireMainThread();
         if (state == State.RELEASED || state == State.COMPLETED) return false;
         diagnostics.log("cancel requested: state=" + state);
-        if (!cancelOutput(OutputInvalidationReason.CANCELLED)) return false;
+        if (!cancelOutput(OutputInvalidationReason.CANCELLED)) {
+            releaseCompletedOutput();
+            return true;
+        }
         disableCameraEffects();
         releasePlayer();
         setState(State.RELEASED);
@@ -812,18 +817,24 @@ public final class RoundVideoSession {
     @MainThread
     public void release() {
         requireMainThread();
+        if (cleanupStarted) return;
         if (state == State.RELEASED) {
-            if (!cleanupStarted) finishCancellation();
+            if (!cameraStopPending) finishCancellation();
             return;
         }
         if (state != State.COMPLETED) {
             cancel();
             return;
         }
+        releaseCompletedOutput();
+    }
+
+    private void releaseCompletedOutput() {
+        if (cleanupStarted) return;
+        cleanupStarted = true;
         disableCameraEffects();
         releasePlayer();
         cameraController.release();
-        cleanupStarted = true;
         setState(State.RELEASED);
         logSummary("released");
         shutdownExecutors();
@@ -1251,6 +1262,7 @@ public final class RoundVideoSession {
             mainHandler.post(() -> {
                 if (state == State.RELEASED || state == State.ERROR) return;
                 setState(State.COMPLETED);
+                if (state != State.COMPLETED) return;
                 diagnostics.log("output completed: generation=" + generation.id
                         + ", durationMs=" + durationMs
                         + ", size=" + file.length()

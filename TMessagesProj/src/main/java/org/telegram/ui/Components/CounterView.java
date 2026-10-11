@@ -37,6 +37,7 @@ public class CounterView extends View {
         private Bitmap bitmap;
         private final Paint paint = new Paint(Paint.FILTER_BITMAP_FLAG);
         private final Paint incomingPaint = new Paint();
+        private final RectF snapshotBounds = new RectF();
         private ValueAnimator animator;
         private float progress = 1f;
         private float presentedProgress = 1f;
@@ -123,13 +124,23 @@ public class CounterView extends View {
                 return;
             }
             int alpha = Math.round(255 * progress);
-            int outer = canvas.saveLayer(0, 0, reserveWidth(contentWidth), reserveHeight(contentHeight), null);
+            int outer = canvas.saveLayer(0, 0, contentWidth, contentHeight, null);
             try {
                 paint.setAlpha(255 - alpha);
-                canvas.drawBitmap(bitmap, 0, 0, paint);
+                float scale = Math.min(1f, Math.min((float) contentWidth / bitmap.getWidth(), (float) contentHeight / bitmap.getHeight()));
+                if (scale < 1f) {
+                    float width = bitmap.getWidth() * scale;
+                    float height = bitmap.getHeight() * scale;
+                    float left = (contentWidth - width) / 2f;
+                    float top = (contentHeight - height) / 2f;
+                    snapshotBounds.set(left, top, left + width, top + height);
+                    canvas.drawBitmap(bitmap, null, snapshotBounds, paint);
+                } else {
+                    canvas.drawBitmap(bitmap, 0, 0, paint);
+                }
                 if (alpha > 0) {
                     incomingPaint.setAlpha(alpha);
-                    int incoming = canvas.saveLayer(0, 0, reserveWidth(contentWidth), reserveHeight(contentHeight), incomingPaint);
+                    int incoming = canvas.saveLayer(0, 0, contentWidth, contentHeight, incomingPaint);
                     try {
                         content.draw(canvas);
                     } finally {
@@ -169,7 +180,9 @@ public class CounterView extends View {
     protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
         super.onMeasure(widthMeasureSpec, heightMeasureSpec);
         if (counterDrawable.snapshot != null) {
-            setMeasuredDimension(counterDrawable.snapshot.reserveWidth(getMeasuredWidth()), counterDrawable.snapshot.reserveHeight(getMeasuredHeight()));
+            setMeasuredDimension(
+                    resolveSize(counterDrawable.snapshot.reserveWidth(getMeasuredWidth()), widthMeasureSpec),
+                    resolveSize(counterDrawable.snapshot.reserveHeight(getMeasuredHeight()), heightMeasureSpec));
         }
         counterDrawable.setSize(getMeasuredHeight(), getMeasuredWidth());
     }

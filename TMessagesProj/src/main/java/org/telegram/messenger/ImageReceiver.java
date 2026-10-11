@@ -1252,7 +1252,7 @@ public class ImageReceiver implements NotificationCenter.NotificationCenterDeleg
         }
     }
     private boolean prepareCrossfadeOnReady() {
-        if (previewAppearance != null && previewAppearance.complete(SystemClock.uptimeMillis(),
+        if (previewAppearance != null && previewAppearance.complete(app.nimarkogram.messenger.utils.NimarkoUiAnimationClock.now(),
                 currentAlpha >= 1f && crossfadeOnReadyDrawable == null)) {
             previewAppearance = null;
         }
@@ -2709,7 +2709,7 @@ public class ImageReceiver implements NotificationCenter.NotificationCenterDeleg
                     && isVisible && overrideAlpha > 0 && (drawable != null || staticThumbDrawable != null)) {
                 boolean drawsPreview = drawable == null || drawable == staticThumbDrawable
                         || drawable == currentThumbDrawable || hasMediaRequest && drawable == currentImageDrawable;
-                long now = SystemClock.uptimeMillis();
+                long now = app.nimarkogram.messenger.utils.NimarkoUiAnimationClock.now();
                 if (appearance.begin(drawsPreview, now) == PreviewAppearance.FINAL_ONLY) {
                     crossfadeWithThumb = false;
                     previousAlpha = 1f;
@@ -3253,6 +3253,17 @@ public class ImageReceiver implements NotificationCenter.NotificationCenterDeleg
     public boolean hasImageLoaded() {
         return currentImageDrawable != null || currentMediaDrawable != null;
     }
+    @androidx.annotation.UiThread
+    public void prepareImageFrameForDraw() {
+        Drawable target = currentMediaLocation != null && !forcePreview && !forceNotMedia
+                ? currentMediaDrawable : currentImageDrawable;
+        if (target instanceof RLottieDrawable) {
+            RLottieDrawable lottie = (RLottieDrawable) target;
+            if (!lottie.isRecycled() && !lottie.hasRenderingBitmap()) {
+                lottie.updateCurrentFrame(currentTime, false);
+            }
+        }
+    }
     public boolean hasReadyImage() {
         Drawable target = currentMediaLocation != null && !forcePreview && !forceNotMedia
                 ? currentMediaDrawable : currentImageDrawable;
@@ -3263,7 +3274,7 @@ public class ImageReceiver implements NotificationCenter.NotificationCenterDeleg
                 ? currentMediaDrawable : currentImageDrawable;
         return target != null && isDrawableReadyForDraw(target)
                 && currentAlpha == 1f && crossfadeOnReadyDrawable == null
-                && (previewAppearance == null || previewAppearance.complete(SystemClock.uptimeMillis(), true));
+                && (previewAppearance == null || previewAppearance.complete(app.nimarkogram.messenger.utils.NimarkoUiAnimationClock.now(), true));
     }
 
     public boolean hasNotThumb() {

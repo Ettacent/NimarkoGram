@@ -26,7 +26,6 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.collection.LongSparseArray;
-import androidx.core.content.ContextCompat;
 import androidx.core.content.FileProvider;
 
 import org.telegram.messenger.AndroidUtilities;
@@ -79,7 +78,6 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
-import java.util.Objects;
 import java.util.concurrent.atomic.AtomicReferenceArray;
 
 import app.nimarkogram.messenger.NimarkoConfig;

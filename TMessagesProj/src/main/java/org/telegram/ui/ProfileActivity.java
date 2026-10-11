@@ -75,6 +75,7 @@ import android.text.Spanned;
 import android.text.TextPaint;
 import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
 import app.nimarkogram.messenger.utils.NimarkoAppMotionBlur;
+import app.nimarkogram.messenger.utils.ParticipantOrder;
 import android.text.TextUtils;
 import android.text.style.CharacterStyle;
 import android.text.style.ClickableSpan;
@@ -341,6 +342,7 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.IdentityHashMap;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -791,6 +793,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
     private final ArrayList<TLRPC.ChatParticipant> visibleChatParticipants = new ArrayList<>();
     private final ArrayList<Integer> visibleSortedUsers = new ArrayList<>();
 
+    private final ArrayList<Long> participantPresentationOrder = new ArrayList<>();
     private boolean firstLayout = true;
     private boolean invalidateScroll = true;
     private boolean skipInitialResumeRefresh;
@@ -4785,7 +4788,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
         } else if (openGroupUsers) {
             initialTab = SharedMediaLayout.TAB_GROUPUSERS;
         }
-        sharedMediaLayout = new SharedMediaLayout(context, did, sharedMediaPreloader, userInfo != null ? userInfo.common_chats_count : 0, sortedUsers, chatInfo, userInfo, initialTab, initialStoryAlbum, this, this, SharedMediaLayout.VIEW_TYPE_PROFILE_ACTIVITY, resourcesProvider, iBlur3FactoryLiquidGlass) {
+        sharedMediaLayout = new SharedMediaLayout(context, did, sharedMediaPreloader, userInfo != null ? userInfo.common_chats_count : 0, chatId != 0 && !isTopic ? getPresentedChatParticipantIndexes() : sortedUsers, chatInfo, userInfo, initialTab, initialStoryAlbum, this, this, SharedMediaLayout.VIEW_TYPE_PROFILE_ACTIVITY, resourcesProvider, iBlur3FactoryLiquidGlass) {
             @Override
             protected int processColor(int color) {
                 return dontApplyPeerColor(color, false);
@@ -13461,7 +13464,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                 AndroidUtilities.updateVisibleRows(listView);
             }
             if (sharedMediaLayout != null && sharedMediaRow != -1 && sortedUsers.size() > 5) {
-                sharedMediaLayout.setChatUsers(sortedUsers, chatInfo);
+                sharedMediaLayout.setChatUsers(getPresentedChatParticipantIndexes(), chatInfo);
             }
             onlineCount = Math.max(onlineCount, serverOnlineCount);
         } else if (chatInfo instanceof TLRPC.TL_channelFull) {
@@ -13641,6 +13644,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
     }
 
     private void updateRowsIds() {
+        final ArrayList<TLRPC.ChatParticipant> presentedParticipants = getPresentedChatParticipants();
         updateNotifications(false);
 
         if (sharedMediaLayout != null) {
@@ -14166,7 +14170,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             }
 
             if (ChatObject.isChannel(currentChat)) {
-                if (!isTopic && chatInfo != null && currentChat.megagroup && chatInfo.participants != null && chatInfo.participants.participants != null && !chatInfo.participants.participants.isEmpty()) {
+                if (!isTopic && canShowProfileParticipants() && currentChat.megagroup && chatInfo.participants != null && chatInfo.participants.participants != null && !chatInfo.participants.participants.isEmpty()) {
                     if (!ChatObject.isNotInChat(currentChat) && ChatObject.canAddUsers(currentChat) && chatInfo.participants_count < getMessagesController().maxMegagroupCount) {
                         addMemberRow = rowCount++;
                     }
@@ -14176,13 +14180,10 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                             membersHeaderRow = rowCount++;
                         }
                         membersStartRow = rowCount;
-                        rowCount += count;
+                        visibleChatParticipants.addAll(presentedParticipants);
+                        rowCount += visibleChatParticipants.size();
                         membersEndRow = rowCount;
                         membersSectionRow = rowCount++;
-                        visibleChatParticipants.addAll(chatInfo.participants.participants);
-                        if (sortedUsers != null) {
-                            visibleSortedUsers.addAll(sortedUsers);
-                        }
                         if (sharedMediaLayout != null) {
                             sharedMediaLayout.setChatUsers(null, null);
                         }
@@ -14191,7 +14192,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                             membersSectionRow = rowCount++;
                         }
                         if (sharedMediaLayout != null) {
-                            sharedMediaLayout.setChatUsers(sortedUsers, chatInfo);
+                            sharedMediaLayout.setChatUsers(getPresentedChatParticipantIndexes(), chatInfo);
                         }
                     }
                 } else {
@@ -14216,7 +14217,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                     }
                 }
             } else if (chatInfo != null) {
-                if (!isTopic && chatInfo.participants != null && chatInfo.participants.participants != null && !(chatInfo.participants instanceof TLRPC.TL_chatParticipantsForbidden)) {
+                if (!isTopic && canShowProfileParticipants() && chatInfo.participants != null && chatInfo.participants.participants != null && !(chatInfo.participants instanceof TLRPC.TL_chatParticipantsForbidden)) {
                     if (ChatObject.canAddUsers(currentChat) || currentChat.default_banned_rights == null || !currentChat.default_banned_rights.invite_users) {
                         addMemberRow = rowCount++;
                     }
@@ -14226,13 +14227,10 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                             membersHeaderRow = rowCount++;
                         }
                         membersStartRow = rowCount;
-                        rowCount += chatInfo.participants.participants.size();
+                        visibleChatParticipants.addAll(presentedParticipants);
+                        rowCount += visibleChatParticipants.size();
                         membersEndRow = rowCount;
                         membersSectionRow = rowCount++;
-                        visibleChatParticipants.addAll(chatInfo.participants.participants);
-                        if (sortedUsers != null) {
-                            visibleSortedUsers.addAll(sortedUsers);
-                        }
                         if (sharedMediaLayout != null) {
                             sharedMediaLayout.setChatUsers(null, null);
                         }
@@ -14241,7 +14239,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                             membersSectionRow = rowCount++;
                         }
                         if (sharedMediaLayout != null) {
-                            sharedMediaLayout.setChatUsers(sortedUsers, chatInfo);
+                            sharedMediaLayout.setChatUsers(getPresentedChatParticipantIndexes(), chatInfo);
                         }
                     }
                 } else {
@@ -19263,6 +19261,54 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
         return arrayList;
     }
 
+    private boolean canShowProfileParticipants() {
+        return !isTopic && chatInfo != null && (!chatInfo.participants_hidden || chatInfo.can_view_participants
+                || ChatObject.hasAdminRights(currentChat));
+    }
+
+    private ArrayList<TLRPC.ChatParticipant> getPresentedChatParticipants() {
+        if (profileLifecycleDestroyed || !canShowProfileParticipants() || chatInfo.participants == null
+                || chatInfo.participants instanceof TLRPC.TL_chatParticipantsForbidden
+                || chatInfo.participants.participants == null) {
+            participantPresentationOrder.clear();
+            return new ArrayList<>();
+        }
+        ArrayList<TLRPC.ChatParticipant> latest = chatInfo.participants.participants;
+        ArrayList<TLRPC.ChatParticipant> ordered = new ArrayList<>(latest);
+        if (sortedUsers != null && sortedUsers.size() == latest.size()) {
+            boolean[] seen = new boolean[latest.size()];
+            boolean valid = true;
+            for (Integer index : sortedUsers) {
+                if (index == null || index < 0 || index >= latest.size() || seen[index]) {
+                    valid = false;
+                    break;
+                }
+                seen[index] = true;
+            }
+            if (valid) {
+                ordered.clear();
+                for (int index : sortedUsers) ordered.add(latest.get(index));
+            }
+        }
+        ArrayList<TLRPC.ChatParticipant> presented = ParticipantOrder.reconcile(ordered,
+                participantPresentationOrder, participant -> participant.user_id);
+        participantPresentationOrder.clear();
+        for (TLRPC.ChatParticipant participant : presented) {
+            participantPresentationOrder.add(participant.user_id);
+        }
+        return presented;
+    }
+
+    private ArrayList<Integer> getPresentedChatParticipantIndexes() {
+        ArrayList<TLRPC.ChatParticipant> presented = getPresentedChatParticipants();
+        ArrayList<Integer> indexes = new ArrayList<>();
+        if (presented.isEmpty()) return indexes;
+        IdentityHashMap<TLRPC.ChatParticipant, Integer> positions = new IdentityHashMap<>();
+        ArrayList<TLRPC.ChatParticipant> latest = chatInfo.participants.participants;
+        for (int i = 0; i < latest.size(); i++) positions.put(latest.get(i), i);
+        for (TLRPC.ChatParticipant participant : presented) indexes.add(positions.get(participant));
+        return indexes;
+    }
     private TLRPC.ChatParticipant getVisibleMember(int position) {
         int index = position - membersStartRow;
         if (index < 0 || position >= membersEndRow) return null;

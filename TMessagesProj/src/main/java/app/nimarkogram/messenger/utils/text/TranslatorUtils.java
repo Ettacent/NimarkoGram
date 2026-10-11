@@ -17,7 +17,6 @@ import org.telegram.tgnet.ConnectionsManager;
 import org.telegram.tgnet.RequestDelegate;
 import org.telegram.tgnet.TLObject;
 import org.telegram.tgnet.TLRPC;
-import org.telegram.ui.Components.TranslateAlert2;
 
 import app.nimarkogram.messenger.NimarkoConfig;
 

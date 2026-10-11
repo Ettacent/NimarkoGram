@@ -60,6 +60,7 @@ import android.os.PowerManager;
 import android.os.SystemClock;
 import android.provider.MediaStore;
 import android.provider.OpenableColumns;
+import android.system.Os;
 import android.telephony.PhoneStateListener;
 import android.telephony.TelephonyManager;
 import android.text.TextUtils;
@@ -1129,15 +1130,18 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
 
     private boolean audioRecorderPaused;
     private AudioRecord audioRecorder;
-    public TLRPC.TL_document recordingAudio;
+    public volatile TLRPC.TL_document recordingAudio;
     private int recordingGuid = -1;
     private final AtomicLong recordAudioFocusGeneration = new AtomicLong();
     private volatile long recordingAudioFocusGeneration;
     private final Object recordingEncoderLock = new Object();
+    private final Object recordingTrimLock = new Object();
+    private volatile Object pendingRecordingTrim;
+    private volatile long recordingTrimGeneration;
     private File recordingEncoderFile;
     private int recordingCurrentAccount;
     private File recordingPrevAudioFile;
-    private File recordingAudioFile;
+    private volatile File recordingAudioFile;
     private long recordStartTime;
     public long recordTimeCount;
     public int writtenFrame;
@@ -4853,6 +4857,7 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
     }
 
     public void prepareResumedRecording(int currentAccount, MediaDataController.DraftVoice draft, long dialogId, MessageObject replyToMsg, MessageObject replyToTopMsg, TL_stories.StoryItem replyStory, int guid, SendMessageChatArguments sendMessageChatArguments, long monoForumPeerId, MessageSuggestionParams suggestionParams) {
+        cancelRecordingTrim(null);
         manualRecording = false;
         requestRecordAudioFocus(true);
         final long focusGeneration = recordAudioFocusGeneration.get();
@@ -4890,12 +4895,12 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
                 recordDialogId = dialogId;
                 recordMonoForumPeerId = monoForumPeerId;
                 recordMonoForumSuggestionParams = suggestionParams;
-                recordTopicId = replyToTopMsg == null ? 0 : MessageObject.getTopicId(recordingCurrentAccount, replyToTopMsg.messageOwner, false);
+                recordTopicId = replyToTopMsg == null ? 0 : MessageObject.getTopicId(currentAccount, replyToTopMsg.messageOwner, false);
                 recordingCurrentAccount = currentAccount;
                 recordReplyingMsg = replyToMsg;
                 recordReplyingTopMsg = replyToTopMsg;
                 recordReplyingStory = replyStory;
-                recordSendMessageChatArguments = recordSendMessageChatArguments;
+                recordSendMessageChatArguments = sendMessageChatArguments;
             } catch (Exception e) {
                 FileLog.e(e);
                 recordingAudio = null;
@@ -5015,38 +5020,129 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
     }
 
     public void trimCurrentRecording(long startMs, long endMs, Runnable done) {
-        if (recordingAudioFile == null) {
-            if (done != null) {
-                AndroidUtilities.runOnUIThread(done);
+        trimCurrentRecording(startMs, endMs, done, null);
+    }
+    public boolean isTrimmingCurrentRecording() {
+        return pendingRecordingTrim != null;
+    }
+
+    public void cancelRecordingTrim(TLRPC.Document expectedAudio) {
+        synchronized (recordingTrimLock) {
+            if (expectedAudio == null || recordingAudio == expectedAudio) {
+                pendingRecordingTrim = null;
+                recordingTrimGeneration++;
             }
-            return;
         }
-        File newFile = new File(FileLoader.getDirectory(FileLoader.MEDIA_DIR_AUDIO), System.currentTimeMillis() + "_" + FileLoader.getAttachFileName(recordingAudio)) {
-            @Override
-            public boolean delete() {
-                if (BuildVars.LOGS_ENABLED) {
-                    FileLog.e("delete voice file (trimmed)");
-                }
-                return super.delete();
+    }
+
+    private boolean ownsRecordingTrim(Object token, TLRPC.TL_document audio, File file, long generation) {
+        return pendingRecordingTrim == token && recordingAudio == audio && recordingAudioFile == file
+                && audioRecorderPaused && recordingAudioFocusGeneration == generation
+                && recordAudioFocusGeneration.get() == generation;
+    }
+
+    public void trimCurrentRecording(long startMs, long endMs, Runnable done, Runnable failed) {
+        final TLRPC.TL_document audio = recordingAudio;
+        final File file = recordingAudioFile;
+        final long generation = recordingAudioFocusGeneration;
+        final Object token = new Object();
+        synchronized (recordingTrimLock) {
+            if (pendingRecordingTrim != null) return;
+            if (audio == null || file == null || !audioRecorderPaused || startMs < 0 || endMs <= startMs) {
+                if (failed != null) AndroidUtilities.runOnUIThread(failed);
+                return;
             }
-        };
+            pendingRecordingTrim = token;
+        }
         recordQueue.postRunnable(() -> {
-            if (cropOpusFile(recordingAudioFile.getAbsolutePath(), newFile.getAbsolutePath(), startMs, endMs)) {
-                if (recordingAudioFile != null) {
-                    recordingAudioFile.delete();
+            File cropped = null;
+            try {
+                synchronized (recordingTrimLock) {
+                    if (!ownsRecordingTrim(token, audio, file, generation)) {
+                        if (pendingRecordingTrim == token) pendingRecordingTrim = null;
+                        return;
+                    }
                 }
-                recordingAudioFile = newFile;
-                recordTimeCount = endMs - startMs;
-                if (done != null) {
-                    AndroidUtilities.runOnUIThread(done);
-                }
+                cropped = File.createTempFile("voice-trim-", ".ogg", file.getAbsoluteFile().getParentFile());
+                if (!cropOpusFile(file.getAbsolutePath(), cropped.getAbsolutePath(), startMs, endMs)
+                        || cropped.length() == 0) throw new IOException("Unable to trim voice recording");
+                final byte[] waveform = getWaveform(cropped.getAbsolutePath());
+                final File result = cropped;
+                final int account = recordingCurrentAccount;
+                final long dialogId = recordDialogId;
+                final long topicId = recordTopicId;
+                AndroidUtilities.runOnUIThread(() -> {
+                    synchronized (recordingTrimLock) {
+                        try {
+                            if (!ownsRecordingTrim(token, audio, file, generation)) return;
+                            Os.rename(result.getAbsolutePath(), file.getAbsolutePath());
+                            recordTimeCount = endMs - startMs;
+                            audio.size = file.length();
+                            for (TLRPC.DocumentAttribute attribute : audio.attributes) {
+                                if (attribute instanceof TLRPC.TL_documentAttributeAudio) {
+                                    attribute.duration = recordTimeCount / 1000.0;
+                                    attribute.waveform = waveform;
+                                    if (waveform != null) attribute.flags |= 4;
+                                    else attribute.flags &= ~4;
+                                }
+                            }
+                            try {
+                                MediaDataController controller = MediaDataController.getInstance(account);
+                                MediaDataController.DraftVoice draft = controller.getDraftVoice(dialogId, topicId);
+                                if (draft != null && draft.id == audio.id && file.getAbsolutePath().equals(draft.path)) {
+                                    draft.recordTimeCount = recordTimeCount;
+                                    draft.left = 0f;
+                                    draft.right = 1f;
+                                    controller.pushDraftVoiceMessage(dialogId, topicId, draft);
+                                }
+                            } catch (Exception e) {
+                                FileLog.e(e);
+                            }
+                            pendingRecordingTrim = null;
+                            if (done != null) done.run();
+                        } catch (Exception e) {
+                            FileLog.e(e);
+                            if (pendingRecordingTrim == token) {
+                                pendingRecordingTrim = null;
+                                if (failed != null) failed.run();
+                            }
+                        } finally {
+                            result.delete();
+                            if (pendingRecordingTrim == token) pendingRecordingTrim = null;
+                        }
+                    }
+                });
+                cropped = null;
+            } catch (Exception e) {
+                FileLog.e(e);
+                AndroidUtilities.runOnUIThread(() -> {
+                    synchronized (recordingTrimLock) {
+                        if (pendingRecordingTrim != token) return;
+                        boolean current = ownsRecordingTrim(token, audio, file, generation);
+                        pendingRecordingTrim = null;
+                        if (current && failed != null) failed.run();
+                    }
+                });
+            } finally {
+                if (cropped != null) cropped.delete();
             }
         });
     }
 
+    public void toggleRecordingPause(boolean voiceOnce, TLRPC.TL_document expectedAudio) {
+        toggleRecordingPause(voiceOnce, expectedAudio, true);
+    }
+
     public void toggleRecordingPause(boolean voiceOnce) {
+        toggleRecordingPause(voiceOnce, null, false);
+    }
+
+    private void toggleRecordingPause(boolean voiceOnce, TLRPC.TL_document expectedAudio, boolean scoped) {
+        final long trimGeneration = recordingTrimGeneration;
         recordQueue.postRunnable(() -> {
-            if (recordingAudio == null || recordingAudioFile == null) {
+            if (pendingRecordingTrim != null || scoped && recordingAudio != expectedAudio
+                    || scoped && recordingTrimGeneration != trimGeneration
+                    || recordingAudio == null || recordingAudioFile == null) {
                 return;
             }
             audioRecorderPaused = !audioRecorderPaused;
@@ -5102,8 +5198,15 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
                     });
                 });
             } else {
+                final TLRPC.TL_document pausedAudio = recordingAudio;
+                final File pausedFile = recordingAudioFile;
                 recordQueue.cancelRunnable(recordRunnable);
                 recordQueue.postRunnable(() -> {
+                    if (recordingAudio != pausedAudio || recordingAudioFile != pausedFile || audioRecorderPaused) return;
+                    if (scoped && recordingTrimGeneration != trimGeneration) {
+                        audioRecorderPaused = true;
+                        return;
+                    }
                     recordingPrevAudioFile = recordingAudioFile;
                     recordingAudioFile = new File(FileLoader.getDirectory(FileLoader.MEDIA_DIR_AUDIO), System.currentTimeMillis() + "_" + FileLoader.getAttachFileName(recordingAudio)) {
                         @Override
@@ -5161,6 +5264,7 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
     }
 
     public void startRecording(int currentAccount, long dialogId, MessageObject replyToMsg, MessageObject replyToTopMsg, TL_stories.StoryItem replyStory, int guid, boolean manual, SendMessageChatArguments sendMessageChatArguments, long monoForumPeerId, MessageSuggestionParams suggestionParams) {
+        cancelRecordingTrim(null);
         boolean paused = false;
         if (playingMessageObject != null && isPlayingMessage(playingMessageObject) && !isMessagePaused()) {
             paused = true;
@@ -5325,23 +5429,27 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
     }
 
     public void cleanRecording(boolean delete) {
-        recordingAudio = null;
-        AutoDeleteMediaTask.unlockFile(recordingAudioFile);
-        if (delete && recordingAudioFile != null) {
-            try {
-                recordingAudioFile.delete();
-            } catch (Exception e) {
-                FileLog.e(e);
+        synchronized (recordingTrimLock) {
+            pendingRecordingTrim = null;
+            recordingTrimGeneration++;
+            recordingAudio = null;
+            AutoDeleteMediaTask.unlockFile(recordingAudioFile);
+            if (delete && recordingAudioFile != null) {
+                try {
+                    recordingAudioFile.delete();
+                } catch (Exception e) {
+                    FileLog.e(e);
+                }
             }
+            recordingAudioFile = null;
+            if (delete && recordingPrevAudioFile != null) {
+                recordingPrevAudioFile.delete();
+            }
+            recordingPrevAudioFile = null;
+            manualRecording = false;
+            raiseToEarRecord = false;
+            ignoreOnPause = false;
         }
-        recordingAudioFile = null;
-        if (delete && recordingPrevAudioFile != null) {
-            recordingPrevAudioFile.delete();
-        }
-        recordingPrevAudioFile = null;
-        manualRecording = false;
-        raiseToEarRecord = false;
-        ignoreOnPause = false;
     }
 
     private void stopRecordingInternal(final int send, boolean notify, int scheduleDate, boolean once, long payStars) {
@@ -5434,6 +5542,7 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
     }
 
     public void stopRecording(final int send, boolean notify, int scheduleDate, boolean once, long payStars) {
+        cancelRecordingTrim(null);
         if (recordStartRunnable != null) {
             recordQueue.cancelRunnable(recordStartRunnable);
             recordStartRunnable = null;

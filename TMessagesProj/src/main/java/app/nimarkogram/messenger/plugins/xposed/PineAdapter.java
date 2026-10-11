@@ -139,6 +139,9 @@ public final class PineAdapter extends MethodHook {
         try { p.setResult(null); } catch (Throwable ignored) {}
         try { p.setThrowable(null); } catch (Throwable ignored) {}
         p.returnEarly = false;
+        p.diagnosticToken = NimarkoCrashContext.beginInvocation();
+        p.diagnosticStartedMs = NimarkoCrashContext.invocationStartedMs(p.diagnosticToken);
+        diagnosticPhase(p, "adapter_before_enter");
         return p;
     }
 
@@ -161,17 +164,32 @@ public final class PineAdapter extends MethodHook {
     }
 
     private void release(AdapterParam p) {
-        diagnosticPhase(p, "adapter_scope_closed");
-        p.diagnosticToken = 0;
-        p.thisObject = null;
-        p.args = null;
-        p.method = null;
-        p.setUserData(null);
-        p.clearInvocation();
-        synchronized (params) {
-            if (params.size() < 8) {
-                params.offerFirst(p);
+        long diagnosticToken = p.diagnosticToken;
+        try {
+            diagnosticPhase(p, "adapter_scope_closed");
+            p.diagnosticToken = 0;
+            p.thisObject = null;
+            p.args = null;
+            p.method = null;
+            p.setUserData(null);
+            p.clearInvocation();
+            synchronized (params) {
+                if (params.size() < 8) {
+                    params.offerFirst(p);
+                }
             }
+        } finally {
+            NimarkoCrashContext.endInvocation(diagnosticToken);
+        }
+    }
+
+    private void releaseFailedBefore(AdapterParam p) {
+        try {
+
+
+            if (activeParam.get() == p) popActive();
+        } finally {
+            release(p);
         }
     }
 
@@ -301,8 +319,14 @@ public final class PineAdapter extends MethodHook {
         if (cf.thisObject instanceof PluginHookBypassTarget
                 && ((PluginHookBypassTarget) cf.thisObject).shouldBypassPluginHooks()) {
             AdapterParam skipped = claim(cf);
-            skipped.skipAfterCallback = true;
-            pushActive(skipped);
+            boolean handedOff = false;
+            try {
+                skipped.skipAfterCallback = true;
+                pushActive(skipped);
+                handedOff = true;
+            } finally {
+                if (!handedOff) releaseFailedBefore(skipped);
+            }
             return;
         }
         if (receiverMismatched(cf)) {
@@ -313,22 +337,25 @@ public final class PineAdapter extends MethodHook {
                     + " is not a " + member.getDeclaringClass().getName()
                     + "; skipping invocation to avoid Pine crash");
             AdapterParam skipped = claim(cf);
-            skipped.skipAfterCallback = true;
-            pushActive(skipped);
-            cf.setResult(defaultReturnFor(member));
+            boolean handedOff = false;
+            try {
+                skipped.skipAfterCallback = true;
+                pushActive(skipped);
+                cf.setResult(defaultReturnFor(member));
+                handedOff = true;
+            } finally {
+                if (!handedOff) releaseFailedBefore(skipped);
+            }
             return;
         }
         AdapterParam param = claim(cf);
-        param.diagnosticToken = NimarkoCrashContext.beginInvocation();
-        if (param.diagnosticToken != 0) param.diagnosticStartedMs = NimarkoCrashContext.invocationStartedMs(param.diagnosticToken);
-        diagnosticPhase(param, "adapter_before_enter");
         boolean callbackFailed = false;
         try {
             try {
                 if (BEFORE_HOOKED_METHOD != null) {
                     diagnosticPhase(param, "callback_before_enter");
                     try {
-                    BEFORE_HOOKED_METHOD.invoke(xcHook, param);
+                        BEFORE_HOOKED_METHOD.invoke(xcHook, param);
                     } finally {
                         diagnosticPhase(param, "callback_before_exit");
                     }
@@ -380,7 +407,7 @@ public final class PineAdapter extends MethodHook {
             diagnosticPhase(param, "before_bridge_return");
         } catch (Throwable t) {
             diagnosticPhase(param, "before_bridge_throw");
-            release(param);
+            releaseFailedBefore(param);
             throw t;
         }
     }
@@ -388,29 +415,26 @@ public final class PineAdapter extends MethodHook {
     @Override
     public void afterCall(Pine.CallFrame cf) throws Throwable {
         AdapterParam param = popActive();
-        if (param != null && param.skipAfterCallback) {
-            diagnosticPhase(param, "after_bridge_return_skipped");
-            release(param);
-            return;
-        }
-        if (xcHook instanceof XC_MethodReplacement) {
-            diagnosticPhase(param, "after_bridge_return_replacement");
-            if (param != null) release(param);
-            return;
-        }
-        if (receiverMismatched(cf)) {
-            NimarkoCrashContext.anomaly("after_receiver_mismatch", diagnosticTarget,
-                    diagnosticPlugin, diagnosticRuntime);
-            if (param != null) release(param);
-            return;
-        }
-        if (param == null) {
-            NimarkoCrashContext.anomaly("missing_before_state", diagnosticTarget,
-                    diagnosticPlugin, diagnosticRuntime);
-            FileLog.w("nimarko: missing before-hook state for " + member);
-            param = claim(cf);
-        }
         try {
+            if (param != null && param.skipAfterCallback) {
+                diagnosticPhase(param, "after_bridge_return_skipped");
+                return;
+            }
+            if (xcHook instanceof XC_MethodReplacement) {
+                diagnosticPhase(param, "after_bridge_return_replacement");
+                return;
+            }
+            if (receiverMismatched(cf)) {
+                NimarkoCrashContext.anomaly("after_receiver_mismatch", diagnosticTarget,
+                        diagnosticPlugin, diagnosticRuntime);
+                return;
+            }
+            if (param == null) {
+                NimarkoCrashContext.anomaly("missing_before_state", diagnosticTarget,
+                        diagnosticPlugin, diagnosticRuntime);
+                FileLog.w("nimarko: missing before-hook state for " + member);
+                param = claim(cf);
+            }
             param.thisObject = cf.thisObject;
             param.args = cf.args;
             param.captureInvocation(cf);
@@ -427,7 +451,7 @@ public final class PineAdapter extends MethodHook {
                 if (AFTER_HOOKED_METHOD != null) {
                     diagnosticPhase(param, "callback_after_enter");
                     try {
-                    AFTER_HOOKED_METHOD.invoke(xcHook, param);
+                        AFTER_HOOKED_METHOD.invoke(xcHook, param);
                     } finally {
                         diagnosticPhase(param, "callback_after_exit");
                     }
@@ -471,7 +495,7 @@ public final class PineAdapter extends MethodHook {
             }
             diagnosticPhase(param, "after_bridge_return");
         } finally {
-            release(param);
+            if (param != null) release(param);
         }
     }
 

@@ -7,6 +7,8 @@ import android.os.SystemClock;
 import java.util.Arrays;
 import org.telegram.messenger.ApplicationLoader;
 import android.os.Build;
+import app.nimarkogram.messenger.diagnostics.NativeCrashDiagnostics;
+import app.nimarkogram.messenger.diagnostics.NativeInvocationJournal;
 import java.lang.reflect.Method;
 import java.lang.reflect.InvocationTargetException;
 import java.util.concurrent.atomic.AtomicLong;
@@ -37,6 +39,7 @@ public final class NimarkoCrashContext {
         boolean busy;
         long invocation;
         long startedMs;
+        int nativeTid;
     }
     private static final ThreadLocal<DiagnosticState> diagnosticState =
             new ThreadLocal<DiagnosticState>() {
@@ -45,15 +48,21 @@ public final class NimarkoCrashContext {
             };
 
     private static DiagnosticState enterDiagnostic() {
-        DiagnosticState state = diagnosticState.get();
-        if (state.busy) return null;
-        state.busy = true;
-        return state;
+        try {
+            if (NativeCrashDiagnostics.isCollectorThread()) return null;
+            DiagnosticState state = diagnosticState.get();
+            if (state.busy) return null;
+            state.busy = true;
+            return state;
+        } catch (Throwable ignored) {
+            return null;
+        }
     }
     private static volatile Object crashlytics;
     private static volatile Method setCustomKey;
     private static volatile Method log;
     private static volatile boolean initialized;
+    private static volatile NativeInvocationJournal invocationJournal;
     private static final AtomicLong nextUpdateMs = new AtomicLong();
     private static final AtomicLong nextInvocationMs = new AtomicLong();
     private static final AtomicLong invocationIds = new AtomicLong();
@@ -78,6 +87,13 @@ public final class NimarkoCrashContext {
     private static final String[] failureKeys = new String[MAX_FAILURES];
     private static final long[] failureTimes = new long[MAX_FAILURES];
     private NimarkoCrashContext() {
+    }
+
+    public static void install(Context context) {
+        try {
+            NativeCrashDiagnostics.start(context, journal -> invocationJournal = journal);
+        } catch (Throwable ignored) {
+        }
     }
     public static void pine(String stage, String target) {
         DiagnosticState state = enterDiagnostic();
@@ -169,12 +185,18 @@ public final class NimarkoCrashContext {
         DiagnosticState state = enterDiagnostic();
         if (state == null) return 0L;
         try {
-            long now = SystemClock.elapsedRealtime();
+            long nanos = SystemClock.elapsedRealtimeNanos();
+            long now = nanos / 1000000L;
+            if (state.nativeTid == 0) state.nativeTid = android.os.Process.myTid();
+            NativeInvocationJournal journal = invocationJournal;
+            long token = journal == null ? 0 : journal.begin(nanos, state.nativeTid);
             long next = nextInvocationMs.get();
-            if (now < next || !nextInvocationMs.compareAndSet(next, now + 1000L)) return 0L;
-            state.startedMs = now;
-            state.invocation = invocationIds.incrementAndGet();
-            return state.invocation;
+            if (now >= next && nextInvocationMs.compareAndSet(next, now + 1000L)) {
+                state.startedMs = now;
+                state.invocation = token == 0 ? invocationIds.incrementAndGet() : token;
+                return state.invocation;
+            }
+            return token;
         } catch (Throwable ignored) {
             return 0L;
         } finally {
@@ -183,18 +205,58 @@ public final class NimarkoCrashContext {
     }
 
     public static long invocationStartedMs(long token) {
-        DiagnosticState state = diagnosticState.get();
-        return !state.busy && token != 0 && token == state.invocation ? state.startedMs : 0L;
+        DiagnosticState state = enterDiagnostic();
+        if (state == null) return 0;
+        try {
+            NativeInvocationJournal journal = invocationJournal;
+            if (journal != null && NativeInvocationJournal.ownsToken(token)) return journal.startedMillis(token);
+            return token != 0 && token == state.invocation ? state.startedMs : 0L;
+        } catch (Throwable ignored) {
+            return 0;
+        } finally {
+            state.busy = false;
+        }
+
     }
 
-    public static void phase(long token, long startedMs, String phase, String target, String plugin, String runtime) {
+    public static void endInvocation(long token) {
         if (token == 0) return;
         DiagnosticState state = enterDiagnostic();
         if (state == null) return;
         try {
-            emit("pine", plugin, phase, target,
-                    "elapsed_ms=" + Math.max(0L, SystemClock.elapsedRealtime() - startedMs),
-                    token, runtime, false);
+            NativeInvocationJournal journal = invocationJournal;
+            if (journal != null && NativeInvocationJournal.ownsToken(token)) {
+                journal.end(token, SystemClock.elapsedRealtimeNanos());
+            }
+            if (state.invocation == token) {
+                state.invocation = 0;
+                state.startedMs = 0;
+            }
+        } catch (Throwable ignored) {
+        } finally {
+            state.busy = false;
+        }
+    }
+
+    public static void phase(long token, long startedMs, String phase, String target, String plugin, String runtime) {
+        recordPhase("pine", token, startedMs, phase, target, plugin, runtime);
+    }
+
+    private static void recordPhase(String domain, long token, long startedMs, String phase,
+                                    String target, String plugin, String runtime) {
+        if (token == 0) return;
+        DiagnosticState state = enterDiagnostic();
+        if (state == null) return;
+        try {
+            NativeInvocationJournal journal = invocationJournal;
+            if (journal != null && NativeInvocationJournal.ownsToken(token)) {
+                journal.phase(token, SystemClock.elapsedRealtimeNanos(), phase, domain, target, plugin, runtime);
+            }
+            if (state.invocation == token) {
+                emit(domain, plugin, phase, target,
+                        "elapsed_ms=" + Math.max(0L, SystemClock.elapsedRealtime() - startedMs),
+                        token, runtime, false);
+            }
         } catch (Throwable ignored) {
         } finally {
             state.busy = false;
@@ -214,17 +276,7 @@ public final class NimarkoCrashContext {
 
     public static void pythonPhase(long token, long startedMs, String phase,
                                    String target, String plugin, String runtime) {
-        if (token == 0) return;
-        DiagnosticState state = enterDiagnostic();
-        if (state == null) return;
-        try {
-            emit("python", plugin, phase, target,
-                    "elapsed_ms=" + Math.max(0L, SystemClock.elapsedRealtime() - startedMs),
-                    token, runtime, false);
-        } catch (Throwable ignored) {
-        } finally {
-            state.busy = false;
-        }
+        recordPhase("python", token, startedMs, phase, target, plugin, runtime);
     }
     private static void emit(String domain, String plugin, String phase, String target,
             String detail, long token, String runtime, boolean anomaly) {
@@ -358,7 +410,7 @@ public final class NimarkoCrashContext {
         emitting = true;
         try {
             if (!diagnosticIdentityWritten) {
-                setCustomKey.invoke(crashlytics, "ng_diag_schema", "3");
+                setCustomKey.invoke(crashlytics, "ng_diag_schema", "4");
                 setCustomKey.invoke(crashlytics, "ng_diag_mapping_id", readMappingId());
                 diagnosticIdentityWritten = true;
             }

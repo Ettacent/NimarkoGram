@@ -1025,7 +1025,7 @@ public final class CameraXUtils {
         int longSide = Math.max(1, Math.round(shortSide * 16f / 9f));
         if ((shortSide & 1) != 0) shortSide++;
         if ((longSide & 1) != 0) longSide++;
-        return new Size(shortSide, longSide);
+        return new Size(longSide, shortSide);
     }
 
     public static ResolutionSelector buildResolutionSelector(@Nullable Size preferred,

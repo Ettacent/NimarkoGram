@@ -81,7 +81,7 @@
     <string name="AccDescrAttachButton">添加媒体文件</string>
     <string name="AccDescrBackspace">退格</string>
     <string name="AccDescrBotCommands">机器命令</string>
-    <string name="AccDescrBotKeyboard">机械键盘</string>
+    <string name="AccDescrBotKeyboard">机器人键盘</string>
     <string name="AccDescrBotMenu">机器人菜单</string>
     <string name="AccDescrBrushType">笔刷类型</string>
     <string name="AccDescrCameraFlashAuto">闪光灯，自动</string>
@@ -233,7 +233,7 @@
     <string name="AccDescrShutter">快门</string>
     <string name="AccDescrSpeedSlider">选择速度</string>
     <string name="AccDescrStartRecording">开始录制</string>
-    <string name="AccDescrStickerSet">贴纸设置</string>
+    <string name="AccDescrStickerSet">贴纸包</string>
     <string name="AccDescrStickers">贴纸</string>
     <string name="AccDescrStopLiveLocation">停止共享实时位置</string>
     <string name="AccDescrStopRecording">停止录制</string>
@@ -1437,8 +1437,8 @@
     <string name="BoostingGiveawayHowItWorksTextEnd_other">此抽奖活动由 **%2$s** 的管理员赞助，并为其订阅者购买了时长为 %4$s 的 **%3$s 份 Telegram 高级版** 订阅。</string>
     <string name="BoostingGiveawayHowItWorksTextGroup_one">此次抽奖活动由 **%2$s** 的管理员赞助，他们为其成员已准备为期 %4$s 的 **%3$s**。</string>
     <string name="BoostingGiveawayHowItWorksTextGroup_other">此次抽奖活动由 **%2$s** 的管理员赞助，他们为其成员已准备为期 %4$s 的 **%3$s**。</string>
-    <string name="BoostingGiveawayHowItWorksText_one">此赠品活动由 **%2$s** 的管理员赞助，他们为其订阅者以 %4$s 的价格购买了 **%3$s 个 Telegram 高级版** 订阅。</string>
-    <string name="BoostingGiveawayHowItWorksText_other">此赠品活动由 **%2$s** 的管理员赞助，他们为其订阅者以 %4$s 的价格购买了 **%3$s 个 Telegram 高级版** 订阅。</string>
+    <string name="BoostingGiveawayHowItWorksText_one">此赠奖活动由 **%2$s** 的管理员赞助，他们为订阅者购买了 **%3$s 份 Telegram 高级版**订阅，每份订阅时长为 %4$s。</string>
+    <string name="BoostingGiveawayHowItWorksText_other">此赠奖活动由 **%2$s** 的管理员赞助，他们为订阅者购买了 **%3$s 份 Telegram 高级版**订阅，每份订阅时长为 %4$s。</string>
     <string name="BoostingGiveawayJustStarted">%s 刚刚发起一场抽奖活动，向其订阅者赠送 Telegram 高级版订阅。</string>
     <string name="BoostingGiveawayJustStartedGroup">%s 刚开始为其会员赠送 Telegram 高级版订阅的抽奖活动。</string>
     <string name="BoostingGiveawayMsgAllSubsGroupPlural_one">群组所有成员：</string>
@@ -1698,7 +1698,7 @@
     <string name="BotAuthPhoneNumberAccept">允许</string>
     <string name="BotAuthPhoneNumberDeny">拒绝</string>
     <string name="BotAuthPhoneNumberText">**%1$s** 想要访问您的手机号码 **%2$s**。\n\n允许访问？</string>
-    <string name="BotAuthSelectCode">点击登录界面上\n显示的二维码</string>
+    <string name="BotAuthSelectCode">点击登录界面上\n显示的验证码</string>
     <string name="BotAuthSelectEmoji">点击登录界面上\n显示的表情符号</string>
     <string name="BotAuthSiteSubtitle">此网站将接收您的 **姓名**、**用户名** 和 **个人资料页头像**。</string>
     <string name="BotAuthTitle">登录到 **%s**</string>
@@ -2770,8 +2770,8 @@
     <string name="CommunityBanWarningMessage_one">封闭 **%2$s** 也会将其从社群中的 **%1$d** 个聊天中移除。</string>
     <string name="CommunityBanWarningMessage_other">封闭 **%2$s** 也会将其从社群中的 **%1$d** 个聊天中移除。</string>
     <string name="CommunityBanWarningTitle">警告</string>
-    <string name="CommunityBanWillRemoveFromChats_one">**%2$s** 将从中删除 **%1$d** 社群聊天。</string>
-    <string name="CommunityBanWillRemoveFromChats_other">**%2$s** 将从中删除 **%1$d** 社群聊天。</string>
+    <string name="CommunityBanWillRemoveFromChats_one">**%2$s** 将被移出社群中的 **%1$d** 个聊天。</string>
+    <string name="CommunityBanWillRemoveFromChats_other">**%2$s** 将被移出社群中的 **%1$d** 个聊天。</string>
     <string name="CommunityChatVisibilityCannotChange">您之后将无法更改此设置。</string>
     <string name="CommunityChatVisibilityHidden">已隐藏</string>
     <string name="CommunityChatVisibilityHiddenBotInfo">只有受邀成员和社群管理员才能看到此机器人。</string>
@@ -2806,7 +2806,7 @@
     <string name="CommunityMakeAdminTitle">指派社群管理员</string>
     <string name="CommunityMenuAddChat">将聊天功能添加到社群</string>
     <string name="CommunityMenuRemoveBotFromCommunityConfirm">您确定要将从社群中移除此机器人吗？</string>
-    <string name="CommunityMenuRemoveChannelFromCommunityConfirm">您确定要将从社群中移除此群组吗？</string>
+    <string name="CommunityMenuRemoveChannelFromCommunityConfirm">您确定要将此频道移出社群吗？</string>
     <string name="CommunityMenuRemoveFromCommunity">从社群中移除</string>
     <string name="CommunityMenuRemoveGroupFromCommunityConfirm">您确定要将从社群中移除此群组吗？</string>
     <string name="CommunityMenuSettings">设置</string>
@@ -3250,7 +3250,7 @@
     <string name="DisableReactionsInfo">群组成员无法对消息使用表情回应。</string>
     <string name="DisableSharing">禁用分享</string>
     <string name="DisableSharingActionOther">%s 已禁用此聊天中的分享功能</string>
-    <string name="DisableSharingActionStillDisabled">此聊天仍启用分享功能</string>
+    <string name="DisableSharingActionStillDisabled">此聊天仍禁用分享功能</string>
     <string name="DisableSharingActionStillEnabled">此聊天仍启用分享功能</string>
     <string name="DisableSharingActionYou">您已禁用此聊天中的分享功能</string>
     <string name="DisableSharingInfoButton">禁用分享</string>
@@ -4271,7 +4271,7 @@
     <string name="Gift2AuctionsBidHasBeenIncreased">您的出家已提高</string>
     <string name="Gift2AuctionsBidHasBeenPlaced">你的出价已提交</string>
     <string name="Gift2AuctionsChangeRecipient">更改收件人</string>
-    <string name="Gift2AuctionsChangeRecipient2">您已对这份礼物出价 **%s**。您是否想提高出价并将收件人更改为 **%s**？</string>
+    <string name="Gift2AuctionsChangeRecipient2">您已为 **%s** 竞拍这份礼物。您是否要提高出价并将接收者改为 **%s**？</string>
     <string name="Gift2AuctionsItemsBought2_one">已购买 %1$d 个 %2$s 物品 &gt;</string>
     <string name="Gift2AuctionsItemsBought2_other">已购买 %1$d 个 %2$s 物品 &gt;</string>
     <string name="Gift2Availability">送出情况</string>
@@ -4731,7 +4731,7 @@
     <string name="GiftCraftSymbolChance_other">制作出的礼物将有 **%1$d%%** 的概率带有 **%2$s** 符号。</string>
     <string name="GiftCraftText1">最多可添加 **4** 份礼物来制作全新的</string>
     <string name="GiftCraftText2">**%1$s #%2$s**.\n\n如果制作失败，这些礼物 \n将会 **丢失**。</string>
-    <string name="GiftCraftTextEmpty1">至少添加 **4** 份礼物来制作一个新的</string>
+    <string name="GiftCraftTextEmpty1">最多添加 **4** 份礼物来制作全新的</string>
     <string name="GiftCraftTextEmpty2">**%s** 件礼物。\n\n如果制作失败，这些礼物 \n将会 **丢失**。</string>
     <string name="GiftCraftTitle">制作礼物</string>
     <string name="GiftCraftUnavailableText">这些礼物目前无法制作。</string>
@@ -5172,7 +5172,7 @@
     <string name="ImportDoneInfo">导入更多聊天到 Telegram 以节省设备存储空间。</string>
     <string name="ImportDoneTitle">聊天导入成功！</string>
     <string name="ImportErrorChatInvalidGroup">此文件格式只能导入到个人会话而不是群组。</string>
-    <string name="ImportErrorChatInvalidUser">此文件格式使用于用户，但你已选择一个群组。</string>
+    <string name="ImportErrorChatInvalidUser">此文件格式适用于群组，但您选择了用户。</string>
     <string name="ImportErrorFileFormatInvalid">无效的文件格式。</string>
     <string name="ImportErrorFileLang">文件包含未知语言。</string>
     <string name="ImportErrorNotAdmin">您必须是群组管理员才能导入消息。</string>
@@ -5555,7 +5555,7 @@
     <string name="LiveLocationContext">实时位置</string>
     <string name="LiveLocations">实时位置</string>
     <string name="LivePhotoOff">动态照片已 **关闭**</string>
-    <string name="LivePhotoOn">动态照片已 **关闭**</string>
+    <string name="LivePhotoOn">动态照片已 **开启**</string>
     <string name="LivePhotoSavedHint">动态照片已保存到相册 </string>
     <string name="LivePhotosOff">动态照片已 **关闭**</string>
     <string name="LivePhotosOn">动态照片已 **开启**</string>
@@ -5906,7 +5906,7 @@
     <string name="MigrateOldFolderDescription">由于**Google**的变更，我们需要将你在 **Telegram** 中下载的文件迁移到新的文件夹中。\n\n这可能需要一些时间。你可以在文件迁移过程中继续使用本应用。</string>
     <string name="MigrateOldFolderTitle">迁移到分区存储</string>
     <string name="MigratingFiles">文件迁移中</string>
-    <string name="MilesAway">相距%1$s米</string>
+    <string name="MilesAway">相距 %1$s 英里</string>
     <string name="MilesFromYou">距您 %1$s 英里</string>
     <string name="MilesShort">%1$s 英里</string>
     <string name="MinuteAgo">一分钟前</string>
@@ -7595,7 +7595,7 @@
     <string name="PublicSharesCount_one">%1$s 公共分享</string>
     <string name="PublicSharesCount_other">%1$s 公共分享</string>
     <string name="PublishDayAt">\'发布于\' MMM d \'at\' HH:mm</string>
-    <string name="PublishDayYearAt">于 MMM d yyyy \'at\' HH:mm \'发布 </string>
+    <string name="PublishDayYearAt">\'于\' yyyy\'年\'M\'月\'d\'日\' HH:mm \'发布\'</string>
     <string name="PublishTodayAt">\'发布于今天\' HH:mm</string>
     <string name="Purple">紫色</string>
     <string name="PushChatReactTodo">%3$s 于 %2$s 对您的核对清单作出 %4$s 回应</string>
@@ -7705,7 +7705,7 @@
     <string name="ReactionReachLvlForReactionShort_other">您的频道需要达到等级 **%2$d** 才能添加 **%1$d** 个自定义表情回应。</string>
     <string name="ReactionReachLvlForReaction_one">您的频道需要达到 **等级 %2$d** 才能添加 **%1$d** 个自定义表情回应。\n\n邀请您的 **高级版** 订阅者们通过此链接助推频道：</string>
     <string name="ReactionReachLvlForReaction_other">您的频道需要达到 **等级 %2$d** 才能添加 **%1$d** 个自定义表情回应。\n\n邀请您的 **高级版** 订阅者们通过此链接助推频道：</string>
-    <string name="ReactionSent">消息已发送。</string>
+    <string name="ReactionSent">表情回应已发送。</string>
     <string name="ReactionUpdateReactionsBtn">更新表情回应</string>
     <string name="Reactions">表情回应</string>
     <string name="ReactionsAll">全部</string>
@@ -8109,11 +8109,11 @@
     <string name="SavedMessagesProfileHint">您发送至“我的收藏”的消息</string>
     <string name="SavedMessagesTab2">已收藏</string>
     <string name="SavedMessagesViewAsChatsHint">点击查看聊天记录 &gt;</string>
-    <string name="SavedOpenChannel">公开频道</string>
+    <string name="SavedOpenChannel">打开频道</string>
     <string name="SavedOpenChannelNoCaps">打开频道</string>
-    <string name="SavedOpenChat">公开聊天</string>
+    <string name="SavedOpenChat">打开聊天</string>
     <string name="SavedOpenChatNoCaps">打开聊天</string>
-    <string name="SavedOpenGroup">公开群组</string>
+    <string name="SavedOpenGroup">打开群组</string>
     <string name="SavedOpenGroupNoCaps">打开群组</string>
     <string name="SavedStories">已发布的动态</string>
     <string name="SavedTagFilterByTag">依据标签进行筛选</string>
@@ -8553,7 +8553,7 @@
     <string name="SharingOfferDisable3">\\&gt; 禁止复制消息</string>
     <string name="SharingOfferDisable4">\\&gt; 禁止截屏</string>
     <string name="SharingOfferDisableCancelText">您确定要继续禁用分享功能吗？</string>
-    <string name="SharingOfferDisableCancelTitle">禁用截屏</string>
+    <string name="SharingOfferDisableCancelTitle">禁用分享</string>
     <string name="SharingOfferDisableConfirmText">您确定想要禁用分享吗？</string>
     <string name="SharingOfferDisableHeaderOther">**%s** 想要禁用此聊天中的分享功能，其中包括：</string>
     <string name="SharingOfferDisableHeaderShortOther">**%s** 想要停用此聊天中的分享功能</string>
@@ -8564,9 +8564,9 @@
     <string name="SharingOfferEnable3">\\&gt; 复制消息</string>
     <string name="SharingOfferEnable4">\\&gt; 截屏</string>
     <string name="SharingOfferEnableCancelText">您确定要继续启用分享吗？</string>
-    <string name="SharingOfferEnableCancelTitle">禁用分享</string>
+    <string name="SharingOfferEnableCancelTitle">启用分享</string>
     <string name="SharingOfferEnableConfirmText">您确定要启用分享功能吗？</string>
-    <string name="SharingOfferEnableHeaderOther">**%s**  想要禁用此聊天中的分享功能，其中包括：</string>
+    <string name="SharingOfferEnableHeaderOther">**%s** 想要启用此聊天中的分享功能，其中包括：</string>
     <string name="SharingOfferEnableHeaderShortOther">**%s** 希望在此聊天中开启分享功能</string>
     <string name="SharingOfferEnableHeaderShortYou">您已建议在此聊天中开启分享功能</string>
     <string name="SharingOfferEnableHeaderYou">您建议在此聊天中开启分享功能，其中包括：</string>
@@ -8834,7 +8834,7 @@
     <string name="StarsNeededTextLink">购买**星星**以保持您的频道订阅。</string>
     <string name="StarsNeededTextLink_subadvance12">购买 **星星** 以保持您的订阅在接下来的 12 个月内有效。</string>
     <string name="StarsNeededTextLink_subs">购买**星星**以保持您的频道订阅。</string>
-    <string name="StarsNeededTextPrivateMessage">购买**星星**以向 **%s** 以及其他人发送礼物。</string>
+    <string name="StarsNeededTextPrivateMessage">购买**星星**以向 **%s** 以及其他人发送消息。</string>
     <string name="StarsNeededTextReactions">购买 **星星** 后可在 **%s** 和其他频道中发送付费回应。</string>
     <string name="StarsNeededTextSearch">购买 **星星** 来搜索帖子。</string>
     <string name="StarsNeededTitle_one">需要 %d 颗星星</string>
@@ -9431,7 +9431,7 @@
     <string name="SuggestedMessageAcceptInfo3">发布后，贴文必须至少保持可见 **%d** 小时。</string>
     <string name="SuggestedMessageAcceptInfoAdmin2">您将通过发布此贴文 **%2$s** 而获得 **%1$s**（%3$s）。</string>
     <string name="SuggestedMessageAcceptInfoAnytimeAdmin2">您将通过发布此贴文获得 **%1$s** (%2$s)。</string>
-    <string name="SuggestedMessageAcceptInfoAnytimeUser2">您将为发布此贴文复制 **%1$s**。</string>
+    <string name="SuggestedMessageAcceptInfoAnytimeUser2">您将为发布此贴文支付 **%1$s**。</string>
     <string name="SuggestedMessageAcceptInfoUser2">于 **%2$s** 发布此贴文，您将支付 **%1$s**。</string>
     <string name="SuggestedMessageAcceptStarsDisclaimer">星星交易可能会在 21 天内被支付者撤销。请仅接受您信任的人的星星付款。</string>
     <string name="SuggestedMessageDecline">拒绝</string>
@@ -9459,7 +9459,7 @@
     <string name="SuggestionAgreementReachedAdmin1">📆 此贴文将自动发布在 **%s** 于 **%s**</string>
     <string name="SuggestionAgreementReachedAdmin1PastSimple">📆 此贴文已自动发布在 **%s** 于 **%s**</string>
     <string name="SuggestionAgreementReachedAdmin1PresentPerfect">📆 此贴文已发布于 **%s**</string>
-    <string name="SuggestionAgreementReachedAdmin2">💰 **%s** 已收取 ⭐️ **%s**。</string>
+    <string name="SuggestionAgreementReachedAdmin2">💰 已向 **%s** 收取 ⭐️ **%s**。</string>
     <string name="SuggestionAgreementReachedAdmin3Stars">⌛️ **%s** 将在贴文发布 **%d** 小时后收到星星。</string>
     <string name="SuggestionAgreementReachedAdmin3TON">⏳ **%s** 将在贴文发布 **%d** 小时后收到 **TON**。</string>
     <string name="SuggestionAgreementReachedAdmin4Stars">🔁 如果 **%s** 在贴文发布 **%d** 小时之内将其删除，**星星** 将原路退还给用户。</string>
@@ -9467,7 +9467,7 @@
     <string name="SuggestionAgreementReachedUser1">📆 您的贴文将自动发布在 **%s** 于 **%s**</string>
     <string name="SuggestionAgreementReachedUser1PastSimple">📆 您的帖子已于 **%s** **%s** 自动发布</string>
     <string name="SuggestionAgreementReachedUser1PresentPerfect">📆 您的贴文已发布于 **%s**</string>
-    <string name="SuggestionAgreementReachedUser2">💰 您已收取 ⭐️ **%s**.</string>
+    <string name="SuggestionAgreementReachedUser2">💰 已向您收取 ⭐️ **%s**。</string>
     <string name="SuggestionAgreementReachedUser3Stars">⏳ **%s** 将在贴文发布 **%d** 小时后收到您的**星星**。</string>
     <string name="SuggestionAgreementReachedUser3TON">⏳ **%s** 将在贴文发布 **%d** 小时后收到您的 **TON**。</string>
     <string name="SuggestionAgreementReachedUser4Stars">🔁 如果 **%s** 在贴文发布 **%d** 小时之内将其删除，您的星星将原路退还。</string>
@@ -10494,8 +10494,8 @@
     <string name="VoipRateCallTitle">评价此次通话</string>
     <string name="VoipReconnecting">正在重新连接</string>
     <string name="VoipRecordAudio">仅音频</string>
-    <string name="VoipRecordLandscape">风景视频</string>
-    <string name="VoipRecordPortrait">人像模式</string>
+    <string name="VoipRecordLandscape">横屏视频</string>
+    <string name="VoipRecordPortrait">竖屏视频</string>
     <string name="VoipRecordStart">开始录制</string>
     <string name="VoipRecordVoiceChat">录制视频通话</string>
     <string name="VoipRecordVoiceChatInfo">选择录制方式</string>

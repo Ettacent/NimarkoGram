@@ -266,7 +266,7 @@
     <string name="AccDescrYouReactedWith">您已用 %1$s 反應</string>
     <string name="AccExitFullscreen">離開全螢幕</string>
     <string name="AccPinnedMessagesList">置頂訊息列表</string>
-    <string name="AccReleaseForArchive">隱藏「封存的聊天」</string>
+    <string name="AccReleaseForArchive">放開以查看封存的聊天</string>
     <string name="AccReleaseForGeneral">釋放以顯示 #一般</string>
     <string name="AccSwipeForArchive">顯示「封存的聊天」</string>
     <string name="AccSwipeForGeneral">下拉顯示 #一般</string>
@@ -379,7 +379,7 @@
     <string name="ActionManagedBotCreated">您已建立 un1 機器人供 un2 管理</string>
     <string name="ActionMigrateFromGroup">此群組已升級為超級群組</string>
     <string name="ActionMigrateFromGroupNotify">%1$s 已升級為超級群組</string>
-    <string name="ActionNewCreatorPending">如果 un1 7 天後仍未返回，則 un2 將成為新的主管理員。</string>
+    <string name="ActionNewCreatorPending">如果 un2 在 7 天內未返回，un1 將成為新的主管理員。</string>
     <string name="ActionPinnedContact">un1 置頂了一則聯絡資訊</string>
     <string name="ActionPinnedFile">un1 置頂了一個檔案</string>
     <string name="ActionPinnedGame">un1 置頂了 %1$s</string>
@@ -1409,8 +1409,8 @@
     <string name="BoostingGiveawayGroupStarted">群組已發起一場贈獎活動</string>
     <string name="BoostingGiveawayHowItWorksIncludeText_one">**%2$s** 還包括 **%1$d** **%3$s** 等獎品。頻道管理員負責發放這些獎品。</string>
     <string name="BoostingGiveawayHowItWorksIncludeText_other">**%2$s** 還包括 **%1$d** **%3$s** 等獎品。頻道管理員負責發放這些獎品。</string>
-    <string name="BoostingGiveawayHowItWorksSubTextDateEnd_one">Telegram 於 **%6$s %5$s** 自動選擇了在 **%4$s** 之後加入 **%3$s** 的 **%2$s** 位隨機用戶。</string>
-    <string name="BoostingGiveawayHowItWorksSubTextDateEnd_other">Telegram 於 **%6$s %5$s** 自動選擇了在 **%4$s** 之後加入 **%3$s** 的 **%2$s** 位隨機用戶。</string>
+    <string name="BoostingGiveawayHowItWorksSubTextDateEnd_one">在 **%2$s**，Telegram 已自動隨機選出 **%3$s** 位在 **%6$s** **%5$s** 之後加入 **%4$s** 的用戶。</string>
+    <string name="BoostingGiveawayHowItWorksSubTextDateEnd_other">在 **%2$s**，Telegram 已自動隨機選出 **%3$s** 位在 **%6$s** **%5$s** 之後加入 **%4$s** 的用戶。</string>
     <string name="BoostingGiveawayHowItWorksSubTextDateSeveral1_one">Telegram 將於 **%2$s** 自動挑選加入 **%4$s** %5$s 的 **%3$s** 位隨機用戶。</string>
     <string name="BoostingGiveawayHowItWorksSubTextDateSeveral1_other">Telegram 將於 **%2$s** 自動挑選加入 **%4$s** %5$s 的 **%3$s** 位隨機用戶。</string>
     <string name="BoostingGiveawayHowItWorksSubTextDateSeveral2_one">以及 **%3$s** **%2$s** 之後的 **%1$d** 列出的其他頻道</string>
@@ -1435,8 +1435,8 @@
     <string name="BoostingGiveawayHowItWorksTextEnd_other">此贈獎活動由 **%2$s** 的管理員贊助，他們為其訂閱者準備了 **%3$s 份 %4$s 個月的 Telegram Premium** 訂閱。</string>
     <string name="BoostingGiveawayHowItWorksTextGroup_one">此次贈獎活動由 **%2$s** 的管理員贊助，他們為其成員準備了為期 %4$s 的 **%3$s**。</string>
     <string name="BoostingGiveawayHowItWorksTextGroup_other">此次贈獎活動由 **%2$s** 的管理員贊助，他們為其成員準備了為期 %4$s 的 **%3$s**。</string>
-    <string name="BoostingGiveawayHowItWorksText_one">此贈獎活動由 **%2$s** 的管理員贊助，他們為其訂閱者以 %4$s 的價格購買了 **%3$s 份 Telegram Premium** 訂閱。</string>
-    <string name="BoostingGiveawayHowItWorksText_other">此贈獎活動由 **%2$s** 的管理員贊助，他們為其訂閱者以 %4$s 的價格購買了 **%3$s 份 Telegram Premium** 訂閱。</string>
+    <string name="BoostingGiveawayHowItWorksText_one">此贈獎活動由 **%2$s** 的管理員贊助，他們為訂閱者購買了 **%3$s 份 Telegram Premium** 訂閱，每份訂閱期限為 %4$s。</string>
+    <string name="BoostingGiveawayHowItWorksText_other">此贈獎活動由 **%2$s** 的管理員贊助，他們為訂閱者購買了 **%3$s 份 Telegram Premium** 訂閱，每份訂閱期限為 %4$s。</string>
     <string name="BoostingGiveawayJustStarted">%s 剛發起向其訂閱者贈送 Telegram Premium 的贈獎活動。</string>
     <string name="BoostingGiveawayJustStartedGroup">%s 剛發起贈送 Telegram Premium 訂閱給成員的贈獎活動。</string>
     <string name="BoostingGiveawayMsgAllSubsGroupPlural_one">群組所有成員：</string>
@@ -1696,7 +1696,7 @@
     <string name="BotAuthPhoneNumberAccept">允許</string>
     <string name="BotAuthPhoneNumberDeny">拒絕</string>
     <string name="BotAuthPhoneNumberText">**%1$s** 想要存取您的電話號碼 **%2$s**。\n\n允許存取？</string>
-    <string name="BotAuthSelectCode">點擊登入畫面上\n顯示的 QR Code</string>
+    <string name="BotAuthSelectCode">點擊登入畫面上\n顯示的驗證碼</string>
     <string name="BotAuthSelectEmoji">點擊登入畫面上\n顯示的表情符號</string>
     <string name="BotAuthSiteSubtitle">此網站將會存取您的**名稱**、\n**用戶名稱**和**大頭貼**。</string>
     <string name="BotAuthTitle">登入到 **%s**</string>
@@ -2603,7 +2603,7 @@
     <string name="ChooseBot">選擇機器人</string>
     <string name="ChooseBots">選擇機器人</string>
     <string name="ChooseChannel">選擇頻道</string>
-    <string name="ChooseCover">為您的個人資料頁大頭貼選擇裱框</string>
+    <string name="ChooseCover">為您的動態大頭貼選擇封面</string>
     <string name="ChooseDate">選擇日期</string>
     <string name="ChooseEmojiOrSticker">選擇表情符號或貼圖</string>
     <string name="ChooseEmojiPackHeader">選擇表情包</string>
@@ -2768,8 +2768,8 @@
     <string name="CommunityBanWarningMessage_one">封鎖 **%2$s** 也會將其從社群中的 **%1$d** 個聊天室中移除。</string>
     <string name="CommunityBanWarningMessage_other">封鎖 **%2$s** 也會將其從社群中的 **%1$d** 個聊天室中移除。</string>
     <string name="CommunityBanWarningTitle">警告</string>
-    <string name="CommunityBanWillRemoveFromChats_one">**%2$s** 個聊天室將從社群「**%1$d**」中移除。</string>
-    <string name="CommunityBanWillRemoveFromChats_other">**%2$s** 個聊天室將從社群「**%1$d**」中移除。</string>
+    <string name="CommunityBanWillRemoveFromChats_one">**%2$s** 將被移出社群中的 **%1$d** 個聊天室。</string>
+    <string name="CommunityBanWillRemoveFromChats_other">**%2$s** 將被移出社群中的 **%1$d** 個聊天室。</string>
     <string name="CommunityChatVisibilityCannotChange">您之後將無法變更此設定。</string>
     <string name="CommunityChatVisibilityHidden">隱藏</string>
     <string name="CommunityChatVisibilityHiddenBotInfo">只有受邀成員和社群管理員才能看到此機器人。</string>
@@ -3468,7 +3468,7 @@
     <string name="EditorSetCover">編輯封面</string>
     <string name="EditorSetCoverGallery">從相簿選取</string>
     <string name="EditorSetCoverSave">儲存封面</string>
-    <string name="EditorSetCoverTitle">選擇裱框</string>
+    <string name="EditorSetCoverTitle">選擇影格</string>
     <string name="EmailAddressInvalid">無效的電子郵件地址。</string>
     <string name="EmailCopied">郵件地址已複製到剪貼簿。</string>
     <string name="EmailLogin">登入信箱</string>
@@ -4084,7 +4084,7 @@
     <string name="FragmentUsernameOpen">了解更多</string>
     <string name="FragmentUsernameTitle">**%s** 是一個典藏用戶名，屬於</string>
     <string name="FreeOfTotal">可用 %1$s，共 %2$s</string>
-    <string name="FreshChangePhoneForbidden">出於安全考慮，您無法在剛登入不久的裝置上將登入較久的裝置登出。請改用較早登入的裝置，或等待幾小時。</string>
+    <string name="FreshChangePhoneForbidden">出於安全考慮，您無法在剛登入的裝置上變更電話號碼。請使用較早登入的裝置，或等待幾小時。</string>
     <string name="FreshChangePhoneForbiddenTitle">無法終止</string>
     <string name="From">來自</string>
     <string name="FromChats_one">來自 %1$d 聊天</string>
@@ -4786,7 +4786,7 @@
     <string name="GiftOfferRowOffer">報價</string>
     <string name="GiftOfferRowValue">價值</string>
     <string name="GiftOfferSellFor">以⭐️%s 出售</string>
-    <string name="GiftOfferSentText">您已成功對 **%1$s** 報價，價格為 **%2$s**。</string>
+    <string name="GiftOfferSentText">您已成功向 **%2$s** 提交購買 **%1$s** 的報價。</string>
     <string name="GiftOfferSentTitle">已傳送禮物報價</string>
     <string name="GiftOfferStarsToOffer">星星報價</string>
     <string name="GiftOfferStarsToOfferInfo">請輸入您想為 **%s** 報價的星星數量。</string>
@@ -4802,7 +4802,7 @@
     <string name="GiftOfferTONToOfferInfoIsLow">此報價太低。 **%2$s** 的最低出價是 **%1$s TON**。</string>
     <string name="GiftOfferToBuyMenu">出價購買</string>
     <string name="GiftOfferToBuyTitle">出價購買</string>
-    <string name="GiftOfferTransferInfoTextSellStars">您想以 **%1$s 顆星星**的價格將 **%2$s** 出售給 **%3$s** 嗎？ \n\n扣除手續費後，您將收到 **%4$s 顆星星**。</string>
+    <string name="GiftOfferTransferInfoTextSellStars">您想以 **%1$s 顆星星**的價格將 **%3$s** 出售給 **%2$s** 嗎？\n\n扣除手續費後，您將收到 **%4$s 顆星星**。</string>
     <string name="GiftOfferTransferInfoTextSellTON">您想以 **%1$s TON** 將 **%3$s** 出售給 **%2$s** 嗎？\n\n扣除手續費後，您將收到 **%4$s TON**。</string>
     <string name="GiftOfferTransferInfoTextStars">你想以 **%1$s 顆星星**的價格向 **%2$s** 的 **%3$s** 提出報價嗎？</string>
     <string name="GiftOfferTransferInfoTextTON">你想以 **%1$s TON** 的價格向 **%2$s** 的 **%3$s** 提出報價嗎？</string>
@@ -6212,7 +6212,7 @@
     <string name="NotificationActionPinnedGif">%1$s 在 %2$s 群組中置頂了一張 GIF</string>
     <string name="NotificationActionPinnedGifChannel">%1$s 置頂了一張GIF </string>
     <string name="NotificationActionPinnedGifUser">%1$s 置頂了一張GIF</string>
-    <string name="NotificationActionPinnedInvoice">%1$s 在群組中置頂了一張總計 %2$s 的請款單</string>
+    <string name="NotificationActionPinnedInvoice">%1$s 在群組 %2$s 中置頂了一張請款單</string>
     <string name="NotificationActionPinnedInvoiceChannel">%1$s 置頂了一張請款單</string>
     <string name="NotificationActionPinnedInvoiceUser">%1$s 置頂了一張請款單</string>
     <string name="NotificationActionPinnedMusic">%1$s 在「%2$s」群組置頂了一個音訊檔</string>
@@ -6835,7 +6835,7 @@
     <string name="PaymentEmailToProvider">電子郵件地址將被傳遞到 %1$s 作為帳單資訊。</string>
     <string name="PaymentFailed">很抱歉，付款被拒絕了。</string>
     <string name="PaymentInfoHint">您為 %2$s 支付了 %1$s。</string>
-    <string name="PaymentInfoHintStars_other">您為 **%2$s**支付了 **%1$d 顆星星**。</string>
+    <string name="PaymentInfoHintStars_other">您已支付 **%2$s** 購買 **%1$d 顆星星**。</string>
     <string name="PaymentInvoice">請款單</string>
     <string name="PaymentInvoiceDisabledStarsText">沒有足夠的星星</string>
     <string name="PaymentInvoiceLinkInvalid">無效的請款單</string>
@@ -7703,7 +7703,7 @@
     <string name="ReactionReachLvlForReactionShort_other">您的頻道需要達到等級 **%2$d** 才能加入 **%1$d** 個自訂表情符號作為反應選項。</string>
     <string name="ReactionReachLvlForReaction_one">您的頻道需要達到等級 **%2$d** 才能加入 **%1$d** 自訂表情符號作為反應選項。 \n\n請您的 **Premium** 訂閱者透過此連結助推您的頻道：</string>
     <string name="ReactionReachLvlForReaction_other">您的頻道需要達到等級 **%2$d** 才能加入 **%1$d** 自訂表情符號作為反應選項。 \n\n請您的 **Premium** 訂閱者透過此連結助推您的頻道：</string>
-    <string name="ReactionSent">訊息已傳送。</string>
+    <string name="ReactionSent">表情符號反應已送出。</string>
     <string name="ReactionUpdateReactionsBtn">更新表情符號反應</string>
     <string name="Reactions">表情符號反應</string>
     <string name="ReactionsAll">全部</string>
@@ -8562,7 +8562,7 @@
     <string name="SharingOfferEnableCancelText">您確定要繼續啟用分享功能嗎？</string>
     <string name="SharingOfferEnableCancelTitle">啟用分享功能</string>
     <string name="SharingOfferEnableConfirmText">您確定要啟用分享功能嗎？</string>
-    <string name="SharingOfferEnableHeaderOther">**%s** 希望停用此聊天中的分享功能，其中包括：</string>
+    <string name="SharingOfferEnableHeaderOther">**%s** 希望啟用此聊天中的分享功能，其中包括：</string>
     <string name="SharingOfferEnableHeaderShortOther">**%s** 希望在此聊天中啟用分享功能</string>
     <string name="SharingOfferEnableHeaderShortYou">您建議啟用此聊天中的分享功能</string>
     <string name="SharingOfferEnableHeaderYou">您建議啟用此聊天中的分享功能，其中包括：</string>
@@ -9177,7 +9177,7 @@
     <string name="StoryDrafts_one">%d 份草稿</string>
     <string name="StoryDrafts_other">%d 份草稿</string>
     <string name="StoryEditCover">編輯封面</string>
-    <string name="StoryEditCoverInfo">從此動態中選擇一個顯示在您個人資料頁上的裱框。</string>
+    <string name="StoryEditCoverInfo">從動態中選擇一個影格，作為個人資料頁上的封面。</string>
     <string name="StoryEditCoverMenu">編輯封面</string>
     <string name="StoryEditing">上傳編輯中…</string>
     <string name="StoryEnableKeep">有權查看您動態的用戶將在動態到期後在您的資料頁上看到它。</string>
@@ -9199,8 +9199,8 @@
     <string name="StoryKeepChannelInfo_other">此動態在 %d 小時到期後仍將其保留在頻道資料頁上。</string>
     <string name="StoryKeepDraft">保留草稿</string>
     <string name="StoryKeepGroup">發布到群組資料頁</string>
-    <string name="StoryKeepGroupInfo_one">即使動態 %d 後到期，仍將其保留在群組資料頁上。</string>
-    <string name="StoryKeepGroupInfo_other">即使動態 %d 後到期，仍將其保留在群組資料頁上。</string>
+    <string name="StoryKeepGroupInfo_one">即使動態在 %d 小時後到期，仍將其保留在群組資料頁上。</string>
+    <string name="StoryKeepGroupInfo_other">即使動態在 %d 小時後到期，仍將其保留在群組資料頁上。</string>
     <string name="StoryKeepInfo_one">即使此動態在 %d 小時後過期，仍將其保留在您的資料頁上。隱私設定將套用。</string>
     <string name="StoryKeepInfo_other">即使此動態在 %d 小時後過期，仍將其保留在您的資料頁上。隱私設定將套用。</string>
     <string name="StoryLinkAdd">加入連結</string>
@@ -9455,7 +9455,7 @@
     <string name="SuggestionAgreementReachedAdmin1">📆 此貼文將自動發布在 **%s** 於 **%s**</string>
     <string name="SuggestionAgreementReachedAdmin1PastSimple">📆 此貼文自動發布在 **%s** 於 **%s**</string>
     <string name="SuggestionAgreementReachedAdmin1PresentPerfect">📆 此貼文已發布於 **%s**</string>
-    <string name="SuggestionAgreementReachedAdmin2">💰 **%s** 已收取⭐️**%s**。</string>
+    <string name="SuggestionAgreementReachedAdmin2">💰 已向 **%s** 收取 ⭐️ **%s**。</string>
     <string name="SuggestionAgreementReachedAdmin3Stars">⌛️ **%s** 將在貼文發布 **%d** 小時後收到星星。</string>
     <string name="SuggestionAgreementReachedAdmin3TON">⏳ **%s** 將在貼文發佈 **%d** 小時後收到 **TON**。</string>
     <string name="SuggestionAgreementReachedAdmin4Stars">🔁 如果 **%s** 在貼文發布 **%d** 小時之內將其刪除，**星星**將原路退還給用戶。</string>
@@ -10231,7 +10231,7 @@
     <string name="VoiceOnceOutHint">**%s** 播放一次後此訊息就會消失。</string>
     <string name="VoiceOnceTurnOnSound">請先開啟聲音。</string>
     <string name="VoicePauseHint">暫停以修剪或重播</string>
-    <string name="VoiceSetOnceHint">點擊以設定此訊息**閱後即焚*。</string>
+    <string name="VoiceSetOnceHint">點擊以設定此訊息只能**播放一次**。</string>
     <string name="VoiceSetOnceHintEnabled">收信人只能收聽一次。</string>
     <string name="Voice_one">%1$d 則語音訊息</string>
     <string name="Voice_other">%1$d 則語音訊息</string>

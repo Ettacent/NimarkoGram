@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 5.x.x.
  * It is licensed under GNU GPL v. 2 or later.
@@ -66,8 +68,6 @@ import org.telegram.ui.Components.LayoutHelper;
 import org.telegram.ui.Components.QRCodeBottomSheet;
 import org.telegram.ui.Components.SectionsScrollView;
 
-import java.io.UnsupportedEncodingException;
-import java.net.URLDecoder;
 import java.net.URLEncoder;
 import java.util.ArrayList;
 
@@ -500,11 +500,7 @@ public class ProxySettingsActivity extends BaseFragment {
                         field = pasteProxySettings.getSecret();
                     }
                     if (!TextUtils.isEmpty(field)) {
-                        try {
-                            inputFields[i].setText(URLDecoder.decode(field, "UTF-8"));
-                        } catch (UnsupportedEncodingException e) {
-                            inputFields[i].setText(field);
-                        }
+                        inputFields[i].setText(field);
                     } else {
                         inputFields[i].setText(null);
                     }

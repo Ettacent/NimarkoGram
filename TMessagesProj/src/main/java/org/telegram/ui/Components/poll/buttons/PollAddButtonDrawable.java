@@ -50,7 +50,7 @@ public class PollAddButtonDrawable extends PollButtonDrawableBase implements Fac
 
         this.addDrawable = context.getResources().getDrawable(R.drawable.outline_poll_add_24).mutate();
         this.addAnOptionTextPaint = new SystemTextPaint(TextPaint.ANTI_ALIAS_FLAG);
-        this.addAnOptionTextPaint.copyTypefaceFrom(Theme.chat_audioPerformerPaint);
+        this.addAnOptionTextPaint.set(Theme.chat_audioPerformerPaint);
 
         setSelectorsColor(Theme.getColor(Theme.key_listSelector, resourcesProvider));
         checkIconsAlpha();

@@ -21,7 +21,6 @@ import android.text.Spanned;
 import android.text.SpannableStringBuilder;
 import android.text.TextUtils;
 
-import androidx.core.content.ContextCompat;
 import androidx.core.content.FileProvider;
 
 import org.telegram.messenger.AndroidUtilities;
@@ -50,14 +49,12 @@ import org.telegram.ui.Components.Bulletin;
 import org.telegram.ui.Components.BulletinFactory;
 import org.telegram.ui.Components.ColoredImageSpan;
 import org.telegram.ui.Components.EmojiPacksAlert;
-import org.telegram.ui.Components.Reactions.ReactionsLayoutInBubble;
 import org.telegram.ui.Components.TranscribeButton;
 import org.telegram.ui.PeerColorActivity;
 
 import java.io.File;
 import java.io.FileOutputStream;
 import java.util.ArrayList;
-import java.util.Objects;
 import java.util.concurrent.atomic.AtomicReferenceArray;
 
 import app.nimarkogram.messenger.NimarkoConfig;

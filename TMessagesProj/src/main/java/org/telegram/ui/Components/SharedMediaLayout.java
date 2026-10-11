@@ -3,6 +3,7 @@
 package org.telegram.ui.Components;
 
 import app.nimarkogram.messenger.utils.ui.ProfileListPadding;
+import app.nimarkogram.messenger.utils.ParticipantOrder;
 import static org.telegram.messenger.AndroidUtilities.dp;
 import static org.telegram.messenger.AndroidUtilities.dpf2;
 import static org.telegram.messenger.AndroidUtilities.lerp;
@@ -766,6 +767,7 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
     private boolean showGroupUsersTab;
     private int groupUsersExpectedCount;
     private boolean chatUsersStateInitialized;
+    private boolean chatUsersOrderPinned;
     private ArrayList<Long> chatUserIds = new ArrayList<>();
     private ArrayList<Integer> chatUserContentHashes = new ArrayList<>();
     private boolean chatUsersUpdatePending;
@@ -7101,6 +7103,12 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
         if (topicId != 0) {
             visible = false;
         }
+        if (!visible) {
+            chatUsersUpdatePending = false;
+            pendingSortedChatUsers = null;
+            pendingChatUsersInfo = null;
+            removeCallbacks(applyPendingChatUsers);
+        }
         int normalizedExpectedCount = Math.max(0, expectedCount);
         boolean expectedCountChanged = groupUsersExpectedCount != normalizedExpectedCount;
         groupUsersExpectedCount = normalizedExpectedCount;
@@ -7116,6 +7124,7 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
             chatUserIds = new ArrayList<>();
             chatUserContentHashes = new ArrayList<>();
             chatUsersStateInitialized = false;
+            chatUsersOrderPinned = false;
         }
         updateTabs(true);
     }
@@ -7139,13 +7148,15 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
     public void setChatUsers(ArrayList<Integer> sortedUsers, TLRPC.ChatFull chatInfo) {
         if (destroyed) return;
         for (MediaPage page : mediaPages) {
+            boolean pendingLayout = page != null && page.listView.getAdapter() == chatUsersAdapter
+                    && isChatUsersPageVisible(page) && page.listView.hasPendingAdapterUpdates();
             if (page != null && page.listView.getAdapter() == chatUsersAdapter
                     && (page.listView.isTouchInteractionActive() || page.listView.getScrollState() != RecyclerView.SCROLL_STATE_IDLE
-                    || page.listView.isComputingLayout())) {
+                    || page.listView.isComputingLayout() || pendingLayout)) {
                 chatUsersUpdatePending = true;
                 pendingSortedChatUsers = sortedUsers == null ? null : new ArrayList<>(sortedUsers);
                 pendingChatUsersInfo = chatInfo;
-                if (page.listView.isComputingLayout() && !page.listView.isTouchInteractionActive()
+                if ((page.listView.isComputingLayout() || pendingLayout) && !page.listView.isTouchInteractionActive()
                         && page.listView.getScrollState() == RecyclerView.SCROLL_STATE_IDLE) {
                     removeCallbacks(applyPendingChatUsers);
                     postOnAnimation(applyPendingChatUsers);
@@ -7160,22 +7171,34 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
         boolean dataChanged = false;
         final ArrayList<Long> oldUserIds = chatUserIds;
         final ArrayList<Integer> oldContentHashes = chatUserContentHashes;
-        final int[] anchorPositions = new int[mediaPages.length];
-        final int[] anchorOffsets = new int[mediaPages.length];
+        boolean preserveParticipantOrder = chatUsersOrderPinned;
+        final ArrayList<ArrayList<ChatUserScrollAnchor>> anchors = new ArrayList<>(mediaPages.length);
         for (int a = 0; a < mediaPages.length; a++) {
             MediaPage page = mediaPages[a];
-            anchorPositions[a] = RecyclerView.NO_POSITION;
+            ArrayList<ChatUserScrollAnchor> pageAnchors = new ArrayList<>();
+            anchors.add(pageAnchors);
             if (page != null && page.listView.getAdapter() == chatUsersAdapter) {
-                int position = page.layoutManager.findFirstVisibleItemPosition();
-                View anchor = page.layoutManager.findViewByPosition(position);
-                if (anchor != null && position >= 0 && position < oldUserIds.size()) {
-                    anchorPositions[a] = position;
-                    anchorOffsets[a] = anchor.getTop() - page.listView.getPaddingTop();
+                preserveParticipantOrder |= isChatUsersPageVisible(page);
+                for (int i = 0; i < page.listView.getChildCount(); i++) {
+                    View child = page.listView.getChildAt(i);
+                    int position = page.listView.getChildAdapterPosition(child);
+                    if (position >= 0 && position < oldUserIds.size()
+                            && child.getBottom() > page.listView.getPaddingTop()
+                            && child.getTop() < page.listView.getHeight() - page.listView.getPaddingBottom()) {
+                        pageAnchors.add(new ChatUserScrollAnchor(oldUserIds.get(position), position,
+                                child.getTop() - page.listView.getPaddingTop()));
+                    }
                 }
+                pageAnchors.sort((left, right) -> Integer.compare(left.offset, right.offset));
             }
         }
         if (topicId == 0) {
             chatUsersAdapter.setParticipants(sortedUsers, chatInfo);
+            chatUsersOrderPinned = preserveParticipantOrder && chatUsersAdapter.chatInfo != null;
+            if (chatUsersOrderPinned) {
+                chatUsersAdapter.participants = ParticipantOrder.reconcile(
+                        chatUsersAdapter.participants, oldUserIds, participant -> participant.user_id);
+            }
             int oldCount = oldUserIds.size();
             if (chatInfo != null) {
                 groupUsersExpectedCount = Math.max(groupUsersExpectedCount, chatInfo.participants_count);
@@ -7190,6 +7213,19 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
         if (!dataChanged) {
             return;
         }
+        if (oldUserIds.equals(chatUserIds)) {
+            for (MediaPage page : mediaPages) {
+                if (page != null && page.listView.getAdapter() == chatUsersAdapter) {
+                    page.listView.setItemAnimator(null);
+                }
+            }
+            for (int i = 0; i < chatUserContentHashes.size(); i++) {
+                if (i >= oldContentHashes.size() || !Objects.equals(oldContentHashes.get(i), chatUserContentHashes.get(i))) {
+                    chatUsersAdapter.notifyItemChanged(i);
+                }
+            }
+            return;
+        }
         for (MediaPage page : mediaPages) {
             if (page.listView.getAdapter() == chatUsersAdapter) {
                 page.listView.setItemAnimator(null);
@@ -7202,16 +7238,38 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
         }
         chatUsersAdapter.notifyDataSetChanged();
         for (int a = 0; a < mediaPages.length; a++) {
-            if (anchorPositions[a] >= 0 && !chatUserIds.isEmpty()) {
-                int newPosition = chatUserIds.indexOf(oldUserIds.get(anchorPositions[a]));
-                if (newPosition < 0) newPosition = findNearestChatUserAnchor(oldUserIds, chatUserIds, anchorPositions[a]);
-                mediaPages[a].layoutManager.scrollToPositionWithOffset(newPosition, anchorOffsets[a]);
+            ArrayList<ChatUserScrollAnchor> pageAnchors = anchors.get(a);
+            if (!pageAnchors.isEmpty() && !chatUserIds.isEmpty()) {
+                ChatUserScrollAnchor anchor = pageAnchors.get(0);
+                int newPosition = RecyclerView.NO_POSITION;
+                for (ChatUserScrollAnchor candidate : pageAnchors) {
+                    int position = chatUserIds.indexOf(candidate.userId);
+                    if (position >= 0) {
+                        anchor = candidate;
+                        newPosition = position;
+                        break;
+                    }
+                }
+                if (newPosition < 0) newPosition = findNearestChatUserAnchor(oldUserIds, chatUserIds, anchor.position);
+                mediaPages[a].layoutManager.scrollToPositionWithOffset(newPosition, anchor.offset);
             }
             if (isChatUsersPageVisible(mediaPages[a])) {
                 if (firstData) {
                     animateItemsEnter(mediaPages[a].listView, 0, null);
                 }
             }
+        }
+    }
+
+    private static final class ChatUserScrollAnchor {
+        final long userId;
+        final int position;
+        final int offset;
+
+        ChatUserScrollAnchor(long userId, int position, int offset) {
+            this.userId = userId;
+            this.position = position;
+            this.offset = offset;
         }
     }
     private static int findNearestChatUserAnchor(ArrayList<Long> oldIds, ArrayList<Long> newIds, int anchor) {
@@ -7433,7 +7491,6 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
         if (scrollSlidingTextTabStrip != null) {
             scrollSlidingTextTabStrip.finishTabsTransition();
             profileTransitionTabsBaseTranslationX = scrollSlidingTextTabStrip.getTranslationX();
-            scrollSlidingTextTabStrip.setAlpha(opening && animatePanel ? 0f : 1f);
         }
         if (topPanelLayout == null) return;
         topPanelLayout.animate().cancel();
@@ -7448,7 +7505,6 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
         if (topPanelLayout != null) topPanelLayout.setAlpha(1f);
         if (scrollSlidingTextTabStrip != null) {
             scrollSlidingTextTabStrip.setTranslationX(profileTransitionTabsBaseTranslationX);
-            scrollSlidingTextTabStrip.setAlpha(1f);
         }
     }
 
@@ -7467,13 +7523,11 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
         float value = Utilities.clamp01(progress);
         if (!profileTransitionOpening) {
             topPanelLayout.setAlpha(value);
-            if (scrollSlidingTextTabStrip != null) scrollSlidingTextTabStrip.setAlpha(value);
             return;
         }
         float entrance = Utilities.clamp01((value - 0.6f) / 0.4f);
         entrance = entrance * entrance * (3f - 2f * entrance);
         topPanelLayout.setAlpha(entrance);
-        if (scrollSlidingTextTabStrip != null) scrollSlidingTextTabStrip.setAlpha(entrance);
         if (value >= 1f) {
             finishProfilePanelTransition();
         }

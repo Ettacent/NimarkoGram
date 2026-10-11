@@ -36,7 +36,9 @@ import android.database.Cursor;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Color;
+import android.graphics.Path;
 import android.graphics.PixelFormat;
+import android.graphics.Rect;
 import android.media.AudioManager;
 import android.net.Uri;
 import android.os.Build;
@@ -90,6 +92,8 @@ import androidx.core.graphics.ColorUtils;
 import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
 
+import app.nimarkogram.messenger.infocards.InfoCardStripView;
+import app.nimarkogram.messenger.utils.NimarkoAppResumeFade;
 import com.google.android.gms.common.api.Status;
 import com.google.common.primitives.Longs;
 import com.google.firebase.appindexing.Action;
@@ -217,6 +221,7 @@ import org.telegram.ui.Components.TextStyleSpan;
 import org.telegram.ui.Components.ThemeEditorView;
 import org.telegram.ui.Components.UndoView;
 import org.telegram.ui.Components.inset.WindowAnimatedInsetsProvider;
+import org.telegram.ui.Components.ChatActivityEnterView;
 import org.telegram.ui.Components.poll.PollAttachedMediaPack;
 import org.telegram.ui.Components.spoilers.SpoilerEffect2;
 import org.telegram.ui.Components.voip.RTMPStreamPipOverlay;
@@ -333,6 +338,8 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
     private FrameLayout shadowTablet;
     private SizeNotifierFrameLayout backgroundTablet;
     public FrameLayout frameLayout;
+    private NimarkoAppResumeFade appResumeFade;
+    private boolean dispatchingResumeFadeTouch;
     private FireworksOverlay fireworksOverlay;
     private BottomSheetTabsOverlay bottomSheetTabsOverlay;
     public DrawerLayoutContainer drawerLayoutContainer;
@@ -507,6 +514,53 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
         frameLayout.setClipToPadding(false);
         frameLayout.setClipChildren(false);
         setContentView(frameLayout);
+        appResumeFade = new NimarkoAppResumeFade(getWindow(), frameLayout, this::isAppResumeFadeSafe,
+                new NimarkoAppResumeFade.Exclusions() {
+                    @Override
+                    public void collect(Rect banner, Rect notification) {
+                        app.nimarkogram.messenger.banners.NimarkoBannerRenderer.getInstance()
+                                .getResumeFadeExclusion(frameLayout, banner);
+                        app.nimarkogram.messenger.notifications.NimarkoInAppNotifications
+                                .getResumeFadeExclusion(frameLayout, notification);
+                    }
+
+                    @Override
+                    public View header() {
+                        BaseFragment fragment = getLastFragmentIncludeMainTabs();
+                        if (fragment instanceof DialogsActivity) {
+                            View stories = ((DialogsActivity) fragment).dialogStoriesCell;
+                            if (stories != null && stories.isShown() && stories.getAlpha() > 0f) return stories;
+                        }
+                        return fragment == null ? null : fragment.getActionBar();
+                    }
+
+                    @Override
+                    public View folders() {
+                        BaseFragment fragment = getLastFragmentIncludeMainTabs();
+                        return fragment instanceof DialogsActivity
+                                ? ((DialogsActivity) fragment).getFilterTabsView() : null;
+                    }
+
+                    @Override
+                    public View infoCard() {
+                        BaseFragment fragment = getLastFragmentIncludeMainTabs();
+                        return fragment instanceof DialogsActivity
+                                ? ((DialogsActivity) fragment).getFloatingHomeInfoCards() : null;
+                    }
+
+                    @Override
+                    public void infoCardShape(View root, Path out) {
+                        View card = infoCard();
+                        if (card instanceof InfoCardStripView) {
+                            ((InfoCardStripView) card).getResumeFadeShape(root, out);
+                        } else {
+                            out.rewind();
+                        }
+                    }
+                }, () -> {
+                    BaseFragment fragment = getLastFragment();
+                    return fragment instanceof ChatActivity ? ((ChatActivity) fragment).getChatActivityEnterView() : null;
+                }, this::isAppResumeFrameReady);
         rootAnimatedInsetsListener = new WindowAnimatedInsetsProvider(frameLayout);
         pipActivityController.addPipListener(new IPipActivityListener() {
             final ActivityVisibilityController activityVisibilityController = createActivityVisibilityController(false);
@@ -817,6 +871,7 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
 
                     @Override
                     public void onBackInvoked() {
+                        if (appResumeFade != null) appResumeFade.onUserInteraction();
                         invoked = true;
                         if (locked) {
                             locker.unlock();
@@ -838,6 +893,7 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
 
                     @Override
                     public void onBackStarted(@NonNull BackEvent backEvent) {
+                        if (appResumeFade != null) appResumeFade.onUserInteraction();
                         started = true;
                         invoked = false;
                         predictiveBackStarted = false;
@@ -903,6 +959,7 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
                 onBackInvokedCallback = new OnBackInvokedCallback() {
                     @Override
                     public void onBackInvoked() {
+                        if (appResumeFade != null) appResumeFade.onUserInteraction();
                         if (AndroidUtilities.isTablet()) {
                             onBackPressed();
                             return;
@@ -7444,12 +7501,27 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
     @Override
     public void onUserInteraction() {
         super.onUserInteraction();
+        if (appResumeFade != null && !dispatchingResumeFadeTouch) appResumeFade.onUserInteraction();
         voipLaunchedInBackground = false;
+    }
+
+    public void cancelAppResumeFade() {
+        if (appResumeFade != null) appResumeFade.cancel();
+    }
+
+    @Override
+    public void onTopResumedActivityChanged(boolean isTopResumedActivity) {
+        super.onTopResumedActivityChanged(isTopResumedActivity);
+        if (appResumeFade != null) {
+            appResumeFade.onTopResumedActivityChanged(isTopResumedActivity,
+                    isTopResumedActivity ? null : captureAppResumeFadeValidity());
+        }
     }
 
     @Override
     public void onWindowFocusChanged(boolean hasFocus) {
         super.onWindowFocusChanged(hasFocus);
+        if (appResumeFade != null) appResumeFade.onWindowFocusChanged(hasFocus);
         app.nimarkogram.messenger.notifications.NimarkoInAppNotifications.onWindowFocusChanged(this, hasFocus);
         if (hasFocus) resumePendingPasscode();
         if (hasFocus) resumeInAppNotificationNavigation();
@@ -7458,11 +7530,21 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
     @Override
     public boolean dispatchTouchEvent(android.view.MotionEvent event) {
         app.nimarkogram.messenger.notifications.NimarkoInAppNotifications.onContentTouch(event);
-        return super.dispatchTouchEvent(event);
+        if (appResumeFade != null && event.getActionMasked() == android.view.MotionEvent.ACTION_DOWN) {
+            appResumeFade.onTouchInteraction();
+        }
+        boolean wasDispatching = dispatchingResumeFadeTouch;
+        dispatchingResumeFadeTouch = true;
+        try {
+            return super.dispatchTouchEvent(event);
+        } finally {
+            dispatchingResumeFadeTouch = wasDispatching;
+        }
     }
 
     @Override
     protected void onPause() {
+        if (appResumeFade != null) appResumeFade.onPause(captureAppResumeFadeValidity());
         accountSwitchTransition.cancel();
         super.onPause();
         app.nimarkogram.messenger.notifications.NimarkoInAppNotifications.onPause(this);
@@ -7628,6 +7710,7 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
     @Override
     protected void onDestroy() {
         pendingInAppNotificationNavigation = null;
+        if (appResumeFade != null) appResumeFade.cancel();
         accountSwitchTransition.cancel();
         app.nimarkogram.messenger.notifications.NimarkoInAppNotifications.onDestroy(this);
         // Invalidate any posted icon-pack cache/rebuild callback before fragment
@@ -7748,6 +7831,7 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
     @Override
     public void onEnterAnimationComplete() {
         super.onEnterAnimationComplete();
+        if (appResumeFade != null) appResumeFade.onEnterAnimationComplete();
         app.nimarkogram.messenger.notifications.NimarkoInAppNotifications.onEnterAnimationComplete(this);
     }
     @Override
@@ -7757,6 +7841,7 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
             frameLayout.animate().cancel();
             frameLayout.setAlpha(1f);
         }
+        if (appResumeFade != null) appResumeFade.onResume();
         app.nimarkogram.messenger.notifications.NimarkoInAppNotifications.onResume(this);
         if (flagSecureReason != null) flagSecureReason.invalidate();
         // NimarkoGram plugin engine event hook.
@@ -7873,6 +7958,76 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
         //if (refreshRateController != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
         //    refreshRateController.start();
         //}
+    }
+
+    private boolean isAppResumeFadeSafe() {
+        if (finished || isFinishing() || isDestroyed() || isInPictureInPictureMode
+                || Build.VERSION.SDK_INT >= 24 && isInMultiWindowMode()
+                || isPasscodeBlockingContent() || AndroidUtilities.needShowPasscode()
+                || !SharedConfig.animationsEnabled() || AndroidUtilities.getAnimatorDurationScale() <= 0
+                || accountSwitchTransition.isRunning() || !UserConfig.isValidAccount(currentAccount)
+                || !UserConfig.getInstance(currentAccount).isClientActivated()
+                || PhotoViewer.hasInstance() && PhotoViewer.getInstance().isVisible()
+                || SecretMediaViewer.hasInstance() && SecretMediaViewer.getInstance().isVisible()
+                || ArticleViewer.hasInstance() && ArticleViewer.getInstance().isVisible()
+                || StoryRecorder.isVisible()) return false;
+        for (Dialog dialog : visibleDialogs) if (dialog != null && dialog.isShowing()) return false;
+        return isAppResumeFadePaneSafe(actionBarLayout) && isAppResumeFadePaneSafe(rightActionBarLayout)
+                && isAppResumeFadePaneSafe(layersActionBarLayout);
+    }
+
+    private boolean isAppResumeFrameReady() {
+        if (frameLayout == null || frameLayout.isLayoutRequested()
+                || rootAnimatedInsetsListener != null && rootAnimatedInsetsListener.hasActiveAnimations()) return false;
+        return isResumePaneFrameReady(actionBarLayout) && isResumePaneFrameReady(rightActionBarLayout)
+                && isResumePaneFrameReady(layersActionBarLayout);
+    }
+
+    private boolean isResumePaneFrameReady(ActionBarLayout pane) {
+        if (pane == null || !pane.isShown()) return true;
+        BaseFragment fragment = pane.getLastFragmentIncludeMainTabs();
+        if (fragment instanceof ChatActivity) {
+            ChatActivity chat = (ChatActivity) fragment;
+            ChatActivityEnterView input = chat.getChatActivityEnterView();
+            if (input != null && input.isKeyboardRestorePending()) return false;
+        }
+        return true;
+    }
+
+    private boolean isAppResumeFadePaneSafe(ActionBarLayout pane) {
+        if (pane == null) return true;
+        if (pane.isTransitionAnimationInProgress() || pane.isSwipeInProgress()) return false;
+        BaseFragment fragment = pane.getLastFragmentIncludeMainTabs();
+        if (fragment == null) return true;
+        if (fragment.isInPreviewMode() || fragment.hasShownSheet()
+                || fragment.visibleDialog != null && fragment.visibleDialog.isShowing()) return false;
+        Bundle args = fragment.getArguments();
+        if (fragment instanceof ChatActivity) {
+            if (args != null && args.getInt("enc_id", 0) != 0) return false;
+            if (app.nimarkogram.messenger.utils.chats.NimarkoChatsPasswordHelper.isChatLocked(
+                    fragment.getCurrentAccount(), ((ChatActivity) fragment).getDialogId())) return false;
+        }
+        return !(fragment instanceof DialogsActivity && app.nimarkogram.messenger.NimarkoConfig.askBiometricsToOpenArchive
+                && args != null && args.getInt("folderId", 0) == 1);
+    }
+
+    private java.util.function.BooleanSupplier captureAppResumeFadeValidity() {
+        final int account = currentAccount;
+        final int selected = UserConfig.selectedAccount;
+        final IntentPaneSnapshot main = new IntentPaneSnapshot(actionBarLayout);
+        final IntentPaneSnapshot right = new IntentPaneSnapshot(rightActionBarLayout);
+        final IntentPaneSnapshot layers = new IntentPaneSnapshot(layersActionBarLayout);
+        final long[] users = new long[UserConfig.MAX_ACCOUNT_COUNT];
+        for (int i = 0; i < users.length; i++) users[i] = UserConfig.getInstance(i).getClientUserId();
+        return () -> {
+            if (currentAccount != account || UserConfig.selectedAccount != selected
+                    || !main.matches(actionBarLayout) || !right.matches(rightActionBarLayout)
+                    || !layers.matches(layersActionBarLayout)) return false;
+            for (int i = 0; i < users.length; i++) {
+                if (users[i] != UserConfig.getInstance(i).getClientUserId()) return false;
+            }
+            return true;
+        };
     }
 
     private boolean isNimarkoProtectedScreenVisible() {
@@ -9171,6 +9326,7 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
 
     @Override
     public void onBackPressed() {
+        if (appResumeFade != null) appResumeFade.onUserInteraction();
         if (!onBackPressed(true)) {
             return;
         }
@@ -9229,6 +9385,7 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
     @Override
     public void onLowMemory() {
         super.onLowMemory();
+        if (appResumeFade != null) appResumeFade.cancel();
         if (actionBarLayout != null) {
             actionBarLayout.onLowMemory();
             if (AndroidUtilities.isTablet()) {
@@ -9303,6 +9460,7 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
 
     @Override
     public boolean dispatchKeyEvent(KeyEvent event) {
+        if (appResumeFade != null && event.getAction() == KeyEvent.ACTION_DOWN) appResumeFade.onUserInteraction();
         int keyCode = event.getKeyCode();
         if (event.getKeyCode() == KeyEvent.KEYCODE_VOLUME_UP || event.getKeyCode() == KeyEvent.KEYCODE_VOLUME_DOWN) {
             BaseFragment baseFragment = getLastFragment();

@@ -15,7 +15,6 @@
 package app.nimarkogram.messenger.camera;
 
 import android.view.MotionEvent;
-import static org.telegram.messenger.LocaleController.getString;
 
 import android.animation.Animator;
 import android.animation.AnimatorListenerAdapter;

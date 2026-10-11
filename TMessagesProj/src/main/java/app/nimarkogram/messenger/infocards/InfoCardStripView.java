@@ -9,6 +9,8 @@ import android.animation.ValueAnimator;
 import android.content.Context;
 import android.content.res.Configuration;
 import android.graphics.Canvas;
+import android.graphics.Matrix;
+import android.graphics.Path;
 import android.os.Bundle;
 import android.view.Gravity;
 import android.view.MotionEvent;
@@ -88,6 +90,8 @@ public class InfoCardStripView extends FrameLayout implements NotificationCenter
     };
     private boolean opaqueCards;
     private boolean inlineFolderStyle;
+    private final Path resumeFadeShape = new Path();
+    private final Matrix resumeFadeTransform = new Matrix();
     private BlurredBackgroundDrawableViewFactory glassBackgroundFactory;
     public void setGlassBackgroundFactory(BlurredBackgroundDrawableViewFactory factory) {
         glassBackgroundFactory = factory;
@@ -113,6 +117,14 @@ public class InfoCardStripView extends FrameLayout implements NotificationCenter
     public void setOpaqueCards(boolean v) {
         opaqueCards = v;
         for (BaseInfoCard p : pills) p.setOpaqueFlat(v);
+    }
+
+    public void getResumeFadeShape(View root, Path out) {
+        out.rewind();
+        if (inlineFolderStyle || !isShown() || getAlpha() <= 0f) return;
+        for (BaseInfoCard pill : pills) {
+            pill.appendResumeFadeShape(root, out, resumeFadeShape, resumeFadeTransform);
+        }
     }
 
     public void rebuildIfChanged() {

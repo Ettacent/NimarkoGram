@@ -20,6 +20,7 @@ public final class NimarkoUiAnimationClock {
     private static final State CLOCK = new State();
     private static final WeakHashMap<Animator, Boolean> ANIMATORS = new WeakHashMap<>();
     private static final WeakHashMap<Animator, WeakReference<ResumeGate>> RESUME_GATES = new WeakHashMap<>();
+    private static final WeakHashMap<Runnable, Boolean> RESUME_CALLBACKS = new WeakHashMap<>();
     private static ForegroundDetector detector;
     private static Choreographer.FrameCallback pendingResume;
     private static long resumeGeneration;
@@ -58,6 +59,10 @@ public final class NimarkoUiAnimationClock {
                 resumeAnimation(animator);
             }
         }
+        for (Runnable callback : new ArrayList<>(RESUME_CALLBACKS.keySet())) {
+            if (generation != resumeGeneration || CLOCK.isPaused() || !canResume()) return;
+            if (RESUME_CALLBACKS.containsKey(callback)) callback.run();
+        }
     }
 
     private static void pause() {
@@ -90,6 +95,10 @@ public final class NimarkoUiAnimationClock {
     public static int epoch() { return CLOCK.epoch(); }
     public static boolean isPaused() { return CLOCK.isPaused(); }
 
+    public static void setResumeCallback(Runnable callback, boolean active) {
+        if (active) RESUME_CALLBACKS.put(callback, Boolean.TRUE);
+        else RESUME_CALLBACKS.remove(callback);
+    }
     public static void onActivityPaused() {
         activityLifecycleKnown = true;
         activityResumed = false;

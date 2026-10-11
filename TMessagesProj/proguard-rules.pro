@@ -6,6 +6,8 @@
 -dontwarn org.mvel2.**
 ## Keep ported extera classes (synthetic R8-style names with reflection callers).
 -keep class app.nimarkogram.messenger.** { *; }
+-keep class com.google.firebase.crashlytics.CustomKeysAndValues { public *; }
+-keep class com.google.firebase.crashlytics.CustomKeysAndValues$Builder { public *; }
 -keep class okhttp3.internal.url._UrlKt { *; }
 ## NimarkoGram: keep the Xposed bridge — invoked exclusively from Python via
 ## Chaquopy reflection, so R8/D8 will otherwise inline/elide it. Without this

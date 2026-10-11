@@ -3,8 +3,6 @@
 package app.nimarkogram.messenger.infocards;
 
 import android.content.Context;
-import android.graphics.PorterDuff;
-import android.graphics.PorterDuffColorFilter;
 import android.os.SystemClock;
 
 import org.telegram.messenger.AndroidUtilities;
@@ -193,8 +191,9 @@ public class ProxyCard extends BaseInfoCard implements NotificationCenter.Notifi
             return;
         }
         long retryInterval = proxy.ping > 0 ? 120000L : 15000L;
+        long age = SystemClock.elapsedRealtime() - proxy.availableCheckTime;
         if (proxy.checking || (!justConnected && proxy.availableCheckTime > 0
-                && SystemClock.elapsedRealtime() - proxy.availableCheckTime < retryInterval)) {
+                && age >= 0 && age < retryInterval)) {
             return;
         }
         proxy.checking = true;

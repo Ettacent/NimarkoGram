@@ -196,7 +196,7 @@ public class CameraSessionWrapper {
             cameraXSession.focusToRect(focusRect);
         } else if (camera2Session != null) {
             
-            camera2Session.focusToRect(focusRect, meteringRect);
+            camera2Session.focusToNormalizedRect(focusRect, meteringRect);
         } else if (camera1Session != null) {
             camera1Session.focusToRect(focusRect, meteringRect);
         }

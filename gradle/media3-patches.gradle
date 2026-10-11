@@ -1,0 +1,61 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+import java.nio.channels.OverlappingFileLockException
+import java.util.concurrent.TimeUnit
+
+def mediaDirectory = new File(settingsDir, 'TMessagesProj_Modules/media')
+def mediaPatch = new File(settingsDir, 'patches/media3-ffmpeg-video.patch')
+def lockFile = new File(settingsDir, '.gradle/media3-patches.lock')
+lockFile.parentFile.mkdirs()
+
+def git = { List<String> arguments ->
+    def command = ['git', '-C', mediaDirectory.absolutePath] + arguments
+    def process = new ProcessBuilder(command).redirectErrorStream(true).start()
+    def output = new StringBuffer()
+    def reader = process.consumeProcessOutputStream(output)
+    if (!process.waitFor(30, TimeUnit.SECONDS)) {
+        process.destroyForcibly()
+        reader.join(1000)
+        throw new GradleException('Timed out running git for the Media3 source patch')
+    }
+    reader.join(1000)
+    [process.exitValue(), output.toString()]
+}
+
+new RandomAccessFile(lockFile, 'rw').withCloseable { lockHandle ->
+    def channel = lockHandle.channel
+    def lock = null
+    def deadline = System.nanoTime() + 120_000_000_000L
+    while (lock == null) {
+        try {
+            lock = channel.tryLock()
+        } catch (OverlappingFileLockException ignored) {
+        }
+        if (lock == null) {
+            if (System.nanoTime() >= deadline) {
+                throw new GradleException('Timed out waiting for the Media3 patch lock')
+            }
+            Thread.sleep(50)
+        }
+    }
+    try {
+        def head = git(['rev-parse', 'HEAD'])
+        if (head[0] != 0 || head[1].trim() != 'c430d207677071b1873f9f18266d55ec45722180') {
+            throw new GradleException('Media3 patch requires pinned revision c430d207677071b1873f9f18266d55ec45722180')
+        }
+        if (!mediaPatch.isFile()) {
+            throw new GradleException('Required Media3 source patch is missing')
+        }
+        if (git(['apply', '--reverse', '--check', mediaPatch.absolutePath])[0] != 0) {
+            def check = git(['apply', '--check', mediaPatch.absolutePath])
+            if (check[0] != 0) {
+                throw new GradleException('Media3 source patch conflicts with the working tree: ' + check[1])
+            }
+            def applied = git(['apply', mediaPatch.absolutePath])
+            if (applied[0] != 0 || git(['apply', '--reverse', '--check', mediaPatch.absolutePath])[0] != 0) {
+                throw new GradleException('Media3 source patch did not apply completely: ' + applied[1])
+            }
+        }
+    } finally {
+        lock.release()
+    }
+}

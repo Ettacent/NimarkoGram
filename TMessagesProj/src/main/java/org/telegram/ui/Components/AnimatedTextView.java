@@ -207,6 +207,8 @@ public class AnimatedTextView extends View {
         private Bitmap warmTextSnapshot;
         private float warmTextWidth;
         private float warmTextLayoutWidth;
+        private float warmTextAlignment;
+        private boolean warmTextCenterY;
         private CharSequence deferredWarmText;
         private boolean deferredWarmMoveDown;
         private WeakReference<View> presentedOwner;
@@ -215,6 +217,8 @@ public class AnimatedTextView extends View {
         private Part[] presentedParts, presentedOldParts;
         private float presentedCurrentWidth, presentedOldWidth, presentedCurrentHeight, presentedOldHeight;
         private boolean presentedRTL;
+        private int presentedGravity;
+        private boolean presentedIgnoreRTL, presentedCenterY;
         private int presentedTextColor, presentedAlpha;
         private ColorFilter presentedEmojiFilter;
         private boolean hasHardwarePresentation;
@@ -383,6 +387,8 @@ public class AnimatedTextView extends View {
                 final Part[] parts = currentParts, previousParts = oldParts;
                 final float widthNow = currentWidth, widthBefore = oldWidth, heightNow = currentHeight, heightBefore = oldHeight;
                 final boolean rtl = isRTL;
+                final int savedGravity = gravity;
+                final boolean savedIgnoreRTL = ignoreRTL, savedCenterY = centerY;
                 final int color = textPaint.getColor(), opacity = alpha;
                 final ColorFilter emojiFilter = emojiColorFilter;
                 bounds.set(presentedBounds);
@@ -393,6 +399,9 @@ public class AnimatedTextView extends View {
                 currentHeight = presentedCurrentHeight;
                 oldHeight = presentedOldHeight;
                 isRTL = presentedRTL;
+                gravity = presentedGravity;
+                ignoreRTL = presentedIgnoreRTL;
+                centerY = presentedCenterY;
                 textPaint.setColor(presentedTextColor);
                 alpha = presentedAlpha;
                 emojiColorFilter = presentedEmojiFilter;
@@ -409,6 +418,9 @@ public class AnimatedTextView extends View {
                     currentHeight = heightNow;
                     oldHeight = heightBefore;
                     isRTL = rtl;
+                    gravity = savedGravity;
+                    ignoreRTL = savedIgnoreRTL;
+                    centerY = savedCenterY;
                     textPaint.setColor(color);
                     alpha = opacity;
                     emojiColorFilter = emojiFilter;
@@ -416,6 +428,8 @@ public class AnimatedTextView extends View {
                 warmTextSnapshot = snapshot;
                 warmTextWidth = presentedWidth;
                 warmTextLayoutWidth = width;
+                warmTextAlignment = getHorizontalAlignment(presentedGravity, presentedRTL, presentedIgnoreRTL);
+                warmTextCenterY = presentedCenterY;
             }
             deferredWarmText = TextUtils.stringOrSpannedString(text);
             deferredWarmMoveDown = moveDown;
@@ -564,15 +578,25 @@ public class AnimatedTextView extends View {
                     || (oldParts != null && t < 1f && hasEllipsizedPart(oldParts));
         }
 
+        private static float getHorizontalAlignment(int gravity, boolean rtl, boolean ignoreRTL) {
+            if ((gravity | ~Gravity.LEFT) == ~0) return 0f;
+            if ((gravity | ~Gravity.RIGHT) == ~0) return 1f;
+            if ((gravity | ~Gravity.CENTER_HORIZONTAL) == ~0) return .5f;
+            return rtl && !ignoreRTL ? 1f : 0f;
+        }
         @Override
         public void draw(@NonNull Canvas canvas) {
             final boolean hardware = canvas.isHardwareAccelerated();
             if (hardware && canAnimate() && deferredWarmText != null) revealWarmText();
             if (warmTextSnapshot != null) {
                 final float progress = deferredWarmText == null ? t : 0f;
-                if (progress > 0f) canvas.saveLayer(bounds.left, bounds.top, bounds.right, bounds.bottom, null, Canvas.ALL_SAVE_FLAG);
+                final float x = bounds.left + (bounds.width() - warmTextSnapshot.getWidth()) * warmTextAlignment;
+                final float y = bounds.top + (warmTextCenterY ? (bounds.height() - warmTextSnapshot.getHeight()) / 2f : 0f);
+                if (progress > 0f) canvas.saveLayer(Math.min(bounds.left, x), Math.min(bounds.top, y),
+                        Math.max(bounds.right, x + warmTextSnapshot.getWidth()),
+                        Math.max(bounds.bottom, y + warmTextSnapshot.getHeight()), null, Canvas.ALL_SAVE_FLAG);
                 warmTextPaint.setAlpha(Math.round(255 * (1f - progress)));
-                canvas.drawBitmap(warmTextSnapshot, bounds.left, bounds.top, warmTextPaint);
+                canvas.drawBitmap(warmTextSnapshot, x, y, warmTextPaint);
                 if (progress > 0f) {
                     warmBlendPaint.setAlpha(Math.round(255 * progress));
                     warmBlendPaint.setXfermode(warmBlendMode);
@@ -599,6 +623,9 @@ public class AnimatedTextView extends View {
                 presentedCurrentHeight = currentHeight;
                 presentedOldHeight = oldHeight;
                 presentedRTL = isRTL;
+                presentedGravity = gravity;
+                presentedIgnoreRTL = ignoreRTL;
+                presentedCenterY = centerY;
                 presentedTextColor = ColorUtils.setAlphaComponent(textPaint.getColor(), alpha);
                 presentedAlpha = alpha;
                 presentedEmojiFilter = emojiColorFilter;
@@ -783,7 +810,12 @@ public class AnimatedTextView extends View {
         }
 
         public void cancelAnimation() {
+            final CharSequence latest = getText();
             cancelAnimationInternal();
+            if (!TextUtils.equals(latest, currentText)) {
+                currentText = latest;
+                rebuildLayouts(overrideFullWidth > 0 ? overrideFullWidth : bounds.width());
+            }
             invalidateSelf();
             if (widthUpdatedListener != null) {
                 widthUpdatedListener.run();
@@ -1015,11 +1047,11 @@ public class AnimatedTextView extends View {
         }
 
         public CharSequence getText() {
-            return currentText;
+            return deferredWarmText != null ? deferredWarmText : toSetText != null ? toSetText : currentText;
         }
 
         public float getWidth() {
-            if (warmTextSnapshot != null) return deferredWarmText != null ? warmTextLayoutWidth : lerp(warmTextLayoutWidth, currentWidth, t);
+            if (warmTextSnapshot != null) return Math.max(warmTextLayoutWidth, currentWidth);
             return Math.max(currentWidth, oldWidth);
         }
 
@@ -1692,7 +1724,7 @@ public class AnimatedTextView extends View {
     protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
         int width = MeasureSpec.getSize(widthMeasureSpec);
         int height = MeasureSpec.getSize(heightMeasureSpec);
-        if (maxWidth > 0) {
+        if (maxWidth > 0 && MeasureSpec.getMode(widthMeasureSpec) != MeasureSpec.EXACTLY) {
             width = Math.min(width, maxWidth);
         }
         if (getLayoutParams().width != 0) {
@@ -1730,9 +1762,15 @@ public class AnimatedTextView extends View {
     }
 
     public void cancelAnimation() {
+        final CharSequence latest = toSetText;
+        final boolean moveDown = toSetMoveDown;
         toSetText = null;
         toSetMoveDown = false;
-        drawable.cancelAnimation();
+        if (latest != null) {
+            drawable.setText(latest, false, moveDown);
+        } else {
+            drawable.cancelAnimation();
+        }
         if (adaptWidth) {
             requestLayout();
         }
@@ -1758,7 +1796,7 @@ public class AnimatedTextView extends View {
             toSetMoveDown = false;
         }
         if (animated && drawable.canAnimate() && drawable.deferredWarmText == null && !drawable.allowCancel && drawable.isAnimating()) {
-            toSetText = TextUtils.equals(text, drawable.getText()) ? null : text;
+            toSetText = TextUtils.equals(text, drawable.currentText) ? null : text;
             toSetMoveDown = moveDown;
             return;
         }
@@ -1794,7 +1832,7 @@ public class AnimatedTextView extends View {
     }
 
     public CharSequence getText() {
-        return drawable.getText();
+        return toSetText != null ? toSetText : drawable.getText();
     }
 
     public int getTextHeight() {

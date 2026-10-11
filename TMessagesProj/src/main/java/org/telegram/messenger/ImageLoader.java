@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 5.x.x.
  * It is licensed under GNU GPL v. 2 or later.
@@ -4312,68 +4314,82 @@ public class ImageLoader {
             scaledBitmap = bitmap;
         }
 
-        boolean check = photoSize != null;
-        TLRPC.TL_fileLocationToBeDeprecated location;
-        if (photoSize == null || !(photoSize.location instanceof TLRPC.TL_fileLocationToBeDeprecated)) {
-            location = new TLRPC.TL_fileLocationToBeDeprecated();
-            location.volume_id = Integer.MIN_VALUE;
-            location.dc_id = Integer.MIN_VALUE;
-            location.local_id = SharedConfig.getLastLocalId();
-            location.file_reference = new byte[0];
+        File cacheFile = null;
+        boolean ownsFile = false;
+        boolean complete = false;
+        try {
+            TLRPC.TL_fileLocationToBeDeprecated location;
+            if (photoSize == null || !(photoSize.location instanceof TLRPC.TL_fileLocationToBeDeprecated)) {
+                location = new TLRPC.TL_fileLocationToBeDeprecated();
+                location.volume_id = Integer.MIN_VALUE;
+                location.dc_id = Integer.MIN_VALUE;
+                location.local_id = SharedConfig.getLastLocalId();
+                location.file_reference = new byte[0];
 
-            photoSize = new TLRPC.TL_photoSize_layer127();
-            photoSize.location = location;
-            photoSize.w = scaledBitmap.getWidth();
-            photoSize.h = scaledBitmap.getHeight();
-            if (photoSize.w <= 100 && photoSize.h <= 100) {
-                photoSize.type = "s";
-            } else if (photoSize.w <= 320 && photoSize.h <= 320) {
-                photoSize.type = "m";
-            } else if (photoSize.w <= 800 && photoSize.h <= 800) {
-                photoSize.type = "x";
-            } else if (photoSize.w <= 1280 && photoSize.h <= 1280) {
-                photoSize.type = "y";
+                photoSize = new TLRPC.TL_photoSize_layer127();
+                photoSize.location = location;
+                photoSize.w = scaledBitmap.getWidth();
+                photoSize.h = scaledBitmap.getHeight();
+                if (photoSize.w <= 100 && photoSize.h <= 100) {
+                    photoSize.type = "s";
+                } else if (photoSize.w <= 320 && photoSize.h <= 320) {
+                    photoSize.type = "m";
+                } else if (photoSize.w <= 800 && photoSize.h <= 800) {
+                    photoSize.type = "x";
+                } else if (photoSize.w <= 1280 && photoSize.h <= 1280) {
+                    photoSize.type = "y";
+                } else {
+                    photoSize.type = "w";
+                }
             } else {
-                photoSize.type = "w";
+                location = (TLRPC.TL_fileLocationToBeDeprecated) photoSize.location;
             }
-        } else {
-            location = (TLRPC.TL_fileLocationToBeDeprecated) photoSize.location;
-        }
 
-        String external = ".jpg";
-        switch (compressFormat) {
-            case WEBP:
-            case WEBP_LOSSY:
-            case WEBP_LOSSLESS:
-                external = ".webp";
-                break;
-        }
+            String external = ".jpg";
+            switch (compressFormat) {
+                case WEBP:
+                case WEBP_LOSSY:
+                case WEBP_LOSSLESS:
+                    external = ".webp";
+                    break;
+            }
 
-        String fileName = location.volume_id + "_" + location.local_id + external;
-        File fileDir;
-        if (forceCacheDir) {
-            fileDir = FileLoader.getDirectory(FileLoader.MEDIA_DIR_CACHE);
-        } else {
-            fileDir = location.volume_id != Integer.MIN_VALUE ? FileLoader.getDirectory(FileLoader.MEDIA_DIR_IMAGE) : FileLoader.getDirectory(FileLoader.MEDIA_DIR_CACHE);
+            String fileName = location.volume_id + "_" + location.local_id + external;
+            File fileDir;
+            if (forceCacheDir) {
+                fileDir = FileLoader.getDirectory(FileLoader.MEDIA_DIR_CACHE);
+            } else {
+                fileDir = location.volume_id != Integer.MIN_VALUE ? FileLoader.getDirectory(FileLoader.MEDIA_DIR_IMAGE) : FileLoader.getDirectory(FileLoader.MEDIA_DIR_CACHE);
+            }
+            cacheFile = new File(fileDir, fileName);
+            ownsFile = cacheFile.createNewFile();
+
+
+
+
+            int size;
+            try (FileOutputStream stream = new FileOutputStream(cacheFile)) {
+                if (!scaledBitmap.compress(compressFormat, quality, stream)) return null;
+                size = (int) stream.getChannel().size();
+            }
+            if (cache) {
+                try (ByteArrayOutputStream stream2 = new ByteArrayOutputStream()) {
+                    if (!scaledBitmap.compress(compressFormat, quality, stream2)) return null;
+                    byte[] bytes = stream2.toByteArray();
+                    photoSize.bytes = bytes;
+                    size = bytes.length;
+                }
+            }
+            photoSize.size = size;
+            complete = true;
+            return photoSize;
+        } finally {
+            try {
+                if (ownsFile && !complete) cacheFile.delete();
+            } finally {
+                if (scaledBitmap != bitmap) scaledBitmap.recycle();
+            }
         }
-        final File cacheFile = new File(fileDir, fileName);
-        FileOutputStream stream = new FileOutputStream(cacheFile);
-        scaledBitmap.compress(compressFormat, quality, stream);
-        if (!cache) {
-            photoSize.size = (int) stream.getChannel().size();
-        }
-        stream.close();
-        if (cache) {
-            ByteArrayOutputStream stream2 = new ByteArrayOutputStream();
-            scaledBitmap.compress(compressFormat, quality, stream2);
-            photoSize.bytes = stream2.toByteArray();
-            photoSize.size = photoSize.bytes.length;
-            stream2.close();
-        }
-        if (scaledBitmap != bitmap) {
-            scaledBitmap.recycle();
-        }
-        return photoSize;
     }
 
     public static TLRPC.PhotoSize scaleAndSaveImage(Bitmap bitmap, float maxWidth, float maxHeight, int quality, boolean cache) {

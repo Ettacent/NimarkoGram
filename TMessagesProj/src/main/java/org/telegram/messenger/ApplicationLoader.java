@@ -1099,6 +1099,7 @@ public class ApplicationLoader extends Application {
 
         applicationHandler = new Handler(applicationContext.getMainLooper());
 
+        app.nimarkogram.messenger.NimarkoCrashContext.install(applicationContext);
         AndroidUtilities.runOnUIThread(ApplicationLoader::startPushService);
 
         LauncherIconController.tryFixLauncherIconIfNeeded();

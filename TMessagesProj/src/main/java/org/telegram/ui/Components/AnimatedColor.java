@@ -27,6 +27,7 @@ public class AnimatedColor {
 
     private long lastVisualTime;
     private int visualEpoch;
+    private final Runnable resumeInvalidation = this::invalidateOnResume;
     public AnimatedColor() {
         this.parent = null;
         this.firstSet = true;
@@ -160,8 +161,20 @@ public class AnimatedColor {
                 }
             }
         }
+        NimarkoUiAnimationClock.setResumeCallback(resumeInvalidation,
+                transition && (parent != null || invalidate != null));
         if (!paused) lastVisualTime = now;
         return value;
+    }
+
+    private void invalidateOnResume() {
+        if (!transition) return;
+        if (parent != null) {
+            if (!parent.isAttachedToWindow() || !parent.isShown()
+                    || parent.getWindowVisibility() != View.VISIBLE) return;
+            parent.invalidate();
+        }
+        if (invalidate != null) invalidate.run();
     }
 
     private void rebaseVisualTime(long now) {
@@ -192,5 +205,7 @@ public class AnimatedColor {
 
     public void setParent(View parent) {
         this.parent = parent;
+        NimarkoUiAnimationClock.setResumeCallback(resumeInvalidation,
+                transition && (parent != null || invalidate != null));
     }
 }

@@ -1524,7 +1524,7 @@ public class AudioPlayerAlert extends BottomSheet implements NotificationCenter.
                     int toIndex = toPosition - (padWithItem ? 1 : 0);
                     int count = savedMusicList.list.size();
                     if (fromIndex < 0 || fromIndex >= count || toIndex < 0 || toIndex >= count) {
-                            return false;
+                        return false;
                     }
                     if (SharedConfig.playOrderReversed) {
                         fromIndex = count - fromIndex - 1;
@@ -2606,17 +2606,22 @@ public class AudioPlayerAlert extends BottomSheet implements NotificationCenter.
             }
         }
 
+        private boolean songRevealAnimationsEnabled() {
+            return SharedConfig.animationsEnabled() && (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
+                    ? ValueAnimator.areAnimatorsEnabled() : AndroidUtilities.getAnimatorDurationScale() > 0);
+        }
         private void notifyPlaylistLoaded() {
             if (awaitingProfileSongs && songListOwner == savedMusicList && playlist != null && playlist.size() > 1) {
                 awaitingProfileSongs = false;
                 if (!searching && !searchWas && !songDragActive && !isDismissed() && listView.isAttachedToWindow()
-                        && SharedConfig.animationsEnabled() && !NimarkoUiAnimationClock.isPaused()) {
+                        && songRevealAnimationsEnabled() && !NimarkoUiAnimationClock.isPaused()) {
                     rememberSongIds(revealingSongIds);
                     revealingSongIds.removeAll(knownSongIds);
                     if (!revealingSongIds.isEmpty()) {
                         songRevealPreDraw = OneShotPreDrawListener.add(listView, () -> {
                             songRevealPreDraw = null;
-                            if (searching || searchWas || songDragActive || isDismissed() || !listView.isAttachedToWindow()) {
+                            if (searching || searchWas || songDragActive || isDismissed() || !listView.isAttachedToWindow()
+                                    || !songRevealAnimationsEnabled()) {
                                 cancelSongReveal();
                             } else {
                                 songRevealStartedAt = NimarkoUiAnimationClock.now();
@@ -2639,7 +2644,7 @@ public class AudioPlayerAlert extends BottomSheet implements NotificationCenter.
             }
             long elapsed = Math.max(0, NimarkoUiAnimationClock.now() - songRevealStartedAt);
             if (elapsed >= 200 || searching || searchWas || songDragActive
-                    || songListOwner != savedMusicList || !SharedConfig.animationsEnabled()) {
+                    || songListOwner != savedMusicList || !songRevealAnimationsEnabled()) {
                 cancelSongReveal();
                 return 1f;
             }

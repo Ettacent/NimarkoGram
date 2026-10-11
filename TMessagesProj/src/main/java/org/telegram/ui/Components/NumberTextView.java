@@ -235,7 +235,7 @@ public class NumberTextView extends View {
         textPaint.setTextSize(AndroidUtilities.dp(size));
         oldLetters.clear();
         letters.clear();
-        setNumber(currentNumber, false);
+        setNumber(hasPendingNumber ? pendingNumber : currentNumber, false);
     }
 
     public void setTextColor(int value) {
@@ -247,7 +247,7 @@ public class NumberTextView extends View {
         textPaint.setTypeface(typeface);
         oldLetters.clear();
         letters.clear();
-        setNumber(currentNumber, false);
+        setNumber(hasPendingNumber ? pendingNumber : currentNumber, false);
     }
 
     public void setCenterAlign(boolean center) {
@@ -257,7 +257,9 @@ public class NumberTextView extends View {
     @Override
     protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
         super.onMeasure(widthMeasureSpec, heightMeasureSpec);
-        if (snapshot != null) setMeasuredDimension(snapshot.reserveWidth(getMeasuredWidth()), snapshot.reserveHeight(getMeasuredHeight()));
+        if (snapshot != null) setMeasuredDimension(
+                resolveSize(snapshot.reserveWidth(getMeasuredWidth()), widthMeasureSpec),
+                resolveSize(snapshot.reserveHeight(getMeasuredHeight()), heightMeasureSpec));
     }
 
     @Override

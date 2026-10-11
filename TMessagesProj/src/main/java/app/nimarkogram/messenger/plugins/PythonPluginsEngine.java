@@ -1813,6 +1813,18 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
         return PluginsController.getInstance();
     }
 
+    private static void diagnosticPythonPhase(long token, String phase, String target,
+            PluginsController.PluginRuntimeToken runtimeToken) {
+        if (token == 0) return;
+        try {
+            String owner = runtimeToken == null ? ""
+                    : runtimeToken.getGeneration() + ":" + runtimeToken.getInstanceId();
+            NimarkoCrashContext.pythonPhase(token, NimarkoCrashContext.invocationStartedMs(token),
+                    phase, target, runtimeToken == null ? "" : runtimeToken.getPluginId(), owner);
+        } catch (Throwable ignored) {
+
+        }
+    }
     private PluginsController.PluginRuntimeToken enterCurrentRuntime(
             String pluginId, PyObject expectedInstance) {
         return enterCurrentRuntime(pluginId, expectedInstance, null);
@@ -2783,6 +2795,7 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
         boolean runtimeScopeEntered = false;
         boolean loadSucceeded = false;
         String loadPhase = "load_start";
+        long diagnosticToken = 0;
         try {
         synchronized (loadPreferences) {
             if (!loadPreferences.edit()
@@ -2827,6 +2840,9 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
                 legacyOverlayProbes.put(runtimeToken, overlayProbe);
             }
             loadPhase = "import";
+            diagnosticToken = NimarkoCrashContext.beginInvocation();
+            diagnosticPythonPhase(diagnosticToken, "engine_enter",
+                    "PythonPluginsEngine.loadPlugin", runtimeToken);
             PyObject module = getPython().getModule("plugin_imports").callAttr(
                     "load_plugin", str, file.getAbsolutePath(), runtimeToken);
             importedModule = module;
@@ -2838,6 +2854,8 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
             }
             loadPhase = "instantiate";
             claimEnableCode(str, enableGeneration);
+            diagnosticPythonPhase(diagnosticToken, "engine_enter",
+                    "PythonPluginsEngine.loadPlugin", runtimeToken);
             PyObject pyObjectCall = pyObjectFindPluginClass.call();
             createdInstance = pyObjectCall;
             ensureEnableStillRequested(str, enableGeneration);
@@ -2993,25 +3011,31 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
             }
             throw failure;
         } finally {
-            boolean cleanupSucceeded = false;
             try {
+                diagnosticPythonPhase(diagnosticToken, "engine_exit",
+                        "PythonPluginsEngine.loadPlugin", runtimeToken);
+                boolean cleanupSucceeded = false;
                 try {
-                    if (runtimeScopeEntered) {
-                        getPluginsController().exitPluginRuntime(runtimeToken);
+                    try {
+                        if (runtimeScopeEntered) {
+                            getPluginsController().exitPluginRuntime(runtimeToken);
+                        }
+                    } finally {
+                        getPluginsController().endPluginInitialization(str, enableGeneration);
                     }
+                    cleanupSucceeded = true;
+                } catch (RuntimeException | Error cleanupFailure) {
+                    if (loadSucceeded) {
+                        reportPluginLoadFailure(str, "load_cleanup", cleanupFailure);
+                    }
+                    throw cleanupFailure;
                 } finally {
-                    getPluginsController().endPluginInitialization(str, enableGeneration);
+                    clearOwnedPluginLoadMarker(loadPreferences, str, loadStartedAt,
+                            loadPid, loadToken,
+                            loadSucceeded && cleanupSucceeded && !forceInstantiate);
                 }
-                cleanupSucceeded = true;
-            } catch (RuntimeException | Error cleanupFailure) {
-                if (loadSucceeded) {
-                    reportPluginLoadFailure(str, "load_cleanup", cleanupFailure);
-                }
-                throw cleanupFailure;
             } finally {
-                clearOwnedPluginLoadMarker(loadPreferences, str, loadStartedAt,
-                        loadPid, loadToken,
-                        loadSucceeded && cleanupSucceeded && !forceInstantiate);
+                NimarkoCrashContext.endInvocation(diagnosticToken);
             }
         }
     }
@@ -3458,6 +3482,7 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
                     }
                     return null;
                 }
+                long diagnosticToken = 0;
                 try {
 
                     boolean entered = false;
@@ -3471,23 +3496,35 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
                                             + pluginId);
                         }
                         pyObject.put("enabled", false);
+                        diagnosticToken = NimarkoCrashContext.beginInvocation();
+                        diagnosticPythonPhase(diagnosticToken, "engine_enter",
+                                "PythonPluginsEngine.onPluginUnload", runtimeToken);
                         pyObject.callAttr(PluginsConstants.ON_PLUGIN_UNLOAD);
                     } finally {
-                        if (entered) {
-                            getPluginsController()
-                                    .exitPluginRuntime(runtimeToken);
+                        try {
+                            if (entered) {
+                                getPluginsController()
+                                        .exitPluginRuntime(runtimeToken);
+                            }
+                        } finally {
+                            getPluginsController().endPluginUnload(runtimeToken);
                         }
-                        getPluginsController().endPluginUnload(runtimeToken);
                     }
                     return null;
                 } catch (Exception | Error t) {
                     operation.outcome = t;
                     throw t;
                 } finally {
-                    operation.callState.set(2);
-                    operation.actuallyReturned = true;
-                    if (operation.timedOut.get()) {
-                        scheduleActualReturn(operation);
+                    try {
+                        diagnosticPythonPhase(diagnosticToken, "engine_exit",
+                                "PythonPluginsEngine.onPluginUnload", runtimeToken);
+                        operation.callState.set(2);
+                        operation.actuallyReturned = true;
+                        if (operation.timedOut.get()) {
+                            scheduleActualReturn(operation);
+                        }
+                    } finally {
+                        NimarkoCrashContext.endInvocation(diagnosticToken);
                     }
                 }
             });
@@ -3614,25 +3651,41 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
                 getPluginsController().beginPluginInitialization(pluginId, enableGeneration);
                 boolean entered = runtimeToken != null
                         && getPluginsController().enterPluginRuntime(runtimeToken);
+                long diagnosticToken = 0;
                 try {
                     if (!entered) {
                         throw new EnableCancelledException(pluginId);
                     }
                     claimEnableCode(pluginId, enableGeneration);
+                    diagnosticToken = NimarkoCrashContext.beginInvocation();
+                    diagnosticPythonPhase(diagnosticToken, "engine_enter",
+                            "PythonPluginsEngine.onPluginLoad", runtimeToken);
                     pyObject.callAttr(PluginsConstants.ON_PLUGIN_LOAD);
                     return null;
                 } catch (Exception | Error t) {
                     operation.outcome = t;
                     throw t;
                 } finally {
-                    operation.callState.set(2);
-                    if (entered) {
-                        getPluginsController().exitPluginRuntime(runtimeToken);
-                    }
-                    getPluginsController().endPluginInitialization(pluginId, enableGeneration);
-                    operation.actuallyReturned = true;
-                    if (operation.timedOut.get()) {
-                        scheduleActualReturn(operation);
+                    try {
+                        diagnosticPythonPhase(diagnosticToken, "engine_exit",
+                                "PythonPluginsEngine.onPluginLoad", runtimeToken);
+                        operation.callState.set(2);
+                        try {
+                            try {
+                                if (entered) {
+                                    getPluginsController().exitPluginRuntime(runtimeToken);
+                                }
+                            } finally {
+                                getPluginsController().endPluginInitialization(pluginId, enableGeneration);
+                            }
+                        } finally {
+                            operation.actuallyReturned = true;
+                            if (operation.timedOut.get()) {
+                                scheduleActualReturn(operation);
+                            }
+                        }
+                    } finally {
+                        NimarkoCrashContext.endInvocation(diagnosticToken);
                     }
                 }
             });
@@ -5730,6 +5783,7 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
     public List<SettingItem> loadPluginSettings(String str) {
         boolean watchdogStarted = false;
         PluginsController.PluginRuntimeToken runtimeToken = null;
+        long diagnosticToken = 0;
         try {
             Plugin plugin = getPluginsController().plugins.get(str);
             PyObject pyObject = this.pluginInstances.get(str);
@@ -5741,6 +5795,9 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
                 }
                 getPluginsController().getWatchdog().onPluginExecutionStarted(str);
                 watchdogStarted = true;
+                diagnosticToken = NimarkoCrashContext.beginInvocation();
+                diagnosticPythonPhase(diagnosticToken, "engine_enter",
+                        "PythonPluginsEngine.createSettings", runtimeToken);
                 PyObject pyObjectCallAttr = pyObject.callAttr(PluginsConstants.CREATE_SETTINGS);
                 if (pyObjectCallAttr == null) {
                     return null;
@@ -5762,11 +5819,20 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
             }
             throw failure;
         } finally {
-            if (watchdogStarted) {
-                getPluginsController().getWatchdog().onPluginExecutionFinished(str);
-            }
-            if (runtimeToken != null) {
-                getPluginsController().exitPluginRuntime(runtimeToken);
+            try {
+                diagnosticPythonPhase(diagnosticToken, "engine_exit",
+                        "PythonPluginsEngine.createSettings", runtimeToken);
+                try {
+                    if (watchdogStarted) {
+                        getPluginsController().getWatchdog().onPluginExecutionFinished(str);
+                    }
+                } finally {
+                    if (runtimeToken != null) {
+                        getPluginsController().exitPluginRuntime(runtimeToken);
+                    }
+                }
+            } finally {
+                NimarkoCrashContext.endInvocation(diagnosticToken);
             }
         }
     }
@@ -5782,24 +5848,46 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
         }
         PyObject pyObject;
         PyObject pyObjectCall;
+        long eventDiagnosticToken = 0;
         try {
             pyObject = getPython().getModule("base_plugin").get("AppEvent");
             if (pyObject == null) {
                 return;
             }
+            eventDiagnosticToken = NimarkoCrashContext.beginInvocation();
+            diagnosticPythonPhase(eventDiagnosticToken, "engine_enter",
+                    "PythonPluginsEngine.createAppEvent", null);
             pyObjectCall = pyObject.call(str);
         } catch (Throwable t) {
             FileLog.e("nimarko: executeOnAppEvent base_plugin load failed", t);
             return;
+        } finally {
+            try {
+                diagnosticPythonPhase(eventDiagnosticToken, "engine_exit",
+                        "PythonPluginsEngine.createAppEvent", null);
+            } finally {
+                NimarkoCrashContext.endInvocation(eventDiagnosticToken);
+            }
         }
 
         PyObject pyObject2 = this.debuggerListener;
             if (pyObject2 != null) {
+                long diagnosticToken = 0;
                 try {
 
+                    diagnosticToken = NimarkoCrashContext.beginInvocation();
+                    diagnosticPythonPhase(diagnosticToken, "engine_enter",
+                            "PythonPluginsEngine.debuggerAppEvent", null);
                     pyObject2.callAttr(PluginsConstants.ON_APP_EVENT, pyObjectCall);
                 } catch (PyException e) {
                     FileLog.e("Failed to execute app event for debugger listener", e);
+                } finally {
+                    try {
+                        diagnosticPythonPhase(diagnosticToken, "engine_exit",
+                                "PythonPluginsEngine.debuggerAppEvent", null);
+                    } finally {
+                        NimarkoCrashContext.endInvocation(diagnosticToken);
+                    }
                 }
             }
             for (Map.Entry<String, PyObject> entry : this.pluginInstances.entrySet()) {
@@ -5822,7 +5910,11 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
                     continue;
                 }
                 getPluginsController().getWatchdog().onPluginExecutionStarted(pid);
+                long diagnosticToken = 0;
                 try {
+                    diagnosticToken = NimarkoCrashContext.beginInvocation();
+                    diagnosticPythonPhase(diagnosticToken, "engine_enter",
+                            "PythonPluginsEngine.onAppEvent", runtimeToken);
                     PyObject callback = plugin != null && plugin.boundHooks != null
                             ? plugin.boundHooks.get(PluginsConstants.ON_APP_EVENT)
                             : null;
@@ -5837,8 +5929,17 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
                     getPluginsController().getWatchdog().onPluginExecutionFailed(pid, failure);
                     throw failure;
                 } finally {
-                    getPluginsController().getWatchdog().onPluginExecutionFinished(pid);
-                    getPluginsController().exitPluginRuntime(runtimeToken);
+                    try {
+                        diagnosticPythonPhase(diagnosticToken, "engine_exit",
+                                "PythonPluginsEngine.onAppEvent", runtimeToken);
+                        try {
+                            getPluginsController().getWatchdog().onPluginExecutionFinished(pid);
+                        } finally {
+                            getPluginsController().exitPluginRuntime(runtimeToken);
+                        }
+                    } finally {
+                        NimarkoCrashContext.endInvocation(diagnosticToken);
+                    }
                 }
             }
     }
@@ -5894,14 +5995,27 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
         }
 
         getPluginsController().getWatchdog().onPluginExecutionStarted(str);
+        long diagnosticToken = 0;
         try {
+            diagnosticToken = NimarkoCrashContext.beginInvocation();
+            diagnosticPythonPhase(diagnosticToken, "engine_enter",
+                    "PythonPluginsEngine.executeHook", runtimeToken);
             return executeHook(instance, t, cls, str2, pyMethodCaller, callback);
         } catch (RuntimeException | Error failure) {
             getPluginsController().getWatchdog().onPluginExecutionFailed(str, failure);
             throw failure;
         } finally {
-            getPluginsController().getWatchdog().onPluginExecutionFinished(str);
-            getPluginsController().exitPluginRuntime(runtimeToken);
+            try {
+                diagnosticPythonPhase(diagnosticToken, "engine_exit",
+                        "PythonPluginsEngine.executeHook", runtimeToken);
+                try {
+                    getPluginsController().getWatchdog().onPluginExecutionFinished(str);
+                } finally {
+                    getPluginsController().exitPluginRuntime(runtimeToken);
+                }
+            } finally {
+                NimarkoCrashContext.endInvocation(diagnosticToken);
+            }
         }
     }
 
@@ -5996,14 +6110,27 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
             return new PluginsController.HookResult<>(unchanged, false, false);
         }
         getPluginsController().getWatchdog().onPluginExecutionStarted(str2);
+        long diagnosticToken = 0;
         try {
+            diagnosticToken = NimarkoCrashContext.beginInvocation();
+            diagnosticPythonPhase(diagnosticToken, "engine_enter",
+                    "PythonPluginsEngine.postRequestHook", runtimeToken);
             return executePostRequestHook(str, i, tLObject, tL_error, instance);
         } catch (RuntimeException | Error failure) {
             getPluginsController().getWatchdog().onPluginExecutionFailed(str2, failure);
             throw failure;
         } finally {
-            getPluginsController().getWatchdog().onPluginExecutionFinished(str2);
-            getPluginsController().exitPluginRuntime(runtimeToken);
+            try {
+                diagnosticPythonPhase(diagnosticToken, "engine_exit",
+                        "PythonPluginsEngine.postRequestHook", runtimeToken);
+                try {
+                    getPluginsController().getWatchdog().onPluginExecutionFinished(str2);
+                } finally {
+                    getPluginsController().exitPluginRuntime(runtimeToken);
+                }
+            } finally {
+                NimarkoCrashContext.endInvocation(diagnosticToken);
+            }
         }
     }
 
@@ -6616,10 +6743,14 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
                                                 && getPluginsController()
                                                         .enterPluginRuntime(callbackToken);
                                 if (!entered) return;
+                                long diagnosticToken = 0;
                                 try {
                                     getPluginsController().getWatchdog().onPluginExecutionStarted(plugin.getId());
                                     PyObject pyObjectCall;
                                     try {
+                                        diagnosticToken = NimarkoCrashContext.beginInvocation();
+                                        diagnosticPythonPhase(diagnosticToken, "engine_enter",
+                                                "PythonPluginsEngine.createSubFragment", callbackToken);
                                         pyObjectCall = textSetting2.createSubFragmentCallback.call();
                                     } catch (Error failure) {
                                         getPluginsController().getWatchdog()
@@ -6637,9 +6768,15 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
                                 } catch (Exception unused) {
                                     return;
                                 } finally {
-                                    if (callbackToken != null) {
-                                        getPluginsController()
-                                                .exitPluginRuntime(callbackToken);
+                                    try {
+                                        diagnosticPythonPhase(diagnosticToken, "engine_exit",
+                                                "PythonPluginsEngine.createSubFragment", callbackToken);
+                                        if (callbackToken != null) {
+                                            getPluginsController()
+                                                    .exitPluginRuntime(callbackToken);
+                                        }
+                                    } finally {
+                                        NimarkoCrashContext.endInvocation(diagnosticToken);
                                     }
                                 }
                                 textSetting = textSetting2;

@@ -1504,11 +1504,15 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
         layoutToIgnore = null;
         if (containerView != null) {
             containerView.setAlpha(1f);
+            containerView.setScaleX(1f);
+            containerView.setScaleY(1f);
             containerView.setTranslationX(0f);
             containerView.setLayerType(LAYER_TYPE_NONE, null);
         }
         if (containerViewBack != null) {
             containerViewBack.setAlpha(1f);
+            containerViewBack.setScaleX(1f);
+            containerViewBack.setScaleY(1f);
             containerViewBack.setTranslationX(0f);
             containerViewBack.setVisibility(View.INVISIBLE);
             containerViewBack.setLayerType(LAYER_TYPE_NONE, null);

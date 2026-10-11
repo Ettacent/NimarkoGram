@@ -45,7 +45,6 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import app.nimarkogram.messenger.banners.NimarkoBannerConfig;
 import app.nimarkogram.messenger.utils.NimarkoInlineAuth;
 import okhttp3.MediaType;
-import okhttp3.MultipartBody;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.RequestBody;
@@ -56,7 +55,6 @@ public final class WlAccess {
     public static final int PORT = 15435;
     public static final String ORIGIN = "https://" + HOST + ":" + PORT;
     private static final String PREFIX = "/api/v1/banners/wl";
-    private static final int MAX_SCREENSHOT = 8 * 1024 * 1024;
     private static final MediaType JSON = MediaType.parse("application/json; charset=utf-8");
     private static final byte[] EMPTY = new byte[0];
     private static final Object LOCK = new Object();
@@ -121,7 +119,8 @@ public final class WlAccess {
         long paidExpires = state.optLong("expires_at", 0);
         if ("approved".equals(status) && paidExpires <= now) status = "expired";
         if (!"approved".equals(status) && !"payment_required".equals(status)
-                && !"expired".equals(status) && !"blocked".equals(status)) status = "error";
+                && !"expired".equals(status) && !"revoked".equals(status)
+                && !"blocked".equals(status)) status = "error";
         return new Subscription(status, paidExpires, integerCents(state, "price_cents"), priceVersion(state));
     }
 
@@ -377,7 +376,7 @@ public final class WlAccess {
                     for (int i = 0; i < UserConfig.MAX_ACCOUNT_COUNT; i++) {
                         long owner = uid(i);
                         if (owner <= 0 || !enabled()) continue;
-                        try { refreshNow(i, owner, EPOCHS.getOrDefault(owner, 0L)); }
+                        try { refreshNow(i, owner, EPOCHS.getOrDefault(owner, 0L), null); }
                         catch (Exception ignored) { }
                     }
                 } finally { WARMING.set(false); }
@@ -386,25 +385,29 @@ public final class WlAccess {
     }
 
     public static void refresh(int account, Callback callback) {
+        refreshWithSubscription(account, null, callback);
+    }
+
+    public static void refreshWithSubscription(int account, Callback subscriptionCallback, Callback callback) {
         final long owner = uid(account), epoch = EPOCHS.getOrDefault(owner, 0L);
         queue(() -> {
             restoreGrants();
             String status = "error";
-            try { status = refreshNow(account, owner, epoch); }
+            try { status = refreshNow(account, owner, epoch, subscriptionCallback); }
             catch (Exception e) { status = errorStatus(e); }
             Grant available = cached();
             int checkedOther = -1;
             if (current(account, owner, epoch) && available != null && available.uid != owner) {
                 int other = accountFor(available.uid);
                 checkedOther = other;
-                try { refreshNow(other, available.uid, EPOCHS.getOrDefault(available.uid, 0L)); }
+                try { refreshNow(other, available.uid, EPOCHS.getOrDefault(available.uid, 0L), null); }
                 catch (Exception ignored) { }
             }
             if (current(account, owner, epoch) && cached() == null) {
                 for (int other = 0; other < UserConfig.MAX_ACCOUNT_COUNT; other++) {
                     long otherOwner = uid(other);
                     if (other == account || other == checkedOther || otherOwner <= 0) continue;
-                    try { refreshNow(other, otherOwner, EPOCHS.getOrDefault(otherOwner, 0L)); }
+                    try { refreshNow(other, otherOwner, EPOCHS.getOrDefault(otherOwner, 0L), null); }
                     catch (Exception ignored) { }
                     if (cached() != null || !current(account, owner, epoch)) break;
                 }
@@ -448,15 +451,15 @@ public final class WlAccess {
         return token;
     }
 
-    private static String refreshNow(int account, long owner, long epoch) throws Exception {
+    private static String refreshNow(int account, long owner, long epoch, Callback subscriptionCallback) throws Exception {
         try {
-            return refreshAccount(account, owner, epoch);
+            return refreshAccount(account, owner, epoch, subscriptionCallback);
         } catch (ApiError error) {
             return accessErrorStatus(account, owner, epoch, error);
         }
     }
 
-    private static String refreshAccount(int account, long owner, long epoch) throws Exception {
+    private static String refreshAccount(int account, long owner, long epoch, Callback subscriptionCallback) throws Exception {
         if (!current(account, owner, epoch)) throw new IOException("account_changed");
         String auth = bannerToken(account, owner, epoch);
         JSONObject state;
@@ -473,6 +476,7 @@ public final class WlAccess {
         Subscription subscription = parseSubscription(state, now);
         String status = subscription.status;
         long paidExpires = subscription.expiresAt;
+        if ("error".equals(status)) return status;
         synchronized (LOCK) {
             if (!current(account, owner, epoch)) throw new IOException("account_changed");
             SUBSCRIPTIONS.put(owner, subscription);
@@ -481,13 +485,18 @@ public final class WlAccess {
         if (!"approved".equals(status)) {
             boolean changed = false;
             synchronized (LOCK) {
-                if (current(account, owner, epoch)) {
-                    changed = GRANTS.remove(owner) != null;
-                    prefs().edit().remove("grant_" + owner).apply();
-                }
+                if (!current(account, owner, epoch)) throw new IOException("account_changed");
+                changed = GRANTS.remove(owner) != null;
+                prefs().edit().remove("grant_" + owner).apply();
             }
-            if (changed) onGrantRemoved();
+            if (changed || enabled() && cached() == null) onGrantRemoved();
+            else notifyChanged();
             return status;
+        }
+        if (subscriptionCallback != null) {
+            AndroidUtilities.runOnUIThread(() -> {
+                if (current(account, owner, epoch)) subscriptionCallback.done(status);
+            });
         }
         KeyStore keys = KeyStore.getInstance("AndroidKeyStore"); keys.load(null);
         String alias = prefs().getString("key_" + owner, "");
@@ -640,35 +649,6 @@ public final class WlAccess {
         });
     }
 
-    private static void submit(int account, Uri uri, Callback callback) {
-        final long owner = uid(account), epoch = EPOCHS.getOrDefault(owner, 0L);
-        queue(() -> {
-            String result = "error";
-            try {
-                String token = bannerToken(account, owner, epoch);
-                byte[] data;
-                try (InputStream in = ApplicationLoader.applicationContext.getContentResolver().openInputStream(uri);
-                     ByteArrayOutputStream out = new ByteArrayOutputStream()) {
-                    if (in == null) throw new IOException("invalid_screenshot");
-                    byte[] chunk = new byte[16384]; int count;
-                    while ((count = in.read(chunk)) != -1) {
-                        if (out.size() + count > MAX_SCREENSHOT) throw new IOException("file_too_large");
-                        out.write(chunk, 0, count);
-                    }
-                    data = out.toByteArray();
-                }
-                if (!current(account, owner, epoch)) throw new IOException("account_changed");
-                MultipartBody body = new MultipartBody.Builder().setType(MultipartBody.FORM)
-                        .addFormDataPart("file", "screenshot", RequestBody.create(MediaType.parse("application/octet-stream"), data)).build();
-                Request request = new Request.Builder().url(ORIGIN + PREFIX + "/submit")
-                        .header("X-Auth-Token", token).post(body).build();
-                try (Response response = HTTP.newCall(request).execute()) {
-                    result = read(response).optString("status", "pending");
-                }
-            } catch (Exception e) { result = errorStatus(e); }
-            finish(callback, current(account, owner, epoch) ? result : "account_changed");
-        }, callback);
-    }
 
     private static String recordBlocked(int account, long owner, long epoch) {
         boolean changed;

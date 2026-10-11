@@ -6,6 +6,7 @@ import android.text.format.DateFormat;
 
 import org.telegram.messenger.LocaleController;
 
+import org.telegram.messenger.R;
 import java.util.Calendar;
 import java.util.GregorianCalendar;
 import java.util.TimeZone;
@@ -134,6 +135,6 @@ public final class NimarkoRegDate {
     public static String estimateStringOrUnknown(long id) {
         String s = estimateString(id);
         if (s != null) return s;
-        return LocaleController.getString(org.telegram.messenger.R.string.NM_RegDateUnknown);
+        return LocaleController.getString(R.string.NM_RegDateUnknown);
     }
 }

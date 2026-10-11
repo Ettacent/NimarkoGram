@@ -23,6 +23,7 @@ import android.graphics.Color;
 import android.graphics.LinearGradient;
 import android.graphics.Matrix;
 import android.graphics.Paint;
+import android.graphics.Rect;
 import android.graphics.PorterDuff;
 import android.graphics.PorterDuffXfermode;
 import android.graphics.RenderEffect;
@@ -82,7 +83,6 @@ public final class NimarkoBannerRenderer {
     private static final double BLUR_FADE_DUR = 0.5;
     private static final int VID_FADE = 700;
     private static final double BANNER_BLEED = 1.02; // shared bleed scale — ALL three matrix-scale sites (main bitmap, xfade-in-place, drawXfadeOnly) MUST use this or the photo-version xfade jumps scale at the decode-gap handoff
-    private static final int VID_HEIGHT_THRESHOLD = 8;
     private static final int BMP_MAX = 2048;
     private static final double COLL_SETTLE = 0.55;
     private static final double FX_MIN_INTERVAL = 0.012;
@@ -239,6 +239,7 @@ public final class NimarkoBannerRenderer {
     private double avatarResumeHoldUntil;
 
     private ViewGroup currentTopView;
+    private final int[] resumeFadeRootLocation = new int[2];
     private long viewedProfileId;
     private volatile boolean isProfileOpen, appPaused, overlayOpen, videoPausedByTab;
     private static final Object LEGACY_OVERLAY_OWNER = new Object();
@@ -887,6 +888,23 @@ public final class NimarkoBannerRenderer {
         float p = (float) (el / COLL_SETTLE);
         float w = p * p * (3f - 2f * p);     // 0 → 1
         return rawColl * w;
+    }
+
+
+
+    public void getResumeFadeExclusion(View root, Rect out) {
+        out.setEmpty();
+        ViewGroup top = currentTopView;
+        if (!NimarkoBannerConfig.enabled || !isProfileOpen || top == null || !top.isShown()
+                || top.getAlpha() <= 0f || !top.isAttachedToWindow() || top.getWindowToken() != root.getWindowToken()
+                || getForegroundProgress(top, viewedAccount, viewedProfileId) <= 0f) return;
+        if (!top.getGlobalVisibleRect(out)) {
+            out.setEmpty();
+            return;
+        }
+        root.getLocationInWindow(resumeFadeRootLocation);
+        out.offset(-resumeFadeRootLocation[0], -resumeFadeRootLocation[1]);
+        if (!out.intersect(0, 0, root.getWidth(), root.getHeight())) out.setEmpty();
     }
 
 
@@ -1943,8 +1961,9 @@ public final class NimarkoBannerRenderer {
         VideoPlayer p = videoPlayer;
         if (p == null) return;
         try {
-            p.setPlaybackEnvelope(bannerAudioBlocked() || !curVidSound || showingPh
-                    ? 0f : incomingBannerAudioProgress());
+            float envelope = bannerAudioBlocked() || !curVidSound || showingPh
+                    ? 0f : incomingBannerAudioProgress();
+            if (envelope <= 0f) p.setPlaybackEnvelope(envelope);
             if (curVidSound && !showingPh && !inCall && !profileExitActive
                     && NimarkoBannerConfig.enabled
                     && (!isProfileOpen || appPaused || overlayOpen || videoPausedByTab
@@ -1971,6 +1990,7 @@ public final class NimarkoBannerRenderer {
                 lastVol = targetVol;
                 p.setVolume(targetVol);
             }
+            if (envelope > 0f) p.setPlaybackEnvelope(envelope);
         } catch (Throwable ignored) {}
     }
 
