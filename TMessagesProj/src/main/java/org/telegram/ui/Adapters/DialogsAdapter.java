@@ -87,6 +87,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Objects;
 
+import java.util.List;
 public class DialogsAdapter extends RecyclerListView.SelectionAdapter implements DialogCell.DialogCellDelegate {
     public final static int VIEW_TYPE_DIALOG = 0,
             VIEW_TYPE_FLICKER = 1,
@@ -284,6 +285,8 @@ public class DialogsAdapter extends RecyclerListView.SelectionAdapter implements
         private TLRPC.User user;
         private long dialogId;
 
+        private long resumePeerId;
+        private String resumeUrl;
         public ItemInternal(int viewType, String string) {
             super(viewType, false);
 
@@ -303,6 +306,7 @@ public class DialogsAdapter extends RecyclerListView.SelectionAdapter implements
             this.user = user;
             this.dialogId = user.id;
 
+            resumePeerId = user.id;
             int currentId = dialogsStableIds.get(user.id, -1);
             if (currentId >= 0) {
                 stableId = currentId;
@@ -317,6 +321,7 @@ public class DialogsAdapter extends RecyclerListView.SelectionAdapter implements
             this.chat = chat;
             this.dialogId = -chat.id;
 
+            resumePeerId = -chat.id;
             int currentId = dialogsStableIds.get(-chat.id, -1);
             if (currentId >= 0) {
                 stableId = currentId;
@@ -329,6 +334,7 @@ public class DialogsAdapter extends RecyclerListView.SelectionAdapter implements
         public ItemInternal(int viewType, TLRPC.Dialog dialog) {
             super(viewType, true);
             this.dialog = dialog;
+            resumePeerId = dialog == null ? 0 : dialog.id;
             if (dialog != null) {
                 int currentId = dialogsStableIds.get(dialog.id, -1);
                 if (currentId >= 0) {
@@ -359,6 +365,7 @@ public class DialogsAdapter extends RecyclerListView.SelectionAdapter implements
         public ItemInternal(int viewTypeMeUrl, TLRPC.RecentMeUrl recentMeUrl) {
             super(viewTypeMeUrl, true);
             this.recentMeUrl = recentMeUrl;
+            resumeUrl = recentMeUrl == null ? null : recentMeUrl.url;
             stableId = stableIdPointer++;
         }
 
@@ -385,6 +392,7 @@ public class DialogsAdapter extends RecyclerListView.SelectionAdapter implements
         public ItemInternal(int viewTypeUser, TLRPC.TL_contact tl_contact) {
             super(viewTypeUser, true);
             contact = tl_contact;
+            resumePeerId = contact == null ? 0 : contact.user_id;
             if (contact != null) {
                 int currentId = dialogsStableIds.get(contact.user_id, -1);
                 if (currentId > 0) {
@@ -396,6 +404,24 @@ public class DialogsAdapter extends RecyclerListView.SelectionAdapter implements
             } else {
                 stableId = stableIdPointer++;
             }
+        }
+
+        boolean compareForResume(ItemInternal other) {
+            if (viewType != other.viewType) return false;
+            if (dialog != null || other.dialog != null) {
+                return dialog != null && other.dialog != null && resumePeerId == other.resumePeerId
+                        && isFolder == other.isFolder;
+            }
+            if (user != null || other.user != null || chat != null || other.chat != null
+                    || contact != null || other.contact != null) {
+                return (user != null) == (other.user != null) && (chat != null) == (other.chat != null)
+                        && (contact != null) == (other.contact != null) && resumePeerId == other.resumePeerId;
+            }
+            if (recentMeUrl != null || other.recentMeUrl != null) {
+                return resumeUrl != null && resumeUrl.equals(other.resumeUrl);
+            }
+            if (title != null || other.title != null) return Objects.equals(title, other.title);
+            return stableId == other.stableId && emptyType == other.emptyType;
         }
 
         boolean compare(ItemInternal itemInternal) {
@@ -532,15 +558,35 @@ public class DialogsAdapter extends RecyclerListView.SelectionAdapter implements
     private volatile int listUpdateGeneration;
     private Runnable pendingDiffRunnable;
     private Runnable pendingSaveScrollPosition;
+    private Runnable pendingAfterUpdate;
+    private boolean pendingRefreshContents;
+    private static final Object RESUME_CONTENT_PAYLOAD = new Object();
+
+    public static boolean isResumeUpdatePayload(List<?> payloads) {
+        if (payloads == null || payloads.isEmpty()) return false;
+        for (Object payload : payloads) if (payload != RESUME_CONTENT_PAYLOAD) return false;
+        return true;
+    }
     private final static boolean ALLOW_UPDATE_IN_BACKGROUND = true;
     public boolean hasPendingListUpdates() {
         return isCalculatingDiff || updateListPending;
     }
 
     public void updateList(Runnable saveScrollPosition) {
+        updateList(saveScrollPosition, null, false);
+    }
+
+    public void refreshForResume(Runnable afterUpdate) {
+        invalidatePendingListUpdate();
+        updateList(null, afterUpdate, true);
+    }
+
+    private void updateList(Runnable saveScrollPosition, Runnable afterUpdate, boolean refreshContents) {
         if (isCalculatingDiff) {
             updateListPending = true;
             pendingSaveScrollPosition = saveScrollPosition;
+            if (afterUpdate != null) pendingAfterUpdate = afterUpdate;
+            pendingRefreshContents |= refreshContents;
             return;
         }
         isCalculatingDiff = true;
@@ -564,21 +610,27 @@ public class DialogsAdapter extends RecyclerListView.SelectionAdapter implements
 
             @Override
             public boolean areItemsTheSame(int oldItemPosition, int newItemPosition) {
-                return previousItems.get(oldItemPosition).compare(newItems.get(newItemPosition));
+                return refreshContents ? previousItems.get(oldItemPosition).compareForResume(newItems.get(newItemPosition))
+                        : previousItems.get(oldItemPosition).compare(newItems.get(newItemPosition));
             }
 
             @Override
             public boolean areContentsTheSame(int oldItemPosition, int newItemPosition) {
+                if (refreshContents) return false;
                 ItemInternal oldItem = previousItems.get(oldItemPosition);
                 ItemInternal newItem = newItems.get(newItemPosition);
                 return oldItem.viewType == newItem.viewType
                         && (oldItem.viewType != VIEW_TYPE_FOLDER_UPDATE_HINT
                         || oldItem.missingChatlistPeerCount == newItem.missingChatlistPeerCount);
             }
+            @Override
+            public Object getChangePayload(int oldItemPosition, int newItemPosition) {
+                return refreshContents ? RESUME_CONTENT_PAYLOAD : null;
+            }
         };
         if (itemInternals.size() < 50 || !ALLOW_UPDATE_IN_BACKGROUND) {
             DiffUtil.DiffResult result = DiffUtil.calculateDiff(callback);
-            applyListUpdate(generation, newItems, result, saveScrollPosition);
+            applyListUpdate(generation, newItems, result, saveScrollPosition, afterUpdate);
         } else {
             pendingDiffRunnable = () -> {
                 if (generation != listUpdateGeneration) {
@@ -588,12 +640,12 @@ public class DialogsAdapter extends RecyclerListView.SelectionAdapter implements
                 if (generation != listUpdateGeneration) {
                     return;
                 }
-                AndroidUtilities.runOnUIThread(() -> applyListUpdate(generation, newItems, result, saveScrollPosition));
+                AndroidUtilities.runOnUIThread(() -> applyListUpdate(generation, newItems, result, saveScrollPosition, afterUpdate));
             };
             Utilities.searchQueue.postRunnable(pendingDiffRunnable);
         }
     }
-    private void applyListUpdate(int generation, ArrayList<ItemInternal> newItems, DiffUtil.DiffResult result, Runnable saveScrollPosition) {
+    private void applyListUpdate(int generation, ArrayList<ItemInternal> newItems, DiffUtil.DiffResult result, Runnable saveScrollPosition, Runnable afterUpdate) {
         if (generation != listUpdateGeneration || !isCalculatingDiff) {
             return;
         }
@@ -604,34 +656,49 @@ public class DialogsAdapter extends RecyclerListView.SelectionAdapter implements
         if (generation != listUpdateGeneration) {
             return;
         }
+        boolean firstItems = itemInternals.isEmpty() && !newItems.isEmpty();
         itemInternals = newItems;
         result.dispatchUpdatesTo(this);
         if (generation != listUpdateGeneration) {
             return;
         }
         isCalculatingDiff = false;
+        if (firstItems) parentFragment.onInitialDialogsListApplied(this);
+        if (generation != listUpdateGeneration) return;
+        if (afterUpdate != null) afterUpdate.run();
+        if (generation != listUpdateGeneration) return;
         if (updateListPending) {
             Runnable pendingCallback = pendingSaveScrollPosition;
+            Runnable pendingCompletion = pendingAfterUpdate;
+            boolean refreshPending = pendingRefreshContents;
             updateListPending = false;
             pendingSaveScrollPosition = null;
-            updateList(pendingCallback);
+            pendingAfterUpdate = null;
+            pendingRefreshContents = false;
+            updateList(pendingCallback, pendingCompletion, refreshPending);
         }
 
     }
 
     @Override
     public void notifyDataSetChanged() {
+        invalidatePendingListUpdate();
+        itemInternals = new ArrayList<>();
+        updateItemList();
+        super.notifyDataSetChanged();
+    }
+
+    private void invalidatePendingListUpdate() {
         ++listUpdateGeneration;
         updateListPending = false;
         pendingSaveScrollPosition = null;
+        pendingAfterUpdate = null;
+        pendingRefreshContents = false;
         if (pendingDiffRunnable != null) {
             Utilities.searchQueue.cancelRunnable(pendingDiffRunnable);
             pendingDiffRunnable = null;
         }
-        itemInternals = new ArrayList<>();
         isCalculatingDiff = false;
-        updateItemList();
-        super.notifyDataSetChanged();
     }
 
 
@@ -902,6 +969,51 @@ public class DialogsAdapter extends RecyclerListView.SelectionAdapter implements
         }
     }
 
+    private void bindDialogCell(DialogCell cell, TLRPC.Dialog dialog, int position) {
+        cell.isHiddenInCommunity = communityId != 0 && ChatObject.isHiddenInCommunity(currentAccount, dialog.id);
+        cell.useSeparator = false;
+        cell.fullSeparator = false;
+        if (dialogsType == DialogsActivity.DIALOGS_TYPE_DEFAULT && AndroidUtilities.isTablet()) {
+            cell.setDialogSelected(dialog.id == openedDialogId);
+        }
+        cell.setChecked(selectedDialogs.contains(dialog.id), false);
+        if (position == 1 && parentFragment != null && parentFragment.isReplyTo
+                && parentFragment.replyMessageAuthor != 0 && dialog.top_message == 0) {
+            MessagesController.DialogFilter filter = getCurrentFilter();
+            cell.setCustomMessage(filter == null || filter.isDefault()
+                    ? DialogObject.getStatus(parentFragment.replyMessageAuthor) : null);
+        } else if (position == 1 && parentFragment != null && dialogsType == DialogsActivity.DIALOGS_TYPE_FORWARD
+                && parentFragment.forwardOriginalChannel != 0 && dialog.top_message == 0) {
+            MessagesController.DialogFilter filter = getCurrentFilter();
+            cell.setCustomMessage(filter == null || filter.isDefault()
+                    ? DialogObject.getStatus(parentFragment.forwardOriginalChannel) : null);
+        } else {
+            cell.setCustomMessage(null);
+        }
+        cell.setDialog(dialog, dialogsType, folderId);
+        cell.checkHeight();
+        if (cell.collapsed != collapsedView) {
+            cell.collapsed = collapsedView;
+            cell.requestLayout();
+        }
+        if (preloader != null && position < 10) preloader.add(dialog.id);
+    }
+
+    @Override
+    @SuppressWarnings("rawtypes")
+    public void onBindViewHolder(RecyclerView.ViewHolder holder, int position, List payloads) {
+        if (isResumeUpdatePayload(payloads) && holder.itemView instanceof DialogCell
+                && getItemViewType(position) == VIEW_TYPE_DIALOG) {
+            Object item = getItem(position);
+            DialogCell cell = (DialogCell) holder.itemView;
+            if (item instanceof TLRPC.Dialog && cell.getDialogId() == ((TLRPC.Dialog) item).id
+                    && cell.getEmojiAccount() == currentAccount) {
+                bindDialogCell(cell, (TLRPC.Dialog) item, position);
+                return;
+            }
+        }
+        super.onBindViewHolder(holder, position, payloads);
+    }
     @Override
     public void onBindViewHolder(RecyclerView.ViewHolder holder, int i) {
         switch (holder.getItemViewType()) {
@@ -1006,41 +1118,7 @@ public class DialogsAdapter extends RecyclerListView.SelectionAdapter implements
                     cell.setChecked(selectedDialogs.contains(cell.getDialogId()), oldDialogId == cell.getDialogId());
                 } else {
                     DialogCell cell = (DialogCell) holder.itemView;
-                    cell.isHiddenInCommunity = communityId != 0 && ChatObject.isHiddenInCommunity(currentAccount, dialog.id);
-                    cell.useSeparator = false;
-                    cell.fullSeparator = false;
-                    if (dialogsType == DialogsActivity.DIALOGS_TYPE_DEFAULT) {
-                        if (AndroidUtilities.isTablet()) {
-                            cell.setDialogSelected(dialog.id == openedDialogId);
-                        }
-                    }
-                    cell.setChecked(selectedDialogs.contains(dialog.id), false);
-                    if (i == 1 && parentFragment != null && parentFragment.isReplyTo && parentFragment.replyMessageAuthor != 0 && dialog.top_message == 0) {
-                        MessagesController.DialogFilter filter = getCurrentFilter();
-                        if (filter == null || filter.isDefault()) {
-                            cell.setCustomMessage(DialogObject.getStatus(parentFragment.replyMessageAuthor));
-                        } else {
-                            cell.setCustomMessage(null);
-                        }
-                    } else if (i == 1 && parentFragment != null && dialogsType == DialogsActivity.DIALOGS_TYPE_FORWARD && parentFragment.forwardOriginalChannel != 0 && dialog.top_message == 0) {
-                        MessagesController.DialogFilter filter = getCurrentFilter();
-                        if (filter == null || filter.isDefault()) {
-                            cell.setCustomMessage(DialogObject.getStatus(parentFragment.forwardOriginalChannel));
-                        } else {
-                            cell.setCustomMessage(null);
-                        }
-                    } else {
-                        cell.setCustomMessage(null);
-                    }
-                    cell.setDialog(dialog, dialogsType, folderId);
-                    cell.checkHeight();
-                    if (cell.collapsed != collapsedView) {
-                        cell.collapsed = collapsedView;
-                        cell.requestLayout();
-                    }
-                    if (preloader != null && i < 10) {
-                        preloader.add(dialog.id);
-                    }
+                    bindDialogCell(cell, dialog, i);
                 }
                 break;
             }

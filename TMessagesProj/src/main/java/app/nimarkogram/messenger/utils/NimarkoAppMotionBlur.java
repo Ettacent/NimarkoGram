@@ -462,9 +462,11 @@ public final class NimarkoAppMotionBlur implements ViewTreeObserver.OnPreDrawLis
         if (previousAdapter != adapter) historyContinuous = false;
         entry.historyDiscontinuous = !historyContinuous;
         boolean continuous = historyContinuous;
-        entry.relativeMotion = !historyContinuous || entry.left != view.getLeft() || entry.top != view.getTop()
-                || entry.width != width || entry.height != height || !entry.localMatrix.equals(view.getMatrix())
+        boolean relativeMovement = entry.left != view.getLeft() || entry.top != view.getTop()
+                || !entry.localMatrix.equals(view.getMatrix())
                 || parent != null && parent.scrolled;
+        entry.relativeMotion = !historyContinuous || entry.width != width || entry.height != height
+                || relativeMovement;
         entry.scrolled = entry.scrollX != view.getScrollX() || entry.scrollY != view.getScrollY();
         entry.split = entry.scrolled && view instanceof ViewGroup;
         WeakReference<NimarkoAppMotionBlur> nested = view == rootReference.get() ? null : INSTANCES.get(view);
@@ -613,7 +615,7 @@ public final class NimarkoAppMotionBlur implements ViewTreeObserver.OnPreDrawLis
         } else {
             entry.motion.reset();
         }
-        entry.independent = historyContinuous && (entry.relativeMotion
+        entry.independent = historyContinuous && (relativeMovement
                 || entry.independent && (entry.motion.isActive() || parent != null && parent.motion.isActive()));
         entry.previousScreenMatrix.set(entry.screenMatrix);
         entry.parent = parent;

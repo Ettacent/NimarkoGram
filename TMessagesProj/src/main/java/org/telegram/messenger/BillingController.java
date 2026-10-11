@@ -8,6 +8,9 @@ import android.app.Activity;
 import android.content.ActivityNotFoundException;
 import android.content.Context;
 import android.content.Intent;
+import android.content.pm.ApplicationInfo;
+import android.content.pm.PackageInfo;
+import android.content.pm.PackageManager;
 import android.net.Uri;
 
 import androidx.annotation.NonNull;
@@ -72,6 +75,7 @@ public class BillingController implements PurchasesUpdatedListener, BillingClien
     private boolean isDisconnected;
     private Runnable onCanceled;
 
+    private volatile String billingDiagnosticVersions = "sdk=pending play_code=pending";
     public static BillingController getInstance() {
         if (instance == null) {
             instance = new BillingController(ApplicationLoader.applicationContext);
@@ -84,6 +88,47 @@ public class BillingController implements PurchasesUpdatedListener, BillingClien
                 .enablePendingPurchases(PendingPurchasesParams.newBuilder().enableOneTimeProducts().build())
                 .setListener(this)
                 .build();
+        try {
+            Utilities.globalQueue.postRunnable(() -> cacheBillingDiagnosticVersions(ctx));
+        } catch (Throwable ignored) {
+            billingDiagnosticVersions = "sdk=unavailable play_code=unavailable";
+        }
+    }
+
+    private void cacheBillingDiagnosticVersions(Context context) {
+        String sdk = "unavailable";
+        String playCode = "unavailable";
+        try {
+            ApplicationInfo info = context.getPackageManager().getApplicationInfo(
+                    context.getPackageName(), PackageManager.GET_META_DATA);
+            String version = info.metaData == null ? null
+                    : info.metaData.getString("com.google.android.play.billingclient.version");
+
+            if (version != null && version.length() <= 24 && version.matches("[0-9]+(\\.[0-9]+){2}")) {
+                sdk = version;
+            }
+        } catch (Throwable ignored) {
+
+        }
+        try {
+            PackageInfo info = context.getPackageManager().getPackageInfo("com.android.vending", 0);
+            playCode = Long.toString(android.os.Build.VERSION.SDK_INT >= 28
+                    ? info.getLongVersionCode() : info.versionCode);
+        } catch (Throwable ignored) {
+
+        }
+        billingDiagnosticVersions = "sdk=" + sdk + " play_code=" + playCode;
+    }
+
+    private void recordBillingLaunchResult(int responseCode) {
+        try {
+
+
+            app.nimarkogram.messenger.NimarkoCrashContext.event("billing", "launch_result",
+                    "BillingClient.launchBillingFlow", billingDiagnosticVersions + " response=" + responseCode);
+        } catch (Throwable ignored) {
+
+        }
     }
 
     public void setOnCanceled(Runnable onCanceled) {
@@ -310,6 +355,7 @@ public class BillingController implements PurchasesUpdatedListener, BillingClien
         }
         final BillingResult result = billingClient.launchBillingFlow(activity, flowParams.build());
         int responseCode = result.getResponseCode();
+        recordBillingLaunchResult(responseCode);
         if (responseCode != BillingClient.BillingResponseCode.OK) {
             FileLog.d("Billing: Launch Error: " + responseCode + ", " + obfuscatedAccountId + ", " + obfuscatedData);
         }

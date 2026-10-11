@@ -410,7 +410,7 @@ public final class NimarkoCrashContext {
         emitting = true;
         try {
             if (!diagnosticIdentityWritten) {
-                setCustomKey.invoke(crashlytics, "ng_diag_schema", "4");
+                setCustomKey.invoke(crashlytics, "ng_diag_schema", "5");
                 setCustomKey.invoke(crashlytics, "ng_diag_mapping_id", readMappingId());
                 diagnosticIdentityWritten = true;
             }

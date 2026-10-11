@@ -90,13 +90,11 @@ public class PyMethodHook extends XC_MethodHook {
     }
 
     private boolean enterRuntime(PluginsController controller) {
-        return controller.getPluginRuntimeTaskDecision(this.runtimeToken)
-                == PluginsController.RUNTIME_TASK_RUN
-                && controller.enterPluginRuntime(this.runtimeToken);
+        return PluginHookGuard.enterRuntime(controller, this.runtimeToken);
     }
 
     private void exitRuntime(PluginsController controller) {
-        controller.exitPluginRuntime(this.runtimeToken);
+        PluginHookGuard.exitRuntime(controller, this.runtimeToken);
     }
 
     private static PyObject resolveBound(PyObject pyObject, String attr, boolean has) {
@@ -128,13 +126,13 @@ public class PyMethodHook extends XC_MethodHook {
     @Override // de.robv.android.xposed.XC_MethodHook
     protected void beforeHookedMethod(XC_MethodHook.MethodHookParam methodHookParam) throws Throwable {
         if (this.hasBeforeHook) {
-            PluginsController controller = PluginsController.getInstance();
+            PluginsController controller = PluginHookGuard.controller();
             if (!enterRuntime(controller)) {
                 return;
             }
             boolean watchdogStarted = false;
             try {
-                controller.getWatchdog().onPluginExecutionStarted(this.pluginId);
+                PluginHookGuard.started(controller, this.pluginId);
                 watchdogStarted = true;
                 if (!this.beforeHookedFilters.isEmpty()) {
                     ArrayList<HookFilter> arrayList = this.beforeHookedFilters;
@@ -155,12 +153,11 @@ public class PyMethodHook extends XC_MethodHook {
                         this.pythonCallback.callAttr(PluginsConstants.Xposed.BEFORE_HOOKED_METHOD, methodHookParam);
                     }
                 } catch (PyException pythonFailure) {
-                    controller.getWatchdog().onPluginExecutionFailed(
-                            this.pluginId, pythonFailure);
+                    PluginHookGuard.failed(controller, this.pluginId, pythonFailure);
                     throw pythonFailure;
                 } finally {
                     watchdogStarted = false;
-                    controller.getWatchdog().onPluginExecutionFinished(this.pluginId);
+                    PluginHookGuard.finished(controller, this.pluginId);
                 }
             } catch (Throwable th) {
                 handleHookError("beforeHookedMethod", th);
@@ -168,7 +165,7 @@ public class PyMethodHook extends XC_MethodHook {
             } finally {
                 try {
                     if (watchdogStarted) {
-                        controller.getWatchdog().onPluginExecutionFinished(this.pluginId);
+                        PluginHookGuard.finished(controller, this.pluginId);
                     }
                 } finally {
                     exitRuntime(controller);
@@ -180,13 +177,13 @@ public class PyMethodHook extends XC_MethodHook {
     @Override // de.robv.android.xposed.XC_MethodHook
     protected void afterHookedMethod(XC_MethodHook.MethodHookParam methodHookParam) throws Throwable {
         if (this.hasAfterHook) {
-            PluginsController controller = PluginsController.getInstance();
+            PluginsController controller = PluginHookGuard.controller();
             if (!enterRuntime(controller)) {
                 return;
             }
             boolean watchdogStarted = false;
             try {
-                controller.getWatchdog().onPluginExecutionStarted(this.pluginId);
+                PluginHookGuard.started(controller, this.pluginId);
                 watchdogStarted = true;
                 if (!this.afterHookedFilters.isEmpty()) {
                     ArrayList<HookFilter> arrayList = this.afterHookedFilters;
@@ -207,12 +204,11 @@ public class PyMethodHook extends XC_MethodHook {
                         this.pythonCallback.callAttr(PluginsConstants.Xposed.AFTER_HOOKED_METHOD, methodHookParam);
                     }
                 } catch (PyException pythonFailure) {
-                    controller.getWatchdog().onPluginExecutionFailed(
-                            this.pluginId, pythonFailure);
+                    PluginHookGuard.failed(controller, this.pluginId, pythonFailure);
                     throw pythonFailure;
                 } finally {
                     watchdogStarted = false;
-                    controller.getWatchdog().onPluginExecutionFinished(this.pluginId);
+                    PluginHookGuard.finished(controller, this.pluginId);
                 }
             } catch (Throwable th) {
                 handleHookError("afterHookedMethod", th);
@@ -220,7 +216,7 @@ public class PyMethodHook extends XC_MethodHook {
             } finally {
                 try {
                     if (watchdogStarted) {
-                        controller.getWatchdog().onPluginExecutionFinished(this.pluginId);
+                        PluginHookGuard.finished(controller, this.pluginId);
                     }
                 } finally {
                     exitRuntime(controller);
@@ -230,10 +226,15 @@ public class PyMethodHook extends XC_MethodHook {
     }
 
     private void handleHookError(String str, Throwable th) {
-        if ((th instanceof PyException) && th.getMessage() != null && th.getMessage().contains("closed")) {
-            FileLog.e("Attempted to call a closed PyObject callback in " + this.pluginId);
-            return;
+        PluginHookGuard.begin();
+        try {
+            if ((th instanceof PyException) && th.getMessage() != null && th.getMessage().contains("closed")) {
+                FileLog.e("Attempted to call a closed PyObject callback in " + this.pluginId);
+                return;
+            }
+            FileLog.e("Plugin '" + this.pluginId + "' crashed in " + str + ": " + th.getMessage(), th);
+        } finally {
+            PluginHookGuard.end();
         }
-        FileLog.e("Plugin '" + this.pluginId + "' crashed in " + str + ": " + th.getMessage(), th);
     }
 }

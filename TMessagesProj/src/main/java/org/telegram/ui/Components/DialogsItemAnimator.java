@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components;
 
 import android.animation.Animator;
@@ -748,7 +750,8 @@ public class DialogsItemAnimator extends SimpleItemAnimator {
 
     @Override
     public boolean canReuseUpdatedViewHolder(ViewHolder viewHolder, List<Object> payloads) {
-        return viewHolder.itemView instanceof DialogsEmptyCell;
+        return viewHolder.itemView instanceof DialogsEmptyCell
+                || viewHolder.itemView instanceof DialogCell && DialogsAdapter.isResumeUpdatePayload(payloads);
     }
 
     @Override

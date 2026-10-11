@@ -463,7 +463,20 @@ public final class NativeTombstone {
             if (matches(prefix, start, end, "PyGILState_Release:")) return "python_gil_state_release";
             return "python_fatal";
         }
-        if (matches(prefix, start, end, "Scudo ERROR: ")) return "scudo";
+        String scudo = "Scudo ERROR: ";
+        if (matches(prefix, start, end, scudo)) {
+            start += scudo.length();
+            if (matches(prefix, start, end, "corrupted chunk header at address ")) return "scudo_header_corruption";
+            if (matches(prefix, start, end, "race on chunk header at address ")) return "scudo_header_race";
+            if (matches(prefix, start, end, "invalid chunk state when deallocating address ")) return "scudo_invalid_free_state";
+            if (matches(prefix, start, end, "invalid chunk state when reallocating address ")) return "scudo_invalid_realloc_state";
+            if (matches(prefix, start, end, "invalid chunk state when ")) return "scudo_invalid_chunk_state";
+            if (matches(prefix, start, end, "misaligned pointer when ")) return "scudo_misaligned_pointer";
+            if (matches(prefix, start, end, "allocation type mismatch when ")) return "scudo_allocation_type_mismatch";
+            if (matches(prefix, start, end, "invalid sized delete when ")) return "scudo_delete_size_mismatch";
+            if (matches(prefix, start, end, "out of memory trying to allocate ")) return "scudo_out_of_memory";
+            return "scudo";
+        }
         if (matches(prefix, start, end, "FORTIFY: ")) return "fortify";
         String libcxx = "libc++abi: ";
         if (matches(prefix, start, end, libcxx)) start += libcxx.length();

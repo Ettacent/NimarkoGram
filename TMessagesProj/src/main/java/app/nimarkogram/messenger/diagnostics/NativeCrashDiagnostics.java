@@ -87,7 +87,7 @@ public final class NativeCrashDiagnostics {
                             Process.myPid(), wall, SystemClock.elapsedRealtimeNanos(), order);
                     Os.chmod(file.getPath(), 0600);
                     NativeExitInfoReader.markSession(app, session);
-                    setKey(reporter, "ng_diag_schema", "4");
+                    setKey(reporter, "ng_diag_schema", "5");
                     setKey(reporter, "ng_diag_session", session);
                     setKey(reporter, "ng_diag_mapping_id", mapping);
                     setKey(reporter, "ng_diag_journal_evicted", String.valueOf(evicted));
@@ -228,7 +228,7 @@ public final class NativeCrashDiagnostics {
     private static LinkedHashMap<String, String> evidence(NativeInvocationJournal.Snapshot journal,
                                                           NativeExitInfoReader.Result exit, boolean unverified, int attempt) {
         LinkedHashMap<String, String> keys = new LinkedHashMap<>();
-        keys.put("ng_previous_schema", "4");
+        keys.put("ng_previous_schema", String.valueOf(journal.diagnosticRevision));
         keys.put("ng_previous_kind", unverified ? "unverified_previous_journal_not_native_attribution" : "system_native_exit");
         keys.put("ng_previous_session", journal.session);
         keys.put("ng_previous_mapping", journal.mapping);
@@ -239,9 +239,9 @@ public final class NativeCrashDiagnostics {
                 + " timestamp_outside_window=" + exit.timestampOutsideWindow);
         keys.put("ng_previous_coverage", "managed_boundaries_only threads=" + journal.threads + " invalid=" + journal.invalid
                 + " truncated=" + journal.truncated + " stale_generation=" + journal.stale + " flags=" + journal.flags
-                + " flag_bits=1:no_slot,2:depth,4:metadata,8:end_mismatch,16:disabled,32:metadata_pending"
+                + " flag_bits=1:no_slot,2:depth,4:metadata,8:end_mismatch,16:disabled,32:metadata_pending,64:metadata_length,128:metadata_full"
                 + " active_total=" + journal.active.size() + " recent_total=" + journal.recent.size()
-                + " export_limit=4active/5recent");
+                + " export_limit=4active/8recent");
         NativeTombstone.Summary trace = exit.tombstone;
         if (trace != null) {
             keys.put("ng_previous_native", "tid=" + trace.tid + " arch=" + trace.arch + " signal=" + trace.signal
@@ -272,9 +272,26 @@ public final class NativeCrashDiagnostics {
         } else {
             keys.put("ng_previous_native", "crashing_tid_unavailable; journal includes multiple threads, not crash attribution");
         }
-        for (int i = 0; i < Math.min(4, journal.active.size()); i++) keys.put("ng_previous_active_" + i, entryText(journal.active.get(i)));
-        for (int i = 0; i < Math.min(5, journal.recent.size()); i++) keys.put("ng_previous_recent_" + i, entryText(journal.recent.get(i)));
+        appendJournalEvidence(keys, journal);
         return keys;
+    }
+
+    private static void appendJournalEvidence(LinkedHashMap<String, String> keys, NativeInvocationJournal.Snapshot journal) {
+        int active = 0, recent = 0;
+        while (active < Math.min(4, journal.active.size()) && keys.size() < MAX_EVENT_KEYS) {
+            keys.put("ng_previous_active_" + active, entryText(journal.active.get(active)));
+            active++;
+        }
+        while (recent < Math.min(8, journal.recent.size()) && keys.size() < MAX_EVENT_KEYS) {
+            keys.put("ng_previous_recent_" + recent, entryText(journal.recent.get(recent)));
+            recent++;
+        }
+        String coverage = keys.get("ng_previous_coverage");
+        if (coverage != null) {
+            keys.put("ng_previous_coverage", coverage + " exported_active=" + active
+                    + " exported_recent=" + recent + " omitted_active=" + (journal.active.size() - active)
+                    + " omitted_recent=" + (journal.recent.size() - recent));
+        }
     }
 
     private static String entryText(NativeInvocationJournal.Entry entry) {

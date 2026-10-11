@@ -689,7 +689,6 @@ JNIEXPORT jbyteArray Java_org_telegram_messenger_MediaController_getWaveform2(JN
     return result;
 }
 
-int16_t *sampleBuffer = NULL;
 
 JNIEXPORT jbyteArray Java_org_telegram_messenger_MediaController_getWaveform(JNIEnv *env, jclass class, jstring path) {
     const char *pathStr = (*env)->GetStringUTFChars(env, path, 0);
@@ -708,9 +707,7 @@ JNIEXPORT jbyteArray Java_org_telegram_messenger_MediaController_getWaveform(JNI
         uint16_t *samples = calloc(resultSamples, sizeof(uint16_t));
 
         size_t bufferSize = 1024 * 128;
-        if (sampleBuffer == NULL) {
-            sampleBuffer = malloc(bufferSize);
-        }
+        int16_t *sampleBuffer = malloc(bufferSize);
 
         if (samples != NULL && sampleBuffer != NULL) {
             uint64_t sampleIndex = 0;
@@ -779,6 +776,7 @@ JNIEXPORT jbyteArray Java_org_telegram_messenger_MediaController_getWaveform(JNI
             }
         }
 
+        free(sampleBuffer);
         free(samples);
         op_free(opusFile);
     }

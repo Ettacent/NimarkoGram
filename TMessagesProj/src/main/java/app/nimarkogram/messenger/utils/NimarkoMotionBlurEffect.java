@@ -19,6 +19,8 @@ public final class NimarkoMotionBlurEffect {
     public static final float MAX_SPAN_PX = 16f;
     private static final float MAX_SPAN_DP = 14f;
     public static final float MIN_SPAN_PX = 0.1f;
+    private static final double CORNER_REUSE_PX = 0.25d;
+    private static final double CORNER_REUSE_FRACTION = 0.0625d;
     private static final WeakHashMap<View, State> STATES = new WeakHashMap<>();
 
     private NimarkoMotionBlurEffect() {
@@ -67,7 +69,8 @@ public final class NimarkoMotionBlurEffect {
         }
         State state = stateFor(view);
         if (state.released) return;
-        double scale = Math.min(1d, getMaximumSpan(density) / maximum);
+        float maximumSpan = getMaximumSpan(density);
+        double scale = Math.min(1d, maximumSpan / maximum);
         if (maximum * scale < MIN_SPAN_PX) {
             clear(view);
             return;
@@ -85,7 +88,8 @@ public final class NimarkoMotionBlurEffect {
         boolean opaqueEdges = state.baseEffect == null && view.isOpaque()
                 && state.pendingBounds.left == 0 && state.pendingBounds.top == 0
                 && state.pendingBounds.right == width && state.pendingBounds.bottom == height;
-        if (state.effect == null || !Arrays.equals(state.corners, state.pendingCorners)
+        if (state.effect == null || state.renderedSpanLimit != maximumSpan
+                || !canReuseCorners(state, maximum * scale)
                 || state.width != width || state.height != height
                 || !state.bounds.equals(state.pendingBounds) || state.opaqueEdges != opaqueEdges) {
             RenderEffect effect = createKernelEffect(state, state.pendingCorners, width, height,
@@ -95,6 +99,8 @@ public final class NimarkoMotionBlurEffect {
                 return;
             }
             state.effect = effect;
+            state.renderedMaximum = maximum * scale;
+            state.renderedSpanLimit = maximumSpan;
             System.arraycopy(state.pendingCorners, 0, state.corners, 0, 8);
             state.bounds.set(state.pendingBounds);
             state.opaqueEdges = opaqueEdges;
@@ -108,6 +114,26 @@ public final class NimarkoMotionBlurEffect {
             view.setRenderEffect(state.composedEffect);
             state.owned = true;
         }
+    }
+
+    private static boolean canReuseCorners(State state, double maximum) {
+        if (Build.VERSION.SDK_INT < 33 || state.shaderFailed) {
+            return Arrays.equals(state.corners, state.pendingCorners);
+        }
+        if ((state.renderedMaximum > 8d) != (maximum > 8d)) return false;
+        for (int i = 0; i < 8; i += 2) {
+            double x = state.corners[i], y = state.corners[i + 1];
+            double nextX = state.pendingCorners[i], nextY = state.pendingCorners[i + 1];
+            if (x * nextX < 0d || y * nextY < 0d) return false;
+            double dx = nextX - x, dy = nextY - y;
+            double errorSquared = dx * dx + dy * dy;
+            double spanSquared = Math.min(x * x + y * y, nextX * nextX + nextY * nextY);
+            if (errorSquared > CORNER_REUSE_PX * CORNER_REUSE_PX
+                    || errorSquared > spanSquared * CORNER_REUSE_FRACTION * CORNER_REUSE_FRACTION) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private static RenderEffect createKernelEffect(State state, float[] corners, int width, int height,
@@ -170,10 +196,13 @@ public final class NimarkoMotionBlurEffect {
             for (int i = 0; i < 8; i++) cache.pendingCorners[i] = (float) (spanCorners[i] * scale);
             cache.pendingBounds.set(0, 0, width, height);
             if (cache.effect != null && cache.width == width && cache.height == height
-                    && Arrays.equals(cache.corners, cache.pendingCorners)) return cache.effect;
+                    && cache.renderedSpanLimit == maximumSpan
+                    && canReuseCorners(cache, maximum * scale)) return cache.effect;
             cache.effect = createKernelEffect(cache, cache.pendingCorners, width, height,
                     cache.pendingBounds, false, maximum * scale);
             if (cache.effect != null) {
+                cache.renderedMaximum = maximum * scale;
+                cache.renderedSpanLimit = maximumSpan;
                 cache.width = width;
                 cache.height = height;
                 System.arraycopy(cache.pendingCorners, 0, cache.corners, 0, 8);
@@ -276,6 +305,8 @@ public final class NimarkoMotionBlurEffect {
         boolean released;
         boolean baseRegistered;
         boolean opaqueEdges;
+        double renderedMaximum;
+        float renderedSpanLimit;
         final float[] corners = new float[8];
         final float[] pendingCorners = new float[8];
         final Rect bounds = new Rect();

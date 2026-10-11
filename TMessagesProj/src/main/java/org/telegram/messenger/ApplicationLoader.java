@@ -1015,7 +1015,7 @@ public class ApplicationLoader extends Application {
         super.onCreate();
 
         app.nimarkogram.messenger.utils.ui.SystemTextPaint.configure(
-                getResources().getConfiguration(), app.nimarkogram.messenger.NimarkoConfig.systemFonts);
+                nmRawResources().getConfiguration(), app.nimarkogram.messenger.NimarkoConfig.systemFonts);
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                 app.nimarkogram.messenger.plugins.utils.NativeCrashHandler

@@ -42,7 +42,9 @@ public final class NativeInvocationJournal {
             "after_bridge_return", "adapter_scope_closed", "after_bridge_return_skipped",
             "after_bridge_return_replacement", "runnable_enter", "runnable_exit",
             "interface_enter", "interface_exit", "engine_enter", "engine_exit", "request_enter",
-            "request_exit", "end", "abandoned", "unknown"
+            "request_exit", "end", "abandoned", "unknown",
+            "before_proxy_check", "before_result_check", "before_args_check", "before_receiver_check",
+            "after_receiver_check", "after_args_check", "after_result_check"
     };
     private final MappedByteBuffer storage;
     private final ThreadLocal<State> local = new ThreadLocal<>();
@@ -70,6 +72,7 @@ public final class NativeInvocationJournal {
             storage.putInt(8, VERSION);
             storage.putInt(12, FILE_SIZE);
             storage.putInt(16, pid);
+            storage.putInt(20, 5);
             storage.putLong(24, wallMillis);
             storage.putLong(32, elapsedNanos);
             storage.putLong(264, startupOrder);
@@ -204,6 +207,7 @@ public final class NativeInvocationJournal {
         if (domain != null && domain.length() > 16 || target != null && target.length() > 256
                 || plugin != null && plugin.length() > 64 || runtime != null && runtime.length() > 48) {
             storage.putInt(520, 1);
+            storage.putInt(536, 1);
             return 0;
         }
         state.lookup.set(domain, target, plugin, runtime);
@@ -211,6 +215,7 @@ public final class NativeInvocationJournal {
         if (found != null) return metadataId(found);
         if (nextMetadata.get() >= META_COUNT) {
             storage.putInt(520, 1);
+            storage.putInt(540, 1);
             return 0;
         }
         Key key = new Key(domain, target, plugin, runtime);
@@ -221,9 +226,9 @@ public final class NativeInvocationJournal {
         if (id > META_COUNT) {
             entry.id = -1;
             storage.putInt(520, 1);
+            storage.putInt(540, 1);
             return 0;
         }
-        entry.id = id;
         byte[] bytes = ("domain=" + utf8(key.domain, 24) + " target=" + utf8(key.target, 256)
                 + " plugin=" + utf8(key.plugin, 96) + " runtime=" + utf8(key.runtime, 64)).getBytes(StandardCharsets.UTF_8);
         int length = Math.min(480, bytes.length);
@@ -238,6 +243,7 @@ public final class NativeInvocationJournal {
         }
         buffer.putLong(offset + 8, checksum);
         buffer.putInt(offset, id);
+        entry.id = id;
         return id;
     }
 
@@ -260,8 +266,8 @@ public final class NativeInvocationJournal {
     }
 
     private static int phaseCode(String phase) {
-        for (int i = 0; i < PHASES.length - 1; i++) if (PHASES[i].equals(phase)) return i;
-        return PHASES.length - 1;
+        for (int i = 0; i < PHASES.length; i++) if (PHASES[i].equals(phase)) return i;
+        return 22;
     }
 
     private static void write(State state, int depth, int kind, long now) {
@@ -417,6 +423,7 @@ public final class NativeInvocationJournal {
         if (b.getLong(0) != MAGIC || b.getInt(8) != VERSION || b.getInt(12) != FILE_SIZE) throw new IOException("Invalid journal header");
         Snapshot result = new Snapshot();
         result.pid = b.getInt(16);
+        result.diagnosticRevision = b.getInt(20) == 0 ? 4 : b.getInt(20);
         result.wallMillis = b.getLong(24);
         result.elapsedNanos = b.getLong(32);
         result.startupOrder = b.getLong(264);
@@ -424,7 +431,7 @@ public final class NativeInvocationJournal {
         result.session = getText(b, 64, 64);
         result.mapping = getText(b, 132, 96);
         if (result.pid <= 0 || result.startupOrder < 0 || !result.session.matches("[a-f0-9]{32}")) throw new IOException("Invalid journal identity");
-        for (int i = 0; i < 6; i++) if (b.getInt(512 + 4 * i) != 0) result.flags |= 1 << i;
+        for (int i = 0; i < 8; i++) if (b.getInt(512 + 4 * i) != 0) result.flags |= 1 << i;
         return result;
     }
 
@@ -444,7 +451,7 @@ public final class NativeInvocationJournal {
 
     public static final class Snapshot {
         public String session, mapping;
-        public int pid, flags, threads, invalid, truncated, stale;
+        public int pid, flags, threads, invalid, truncated, stale, diagnosticRevision;
         public long wallMillis, elapsedNanos, startupOrder, reportedExitMillis;
         public final List<Entry> active = new ArrayList<>();
         public final List<Entry> recent = new ArrayList<>();

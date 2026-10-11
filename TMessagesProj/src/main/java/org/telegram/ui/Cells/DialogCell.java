@@ -802,6 +802,8 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
         botVerification = new AnimatedEmojiDrawable.SwapAnimatedEmojiDrawable(this, dp(17));
         botVerification.setCurrentAccount(account);
         avatarImage.setAllowLoadingOnAttachedOnly(true);
+        avatarImage.setCrossfadeOnReady(true);
+        avatarImage.setCrossfadeDuration(200);
     }
 
     @Override

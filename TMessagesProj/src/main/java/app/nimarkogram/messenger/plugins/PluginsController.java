@@ -1087,6 +1087,13 @@ public class PluginsController implements PluginsHooks {
         T run() throws Exception;
     }
 
+    private static volatile PluginsController diagnosticInstance;
+
+    public static PluginRuntimeToken captureInitializedPluginRuntime() {
+        PluginsController controller = diagnosticInstance;
+        return controller == null ? null : controller.captureCurrentPluginRuntime();
+    }
+
     public static PluginsController getInstance() {
         return SingletonHolder.INSTANCE;
     }
@@ -3380,6 +3387,9 @@ public class PluginsController implements PluginsHooks {
 
     private static class SingletonHolder {
         private static final PluginsController INSTANCE = new PluginsController();
+        static {
+            diagnosticInstance = INSTANCE;
+        }
     }
 
     public static class HookResult<T> {

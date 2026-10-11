@@ -2028,12 +2028,20 @@ public class RecyclerListView extends RecyclerView implements IBlur3Capture, Nim
         if (emptyView == view) {
             return;
         }
+        emptyViewAnimationGeneration++;
         if (emptyView != null) {
             emptyView.animate().setListener(null).cancel();
+            emptyView.setVisibility(GONE);
         }
         emptyView = view;
-        if (animateEmptyView && emptyView != null) {
-            emptyView.setVisibility(View.GONE);
+        if (emptyView != null) {
+            emptyView.animate().setListener(null).cancel();
+            emptyView.setAlpha(1f);
+            emptyView.setScaleX(1f);
+            emptyView.setScaleY(1f);
+            if (animateEmptyView) {
+                emptyView.setVisibility(View.GONE);
+            }
         }
         if (isHidden) {
             if (emptyView != null) {
@@ -2226,6 +2234,7 @@ public class RecyclerListView extends RecyclerView implements IBlur3Capture, Nim
 
     int emptyViewAnimateToVisibility;
 
+    private int emptyViewAnimationGeneration;
     public void checkIfEmpty() {
         checkIfEmpty(updateEmptyViewAnimated());
     }
@@ -2250,8 +2259,10 @@ public class RecyclerListView extends RecyclerView implements IBlur3Capture, Nim
         if (animated) {
             if (emptyViewAnimateToVisibility != newVisibility) {
                 emptyViewAnimateToVisibility = newVisibility;
+                final int generation = ++emptyViewAnimationGeneration;
+                final View target = emptyView;
+                target.animate().setListener(null).cancel();
                 if (newVisibility == VISIBLE) {
-                    emptyView.animate().setListener(null).cancel();
                     if (emptyView.getVisibility() == GONE) {
                         emptyView.setVisibility(VISIBLE);
                         emptyView.setAlpha(0);
@@ -2270,11 +2281,12 @@ public class RecyclerListView extends RecyclerView implements IBlur3Capture, Nim
                         animator.setDuration(150).setListener(new AnimatorListenerAdapter() {
                             @Override
                             public void onAnimationEnd(Animator animation) {
-                                if (emptyView != null) {
-                                    emptyView.setVisibility(GONE);
-                                }
-                                if (hasSections()) {
-                                    invalidate();
+                                if (emptyView == target && emptyViewAnimationGeneration == generation
+                                        && emptyViewAnimateToVisibility == GONE) {
+                                    target.setVisibility(GONE);
+                                    if (hasSections()) {
+                                        invalidate();
+                                    }
                                 }
                             }
                         }).start();
@@ -2282,9 +2294,13 @@ public class RecyclerListView extends RecyclerView implements IBlur3Capture, Nim
                 }
             }
         } else {
+            emptyViewAnimationGeneration++;
+            emptyView.animate().setListener(null).cancel();
             emptyViewAnimateToVisibility = newVisibility;
             emptyView.setVisibility(newVisibility);
             emptyView.setAlpha(1f);
+            emptyView.setScaleX(1f);
+            emptyView.setScaleY(1f);
         }
         if (hideIfEmpty) {
             newVisibility = emptyViewVisible ? INVISIBLE : VISIBLE;

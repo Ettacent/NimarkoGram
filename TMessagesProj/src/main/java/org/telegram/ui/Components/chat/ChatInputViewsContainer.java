@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components.chat;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -53,8 +55,8 @@ public class ChatInputViewsContainer extends FrameLayout {
 
         inAppKeyboardBubbleContainer = new FrameLayout(context) {
             @Override
-            public void addView(View child, int width, int height) {
-                super.addView(child, width, height);
+            public void onViewAdded(View child) {
+                super.onViewAdded(child);
                 checkViewsPositions();
             }
         };
@@ -169,7 +171,7 @@ public class ChatInputViewsContainer extends FrameLayout {
 
         if (oldHeight != newHeight) {
             lp.height = newHeight;
-            requestLayout();
+            inAppKeyboardBubbleContainer.setLayoutParams(lp);
         }
     }
 
@@ -434,6 +436,11 @@ public class ChatInputViewsContainer extends FrameLayout {
 
     @Override
     protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
+        if (windowInsetsProvider != null) {
+            final boolean visible = windowInsetsProvider.inAppViewIsVisible();
+            inAppKeyboardBubbleContainer.setVisibility(visible ? VISIBLE : GONE);
+            checkInAppKeyboardViewHeight();
+        }
         super.onMeasure(widthMeasureSpec, heightMeasureSpec);
         checkBlurredHeight(true);
         checkDrawableBounds();

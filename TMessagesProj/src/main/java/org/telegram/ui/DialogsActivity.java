@@ -2030,33 +2030,45 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             hasPausedResumeAnchor = false;
             pausedResumeAnchors = null;
             final DialogsAdapter adapter = parentPage.dialogsAdapter;
-            final int firstChat = parentPage.dialogsType == DIALOGS_TYPE_DEFAULT && hasHiddenArchive()
-                    && parentPage.archivePullViewState == ARCHIVE_ITEM_STATE_HIDDEN ? 1 : 0;
+            final int generation = dialogsResumeGeneration;
+            final int type = parentPage.dialogsType;
+            final View displayedAnchor = getChildCount() == 0 ? null : getChildAt(0);
+            final int displayedTop = displayedAnchor == null ? 0 : displayedAnchor.getTop();
+            adapter.refreshForResume(() -> {
+                if (isPaused || ApplicationLoader.mainInterfacePaused || generation != dialogsResumeGeneration
+                        || !isCurrentViewPage(parentPage) || parentPage.dialogsAdapter != adapter
+                        || parentPage.dialogsType != type || getAdapter() != adapter) return;
+                parentPage.lastItemsCount = adapter.getItemCount();
+                if (initialDialogsType == DIALOGS_TYPE_BOT_REQUEST_PEER) {
+                    searchItem.setVisibility(adapter.isEmpty ? View.GONE : View.VISIBLE);
+                }
+                invalidate();
+                if (getScrollState() != RecyclerView.SCROLL_STATE_IDLE
+                        || displayedAnchor != null && (getChildCount() == 0 || getChildAt(0) != displayedAnchor
+                        || displayedAnchor.getTop() != displayedTop)) return;
+                final int firstChat = parentPage.dialogsType == DIALOGS_TYPE_DEFAULT && hasHiddenArchive()
+                        && parentPage.archivePullViewState == ARCHIVE_ITEM_STATE_HIDDEN ? 1 : 0;
 
-            adapter.notifyDataSetChanged();
-            if (atStart) {
-                if (firstChat < adapter.getItemCount()) {
-                    restoreUpdateAnchor(firstChat, (int) scrollYOffset);
+                if (atStart) {
+                    if (firstChat < adapter.getItemCount()) restoreUpdateAnchor(firstChat, (int) scrollYOffset);
+                    return;
                 }
-                return;
-            }
-            ResumeAnchor best = null;
-            int bestPosition = RecyclerView.NO_POSITION;
-            int bestMovement = Integer.MAX_VALUE;
-            for (ResumeAnchor candidate : anchors) {
-                if (candidate == null) continue;
-                int position = adapter.findDialogPosition(candidate.dialogId);
-                if (position < firstChat) continue;
-                int movement = Math.abs(position - candidate.position);
-                if (movement < bestMovement) {
-                    best = candidate;
-                    bestPosition = position;
-                    bestMovement = movement;
+                ResumeAnchor best = null;
+                int bestPosition = RecyclerView.NO_POSITION;
+                int bestMovement = Integer.MAX_VALUE;
+                for (ResumeAnchor candidate : anchors) {
+                    if (candidate == null) continue;
+                    int position = adapter.findDialogPosition(candidate.dialogId);
+                    if (position < firstChat) continue;
+                    int movement = Math.abs(position - candidate.position);
+                    if (movement < bestMovement) {
+                        best = candidate;
+                        bestPosition = position;
+                        bestMovement = movement;
+                    }
                 }
-            }
-            if (best != null) {
-                restoreResumeAnchor(bestPosition, best.top);
-            }
+                if (best != null) restoreResumeAnchor(bestPosition, best.top);
+            });
         }
 
         private void restoreUpdateAnchor(int position, int offset) {
@@ -11849,6 +11861,29 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         }
     }
 
+    public boolean isReadyForResumeSnapshot() {
+        if (dialogsLifecycleDestroyed || fragmentView == null || fragmentView.isLayoutRequested()) return false;
+        if (searchIsShowed) {
+            return searchAnimationProgress == 1f && searchViewPager != null
+                    && searchViewPager.getVisibility() == View.VISIBLE && searchViewPager.getAlpha() == 1f
+                    && !searchViewPager.isLayoutRequested();
+        }
+        if (filterTabsBootstrapPending || viewPages == null || !getMessagesController().dialogsLoaded) return false;
+        boolean visiblePage = false;
+        for (ViewPage page : viewPages) {
+            if (page == null || page.getVisibility() != View.VISIBLE || page.getAlpha() <= 0f) continue;
+            visiblePage = true;
+            if (page.updating || page.dialogsAdapter == null || page.dialogsAdapter.hasPendingListUpdates()
+                    || page.listView == null) return false;
+            RecyclerListView list = page.listView;
+            if (list.getAdapter() != page.dialogsAdapter || list.getVisibility() != View.VISIBLE
+                    || list.isLayoutRequested() || list.hasPendingAdapterUpdates() || list.isComputingLayout()
+                    || page.dialogsAdapter.getItemCount() > 0 && list.getChildCount() == 0) return false;
+            View empty = list.getEmptyView();
+            if (empty != null && empty.getVisibility() == View.VISIBLE && empty.getAlpha() > 0f) return false;
+        }
+        return visiblePage;
+    }
     public boolean isReadyForAccountSwitch() {
         if (dialogsLifecycleDestroyed || filterTabsBootstrapPending || fragmentView == null || fragmentView.isLayoutRequested()
                 || viewPages == null || viewPages[0] == null || viewPages[0].listView == null
@@ -11885,6 +11920,17 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             if (page.listView.getChildAt(i) instanceof DialogCell) return true;
         }
         return false;
+    }
+
+    public void onInitialDialogsListApplied(DialogsAdapter adapter) {
+        if (viewPages == null || initialDialogsType == 11 || initialDialogsType == 12
+                || initialDialogsType == 13 || isAccountSwitchAnimating()) return;
+        for (ViewPage page : viewPages) {
+            if (page != null && page.dialogsAdapter == adapter && page.recyclerItemsEnterAnimator != null) {
+                page.recyclerItemsEnterAnimator.showItemsAnimated(0);
+                return;
+            }
+        }
     }
 
     private void reloadViewPageDialogs(ViewPage viewPage, boolean newMessage) {

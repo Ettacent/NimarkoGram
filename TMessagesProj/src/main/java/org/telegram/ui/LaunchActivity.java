@@ -7986,6 +7986,8 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
     private boolean isResumePaneFrameReady(ActionBarLayout pane) {
         if (pane == null || !pane.isShown()) return true;
         BaseFragment fragment = pane.getLastFragmentIncludeMainTabs();
+        if (fragment instanceof DialogsActivity
+                && !((DialogsActivity) fragment).isReadyForResumeSnapshot()) return false;
         if (fragment instanceof ChatActivity) {
             ChatActivity chat = (ChatActivity) fragment;
             ChatActivityEnterView input = chat.getChatActivityEnterView();

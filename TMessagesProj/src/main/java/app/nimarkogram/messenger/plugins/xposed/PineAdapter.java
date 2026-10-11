@@ -15,10 +15,12 @@ import java.lang.reflect.Modifier;
 import java.util.ArrayDeque;
 import java.util.Arrays;
 
-import org.telegram.messenger.FileLog;
 
 import app.nimarkogram.messenger.plugins.bridge.PythonBoundarySanitizer;
 
+import app.nimarkogram.messenger.plugins.bridge.PythonBoundarySanitizer.ScanResult;
+import app.nimarkogram.messenger.plugins.bridge.PythonInterfaceProxy;
+import app.nimarkogram.messenger.plugins.PluginsController;
 import app.nimarkogram.messenger.NimarkoCrashContext;
 public final class PineAdapter extends MethodHook {
 
@@ -36,7 +38,7 @@ public final class PineAdapter extends MethodHook {
                     "afterHookedMethod", XC_MethodHook.MethodHookParam.class);
             after.setAccessible(true);
         } catch (Throwable t) {
-            FileLog.e("nimarko: PineAdapter reflection init failed", t);
+            PluginHookGuard.error("nimarko: PineAdapter reflection init failed", t);
         }
         BEFORE_HOOKED_METHOD = before;
         AFTER_HOOKED_METHOD = after;
@@ -44,6 +46,7 @@ public final class PineAdapter extends MethodHook {
 
     private final XC_MethodHook xcHook;
     private final Member member;
+    private final boolean runtimeSupportMethod;
     private final String diagnosticTarget;
     private final String diagnosticPlugin;
     private final String diagnosticRuntime;
@@ -58,6 +61,7 @@ public final class PineAdapter extends MethodHook {
         int originalArgsCount;
         boolean skipAfterCallback;
 
+        boolean unverifiedBaseline;
         long diagnosticToken;
         long diagnosticStartedMs;
         void captureInvocation(Pine.CallFrame frame) {
@@ -101,6 +105,7 @@ public final class PineAdapter extends MethodHook {
             }
             originalArgsCount = 0;
             skipAfterCallback = false;
+            unverifiedBaseline = false;
             previousActive = null;
             diagnosticToken = 0;
             diagnosticStartedMs = 0;
@@ -111,17 +116,32 @@ public final class PineAdapter extends MethodHook {
     private final ThreadLocal<AdapterParam> activeParam = new ThreadLocal<>();
 
     public PineAdapter(Member member, XC_MethodHook xcHook) {
+        if (member != null) {
+            for (Class<?> owner = member.getDeclaringClass(); owner != null;
+                    owner = owner.getEnclosingClass()) {
+                if (owner == PluginHookGuard.class || owner == PineAdapter.class
+                        || owner == PythonBoundarySanitizer.class
+                        || owner == PythonInterfaceProxy.class) {
+                    throw new IllegalArgumentException("Plugin bridge implementation cannot be hooked");
+                }
+            }
+        }
         this.member = member;
+        this.runtimeSupportMethod = PluginHookGuard.isSupportMethod(member);
         this.xcHook = xcHook;
         this.diagnosticTarget = member == null ? "unknown" : member.toString();
+        PluginsController.PluginRuntimeToken installer = xcHook instanceof PyMethodHook
+                || xcHook instanceof PyMethodReplacement ? null : PluginHookGuard.captureRuntime();
         this.diagnosticPlugin = xcHook instanceof PyMethodHook
                 ? ((PyMethodHook) xcHook).diagnosticPluginId()
                 : xcHook instanceof PyMethodReplacement
-                ? ((PyMethodReplacement) xcHook).diagnosticPluginId() : "";
+                ? ((PyMethodReplacement) xcHook).diagnosticPluginId()
+                : installer == null ? "unattributed" : installer.getPluginId();
         this.diagnosticRuntime = xcHook instanceof PyMethodHook
                 ? ((PyMethodHook) xcHook).diagnosticRuntimeOwner()
                 : xcHook instanceof PyMethodReplacement
-                ? ((PyMethodReplacement) xcHook).diagnosticRuntimeOwner() : "";
+                ? ((PyMethodReplacement) xcHook).diagnosticRuntimeOwner()
+                : installer == null ? "" : "installer:" + installer.getGeneration() + ":" + installer.getInstanceId();
         this.paramTypes = parameterTypesOf(member);
     }
 
@@ -195,8 +215,7 @@ public final class PineAdapter extends MethodHook {
 
     private boolean receiverMismatched(Pine.CallFrame cf) {
         if (cf == null) return true;
-        if (PythonBoundarySanitizer.containsRawPythonProxy(
-                cf.thisObject)) {
+        if (PythonBoundarySanitizer.scan(cf.thisObject) == ScanResult.RAW_PROXY) {
             return true;
         }
         if (member instanceof Method
@@ -209,19 +228,33 @@ public final class PineAdapter extends MethodHook {
         return !decl.isInstance(cf.thisObject);
     }
 
-    private static String receiverName(Pine.CallFrame cf) {
-        if (cf == null) return "<null call frame>";
-        Object receiver = cf.thisObject;
-        return receiver == null ? "<null>" : receiver.getClass().getName();
+    private static boolean invocationUnverified(
+            Pine.CallFrame cf) {
+        return cf != null && scanInvocation(cf) != ScanResult.SAFE;
     }
 
-    private static boolean invocationContainsRawPythonProxy(
-            Pine.CallFrame cf) {
-        return cf != null
-                && (PythonBoundarySanitizer.containsRawPythonProxy(
-                cf.thisObject)
-                || PythonBoundarySanitizer.containsRawPythonProxy(
-                cf.args));
+    private static ScanResult scanInvocation(Pine.CallFrame cf) {
+        ScanResult receiver = PythonBoundarySanitizer.scan(cf.thisObject);
+        ScanResult args = PythonBoundarySanitizer.scan(cf.args);
+        if (receiver == ScanResult.RAW_PROXY || args == ScanResult.RAW_PROXY) {
+            return ScanResult.RAW_PROXY;
+        }
+        return receiver == ScanResult.SAFE && args == ScanResult.SAFE
+                ? ScanResult.SAFE : ScanResult.INDETERMINATE;
+    }
+
+    private void skipCallbacks(Pine.CallFrame cf, boolean reject) {
+        AdapterParam skipped = claim(cf);
+        boolean handedOff = false;
+        try {
+            skipped.skipAfterCallback = true;
+            skipped.unverifiedBaseline = !reject && !PythonBoundarySanitizer.isScanning();
+            pushActive(skipped);
+            if (reject) cf.setResult(defaultReturnFor(member));
+            handedOff = true;
+        } finally {
+            if (!handedOff) releaseFailedBefore(skipped);
+        }
     }
 
     private static Object defaultReturnFor(Member m) {
@@ -244,7 +277,7 @@ public final class PineAdapter extends MethodHook {
         if (pt == null || cf == null) return false;
         final Object[] args = cf.args;
         if (args == null || args.length != pt.length) return true;
-        if (PythonBoundarySanitizer.containsRawPythonProxy(args)) {
+        if (PythonBoundarySanitizer.scan(args) != ScanResult.SAFE) {
             return true;
         }
         for (int i = 0; i < pt.length; i++) {
@@ -278,7 +311,13 @@ public final class PineAdapter extends MethodHook {
     }
 
     private static Object normalizeResult(Member member, Object value) {
-        if (PythonBoundarySanitizer.containsRawPythonProxy(value)) {
+        return normalizeResult(member, value, false);
+    }
+
+    private static Object normalizeResult(Member member, Object value, boolean hostBaseline) {
+        ScanResult scan = PythonBoundarySanitizer.scan(value);
+        if (scan == ScanResult.RAW_PROXY
+                || (!hostBaseline && scan == ScanResult.INDETERMINATE)) {
             return INVALID_RESULT;
         }
         if (!(member instanceof Method)) return value;
@@ -312,8 +351,13 @@ public final class PineAdapter extends MethodHook {
 
     @Override
     public void beforeCall(Pine.CallFrame cf) throws Throwable {
+        if (runtimeSupportMethod && PluginHookGuard.isActive()) return;
         if (cf == null) {
-            FileLog.e("nimarko: Pine supplied a null CallFrame for " + member);
+            PluginHookGuard.error("nimarko: Pine supplied a null CallFrame for " + member);
+            return;
+        }
+        if (PythonBoundarySanitizer.isScanning()) {
+            skipCallbacks(cf, false);
             return;
         }
         if (cf.thisObject instanceof PluginHookBypassTarget
@@ -332,10 +376,6 @@ public final class PineAdapter extends MethodHook {
         if (receiverMismatched(cf)) {
             NimarkoCrashContext.anomaly("receiver_mismatch", diagnosticTarget,
                     diagnosticPlugin, diagnosticRuntime);
-            FileLog.w("nimarko: Pine type-mismatch on " + member
-                    + " — receiver " + receiverName(cf)
-                    + " is not a " + member.getDeclaringClass().getName()
-                    + "; skipping invocation to avoid Pine crash");
             AdapterParam skipped = claim(cf);
             boolean handedOff = false;
             try {
@@ -346,6 +386,11 @@ public final class PineAdapter extends MethodHook {
             } finally {
                 if (!handedOff) releaseFailedBefore(skipped);
             }
+            return;
+        }
+        ScanResult baseline = scanInvocation(cf);
+        if (baseline != ScanResult.SAFE) {
+            skipCallbacks(cf, baseline == ScanResult.RAW_PROXY);
             return;
         }
         AdapterParam param = claim(cf);
@@ -364,7 +409,7 @@ public final class PineAdapter extends MethodHook {
                 NimarkoCrashContext.failure("pine_before_callback", diagnosticPlugin, diagnosticTarget,
                         t instanceof InvocationTargetException && t.getCause() != null
                                 ? t.getCause() : t);
-                FileLog.e("nimarko: hook callback threw for " + member, t);
+                PluginHookGuard.error("nimarko: hook callback threw for " + member, t);
                 callbackFailed = true;
                 param.restoreInvocation(cf);
                 param.setResult(null);
@@ -373,9 +418,8 @@ public final class PineAdapter extends MethodHook {
             if (!callbackFailed) {
                 cf.thisObject = param.thisObject;
                 cf.args = param.args;
-                if (invocationContainsRawPythonProxy(cf)) {
-                    FileLog.w("nimarko: raw Python proxy in hook invocation state on "
-                            + member + " — restoring original receiver/arguments");
+                diagnosticPhase(param, "before_proxy_check");
+                if (invocationUnverified(cf)) {
                     param.restoreInvocation(cf);
                 }
             }
@@ -383,10 +427,9 @@ public final class PineAdapter extends MethodHook {
                 cf.setThrowable(param.getThrowable());
             } else if (param.returnEarly
                     || (!callbackFailed && xcHook instanceof XC_MethodReplacement)) {
+                diagnosticPhase(param, "before_result_check");
                 Object result = normalizeResult(member, param.getResult());
                 if (result == INVALID_RESULT) {
-                    FileLog.w("nimarko: incompatible hook result on " + member
-                            + " — running original method instead");
                     param.restoreInvocation(cf);
                     param.setResult(null);
                     param.returnEarly = false;
@@ -394,14 +437,14 @@ public final class PineAdapter extends MethodHook {
                     param.setResult(result);
                     cf.setResult(result);
                 }
-            } else if (argsTypeMismatched(cf)) {
-                FileLog.w("nimarko: Pine arg type-mismatch on " + member
-                        + " from a plugin hook — restoring original arguments");
-                param.restoreInvocation(cf);
-            } else if (receiverMismatched(cf)) {
-                FileLog.w("nimarko: Pine receiver type-mismatch on " + member
-                        + " after plugin hook — restoring original receiver");
-                param.restoreInvocation(cf);
+            } else {
+                diagnosticPhase(param, "before_args_check");
+                if (argsTypeMismatched(cf)) {
+                    param.restoreInvocation(cf);
+                } else {
+                    diagnosticPhase(param, "before_receiver_check");
+                    if (receiverMismatched(cf)) param.restoreInvocation(cf);
+                }
             }
             pushActive(param);
             diagnosticPhase(param, "before_bridge_return");
@@ -414,9 +457,14 @@ public final class PineAdapter extends MethodHook {
 
     @Override
     public void afterCall(Pine.CallFrame cf) throws Throwable {
+        if (runtimeSupportMethod && PluginHookGuard.isActive()) return;
         AdapterParam param = popActive();
         try {
             if (param != null && param.skipAfterCallback) {
+                if (param.unverifiedBaseline && !cf.hasThrowable()
+                        && PythonBoundarySanitizer.scan(cf.getResult()) == ScanResult.RAW_PROXY) {
+                    cf.setResult(defaultReturnFor(member));
+                }
                 diagnosticPhase(param, "after_bridge_return_skipped");
                 return;
             }
@@ -424,6 +472,7 @@ public final class PineAdapter extends MethodHook {
                 diagnosticPhase(param, "after_bridge_return_replacement");
                 return;
             }
+            diagnosticPhase(param, "after_receiver_check");
             if (receiverMismatched(cf)) {
                 NimarkoCrashContext.anomaly("after_receiver_mismatch", diagnosticTarget,
                         diagnosticPlugin, diagnosticRuntime);
@@ -432,7 +481,6 @@ public final class PineAdapter extends MethodHook {
             if (param == null) {
                 NimarkoCrashContext.anomaly("missing_before_state", diagnosticTarget,
                         diagnosticPlugin, diagnosticRuntime);
-                FileLog.w("nimarko: missing before-hook state for " + member);
                 param = claim(cf);
             }
             param.thisObject = cf.thisObject;
@@ -440,6 +488,14 @@ public final class PineAdapter extends MethodHook {
             param.captureInvocation(cf);
             Object originalResult = cf.hasThrowable() ? null : cf.getResult();
             Throwable originalThrowable = cf.getThrowable();
+            ScanResult resultBaseline = PythonBoundarySanitizer.scan(originalResult);
+            if (scanInvocation(cf) != ScanResult.SAFE
+                    || resultBaseline == ScanResult.INDETERMINATE) {
+                if (originalThrowable == null && resultBaseline == ScanResult.RAW_PROXY) {
+                    cf.setResult(defaultReturnFor(member));
+                }
+                return;
+            }
             if (cf.hasThrowable()) {
                 param.setThrowable(cf.getThrowable());
             } else {
@@ -460,7 +516,7 @@ public final class PineAdapter extends MethodHook {
                 NimarkoCrashContext.failure("pine_after_callback", diagnosticPlugin, diagnosticTarget,
                         t instanceof InvocationTargetException && t.getCause() != null
                                 ? t.getCause() : t);
-                FileLog.e("nimarko: afterHookedMethod threw", t);
+                PluginHookGuard.error("nimarko: afterHookedMethod threw", t);
                 callbackFailed = true;
                 param.restoreInvocation(cf);
                 if (originalThrowable != null) {
@@ -473,20 +529,24 @@ public final class PineAdapter extends MethodHook {
             if (!callbackFailed) {
                 cf.thisObject = param.thisObject;
                 cf.args = param.args;
-                if (receiverMismatched(cf) || argsTypeMismatched(cf)) {
-                    FileLog.w("nimarko: incompatible after-hook invocation state on "
-                            + member + " — restoring original receiver/arguments");
+                diagnosticPhase(param, "after_args_check");
+                if (invocationUnverified(cf)
+                        || receiverMismatched(cf) || argsTypeMismatched(cf)) {
                     param.restoreInvocation(cf);
                 }
             }
             if (param.hasThrowable()) {
                 cf.setThrowable(param.getThrowable());
             } else {
-                Object result = normalizeResult(member, param.getResult());
+                diagnosticPhase(param, "after_result_check");
+                Object result = normalizeResult(member, param.getResult(),
+                        originalThrowable == null && param.getResult() == originalResult);
                 if (result == INVALID_RESULT) {
-                    FileLog.w("nimarko: incompatible after-hook result on " + member
-                            + " — restoring original result");
-                    result = normalizeResult(member, originalResult);
+                    if (originalThrowable != null) {
+                        cf.setThrowable(originalThrowable);
+                        return;
+                    }
+                    result = normalizeResult(member, originalResult, true);
                     if (result == INVALID_RESULT) {
                         result = defaultReturnFor(member);
                     }

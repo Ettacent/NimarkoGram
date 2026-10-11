@@ -123,6 +123,12 @@ public final class NimarkoAppResumeFade extends Drawable implements ViewTreeObse
     }
 
     private void prepareReturn(BooleanSupplier valid) {
+        if (!ready.getAsBoolean()) {
+            cancel();
+            paused = true;
+            enterComplete = false;
+            return;
+        }
         if (animator == null && current != null && matches()
                 && !(activityPaused && lists.needsRecapture())) {
             clearPresentation();
@@ -167,7 +173,7 @@ public final class NimarkoAppResumeFade extends Drawable implements ViewTreeObse
     }
 
     private boolean captureGeometryCurrent() {
-        if (!matches() || !lists.isCaptureCurrent()) return false;
+        if (!ready.getAsBoolean() || !matches() || !lists.isCaptureCurrent()) return false;
         exclusions.collect(liveBanner, liveNotification);
         bounds(composer.get(), liveComposer);
         bounds(exclusions.header(), liveHeader);

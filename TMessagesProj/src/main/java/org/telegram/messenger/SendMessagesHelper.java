@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 5.x.x.
  * It is licensed under GNU GPL v. 2 or later.
@@ -4268,18 +4270,80 @@ public class SendMessagesHelper extends BaseController implements NotificationCe
         });
     }
 
+    public enum PreparedVoiceSendOutcome {
+        ACCEPTED, PLUGIN_CANCELLED, PLUGIN_OWNED, NEEDS_CONFIRMATION, REJECTED
+    }
+
+    private static final class PreparedVoiceSubmission {
+        PreparedVoiceSendOutcome outcome = PreparedVoiceSendOutcome.REJECTED;
+        boolean entered;
+        String ownedPath;
+        boolean pluginOwnsFile;
+    }
+
+    public PreparedVoiceSendOutcome sendPreparedVoiceMessage(SendMessageParams params) {
+        PreparedVoiceSubmission submission = new PreparedVoiceSubmission();
+        PreparedVoiceSubmission previous = params == null ? null : params.preparedVoiceSubmission;
+        PreparedVoiceSubmission previousOwnership = params == null ? null : params.preparedVoiceOwnership;
+        PreparedVoiceSubmission previousInFlight = params == null ? null : params.preparedVoiceInFlight;
+        boolean attempted = false;
+        try {
+            if (params != null && MessageObject.isVoiceDocument(params.document)
+                    && !TextUtils.isEmpty(params.path) && params.retryMessageObject == null) {
+                params.preparedVoiceSubmission = submission;
+                params.preparedVoiceOwnership = submission;
+                params.preparedVoiceInFlight = submission;
+                submission.ownedPath = params.path;
+                attempted = true;
+                sendMessage(params);
+            }
+        } catch (Exception error) {
+            FileLog.e(error);
+        } finally {
+            if (params != null) params.preparedVoiceSubmission = previous;
+            if (params != null) params.preparedVoiceOwnership = previousOwnership;
+            if (params != null) params.preparedVoiceInFlight = previousInFlight;
+        }
+        if (submission.outcome == PreparedVoiceSendOutcome.ACCEPTED) return submission.outcome;
+        if (submission.pluginOwnsFile) return PreparedVoiceSendOutcome.PLUGIN_OWNED;
+        return attempted && !submission.entered
+                ? PreparedVoiceSendOutcome.PLUGIN_CANCELLED : submission.outcome;
+    }
     public void sendMessage(SendMessageParams _smpInParam) {
         // NimarkoGram plugin engine — pre-send hook. May mutate or cancel the outgoing message.
+        PreparedVoiceSubmission submission = _smpInParam == null ? null : _smpInParam.preparedVoiceSubmission;
+        if (submission == null && _smpInParam != null && _smpInParam.preparedVoiceInFlight != null) return;
+        if (submission != null) {
+            _smpInParam.preparedVoiceSubmission = null;
+            submission.entered = true;
+        }
+        try {
+        sendMessageWithSubmission(_smpInParam, submission);
+        } finally {
+            if (submission != null) _smpInParam.preparedVoiceInFlight = null;
+        }
+    }
+
+    private void sendMessageWithSubmission(SendMessageParams _smpInParam, PreparedVoiceSubmission submission) {
+        if (_smpInParam != null && _smpInParam.preparedVoiceOwnership != null
+                && _smpInParam.preparedVoiceOwnership.pluginOwnsFile) return;
         try {
             _smpInParam = app.nimarkogram.messenger.plugins.PluginsController.getInstance()
                     .executeSendMessageHook(currentAccount, _smpInParam);
-            if (_smpInParam == null) return; // cancelled by a plugin
+            if (_smpInParam == null) {
+                if (submission != null) submission.outcome = PreparedVoiceSendOutcome.PLUGIN_CANCELLED;
+                return; // cancelled by a plugin
+            }
         } catch (Throwable t) {
             FileLog.e("plugin sendMessage hook failed", t);
         }
+        if (submission != null && submission.pluginOwnsFile) return;
         final SendMessageParams sendMessageParams = _smpInParam;
         // NimarkoGram: local premium emoji — rewrite custom-emoji entities into
         // tg://emoji?id= text-URLs so a non-premium account can still send them.
+        if (submission != null && (sendMessageParams.retryMessageObject != null
+                || sendMessageParams.params != null
+                && Utilities.parseLong(sendMessageParams.params.get("groupId")) != 0)) return;
         try {
             app.nimarkogram.messenger.utils.NimarkoLocalEmoji.replaceCustomEmojis(
                     currentAccount, sendMessageParams.peer, sendMessageParams.entities);
@@ -4417,6 +4481,10 @@ public class SendMessagesHelper extends BaseController implements NotificationCe
 
         final long payStars = ephemeralReceiverBotId != 0 ? 0 : _payStars;
         if (payStars != sendMessageParams.payStars && !isGroup && ephemeralReceiverBotId == 0) {
+            if (submission != null) {
+                submission.outcome = PreparedVoiceSendOutcome.NEEDS_CONFIRMATION;
+                return;
+            }
             AlertsCreator.ensurePaidMessageConfirmation(currentAccount, peer, 1, newPayStars -> {
                 sendMessageParams.payStars = newPayStars;
                 sendMessage(sendMessageParams);
@@ -5241,6 +5309,7 @@ public class SendMessagesHelper extends BaseController implements NotificationCe
                     mode = 0;
                 }
                 MessagesStorage.getInstance(currentAccount).putMessages(arr, false, true, false, 0, mode, threadMessageId);
+                if (submission != null) submission.outcome = PreparedVoiceSendOutcome.ACCEPTED;
                 MessagesController.getInstance(currentAccount).updateInterfaceWithMessages(peer, objArr, mode);
                 if (scheduleDate == 0) {
                     NotificationCenter.getInstance(currentAccount).postNotificationName(NotificationCenter.dialogsNeedReload);
@@ -12243,6 +12312,16 @@ public class SendMessagesHelper extends BaseController implements NotificationCe
     }
 
     public static class SendMessageParams {
+        private PreparedVoiceSubmission preparedVoiceSubmission;
+        private PreparedVoiceSubmission preparedVoiceOwnership;
+        private PreparedVoiceSubmission preparedVoiceInFlight;
+
+        public String takePreparedVoiceFileOwnership() {
+            PreparedVoiceSubmission ownership = preparedVoiceOwnership;
+            if (ownership == null || ownership.outcome == PreparedVoiceSendOutcome.ACCEPTED) return null;
+            ownership.pluginOwnsFile = true;
+            return ownership.ownedPath;
+        }
         public String message;
         public String caption;
         public TLRPC.MessageMedia location;

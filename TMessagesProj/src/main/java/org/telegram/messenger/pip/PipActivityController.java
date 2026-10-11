@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.messenger.pip;
 
 import android.app.Activity;
@@ -145,32 +147,13 @@ public class PipActivityController {
 
         PipUtils.applyPictureInPictureParams(activity, newSource);
 
-        final boolean oldMediaSession = oldSource != null && oldSource.needMediaSession;
-        final boolean newMediaSession = newSource != null && newSource.needMediaSession;
-        if (oldMediaSession != newMediaSession) {
-            if (mediaSession != null) {
-                mediaSession.release();
-                mediaSession = null;
-                // Log.i(PipSource.TAG, "[MEDIA] stop media session");
-            }
-
-            if (newSource != null) {
-                mediaSession = new MediaSession.Builder(activity, newSource.player)
-                        .setId("pip-media-session")
-                        .build();
-
-                // Log.i(PipSource.TAG, "[MEDIA] start media session");
-            }
-        }
+        reconcileMediaSession(newSource);
 
         if (oldSource != null) {
             oldSource.state2.onLoseMaxPriority();
         }
 
         if (newSource != null) {
-            if (mediaSession != null && mediaSession.getPlayer() != newSource.player) {
-                mediaSession.setPlayer(newSource.player);
-            }
             pipContentView.bringToFront();
             newSource.state2.onReceiveMaxPriority();
         } else if (oldSource != null) {
@@ -192,6 +175,20 @@ public class PipActivityController {
 
     /* Source Internal */
 
+    private void reconcileMediaSession(@Nullable PipSource source) {
+        if (source == null || !source.needMediaSession || source.player == null) {
+            if (mediaSession != null) {
+                mediaSession.release();
+                mediaSession = null;
+            }
+        } else if (mediaSession == null) {
+            mediaSession = new MediaSession.Builder(activity, source.player)
+                    .setId("pip-media-session")
+                    .build();
+        } else if (mediaSession.getPlayer() != source.player) {
+            mediaSession.setPlayer(source.player);
+        }
+    }
     void dispatchSourceRegister(PipSource source) {
         this.sources.put(source.tag, source);
         updateSources();
@@ -211,9 +208,7 @@ public class PipActivityController {
     void dispatchSourceParamsChanged(PipSource source) {
         if (maxPrioritySource == source) {
             PipUtils.applyPictureInPictureParams(activity, source);
-            if (mediaSession != null && mediaSession.getPlayer() != source.player) {
-                mediaSession.setPlayer(source.player);
-            }
+            reconcileMediaSession(source);
         }
         pipContentView.invalidate();
     }

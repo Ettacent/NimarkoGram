@@ -115,8 +115,8 @@ public class PipRoundVideoView implements NotificationCenter.NotificationCenterD
     }
 
     public void show(Activity activity, Runnable closeRunnable) {
-        if (activity == null) {
-            return;
+        if (activity == null || activity.isFinishing() || activity.isDestroyed()) {
+            throw new IllegalStateException("Round-video PiP requires a live activity");
         }
         closing = false;
         closed = false;
@@ -383,7 +383,7 @@ public class PipRoundVideoView implements NotificationCenter.NotificationCenterD
     public void retainPlaybackFrame() {
         playbackPlayerTag = -1;
         playbackTransitionGeneration++;
-        if (closing || closed || textureView == null) {
+        if (closing || closed || textureView == null || imageView == null) {
             return;
         }
         if (!playbackTransitionPending && textureView.isAvailable()) {
@@ -413,7 +413,7 @@ public class PipRoundVideoView implements NotificationCenter.NotificationCenterD
         playbackUpdatedSurface = null;
     }
     public void beginPlaybackTransition(int playerTag, boolean firstFrameRendered) {
-        if (closing || closed) return;
+        if (closing || closed || imageView == null || textureView == null) return;
         if (playbackPlayerTag == playerTag) {
             if (firstFrameRendered) onPlaybackFirstFrame(playerTag);
             return;
@@ -445,7 +445,8 @@ public class PipRoundVideoView implements NotificationCenter.NotificationCenterD
         }
     }
     private void finishPlaybackTransitionIfReady() {
-        if (closing || closed || !playbackTransitionPending || !playbackFrameRendered
+        if (closing || closed || imageView == null || textureView == null
+                || !playbackTransitionPending || !playbackFrameRendered
                 || playbackUpdatedSurface == null || playbackUpdatedSurface != textureView.getSurfaceTexture()) {
             return;
         }

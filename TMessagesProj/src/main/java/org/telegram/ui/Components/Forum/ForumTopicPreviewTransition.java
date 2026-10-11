@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components.Forum;
 
 
@@ -6,6 +8,7 @@ public final class ForumTopicPreviewTransition {
     private long dialog;
     private boolean bound;
     private boolean loading;
+    private boolean loadingDrawn;
     private boolean animating;
     private long startedAt = -1;
     private float alpha = 1f;
@@ -17,11 +20,13 @@ public final class ForumTopicPreviewTransition {
         final boolean sameOwner = bound && this.account == account && this.dialog == dialog;
         final boolean resolved = sameOwner && this.loading && !loading;
         if (!sameOwner || this.loading != loading) {
-            outgoingStartAlpha = resolved && animate ? alpha : 0f;
+            final boolean crossfade = resolved && animate && loadingDrawn && alpha > 0f;
+            outgoingStartAlpha = crossfade ? alpha : 0f;
             outgoingAlpha = outgoingStartAlpha;
-            animating = animate && (loading || resolved);
+            animating = animate && (loading || crossfade);
             alpha = animating ? 0f : 1f;
             startedAt = -1;
+            loadingDrawn = false;
         }
         this.account = account;
         this.dialog = dialog;
@@ -32,21 +37,24 @@ public final class ForumTopicPreviewTransition {
     }
 
     public void draw(long now) {
-        if (!animating) return;
-        if (startedAt < 0) startedAt = now;
-        final float t = Math.max(0f, Math.min(1f, (now - startedAt) / (loading ? 180f : 300f)));
+        if (animating) {
+            if (startedAt < 0) startedAt = now;
+            final float t = Math.max(0f, Math.min(1f, (now - startedAt) / (loading ? 180f : 300f)));
 
-        alpha = t * t * (3f - 2f * t);
-        outgoingAlpha = outgoingStartAlpha * (1f - alpha);
-        if (t >= 1f) finish();
+            alpha = t * t * (3f - 2f * t);
+            outgoingAlpha = outgoingStartAlpha * (1f - alpha);
+            if (t >= 1f) finish();
+        }
+
+        loadingDrawn = bound && loading && alpha > 0f;
     }
-
     public float alpha() { return alpha; }
     public float outgoingAlpha() { return outgoingAlpha; }
     public boolean isAnimating() { return animating; }
 
     public void finish() {
         animating = false;
+        loadingDrawn = false;
         alpha = 1f;
         outgoingAlpha = outgoingStartAlpha = 0f;
         startedAt = -1;
