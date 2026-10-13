@@ -2151,7 +2151,15 @@ public class StoryViewer implements NotificationCenter.NotificationCenterDelegat
                 transitionViewHolder.storyId = storyId;
                 if (transitionViewHolder.view != null) {
                     int[] loc = new int[2];
+                    int[] origin = new int[2];
+                    if (windowView != null && windowView.isAttachedToWindow()) {
+                        windowView.getLocationOnScreen(origin);
+                    } else if (ATTACH_TO_FRAGMENT && fragment != null && fragment.getLayoutContainer() != null) {
+                        fragment.getLayoutContainer().getLocationOnScreen(origin);
+                    }
                     transitionViewHolder.view.getLocationOnScreen(loc);
+                    loc[0] -= origin[0];
+                    loc[1] -= origin[1];
                     if (transitionViewHolder.view instanceof ChatMessageCell) {
                         loc[1] += transitionViewHolder.view.getPaddingTop();
                     }
@@ -2188,13 +2196,14 @@ public class StoryViewer implements NotificationCenter.NotificationCenterDelegat
                         fromRadius = transitionViewHolder.storyImage.getRoundRadius();
                     }
 
-                    transitionViewHolder.clipParent.getLocationOnScreen(loc);
-                    if (transitionViewHolder.clipTop == 0 && transitionViewHolder.clipBottom == 0) {
+                    if (transitionViewHolder.clipParent == null
+                            || transitionViewHolder.clipTop == 0 && transitionViewHolder.clipBottom == 0) {
                         clipBottom = clipTop = 0;
                     } else {
+                        transitionViewHolder.clipParent.getLocationOnScreen(loc);
                         hasTransitionClip = true;
-                        clipTop = loc[1] + transitionViewHolder.clipTop;
-                        clipBottom = loc[1] + transitionViewHolder.clipBottom;
+                        clipTop = loc[1] - origin[1] + transitionViewHolder.clipTop;
+                        clipBottom = loc[1] - origin[1] + transitionViewHolder.clipBottom;
                     }
                 } else {
                     animateAvatar = false;

@@ -69,7 +69,7 @@ public class InfoCardsPreferencesActivity extends BasePreferencesActivity implem
     }
 
     private static boolean hasOptions(int id) {
-        return id == InfoCardType.TON.id || id == InfoCardType.BTC.id || id == InfoCardType.USD.id;
+        return id == InfoCardType.TON.id || id == InfoCardType.USD.id;
     }
 
     @Override

@@ -3462,7 +3462,7 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
                     continue;
                 }
                 if (child == aspectRatioFrameLayout) {
-                    int heightSpec = MeasureSpec.makeMeasureSpec(AndroidUtilities.displaySize.y + (isStatusBarVisible() ? AndroidUtilities.statusBarHeight : 0), MeasureSpec.EXACTLY);
+                    int heightSpec = MeasureSpec.makeMeasureSpec(getMeasuredHeight(), MeasureSpec.EXACTLY);
                     child.measure(widthMeasureSpec, heightSpec);
                 } else if (child == paintingOverlay) {
                     int width;
@@ -18752,12 +18752,12 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
                         xPos = (windowView.getMeasuredWidth() - getLeftInset() - getRightInset() - layoutParams.width * scale) / 2.0f + getLeftInset();
                     } else {
                         scaleX = (float) (windowView.getMeasuredWidth()) / layoutParams.width;
-                        scaleY = (float) (AndroidUtilities.displaySize.y + (isStatusBarVisible() ? AndroidUtilities.statusBarHeight : 0)) / layoutParams.height;
+                        scaleY = (float) getContainerViewHeight(true, EDIT_MODE_NONE) / layoutParams.height;
                         scale = Math.min(scaleX, scaleY);
                         if (sendPhotoType == SELECT_TYPE_STICKER) {
                             scale *= scale1();
                         }
-                        yPos = ((AndroidUtilities.displaySize.y + (isStatusBarVisible() ? AndroidUtilities.statusBarHeight : 0)) - (layoutParams.height * scale)) / 2.0f;
+                        yPos = (getContainerViewHeight(true, EDIT_MODE_NONE) - (layoutParams.height * scale)) / 2.0f;
                         xPos = (windowView.getMeasuredWidth() - layoutParams.width * scale) / 2.0f;
                         rotate = 0;
                         animateToRotate = 0;
@@ -19441,7 +19441,7 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
                     scale2 = Math.max(scaleX, scaleY);
                 } else {
                     scaleX = (float) windowView.getMeasuredWidth() / layoutParams.width;
-                    scaleY = (float) (AndroidUtilities.displaySize.y + (isStatusBarVisible() ? AndroidUtilities.statusBarHeight : 0)) / layoutParams.height;
+                    scaleY = (float) getContainerViewHeight(true, EDIT_MODE_NONE) / layoutParams.height;
                     scale2 = Math.min(scaleX, scaleY);
                 }
                 float width = layoutParams.width * scale * scale2;
@@ -19453,7 +19453,7 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
                     float measuredHeight = (float) photoCropView.getMeasuredHeight() - statusBarHeight;
                     yPos = (measuredHeight - height) / 2.0f;
                 } else {
-                    yPos = ((AndroidUtilities.displaySize.y + (isStatusBarVisible() ? AndroidUtilities.statusBarHeight : 0)) - height) / 2.0f;
+                    yPos = (getContainerViewHeight(true, EDIT_MODE_NONE) - height) / 2.0f;
                 }
                 for (int i = 0; i < animatingImageViews.length; i++) {
                     animatingImageViews[i].setLayoutParams(layoutParams);
@@ -20177,7 +20177,8 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
 
     private int getContainerViewHeight(boolean trueHeight, int mode) {
         int height;
-        if (trueHeight || inBubbleMode) {
+        if (trueHeight || inBubbleMode || currentEditMode == EDIT_MODE_NONE
+                && mode == EDIT_MODE_NONE && sendPhotoType != SELECT_TYPE_AVATAR) {
             height = containerView.getMeasuredHeight();
         } else {
             height = AndroidUtilities.displaySize.y;

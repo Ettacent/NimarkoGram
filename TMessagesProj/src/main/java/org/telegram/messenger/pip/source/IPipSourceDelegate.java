@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.messenger.pip.source;
 
 import android.app.RemoteAction;
@@ -30,4 +32,9 @@ public interface IPipSourceDelegate {
     Bitmap pipCreatePictureInPictureViewBitmap();
 
     void pipShowPrimaryWindowView(Runnable firstFrameCallback);
+    default boolean pipTryShowPrimaryWindowView(Runnable firstFrameCallback) {
+        pipShowPrimaryWindowView(firstFrameCallback);
+        return true;
+    }
+    default void pipOnPrimaryWindowRestoreFailed() {}
 }

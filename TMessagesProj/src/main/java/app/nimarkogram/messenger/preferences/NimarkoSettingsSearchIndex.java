@@ -458,7 +458,6 @@ final class NimarkoSettingsSearchIndex {
                 R.string.NM_CARDS_Title, R.string.NM_SettingsSectionContent,
                 1001, R.string.NM_CARDS_NameWeather,
                 1002, R.string.NM_CARDS_NameGram,
-                1003, R.string.NM_CARDS_NameBitcoin,
                 1004, R.string.NM_CARDS_NameUsd,
                 1005, R.string.NM_CARDS_NameStorage,
                 1006, R.string.NM_CARDS_NameProxy);

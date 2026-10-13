@@ -557,6 +557,8 @@ public class DialogsAdapter extends RecyclerListView.SelectionAdapter implements
     boolean updateListPending;
     private volatile int listUpdateGeneration;
     private Runnable pendingDiffRunnable;
+    private Runnable pendingListApply;
+    private final ArrayList<RecyclerView> attachedLists = new ArrayList<>();
     private Runnable pendingSaveScrollPosition;
     private Runnable pendingAfterUpdate;
     private boolean pendingRefreshContents;
@@ -570,6 +572,25 @@ public class DialogsAdapter extends RecyclerListView.SelectionAdapter implements
     private final static boolean ALLOW_UPDATE_IN_BACKGROUND = true;
     public boolean hasPendingListUpdates() {
         return isCalculatingDiff || updateListPending;
+    }
+
+    @Override
+    public void onAttachedToRecyclerView(RecyclerView recyclerView) {
+        super.onAttachedToRecyclerView(recyclerView);
+        if (!attachedLists.contains(recyclerView)) attachedLists.add(recyclerView);
+    }
+
+    @Override
+    public void onDetachedFromRecyclerView(RecyclerView recyclerView) {
+        attachedLists.remove(recyclerView);
+        super.onDetachedFromRecyclerView(recyclerView);
+    }
+
+    private boolean isListComputingLayout() {
+        for (RecyclerView list : attachedLists) {
+            if (list.isComputingLayout()) return true;
+        }
+        return false;
     }
 
     public void updateList(Runnable saveScrollPosition) {
@@ -649,6 +670,15 @@ public class DialogsAdapter extends RecyclerListView.SelectionAdapter implements
         if (generation != listUpdateGeneration || !isCalculatingDiff) {
             return;
         }
+        if (isListComputingLayout()) {
+            if (pendingListApply != null) AndroidUtilities.cancelRunOnUIThread(pendingListApply);
+            pendingListApply = () -> {
+                pendingListApply = null;
+                applyListUpdate(generation, newItems, result, saveScrollPosition, afterUpdate);
+            };
+            AndroidUtilities.runOnUIThread(pendingListApply, 16);
+            return;
+        }
         pendingDiffRunnable = null;
         if (saveScrollPosition != null) {
             saveScrollPosition.run();
@@ -690,6 +720,10 @@ public class DialogsAdapter extends RecyclerListView.SelectionAdapter implements
 
     private void invalidatePendingListUpdate() {
         ++listUpdateGeneration;
+        if (pendingListApply != null) {
+            AndroidUtilities.cancelRunOnUIThread(pendingListApply);
+            pendingListApply = null;
+        }
         updateListPending = false;
         pendingSaveScrollPosition = null;
         pendingAfterUpdate = null;

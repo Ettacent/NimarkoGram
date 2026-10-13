@@ -55,6 +55,7 @@ public final class PineAdapter extends MethodHook {
 
     private static final class AdapterParam extends XC_MethodHook.MethodHookParam {
         AdapterParam previousActive;
+        Pine.CallFrame invocationFrame;
         Object originalThisObject;
         Object[] originalArgsReference;
         Object[] originalArgsSnapshot;
@@ -98,6 +99,7 @@ public final class PineAdapter extends MethodHook {
         }
 
         void clearInvocation() {
+            invocationFrame = null;
             originalThisObject = null;
             originalArgsReference = null;
             if (originalArgsSnapshot != null) {
@@ -121,7 +123,9 @@ public final class PineAdapter extends MethodHook {
                     owner = owner.getEnclosingClass()) {
                 if (owner == PluginHookGuard.class || owner == PineAdapter.class
                         || owner == PythonBoundarySanitizer.class
-                        || owner == PythonInterfaceProxy.class) {
+                        || owner == PythonInterfaceProxy.class
+                        || owner == NimarkoCrashContext.class
+                        || owner.getName().startsWith("app.nimarkogram.messenger.diagnostics.")) {
                     throw new IllegalArgumentException("Plugin bridge implementation cannot be hooked");
                 }
             }
@@ -146,23 +150,34 @@ public final class PineAdapter extends MethodHook {
     }
 
     private AdapterParam claim(Pine.CallFrame cf) {
-        AdapterParam p;
-        synchronized (params) {
-            p = params.pollFirst();
+        long token = NimarkoCrashContext.beginInvocation();
+        long startedMs = NimarkoCrashContext.invocationStartedMs(token);
+        boolean claimed = false;
+        try {
+            NimarkoCrashContext.phase(token, startedMs, "adapter_claim", diagnosticTarget,
+                    diagnosticPlugin, diagnosticRuntime);
+            AdapterParam p;
+            synchronized (params) {
+                p = params.pollFirst();
+            }
+            if (p == null) p = new AdapterParam();
+            p.invocationFrame = cf;
+            p.method = member;
+            p.thisObject = cf.thisObject;
+            p.args = cf.args;
+            p.captureInvocation(cf);
+            p.setUserData(null);
+            try { p.setResult(null); } catch (Throwable ignored) {}
+            try { p.setThrowable(null); } catch (Throwable ignored) {}
+            p.returnEarly = false;
+            p.diagnosticToken = token;
+            p.diagnosticStartedMs = startedMs;
+            diagnosticPhase(p, "adapter_before_enter");
+            claimed = true;
+            return p;
+        } finally {
+            if (!claimed) NimarkoCrashContext.endInvocation(token);
         }
-        if (p == null) p = new AdapterParam();
-        p.method = member;
-        p.thisObject = cf.thisObject;
-        p.args = cf.args;
-        p.captureInvocation(cf);
-        p.setUserData(null);
-        try { p.setResult(null); } catch (Throwable ignored) {}
-        try { p.setThrowable(null); } catch (Throwable ignored) {}
-        p.returnEarly = false;
-        p.diagnosticToken = NimarkoCrashContext.beginInvocation();
-        p.diagnosticStartedMs = NimarkoCrashContext.invocationStartedMs(p.diagnosticToken);
-        diagnosticPhase(p, "adapter_before_enter");
-        return p;
     }
 
     private void pushActive(AdapterParam p) {
@@ -170,9 +185,9 @@ public final class PineAdapter extends MethodHook {
         activeParam.set(p);
     }
 
-    private AdapterParam popActive() {
+    private AdapterParam popActive(Pine.CallFrame frame) {
         AdapterParam p = activeParam.get();
-        if (p == null) return null;
+        if (p == null || p.invocationFrame != frame) return null;
         AdapterParam previous = p.previousActive;
         p.previousActive = null;
         if (previous == null) {
@@ -207,7 +222,7 @@ public final class PineAdapter extends MethodHook {
         try {
 
 
-            if (activeParam.get() == p) popActive();
+            if (activeParam.get() == p) popActive(p.invocationFrame);
         } finally {
             release(p);
         }
@@ -243,18 +258,12 @@ public final class PineAdapter extends MethodHook {
                 ? ScanResult.SAFE : ScanResult.INDETERMINATE;
     }
 
-    private void skipCallbacks(Pine.CallFrame cf, boolean reject) {
-        AdapterParam skipped = claim(cf);
-        boolean handedOff = false;
-        try {
-            skipped.skipAfterCallback = true;
-            skipped.unverifiedBaseline = !reject && !PythonBoundarySanitizer.isScanning();
-            pushActive(skipped);
-            if (reject) cf.setResult(defaultReturnFor(member));
-            handedOff = true;
-        } finally {
-            if (!handedOff) releaseFailedBefore(skipped);
-        }
+    private void skipCallbacks(Pine.CallFrame cf, AdapterParam skipped, boolean reject) {
+        skipped.skipAfterCallback = true;
+        skipped.unverifiedBaseline = !reject && !PythonBoundarySanitizer.isScanning();
+        pushActive(skipped);
+        if (reject) cf.setResult(defaultReturnFor(member));
+        diagnosticPhase(skipped, "before_bridge_return_skipped");
     }
 
     private static Object defaultReturnFor(Member m) {
@@ -356,46 +365,39 @@ public final class PineAdapter extends MethodHook {
             PluginHookGuard.error("nimarko: Pine supplied a null CallFrame for " + member);
             return;
         }
-        if (PythonBoundarySanitizer.isScanning()) {
-            skipCallbacks(cf, false);
-            return;
-        }
-        if (cf.thisObject instanceof PluginHookBypassTarget
-                && ((PluginHookBypassTarget) cf.thisObject).shouldBypassPluginHooks()) {
-            AdapterParam skipped = claim(cf);
-            boolean handedOff = false;
-            try {
-                skipped.skipAfterCallback = true;
-                pushActive(skipped);
-                handedOff = true;
-            } finally {
-                if (!handedOff) releaseFailedBefore(skipped);
-            }
-            return;
-        }
-        if (receiverMismatched(cf)) {
-            NimarkoCrashContext.anomaly("receiver_mismatch", diagnosticTarget,
-                    diagnosticPlugin, diagnosticRuntime);
-            AdapterParam skipped = claim(cf);
-            boolean handedOff = false;
-            try {
-                skipped.skipAfterCallback = true;
-                pushActive(skipped);
-                cf.setResult(defaultReturnFor(member));
-                handedOff = true;
-            } finally {
-                if (!handedOff) releaseFailedBefore(skipped);
-            }
-            return;
-        }
-        ScanResult baseline = scanInvocation(cf);
-        if (baseline != ScanResult.SAFE) {
-            skipCallbacks(cf, baseline == ScanResult.RAW_PROXY);
-            return;
-        }
         AdapterParam param = claim(cf);
-        boolean callbackFailed = false;
         try {
+            diagnosticPhase(param, "before_scan_gate");
+            if (PythonBoundarySanitizer.isScanning()) {
+                skipCallbacks(cf, param, false);
+                return;
+            }
+            diagnosticPhase(param, "before_bypass_check");
+            if (cf.thisObject instanceof PluginHookBypassTarget
+                    && ((PluginHookBypassTarget) cf.thisObject).shouldBypassPluginHooks()) {
+                param.skipAfterCallback = true;
+                pushActive(param);
+                diagnosticPhase(param, "before_bridge_return_skipped");
+                return;
+            }
+            if (activeParam.get() != null) {
+                skipCallbacks(cf, param, false);
+                return;
+            }
+            diagnosticPhase(param, "before_baseline_receiver_scan");
+            if (receiverMismatched(cf)) {
+                NimarkoCrashContext.anomaly("receiver_mismatch", diagnosticTarget,
+                        diagnosticPlugin, diagnosticRuntime);
+                skipCallbacks(cf, param, true);
+                return;
+            }
+            diagnosticPhase(param, "before_baseline_scan");
+            ScanResult baseline = scanInvocation(cf);
+            if (baseline != ScanResult.SAFE) {
+                skipCallbacks(cf, param, baseline == ScanResult.RAW_PROXY);
+                return;
+            }
+            boolean callbackFailed = false;
             try {
                 if (BEFORE_HOOKED_METHOD != null) {
                     diagnosticPhase(param, "callback_before_enter");
@@ -458,9 +460,21 @@ public final class PineAdapter extends MethodHook {
     @Override
     public void afterCall(Pine.CallFrame cf) throws Throwable {
         if (runtimeSupportMethod && PluginHookGuard.isActive()) return;
-        AdapterParam param = popActive();
+        AdapterParam param = popActive(cf);
+        if (param == null && activeParam.get() != null) {
+            NimarkoCrashContext.anomaly("unmatched_after_state", diagnosticTarget,
+                    diagnosticPlugin, diagnosticRuntime);
+            return;
+        }
         try {
+            if (param == null && cf != null) {
+                NimarkoCrashContext.anomaly("missing_before_state", diagnosticTarget,
+                        diagnosticPlugin, diagnosticRuntime);
+                param = claim(cf);
+            }
+            diagnosticPhase(param, "after_enter");
             if (param != null && param.skipAfterCallback) {
+                diagnosticPhase(param, "after_skipped_result_scan");
                 if (param.unverifiedBaseline && !cf.hasThrowable()
                         && PythonBoundarySanitizer.scan(cf.getResult()) == ScanResult.RAW_PROXY) {
                     cf.setResult(defaultReturnFor(member));
@@ -478,17 +492,15 @@ public final class PineAdapter extends MethodHook {
                         diagnosticPlugin, diagnosticRuntime);
                 return;
             }
-            if (param == null) {
-                NimarkoCrashContext.anomaly("missing_before_state", diagnosticTarget,
-                        diagnosticPlugin, diagnosticRuntime);
-                param = claim(cf);
-            }
+            diagnosticPhase(param, "after_capture");
             param.thisObject = cf.thisObject;
             param.args = cf.args;
             param.captureInvocation(cf);
             Object originalResult = cf.hasThrowable() ? null : cf.getResult();
             Throwable originalThrowable = cf.getThrowable();
+            diagnosticPhase(param, "after_baseline_result_scan");
             ScanResult resultBaseline = PythonBoundarySanitizer.scan(originalResult);
+            diagnosticPhase(param, "after_baseline_scan");
             if (scanInvocation(cf) != ScanResult.SAFE
                     || resultBaseline == ScanResult.INDETERMINATE) {
                 if (originalThrowable == null && resultBaseline == ScanResult.RAW_PROXY) {

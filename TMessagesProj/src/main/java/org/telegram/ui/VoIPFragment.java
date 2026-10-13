@@ -544,7 +544,12 @@ public class VoIPFragment implements
         NotificationCenter.getGlobalInstance().addObserver(this, NotificationCenter.nearEarEvent);
     }
 
+    private boolean uiDestroyed;
     private void destroy() {
+        if (uiDestroyed) return;
+        uiDestroyed = true;
+        firstFrameCallback = null;
+        releasePipRenderer();
         if (VoIPService.getSharedInstance() != null) {
             VoIPService.getSharedInstance().unregisterStateListener(this);
         }
@@ -554,8 +559,9 @@ public class VoIPFragment implements
         NotificationCenter.getGlobalInstance().removeObserver(this, NotificationCenter.closeInCallActivity);
         NotificationCenter.getGlobalInstance().removeObserver(this, NotificationCenter.nearEarEvent);
         if (pipSource != null) {
-            pipSource.destroy();
+            PipSource previousSource = pipSource;
             pipSource = null;
+            previousSource.destroy();
         }
         if (addPeopleSheet != null) {
             addPeopleSheet.dismiss();
@@ -1785,7 +1791,7 @@ public class VoIPFragment implements
     }
 
     private void updateViewState() {
-        if (isFinished || switchingToPip) {
+        if (isFinished || uiDestroyed || switchingToPip) {
             return;
         }
         lockOnScreen = false;
@@ -3129,6 +3135,7 @@ public class VoIPFragment implements
 
     @Override
     public View pipCreatePictureInPictureView() {
+        releasePipRenderer();
         pipTextureView = new VoIPTextureView(activity, false, true, false, false);
         pipTextureView.renderer.setScalingType(RendererCommon.ScalingType.SCALE_ASPECT_FIT);
         pipTextureView.renderer.setEnableHardwareScaler(true);
@@ -3181,18 +3188,64 @@ public class VoIPFragment implements
 
     @Override
     public void pipShowPrimaryWindowView(Runnable firstFrameCallback) {
-        this.firstFrameCallback = firstFrameCallback;
+        if (!pipTryShowPrimaryWindowView(firstFrameCallback)) pipOnPrimaryWindowRestoreFailed();
+    }
+
+    @Override
+    public boolean pipTryShowPrimaryWindowView(Runnable firstFrameCallback) {
+        this.firstFrameCallback = null;
+        if (isFinished || uiDestroyed || instance != this || activity == null || activity.isFinishing() || activity.isDestroyed()
+                || windowView == null) {
+            return false;
+        }
         WindowManager wm = (WindowManager) activity.getSystemService(Context.WINDOW_SERVICE);
-        wm.addView(windowView, windowView.createWindowLayoutParams());
+        if (wm == null) return false;
+        if (windowView.getParent() == null) {
+            try {
+                wm.addView(windowView, windowView.createWindowLayoutParams());
+            } catch (WindowManager.BadTokenException | WindowManager.InvalidDisplayException error) {
+                FileLog.e(error);
+                return false;
+            }
+        }
+        if (isFinished || uiDestroyed || instance != this) return false;
+        this.firstFrameCallback = firstFrameCallback;
 
         NimarkoAppMotionBlur.attachRoot(windowView);
         windowViewSkipRender = false;
         updateViewState();
         windowView.invalidate();
 
-        if (pipTextureView != null) {
-            pipTextureView.renderer.release();
-            pipTextureView = null;
+        releasePipRenderer();
+        return true;
+    }
+
+    private void releasePipRenderer() {
+        VoIPTextureView previous = pipTextureView;
+        pipTextureView = null;
+        if (previous != null) previous.renderer.release();
+    }
+
+    @Override
+    public void pipOnPrimaryWindowRestoreFailed() {
+        if (uiDestroyed) return;
+        isFinished = true;
+        firstFrameCallback = null;
+        if (instance == this) {
+            instance = null;
+            VoIPService service = VoIPService.getSharedInstance();
+            if (service != null && service.getAccount() == currentAccount) service.setSinks(null, null);
+        }
+        destroy();
+        if (callingUserTextureView != null) callingUserTextureView.renderer.release();
+        if (currentUserTextureView != null) currentUserTextureView.renderer.release();
+        if (callingUserMiniTextureRenderer != null) callingUserMiniTextureRenderer.release();
+        if (windowView != null && windowView.getParent() != null) {
+            try {
+                windowView.finishImmediate();
+            } catch (RuntimeException error) {
+                FileLog.e(error);
+            }
         }
     }
 

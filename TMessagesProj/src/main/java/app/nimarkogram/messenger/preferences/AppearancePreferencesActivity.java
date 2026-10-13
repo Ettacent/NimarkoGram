@@ -392,6 +392,7 @@ public class AppearancePreferencesActivity extends NimarkoUniversalPreferencesAc
         } else if (item.id == forceBlurRow) {
             NimarkoConfig.toggleForceBlur();
             updateCheckState(view, NimarkoConfig.forceBlur);
+            showRestartBulletin();
         } else if (item.id == enhancedGlassBlurRow) {
             NimarkoConfig.toggleEnhancedGlassBlur();
             updateCheckState(view, NimarkoConfig.enhancedGlassBlur);

@@ -1961,7 +1961,13 @@ public class ViewPagerFixed extends FrameLayout {
             });
         }
 
+        private final Runnable finishAddingTabsRunnable = this::finishAddingTabs;
         public void finishAddingTabs() {
+            AndroidUtilities.cancelRunOnUIThread(finishAddingTabsRunnable);
+            if (listView.isComputingLayout()) {
+                AndroidUtilities.runOnUIThread(finishAddingTabsRunnable, 16);
+                return;
+            }
             adapter.notifyDataSetChanged();
         }
 

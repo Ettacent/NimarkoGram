@@ -44,7 +44,10 @@ public final class NativeInvocationJournal {
             "interface_enter", "interface_exit", "engine_enter", "engine_exit", "request_enter",
             "request_exit", "end", "abandoned", "unknown",
             "before_proxy_check", "before_result_check", "before_args_check", "before_receiver_check",
-            "after_receiver_check", "after_args_check", "after_result_check"
+            "after_receiver_check", "after_args_check", "after_result_check",
+            "adapter_claim", "before_scan_gate", "before_bypass_check", "before_baseline_receiver_scan",
+            "before_baseline_scan", "before_bridge_return_skipped", "after_enter",
+            "after_skipped_result_scan", "after_capture", "after_baseline_result_scan", "after_baseline_scan"
     };
     private final MappedByteBuffer storage;
     private final ThreadLocal<State> local = new ThreadLocal<>();
@@ -329,6 +332,7 @@ public final class NativeInvocationJournal {
             if (input.length() != FILE_SIZE) throw new IOException("Invalid journal size");
             ByteBuffer b = input.getChannel().map(FileChannel.MapMode.READ_ONLY, 0, FILE_SIZE).order(ByteOrder.LITTLE_ENDIAN);
             Snapshot result = header(b);
+            result.selectedTid = nativeTid;
             CRC32 crc = new CRC32();
             byte[] payload = new byte[72];
             Map<Integer, String> descriptions = new HashMap<>();
@@ -393,6 +397,11 @@ public final class NativeInvocationJournal {
                         descriptions.put(meta, description);
                     }
                     entry.description = description;
+                    if (i < DEPTH) result.activeObserved++;
+                    else result.recentObserved++;
+                    if ("metadata_unavailable".equals(description) || "metadata_invalid".equals(description)) {
+                        result.metadataMissing++;
+                    }
                     PriorityQueue<Entry> queue = i < DEPTH ? active : recent;
                     queue.add(entry);
                     if (queue.size() > 64) {
@@ -406,6 +415,7 @@ public final class NativeInvocationJournal {
             Comparator<Entry> order = Comparator.comparingLong((Entry entry) -> entry.timeNanos).reversed();
             result.active.sort(order);
             result.recent.sort(order);
+            result.recordsRead = true;
             return result;
         }
     }
@@ -452,6 +462,8 @@ public final class NativeInvocationJournal {
     public static final class Snapshot {
         public String session, mapping;
         public int pid, flags, threads, invalid, truncated, stale, diagnosticRevision;
+        public int selectedTid, activeObserved, recentObserved, metadataMissing;
+        public boolean recordsRead;
         public long wallMillis, elapsedNanos, startupOrder, reportedExitMillis;
         public final List<Entry> active = new ArrayList<>();
         public final List<Entry> recent = new ArrayList<>();

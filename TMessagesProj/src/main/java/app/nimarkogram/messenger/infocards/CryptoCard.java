@@ -290,7 +290,6 @@ public class CryptoCard extends BaseInfoCard {
         if (!InfoCardRates.hasCached()) return null;
         final String coin;
         if (cardId == InfoCardType.TON.id) coin = "ton";
-        else if (cardId == InfoCardType.BTC.id) coin = "btc";
         else coin = null; // USD pill = fiat forex rate (1 USD in ccy)
         String ccy = resolveCardCurrency(cardId, InfoCardsConfig.getTargetCurrency(cardId));
         double value = coin != null ? InfoCardRates.coinInFiat(coin, ccy) : InfoCardRates.fiatRate(ccy);

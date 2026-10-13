@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.messenger.pip.source;
 
 import android.graphics.Bitmap;
@@ -186,10 +188,19 @@ public class PipSourceHandlerState2 implements IPipActivityListener, IPipActivit
             return;
         }
 
-        source.delegate.pipShowPrimaryWindowView(Trigger.run(timeout -> {
+        Trigger firstFrame = Trigger.run(timeout -> {
             Log.i("PIP_DEBUG", "[HANDLER] on old source render first frame " + timeout);
             AndroidUtilities.runOnUIThread(pipSourcePlaceholder::stopPlaceholderForSource);
-        }, 400));
+        }, 400);
+        if (!source.delegate.pipTryShowPrimaryWindowView(firstFrame)) {
+            firstFrame.cancel();
+            shouldBeAttached = false;
+            state = STATE_PRE_DETACHED_2;
+            performDetach();
+            pipSourcePlaceholder.stopPlaceholderForSource();
+            source.delegate.pipOnPrimaryWindowRestoreFailed();
+            return;
+        }
         pictureInPictureWrapperView.invalidate();
         state = STATE_PRE_DETACHED_2;
 

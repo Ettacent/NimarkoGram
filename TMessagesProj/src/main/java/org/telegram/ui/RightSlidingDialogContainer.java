@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui;
 
 import static org.telegram.ui.ActionBar.ActionBarLayout.findScrollingChild;
@@ -230,7 +232,8 @@ public abstract class RightSlidingDialogContainer extends FrameLayout {
         invalidate();
     }
 
-    int lastSize;
+    private int lastMeasuredWidth;
+    private int lastMeasuredHeight;
 
     @Override
     protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
@@ -245,9 +248,11 @@ public abstract class RightSlidingDialogContainer extends FrameLayout {
             layoutParams.topMargin = stausBarHeight;
         }
         super.onMeasure(widthMeasureSpec, heightMeasureSpec);
-        int size = getMeasuredHeight() + getMeasuredWidth() << 16;
-        if (lastSize != size) {
-            lastSize = size;
+        int width = getMeasuredWidth();
+        int height = getMeasuredHeight();
+        if (lastMeasuredWidth != width || lastMeasuredHeight != height) {
+            lastMeasuredWidth = width;
+            lastMeasuredHeight = height;
             updateOpenAnimationProgress();
         }
     }

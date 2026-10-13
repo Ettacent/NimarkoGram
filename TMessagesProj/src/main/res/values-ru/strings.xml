@@ -876,7 +876,6 @@
     <string name="NM_CARDS_GrantLocation">Дать доступ</string>
     <string name="NM_CARDS_NameWeather">Погода</string>
     <string name="NM_CARDS_NameGram">Gram</string>
-    <string name="NM_CARDS_NameBitcoin">Биткоин</string>
     <string name="NM_CARDS_NameUsd">Доллар США</string>
     <string name="NM_CARDS_NameStorage">Хранилище</string>
     <string name="NM_CARDS_NameProxy">Прокси</string>

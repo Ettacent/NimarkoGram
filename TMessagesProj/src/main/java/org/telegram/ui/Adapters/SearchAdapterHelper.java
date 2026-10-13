@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 5.x.x.
  * It is licensed under GNU GPL v. 2 or later.
@@ -61,6 +63,9 @@ public class SearchAdapterHelper {
 
         default boolean canApplySearchResults(int searchId) {
             return true;
+        }
+
+        default void onBeforeMergeResults(int searchId) {
         }
     }
 
@@ -318,6 +323,9 @@ public class SearchAdapterHelper {
                 }
                 pendingRequestIds.remove(reqIdValue);
                 if (gotResponses.incrementAndGet() == requests.size()) {
+                    if (!delegate.canApplySearchResults(searchId)) {
+                        return;
+                    }
                     for (int j = 0; j < requests.size(); ++j) {
                         RequestDelegate callback = requests.get(j).second;
                         Pair<TLObject, TLRPC.TL_error> res = responses.get(j);
@@ -325,6 +333,7 @@ public class SearchAdapterHelper {
                             continue;
                         callback.run(res.first, res.second);
                     }
+                    delegate.onBeforeMergeResults(searchId);
                     removeGroupSearchFromGlobal();
                     if (localSearchResults != null) {
                         mergeResults(localSearchResults, localRecentResults);

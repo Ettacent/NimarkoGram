@@ -1147,12 +1147,15 @@ public class ApplicationLoader extends Application {
             Utilities.globalQueue.postRunnable(ApplicationLoader::startPushService);
             return;
         }
-        SharedPreferences preferences = MessagesController.getGlobalNotificationsSettings();
+        SharedPreferences preferences = applicationContext.getSharedPreferences("Notifications", Context.MODE_PRIVATE);
         boolean enabled;
         if (preferences.contains("pushService")) {
             enabled = preferences.getBoolean("pushService", false);
         } else {
-            enabled = MessagesController.getMainSettings(UserConfig.selectedAccount).getBoolean("keepAliveService", false);
+            int account = UserConfig.selectedAccount;
+            SharedPreferences mainSettings = applicationContext.getSharedPreferences(
+                    account == 0 ? "mainconfig" : "mainconfig" + account, Context.MODE_PRIVATE);
+            enabled = mainSettings.getBoolean("keepAliveService", false);
         }
 
         boolean residentEnabled = app.nimarkogram.messenger.NimarkoConfig.residentNotification

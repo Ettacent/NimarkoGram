@@ -57,6 +57,12 @@ public final class WlAccess {
     private static final String PREFIX = "/api/v1/banners/wl";
     private static final MediaType JSON = MediaType.parse("application/json; charset=utf-8");
     private static final byte[] EMPTY = new byte[0];
+    private static final ThreadPoolExecutor CALL_DNS = new ThreadPoolExecutor(1, 1, 0, TimeUnit.SECONDS,
+            new ArrayBlockingQueue<>(1), runnable -> {
+                Thread thread = new Thread(runnable, "wl-call-dns");
+                thread.setDaemon(true);
+                return thread;
+            }, new ThreadPoolExecutor.AbortPolicy());
     private static final Object LOCK = new Object();
     private static final Object AUTH_LOCK = new Object();
     private static final SecureRandom RANDOM = new SecureRandom();
@@ -64,8 +70,12 @@ public final class WlAccess {
     private static final ConcurrentHashMap<Long, Subscription> SUBSCRIPTIONS = new ConcurrentHashMap<>();
     private static final ConcurrentHashMap<Long, Long> EPOCHS = new ConcurrentHashMap<>();
     private static final AtomicBoolean WARMING = new AtomicBoolean();
+    private static final AtomicBoolean FOREGROUND_REQUESTED = new AtomicBoolean();
+    private static final ThreadLocal<Boolean> BACKGROUND_WARM = new ThreadLocal<>();
     private static final CopyOnWriteArraySet<Runnable> LISTENERS = new CopyOnWriteArraySet<>();
     private static final AtomicBoolean NOTIFY_PENDING = new AtomicBoolean();
+    private static final long REQUEST_TIMEOUT_MS = 30_000;
+    private static final ThreadLocal<DeadlineTask> REQUEST = new ThreadLocal<>();
     private static volatile long lastWarm;
     private static final ThreadPoolExecutor WORK = new ThreadPoolExecutor(1, 1, 0, TimeUnit.SECONDS,
             new ArrayBlockingQueue<>(12), task -> {
@@ -239,7 +249,11 @@ public final class WlAccess {
         });
     }
 
-    private static void requestOrder(int account, String orderId, CheckoutCallback callback) {
+    private static void requestOrder(int account, String orderId, CheckoutCallback resultCallback) {
+        AtomicBoolean delivered = new AtomicBoolean();
+        CheckoutCallback callback = (status, checkout) -> {
+            if (resultCallback != null && delivered.compareAndSet(false, true)) resultCallback.done(status, checkout);
+        };
         final long owner = uid(account), epoch = EPOCHS.getOrDefault(owner, 0L);
         Runnable job = () -> {
             String status = "error";
@@ -286,7 +300,7 @@ public final class WlAccess {
             } catch (Exception error) { status = accessErrorStatus(account, owner, epoch, error); }
             finishCheckout(account, owner, epoch, callback, status, checkout);
         };
-        try { WORK.execute(job); }
+        try { execute(job, () -> finishCheckout(account, owner, epoch, callback, "error", null)); }
         catch (RejectedExecutionException error) {
             finishCheckout(account, owner, epoch, callback, "busy", null);
         }
@@ -331,8 +345,62 @@ public final class WlAccess {
         });
     }
     private static void queue(Runnable job, Callback callback) {
-        try { WORK.execute(job); }
+        try { execute(job, () -> finish(callback, "error")); }
         catch (RejectedExecutionException e) { finish(callback, "busy"); }
+    }
+
+    private static final class DeadlineTask implements Runnable {
+        final long deadline = SystemClock.elapsedRealtime() + REQUEST_TIMEOUT_MS;
+        final Runnable job, expired;
+        final AtomicBoolean completed = new AtomicBoolean();
+        final Runnable timeout;
+
+        DeadlineTask(Runnable job, Runnable expired) {
+            this.job = job;
+            this.expired = expired;
+            this.timeout = () -> {
+                if (completed.compareAndSet(false, true)) {
+                    WORK.remove(this);
+                    this.expired.run();
+                }
+            };
+        }
+
+        boolean active() {
+            return !completed.get() && SystemClock.elapsedRealtime() < deadline;
+        }
+
+        @Override public void run() {
+            if (!active()) {
+                timeout.run();
+                return;
+            }
+            REQUEST.set(this);
+            try { job.run(); }
+            finally {
+                completed.set(true);
+                REQUEST.remove();
+                AndroidUtilities.cancelRunOnUIThread(timeout);
+            }
+        }
+    }
+
+    private static void execute(Runnable job, Runnable expired) {
+        DeadlineTask task = new DeadlineTask(job, expired);
+        AndroidUtilities.runOnUIThread(task.timeout, REQUEST_TIMEOUT_MS);
+        try { WORK.execute(task); }
+        catch (RejectedExecutionException error) {
+            task.completed.set(true);
+            AndroidUtilities.cancelRunOnUIThread(task.timeout);
+            throw error;
+        }
+    }
+
+    private static long remainingRequestMillis() throws IOException {
+        DeadlineTask task = REQUEST.get();
+        if (task == null) return REQUEST_TIMEOUT_MS;
+        if (!task.active()) throw new IOException("request_timeout");
+        return Math.max(1, task.deadline - SystemClock.elapsedRealtime());
     }
 
     private static void finish(Callback callback, String status) {
@@ -370,17 +438,22 @@ public final class WlAccess {
                 || !WARMING.compareAndSet(false, true)) return;
         lastWarm = SystemClock.elapsedRealtime();
         try {
-            WORK.execute(() -> {
+            execute(() -> {
+                BACKGROUND_WARM.set(true);
                 try {
                     restoreGrants();
                     for (int i = 0; i < UserConfig.MAX_ACCOUNT_COUNT; i++) {
+                        if (FOREGROUND_REQUESTED.get()) break;
                         long owner = uid(i);
                         if (owner <= 0 || !enabled()) continue;
                         try { refreshNow(i, owner, EPOCHS.getOrDefault(owner, 0L), null); }
                         catch (Exception ignored) { }
                     }
-                } finally { WARMING.set(false); }
-            });
+                } finally {
+                    BACKGROUND_WARM.remove();
+                    WARMING.set(false);
+                }
+            }, () -> WARMING.set(false));
         } catch (RejectedExecutionException e) { WARMING.set(false); }
     }
 
@@ -388,8 +461,15 @@ public final class WlAccess {
         refreshWithSubscription(account, null, callback);
     }
 
-    public static void refreshWithSubscription(int account, Callback subscriptionCallback, Callback callback) {
+    public static void refreshWithSubscription(int account, Callback subscriptionCallback, Callback resultCallback) {
         final long owner = uid(account), epoch = EPOCHS.getOrDefault(owner, 0L);
+        AtomicBoolean delivered = new AtomicBoolean();
+        Callback callback = status -> {
+            FOREGROUND_REQUESTED.set(false);
+            if (resultCallback != null && delivered.compareAndSet(false, true))
+                resultCallback.done(current(account, owner, epoch) ? status : "account_changed");
+        };
+        FOREGROUND_REQUESTED.set(true);
         queue(() -> {
             restoreGrants();
             String status = "error";
@@ -417,8 +497,13 @@ public final class WlAccess {
     }
 
     private static String bannerToken(int account, long owner, long epoch) throws Exception {
+        remainingRequestMillis();
+        DeadlineTask task = REQUEST.get();
         NimarkoInlineAuth.EnablePredicate permit = new NimarkoInlineAuth.EnablePredicate() {
-            @Override public boolean isEnabled() { return current(account, owner, epoch); }
+            @Override public boolean isEnabled() {
+                return (task == null || task.active()) && current(account, owner, epoch)
+                        && (!Boolean.TRUE.equals(BACKGROUND_WARM.get()) || !FOREGROUND_REQUESTED.get());
+            }
             @Override public boolean runIfEnabled(Runnable action) {
                 synchronized (LOCK) {
                     if (!isEnabled()) return false;
@@ -447,6 +532,7 @@ public final class WlAccess {
                 catch (Exception e) { return null; }
             }
         }, permit);
+        remainingRequestMillis();
         if (token == null || !current(account, owner, epoch)) throw new IOException("authentication_required");
         return token;
     }
@@ -460,6 +546,7 @@ public final class WlAccess {
     }
 
     private static String refreshAccount(int account, long owner, long epoch, Callback subscriptionCallback) throws Exception {
+        remainingRequestMillis();
         if (!current(account, owner, epoch)) throw new IOException("account_changed");
         String auth = bannerToken(account, owner, epoch);
         JSONObject state;
@@ -493,9 +580,11 @@ public final class WlAccess {
             else notifyChanged();
             return status;
         }
+        DeadlineTask task = REQUEST.get();
         if (subscriptionCallback != null) {
             AndroidUtilities.runOnUIThread(() -> {
-                if (current(account, owner, epoch)) subscriptionCallback.done(status);
+                if ((task == null || SystemClock.elapsedRealtime() < task.deadline)
+                        && current(account, owner, epoch)) subscriptionCallback.done(status);
             });
         }
         KeyStore keys = KeyStore.getInstance("AndroidKeyStore"); keys.load(null);
@@ -534,13 +623,13 @@ public final class WlAccess {
             JSONObject poll = new JSONObject().put("code", code).put("poll_secret", secret)
                     .put("signature", sign(key, ("nimarko-wl-enroll-v1\n" + code + "\n" + secret).getBytes(StandardCharsets.US_ASCII)));
             NimarkoInlineAuth.sendInlineVerification(account, "NimarkoBanner_Bot", code,
-                    () -> current(account, owner, epoch));
+                    () -> (task == null || task.active()) && current(account, owner, epoch));
             JSONObject issued = null;
             for (int attempt = 0; attempt < 15; attempt++) {
                 if (!current(account, owner, epoch)) throw new IOException("account_changed");
                 issued = call(PREFIX + "/poll", "POST", auth, bytes(poll));
                 if (!"verifying".equals(issued.optString("status"))) break;
-                Thread.sleep(2000);
+                Thread.sleep(Math.min(2000, remainingRequestMillis()));
             }
             if (issued == null || "verifying".equals(issued.optString("status"))) {
                 throw new IOException("authentication_required");
@@ -550,6 +639,7 @@ public final class WlAccess {
             issued.put("paid_expires_at", paidExpires);
             grant = new Grant(owner, issued.getLong("expires"), issued.getString("token"), key, paidExpires);
             synchronized (LOCK) {
+                remainingRequestMillis();
                 if (!current(account, owner, epoch)) throw new IOException("account_changed");
                 prefs().edit().putString("grant_" + owner, issued.toString()).apply();
             }
@@ -559,6 +649,7 @@ public final class WlAccess {
         }
         boolean changed;
         synchronized (LOCK) {
+            remainingRequestMillis();
             if (!current(account, owner, epoch)) throw new IOException("account_changed");
             prefs().edit().putString("grant_" + owner, new JSONObject()
                     .put("uid", owner).put("expires", grant.expires).put("token", grant.token)
@@ -685,6 +776,8 @@ public final class WlAccess {
 
     public static VoipBypassCore.RelayEndpoint allocateCall(
             String ip, int port, int budgetMs) throws Exception {
+        if (budgetMs <= 0 || android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) return null;
+        final long deadline = SystemClock.elapsedRealtime() + budgetMs;
         Grant grant = cached();
         if (grant == null || !enabled()) { warm(); return null; }
         byte[] body = bytes(new JSONObject().put("ip", ip).put("port", port));
@@ -693,23 +786,64 @@ public final class WlAccess {
         for (Map.Entry<String, String> header : headers(grant, "POST", "/calls/allocate", body).entrySet()) {
             request.header(header.getKey(), header.getValue());
         }
-        okhttp3.Call call = HTTP.newCall(request.build());
-        call.timeout().timeout(Math.max(1, budgetMs), TimeUnit.MILLISECONDS);
+        final java.util.concurrent.atomic.AtomicReference<java.net.InetAddress> peer =
+                new java.util.concurrent.atomic.AtomicReference<>();
+        OkHttpClient client = HTTP.newBuilder()
+                .proxy(java.net.Proxy.NO_PROXY)
+                .dns(hostname -> {
+                    if (!HOST.equalsIgnoreCase(hostname)) throw new java.net.UnknownHostException("untrusted_host");
+                    java.util.concurrent.Future<java.util.List<java.net.InetAddress>> lookup = null;
+                    try {
+                        long remaining = deadline - SystemClock.elapsedRealtime();
+                        if (remaining <= 0) throw new java.net.UnknownHostException("dns_timeout");
+                        lookup = CALL_DNS.submit(() -> okhttp3.Dns.SYSTEM.lookup(HOST));
+                        return lookup.get(remaining, TimeUnit.MILLISECONDS);
+                    } catch (InterruptedException error) {
+                        Thread.currentThread().interrupt();
+                        throw new java.net.UnknownHostException("dns_interrupted");
+                    } catch (Exception error) {
+                        throw new java.net.UnknownHostException("dns_unavailable");
+                    } finally {
+                        if (lookup != null) lookup.cancel(true);
+                        CALL_DNS.purge();
+                    }
+                })
+                .eventListener(new okhttp3.EventListener() {
+                    @Override
+                    public void connectionAcquired(okhttp3.Call call, okhttp3.Connection connection) {
+                        peer.set(connection.socket().getInetAddress());
+                    }
+                }).build();
+        okhttp3.Call call = client.newCall(request.build());
+        long remaining = deadline - SystemClock.elapsedRealtime();
+        if (remaining <= 0) return null;
+        call.timeout().timeout(remaining, TimeUnit.MILLISECONDS);
         try (Response response = call.execute()) {
             if (response.code() == 401 || response.code() == 403) { rejected(grant); return null; }
             JSONObject result = read(response);
             String host = result.getString("host"); int allocatedPort = result.getInt("port");
-            if (!"37.18.14.6".equals(host) || allocatedPort < 24000 || allocatedPort >= 25000
+            java.net.InetAddress connected = peer.get();
+            if (response.handshake() == null || connected == null
+                    || !(HOST.equalsIgnoreCase(host) || connected.getHostAddress().equalsIgnoreCase(host))
+                    || allocatedPort < 24000 || allocatedPort >= 25000
+                    || SystemClock.elapsedRealtime() >= deadline
                     || !isCurrent(grant) || !enabled()) return null;
-            return new VoipBypassCore.RelayEndpoint(host, allocatedPort);
+            return new VoipBypassCore.RelayEndpoint(connected.getHostAddress(), allocatedPort);
         }
     }
 
     private static JSONObject call(String path, String method, String auth, byte[] body) throws Exception {
+        long remaining = remainingRequestMillis();
         Request.Builder builder = new Request.Builder().url(ORIGIN + path);
         if (auth != null) builder.header("X-Auth-Token", auth);
         if (method.equals("POST")) builder.post(RequestBody.create(JSON, body == null ? EMPTY : body));
-        try (Response response = HTTP.newCall(builder.build()).execute()) { return read(response); }
+        okhttp3.Call call = HTTP.newCall(builder.build());
+        call.timeout().timeout(remaining, TimeUnit.MILLISECONDS);
+        try (Response response = call.execute()) {
+            JSONObject result = read(response);
+            remainingRequestMillis();
+            return result;
+        }
     }
 
     private static JSONObject read(Response response) throws Exception {

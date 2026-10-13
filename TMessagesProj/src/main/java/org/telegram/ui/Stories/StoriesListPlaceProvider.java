@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Stories;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -5,6 +7,7 @@ import static org.telegram.messenger.AndroidUtilities.dp;
 import android.graphics.Canvas;
 import android.graphics.Paint;
 import android.graphics.Path;
+import android.graphics.Rect;
 import android.graphics.Region;
 import android.view.View;
 import android.view.ViewGroup;
@@ -32,6 +35,7 @@ public class StoriesListPlaceProvider implements StoryViewer.PlaceProvider {
     private final RecyclerListView recyclerListView;
     private final ProfileChannelCell profileChannelCell;
     int[] clipPoint = new int[2];
+    private final Rect visibleListRect = new Rect();
     private boolean isHiddenArchive;
     LoadNextInterface loadNextInterface;
     public boolean hiddedStories;
@@ -223,6 +227,9 @@ public class StoriesListPlaceProvider implements StoryViewer.PlaceProvider {
                     holder.clipParent = (View) cell.getParent();
                     holder.alpha = 1;
                     updateClip(holder);
+                    if (!recyclerListView.getClipToPadding() && recyclerListView.getLocalVisibleRect(visibleListRect)) {
+                        holder.clipBottom = visibleListRect.bottom - addBottomClip;
+                    }
                     return true;
                 }
             } else if (child instanceof UserCell) {

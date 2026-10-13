@@ -3849,6 +3849,38 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
         closeLastFragment(animated, false);
     }
 
+    private boolean attachPreviousFragmentForClose(BaseFragment previous, BaseFragment current,
+                                                   View view, LayoutContainer target) {
+        final LayoutContainer foreground = containerView;
+        final long epoch = navigationEpoch;
+        if (!ownsCloseAttachment(previous, current, view, target, foreground, epoch)) return false;
+        ViewGroup parent = (ViewGroup) view.getParent();
+        if (parent == target) return true;
+        if (parent != null) {
+            previous.onRemoveFromParent();
+            if (!ownsCloseAttachment(previous, current, view, target, foreground, epoch)) return false;
+            if (view.getParent() != parent) return false;
+            try {
+                parent.removeView(view);
+            } catch (Exception e) {
+                FileLog.e(e);
+                return false;
+            }
+        }
+        if (!ownsCloseAttachment(previous, current, view, target, foreground, epoch)
+                || view.getParent() != null) return false;
+        target.addView(view);
+        return ownsCloseAttachment(previous, current, view, target, foreground, epoch)
+                && view.getParent() == target;
+    }
+
+    private boolean ownsCloseAttachment(BaseFragment previous, BaseFragment current, View view,
+                                        LayoutContainer target, LayoutContainer foreground, long epoch) {
+        return view != null && previous.fragmentView == view && navigationEpoch == epoch
+                && containerView == foreground && containerViewBack == target
+                && fragmentsStack.size() > 1 && getLastFragment() == current
+                && fragmentsStack.get(fragmentsStack.size() - 2) == previous;
+    }
     public void closeLastFragment(boolean animated, boolean forceNoAnimation) {
         // A preview may be dismissed while its opening spring is still running (fast release,
         // biometric/window transition, or an OEM-delivered CANCEL). Finish the opening lifecycle
@@ -3875,9 +3907,7 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
         }
         if (previousFragment != null) {
             AndroidUtilities.setLightStatusBar(parentActivity, Theme.getColor(Theme.key_actionBarDefault) == Color.WHITE || (previousFragment.hasForceLightStatusBar() && !Theme.getCurrentTheme().isDark()));
-            LayoutContainer temp = containerView;
-            containerView = containerViewBack;
-            containerViewBack = temp;
+            final LayoutContainer closeTarget = containerViewBack;
 
             previousFragment.setParentLayout(this);
             View fragmentView = previousFragment.fragmentView;
@@ -3889,22 +3919,17 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
                         app.nimarkogram.messenger.utils.VibrateUtils.disableHapticFeedback(fragmentView);
                     }
                     ViewCompat.setOnApplyWindowInsetsListener(fragmentView, previousFragment::onInsetsInternal);
-                    containerView.invalidate();
+                    closeTarget.invalidate();
                 }
             }
 
+            if (!inPreviewMode && !attachPreviousFragmentForClose(previousFragment, currentFragment,
+                    fragmentView, closeTarget)) return;
+            LayoutContainer temp = containerView;
+            containerView = containerViewBack;
+            containerViewBack = temp;
             if (!inPreviewMode) {
                 containerView.setVisibility(View.VISIBLE);
-                ViewGroup parent = (ViewGroup) fragmentView.getParent();
-                if (parent != null) {
-                    previousFragment.onRemoveFromParent();
-                    try {
-                        parent.removeView(fragmentView);
-                    } catch (Exception e) {
-                        FileLog.e(e);
-                    }
-                }
-                containerView.addView(fragmentView);
                 containerView.setShouldHandleBottomInsets(previousFragment.getEdgeToEdgeSupportMode());
                 containerView.setDrawNavigationBar(previousFragment.drawEdgeNavigationBar());
                 FrameLayout.LayoutParams layoutParams = (FrameLayout.LayoutParams) fragmentView.getLayoutParams();

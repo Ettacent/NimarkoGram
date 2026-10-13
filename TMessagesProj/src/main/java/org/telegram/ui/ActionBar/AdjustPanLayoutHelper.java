@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.ActionBar;
 
 import android.animation.Animator;
@@ -70,6 +72,10 @@ public class AdjustPanLayoutHelper {
     int previousContentHeight = -1;
     int previousStartOffset = -1;
 
+    private int previousParentWidth = -1;
+    private int previousContentWidth = -1;
+    private int previousOrientation = -1;
+    private boolean geometryBaselinePending;
     View parentForListener;
     ValueAnimator animator;
 
@@ -88,6 +94,7 @@ public class AdjustPanLayoutHelper {
     ViewTreeObserver.OnPreDrawListener onPreDrawListener = new ViewTreeObserver.OnPreDrawListener() {
         @Override
         public boolean onPreDraw() {
+            if (!updateGeometryBaseline()) return true;
             int contentHeight = parent.getHeight();
             if (contentHeight - startOffset() == previousHeight - previousStartOffset || contentHeight == previousHeight || animator != null) {
                 if (animator == null) {
@@ -123,6 +130,52 @@ public class AdjustPanLayoutHelper {
         }
     };
 
+    private boolean updateGeometryBaseline() {
+        if (contentView == null || resizableView == null) return false;
+        int parentWidth = parent.getWidth();
+        int contentWidth = contentView.getWidth();
+        int orientation = parent.getResources().getConfiguration().orientation;
+        boolean changed = previousParentWidth != parentWidth
+                || previousContentWidth != contentWidth || previousOrientation != orientation;
+        if (changed) {
+            previousParentWidth = parentWidth;
+            previousContentWidth = contentWidth;
+            previousOrientation = orientation;
+            geometryBaselinePending = true;
+            cancelPanForGeometryChange();
+        }
+        if (parentWidth <= 0 || contentWidth <= 0 || parent.getHeight() <= 0
+                || contentView.getHeight() <= 0 || !parent.isShown()) {
+            geometryBaselinePending = true;
+            return false;
+        }
+        if (parent.isLayoutRequested() || contentView.isLayoutRequested()
+                || resizableView.isLayoutRequested()) return false;
+        if (geometryBaselinePending) {
+            previousHeight = parent.getHeight();
+            previousContentHeight = contentView.getHeight();
+            previousStartOffset = startOffset();
+            geometryBaselinePending = false;
+            usingInsetAnimator = false;
+            return false;
+        }
+        return true;
+    }
+
+    private void cancelPanForGeometryChange() {
+        AndroidUtilities.cancelRunOnUIThread(delayedAnimationRunnable);
+        needDelay = false;
+        startAfter = -1;
+        if (animator == null && !animationInProgress) return;
+        ValueAnimator previousAnimator = animator;
+        animator = null;
+        if (previousAnimator != null) {
+            previousAnimator.removeAllUpdateListeners();
+            previousAnimator.removeAllListeners();
+            previousAnimator.cancel();
+        }
+        stopTransition();
+    }
     private void animateHeight(int previousHeight, int contentHeight, boolean isKeyboardVisible) {
         if (ignoreOnce) {
             ignoreOnce = false;
@@ -284,6 +337,9 @@ public class AdjustPanLayoutHelper {
 
     public void onAttach() {
         onDetach();
+        previousHeight = previousContentHeight = previousStartOffset = -1;
+        previousParentWidth = previousContentWidth = previousOrientation = -1;
+        geometryBaselinePending = true;
         Context context = parent.getContext();
         Activity activity = getActivity(context);
         if (activity != null) {
@@ -328,6 +384,7 @@ public class AdjustPanLayoutHelper {
     }
 
     public void onDetach() {
+        AndroidUtilities.cancelRunOnUIThread(delayedAnimationRunnable);
         if (animator != null) {
             animator.cancel();
         }

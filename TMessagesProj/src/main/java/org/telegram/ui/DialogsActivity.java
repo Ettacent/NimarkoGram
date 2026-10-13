@@ -6913,9 +6913,13 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         boolean dialogsHintCellVisible;
 
         if (dialogsHintCell != null) {
-            try {
-                ((RLottieDrawable) ((AvatarDrawable) dialogsHintCell.imageView.getImageReceiver().getStaticThumb()).getCustomIcon()).setMasterParent(null);
-            } catch (Exception e) {}
+            Drawable thumb = dialogsHintCell.imageView.getImageReceiver().getStaticThumb();
+            if (thumb instanceof AvatarDrawable) {
+                Drawable icon = ((AvatarDrawable) thumb).getCustomIcon();
+                if (icon instanceof RLottieDrawable) {
+                    ((RLottieDrawable) icon).setMasterParent(null);
+                }
+            }
             dialogsHintCell.clear();
         }
         if (isInPreviewMode()) {
@@ -8598,10 +8602,18 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         if (dialogsLifecycleDestroyed) {
             return;
         }
+        if (show && searchIsShowed && searchViewPager != null && !forceNotOnlyDialogs) {
+            if (startFromDownloads) {
+                searchViewPager.showDownloads();
+                updateSpeedItem(true);
+            }
+            return;
+        }
+        final boolean freshSearchOpen = show && searchAnimationProgress == 0f && searchAnimator == null;
         if (mainTabsActivityController != null && hasMainTabs) {
             mainTabsActivityController.setTabsHiddenByOverlay(show);
         }
-        animatorSearchVisible.setValue(show, animated);
+        animatorSearchVisible.forceValue(show, searchAnimationProgress);
 
         if (!show) {
             updateSpeedItem(false);
@@ -8612,8 +8624,9 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             animated = false;
         }
         if (searchAnimator != null) {
-            searchAnimator.cancel();
+            AnimatorSet previousSearchAnimator = searchAnimator;
             searchAnimator = null;
+            previousSearchAnimator.cancel();
         }
         final int searchGeneration = ++searchAnimatorGeneration;
         searchIsShowed = show;
@@ -8642,7 +8655,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             if (searchViewPager != null) {
                 checkUi_searchPagesPaddings(false);
                 searchViewPager.setKeyboardHeight(((ContentView) fragmentView).getKeyboardHeight());
-                searchViewPager.clear();
+                if (freshSearchOpen) searchViewPager.clear();
             }
             if (community != null) {
                 FiltersView.MediaFilterData filterData = new FiltersView.MediaFilterData(R.drawable.search_users_filled, DialogObject.getShortName(community), null, FiltersView.FILTER_TYPE_CHAT);
@@ -8664,19 +8677,18 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         }
         final boolean budget = SharedConfig.getDevicePerformanceClass() == SharedConfig.PERFORMANCE_CLASS_LOW || !LiteMode.isEnabled(LiteMode.FLAG_CHAT_SCALE);
         if (animated) {
+            viewPages[0].listView.show();
+            viewPages[0].setVisibility(View.VISIBLE);
             if (show) {
                 if (searchViewPager != null) {
                     searchViewPager.setVisibility(View.VISIBLE);
-                    searchViewPager.reset();
+                    if (freshSearchOpen) searchViewPager.reset();
                 }
 
                 updateFiltersView(true, null, null, false, false);
                 if (searchTabsView != null) {
                     searchTabsView.hide(false, false);
                 }
-            } else {
-                viewPages[0].listView.setVisibility(View.VISIBLE);
-                viewPages[0].setVisibility(View.VISIBLE);
             }
 
             setDialogsListFrozen(true);
@@ -8703,7 +8715,8 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                 animators.add(ObjectAnimator.ofFloat(searchViewPager, View.ALPHA, show ? 1.0f : 0.0f));
                 if (hasStories) {
                     float translationY = dp(DialogStoriesCell.HEIGHT_IN_DP) + scrollYOffset + getSearchFieldReservedHeight();
-                    animators.add(ObjectAnimator.ofFloat(searchViewPager, SEARCH_TRANSLATION_Y, show ? translationY : 0, show ? 0 : translationY));
+                    if (freshSearchOpen) SEARCH_TRANSLATION_Y.set(searchViewPager, translationY);
+                    animators.add(ObjectAnimator.ofFloat(searchViewPager, SEARCH_TRANSLATION_Y, show ? 0 : translationY));
                 }
                 if (!budget) {
                     animators.add(ObjectAnimator.ofFloat(searchViewPager, View.SCALE_X, show ? 1.0f : 1.05f));
@@ -8804,11 +8817,8 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                     if (!dialogsLifecycleDestroyed
                             && searchGeneration == searchAnimatorGeneration
                             && searchAnimator == animation) {
-                        if (show) {
-                            viewPages[0].listView.hide();
-                        } else {
-                            viewPages[0].listView.show();
-                        }
+                        setDialogsListFrozen(false);
+                        viewPages[0].listView.setVerticalScrollBarEnabled(true);
                         searchAnimator = null;
                     }
                 }
@@ -8898,6 +8908,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
     private void setSearchAnimationProgress(float progress, boolean full) {
         progress = Utilities.clamp01(progress);
         searchAnimationProgress = progress;
+        animatorSearchVisible.forceValue(searchIsShowed, progress);
         if (communityId != 0 && actionBar != null) {
             // Community search is a standalone FragmentSearchField with its
             // own liquid-glass drawable.  Expanding the ActionBar title island
@@ -8930,8 +8941,8 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                 }
                 viewPages[0].setAlpha(1f - progress);
                 if (!budget) {
-                    viewPages[0].setScaleX(.9f + .1f * progress);
-                    viewPages[0].setScaleY(.9f + .1f * progress);
+                    viewPages[0].setScaleX(1f - .05f * progress);
+                    viewPages[0].setScaleY(1f - .05f * progress);
                 }
             }
             if (rightSlidingDialogContainer != null) {

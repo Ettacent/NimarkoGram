@@ -1534,24 +1534,33 @@ public class NimarkoCameraXView extends BaseCameraView {
     @Nullable
     private String generateVideoThumb(File videoFile) {
         MediaMetadataRetriever retriever = null;
+        Bitmap frame = null;
+        File thumbFile = null;
+        boolean written = false;
         try {
             retriever = new MediaMetadataRetriever();
             retriever.setDataSource(videoFile.getAbsolutePath());
-            Bitmap frame = retriever.getFrameAtTime(0, MediaMetadataRetriever.OPTION_CLOSEST_SYNC);
+            frame = retriever.getFrameAtTime(0, MediaMetadataRetriever.OPTION_CLOSEST_SYNC);
             if (frame == null) return null;
-            File thumbFile = new File(videoFile.getParentFile(), videoFile.getName() + ".jpg");
+            thumbFile = new File(videoFile.getParentFile(), videoFile.getName() + ".jpg");
             FileOutputStream fos = new FileOutputStream(thumbFile);
             try {
-                frame.compress(Bitmap.CompressFormat.JPEG, 80, fos);
+                written = frame.compress(Bitmap.CompressFormat.JPEG, 80, fos);
             } finally {
                 try { fos.close(); } catch (Throwable ignored) {}
             }
-            frame.recycle();
-            return thumbFile.getAbsolutePath();
+            return written && thumbFile.isFile() && thumbFile.length() > 0
+                    ? thumbFile.getAbsolutePath() : null;
         } catch (Throwable t) {
             FileLog.e(t);
             return null;
         } finally {
+            if (frame != null) {
+                try { frame.recycle(); } catch (Throwable ignored) {}
+            }
+            if (thumbFile != null && (!written || !thumbFile.isFile() || thumbFile.length() <= 0)) {
+                try { thumbFile.delete(); } catch (Throwable ignored) {}
+            }
             if (retriever != null) {
                 try { retriever.release(); } catch (Throwable ignored) {}
             }

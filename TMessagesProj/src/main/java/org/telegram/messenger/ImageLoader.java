@@ -10,6 +10,7 @@
 
 package org.telegram.messenger;
 
+import java.io.IOException;
 import android.annotation.TargetApi;
 import android.app.ActivityManager;
 import android.content.BroadcastReceiver;
@@ -4315,7 +4316,7 @@ public class ImageLoader {
         }
 
         File cacheFile = null;
-        boolean ownsFile = false;
+        File tempFile = null;
         boolean complete = false;
         try {
             TLRPC.TL_fileLocationToBeDeprecated location;
@@ -4362,30 +4363,36 @@ public class ImageLoader {
                 fileDir = location.volume_id != Integer.MIN_VALUE ? FileLoader.getDirectory(FileLoader.MEDIA_DIR_IMAGE) : FileLoader.getDirectory(FileLoader.MEDIA_DIR_CACHE);
             }
             cacheFile = new File(fileDir, fileName);
-            ownsFile = cacheFile.createNewFile();
+            tempFile = File.createTempFile(fileName, ".tmp", fileDir);
 
 
 
 
             int size;
-            try (FileOutputStream stream = new FileOutputStream(cacheFile)) {
+            byte[] cacheBytes = null;
+            try (FileOutputStream stream = new FileOutputStream(tempFile)) {
                 if (!scaledBitmap.compress(compressFormat, quality, stream)) return null;
                 size = (int) stream.getChannel().size();
             }
             if (cache) {
                 try (ByteArrayOutputStream stream2 = new ByteArrayOutputStream()) {
                     if (!scaledBitmap.compress(compressFormat, quality, stream2)) return null;
-                    byte[] bytes = stream2.toByteArray();
-                    photoSize.bytes = bytes;
-                    size = bytes.length;
+                    cacheBytes = stream2.toByteArray();
+                    size = cacheBytes.length;
                 }
             }
+            if (!tempFile.renameTo(cacheFile)) {
+                throw new IOException("Unable to publish image cache file");
+            }
             photoSize.size = size;
+            if (cache) {
+                photoSize.bytes = cacheBytes;
+            }
             complete = true;
             return photoSize;
         } finally {
             try {
-                if (ownsFile && !complete) cacheFile.delete();
+                if (tempFile != null && !complete) tempFile.delete();
             } finally {
                 if (scaledBitmap != bitmap) scaledBitmap.recycle();
             }

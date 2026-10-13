@@ -200,7 +200,7 @@ public class SearchViewPager extends ViewPagerFixed implements FilteredSearchVie
                 replacingSearchSections = hasSectionRows(mPendingRemovals)
                         || (!mPendingRemovals.isEmpty() && hasSectionRows(mPendingAdditions));
                 long removeDuration = getRemoveDuration();
-                setDelayAnimations(replacingSearchSections);
+                setDelayAnimations(false);
                 if (replacingSearchSections) setRemoveDuration(110);
                 try {
                     super.runPendingAnimations();
@@ -222,8 +222,7 @@ public class SearchViewPager extends ViewPagerFixed implements FilteredSearchVie
             }
             @Override
             protected long getAddAnimationDelay(long removeDuration, long moveDuration, long changeDuration) {
-                return replacingSearchSections ? removeDuration
-                        : super.getAddAnimationDelay(removeDuration, moveDuration, changeDuration);
+                return 0;
             }
             @Override
             public boolean animateChange(RecyclerView.ViewHolder oldHolder, RecyclerView.ViewHolder newHolder,
@@ -268,7 +267,7 @@ public class SearchViewPager extends ViewPagerFixed implements FilteredSearchVie
                 } else if (nextRows != null && !nextRows.isEmpty()) {
                     cancelSearchEmptyReveal();
                 }
-                if (searchListView != null && searchListView.isAttachedToWindow()
+                if (canAnimateSearchRows()
                         && !searchListView.isComputingLayout() && SharedConfig.animationsEnabled()
                         && previousRows != null && nextRows != null) {
                     dispatchingSearchDiff = true;
@@ -1685,8 +1684,12 @@ public class SearchViewPager extends ViewPagerFixed implements FilteredSearchVie
 
     public void runResultsEnterAnimation() {
     }
+    private boolean canAnimateSearchRows() {
+        if (!isAttachedToWindow() || !isShown() || getAlpha() < 1f) return false;
+        return searchListView != null && searchListView.isAttachedToWindow();
+    }
     private void scheduleSearchResultsEntrance() {
-        if (searchListView == null || !searchListView.isAttachedToWindow()
+        if (!canAnimateSearchRows()
                 || !searchListView.isShown() || !SharedConfig.animationsEnabled()) {
             return;
         }
@@ -1696,7 +1699,7 @@ public class SearchViewPager extends ViewPagerFixed implements FilteredSearchVie
                 if (searchResultsEnterListener != this) return true;
                 searchListView.getViewTreeObserver().removeOnPreDrawListener(this);
                 searchResultsEnterListener = null;
-                if (!searchListView.isAttachedToWindow() || !searchListView.isShown()
+                if (!canAnimateSearchRows() || !searchListView.isShown()
                         || !SharedConfig.animationsEnabled() || searchListView.isComputingLayout()
                         || searchListView.hasPendingAdapterUpdates()
                         || searchListView.getItemAnimator() != itemAnimator || itemAnimator.isRunning()) {

@@ -11123,7 +11123,9 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                 }
                 if (chatId != 0) {
                     boolean gift = !BuildVars.IS_BILLING_UNAVAILABLE && !getMessagesController().premiumPurchaseBlocked() && chatInfo != null && chatInfo.stargifts_available;
-                    otherItem.setSubItemShown(gift_premium, gift);
+                    if (otherItem != null) {
+                        otherItem.setSubItemShown(gift_premium, gift);
+                    }
                     if (actionsView != null) {
                         actionsView.set(ProfileActionsView.KEY_GIFT, gift);
                     }

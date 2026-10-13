@@ -104,6 +104,10 @@ public final class NimarkoTextAnim {
     private static volatile boolean pineInitScheduled;
     private static volatile boolean pineUnavailable;
 
+    private static long heartbeatReportMs = -1L;
+    private static int heartbeatTicks;
+    private static int heartbeatMasterOffTicks;
+    private static int heartbeatCursorOffTicks;
     public static void initIfEnabled() {
         applySettings();
     }
@@ -407,6 +411,7 @@ public final class NimarkoTextAnim {
     }
 
     private static void startHeartbeat(final View view) {
+        if (!masterEnabled || !smoothCursorEnabled) return;
         final State st = getState(view);
         if (st.heartbeatRunning) return;
         st.heartbeatRunning = true;
@@ -416,11 +421,39 @@ public final class NimarkoTextAnim {
                 if (!view.isShown() || view.getWindowToken() == null) {
                     st.heartbeatRunning = false; return;
                 }
+                recordHeartbeatDiagnostic();
+                if (!masterEnabled || !smoothCursorEnabled) {
+                    st.heartbeatRunning = false; return;
+                }
                 view.invalidate();
                 view.postOnAnimation(this);
             }
         };
         view.postOnAnimation(beat);
+    }
+
+    private static void recordHeartbeatDiagnostic() {
+        try {
+            heartbeatTicks = Math.min(65535, heartbeatTicks + 1);
+            if (!masterEnabled) {
+                heartbeatMasterOffTicks = Math.min(65535, heartbeatMasterOffTicks + 1);
+            }
+            if (!smoothCursorEnabled) {
+                heartbeatCursorOffTicks = Math.min(65535, heartbeatCursorOffTicks + 1);
+            }
+            long now = android.os.SystemClock.uptimeMillis();
+            if (heartbeatReportMs >= 0L && now - heartbeatReportMs < 30000L) return;
+            heartbeatReportMs = now;
+            String detail = "ticks=" + heartbeatTicks
+                    + " master_off=" + heartbeatMasterOffTicks
+                    + " cursor_off=" + heartbeatCursorOffTicks;
+            heartbeatTicks = 0;
+            heartbeatMasterOffTicks = 0;
+            heartbeatCursorOffTicks = 0;
+            app.nimarkogram.messenger.NimarkoCrashContext.event("textanim", "heartbeat",
+                    "NimarkoTextAnim", detail);
+        } catch (Throwable ignored) {
+        }
     }
 
     private static int getLastLineStart(EditText edit) {

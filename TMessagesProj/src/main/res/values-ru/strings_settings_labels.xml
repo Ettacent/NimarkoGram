@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Modifications Copyright (C) 2026 Ettacent -->
+
 <!-- Copyright (C) 2026 Ettacent -->
 <resources>
     <string name="NM_Settings_WorldwidePreview">%1$s, весь мир</string>
@@ -18,4 +20,8 @@
     <string name="NM_Settings_StreamAllVideosBeta">Потоковое воспроизведение всех видео (только в бета-версии)</string>
     <string name="NM_Settings_BrowserAdaptiveColors">Адаптивные цвета</string>
     <string name="NM_Settings_BrowserLocalInstantViewOnly">Только локальный быстрый просмотр</string>
+    <string name="NM_BT_TabEnabled">Включена</string>
+    <string name="NM_BT_TabDisabled">Отключена</string>
+    <string name="NM_BT_MoveLeft">Переместить влево</string>
+    <string name="NM_BT_MoveRight">Переместить вправо</string>
 </resources>

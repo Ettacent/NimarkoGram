@@ -23,6 +23,8 @@ public final class WlPreferencesActivity extends BasePreferencesActivity {
     private static final int ENABLE = 301, STATUS = 302, PAY = 303, EXPIRY = 304,
             PRICE = 305;
     private static final int MAX_PAYMENT_POLLS = 24;
+    private static final long REFRESH_PRESENTATION_TIMEOUT_MS = 60_000L;
+    private Runnable refreshTimeout;
     private int account = UserConfig.selectedAccount;
     private long owner = UserConfig.getInstance(account).getClientUserId();
     private long ownerEpoch = WlAccess.accountEpoch(account);
@@ -61,6 +63,7 @@ public final class WlPreferencesActivity extends BasePreferencesActivity {
         account = selected;
         owner = selectedUid;
         ownerEpoch = selectedEpoch;
+        cancelRefreshTimeout();
         generation++;
         busy = false;
         subscriptionConfirmed = false;
@@ -92,6 +95,7 @@ public final class WlPreferencesActivity extends BasePreferencesActivity {
         subscriptionConfirmed = false;
         generation++;
         busy = false;
+        cancelRefreshTimeout();
         WlAccess.removeListener(accessChanged);
         AndroidUtilities.cancelRunOnUIThread(paymentPoll);
         super.onPause();
@@ -101,6 +105,7 @@ public final class WlPreferencesActivity extends BasePreferencesActivity {
         visible = false;
         generation++;
         busy = false;
+        cancelRefreshTimeout();
         clearPayment();
         WlAccess.removeListener(accessChanged);
         super.onFragmentDestroy();
@@ -148,7 +153,8 @@ public final class WlPreferencesActivity extends BasePreferencesActivity {
     }
 
     @Override public void onClick(UItem item, View view, int position, float x, float y) {
-        if (item == null || syncAccount()) { reload(); return; }
+        if (item == null) return;
+        if (syncAccount()) { refresh(); return; }
         if (item.id == ENABLE) {
             boolean routeEnabled = WlAccess.enabled();
             if (routeEnabled) {
@@ -159,6 +165,8 @@ public final class WlPreferencesActivity extends BasePreferencesActivity {
                 WlAccess.setEnabled(true);
                 reload();
             }
+        } else if (item.id == STATUS && !busy) {
+            refresh();
         } else if (item.id == PAY && !waitingPayment
                 && (WlAccess.cached() != null || !"blocked".equals(status))) {
             startCheckout();
@@ -166,6 +174,7 @@ public final class WlPreferencesActivity extends BasePreferencesActivity {
     }
 
     private void startCheckout() {
+        cancelRefreshTimeout();
         orderAccount = WlAccess.sponsorAccount(account);
         orderOwner = UserConfig.getInstance(orderAccount).getClientUserId();
         orderEpoch = WlAccess.accountEpoch(orderAccount);
@@ -282,16 +291,29 @@ public final class WlPreferencesActivity extends BasePreferencesActivity {
         reload();
         int expected = ++generation;
         long expectedUid = owner;
+        cancelRefreshTimeout();
+        refreshTimeout = () -> {
+            if (!visible || generation != expected || !busy) return;
+            refreshTimeout = null;
+            generation++;
+            busy = false;
+            status = syncAccount() ? "account_changed" : "error";
+            reload();
+            schedulePaymentPoll();
+        };
+        AndroidUtilities.runOnUIThread(refreshTimeout, REFRESH_PRESENTATION_TIMEOUT_MS);
         WeakReference<WlPreferencesActivity> ref = new WeakReference<>(this);
         WlAccess.refreshWithSubscription(waitingPayment ? orderAccount : account, subscriptionState -> {
             WlPreferencesActivity screen = ref.get();
             if (screen == null || !screen.screenCurrent(expected, expectedUid)) return;
             screen.subscriptionConfirmed = "approved".equals(subscriptionState);
+            if (!screen.waitingPayment) screen.status = subscriptionState;
             if (screen.hasConfirmedSubscription() && screen.waitingPayment) screen.paymentConfirmed = true;
             screen.reload();
         }, state -> {
             WlPreferencesActivity screen = ref.get();
             if (screen == null || !screen.screenCurrent(expected, expectedUid)) return;
+            screen.cancelRefreshTimeout();
             screen.busy = false;
             screen.status = state;
             if (screen.waitingPayment && !screen.orderCurrent()) {
@@ -316,6 +338,13 @@ public final class WlPreferencesActivity extends BasePreferencesActivity {
             screen.reload();
             screen.schedulePaymentPoll();
         });
+    }
+
+    private void cancelRefreshTimeout() {
+        if (refreshTimeout != null) {
+            AndroidUtilities.cancelRunOnUIThread(refreshTimeout);
+            refreshTimeout = null;
+        }
     }
 
     private void schedulePaymentPoll() {

@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Stories;
 
 import android.content.Context;
@@ -248,7 +250,8 @@ public class StoriesViewPager extends ViewPager {
     }
 
     public void setPeerIds(ArrayList<Long> peerIds, int currentAccount, int position) {
-        this.dialogs = peerIds;
+        this.dialogs = new ArrayList<>(peerIds);
+        this.days = null;
         this.currentAccount = currentAccount;
         setAdapter(null);
         setAdapter(pagerAdapter);
@@ -262,7 +265,7 @@ public class StoriesViewPager extends ViewPager {
         }
         final boolean appendOnly = this.daysDialogId == dialogId && this.currentAccount == currentAccount && isPrefix(this.days, days);
         this.daysDialogId = dialogId;
-        this.days = days;
+        this.days = copyDays(days);
         this.currentAccount = currentAccount;
         if (appendOnly && pagerAdapter != null) {
             pagerAdapter.notifyDataSetChanged();
@@ -291,6 +294,14 @@ public class StoriesViewPager extends ViewPager {
             if (!eq(a.get(i), b.get(i))) return false;
         }
         return true;
+    }
+
+    private static ArrayList<ArrayList<Integer>> copyDays(ArrayList<ArrayList<Integer>> source) {
+        ArrayList<ArrayList<Integer>> copy = new ArrayList<>(source.size());
+        for (ArrayList<Integer> day : source) {
+            copy.add(new ArrayList<>(day));
+        }
+        return copy;
     }
 
     private static boolean eqA(ArrayList<ArrayList<Integer>> a, ArrayList<ArrayList<Integer>> b) {

@@ -5218,9 +5218,23 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
                         }
                     };
                     if (startRecordingEncoder(recordingAudioFile) == 0) {
+                        File failedFile = recordingAudioFile;
+                        final long failureFocusGeneration = recordAudioFocusGeneration.get();
+                        final int failureAccount = recordingCurrentAccount;
+                        final int failureGuid = recordingGuid;
+                        AutoDeleteMediaTask.unlockFile(failedFile);
+                        if (failedFile != null) {
+                            failedFile.delete();
+                        }
+                        recordingAudioFile = recordingPrevAudioFile;
+                        recordingPrevAudioFile = null;
+                        audioRecorderPaused = true;
                         AndroidUtilities.runOnUIThread(() -> {
+                            if (recordAudioFocusGeneration.get() != failureFocusGeneration) {
+                                return;
+                            }
                             recordStartRunnable = null;
-                            NotificationCenter.getInstance(recordingCurrentAccount).postNotificationName(NotificationCenter.recordStartError, recordingGuid);
+                            NotificationCenter.getInstance(failureAccount).postNotificationName(NotificationCenter.recordStartError, failureGuid);
                         });
                         if (BuildVars.LOGS_ENABLED) {
                             FileLog.d("cant resume audio encoder");
@@ -5318,7 +5332,20 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
             AutoDeleteMediaTask.lockFile(recordingAudioFile);
             try {
                 if (startRecordingEncoder(recordingAudioFile) == 0) {
+                    File failedFile = recordingAudioFile;
+                    final long failureFocusGeneration = recordAudioFocusGeneration.get();
+                    recordingAudio = null;
+                    recordingAudioFile = null;
+                    AutoDeleteMediaTask.unlockFile(failedFile);
+                    if (failedFile != null) {
+                        failedFile.delete();
+                    }
+                    setBluetoothScoOn(false);
                     AndroidUtilities.runOnUIThread(() -> {
+                        if (recordAudioFocusGeneration.get() != failureFocusGeneration) {
+                            return;
+                        }
+                        requestRecordAudioFocus(false);
                         recordStartRunnable = null;
                         NotificationCenter.getInstance(currentAccount).postNotificationName(NotificationCenter.recordStartError, guid);
                     });

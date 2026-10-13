@@ -23,6 +23,7 @@ final class PluginHookGuard {
         for (Class<?> owner = member.getDeclaringClass(); owner != null;
                 owner = owner.getEnclosingClass()) {
             if (owner == PluginsController.class || owner == PluginsWatchdog.class
+                    || "app.nimarkogram.messenger.plugins.utils.PluginCrashReports".equals(owner.getName())
                     || owner == FileLog.class) {
                 return true;
             }

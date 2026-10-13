@@ -11397,7 +11397,6 @@
     <string name="NM_CARDS_GrantLocation">Grant access</string>
     <string name="NM_CARDS_NameWeather">Weather</string>
     <string name="NM_CARDS_NameGram">Gram</string>
-    <string name="NM_CARDS_NameBitcoin">Bitcoin</string>
     <string name="NM_CARDS_NameUsd">US dollar</string>
     <string name="NM_CARDS_NameStorage">Storage</string>
     <string name="NM_CARDS_NameProxy">Proxy</string>

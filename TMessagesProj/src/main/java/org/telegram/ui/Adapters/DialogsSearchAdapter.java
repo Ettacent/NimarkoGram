@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 5.x.x.
  * It is licensed under GNU GPL v. 2 or later.
@@ -319,12 +321,21 @@ public class DialogsSearchAdapter extends RecyclerListView.SelectionAdapter {
         };
         searchAdapterHelper.setDelegate(new SearchAdapterHelper.SearchAdapterHelperDelegate() {
             @Override
+            public void onBeforeMergeResults(int searchId) {
+                if (searchId == 0 || searchId != lastSearchId) return;
+                filterRecent(lastSearchText == null ? null : lastSearchText.trim());
+                if (lastLocalSearchId != searchId) searchResult.clear();
+                searchAdapterHelper.mergeResults(searchResult, filtered2RecentSearchObjects);
+            }
+
+            @Override
             public void onDataSetChanged(int searchId) {
                 if (searchId == 0 || searchId != lastSearchId) {
                     return;
                 }
                 waitingResponseCount--;
                 lastGlobalSearchId = searchId;
+                filterRecent(lastSearchText == null ? null : lastSearchText.trim());
                 if (lastLocalSearchId != searchId) {
                     searchResult.clear();
                 }
@@ -460,6 +471,7 @@ public class DialogsSearchAdapter extends RecyclerListView.SelectionAdapter {
                     waitingResponseCount--;
                     if (error == null) {
                         currentMessagesQuery = query;
+                        filterRecent(query == null ? null : query.trim());
                         TLRPC.messages_Messages res = (TLRPC.messages_Messages) response;
                         MessagesStorage.getInstance(currentAccount).putUsersAndChats(res.users, res.chats, true, true);
                         MessagesController.getInstance(currentAccount).putUsers(res.users, false);
@@ -538,9 +550,6 @@ public class DialogsSearchAdapter extends RecyclerListView.SelectionAdapter {
             searchWas = false;
             notifyDataSetChanged();
             return;
-        } else {
-            filterRecent(query);
-            searchAdapterHelper.mergeResults(searchResult, filtered2RecentSearchObjects);
         }
 
         if (dialogsType == DialogsActivity.DIALOGS_TYPE_BOT_REQUEST_PEER) {
@@ -618,6 +627,7 @@ public class DialogsSearchAdapter extends RecyclerListView.SelectionAdapter {
                     waitingResponseCount--;
                     if (error == null) {
                         currentMessagesQuery = query;
+                        filterRecent(query == null ? null : query.trim());
                         TLRPC.messages_Messages res = (TLRPC.messages_Messages) response;
                         MessagesStorage.getInstance(currentAccount).putUsersAndChats(res.users, res.chats, true, true);
                         MessagesController.getInstance(currentAccount).putUsers(res.users, false);
@@ -987,6 +997,7 @@ public class DialogsSearchAdapter extends RecyclerListView.SelectionAdapter {
             }
             waitingResponseCount--;
             lastLocalSearchId = searchId;
+            filterRecent(lastSearchText == null ? null : lastSearchText.trim());
             if (lastGlobalSearchId != searchId) {
                 searchAdapterHelper.clear();
             }
@@ -1110,7 +1121,7 @@ public class DialogsSearchAdapter extends RecyclerListView.SelectionAdapter {
         } else {
             query = null;
         }
-        filterRecent(query);
+        if (TextUtils.isEmpty(query)) filterRecent(query);
         if (!TextUtils.equals(sponsoredQuery, query)) {
             final int sponsoredGeneration = ++sponsoredRequestGeneration;
             sponsoredQuery = query;

@@ -832,7 +832,6 @@
     <string name="NM_CARDS_GrantLocation">授予權限</string>
     <string name="NM_CARDS_NameWeather">天氣</string>
     <string name="NM_CARDS_NameGram">Gram</string>
-    <string name="NM_CARDS_NameBitcoin">比特幣</string>
     <string name="NM_CARDS_NameUsd">美元</string>
     <string name="NM_CARDS_NameStorage">儲存空間</string>
     <string name="NM_CARDS_NameProxy">代理</string>

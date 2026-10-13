@@ -238,11 +238,16 @@ public final class NativeCrashDiagnostics {
                 + " code=" + exit.statusCode + " pss_kb=" + exit.pss + " rss_kb=" + exit.rss + " importance=" + exit.importance
                 + " timestamp_outside_window=" + exit.timestampOutsideWindow);
         keys.put("ng_previous_coverage", "managed_boundaries_only threads=" + journal.threads + " invalid=" + journal.invalid
+                + " records_read=" + journal.recordsRead + " selected_tid=" + journal.selectedTid
+                + " observed_active=" + journal.activeObserved + " observed_recent=" + journal.recentObserved
+                + " metadata_missing_records=" + journal.metadataMissing + " totals=retained_not_lifetime"
                 + " truncated=" + journal.truncated + " stale_generation=" + journal.stale + " flags=" + journal.flags
                 + " flag_bits=1:no_slot,2:depth,4:metadata,8:end_mismatch,16:disabled,32:metadata_pending,64:metadata_length,128:metadata_full"
                 + " active_total=" + journal.active.size() + " recent_total=" + journal.recent.size()
                 + " export_limit=4active/8recent");
         NativeTombstone.Summary trace = exit.tombstone;
+        String correlation = correlation(journal, exit, unverified);
+        keys.put("ng_previous_attribution", correlation);
         if (trace != null) {
             keys.put("ng_previous_native", "tid=" + trace.tid + " arch=" + trace.arch + " signal=" + trace.signal
                     + " code=" + trace.signalCode + " fault=" + (trace.hasFaultAddress ? hex(trace.faultAddress) : "unavailable")
@@ -259,6 +264,27 @@ public final class NativeCrashDiagnostics {
             LinkedHashMap<String, String> builds = new LinkedHashMap<>();
             for (NativeTombstone.Frame frame : trace.frames) if (!frame.buildId.isEmpty()) builds.put(frame.module, frame.buildId);
             keys.put("ng_previous_build_ids", builds.toString());
+            StringBuilder attribution = new StringBuilder(correlation);
+            attribution.append(" fault=").append(trace.hasFaultAddress ? hex(trace.faultAddress) : "unavailable")
+                    .append(" signal=").append(trace.signal).append(" code=").append(trace.signalCode)
+                    .append(" status=").append(trace.status);
+            if (!trace.mappings.isEmpty()) {
+                attribution.append(" address_maps=");
+                for (NativeTombstone.Mapping map : trace.mappings) {
+                    attribution.append(map.module).append('@').append(hex(map.begin)).append('-')
+                            .append(hex(map.end)).append("#").append(map.buildId).append(';');
+                }
+            }
+            if (!trace.frames.isEmpty()) {
+                NativeTombstone.Frame frame = trace.frames.get(0);
+                attribution.append(" top=").append(frame.module).append('+').append(hex(frame.relPc))
+                        .append(' ').append(frame.function).append("#").append(frame.buildId);
+            }
+            if (crashThreadMatched(journal, exit, unverified) && !journal.active.isEmpty()) {
+                NativeInvocationJournal.Entry entry = journal.active.get(0);
+                attribution.append(" active=").append(entryText(entry));
+            }
+            keys.put("ng_previous_attribution", attribution.toString());
             if (trace.memoryError != null) {
                 NativeTombstone.HeapObject heap = trace.memoryError.heap;
                 keys.put("ng_previous_memory_error", "tool=" + trace.memoryError.tool + " type=" + trace.memoryError.type
@@ -274,6 +300,40 @@ public final class NativeCrashDiagnostics {
         }
         appendJournalEvidence(keys, journal);
         return keys;
+    }
+
+    private static boolean crashThreadMatched(NativeInvocationJournal.Snapshot journal,
+                                               NativeExitInfoReader.Result exit, boolean unverified) {
+        return !unverified && exit.exactMatch && exit.tombstone != null && journal.recordsRead
+                && journal.pid == exit.pid && exit.tombstone.pid == exit.pid
+                && exit.tombstone.tid > 0 && journal.selectedTid == exit.tombstone.tid;
+    }
+
+    private static String correlation(NativeInvocationJournal.Snapshot journal,
+                                      NativeExitInfoReader.Result exit, boolean unverified) {
+        boolean matched = crashThreadMatched(journal, exit, unverified);
+        return "scope=previous_process current_ng_diag=reporter_only"
+                + " crash_tid=" + (exit.tombstone == null ? 0 : exit.tombstone.tid)
+                + " thread_match=" + matched + " correlated_active=" + (matched ? journal.activeObserved : -1)
+                + " active=boundary_context_not_cause_or_innermost recent=history_not_active"
+                + " latest_exit_gap_ms_wall_estimate=" + latestExitGapMillis(journal, exit, matched);
+    }
+
+    private static long latestExitGapMillis(NativeInvocationJournal.Snapshot journal,
+                                            NativeExitInfoReader.Result exit, boolean matched) {
+        if (!matched || exit.timestampOutsideWindow || journal.wallMillis <= 0 || journal.elapsedNanos < 0) return -1;
+        long latest = -1;
+        for (NativeInvocationJournal.Entry entry : journal.active) latest = Math.max(latest, entry.timeNanos);
+        for (NativeInvocationJournal.Entry entry : journal.recent) latest = Math.max(latest, entry.timeNanos);
+        if (latest < journal.elapsedNanos) return -1;
+        try {
+            long exitSinceStart = Math.subtractExact(exit.timestamp, journal.wallMillis);
+            long entrySinceStart = Math.subtractExact(latest, journal.elapsedNanos) / 1000000L;
+            long gap = Math.subtractExact(exitSinceStart, entrySinceStart);
+            return gap >= 0 ? gap : -1;
+        } catch (ArithmeticException invalidClock) {
+            return -1;
+        }
     }
 
     private static void appendJournalEvidence(LinkedHashMap<String, String> keys, NativeInvocationJournal.Snapshot journal) {

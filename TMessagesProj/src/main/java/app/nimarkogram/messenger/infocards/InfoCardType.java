@@ -5,7 +5,6 @@ package app.nimarkogram.messenger.infocards;
 public enum InfoCardType {
     WEATHER(1),
     TON(2),
-    BTC(3),
     USD(4),
     CACHE(5),
     PROXY(6);
