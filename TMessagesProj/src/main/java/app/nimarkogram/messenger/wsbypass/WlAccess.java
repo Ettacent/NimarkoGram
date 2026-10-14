@@ -499,10 +499,11 @@ public final class WlAccess {
     private static String bannerToken(int account, long owner, long epoch) throws Exception {
         remainingRequestMillis();
         DeadlineTask task = REQUEST.get();
+        final boolean backgroundWarm = Boolean.TRUE.equals(BACKGROUND_WARM.get());
         NimarkoInlineAuth.EnablePredicate permit = new NimarkoInlineAuth.EnablePredicate() {
             @Override public boolean isEnabled() {
                 return (task == null || task.active()) && current(account, owner, epoch)
-                        && (!Boolean.TRUE.equals(BACKGROUND_WARM.get()) || !FOREGROUND_REQUESTED.get());
+                        && (!backgroundWarm || !FOREGROUND_REQUESTED.get());
             }
             @Override public boolean runIfEnabled(Runnable action) {
                 synchronized (LOCK) {

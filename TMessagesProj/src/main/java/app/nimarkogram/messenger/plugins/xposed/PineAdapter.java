@@ -116,6 +116,7 @@ public final class PineAdapter extends MethodHook {
 
     private final ArrayDeque<AdapterParam> params = new ArrayDeque<>(4);
     private final ThreadLocal<AdapterParam> activeParam = new ThreadLocal<>();
+    private final ThreadLocal<Integer> callbackDepth = new ThreadLocal<>();
 
     public PineAdapter(Member member, XC_MethodHook xcHook) {
         if (member != null) {
@@ -215,6 +216,25 @@ public final class PineAdapter extends MethodHook {
             }
         } finally {
             NimarkoCrashContext.endInvocation(diagnosticToken);
+        }
+    }
+
+    private boolean pluginCallbackActive() {
+        Integer depth = callbackDepth.get();
+        return depth != null && depth > 0;
+    }
+
+    private void enterPluginCallback() {
+        Integer depth = callbackDepth.get();
+        callbackDepth.set(depth == null ? 1 : depth + 1);
+    }
+
+    private void leavePluginCallback() {
+        Integer depth = callbackDepth.get();
+        if (depth == null || depth <= 1) {
+            callbackDepth.remove();
+        } else {
+            callbackDepth.set(depth - 1);
         }
     }
 
@@ -380,7 +400,7 @@ public final class PineAdapter extends MethodHook {
                 diagnosticPhase(param, "before_bridge_return_skipped");
                 return;
             }
-            if (activeParam.get() != null) {
+            if (pluginCallbackActive()) {
                 skipCallbacks(cf, param, false);
                 return;
             }
@@ -401,9 +421,11 @@ public final class PineAdapter extends MethodHook {
             try {
                 if (BEFORE_HOOKED_METHOD != null) {
                     diagnosticPhase(param, "callback_before_enter");
+                    enterPluginCallback();
                     try {
                         BEFORE_HOOKED_METHOD.invoke(xcHook, param);
                     } finally {
+                        leavePluginCallback();
                         diagnosticPhase(param, "callback_before_exit");
                     }
                 }
